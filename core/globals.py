@@ -164,19 +164,12 @@ GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, g
 def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536):
     if not HAS_GEMINI or types is None:
         return None
-    try:
-        return types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            audio_timestamp=True,
-        )
-    except TypeError:
-        # Старая версия google-genai SDK без audio_timestamp — fallback
-        logger.warning("google-genai SDK не поддерживает audio_timestamp — обновите версию")
-        return types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-        )
+    # AUDIT FIX 2026-05-20: google-genai 1.x не поддерживает audio_timestamp на уровне API.
+    # В будущем (SDK >=2.0.0) можно вернуть: audio_timestamp=True для точных таймкодов audio-only.
+    return types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
 
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):

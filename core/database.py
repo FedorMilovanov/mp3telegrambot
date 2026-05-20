@@ -587,7 +587,7 @@ MAX_PLAYLIST_SIZE = 50
 # "gemini-3-flash-preview"        — новая, сильная (текущая)
 # "gemini-2.5-flash"              — стабильная, проверенная
 # "gemini-3.1-flash-lite-preview" — лёгкая, скудная (не рекомендуется)
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")

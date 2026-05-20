@@ -85,6 +85,14 @@ async def run_bot_async():
             "'gemini-3-flash-preview' (новая, free tier).",
             GEMINI_MODEL,
         )
+    elif GEMINI_MODEL == "gemini-2.5-pro":
+        logger.warning(
+            "⚠️  GEMINI_MODEL='gemini-2.5-pro' — с 1 апреля 2026 Pro-модели "
+            "требуют платного биллинга (free tier больше не работает). "
+            "Если ключи free tier — все запросы получат 429/quota error, "
+            "и бот будет выдавать только базовую информацию без анализа. "
+            "Рекомендуется GEMINI_MODEL='gemini-2.5-flash' в .env"
+        )
     elif GEMINI_MODEL not in _KNOWN_LIVE_MODELS:
         logger.warning(
             "⚠️  GEMINI_MODEL='%s' — модель не входит в список проверенных живых моделей. "

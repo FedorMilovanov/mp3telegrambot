@@ -232,6 +232,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         if response is None:
             raise last_err or RuntimeError("Все Gemini-клиенты недоступны")
 
+        # AUDIT DIAG: логируем финальный finish_reason и длину ответа
+        try:
+            _fin = response.candidates[0].finish_reason if response.candidates else "NO_CANDIDATES"
+            logger.info(f"Gemini response: finish_reason={_fin}")
+        except Exception:
+            pass
+
         # BUG-B04: response.text может быть None (thinking-only) или ValueError (safety filter)
         raw_text = None
         try:

@@ -1149,7 +1149,7 @@ def _final_telegraph_polish(nodes: list) -> list:
 
 
 async def _create_telegraph_page_single(title: str, author: str,
-                                         nodes: list, loop) -> tuple:
+                                         nodes: list, loop, author_url: str = "") -> tuple:
     """Публикует одну Telegraph-страницу. Возвращает (url, error).
     НЕ усекает контент — CONTENT_TOO_BIG возвращается как ошибка
     для обработки выше по стеку через дробление sections.
