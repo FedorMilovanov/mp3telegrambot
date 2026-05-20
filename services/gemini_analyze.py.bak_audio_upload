@@ -147,11 +147,11 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
         await set_progress(status_msg, 4, {"info": "🧠 Загружаю аудио для анализа..."})
         loop = asyncio.get_running_loop()
-        audio_bytes = None  # AUDIT FIX: всегда upload (inline отключён, чтобы избежать 503 на 20+MB base64)
+        audio_bytes = mp3_path.read_bytes() if file_size_mb <= 20 else None
 
         async def upload_to_client(client):
             """Загружает файл через конкретный ключ и возвращает (audio_part, client)."""
-            if file_size_mb > 0:  # AUDIT FIX: всегда upload (inline ломается на больших base64)
+            if file_size_mb > 20:
                 uf = await client.aio.files.upload(
                     file=mp3_path,
                     config=types.UploadFileConfig(mime_type="audio/mpeg", display_name=f"{performer} - {title}")
@@ -221,7 +221,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     break
                 except Exception as e:
                     if is_quota_error(e) or is_overload_error(e):
-                        logger.warning(f"Gemini {'квота' if is_quota_error(e) else '503/disconnect'}: {type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ...")
+                        logger.warning(f"Gemini {'квота' if is_quota_error(e) else '503/disconnect'}, пробую следующий ключ...")
                         if file_size_mb > 20 and audio_part is not None and hasattr(audio_part, 'name'):
                             # BUG-B06: безопасное удаление через хелпер
                             asyncio.create_task(_safe_delete_gemini_file(client, audio_part.name))
