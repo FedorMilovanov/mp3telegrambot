@@ -81,6 +81,8 @@ def _md_to_telegraph_nodes(md: str) -> list:
             continue
         # DEEP-QUALITY FIX [D]: понижаем жирные абзацы (>70% жирного → обычный текст)
         s = _demote_paragraph_bold(s)
+        # FINAL-POLISH FIX 2-4: чистим слипания таймкодов и точек
+        s = _polish_timestamps_in_text(s)
         # Пропускаем строки из одних знаков препинания/разделителей (. .. ─── и т.п.)
         # Gemini иногда генерирует одиночную точку как визуальный разделитель между блоками
         if re.fullmatch(r'[.\-–—─·•*_~\s]+', s):

@@ -501,8 +501,11 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     # DEEP-QUALITY FIX [B]: умный быстрый retry — 2 быстрые попытки на модель → следующая
     # На 3.1-flash-lite (последняя) даём 3 попытки, она почти не перегружена.
     # Также убрана двойная вложенность: тут retry, gemini_generate уже без своего retry.
+    # FINAL-POLISH FIX 1: gemini-3-flash не существует как имя API → 404.
+    # У этого аккаунта в free tier доступны: gemini-3.5-flash, gemini-2.5-flash-lite,
+    # gemini-3.1-flash-lite. Последняя — самая стабильная (500 RPD free).
     _models = [GEMINI_MODEL]
-    for _m in ("gemini-3-flash", "gemini-3.1-flash-lite"):
+    for _m in ("gemini-3.1-flash-lite", "gemini-2.5-flash-lite"):
         if _m not in _models:
             _models.append(_m)
 
