@@ -26,7 +26,7 @@ from converters.md_telegraph import (
 from services.telegraph import _telegraph_post
 from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # AUDIT-V2-MDPARSE
 from core.json_parser import (
-    _try_parse_synopsis_json,
+    # _try_parse_synopsis_json,  # FIX 2026-05-21 #13: dead import — используется локальный в telegraph.py
     time_to_seconds,                   # FIX telegraph_pages
 )
 from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
@@ -653,7 +653,29 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 1
             data = json.loads(text[s:e+1])
             return data.get("outline", []), data.get("sections", [])
         except json.JSONDecodeError:
-            pass
+            # FIX 2026-05-21 #3 P1: Gemini иногда вставляет сырые \n внутри JSON-строк.
+            # Экранируем их, как это делает _fix_json_newlines в telegraph.py.
+            def _fix_json_newlines(s_in: str) -> str:
+                out, in_str, i = [], False, 0
+                while i < len(s_in):
+                    c = s_in[i]
+                    if c == '\\' and i + 1 < len(s_in):
+                        out.append(c + s_in[i + 1]); i += 2; continue
+                    if c == '"':
+                        in_str = not in_str
+                    if in_str and c == '\n':
+                        out.append('\\n'); i += 1; continue
+                    if in_str and c == '\r':
+                        out.append('\\r'); i += 1; continue
+                    if in_str and c == '\t':
+                        out.append('\\t'); i += 1; continue
+                    out.append(c); i += 1
+                return ''.join(out)
+            try:
+                data = json.loads(_fix_json_newlines(text[s:e+1]))
+                return data.get("outline", []), data.get("sections", [])
+            except json.JSONDecodeError:
+                pass
 
     # Попытка 3: Gemini обрезал JSON на полуслове (max_tokens) —
     # восстанавливаем sections до последнего полного объекта.

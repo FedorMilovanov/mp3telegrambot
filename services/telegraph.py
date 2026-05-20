@@ -106,6 +106,13 @@ def _md_to_telegraph_nodes(md: str) -> list:
         elif s.startswith("# "):
             _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[2:])
             nodes.append({"tag": "h3", "children": [_h_text]})
+        # FIX 2026-05-21 #7: ##### и ###### → h4 (вместо <p>)
+        elif s.startswith("###### "):
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[7:])
+            nodes.append({"tag": "h4", "children": [_h_text]})
+        elif s.startswith("##### "):
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[6:])
+            nodes.append({"tag": "h4", "children": [_h_text]})
         elif s in ("---", "***", "___"):
             nodes.append({"tag": "hr"})
         elif s.startswith("> "):
@@ -295,7 +302,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         try:
             resp = await loop.run_in_executor(None, lambda: requests.post(
                 "https://api.telegra.ph/createPage",
-                json={"access_token": token, "title": t, "author_name": author,
+                json={"access_token": token, "title": t,
+                      "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
                       "author_url": (author_url or "")[:512],  # AUDIT M21
                       "content": ns, "return_content": False},
                 timeout=15,

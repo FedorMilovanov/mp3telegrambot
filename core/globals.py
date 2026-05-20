@@ -209,7 +209,9 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
             model_name = ""
 
     is_3x = _is_gemini_3x(model_name)
-    _safe_max = min(max_output_tokens, 40000) if is_3x else max_output_tokens
+    # FIX 2026-05-21 #12 P2: gemini-3.5-flash поддерживает 65k output tokens [Google I/O 2026].
+    # Раньше cap=40000 урезал доступный потолок, что снижало качество длинных анализов.
+    _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
 
     kwargs = {"max_output_tokens": _safe_max}
 
@@ -217,7 +219,8 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
         tc = _build_thinking_config("high")
         if tc is not None:
             kwargs["thinking_config"] = tc
-        # На 3.x Google рекомендует НЕ переопределять temperature
+        # На 3.x Google рекомендует НЕ переопределять temperature/top_p/top_k
+        # (Gemini Developer Guide май 2026)
     else:
         kwargs["temperature"] = temperature
 
@@ -245,7 +248,8 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
             model_name = ""
 
     is_3x = _is_gemini_3x(model_name)
-    _safe_max = min(max_output_tokens, 40000) if is_3x else max_output_tokens
+    # FIX 2026-05-21 #12 P2: cap 65k для 3.x (см. выше в make_audio_config).
+    _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
 
     kwargs = {"max_output_tokens": _safe_max}
 

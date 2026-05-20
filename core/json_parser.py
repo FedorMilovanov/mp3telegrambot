@@ -69,7 +69,20 @@ def _recover_truncated_json(chunk: str) -> dict | None:
 
 
 def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
-    """v3.2 — парсит плоский JSON от Gemini + terms_data. При ошибке возвращает None."""
+    """v3.2 — парсит плоский JSON от Gemini + terms_data. При ошибке возвращает None.
+
+    FIX 2026-05-21 #11 P2: убираем code-fence ```json / ``` перед поиском JSON,
+    иначе s.find('{') не учитывает текст fence и логи замусориваются 'JSON не найден'.
+    """
+    # FIX 2026-05-21 #11: убираем code-fence префикс/суффикс если есть
+    if isinstance(text, str):
+        _t = text.strip()
+        if _t.startswith('```'):
+            # ```json\n{...}\n``` → {...}
+            _t = re.sub(r'^```[a-zA-Z]*\s*', '', _t)
+            _t = re.sub(r'\s*```\s*$', '', _t)
+            text = _t
+
     def _valid_time(t: str) -> bool:
         if not duration or not t:
             return True

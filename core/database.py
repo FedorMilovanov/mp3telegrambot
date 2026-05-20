@@ -584,10 +584,13 @@ def get_channel_mapping(channel_name: str) -> dict | None:
 MAX_FILE_SIZE_MB  = 50
 MAX_PLAYLIST_SIZE = 50
 # Модели для быстрого переключения:
-# "gemini-3-flash-preview"        — новая, сильная (текущая)
-# "gemini-2.5-flash"              — стабильная, проверенная
-# "gemini-3.1-flash-lite-preview" — лёгкая, скудная (не рекомендуется)
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Модели по приоритету качества (май 2026):
+# "gemini-3.5-flash"        — GA с 19.05.2026, лучший выбор для нашего юзкейса (КАЧЕСТВО)
+# "gemini-3-flash-preview"  — предыдущее поколение, fallback при 429
+# "gemini-2.5-flash"        — стабильная, проверенная (deprecated по графику до 17.06.2026)
+# "gemini-3.1-flash-lite"   — лёгкая, для последнего fallback
+# FIX 2026-05-21 #10 P1: дефолт обновлён на 3.5-flash согласно AGENTS.md/AI_GUIDELINES.md
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")

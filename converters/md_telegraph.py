@@ -252,10 +252,13 @@ def _ensure_trailing_period(text: str) -> str:
             _before_stars = re.sub(r'\*{2,3}\s*$', '', s.rstrip())
             if re.search(r'[.!?»"\u2026]\s*$', _before_stars):
                 break  # точка уже есть перед ** — ничего не добавляем
-            if count % 2 == 1:
-                lines[i] = s[:-2].rstrip() + '.**'
+            # FIX 2026-05-21 P2: точка ВНУТРЬ закрывающего ** (как для нечётного **),
+            # а не снаружи. Снаружи получается '**Жирный**.' — точка вне жирного.
+            # Правильно: '**Жирный.**' — точка внутри (как принято в типографике).
+            if s.endswith('***'):
+                lines[i] = s[:-3].rstrip() + '.***'
             else:
-                lines[i] = s + '.'
+                lines[i] = s[:-2].rstrip() + '.**'
         else:
             lines[i] = s + '.'
         break
@@ -664,7 +667,10 @@ def _section_to_nodes_v2(
 
     # Пробел после точки/восклиц./вопроса/двоеточия, если дальше буква
     content = re.sub(r'([.!?…:])([А-ЯЁA-Z])', r'\1 \2', content)
-    content = re.sub(r'([.!?…:])(\*\*)', r'\1 \2', content)
+    # FIX 2026-05-21 P0: добавляем пробел между .!?…: и **bold** только если
+    # за ** идёт непустой символ (т.е. ** — открывающий маркер). Иначе закрывающий
+    # ** после ':' получает разделение и вся пара '**...**' сдвигается → ломается весь абзац.
+    content = re.sub(r'([.!?…:])(\*\*)([^\s\*])', r'\1 \2\3', content)
 
     # Пробел вокруг тире
     content = re.sub(r'([\wа-яА-ЯёЁ\*\)])\s*—\s*([\wа-яА-ЯёЁ\*\(])', r'\1 — \2', content)
@@ -1039,7 +1045,7 @@ def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, dur
     """Строит оглавление «Структура материала» с кликабельными таймкодами."""
     nodes = []
     nodes.append({"tag": "p", "children": [
-        {"tag": "b", "children": [" Структура материала"]}
+        {"tag": "b", "children": ["Структура материала"]}
     ]})
 
     for i, item in enumerate(outline, 1):
@@ -1141,6 +1147,16 @@ def _final_telegraph_polish(nodes: list) -> list:
             elif tag and tag not in TELEGRAPH_ALL_ALLOWED:
                 node = dict(node)
                 node["tag"] = "p"
+            # FIX 2026-05-21 #6: Telegraph API сохраняет attrs только {href, src}.
+            # dir="ltr" в JSON просто игнорируется на их стороне (no-op). Чистим явно,
+            # чтобы payload не раздувался и логи были чище.
+            if "attrs" in node and isinstance(node["attrs"], dict):
+                _kept = {k: v for k, v in node["attrs"].items() if k in ("href", "src")}
+                node = dict(node)
+                if _kept:
+                    node["attrs"] = _kept
+                else:
+                    node.pop("attrs", None)
             if "children" in node:
                 new_ch = [
                     _polish_node(c) for c in node["children"]
@@ -1177,7 +1193,7 @@ async def _create_telegraph_page_single(title: str, author: str,
                 json={
                     "access_token": token,
                     "title": title,
-                    "author_name": author,
+                    "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
                     "author_url": (author_url or "")[:512],  # AUDIT M21
                     "content": nodes,
                     "return_content": False,
@@ -1223,7 +1239,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
             json={
                 "access_token": token,
                 "title": title,
-                "author_name": author,
+                "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
                 "author_url": (author_url or "")[:512],  # AUDIT M21
                 "content": nodes,
                 "return_content": False,
@@ -1311,54 +1327,52 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
     if visible_length(caption) <= limit:
         return caption
 
-    # Разбиваем на строки и добавляем по одной, пока влезает
+    # FIX 2026-05-21 #8 P1: если строка не влезает целиком, пропускаем её,
+    # но продолжаем пытаться добавить следующие — иначе при длинном main_topic
+    # теряются ВСЕ таймкоды, ссылки и хэштеги.
     lines = caption.split("\n")
     result_lines = []
     current_len = 0
     for line in lines:
         line_vlen = visible_length(line)
-        # +1 за \n (кроме первой строки)
         sep = 1 if result_lines else 0
-        if current_len + sep + line_vlen > limit:
-            # Если это первая строка и она уже длиннее лимита —
-            # обрезаем посимвольно (без лома тегов внутри неё)
-            if not result_lines:
-                buf = ""
-                vis = 0
-                i = 0
-                while i < len(line):
-                    if line[i] == '<':
-                        end = line.find('>', i)
-                        if end == -1:
-                            break
-                        tag_chunk = line[i:end + 1]
-                        buf += tag_chunk
-                        i = end + 1
-                    elif line[i] == '&':
-                        end = line.find(';', i)
-                        if end == -1 or end - i > 10:
-                            if vis < limit:
-                                buf += line[i]
-                                vis += 1
-                            i += 1
-                        else:
-                            entity = line[i:end + 1]
-                            if vis < limit:
-                                buf += entity
-                                vis += 1
-                            i = end + 1
-                    else:
-                        if vis < limit:
-                            buf += line[i]
-                            vis += 1
-                        i += 1
-                result_lines.append(buf)
-                current_len = vis
-            # Строка не влезает (первая уже добавлена с обрезкой, остальные пропускаем)
-            break
-        else:
+        if current_len + sep + line_vlen <= limit:
             result_lines.append(line)
             current_len += sep + line_vlen
+            continue
+        # Строка не влезает целиком
+        if not result_lines:
+            # Первая строка слишком длинная — обрезаем посимвольно без лома тегов
+            buf, vis, i = "", 0, 0
+            while i < len(line):
+                if line[i] == '<':
+                    end = line.find('>', i)
+                    if end == -1:
+                        break
+                    buf += line[i:end + 1]
+                    i = end + 1
+                elif line[i] == '&':
+                    end = line.find(';', i)
+                    if end == -1 or end - i > 10:
+                        if vis < limit:
+                            buf += line[i]; vis += 1
+                        i += 1
+                    else:
+                        entity = line[i:end + 1]
+                        if vis < limit:
+                            buf += entity; vis += 1
+                        i = end + 1
+                else:
+                    if vis < limit:
+                        buf += line[i]; vis += 1
+                    i += 1
+            result_lines.append(buf)
+            current_len = vis
+            # НЕ break — продолжаем пытаться добавить следующие короткие строки
+            continue
+        # Не первая, и не влезает — пропускаем и пробуем следующую
+        # (например, длинный таймкод пропускаем, но хэштеги ниже могут влезть)
+        continue
 
     result = "\n".join(result_lines)
 
