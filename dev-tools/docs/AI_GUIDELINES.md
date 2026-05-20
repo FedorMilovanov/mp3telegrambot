@@ -1,6 +1,6 @@
 # AI_GUIDELINES.md — Что НЕ ломать при работе с этим репо
 
-**Версия:** 2026-05-20
+**Версия:** 2026-05-21 (после Deep Audit v7)
 **Для:** Claude, ChatGPT, Gemini, Grok, Qwen и любых AI-ассистентов, помогающих разработчику.
 
 Этот документ — **обязательный** для прочтения перед любыми правками в проекте.
@@ -57,13 +57,13 @@
 
 | Модель | Free RPD у пользователя | Аудио | Качество |
 |---|---|---|---|
-| `gemini-2.5-flash` | 20 | ✅ | средне |
-| `gemini-2.5-flash-lite` | 20 | ✅ | слабее |
-| `gemini-3-flash` | 20 | ✅ | хорошо |
-| `gemini-3.5-flash` ⭐ | 20 | ✅ | **отлично** (текущая) |
-| `gemini-3.1-flash-lite` | 500 | ✅ | для fallback |
-| ~~gemini-2.5-pro~~ | 0 | — | **НЕТ free для этого юзера** |
-| ~~gemini-3.1-pro~~ | 0 | — | только платная |
+| `gemini-3.5-flash` ⭐ | 20 | ✅ | **отлично** (GA с 19.05.2026, текущая) |
+| `gemini-3-flash-preview` | 20 | ✅ | хорошо (legacy, fallback) |
+| `gemini-2.5-flash` | 20 | ✅ | стабильная (deprecated до 17.06.2026) |
+| `gemini-2.5-flash-lite` | 20 | ✅ | слабее (последний fallback) |
+| `gemini-3.1-flash-lite` | 500 | ✅ | для fallback при квоте |
+| ~~gemini-2.5-pro~~ | 0 | — | **НЕТ free** (с 01.04.2026 платный билинг обязателен) |
+| ~~gemini-3.5-pro~~ | 0 | — | **роллаут июнь 2026, платная** |
 
 **Не предлагай** Pro-модели как бесплатные — у этого аккаунта они недоступны.
 
@@ -73,7 +73,7 @@
 - ✅ Для качества нужен явный `thinking_level="high"` в `ThinkingConfig`
 - ⚠️ Параметр `thinking_budget` (int) **deprecated**, использовать `thinking_level` (string enum)
 - ⚠️ Google рекомендует **НЕ переопределять** `temperature` на 3.x — defaults тюнингованы
-- ✅ `max_output_tokens=40000` оптимум (high-thinking занимает 10-30K токенов)
+- ✅ `max_output_tokens=65000` — реальный потолок 3.5-flash (раньше cap был 40000, FIX 2026-05-21 #12)
 - ❌ Не поддерживает Live API, Computer Use, image/audio generation
 - ✅ Поддерживает audio input, structured output, function calling
 - Цена (платно): $1.50/$9.00 per 1M tokens, кэш $0.15
@@ -207,3 +207,20 @@
 - `gemini-3.5-flash` — GA с 19 мая 2026
 - Free tier: только Flash и Flash-Lite модели
 - Pro-модели только платные
+
+
+---
+
+## 📌 Дополнения на 2026-05-21 (Deep Audit v7)
+
+См. `dev-tools/docs/2026-05-21_DEEP_AUDIT_v7.md` для полного отчёта с 30+ bash-проверками.
+
+**Ключевое:**
+- Дефолт `GEMINI_MODEL` теперь `gemini-3.5-flash` (раньше `2.5-flash`)
+- `max_output_tokens` cap для 3.x повышен 40000 → 65000
+- Telegraph: `dir="ltr"` API **игнорирует** — мы теперь чистим эти attrs до публикации
+- `_section_to_nodes_v2` больше не ломает закрывающий `**` после двоеточия (P0 фикс)
+- `_parse_expanded_json` теперь восстанавливает реальные `\n` в JSON-строках (Study/Reflection больше не падают)
+- `safe_trim_caption` больше не теряет хвост (хэштеги/таймкоды сохраняются)
+- `_ensure_trailing_period` ставит точку ВНУТРИ закрывающего `**` (типографически правильно)
+- Поддержка H5/H6 → h4 в `_md_to_telegraph_nodes`
