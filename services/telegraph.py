@@ -505,7 +505,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
         # ── Запрос к Gemini ───────────────────────────────────
         response = None
-        await asyncio.sleep(5)  # Пауза после анализа аудио — снижаем риск квоты
+        await asyncio.sleep(2)  # AUDIT-V2-SLEEP: 2s достаточно (было 5s)
 
         if existing_audio_part is not None and existing_client is not None:
             try:

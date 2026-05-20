@@ -112,17 +112,23 @@ def _clamp_content_timestamps(content: str, duration: int) -> str:
             return m.group(0)
         if secs > duration + 30:
             return ''
-        # Для коротких видео (<1ч): если таймкод > duration, попробуем поправить
+        # AUDIT-V2-CLAMP: для коротких видео (<1ч): если таймкод > duration,
+        # это баг Gemini (добавил лишние часы). Берём MM:SS напрямую из строки,
+        # не через secs%60 (который терял минуты: '1:00'→0, '1:30'→30 без контекста).
         if duration < 3600 and secs > duration:
-            # Пробуем интерпретировать MM:SS как SS (редкий случай когда
-            # модель путает формат) — берём только секунды через % 60
-            corrected_secs = secs % 60
-            if corrected_secs > duration:
+            parts_ts = time_str.split(":")
+            if len(parts_ts) == 3:
+                corrected = f"{parts_ts[1]}:{parts_ts[2]}"
+            elif len(parts_ts) == 2:
+                # MM:SS уже правильный формат, но > duration — просто удаляем
                 return ''
-            # A01 FIX: применяем поправленный таймкод (ранее всегда возвращал m.group(0))
-            original = m.group(0)
-            new_ts = f"{corrected_secs // 60}:{corrected_secs % 60:02d}"
-            return original.replace(m.group(3), new_ts)
+            else:
+                return ''
+            corrected_secs = time_to_seconds(corrected)
+            if corrected_secs is not None and 0 < corrected_secs <= duration:
+                original = m.group(0)
+                return original.replace(m.group(3), corrected)
+            return ''
         return m.group(0)
 
     pattern = re.compile(

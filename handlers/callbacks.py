@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# AUDIT-V2-ADMIN: ADMIN_IDS bypass fixed
 """
 Handlers — settings keyboard, handle_callback.
 Извлечено из bot.py строки 8365–8722.
@@ -129,7 +130,7 @@ async def _build_keyboard_async() -> InlineKeyboardMarkup:
 async def settings_command(update, context):
     """Показывает панель настроек."""
     user_id = update.effective_user.id
-    if ADMIN_IDS and user_id not in ADMIN_IDS:
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Настройки доступны только администраторам.")
         return
     keyboard = await _build_keyboard_async()
@@ -161,7 +162,7 @@ async def handle_callback(update, context) -> None:
     # ── Скорость Shorts (цикличное переключение) ─────────────
     if data == "setting_speed":
         user_id = update.effective_user.id
-        if ADMIN_IDS and user_id not in ADMIN_IDS:
+        if not ADMIN_IDS or user_id not in ADMIN_IDS:
             await query.answer("⛔ Нет доступа.", show_alert=True)
             return
         new_speed = await ashorts_speed_cycle()
@@ -175,7 +176,7 @@ async def handle_callback(update, context) -> None:
     # ── Настройки (toggle bool) ───────────────────────────────
     if data.startswith("setting:"):
         user_id = update.effective_user.id
-        if ADMIN_IDS and user_id not in ADMIN_IDS:
+        if not ADMIN_IDS or user_id not in ADMIN_IDS:
             await query.answer("⛔ Нет доступа.", show_alert=True)
             return
         key = data.split(":", 1)[1]
@@ -250,7 +251,7 @@ async def handle_callback(update, context) -> None:
     # ── Сброс всего кэша ─────────────────────────────────────
     if data == "resetcache:all":
         user_id = update.effective_user.id
-        if ADMIN_IDS and user_id not in ADMIN_IDS:
+        if not ADMIN_IDS or user_id not in ADMIN_IDS:
             await query.answer("⛔ Нет доступа.", show_alert=True)
             return
         await query.answer("🗑 Чистим...")

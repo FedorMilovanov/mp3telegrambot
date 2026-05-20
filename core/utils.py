@@ -246,11 +246,19 @@ def cleanup_nosub_files(max_age_hours: int = 24) -> int:
         logger.warning(f"cleanup_nosub_files error: {e}")
     return deleted
 
-# Автоочистка nosub-файлов — вызываем после определения функции
-cleanup_nosub_files()
+# AUDIT-V2-CLEANUP: НЕ вызываем при импорте — side effect ломает тесты
+# и замедляет старт. Вызов уже есть в periodic maintenance (main.py:209).
+# cleanup_nosub_files()
 
 
-def format_timestamp(seconds: float) -> str:
+def format_timestamp(seconds) -> str:  # AUDIT-V2-FMT: принимает Any
+    try:
+        seconds = float(seconds)
+    except (TypeError, ValueError):
+        return "0:00"
+    import math
+    if math.isnan(seconds) or math.isinf(seconds):
+        return "0:00"
     seconds = max(0, seconds)
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)

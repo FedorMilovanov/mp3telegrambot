@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# AUDIT-V2-ADMIN: ADMIN_IDS bypass fixed
 """
 Command Handlers — /start, /help, /settings, /resetcache, /pdf, /stop.
 Извлечено из bot.py строки 13513–13822.
@@ -135,7 +136,7 @@ async def reset_cache_command(update, context):
     """Удаляет кэш видео — для принудительной переобработки."""
 
     user_id = update.effective_user.id
-    if ADMIN_IDS and user_id not in ADMIN_IDS:
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
             f"⛔ Нет доступа.\n"
             f"Ваш Telegram ID: `{user_id}`\n"
@@ -191,7 +192,7 @@ async def reset_cache_command(update, context):
 async def pdf_command(update, context):
     """Генерирует и отправляет PDF из кэша для указанного видео."""
     user_id = update.effective_user.id
-    if ADMIN_IDS and user_id not in ADMIN_IDS:
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
             f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown")
         return
@@ -262,7 +263,10 @@ async def pdf_command(update, context):
             urls         = pdf_urls,
         )
         if result and Path(result).exists():
-            filename = f"{performer} — {title}.pdf" if performer else f"{title}.pdf"
+            # AUDIT-V2-PDF: performer="" → leading " — " в имени файла
+            _safe_perf = (performer or "").strip()
+            _safe_titl = (title or "").strip() or "Без названия"
+            filename = f"{_safe_perf} — {_safe_titl}.pdf" if _safe_perf else f"{_safe_titl}.pdf"
             with open(result, "rb") as f:
                 await update.message.reply_document(
                     document   = f,
@@ -285,7 +289,7 @@ async def pdf_command(update, context):
 async def stop_command(update, context):
     """Останавливает бота. Только для администраторов."""
     user_id = update.effective_user.id
-    if ADMIN_IDS and user_id not in ADMIN_IDS:
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
             f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
         )
@@ -359,8 +363,12 @@ async def handle_message(update, context):
             )
         async with _vlock:
             ok = await process_single_video(url, update, msg, context=context)
+        # AUDIT-V2-LOCKPOP: pop только если lock свободен
+        # Если второй запрос ещё держит lock, pop создаст возможность
+        # для третьего запроса создать новый lock и обработать параллельно
         with _video_locks_mutex:
-            _video_processing_locks.pop(_vid_id_hint, None)
+            if not _vlock.locked():
+                _video_processing_locks.pop(_vid_id_hint, None)
         if ok and not is_vip:
             # AUDIT M4: update_rate_limit — синхронный SQLite, через executor
             await aupdate_rate_limit(user_id)

@@ -24,7 +24,7 @@ from converters.md_telegraph import (
     _estimate_nodes_v2,                # FIX telegraph_pages
 )
 from services.telegraph import _telegraph_post
-from core.core_utils import _fix_rtl_in_text  # defined in core_utils (not md_telegraph)
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # AUDIT-V2-MDPARSE
 from core.json_parser import (
     _try_parse_synopsis_json,
     time_to_seconds,                   # FIX telegraph_pages
@@ -64,13 +64,15 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
 
     if analysis_summary and not is_meta_garbage(analysis_summary):
         nodes.append({"tag": "h3", "children": ["🧠 Аналитика"]})
-        nodes.append({"tag": "p", "children": [analysis_summary]})
+        # AUDIT-V2-MDPARSE: прогоняем через _md_parse_inline → **bold** рендерится в Telegraph
+        nodes.append({"tag": "p", "children": _md_parse_inline(analysis_summary)})
 
     if argument_arc:
         if nodes:
             nodes.append({"tag": "hr"})
         nodes.append({"tag": "h3", "children": ["📈 Ход аргументации"]})
-        nodes.append({"tag": "p", "children": [{"tag": "i", "children": [argument_arc]}]})
+        # AUDIT-V2-MDPARSE: argument_arc через _md_parse_inline
+        nodes.append({"tag": "p", "children": _md_parse_inline(argument_arc)})
 
     if key_categories:
         if nodes:
