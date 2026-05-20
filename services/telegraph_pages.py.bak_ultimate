@@ -7,7 +7,6 @@ Analytics, Questions, Terms, Study Analysis, Reflection.
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS, gemini_generate,   # FIX telegraph_pages
-    is_overload_error, is_quota_error, make_text_config_smart,  # ULTIMATE FIX 3.5-FLASH
 )
 from core.database import GEMINI_MODEL      # FIX telegraph_pages
 from core.text_utils import (
@@ -489,71 +488,41 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
 
 async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 max_tokens: int = 8000) -> str | None:
-    """ULTIMATE FIX 3.5-FLASH: текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
-
-    Перебирает модели в порядке: GEMINI_MODEL -> gemini-3-flash -> gemini-3.1-flash-lite
-    На каждой модели: 3 попытки с экспоненциальной паузой при 503/overload.
-    Использует make_text_config_smart -> thinking_level=high для глубокого анализа на 3.x.
-    """
+    """Текстовый запрос к Gemini (без аудио). Возвращает text или None.
+    Автоматически повторяет при 500 INTERNAL (до 3 попыток с паузой)."""
     if not GEMINI_CLIENTS:
         return None
-
-    # ULTIMATE FIX: список моделей для fallback
-    _models = [GEMINI_MODEL]
-    for _m in ("gemini-3-flash", "gemini-3.1-flash-lite"):
-        if _m not in _models:
-            _models.append(_m)
 
     def _is_internal_error(e: Exception) -> bool:
         s = str(e)
         return "500" in s or "INTERNAL" in s.upper()
 
-    last_err = None
-    for model_idx, model_name in enumerate(_models):
-        if model_idx > 0:
-            logger.warning(
-                "_gemini_text_request: переключаюсь на резервную модель %s (#%d/%d)",
-                model_name, model_idx + 1, len(_models),
-            )
+    async def _fn(client):
+        resp = await client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            ),
+        )
+        return resp.text or ""
 
-        async def _fn(client, _m=model_name):
-            resp = await client.aio.models.generate_content(
-                model=_m,
-                contents=prompt,
-                config=make_text_config_smart(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    model_name=_m,
-                    thinking_level="high",  # для качества Reflection/Study
-                ),
-            )
-            return resp.text or ""
-
-        # Retry при 500/503 — Gemini иногда выдаёт их случайно
-        for attempt in range(3):
-            try:
-                result = await gemini_generate(GEMINI_CLIENTS, _fn)
-                if result:
-                    return result
-                # пустой ответ — это не ошибка, идём к следующей модели
-                logger.warning("_gemini_text_request: пустой ответ от %s", model_name)
-                break
-            except Exception as e:
-                last_err = e
-                if (_is_internal_error(e) or is_overload_error(e)) and attempt < 2:
-                    wait = 15 * (attempt + 1)
-                    logger.warning(
-                        "_gemini_text_request[%s]: 500/503 (попытка %d/3), жду %dс...",
-                        model_name, attempt + 1, wait,
-                    )
-                    await asyncio.sleep(wait)
-                    continue
-                # Не overload и не internal — пробуем следующую модель
-                logger.warning("_gemini_text_request[%s] error: %s", model_name, str(e)[:200])
-                break
-
-    if last_err:
-        logger.warning("_gemini_text_request: все модели исчерпаны, последняя ошибка: %s", str(last_err)[:200])
+    # Retry при 500 INTERNAL — Gemini иногда выдаёт их случайно
+    for attempt in range(3):
+        try:
+            return await gemini_generate(GEMINI_CLIENTS, _fn)
+        except Exception as e:
+            if _is_internal_error(e) and attempt < 2:
+                wait = 15 * (attempt + 1)
+                logger.warning(
+                    "_gemini_text_request: 500 INTERNAL (попытка %d/3), жду %dс...",
+                    attempt + 1, wait,
+                )
+                await asyncio.sleep(wait)
+                continue
+            logger.warning("_gemini_text_request error: %s", e)
+            return None
     return None
 
 

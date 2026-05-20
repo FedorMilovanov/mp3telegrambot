@@ -161,102 +161,15 @@ GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, g
 # документации Google: https://ai.google.dev/gemini-api/docs/audio
 # Без него точность таймкодов снижается ~30%, а у нас на таймкодах построены
 # конспекты, Shorts, Clips и Montage.
-def _is_gemini_3x(model_name: str) -> bool:
-    """ULTIMATE FIX 3.5-FLASH: определяет 3.x семейство Gemini моделей.
-    Для 3.x: используем thinking_level (новый параметр), не используем temperature.
-    Для 2.x: используем temperature (там thinking_config работает иначе).
-    """
-    if not model_name:
-        return False
-    m = model_name.lower()
-    return any(tok in m for tok in ("gemini-3.5", "gemini-3.1", "gemini-3-", "gemini-3.0"))
-
-
-def _build_thinking_config(level: str = "high"):
-    """ULTIMATE FIX: создаёт ThinkingConfig с fallback на старый thinking_budget."""
+def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536):
     if not HAS_GEMINI or types is None:
         return None
-    try:
-        return types.ThinkingConfig(thinking_level=level)
-    except (AttributeError, TypeError):
-        # SDK старый — пробуем deprecated thinking_budget
-        try:
-            budget_map = {"minimal": 4096, "low": 8192, "medium": 16384, "high": 24576}
-            return types.ThinkingConfig(thinking_budget=budget_map.get(level, 24576))
-        except Exception:
-            return None
-
-
-def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None):
-    """ULTIMATE FIX 3.5-FLASH: конфиг для audio-вызовов с авто-адаптацией под поколение.
-
-    Для 3.x: thinking_level="high" (default=medium слабее чем 3-flash-preview!), без temperature
-    Для 2.x: temperature как раньше
-
-    max_output_tokens снижен до 40000 для 3.x — оставляем место для thinking-токенов
-    (high может занимать до 30K токенов до начала финального ответа).
-
-    AUDIT FIX 2026-05-20: google-genai 1.x не поддерживает audio_timestamp.
-    """
-    if not HAS_GEMINI or types is None:
-        return None
-
-    if model_name is None:
-        try:
-            from core.database import GEMINI_MODEL as _m
-            model_name = _m
-        except Exception:
-            model_name = ""
-
-    is_3x = _is_gemini_3x(model_name)
-    _safe_max = min(max_output_tokens, 40000) if is_3x else max_output_tokens
-
-    kwargs = {"max_output_tokens": _safe_max}
-
-    if is_3x:
-        tc = _build_thinking_config("high")
-        if tc is not None:
-            kwargs["thinking_config"] = tc
-        # На 3.x Google рекомендует НЕ переопределять temperature
-    else:
-        kwargs["temperature"] = temperature
-
-    return types.GenerateContentConfig(**kwargs)
-
-
-def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14000, model_name: str = None, thinking_level: str = "high"):
-    """ULTIMATE FIX 3.5-FLASH: конфиг для ТЕКСТОВЫХ вызовов с thinking_level для 3.x.
-
-    Используется в services/telegraph_pages.py:_gemini_text_request для StudyAnalysis
-    и ReflectionApplication. Это даёт глубокий анализ на 3.5-flash вместо поверхностного.
-
-    Параметры:
-        thinking_level: "minimal" | "low" | "medium" | "high" — на 3.x. По умолчанию "high"
-                        для качественного анализа Reflection/Study.
-    """
-    if not HAS_GEMINI or types is None:
-        return None
-
-    if model_name is None:
-        try:
-            from core.database import GEMINI_MODEL as _m
-            model_name = _m
-        except Exception:
-            model_name = ""
-
-    is_3x = _is_gemini_3x(model_name)
-    _safe_max = min(max_output_tokens, 40000) if is_3x else max_output_tokens
-
-    kwargs = {"max_output_tokens": _safe_max}
-
-    if is_3x:
-        tc = _build_thinking_config(thinking_level)
-        if tc is not None:
-            kwargs["thinking_config"] = tc
-    else:
-        kwargs["temperature"] = temperature
-
-    return types.GenerateContentConfig(**kwargs)
+    # AUDIT FIX 2026-05-20: google-genai 1.x не поддерживает audio_timestamp на уровне API.
+    # В будущем (SDK >=2.0.0) можно вернуть: audio_timestamp=True для точных таймкодов audio-only.
+    return types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
 
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
