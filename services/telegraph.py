@@ -867,8 +867,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 f"Synopsis v2 depth={depth}: {sec_range} "
                 f"({len(secs)} secs, {len(part_nodes)} nodes) — публикую..."
             )
-            tmp_title = f"{tg_title} [draft]"
-            page_url, err = await _create_telegraph_page_single(tmp_title, author, part_nodes, loop)
+            # FIX 2026-05-21 P0 #14: Telegraph path генерируется из title ОДИН РАЗ при createPage
+            # и НЕ меняется при editPage. Раньше создавали с " [draft]" → URL навсегда содержал "-draft-DD-MM".
+            # Теперь сразу даём финальный title — URL будет чистым.
+            page_url, err = await _create_telegraph_page_single(tg_title, author, part_nodes, loop)
 
             if page_url:
                 logger.info(f"Synopsis v2 depth={depth}: {sec_range} → OK {page_url}")
@@ -944,7 +946,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")
             else:
                 logger.warning(
-                    f"Synopsis v2: editPage часть {part_num}/{total} окончательно failed, page may show [draft]: {page_url}"
+                    f"Synopsis v2: editPage часть {part_num}/{total} окончательно failed, page content may stay outdated: {page_url}"
                 )
 
         return parts_urls[0], outline

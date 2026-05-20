@@ -148,11 +148,12 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
     if not body_nodes:
         return None
 
+    # FIX 2026-05-21 P0 #14: сразу даём финальный title — URL не получит "-draft-DD-MM"
     page_url, err = await _create_telegraph_page_single(
-        f"{title} [draft]", author, body_nodes, loop
+        f"Вопросы: {title}", author, body_nodes, loop
     )
     if not page_url:
-        logger.warning(f"Questions draft createPage failed: {err}")
+        logger.warning(f"Questions createPage failed: {err}")
         return None
 
     # ── Фаза 2: финальное оформление через editPage ───────────────
@@ -186,7 +187,7 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
         loop=loop,
     )
     if not ok:
-        logger.warning(f"editPage failed, page may show [draft]: {page_url}")
+        logger.warning(f"editPage failed, page content may stay outdated: {page_url}")
 
     return page_url
 
@@ -778,10 +779,11 @@ async def _publish_expanded_page(
             depth, sec_range, len(secs), len(body_nodes),
         )
 
-        # #93: всегда создаём с [draft] — editPage перезапишет финальным заголовком.
-        # Если editPage упадёт для любой части (не только depth=0), [draft] остаётся как маркер.
-        draft_title = f"{tg_title} [draft]"
-        page_url, err = await _create_telegraph_page_single(draft_title, author, body_nodes, loop)
+        # FIX 2026-05-21 P0 #14: Telegraph path генерируется из title ОДИН РАЗ при createPage
+        # и editPage НЕ меняет URL. Старая логика создавала с " [draft]" → URL навсегда содержал
+        # "-draft-DD-MM-N" (комментарий #93 был ошибочный — editPage не перезаписывает path).
+        # Теперь сразу даём финальный title — URL будет чистым.
+        page_url, err = await _create_telegraph_page_single(tg_title, author, body_nodes, loop)
 
         if page_url:
             logger.info("Expanded publish depth=%d: %s → OK %s", depth, sec_range, page_url)
@@ -865,7 +867,7 @@ async def _publish_expanded_page(
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)
         else:
             logger.warning(
-                "Expanded publish: editPage часть %d/%d окончательно failed, page may show [draft]: %s",
+                "Expanded publish: editPage часть %d/%d окончательно failed, page content may stay outdated: %s",
                 part_num, total, page_url,
             )
 

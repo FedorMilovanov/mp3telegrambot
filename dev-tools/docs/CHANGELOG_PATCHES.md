@@ -93,3 +93,49 @@
 
 ### Известные нерешённые проблемы
 См. `KNOWN_ISSUES.md` — на 2026-05-21 список тот же что и был.
+
+---
+
+## 2026-05-21 — Hotfix v8: URL "-draft" в Telegraph (P0)
+
+### Контекст
+Пользователь прислал примеры реальных конспектов. **ВСЕ 14 URL содержали `-draft-DD-MM-N`**:
+```
+https://telegra.ph/Svidetelstvo-Trus-i-Lzhec--Pol-Vosher-draft-05-20-3
+https://telegra.ph/Razbor-materiala-Svidetelstvo-Trus-i-Lzhec--Pol-Vosher-draft-05-13
+...
+```
+Это серьёзная проблема для SEO/удобства: URL-ы загрязнены технической пометкой, при пересылке ссылки в публичный чат сразу видна "draft" — выглядит как технический мусор.
+
+### Корневая причина
+В коде везде была паттерн:
+```python
+draft_title = f"{tg_title} [draft]"
+page_url, err = await _create_telegraph_page_single(draft_title, ...)
+# ... потом ...
+await _edit_telegraph_page(page_url, final_title, ...)
+```
+
+Комментарий `# #93: всегда создаём с [draft] — editPage перезапишет финальным заголовком` **был ошибочный**.
+
+**Реальность Telegraph API:** `path` (URL) генерируется ОДИН РАЗ из `title` при `createPage` и **никогда не меняется** при `editPage`. editPage обновляет ТОЛЬКО body и title в шапке, но URL `https://telegra.ph/...-draft-05-20-3` остаётся навсегда.
+
+### Применённые фиксы
+
+| # | Файл | Что |
+|---|---|---|
+| #14a | `services/telegraph.py:870` | Synopsis publish: убран `f"{tg_title} [draft]"`, сразу финальный `tg_title` |
+| #14b | `services/telegraph_pages.py:151` | Questions phase 1: `f"{title} [draft]"` → `f"Вопросы: {title}"` |
+| #14c | `services/telegraph_pages.py:783` | Expanded publish (Study/Reflection): убран `draft_title = f"{tg_title} [draft]"`, сразу финальный |
+| #14d | Оба файла | Логи `page may show [draft]` → `page content may stay outdated` (фактически точнее) |
+
+### Результат
+URL теперь чистые:
+- Было: `https://telegra.ph/Svidetelstvo-Trus-i-Lzhec--Pol-Vosher-draft-05-20-3`
+- Стало: `https://telegra.ph/Svidetelstvo-Trus-i-Lzhec--Pol-Vosher-05-21`
+
+Применить: `git apply dev-tools/patches/2026-05-21_draft_url_fix_v8.patch`
+
+### Edge cases
+- Если createPage прошёл, а editPage упал — title в шапке останется тем же что и при создании (не "[draft]"), и URL будет нормальный. Body просто не обновится с TOC/навигацией — пользователь увидит чистый контент без оглавления, но без слова "draft" нигде. Это **намного лучше** старого поведения.
+- Все старые страницы с `-draft-` в URL остаются как есть (Telegraph API не имеет delete). Только новые публикации будут с чистыми URL.
