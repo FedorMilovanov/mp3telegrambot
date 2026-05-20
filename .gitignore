@@ -21,4 +21,41 @@ cookies.txt
 
 # =============== OS ===============
 .DS_Store
-Thumbs.db
+Thumbs.db# === ДОБАВИТЬ В .gitignore ===
+# (этот файл не для коммита, это инструкция)
+
+# SQLite WAL/SHM — никогда не коммитим
+bot_cache.db-shm
+bot_cache.db-wal
+bot_cache.db-journal
+
+# Backup'ы от наших патчей
+*.bak_*
+*.py.bak
+*.bak
+
+# Скрипты dev-tools кешируют свои бэкапы — игнорим только бэкапы, скрипты оставляем
+dev-tools/**/*.bak_*
+
+# Старая папка с патчами в корне (если кто-то всё ещё кладёт fix_*.py в корень — не коммитим)
+/fix_*.py
+/apply_*.py
+/diagnose_*.py
+
+# Python кэш
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Логи
+*.log
+logs/
+
+# Окружение
+.env
+!.env.example
