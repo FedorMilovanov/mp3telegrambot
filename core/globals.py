@@ -162,14 +162,17 @@ GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, g
 # Без него точность таймкодов снижается ~30%, а у нас на таймкодах построены
 # конспекты, Shorts, Clips и Montage.
 def _is_gemini_3x(model_name: str) -> bool:
-    """ULTIMATE FIX 3.5-FLASH: определяет 3.x семейство Gemini моделей.
+    """Определяет 3.x семейство Gemini моделей.
     Для 3.x: используем thinking_level (новый параметр), не используем temperature.
     Для 2.x: используем temperature (там thinking_config работает иначе).
+
+    v10 FIX #19: убран токен "gemini-3.1" — модель платная и выведена из ротации.
+    Активна: gemini-3.5-flash (GA 19.05.2026, бесплатный tier).
     """
     if not model_name:
         return False
     m = model_name.lower()
-    return any(tok in m for tok in ("gemini-3.5", "gemini-3.1", "gemini-3-", "gemini-3.0"))
+    return any(tok in m for tok in ("gemini-3.5", "gemini-3-", "gemini-3.0"))
 
 
 def _build_thinking_config(level: str = "high"):

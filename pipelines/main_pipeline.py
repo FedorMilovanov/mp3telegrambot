@@ -681,6 +681,33 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # ── Навигация между тремя страницами ──────────────────────────────
         # После публикации всех трёх страниц вшиваем ссылки друг на друга
         # через editPage. Каждая страница получает блок навигации внизу.
+
+        # v10 FIX #16 (P1): если reflection_application_tg — это fallback compact_fn
+        # (create_telegraph_questions вернул URL «Вопросы:»), не вставляем его в nav
+        # как «Размышление». Live-аудит 39 страниц выявил 2 таких случая из 13 (15%).
+        def _is_reflection_fallback(url: str) -> bool:
+            if not url:
+                return False
+            path = url.replace("https://telegra.ph/", "").lower()
+            # Настоящее Размышление всегда начинается с razmyshlenie-
+            if path.startswith("razmyshlenie-"):
+                return False
+            # Явный Вопросы-URL (v9+)
+            if path.startswith("voprosy-"):
+                return True
+            # Любой другой path (конспект-подобный и т.д.) — считаем fallback
+            return True
+
+        if reflection_application_tg and _is_reflection_fallback(reflection_application_tg):
+            logger.warning(
+                "Navigation v10: reflection_application_tg выглядит как fallback Вопросы "
+                "(%s) — перемещаю в questions_tg, из nav убираю",
+                reflection_application_tg,
+            )
+            if not questions_tg:
+                questions_tg = reflection_application_tg
+            reflection_application_tg = None
+
         _nav_pages = [
             ("Конспект",                telegraph_url or ""),
             ("Разбор материала",         study_analysis_tg or ""),
@@ -689,54 +716,65 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _nav_filled = [(label, u) for label, u in _nav_pages if u]
         if len(_nav_filled) >= 2:
             async def _add_nav_to_page(page_url: str, page_label: str):
-                """Добавляет навигационный блок на Telegraph-страницу через editPage."""
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Получаем текущий контент страницы
-                    path = page_url.replace("https://telegra.ph/", "")
-                    resp = await loop.run_in_executor(None, lambda: requests.get(
-                        f"https://api.telegra.ph/getPage/{path}?return_content=true",
-                        timeout=15,
-                    ))
-                    data = resp.json()
-                    if not data.get("ok"):
-                        return
-                    current_nodes = data["result"].get("content", [])
-                    current_title = data["result"].get("title", page_label)
-                    current_author = data["result"].get("author_name", "")
+                """Добавляет навигационный блок на Telegraph-страницу через editPage.
+                v10 FIX #17 (P2): retry при сетевом сбое — 2 попытки с паузой 5с.
+                """
+                for _nav_attempt in range(2):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        path = page_url.replace("https://telegra.ph/", "")
+                        resp = await loop.run_in_executor(None, lambda: requests.get(
+                            f"https://api.telegra.ph/getPage/{path}?return_content=true",
+                            timeout=15,
+                        ))
+                        data = resp.json()
+                        if not data.get("ok"):
+                            return
+                        current_nodes = data["result"].get("content", [])
+                        current_title = data["result"].get("title", page_label)
+                        current_author = data["result"].get("author_name", "")
 
-                    # Строим навигационный блок
-                    nav_children = []
-                    for label, u in _nav_filled:
-                        if u == page_url:
-                            continue  # текущую страницу не ссылаем на себя
-                        if nav_children:
-                            nav_children.append(" · ")
-                        nav_children.append({"tag": "a", "attrs": {"href": u}, "children": [label]})
+                        # Строим навигационный блок
+                        nav_children = []
+                        for label, u in _nav_filled:
+                            if u == page_url:
+                                continue  # текущую страницу не ссылаем на себя
+                            if nav_children:
+                                nav_children.append(" · ")
+                            nav_children.append({"tag": "a", "attrs": {"href": u}, "children": [label]})
 
-                    if not nav_children:
-                        return
+                        if not nav_children:
+                            return
 
-                    nav_nodes = [
-                        {"tag": "hr"},
-                        {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также: "]}] + nav_children},
-                    ]
+                        nav_nodes = [
+                            {"tag": "hr"},
+                            {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также: "]}] + nav_children},
+                        ]
 
-                    # Убираем старый навигационный блок если уже был (повторный вызов)
-                    clean_nodes = current_nodes
-                    if (current_nodes and isinstance(current_nodes[-1], dict)
-                            and current_nodes[-1].get("tag") == "p"):
-                        last_children = current_nodes[-1].get("children", [])
-                        if last_children and isinstance(last_children[0], dict):
-                            last_text = last_children[0].get("children", [""])
-                            if last_text and "Читать также" in str(last_text[0]):
-                                clean_nodes = current_nodes[:-2]  # убираем hr + p
+                        # Убираем старый навигационный блок если уже был (повторный вызов)
+                        clean_nodes = current_nodes
+                        if (current_nodes and isinstance(current_nodes[-1], dict)
+                                and current_nodes[-1].get("tag") == "p"):
+                            last_children = current_nodes[-1].get("children", [])
+                            if last_children and isinstance(last_children[0], dict):
+                                last_text = last_children[0].get("children", [""])
+                                if last_text and "Читать также" in str(last_text[0]):
+                                    clean_nodes = current_nodes[:-2]  # убираем hr + p
 
-                    final_nodes = clean_nodes + nav_nodes
-                    await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
-                    logger.info(f"Navigation: добавлена навигация на {page_url}")
-                except Exception as _nav_err:
-                    logger.warning(f"Navigation: не удалось добавить навигацию на {page_url}: {_nav_err}")
+                        final_nodes = clean_nodes + nav_nodes
+                        await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
+                        logger.info(f"Navigation: добавлена навигация на {page_url}")
+                        return  # успех — выходим из retry-цикла
+                    except Exception as _nav_err:
+                        if _nav_attempt == 0:
+                            logger.warning(
+                                f"Navigation: ошибка на {page_url} (попытка 1/2): {_nav_err} — retry через 5с"
+                            )
+                            await asyncio.sleep(5)
+                        else:
+                            logger.warning(
+                                f"Navigation: не удалось добавить навигацию на {page_url}: {_nav_err}"
+                            )
 
             nav_tasks = [_add_nav_to_page(u, label) for label, u in _nav_filled]
             await asyncio.gather(*nav_tasks, return_exceptions=True)

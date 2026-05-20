@@ -459,11 +459,11 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
 
 async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 max_tokens: int = 8000) -> str | None:
-    """ULTIMATE FIX 3.5-FLASH: текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
+    """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
 
-    Перебирает модели в порядке: GEMINI_MODEL -> gemini-3-flash -> gemini-3.1-flash-lite
-    На каждой модели: 3 попытки с экспоненциальной паузой при 503/overload.
-    Использует make_text_config_smart -> thinking_level=high для глубокого анализа на 3.x.
+    v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
+    gemini-3.1-pro ПЛАТНАЯ — убрана из цепочки.
+    На каждой модели: до 2 попыток с паузой при 503/overload. Time-budget 180s.
     """
     if not GEMINI_CLIENTS:
         return None
@@ -989,6 +989,11 @@ async def create_telegraph_study_analysis(
     real_author  = normalize_author_name(_ai.get("real_author") or author) or author_clean
     prompt_title = normalize_title_text(_ai.get("real_title") or "") or title_clean
     prompt_title = title_case_fragment(prompt_title)
+    # v10 FIX #18 (P3): нормализация пунктуации заголовка после Gemini.
+    # «Свидетельство. Трус» → «Свидетельство: Трус»,  « - » → « — »
+    import re as _re_p3
+    prompt_title = _re_p3.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
+    prompt_title = _re_p3.sub(r'\s+-\s+', ' — ', prompt_title)
 
     _fmt = _ai.get("format", "other") or "other"
 
@@ -1112,6 +1117,10 @@ async def create_telegraph_reflection_application(
     real_author  = normalize_author_name(_ai.get("real_author") or author) or author_clean
     prompt_title = normalize_title_text(_ai.get("real_title") or "") or title_clean
     prompt_title = title_case_fragment(prompt_title)  # единый стиль капитализации
+    # v10 FIX #18 (P3): нормализация пунктуации (зеркало fix в create_telegraph_study_analysis)
+    import re as _re_p3r
+    prompt_title = _re_p3r.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
+    prompt_title = _re_p3r.sub(r'\s+-\s+', ' — ', prompt_title)
 
     _ts       = (_ai.get("timestamps") or "").strip()
     _ts_block = "\n".join(
