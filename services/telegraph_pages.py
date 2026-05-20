@@ -97,9 +97,8 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
 
 async def create_telegraph_questions(questions: list, title: str, author: str) -> str | None:
     """Публикует вопросы для обсуждения в Telegraph.
-    Двухфазная публикация по подобию Конспекта:
-    1) createPage с body-only
-    2) editPage с финальным оформлением
+    v9: однофазная публикация — createPage сразу с финальным контентом и заголовком.
+    Экономит 1 API-запрос на каждую публикацию.
     """
     author = _clean_meta_line(author) or "Автор не указан"
     title  = _clean_meta_line(title)  or "Без названия"
@@ -124,39 +123,7 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
         parts = [chunk.strip() for chunk in raw.splitlines() if chunk.strip()]
         return " ".join(parts)
 
-    # ── Фаза 1: body-only для createPage ─────────────────────────
-    body_nodes: list = []
-
-    if green:
-        for i, q in enumerate(green, 1):
-            raw = re.sub(r"^🟢\s*", "", str(q)).strip()
-            text = _scrub_inline(_strip_meta_lines(_clean_field(_join_question_lines(raw))))
-            if not text or is_meta_garbage(text):
-                continue
-            body_nodes.append({"tag": "p", "children": [f"{i}. {text}"]})
-
-    if blue:
-        if body_nodes:
-            body_nodes.append({"tag": "hr"})
-        for i, q in enumerate(blue, 1):
-            raw = re.sub(r"^🔵\s*", "", str(q)).strip()
-            text = _scrub_inline(_strip_meta_lines(_clean_field(_join_question_lines(raw))))
-            if not text or is_meta_garbage(text):
-                continue
-            body_nodes.append({"tag": "p", "children": [f"{i}. {text}"]})
-
-    if not body_nodes:
-        return None
-
-    # FIX 2026-05-21 P0 #14: сразу даём финальный title — URL не получит "-draft-DD-MM"
-    page_url, err = await _create_telegraph_page_single(
-        f"Вопросы: {title}", author, body_nodes, loop
-    )
-    if not page_url:
-        logger.warning(f"Questions createPage failed: {err}")
-        return None
-
-    # ── Фаза 2: финальное оформление через editPage ───────────────
+    # ── Однофазная публикация (v9): сразу финальный контент ───────
     final_nodes: list = []
 
     if green:
@@ -179,15 +146,15 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
                 continue
             final_nodes.append({"tag": "p", "children": [f"{i}. {text}"]})
 
-    ok = await _edit_telegraph_page(
-        page_url=page_url,
-        title=f"Вопросы: {title}",
-        author=author,
-        nodes=final_nodes,
-        loop=loop,
+    if not final_nodes:
+        return None
+
+    page_url, err = await _create_telegraph_page_single(
+        f"Вопросы: {title}", author, final_nodes, loop
     )
-    if not ok:
-        logger.warning(f"editPage failed, page content may stay outdated: {page_url}")
+    if not page_url:
+        logger.warning(f"Questions createPage failed: {err}")
+        return None
 
     return page_url
 
