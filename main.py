@@ -104,6 +104,21 @@ async def run_bot_async():
                 f"karaoke={'вкл' if _sub_cfg['karaoke'] else 'выкл'} | "
                 f"режим={'лёгкий' if _sub_cfg['light'] else 'полный'}"
             )
+            # AUDIT: проверяем что есть качественный шрифт для субтитров
+            try:
+                from services.shorts_video import _pick_subtitle_font
+                _font = _pick_subtitle_font()
+                if _font in ("Arial", "Arial Bold"):
+                    logger.warning(
+                        "⚠️  Шрифт субтитров: %s (fallback). "
+                        "Для красивых субтитров установите Montserrat ExtraBold: "
+                        "https://fonts.google.com/specimen/Montserrat → Download family → "
+                        "распакуйте Montserrat-ExtraBold.ttf в C:/Windows/Fonts/", _font
+                    )
+                else:
+                    logger.info(f"🅰️  Шрифт субтитров: {_font}")
+            except Exception as _fe:
+                logger.debug(f"font check: {_fe}")
             logger.info(f"💬 Субтитры Shorts: ✅ включены ({_sub_mode})")
             # Preload запустим в фоне после старта бота — не блокируем polling
             async def _preload_whisper_bg():

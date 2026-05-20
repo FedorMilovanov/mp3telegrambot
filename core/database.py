@@ -271,6 +271,39 @@ async def asettings_set(key: str, value: bool) -> None:
 
 db_init()
 
+def _one_time_enable_subtitles():
+    """AUDIT: одноразовая миграция — включаем красивые субтитры по умолчанию.
+
+    Срабатывает ОДИН раз в жизни базы (по флагу _migration_enable_subs_v1).
+    Если пользователь после этого выключит вручную — повторно не включаем.
+    """
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT value FROM bot_settings WHERE key = '_migration_enable_subs_v1'"
+            ).fetchone()
+            if row:
+                return  # уже применено
+            for k in ("shorts_subtitles", "shorts_subtitles_karaoke"):
+                conn.execute(
+                    "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, '1')",
+                    (k,),
+                )
+            conn.execute(
+                "INSERT INTO bot_settings (key, value) VALUES "
+                "('_migration_enable_subs_v1', '1')"
+            )
+            conn.commit()
+        logging.getLogger(__name__).info(
+            "🎨 Миграция: красивые субтитры Shorts включены по умолчанию"
+        )
+    except Exception:
+        pass
+
+
+_one_time_enable_subtitles()
+
+
 # ─── Short trim helpers ───────────────────────────────────────
 
 def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seconds: int,
@@ -366,9 +399,9 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "shorts":                 False,  # Shorts-кандидаты (вырезка фрагментов)
     "shorts_audio_normalize": True,   # Нормализация громкости для shorts
     "shorts_snapshot":        True,   # Snapshot (plain) для каждого short
-    "shorts_subtitles":       False,  # Субтитры (burn-in) для Shorts
-    "shorts_subtitles_karaoke": True,  # Karaoke word-level подсветка (только если subtitles вкл.)
-    "shorts_subtitles_light": False,   # Лёгкий режим: medium модель вместо large-v3
+    "shorts_subtitles":         True,   # Субтитры (burn-in) для Shorts — ВКЛ по умолчанию (AUDIT)
+    "shorts_subtitles_karaoke": True,   # Karaoke word-level подсветка
+    "shorts_subtitles_light":   False,  # Лёгкий режим: medium модель вместо large-v3
     "shorts_montage":         False,  # Тематическая склейка из разных моментов
     "shorts_highlights":      False,  # Рекламный highlights reel
     "shorts_title_poster":    True,   # Стильный постер с заголовком для Shorts
