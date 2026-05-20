@@ -498,42 +498,64 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     if not GEMINI_CLIENTS:
         return None
 
-    # DEEP-QUALITY FIX [B]: умный быстрый retry — 2 быстрые попытки на модель → следующая
-    # На 3.1-flash-lite (последняя) даём 3 попытки, она почти не перегружена.
-    # Также убрана двойная вложенность: тут retry, gemini_generate уже без своего retry.
-    # FINAL-POLISH FIX 1: gemini-3-flash не существует как имя API → 404.
-    # У этого аккаунта в free tier доступны: gemini-3.5-flash, gemini-2.5-flash-lite,
-    # gemini-3.1-flash-lite. Последняя — самая стабильная (500 RPD free).
+    # QUOTA-SMART FIX: умный 429 handling + time-budget
+    #
+    # При 429 (quota exhausted) — сразу к следующей модели.
+    # Ключи делят квоту проекта, поэтому при 429 на одном ключе
+    # все остальные ключи того же проекта тоже дадут 429.
+    # Не тратим время на бесполезный перебор ключей.
+    #
+    # При 503/500 (overload) — retry с короткой паузой, может пройти.
+    #
+    # КАЧЕСТВО: ВСЕ задачи на gemini-3.5-flash (GEMINI_MODEL).
+    # Никаких lite — fallback только на 2.5-flash-lite (свежая модель).
+    #
+    # Time-budget 180с — защита от зависания.
+    import time as _time
+    _start_time = _time.time()
+    _TIME_BUDGET = 180  # секунд
+
+    # ВСЕ на максимальном качестве — 3.5-flash
+    # Резерв: 2.5-flash-lite (свежая модель, не lite по качеству)
     _models = [GEMINI_MODEL]
-    for _m in ("gemini-3.1-flash-lite", "gemini-2.5-flash-lite"):
-        if _m not in _models:
-            _models.append(_m)
+    if GEMINI_MODEL != "gemini-2.5-flash-lite":
+        _models.append("gemini-2.5-flash-lite")
 
     def _is_internal_error(e: Exception) -> bool:
         s = str(e)
         return "500" in s or "INTERNAL" in s.upper()
 
-    # Импортируем напрямую чтобы не идти через gemini_generate (там свой retry, удваивает ожидание)
+    # Импортируем напрямую чтобы не идти через gemini_generate
     from core.globals import GEMINI_CLIENTS as _CLIENTS
 
     last_err = None
     for model_idx, model_name in enumerate(_models):
+        # Time-budget check
+        if _time.time() - _start_time > _TIME_BUDGET:
+            logger.warning(
+                "_gemini_text_request: TIME-BUDGET (%ds) исчерпан — fallback",
+                _TIME_BUDGET,
+            )
+            break
+
         if model_idx > 0:
             logger.warning(
-                "_gemini_text_request: переключаюсь на резервную модель %s (#%d/%d)",
+                "_gemini_text_request: переключаюсь на модель %s (#%d/%d)",
                 model_name, model_idx + 1, len(_models),
             )
 
-        # Сколько попыток на ЭТОЙ модели:
-        # - первая (3.5-flash): 2 попытки (быстро отступаем если перегружена)
-        # - средняя (3-flash): 2 попытки
-        # - последняя (3.1-flash-lite): 3 попытки (она редко перегружена, дожимаем)
-        _max_attempts = 3 if model_idx == len(_models) - 1 else 2
+        # 2 попытки на модель — fast fail
+        _max_attempts = 2
+        _all_keys_quota = True  # True = все ключи дали 429
 
         for attempt in range(_max_attempts):
-            # Пробуем КАЖДЫЙ из ключей по одному разу (без внутреннего retry в gemini_generate)
+            # Time-budget check
+            if _time.time() - _start_time > _TIME_BUDGET:
+                break
+
             _client_err = None
             _got_response = False
+
             for client in _CLIENTS:
                 try:
                     resp = await client.aio.models.generate_content(
@@ -555,35 +577,49 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                         resp.candidates[0].finish_reason if resp.candidates else "?",
                     )
                     _got_response = True
+                    _all_keys_quota = False
                     break
                 except Exception as e:
                     _client_err = e
                     if is_quota_error(e):
-                        # Квота — сразу к следующему ключу
+                        # 429 — квота проекта, все ключи дадут тот же результат
+                        # Не тратим время, сразу к следующей модели
                         continue
+                    # 503/500 или другая ошибка
+                    _all_keys_quota = False
                     if _is_internal_error(e) or is_overload_error(e):
-                        # 503/500 — пробуем следующий ключ
                         continue
-                    # Другая ошибка — пробрасываем
                     raise
 
             if _got_response:
-                # Пустой ответ — пробуем следующую модель сразу
+                break  # пустой ответ — следующая модель
+
+            # ГЛАВНЫЙ ФИКС: все ключи дали 429 — модель исчерпана,
+            # ретраить бесполезно, идём к следующей модели сразу
+            if _all_keys_quota:
+                logger.warning(
+                    "_gemini_text_request[%s]: квота 429 на всех ключах — следующая модель",
+                    model_name,
+                )
+                last_err = _client_err
                 break
 
-            # Все ключи дали 503/500
+            # 503/500 — пауза и retry
             last_err = _client_err
             if attempt < _max_attempts - 1:
-                wait = 10 * (attempt + 1)  # 10s, 20s — быстрее чем раньше
+                wait = 15
                 logger.warning(
-                    "_gemini_text_request[%s]: все ключи 503/500 (попытка %d/%d), жду %dс...",
+                    "_gemini_text_request[%s]: 503/500 (попытка %d/%d), жду %dс...",
                     model_name, attempt + 1, _max_attempts, wait,
                 )
                 await asyncio.sleep(wait)
-                continue
 
     if last_err:
-        logger.warning("_gemini_text_request: все модели исчерпаны, последняя ошибка: %s", str(last_err)[:200])
+        elapsed = _time.time() - _start_time
+        logger.warning(
+            "_gemini_text_request: все модели исчерпаны (за %.1fs), последняя ошибка: %s",
+            elapsed, str(last_err)[:200],
+        )
     return None
 
 

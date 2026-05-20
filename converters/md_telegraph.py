@@ -9,7 +9,7 @@ from core.text_utils import (
 )
 from core.url_utils import get_youtube_timestamp_url
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
-from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline  # FIX: circular imports
+from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text  # FIX: circular imports
 from core.globals import TELEGRAPH_TOKEN        # FIX markdown
 
 import asyncio    # FIX markdown
