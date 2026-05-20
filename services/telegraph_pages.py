@@ -498,7 +498,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     if not GEMINI_CLIENTS:
         return None
 
-    # ULTIMATE FIX: список моделей для fallback
+    # DEEP-QUALITY FIX [B]: умный быстрый retry — 2 быстрые попытки на модель → следующая
+    # На 3.1-flash-lite (последняя) даём 3 попытки, она почти не перегружена.
+    # Также убрана двойная вложенность: тут retry, gemini_generate уже без своего retry.
     _models = [GEMINI_MODEL]
     for _m in ("gemini-3-flash", "gemini-3.1-flash-lite"):
         if _m not in _models:
@@ -508,6 +510,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
         s = str(e)
         return "500" in s or "INTERNAL" in s.upper()
 
+    # Импортируем напрямую чтобы не идти через gemini_generate (там свой retry, удваивает ожидание)
+    from core.globals import GEMINI_CLIENTS as _CLIENTS
+
     last_err = None
     for model_idx, model_name in enumerate(_models):
         if model_idx > 0:
@@ -516,41 +521,63 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 model_name, model_idx + 1, len(_models),
             )
 
-        async def _fn(client, _m=model_name):
-            resp = await client.aio.models.generate_content(
-                model=_m,
-                contents=prompt,
-                config=make_text_config_smart(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    model_name=_m,
-                    thinking_level="high",  # для качества Reflection/Study
-                ),
-            )
-            return resp.text or ""
+        # Сколько попыток на ЭТОЙ модели:
+        # - первая (3.5-flash): 2 попытки (быстро отступаем если перегружена)
+        # - средняя (3-flash): 2 попытки
+        # - последняя (3.1-flash-lite): 3 попытки (она редко перегружена, дожимаем)
+        _max_attempts = 3 if model_idx == len(_models) - 1 else 2
 
-        # Retry при 500/503 — Gemini иногда выдаёт их случайно
-        for attempt in range(3):
-            try:
-                result = await gemini_generate(GEMINI_CLIENTS, _fn)
-                if result:
-                    return result
-                # пустой ответ — это не ошибка, идём к следующей модели
-                logger.warning("_gemini_text_request: пустой ответ от %s", model_name)
-                break
-            except Exception as e:
-                last_err = e
-                if (_is_internal_error(e) or is_overload_error(e)) and attempt < 2:
-                    wait = 15 * (attempt + 1)
-                    logger.warning(
-                        "_gemini_text_request[%s]: 500/503 (попытка %d/3), жду %dс...",
-                        model_name, attempt + 1, wait,
+        for attempt in range(_max_attempts):
+            # Пробуем КАЖДЫЙ из ключей по одному разу (без внутреннего retry в gemini_generate)
+            _client_err = None
+            _got_response = False
+            for client in _CLIENTS:
+                try:
+                    resp = await client.aio.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=make_text_config_smart(
+                            temperature=temperature,
+                            max_output_tokens=max_tokens,
+                            model_name=model_name,
+                            thinking_level="high",
+                        ),
                     )
-                    await asyncio.sleep(wait)
-                    continue
-                # Не overload и не internal — пробуем следующую модель
-                logger.warning("_gemini_text_request[%s] error: %s", model_name, str(e)[:200])
+                    result = resp.text or ""
+                    if result:
+                        return result
+                    logger.warning(
+                        "_gemini_text_request[%s]: пустой ответ (finish=%s)",
+                        model_name,
+                        resp.candidates[0].finish_reason if resp.candidates else "?",
+                    )
+                    _got_response = True
+                    break
+                except Exception as e:
+                    _client_err = e
+                    if is_quota_error(e):
+                        # Квота — сразу к следующему ключу
+                        continue
+                    if _is_internal_error(e) or is_overload_error(e):
+                        # 503/500 — пробуем следующий ключ
+                        continue
+                    # Другая ошибка — пробрасываем
+                    raise
+
+            if _got_response:
+                # Пустой ответ — пробуем следующую модель сразу
                 break
+
+            # Все ключи дали 503/500
+            last_err = _client_err
+            if attempt < _max_attempts - 1:
+                wait = 10 * (attempt + 1)  # 10s, 20s — быстрее чем раньше
+                logger.warning(
+                    "_gemini_text_request[%s]: все ключи 503/500 (попытка %d/%d), жду %dс...",
+                    model_name, attempt + 1, _max_attempts, wait,
+                )
+                await asyncio.sleep(wait)
+                continue
 
     if last_err:
         logger.warning("_gemini_text_request: все модели исчерпаны, последняя ошибка: %s", str(last_err)[:200])

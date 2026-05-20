@@ -41,6 +41,28 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+def _demote_paragraph_bold(line: str) -> str:
+    """DEEP-QUALITY FIX [D]: если в строке **bold** покрывает >70% символов —
+    это явно жирный АБЗАЦ (плохо визуально). Понижаем: убираем **, оставляя текст обычным.
+    Если жирное короткое (<50% строки) — оставляем как есть, это нормальный акцент.
+    """
+    if not line or '**' not in line:
+        return line
+    # Считаем длину жирных кусков
+    bold_matches = re.findall(r'\*\*([^*\n]+)\*\*', line)
+    if not bold_matches:
+        return line
+    bold_len = sum(len(b) for b in bold_matches)
+    total_len = len(re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line))
+    if total_len == 0:
+        return line
+    bold_ratio = bold_len / total_len
+    if bold_ratio > 0.7:
+        # Жирный абзац — снимаем **
+        return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)
+    return line
+
+
 def _md_to_telegraph_nodes(md: str) -> list:
     """Полный Markdown → Telegraph nodes."""
     nodes = []
@@ -57,6 +79,8 @@ def _md_to_telegraph_nodes(md: str) -> list:
         s = _scrub_inline(s)
         if not s:
             continue
+        # DEEP-QUALITY FIX [D]: понижаем жирные абзацы (>70% жирного → обычный текст)
+        s = _demote_paragraph_bold(s)
         # Пропускаем строки из одних знаков препинания/разделителей (. .. ─── и т.п.)
         # Gemini иногда генерирует одиночную точку как визуальный разделитель между блоками
         if re.fullmatch(r'[.\-–—─·•*_~\s]+', s):

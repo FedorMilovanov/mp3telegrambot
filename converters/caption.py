@@ -119,8 +119,9 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
             line = _scrub_inline(line)
             if not line or any(re.search(p, line, re.IGNORECASE) for p in BAD_META_PATTERNS):
                 continue
-            # ULTIMATE FIX 3.5-FLASH: gemini-3.5-flash особенно часто кидает ** в топики таймкодов
-            line = _strip_markdown_artifacts(line)
+            # DEEP-QUALITY FIX [C]: НЕ снимаем **жирный** из топиков таймкодов,
+            # а конвертируем в HTML <b> для визуального акцента в Telegram caption.
+            # Юзер: 'жирным в важных словах - это норм, даже круто, более визуально считываемы'
             _p = line.split(' ', 1)
             time_str = _p[0]
             topic_str = _p[1].strip() if len(_p) == 2 else ""

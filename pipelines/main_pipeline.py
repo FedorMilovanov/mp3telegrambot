@@ -637,18 +637,28 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # _has_early_alt больше не нужен
         _ = None
 
+        # DEEP-QUALITY FIX [A]: Study + Reflection НЕ запускаются параллельно — на free tier
+        # это вызывает каскадные 503. Делаем их последовательно, остальное параллельно.
         (
             alt_links, quotes_tg, questions_tg, terms_tg,
-            study_analysis_tg, reflection_application_tg,
         ) = await asyncio.gather(
             _alt_links_result(),
             _analytics_pipeline(),
             _questions_pipeline(),
             _terms_pipeline(),
-            _study_analysis_pipeline(),
-            _reflection_application_pipeline(),
             return_exceptions=True,
         )
+        # Study и Reflection — последовательно, чтобы не удваивать нагрузку на Gemini
+        try:
+            study_analysis_tg = await _study_analysis_pipeline()
+        except Exception as _e_study:
+            logger.warning(f"StudyAnalysis pipeline error: {_e_study}")
+            study_analysis_tg = None
+        try:
+            reflection_application_tg = await _reflection_application_pipeline()
+        except Exception as _e_refl:
+            logger.warning(f"ReflectionApplication pipeline error: {_e_refl}")
+            reflection_application_tg = None
         if isinstance(alt_links, Exception):
             logger.warning(f"find_alternative_links error: {alt_links}", exc_info=alt_links)
             alt_links = {"rutube": None, "vk": None}
