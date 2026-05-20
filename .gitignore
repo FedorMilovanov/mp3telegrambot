@@ -1,0 +1,24 @@
+# Environment variables
+.env
+*.env
+.env.*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Folders to ignore
+downloads/
+*.db
+bot_cache.db
+bot.zip
+
+# Temporary / sensitive
+cookies.txt
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

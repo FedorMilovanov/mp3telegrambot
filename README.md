@@ -1,1 +1,104 @@
-# mp3telegrambot
+# MP3Bot — Telegram Media Audio Converter + AI Analysis
+
+## Структура проекта
+
+```
+mp3bot/
+├── bot_new.py              ← Точка входа (запускать ЭТО)
+├── bot.py                  ← Совместимый launcher (перенаправляет на bot_new.py)
+├── main.py                 ← run_bot_async(), main()
+├── Start.bat               ← Windows launcher
+├── cookies.txt             ← Куки для yt-dlp
+├── yt-dlp.conf             ← Конфиг yt-dlp
+├── .env                    ← Переменные окружения (создать самому!)
+│
+├── core/                   ← Фундамент (без внешних зависимостей проекта)
+│   ├── globals.py          ← Глобальные переменные, Flask, Gemini-клиенты
+│   ├── core_utils.py       ← Чистые утилиты (time_to_seconds, RTL fix и т.д.)
+│   ├── database.py         ← SQLite CRUD, кэш, настройки, rate limit
+│   ├── text_utils.py       ← Очистка текста, нормализация
+│   ├── url_utils.py        ← YouTube URL helpers
+│   ├── utils.py            ← Вспомогательные функции (файлы, thumbnail)
+│   ├── prompts.py          ← Все промпты для Gemini AI
+│   ├── json_parser.py      ← Парсинг JSON от Gemini
+│   └── progress.py         ← Прогресс-бар
+│
+├── converters/             ← Конвертеры контента
+│   ├── md_telegraph.py     ← Markdown → Telegraph nodes (⚠️ бывш. markdown.py)
+│   └── caption.py          ← build_caption для Telegram
+│
+├── services/               ← Внешние сервисы и тяжёлая логика
+│   ├── telegraph.py        ← Telegraph publisher
+│   ├── telegraph_pages.py  ← Study/Reflection/Analytics/Terms/Questions
+│   ├── search.py           ← RuTube/VK поиск альтернатив
+│   ├── gemini_analyze.py   ← Анализ аудио через Gemini API
+│   ├── ffmpeg.py           ← FFmpeg / yt-dlp helpers
+│   ├── shorts_video.py     ← Рендер субтитров и видео Shorts
+│   ├── shorts_candidates.py← Поиск кандидатов для Shorts/Clips
+│   ├── render_clips_montage.py ← Рендер клипов и монтажа
+│   └── pdf_generator.py    ← Генерация PDF из Telegraph
+│
+├── handlers/               ← Telegram bot хэндлеры
+│   ├── commands.py         ← /start, /help, /settings, /pdf, /resetcache, /stop
+│   └── callbacks.py        ← Кнопки (InlineKeyboard callbacks)
+│
+└── pipelines/              ← Бизнес-логика обработки
+    ├── main_pipeline.py    ← process_single_video (главный pipeline)
+    ├── shorts.py           ← process_and_send_shorts
+    ├── clips.py            ← process_and_send_clips
+    ├── montage.py          ← process_and_send_montage/highlights
+    └── playlist.py         ← handle_playlist
+```
+
+## Быстрый старт
+
+1. Создайте `.env` файл:
+```
+BOT_TOKEN=ваш_телеграм_токен
+GEMINI_API_KEY=ваш_ключ_gemini
+TELEGRAPH_TOKEN=ваш_telegraph_токен
+```
+
+2. Установите зависимости:
+```
+pip install python-telegram-bot python-dotenv google-genai yt-dlp flask requests Pillow
+pip install faster-whisper  # опционально, для субтитров
+pip install pdfkit beautifulsoup4  # опционально, для PDF
+pip install waitress  # опционально, для production HTTP
+```
+
+3. Запустите:
+```bash
+python bot_new.py        # Linux/macOS
+py -3.13 bot_new.py      # Windows
+```
+
+Или дважды кликните `Start.bat` на Windows.
+
+## Исправленные баги (относительно рефакторинга)
+
+### 🔴 Критические
+
+1. **`markdown.py` → `md_telegraph.py`** — файл `markdown.py` конфликтовал с 
+   системной библиотекой `markdown` (pip). Python импортировал не тот модуль →
+   `ImportError: cannot import name '_HEADING_BOLD_STRIP_RE'`.
+
+2. **Потеряны regex-паттерны `_HEADING_BOLD_STRIP_RE` и `_ENSURE_TS_INLINE_RE`** —
+   были определены в оригинальном `bot.py` (строка 3050), но потерялись при 
+   разнесении по файлам. Восстановлены в `converters/md_telegraph.py`.
+
+3. **Циклический импорт `markdown.py ↔ telegraph.py`** — `markdown.py` лениво 
+   импортировал из `telegraph.py`, а `telegraph.py` — из `markdown.py`. 
+   Решено: lazy imports сохранены с правильными путями.
+
+### 🟡 Средние
+
+4. **`telegraph_pages.py` импортировал `_fix_rtl_in_text` из `md_telegraph`** — 
+   но эта функция определена в `core_utils.py`. Импорт исправлен.
+
+5. **`Start.bat` использовал абсолютный путь** — заменён на `%~dp0` (относительный).
+
+### 🟢 Улучшения
+
+6. **Организация по папкам** — 30+ файлов из одной папки разнесены по 5 логическим 
+   пакетам (`core/`, `converters/`, `services/`, `handlers/`, `pipelines/`).

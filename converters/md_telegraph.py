@@ -1,0 +1,1428 @@
+#!/usr/bin/env python3
+"""
+Markdown → Telegraph nodes конвертер.
+Извлечено из bot.py строки 2913–4213.
+"""
+from core.text_utils import (
+    _scrub_inline, _strip_meta_lines, _has_dirty_meta,
+    normalize_author_name, title_case_fragment,
+)
+from core.url_utils import get_youtube_timestamp_url
+# time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
+from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline  # FIX: circular imports
+from core.globals import TELEGRAPH_TOKEN        # FIX markdown
+
+import asyncio    # FIX markdown
+import json       # FIX markdown
+import logging    # FIX markdown
+import re
+import requests   # FIX markdown
+
+logger = logging.getLogger(__name__)  # FIX markdown
+
+# ─── A02: Telegraph whitelist тегов ─────────────────────────────────────────
+TELEGRAPH_HEADING_ALLOWED = {"h3", "h4"}
+TELEGRAPH_ALL_ALLOWED = {
+    "a", "aside", "b", "blockquote", "br", "code", "em", "figcaption",
+    "figure", "h3", "h4", "hr", "i", "iframe", "img", "li", "ol", "p",
+    "pre", "s", "strong", "u", "ul", "video"
+}
+
+# ─── A08: Pre-compiled паттерны для visible_length ───────────────────────────
+_VL_TAG_RE      = re.compile(r'<[^>]+>')
+_VL_NAMED_RE    = re.compile(r'&[a-zA-Z]+;')
+_VL_DEC_RE      = re.compile(r'&#\d+;')
+_VL_HEX_RE      = re.compile(r'&#x[0-9a-fA-F]+;')
+
+# ─── Missing regex patterns (BUG FIX: were lost during refactoring) ──────────
+_HEADING_BOLD_STRIP_RE = re.compile(r'^\*\*(?!\*)(.*?)(?<!\*)\*\*$', re.DOTALL)
+
+# FIXED #117: паттерны вынесены на уровень модуля — ранее компилировались
+# при каждом вызове _ensure_trailing_period (сотни раз за прогон).
+_ENSURE_TS_INLINE_RE = re.compile(
+    r'(\s*[⏱📌]?\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2})\s*$'
+)
+
+
+# ─── Scripture-reference паттерны (модульный уровень) ────────────────────────
+# A07 FIX / Bug-fix #N: ранее эти паттерны были только локально внутри функций;
+# при попытке вынести их на module-level определения были утеряны, что вызывало
+# NameError: name '_SCRIPTURE_REF_RE' is not defined в _section_to_nodes_v2.
+# Восстановлено по эталонному коду pre-refactor (старая монолитная bot.py).
+_SCRIPTURE_BOOK_RE = (
+    r'(?:Быт|Исх|Лев|Чис|Втор|Нав|Суд|Руфь|1\s*Цар|2\s*Цар|3\s*Цар|4\s*Цар|'
+    r'1\s*Пар|2\s*Пар|Ездр|Неем|Есф|Иов|Пс|Притч|Еккл|Песн|Ис|Иер|Плач|'
+    r'Иез|Дан|Ос|Иоил|Ам|Авд|Ион|Мих|Наум|Авв|Соф|Агг|Зах|Мал|'
+    r'Мф|Мк|Лк|Ин|Деян|Рим|1\s*Кор|2\s*Кор|Гал|Еф|Фил|Кол|'
+    r'1\s*Фес|2\s*Фес|1\s*Тим|2\s*Тим|Тит|Флм|Евр|Иак|'
+    r'1\s*Пет|2\s*Пет|1\s*Ин|2\s*Ин|3\s*Ин|Иуд|Откр)'
+)
+
+# Ссылки в скобках: (Рим. 8:28), (Рим. 8:28, 29), (Рим. 8:28; 1 Кор. 15:14), (1 Кор. 15:1–4)
+_SCRIPTURE_REF_RE = re.compile(
+    rf'(?<!\*)\('
+    rf'(?:'
+    rf'{_SCRIPTURE_BOOK_RE}\.?\s*\d+:\d+(?:[-–]\d+)?'
+    rf'(?:\s*,\s*\d+(?:[-–]\d+)?)?'
+    rf'(?:\s*;\s*{_SCRIPTURE_BOOK_RE}\.?\s*\d+:\d+(?:[-–]\d+)?(?:\s*,\s*\d+(?:[-–]\d+)?)?)*'
+    rf')'
+    rf'\)(?!\*)'
+)
+
+# Цепочки через стрелку →: «Ис. 40:6 → Рим. 8:28 → Лк. 24:44» (без скобок)
+_SCRIPTURE_SINGLE_RE = (
+    rf'{_SCRIPTURE_BOOK_RE}\.?\s*\d+:\d+(?:[-–]\d+)?(?:\s*,\s*\d+(?:[-–]\d+)?)?'
+)
+_SCRIPTURE_CHAIN_RE = re.compile(
+    rf'(?<!\*)(?:{_SCRIPTURE_SINGLE_RE})(?:\s*\u2192\s*(?:{_SCRIPTURE_SINGLE_RE}))+(?!\*)'
+)
+
+# _fix_rtl_in_text перенесена в core_utils.py (разрыв цикла markdown ↔ caption).
+# Импортируется выше: from core.core_utils import ..., _fix_rtl_in_text, ...
+
+
+def _fix_rtl_in_nodes(nodes: list) -> list:
+    """A03: Рекурсивно применяет _fix_rtl_in_text ко всему дереву nodes.
+    _fix_rtl_in_text работает только на плоских строках; bidi-символы
+    внутри bold/italic/blockquote нод оставались нетронутыми и рендерились
+    как видимые артефакты на iOS/Android."""
+    def _walk(node):
+        if isinstance(node, str):
+            return _fix_rtl_in_text(node)
+        if isinstance(node, dict) and "children" in node:
+            node = dict(node)
+            node["children"] = [_walk(c) for c in node["children"]]
+        return node
+    return [_walk(n) for n in nodes]
+
+
+def _clamp_content_timestamps(content: str, duration: int) -> str:
+    """Удаляет или корректирует таймкоды в тексте, превышающие duration видео.
+    Работает только с маркированными таймкодами (⏱, 🔗, 📌, ⏳, 📍)."""
+    if not duration or not content:
+        return content
+
+    def _replace(m: re.Match) -> str:
+        marker = m.group(1) or ''
+        bold_open = m.group(2) or ''
+        time_str = m.group(3)
+        bold_close = m.group(4) or ''
+        secs = time_to_seconds(time_str)
+        if secs is None:
+            return m.group(0)
+        if secs > duration + 30:
+            return ''
+        # Для коротких видео (<1ч): если таймкод > duration, попробуем поправить
+        if duration < 3600 and secs > duration:
+            # Пробуем интерпретировать MM:SS как SS (редкий случай когда
+            # модель путает формат) — берём только секунды через % 60
+            corrected_secs = secs % 60
+            if corrected_secs > duration:
+                return ''
+            # A01 FIX: применяем поправленный таймкод (ранее всегда возвращал m.group(0))
+            original = m.group(0)
+            new_ts = f"{corrected_secs // 60}:{corrected_secs % 60:02d}"
+            return original.replace(m.group(3), new_ts)
+        return m.group(0)
+
+    pattern = re.compile(
+        r'([⏱🔗📌⏳📍]\s*)'
+        r'(\*\*)?'
+        r'(\d{1,2}:\d{2}(?::\d{2})?)'
+        r'(\*\*)?'
+    )
+    return pattern.sub(_replace, content)
+
+
+def _fix_orphaned_bold_markers(content: str) -> str:
+    """Чинит непарные ** и *** маркеры которые рендерятся как сырой текст.
+
+    PATCH V2 FIX: убран неверный global early exit.
+    Старый код: if global_count % 2 == 0: return content — давал false-negative
+    когда строка 5 незакрыта а строка 6 открывает новый **, и сумма чётная.
+    Теперь всегда работаем построчно.
+    """
+    if '**' not in content:
+        return content
+
+    lines = content.split('\n')
+    result: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            result.append(line)
+            continue
+
+        # Считаем *** и ** отдельно
+        triple_count = stripped.count('***')
+        test_no_triple = stripped.replace('***', '')
+        double_count = test_no_triple.count('**')
+
+        # Сначала *** (bold+italic)
+        if triple_count % 2 == 1:
+            if stripped.startswith('***') and triple_count == 1:
+                result.append(line.rstrip() + '***')
+                continue
+            elif stripped.endswith('***') and triple_count == 1:
+                result.append(re.sub(r'\*{3}\s*$', '', line).rstrip())
+                continue
+
+        # Затем ** (bold)
+        if double_count % 2 == 1:
+            if stripped.startswith('**') and not stripped.startswith('***'):
+                result.append(line.rstrip() + '**')
+                continue
+            elif stripped.endswith('**') and not stripped.endswith('***'):
+                result.append(re.sub(r'\*{2}\s*$', '', line).rstrip())
+                continue
+            else:
+                idx = line.rfind('**')
+                if idx >= 0:
+                    result.append(line[:idx] + line[idx + 2:])
+                    continue
+
+        # Одиночные * (курсив)
+        test_single = stripped.replace('***', '').replace('**', '')
+        single_count = test_single.count('*')
+        if single_count % 2 == 1:
+            chars = list(line)
+            for idx_c in range(len(chars) - 1, -1, -1):
+                if chars[idx_c] == '*':
+                    before = chars[idx_c - 1] if idx_c > 0 else ''
+                    after  = chars[idx_c + 1] if idx_c < len(chars) - 1 else ''
+                    if before != '*' and after != '*':
+                        chars.pop(idx_c)
+                        break
+            line_fixed = ''.join(chars)
+            line_fixed = re.sub(r'\s+([.,;:!?])', r'\1', line_fixed)
+            line_fixed = re.sub(r' +', ' ', line_fixed)
+            result.append(line_fixed)
+            continue
+
+        result.append(line)
+
+    return '\n'.join(result)
+
+def _ensure_trailing_period(text: str) -> str:
+    """Если последний непустой абзац content не заканчивается на .!?»"…
+    — ставим точку.
+    Если строка заканчивается на inline-таймкод — точка ставится ПОСЛЕ него.
+    Строки-лейблы (**...:), строки на ':', заголовки, hr — пропускаем."""
+    if not text.strip():
+        return text
+    lines = text.rstrip().splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        s = lines[i].rstrip()
+        if not s:
+            continue
+        # Пропускаем заголовки, blockquote, hr, dividers
+        if re.match(r'^(#{1,4} |>|---|___|\*\*\*\s*$)', s):
+            continue
+        # Пропускаем лейблы и строки-заголовки с ':' в конце (с возможной пунктуацией/** после)
+        if re.match(r'^\*\*.*:\*?\*?\s*[.!]?\s*$', s) or re.search(r':[*\s.!]*$', s):
+            continue
+        # Уже есть завершающий знак в конце — всё хорошо
+        if re.search(r'(?:[.!?\u2026][»"\)\]]*|[»"]\s*[.!?\u2026])\s*$', s):
+            break
+        # Строка заканчивается на italic Scripture ref: *(Рим. 8:28)* → не добавлять точку
+        if re.search(r'\)\*\s*$', s):
+            break
+        # Строка кончается inline-таймкодом — точка ПОСЛЕ таймкода
+        m = _ENSURE_TS_INLINE_RE.search(s)
+        if m:
+            lines[i] = s + '.'
+            break
+        # Ставим точку: перед ** если незакрытый (нечётное число), после если закрытый
+        # PATCH V2 FIX: строки-заголовки заканчивающиеся на ":" — не добавляем точку
+        _check_colon = re.sub(r'\*{2,3}\s*$', '', s.rstrip())
+        if re.search(r':\s*$', _check_colon):
+            break
+        if s.endswith('**'):
+            tmp = s.replace('***', '\x00\x00\x00')
+            count = tmp.count('**')
+            # Проверяем есть ли точка прямо перед закрывающим ** или *** (с возможным пробелом)
+            # Пример: "**Текст.**" или "***Текст.***" — точка уже есть, не дублируем
+            _before_stars = re.sub(r'\*{2,3}\s*$', '', s.rstrip())
+            if re.search(r'[.!?»"\u2026]\s*$', _before_stars):
+                break  # точка уже есть перед ** — ничего не добавляем
+            if count % 2 == 1:
+                lines[i] = s[:-2].rstrip() + '.**'
+            else:
+                lines[i] = s + '.'
+        else:
+            lines[i] = s + '.'
+        break
+    return '\n'.join(lines)
+
+
+def _ensure_all_paragraphs_period(text: str) -> str:
+    """Применяет _ensure_trailing_period к каждому визуальному абзацу.
+    Telegraph превращает каждую строку (даже через одинарный \n) в отдельный <p>,
+    поэтому обрабатываем каждую строку отдельно, а не только последнюю в блоке."""
+    # Разбиваем сохраняя разделители — \n\n+ остаются между частями
+    _paras = re.split(r'(\n{2,})', text)
+    parts = []
+    for p in _paras:
+        if not p.strip():
+            # Это разделитель (\n\n+) или пустота — не трогаем
+            parts.append(p)
+            continue
+        # Внутри абзаца строки через одинарный \n — каждая идёт в свой <p> в Telegraph
+        sub_lines = p.split('\n')
+        parts.append('\n'.join(
+            _ensure_trailing_period(line) if line.strip() else line
+            for line in sub_lines
+        ))
+    result = ''.join(parts)
+    # Убираем ровно две точки подряд (не трогаем многоточие ...)
+    result = re.sub(r'(?<!\.)\.\.(?!\.)', '.', result)
+    return result
+
+
+def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> list:
+    """Делает кликабельными inline-таймкоды вида **22:15** внутри content.
+    Поддерживает:
+    1) таймкод внутри italic-ноды;
+    2) text + следующая bold-нода с таймкодом;
+    3) stray-мусор вокруг таймкодов;
+    4) fallback: plain bold timestamp без маркера (только в обычных абзацах).
+    """
+    if not yt_url:
+        return nodes
+
+    TS_RE = re.compile(r'^\d{1,2}:\d{2}(?::\d{2})?$')
+    TS_MARKERS = ('⏱', '🔗', '📌', '⏳', '📍', '\u00a0⏱', '\u00a0🔗')
+    STRAY_RE = re.compile(r'^\s*(?:\\?\*+|_\.?|\*{1,2}\.?)\s*$')
+
+    def _make_ts_link(marker: str, bold_text: str) -> dict | None:
+        secs = time_to_seconds(bold_text)
+        if secs is None:
+            return None
+        if duration and secs > duration + 30:
+            return None
+        link = get_youtube_timestamp_url(yt_url, secs)
+        return {
+            "tag": "a",
+            "attrs": {"href": link},
+            "children": [marker + "\u00a0" + bold_text] if marker else [bold_text],
+        }
+
+    def _is_plain_bold_timestamp(node) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        if node.get("tag") != "b":
+            return None
+        children = node.get("children", [])
+        if len(children) != 1 or not isinstance(children[0], str):
+            return None
+        # rstrip("."): _ensure_trailing_period может поместить точку внутрь bold-ноды
+        txt = children[0].strip().rstrip(".")
+        return txt if TS_RE.match(txt) else None
+
+    def _process_children(children: list, allow_plain_bold_fallback: bool) -> list:
+        new_children = []
+        i = 0
+
+        while i < len(children):
+            child = children[i]
+
+            # ── Случай 1: italic-нода, внутри которой может быть таймкод ──────────
+            if isinstance(child, dict) and child.get("tag") == "i":
+                ic = list(child.get("children", []))
+                rebuilt_ic: list = []
+                extracted_links: list = []
+                j = 0
+
+                while j < len(ic):
+                    ic_child = ic[j]
+                    if (
+                        isinstance(ic_child, str)
+                        and any(m in ic_child for m in TS_MARKERS)
+                        and j + 1 < len(ic)
+                    ):
+                        ic_nxt = ic[j + 1]
+                        if isinstance(ic_nxt, dict) and ic_nxt.get("tag") in ("b", "i"):
+                            bc = ic_nxt.get("children", [])
+                            # rstrip("."): _ensure_trailing_period может добавить "." внутрь
+                            # незакрытого bold-чанка → "18:40." ломает TS_RE.match
+                            bold_text = bc[0].strip().rstrip(".") if bc and isinstance(bc[0], str) else ""
+                            if TS_RE.match(bold_text):
+                                marker = next((_m for _m in TS_MARKERS if _m in ic_child), "")
+                                lnk = _make_ts_link(marker, bold_text)
+                                if lnk is not None:
+                                    _marker_pos = ic_child.rfind(marker) if marker else -1
+                                    text_b4 = ic_child[:_marker_pos].rstrip() if _marker_pos >= 0 else ic_child
+                                    # Текст ПОСЛЕ маркера внутри той же ic_child-строки (Bug #3)
+                                    text_after_marker = (
+                                        ic_child[_marker_pos + len(marker):].strip()
+                                        if (marker and _marker_pos >= 0) else ""
+                                    )
+                                    if text_b4:
+                                        rebuilt_ic.append(text_b4)
+                                    extracted_links.append(lnk)
+                                    if text_after_marker:
+                                        sep = "" if text_after_marker[0] in '.!?,;:)»"' else " "
+                                        extracted_links.append(sep + text_after_marker)
+                                    j += 2
+                                    continue
+                    rebuilt_ic.append(ic_child)
+                    j += 1
+
+                if extracted_links:
+                    while rebuilt_ic and isinstance(rebuilt_ic[-1], str) and STRAY_RE.match(rebuilt_ic[-1]):
+                        rebuilt_ic.pop()
+                    if rebuilt_ic and isinstance(rebuilt_ic[-1], str):
+                        rebuilt_ic[-1] = re.sub(r'[\*_]+\s*$', '', rebuilt_ic[-1])
+                        if not rebuilt_ic[-1].strip():
+                            rebuilt_ic.pop()
+                    if rebuilt_ic:
+                        new_children.append({**child, "children": rebuilt_ic})
+                    if new_children and not (
+                        isinstance(new_children[-1], str) and new_children[-1].endswith(" ")
+                    ):
+                        new_children.append(" ")
+                    new_children.extend(extracted_links)
+                else:
+                    new_children.append(child)
+
+                i += 1
+                continue
+
+            # ── Случай 2: text-нода с маркером + следующая bold-нода с таймкодом ──
+            if (
+                isinstance(child, str)
+                and any(m in child for m in TS_MARKERS)
+            ):
+                # ── Случай 2а: маркер + таймкод в одной строке (незакрытый ** или без **)
+                # Например: "текст ⏱ **11:45" или "текст ⏱ 11:45"
+                _inline_ts_re = re.compile(r'(⏱|🔗)\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}')
+                _m = _inline_ts_re.search(child)
+                if _m:
+                    marker = _m.group(1)
+                    bold_text = _m.group(2)
+                    lnk = _make_ts_link(marker, bold_text)
+                    if lnk is not None:
+                        text_before = child[:_m.start()].rstrip()
+                        text_after = child[_m.end():].lstrip("* ")
+                        if text_before:
+                            new_children.append(text_before + " ")
+                        elif new_children and isinstance(new_children[-1], dict):
+                            new_children.append(" ")
+                        new_children.append(lnk)
+                        if text_after:
+                            # Пробел перед text_after только если он не начинается с пунктуации
+                            if text_after[0] in '.!?,;:)»"\u00bb':
+                                new_children.append(text_after)
+                            else:
+                                new_children.append(" " + text_after)
+                        else:
+                            # таймкод в конце — добавляем точку если её нет
+                            prev_text = text_before.rstrip()
+                            if prev_text and prev_text[-1] not in '.!?':
+                                new_children.append(".")
+                        i += 1
+                        continue
+
+                # ── Случай 2б: маркер в этой строке + следующая bold/italic-нода с таймкодом
+                if i + 1 < len(children):
+                    nxt = children[i + 1]
+                    if isinstance(nxt, dict) and nxt.get("tag") in ("b", "i"):
+                        bc = nxt.get("children", [])
+                        # rstrip("."): защита от точки, добавленной _ensure_trailing_period
+                        bold_text = bc[0].strip().rstrip(".") if bc and isinstance(bc[0], str) else ""
+                        if TS_RE.match(bold_text):
+                            marker = next((_m for _m in TS_MARKERS if _m in child), "")
+                            lnk = _make_ts_link(marker, bold_text)
+                            if lnk is not None:
+                                _mp = child.rfind(marker) if marker else -1
+                                text_before = child[:_mp].rstrip() if _mp >= 0 else child
+                                # Текст в child ПОСЛЕ маркера (до конца строки) — Новый баг А
+                                text_after_marker_2b = (
+                                    child[_mp + len(marker):].strip()
+                                    if (marker and _mp >= 0) else ""
+                                )
+                                if text_before:
+                                    new_children.append(text_before + " ")
+                                elif new_children and isinstance(new_children[-1], dict):
+                                    new_children.append(" ")
+                                new_children.append(lnk)
+                                if text_after_marker_2b:
+                                    sep2b = "" if text_after_marker_2b[0] in '.!?,;:)»"' else " "
+                                    new_children.append(sep2b + text_after_marker_2b)
+                                i += 2
+                                if (
+                                    i < len(children)
+                                    and isinstance(children[i], str)
+                                    and STRAY_RE.match(children[i])
+                                ):
+                                    i += 1
+                                continue
+
+            # ── Случай 3: fallback — plain bold timestamp без маркера ─────────────
+            if allow_plain_bold_fallback:
+                plain_ts = _is_plain_bold_timestamp(child)
+                if plain_ts:
+                    lnk = _make_ts_link("", plain_ts)
+                    if lnk is not None:
+                        new_children.append(lnk)
+                        i += 1
+                        continue
+
+            # ── Случай 4: stray-нода (* / \* / _. / **.) — выбрасываем ───────────
+            if isinstance(child, str) and STRAY_RE.match(child):
+                stripped = child.strip()
+                if stripped in ('*', r'\*', '_.', '**.', '**', '_'):
+                    i += 1
+                    continue
+
+            new_children.append(child)
+            i += 1
+
+        # A06 FIX: удалить stray-символы (* / \* / _. / '') которые остаются
+        # после извлечения ссылок-таймкодов из rebuilt_ic
+        new_children = [
+            c for c in new_children
+            if not (isinstance(c, str) and c.strip() in ('*', r'\*', '_.', '', '**', '_'))
+        ]
+        return new_children
+
+    result = []
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("tag") not in ("p", "blockquote"):
+            result.append(node)
+            continue
+
+        children = list(node.get("children", []))
+        allow_plain_bold_fallback = node.get("tag") == "p"
+        new_children = _process_children(children, allow_plain_bold_fallback=allow_plain_bold_fallback)
+        result.append({**node, "children": new_children})
+
+    return result
+
+
+def _section_to_nodes_v2(
+    section: dict,
+    yt_url: str = "",
+    rutube_url: str = "",
+    vk_url: str = "",
+    page_title: str = "",
+    duration: int = 0,
+    plain_scripture: bool = False,  # FIXED #127: REFLECTION требует plain text для Scripture refs
+) -> list:
+    """
+    Конвертирует один section в Telegraph nodes.
+
+    Стабилизированная версия:
+    - меньше агрессивных regex-склеек;
+    - лучше сохраняет numbered/bullet структуры;
+    - убирает stray '*' возле таймкодов;
+    - не тянет жирный через длинные куски;
+    - не рендерит лишние divider lines.
+    """
+    nodes = []
+
+    title = (section.get("title") or "").strip()
+    time_str = (section.get("time") or "").strip()
+
+    # Если Gemini вернул диапазон "0:03:50•0:12:40" или "0:03:50-0:12:40" — берём только начало
+    if time_str:
+        time_str = re.split(r"[•\-–—]", time_str)[0].strip()
+
+    # Для аналитических страниц без yt_url "0:00" бессмысленно
+    if time_str in ("0:00", "00:00", "0:00:00", "00:00:00") and not yt_url:
+        time_str = ""
+
+    if time_str and duration:
+        secs = time_to_seconds(time_str)
+        if secs is not None and secs > duration + 30:
+            time_str = ""
+
+    # Убираем тех. пометки частей
+    title = re.sub(r'\s*\(ч\.\s*\d+(?:/\d+)?\)\s*', '', title).strip()
+    title = re.sub(r'\s*\(часть\s*\d+(?:/\d+)?\)\s*', '', title, flags=re.IGNORECASE).strip()
+
+    content = (section.get("content") or "").strip()
+    content = _strip_meta_lines(content)
+
+    # ------------------------------------------------------------------
+    # 1. БАЗОВАЯ НОРМАЛИЗАЦИЯ ТЕКСТА
+    # ------------------------------------------------------------------
+
+    # Убираем явные markdown-артефакты вокруг скобок/заголовков
+    content = re.sub(r'\*\*\*\[([^\]]+)\]\*\*\*', r'***\1***', content)
+    content = re.sub(r'\*\*\[([^\]]+)\]\*\*', r'**\1**', content)
+    content = re.sub(r'\[\*\*([^\]]+)\*\*\]', r'**\1**', content)
+    content = re.sub(r'\*\[([^\]]+)\]\*', r'*\1*', content)
+
+    # Слипание с жирным/цитатой
+    content = re.sub(r'([а-яА-ЯёЁa-zA-Z])\*\*«', r'\1 **«', content)
+    content = re.sub(r'»\*\*([а-яА-ЯёЁa-zA-Z])', r'»** \1', content)
+
+
+
+    # Пустые / двойные blockquote markers
+    content = re.sub(r'^>\s*>\s*', '> ', content, flags=re.MULTILINE)
+    content = re.sub(r'^>\s*$', '', content, flags=re.MULTILINE)
+
+    # Слишком много звёздочек
+    content = re.sub(r'\*{4,}', '**', content)
+
+    # Висячий bullet-маркер "*" -> bullet (включая "* **Bold**")
+    content = re.sub(r'(?m)^\*\s+(\*\*|[^\*\n])', r'• \1', content)
+
+    # Авто-жирный для заголовков scripture-блоков: "• Книга Глава:Стих." -> "• **Книга Глава:Стих.**"
+    # Gemini иногда забывает поставить ** вокруг ссылки-заголовка блока
+    _scripture_full_book_re = (
+        r'(?:Бытие|Исход|Левит|Числа|Второзаконие|Иисус Навин|Судьи|Руфь|'
+        r'1\s*(?:Царств|Пар)|2\s*(?:Царств|Пар)|3\s*Царств|4\s*Царств|'
+        r'Ездра|Неемия|Есфирь|Иов|Псалом|Притчи|Екклесиаст|Песнь|'
+        r'Исаия|Иеремия|Плач|Иезекиль|Даниил|Осия|Иоиль|Амос|Авдий|Иона|'
+        r'Михей|Наум|Аввакум|Софония|Аггей|Захария|Малахия|'
+        r'Матфея|Марка|Луки|Иоанна|Деяния|Римлянам|'
+        r'1\s*Коринфянам|2\s*Коринфянам|Галатам|Ефесянам|Филиппийцам|Колоссянам|'
+        r'1\s*Фессалоникийцам|2\s*Фессалоникийцам|1\s*Тимофею|2\s*Тимофею|'
+        r'Титу|Филимону|Евреям|Иакова|1\s*Петра|2\s*Петра|'
+        r'1\s*Иоанна|2\s*Иоанна|3\s*Иоанна|Иуды|Откровение)'
+    )
+    content = re.sub(
+        rf'(?m)^(•\s+)(?!\*\*)({_scripture_full_book_re}\s+\d[\d\s:,;.–-]*)(\s*\([^)]*\))?(\s*\.)',
+        lambda m: m.group(1) + '**' + m.group(2).rstrip() + ('**' + m.group(3) if m.group(3) else '**') + m.group(4),
+        content
+    )
+
+    # Нормализуем ссылки на Писание в скобках -> курсив
+    # поддерживает: (Рим. 8:28), (Рим. 8:28, 29), (Рим. 8:28; 1 Кор. 15:14), (1 Кор. 15:1–4)
+    # A07 FIX: используем _SCRIPTURE_REF_RE и _SCRIPTURE_CHAIN_RE с уровня модуля
+    # PATCH V2 FIX: оборачиваем Scripture refs в курсив только если ещё не обёрнуто
+    def _wrap_scripture_safe(m_sc: re.Match) -> str:
+        start_sc = m_sc.start()
+        if start_sc > 0 and content[start_sc - 1] == '*':
+            return m_sc.group(0)
+        end_sc = m_sc.end()
+        if end_sc < len(content) and content[end_sc] == '*':
+            return m_sc.group(0)
+        return f'*{m_sc.group(0)}*'
+    content = _SCRIPTURE_REF_RE.sub(_wrap_scripture_safe, content)
+
+    # #69: Scripture chain refs с → (без скобок): Ис. 40:6 → Рим. 8:28 → Лк. 24:44
+    content = _SCRIPTURE_CHAIN_RE.sub(lambda m: f'*{m.group(0)}*', content)
+
+    # ------------------------------------------------------------------
+    # 2. ЧИСТКА НЕЗАКРЫТЫХ BOLD И ТАЙМКОДНЫХ АРТЕФАКТОВ
+    # ------------------------------------------------------------------
+
+    # **Заголовок: без закрывающего ** в конце строки → закрываем
+    # Например: "• **2 Коринфянам 5:17" или "**В материале:"
+    content = re.sub(r'(?m)^(\s*[•\-]?\s*)\*\*([^*\n]+?)\s*$', r'\1**\2**', content)
+
+    # **Метка:\nТекст... - разбиваем на bold-заголовок + обычный параграф
+    # Например: "**В материале:\nВошер..." -> "**В материале:**\nВошер..."
+    content = re.sub(r'\*\*([^*\n]{1,60}:)\n', r'**\1**\n', content)
+    content = re.sub(r'(?m)^\s*\*\*(В материале:?)\s*$', r'**\1**', content)
+
+    # Gemini оборачивает текст до таймкода в bold: **текст...icon** 16:15
+    # Убираем лишний bold, оставляем только таймкод
+    content = re.sub(r'\*\*(.{10,}?)(\u23F1|\U0001F550|\U0001F517)\*\*(\s*)(\d{1,2}:\d{2}(?::\d{2})?)', r'\1\2 **\4**', content)
+    # Незакрытый ** внутри строки перед иконкой таймкода: **текст ⏱ 31:30 -> текст ⏱ **31:30**
+    content = re.sub(r'\*\*([^*\n]{5,}?)(\s*)(\u23F1|\U0001F550|\U0001F517)(\s*)(\d{1,2}:\d{2}(?::\d{2})?)\s*$', r'\1\2\3 **\5**', content, flags=re.MULTILINE)
+
+    content = re.sub(r'(⏱|🔗)?\s*\*\*(\d{1,2}:\d{2}(?::\d{2})?)\*\*', lambda m: (m.group(1) + ' ' if m.group(1) else '') + f'**{m.group(2)}**', content)
+    content = re.sub(r'(⏱|🔗)?\s*\*\*(\d{1,2}:\d{2}(?::\d{2})?)(?!\*)(?=\s*$)', lambda m: (m.group(1) + ' ' if m.group(1) else '') + f'**{m.group(2)}**', content, flags=re.MULTILINE)
+    content = re.sub(r'(⏱|🔗)?\s*\*\*(\d{1,2}:\d{2}(?::\d{2})?)(?!\*)(?!:\d)', lambda m: (m.group(1) + ' ' if m.group(1) else '') + f'**{m.group(2)}**', content)
+    content = re.sub(r'\*\*(⏱|🔗)', r'** \1', content)
+
+    # **Текст ⏱** 26:00 → Текст ⏱ 26:00  (AI оборачивает весь блок в bold с иконкой внутри)
+    content = re.sub(r'\*\*(.+?)\s*⏱\*\*\s*(\d{1,2}:\d{2}(?::\d{2})?)(\s*)', r'\1 ⏱ \2\3', content)
+    # Остаток **. после таймкода (только если пробел перед **, иначе это закрывающий bold)
+    content = re.sub(r'(\d{1,2}:\d{2}(?::\d{2})?)\s+\*\*\s*\.?\s*$', r'\1', content, flags=re.MULTILINE)
+    # Абзац из одиночного знака пунктуации (AI-артефакт вида "\n\n.\n\n")
+    content = re.sub(r'\n{2,}[.,:;]\n{2,}', '\n\n', content)
+    content = re.sub(r'(⏱|🔗)?\s*_\s*(\d{1,2}:\d{2}(?::\d{2})?)',
+                     lambda m: (m.group(1) + ' ' if m.group(1) else '') + f'**{m.group(2)}**',
+                     content)
+
+    content = re.sub(r'\s*\\\*\s*$', '', content, flags=re.MULTILINE)
+    content = re.sub(r'(?<!\*)(\d{1,2}:\d{2}(?::\d{2})?)\s*\*+\s*$', r'\1', content, flags=re.MULTILINE)
+    content = re.sub(r'(\d{1,2}:\d{2}(?::\d{2})?)\s+\*(?!\*)', r'\1 ', content)
+    content = re.sub(r'(?<!\*)(\d{1,2}:\d{2}(?::\d{2})?)\s*\*{2}\.?\s*$', r'\1', content, flags=re.MULTILINE)
+    content = re.sub(r'(\d{1,2}:\d{2}(?::\d{2})?)\s*_\.?', r'\1', content)
+    content = re.sub(r'(?<!\*)\*(?!\*)(\s*\d{1,2}:\d{2}(?::\d{2})?)', r'\1', content)
+
+    content = re.sub(r'([\wа-яА-ЯёЁ])([⏱🔗])', r'\1 \2', content)
+    content = re.sub(r'  +(\d{1,2}:\d{2}(?::\d{2})?)', r' \1', content)
+
+    # ------------------------------------------------------------------
+    # 3. ЧИСТКА СКЛЕЕК И ПРОБЕЛОВ
+    # ------------------------------------------------------------------
+
+    # Пробел после точки/восклиц./вопроса/двоеточия, если дальше буква
+    content = re.sub(r'([.!?…:])([А-ЯЁA-Z])', r'\1 \2', content)
+    content = re.sub(r'([.!?…:])(\*\*)', r'\1 \2', content)
+
+    # Пробел вокруг тире
+    content = re.sub(r'([\wа-яА-ЯёЁ\*\)])\s*—\s*([\wа-яА-ЯёЁ\*\(])', r'\1 — \2', content)
+    content = re.sub(r'([\wа-яА-ЯёЁ\*\)])\s*–\s*([\wа-яА-ЯёЁ\*\(])', r'\1 – \2', content)
+
+    # "слово(**" / ")(буква"
+    content = re.sub(r'([а-яА-ЯёЁa-zA-Z\*])\(', r'\1 (', content)
+    content = re.sub(r'\)([а-яА-ЯёЁa-zA-Z])', r') \1', content)
+
+    # Стык кириллицы/латиницы
+    content = re.sub(r'([а-яА-ЯёЁ])([a-zA-Z])', r'\1 \2', content)
+    content = re.sub(r'([a-zA-Z])([а-яА-ЯёЁ])', r'\1 \2', content)
+
+    # Двойные пробелы
+    content = re.sub(r'[ \t]{2,}', ' ', content)
+
+    # ------------------------------------------------------------------
+    # 4. СТАБИЛИЗАЦИЯ NUMBERED / BULLET / MICRO-BLOCK СТРУКТУРЫ
+    # ------------------------------------------------------------------
+
+    lines = content.split("\n")
+    rebuilt_lines = []
+    j = 0
+
+    while j < len(lines):
+        raw = lines[j]
+        s = raw.strip()
+
+        # пропускаем мусорные divider-повторы — hr потом поставит markdown-конвертер
+        if re.match(r'^[-=_*═]{3,}$', s):
+            # не копим по два divider подряд
+            if rebuilt_lines and re.match(r'^\s*[-=_*═]{3,}\s*$', rebuilt_lines[-1].strip()):
+                j += 1
+                continue
+            rebuilt_lines.append('---')
+            j += 1
+            continue
+
+        # heading markdown внутри content -> bold line
+        if s.startswith("#### "):
+            rebuilt_lines.append(f"**{s[5:].strip()}**")
+            # PATCH V2 FIX: пустая строка после → отдельный <p> в Telegraph
+            if j + 1 < len(lines) and lines[j + 1].strip():
+                rebuilt_lines.append("")
+            j += 1
+            continue
+        if s.startswith("### "):
+            rebuilt_lines.append(f"**{s[4:].strip()}**")
+            if j + 1 < len(lines) and lines[j + 1].strip():
+                rebuilt_lines.append("")
+            j += 1
+            continue
+        if s.startswith("## "):
+            rebuilt_lines.append(f"**{s[3:].strip()}**")
+            if j + 1 < len(lines) and lines[j + 1].strip():
+                rebuilt_lines.append("")
+            j += 1
+            continue
+        if s.startswith("# "):
+            rebuilt_lines.append(f"**{s[2:].strip()}**")
+            if j + 1 < len(lines) and lines[j + 1].strip():
+                rebuilt_lines.append("")
+            j += 1
+            continue
+
+        # Если строка оканчивается на ":" и следующая — bullet/numbered/bold-заголовок,
+        # вставляем paragraph boundary. Обычное продолжение текста — не трогаем.
+        if s.endswith(":") and j + 1 < len(lines):
+            nxt = lines[j + 1].strip()
+            if nxt and re.match(r'^([•\-]|\d+\.|\*\*[^*])', nxt):
+                rebuilt_lines.append(s)
+                rebuilt_lines.append("")
+                j += 1
+                continue
+
+        # number-only line: "1." -> подтягиваем следующую строку
+        if re.match(r'^\d+\.$', s) and j + 1 < len(lines):
+            nxt = lines[j + 1].strip()
+            if nxt:
+                rebuilt_lines.append(f"{s} {nxt}")
+                j += 2
+                continue
+
+        # "-Текст" -> "- Текст"
+        if re.match(r'^-[^\s]', s):
+            s = re.sub(r'^-([^\s])', r'- \1', s)
+
+        rebuilt_lines.append(s if s else "")
+        j += 1
+
+    content = "\n".join(rebuilt_lines)
+
+    # ------------------------------------------------------------------
+    # 5. АККУРАТНАЯ РАБОТА С ЖИРНЫМ
+    # ------------------------------------------------------------------
+
+    # Плохо: "**Тезис.Длинное тело без пробела..."
+    content = re.sub(
+        r'(\*\*[^*\n]{3,120}[.!?»"]\*\*)([А-ЯЁA-Z])',
+        r'\1\n\n\2',
+        content
+    )
+
+    # numbered title + bold title должны оставаться на одной строке
+    content = re.sub(
+        r'(?m)^(\d+\.)\s*\n+\s*(\*\*[^*\n]+\*\*)',
+        r'\1 \2',
+        content
+    )
+
+    # Слишком длинный bold-абзац -> если он реально длинный, не держим всё жирным
+    def _shrink_overbold_line(m):
+        inner = m.group(1).strip()
+        # Сохраняем таймкод до его удаления (Bug #4)
+        _ts_save = re.search(r'(([⏱🔗]\s*)?\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2})\s*$', inner)
+        ts_suffix = ""
+        if _ts_save:
+            _raw = _ts_save.group(1).strip()
+            _tm = re.search(r'(\d{1,2}:\d{2}(?::\d{2})?)', _raw)
+            _mk = re.search(r'([⏱🔗])', _raw)
+            if _tm:
+                ts_suffix = ((_mk.group(1) + " ") if _mk else "") + f"**{_tm.group(1)}**"
+        inner = re.sub(r'\s*[⏱🔗]?\s*\**\s*\d{1,2}:\d{2}(?::\d{2})?\s*\**\s*$', '', inner).strip()
+        inner = re.sub(r'\s+\d{1,2}:\d{2}(?::\d{2})?\s*$', '', inner).strip()
+        _suffix = (" " + ts_suffix) if ts_suffix else ""
+        if len(inner) > 120:
+            # PATCH V2 FIX: расширяем split — также по » " … перед заглавной
+            split_m = re.search(r'(?<=[.!?\u00bb"\u2026])\s+(?=[А-ЯЁA-Z\u00ab"])', inner)
+            if split_m:
+                head = inner[:split_m.start()].strip()
+                tail = inner[split_m.end():].strip()
+                return f"**{head}**\n\n{tail}{_suffix}"
+        return f"**{inner}**{_suffix}"
+
+    content = re.sub(
+        r'(?m)^\*\*([^\n*]{120,})\*\*$',
+        _shrink_overbold_line,
+        content
+    )
+
+    # Ложный курсив-блок (Gemini обернул весь абзац в *...*) — убираем обёртку,
+    # оставляем внутренний **bold** нетронутым.
+    def _strip_italic_wrap(m):
+        inner = m.group(1)
+        # #53/#75: не снимаем курсив со Scripture-цитат в «ёлочках» и Scripture refs в скобках
+        stripped_inner = inner.lstrip()
+        if stripped_inner.startswith('«'):
+            return m.group(0)
+        if stripped_inner.startswith('('):
+            if plain_scripture:
+                return inner      # FIXED #127: REFLECTION — снять italic с Scripture refs
+            return m.group(0)     # остальное: сохранить (#53/#75)
+        # Латинские названия книг: *Religious Affections*, *Institutes of the Christian Religion*
+        # Признаки: только латиница, начинается с заглавной, без точки/! в конце (не предложение)
+        if (re.match(r'^[A-Z]', stripped_inner)
+                and not re.search(r'[а-яёА-ЯЁ]', stripped_inner)
+                and not re.search(r'[.!?]\s*$', stripped_inner)):
+            return m.group(0)
+        return inner
+
+    # Строки 80+ символов
+    content = re.sub(
+        r'(?m)^\*([^\n*]{80,})\*\s*$',
+        _strip_italic_wrap,
+        content
+    )
+    # Строки 20–79 символов (короткие описательные абзацы)
+    content = re.sub(
+        r'(?m)^\*([А-ЯЁA-Zа-яёa-z«][^\n]{20,}[^\n*])\*$',
+        _strip_italic_wrap,
+        content
+    )
+
+    content = _fix_orphaned_bold_markers(content)
+    if duration:
+        content = _clamp_content_timestamps(content, duration)
+
+    # ------------------------------------------------------------------
+    # 6. ФИНАЛЬНАЯ НОРМАЛИЗАЦИЯ АБЗАЦЕВ
+    # ------------------------------------------------------------------
+
+    # Не даём схлопнуться служебным заголовкам аудиторий/разделов с первым подпунктом
+    content = re.sub(
+        r'(?m)^(?!\d+\.)\s*([^\n:]{5,120}(?<!\d):)\s+([•\-]|\d+\.|\*\*)',
+        r'\1\n\n\2',
+        content
+    )
+
+    # Нумерованные prayer blocks: если "1. Текст" и потом сразу тело в той же строке
+    # допускаем, это лучше чем разваленный номер на отдельной строке
+    content = re.sub(r'\n{3,}', '\n\n', content).strip()
+    content = _ensure_all_paragraphs_period(content)
+    # Убираем 2+ точек в конце строки (AI поставил точку + наш код добавил ещё одну).
+    # (?=\s*$) гарантирует что трогаем только конец строки, не .. внутри текста.
+    content = re.sub(r'\.{2,}(?=\s*$)', '.', content, flags=re.MULTILINE)
+    content = re.sub(r'\?\.\s*\.', '?.', content)
+
+    # ------------------------------------------------------------------
+    # 7. H3 + TIMESTAMP LINKS В ЗАГОЛОВКЕ SECTION
+    # ------------------------------------------------------------------
+
+    _title_is_page_title = (
+        page_title and title and
+        title.strip().lower() == page_title.strip().lower()
+    )
+
+    if title and not _title_is_page_title:
+        _clean_title = _HEADING_BOLD_STRIP_RE.sub(r'\1', title)
+        nodes.append({"tag": "h3", "children": [_clean_title]})
+
+        if time_str:
+            secs = time_to_seconds(time_str) if time_str else None
+            ts_parts = []
+
+            if yt_url and secs is not None:
+                yt_link = get_youtube_timestamp_url(yt_url, secs)
+                ts_parts.append("⏱\u00a0")
+                ts_parts.append({
+                    "tag": "a",
+                    "attrs": {"href": yt_link},
+                    "children": [f"YouTube {time_str}"]
+                })
+            elif yt_url:
+                ts_parts.append(f"⏱\u00a0YouTube {time_str}")
+
+            if rutube_url and secs is not None:
+                rt_base = rutube_url.rstrip("/")
+                rt_link = rt_base + (("&" if "?" in rt_base else "?") + f"t={secs}")
+                if ts_parts:
+                    ts_parts.append(" · ")
+                ts_parts.append("⏱\u00a0")
+                ts_parts.append({
+                    "tag": "a",
+                    "attrs": {"href": rt_link},
+                    "children": [f"RuTube {time_str}"]
+                })
+
+            if vk_url and secs is not None:
+                vk_link = vk_url + (("&" if "?" in vk_url else "?") + f"t={secs}s")
+                if ts_parts:
+                    ts_parts.append(" · ")
+                ts_parts.append("⏱\u00a0")
+                ts_parts.append({
+                    "tag": "a",
+                    "attrs": {"href": vk_link},
+                    "children": [f"VK {time_str}"]
+                })
+
+            if ts_parts:
+                nodes.append({"tag": "p", "children": [
+                    {"tag": "i", "children": ts_parts}
+                ]})
+            elif time_str:
+                nodes.append({"tag": "p", "children": [
+                    {"tag": "i", "children": [f"⏱\u00a0{time_str}"]}
+                ]})
+
+    # ------------------------------------------------------------------
+    # 8. CONTENT -> TELEGRAPH NODES
+    # ------------------------------------------------------------------
+
+    if content:
+        from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
+        content_nodes = _md_to_nodes_fn(content)
+
+        # PATCH V2 FIX RTL: dir="ltr" на <p>/<blockquote>/<li> содержащие иврит/арабский
+        # Без этого браузер переключает выравнивание всей строки вправо (BiDi).
+        _RTL_DETECT_RE = re.compile(r'[\u0590-\u05FF\u0600-\u06FF]')
+
+        def _has_rtl_deep(node) -> bool:
+            if isinstance(node, str):
+                return bool(_RTL_DETECT_RE.search(node))
+            if isinstance(node, dict):
+                return any(_has_rtl_deep(c) for c in node.get("children", []))
+            return False
+
+        def _apply_ltr_attr(node):
+            if not isinstance(node, dict):
+                return node
+            tag = node.get("tag", "")
+            if tag in ("p", "blockquote", "li"):
+                if any(_has_rtl_deep(c) for c in node.get("children", [])):
+                    node = dict(node)
+                    node["attrs"] = {**node.get("attrs", {}), "dir": "ltr"}
+            return node
+
+        content_nodes = [_apply_ltr_attr(n) for n in content_nodes]
+
+        if yt_url:
+            content_nodes = _linkify_inline_timestamps(content_nodes, yt_url, duration=duration)
+        nodes.extend(content_nodes)
+
+    return nodes
+
+
+def _estimate_nodes_v2(sections: list, yt_url: str = "",
+                       rutube_url: str = "", vk_url: str = "",
+                       duration: int = 0) -> int:
+    """Оценивает кол-во Telegraph nodes для списка разделов."""
+    return sum(
+        len(_section_to_nodes_v2(s, yt_url=yt_url,
+                                  rutube_url=rutube_url, vk_url=vk_url,
+                                  duration=duration))
+        for s in sections
+    )
+
+
+def _split_sections_smart(sections: list, node_limit: int = 180, yt_url: str = "") -> list:
+    """
+    Делит sections на части для Telegraph по границам разделов.
+    Никогда не разрывает section посередине.
+    Если последняя часть < 25% лимита — объединяет с предыдущей (если итог ≤ лимита).
+    Возвращает список групп (list of list of section).
+    """
+    if not sections:
+        return [[]]
+
+    parts: list[list] = []
+    current: list     = []
+    current_count: int = 0
+
+    for sec in sections:
+        sec_size = len(_section_to_nodes_v2(sec, yt_url))
+        if current and current_count + sec_size > node_limit:
+            parts.append(current)
+            current = [sec]
+            current_count = sec_size
+        else:
+            current.append(sec)
+            current_count += sec_size
+
+    if current:
+        parts.append(current)
+
+    # Последняя часть < 25% лимита — объединяем с предыдущей только если влезает
+    if len(parts) >= 2:
+        last_size = _estimate_nodes_v2(parts[-1], yt_url)
+        prev_size = _estimate_nodes_v2(parts[-2], yt_url)
+        if last_size < node_limit * 0.25 and prev_size + last_size <= node_limit:
+            parts = parts[:-2] + [parts[-2] + parts[-1]]
+
+    return parts or [[]]
+
+
+def _split_sections_recursive(sections: list, node_limit: int, yt_url: str = "") -> list:
+    """
+    Рекурсивно делит sections пока каждая часть не влезает в node_limit.
+    Единственный способ нарушить — section из одного элемента > node_limit
+    (тогда публикуем как есть, Telegraph примет или вернёт ошибку).
+    """
+    if not sections:
+        return [[]]
+
+    total_nodes = _estimate_nodes_v2(sections, yt_url)
+    if total_nodes <= node_limit:
+        return [sections]
+
+    # Нельзя делить одиночный section
+    if len(sections) == 1:
+        return [sections]
+
+    mid = max(1, len(sections) // 2)
+    left  = sections[:mid]
+    right = sections[mid:]
+
+    left_result  = _split_sections_recursive(left, node_limit, yt_url)
+    right_result = _split_sections_recursive(right, node_limit, yt_url)
+    return left_result + right_result
+
+
+def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, duration: int = 0) -> list:  # noqa: ARG001 (parts reserved for future multi-part TOC links)
+    """Строит оглавление «Структура материала» с кликабельными таймкодами."""
+    nodes = []
+    nodes.append({"tag": "p", "children": [
+        {"tag": "b", "children": [" Структура материала"]}
+    ]})
+
+    for i, item in enumerate(outline, 1):
+        title = (item.get("title") or "").strip()
+        time_str = (item.get("time") or "").strip()
+
+        if time_str in ("0:00", "00:00", "0:00:00", "00:00:00") and not yt_url:
+            time_str = ""
+
+        if time_str and duration:
+            secs = time_to_seconds(time_str)
+            if secs is not None and secs > duration + 30:
+                time_str = ""
+
+        title = re.sub(r'\s*\(ч\.\s*\d+(?:/\d+)?\)\s*', '', title).strip()
+        title = re.sub(r'\s*\(часть\s*\d+(?:/\d+)?\)\s*', '', title, flags=re.IGNORECASE).strip()
+
+        children = [{"tag": "b", "children": [f"{i}.\u00a0"]}]
+        # #84: title может содержать **bold** — прогоняем через _md_parse_inline
+        # (убран лишний "\u00a0" — давал двойной пробел "1.  Название")
+        # _md_parse_inline импортирована из core_utils в начале модуля — lazy import не нужен
+        children.extend(_md_parse_inline(title) if title else [])
+
+        if time_str and yt_url:
+            secs = time_to_seconds(time_str)
+            if secs is not None:
+                yt_link = get_youtube_timestamp_url(yt_url, secs)
+                children.append(" — ⏱\u00a0")
+                children.append({
+                    "tag": "a",
+                    "attrs": {"href": yt_link},
+                    "children": [time_str],
+                })
+            else:
+                children.append(f" — ⏱\u00a0{time_str}")
+        elif time_str:
+            children.append(f" — ⏱\u00a0{time_str}")
+
+        nodes.append({"tag": "p", "children": children})
+
+    nodes.append({"tag": "hr"})
+    return nodes
+
+
+def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list) -> list:
+    """
+    Строит навигационный блок между частями в формате [N/total].
+    Пример: ⬅ Назад: [1/3]     ➡ Дальше: [3/3]
+    """
+    if total_parts <= 1:
+        return []
+
+    nodes = [{"tag": "hr"}]
+    nav_children = []
+
+    if part_idx > 0:
+        prev_url = parts_urls[part_idx - 1] if part_idx - 1 < len(parts_urls) else None
+        if prev_url:
+            nav_children.append({
+                "tag": "a",
+                "attrs": {"href": prev_url},
+                "children": [f"⬅ Назад: [{part_idx}/{total_parts}]"],
+            })
+
+    if part_idx < total_parts - 1:
+        next_url = parts_urls[part_idx + 1] if part_idx + 1 < len(parts_urls) else None
+        if next_url:
+            if nav_children:
+                nav_children.append("     ")
+            nav_children.append({
+                "tag": "a",
+                "attrs": {"href": next_url},
+                "children": [f"➡ Дальше: [{part_idx + 2}/{total_parts}]"],
+            })
+
+    if nav_children:
+        nodes.append({"tag": "p", "children": nav_children})
+
+    return nodes
+
+
+def _final_telegraph_polish(nodes: list) -> list:
+    """A05: Финальный слой очистки перед отправкой в Telegraph API.
+    Запускать ДО любого createPage/editPage.
+    Гарантирует: нет orphaned **, нет пустых nodes, нет h1/h2/h5/h6, нет bidi-мусора."""
+    _ORPHAN_BOLD_RE = re.compile(r'(?<!\*)\*{2,3}(?!\*)')
+    _BIDI_RE = re.compile(r'[\u2066-\u2069\u202a-\u202e\u200e\u200f]')
+
+    def _polish_node(node):
+        if isinstance(node, str):
+            node = _ORPHAN_BOLD_RE.sub('', node)
+            node = _BIDI_RE.sub('', node)
+            return node
+        if isinstance(node, dict):
+            tag = node.get("tag", "").lower()
+            if tag in ("h1", "h2", "h5", "h6"):
+                node = dict(node)
+                node["tag"] = "h3"
+            elif tag and tag not in TELEGRAPH_ALL_ALLOWED:
+                node = dict(node)
+                node["tag"] = "p"
+            if "children" in node:
+                new_ch = [
+                    _polish_node(c) for c in node["children"]
+                    if not (isinstance(c, str) and not c.strip())
+                ]
+                node = dict(node)
+                node["children"] = [c for c in new_ch if c is not None and c != ""]
+        return node
+
+    result = [_polish_node(n) for n in nodes]
+    return [n for n in result if n]
+
+
+async def _create_telegraph_page_single(title: str, author: str,
+                                         nodes: list, loop) -> tuple:
+    """Публикует одну Telegraph-страницу. Возвращает (url, error).
+    НЕ усекает контент — CONTENT_TOO_BIG возвращается как ошибка
+    для обработки выше по стеку через дробление sections.
+    Retry: до 3 попыток при сетевых ошибках; FLOOD_WAIT_N — sleep(N)+retry.
+    """
+    token = TELEGRAPH_TOKEN
+    if not token:
+        return None, "no_token"
+    from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
+    nodes = _cln_nodes_fn(nodes)
+
+    _NETWORK_ERRS = (ConnectionError, TimeoutError, OSError)
+    last_err = "unknown"
+
+    for attempt in range(3):
+        try:
+            resp = await loop.run_in_executor(None, lambda: requests.post(
+                "https://api.telegra.ph/createPage",
+                json={
+                    "access_token": token,
+                    "title": title,
+                    "author_name": author,
+                    "content": nodes,
+                    "return_content": False,
+                },
+                timeout=15,
+            ))
+            data = resp.json()
+            if data.get("ok"):
+                return data["result"]["url"], ""
+            err = data.get("error", "unknown")
+            # FLOOD_WAIT_N — Telegraph rate-limit: подождать N секунд и повторить
+            flood_m = re.match(r"FLOOD_WAIT_(\d+)", err)
+            if flood_m:
+                wait_sec = min(int(flood_m.group(1)), 30)
+                logger.warning(
+                    f"Telegraph createPage: FLOOD_WAIT_{wait_sec}s "
+                    f"(attempt {attempt+1}/3) — sleeping..."
+                )
+                await asyncio.sleep(wait_sec)
+                last_err = err
+                continue
+            return None, err
+        except Exception as e:
+            last_err = str(e)
+            logger.warning(f"Telegraph createPage (attempt {attempt+1}/3): {e}")
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)  # 1s, 2s
+    return None, last_err
+
+
+async def _edit_telegraph_page(page_url: str, title: str, author: str,
+                                nodes: list, loop) -> bool:
+    """Обновляет существующую Telegraph-страницу навигационными ссылками."""
+    token = TELEGRAPH_TOKEN
+    if not token:
+        return False
+    from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
+    nodes = _cln_nodes_fn2(nodes)
+    try:
+        path = page_url.replace("https://telegra.ph/", "")
+        resp = await loop.run_in_executor(None, lambda: requests.post(
+            f"https://api.telegra.ph/editPage/{path}",
+            json={
+                "access_token": token,
+                "title": title,
+                "author_name": author,
+                "content": nodes,
+                "return_content": False,
+            },
+            timeout=15,
+        ))
+        data = resp.json()
+        ok = bool(data.get("ok"))
+        if ok:
+            # #105: инвалидируем запись LRU-кеша pdf_generator — после editPage
+            # старый [draft]-контент не должен отдаваться при следующей генерации PDF.
+            try:
+                from services.pdf_generator import invalidate_telegraph_url
+                invalidate_telegraph_url(page_url)
+            except Exception:
+                pass
+        return ok
+    except Exception as e:
+        logger.warning(f"Telegraph editPage: {e}")
+        return False
+
+
+# ─── Synopsis v2.0: helper для Gemini ────────────────────────
+
+def _extract_partial_sections(text: str) -> list:
+    """Безопасный fallback-парсер для кривого JSON.
+    Посимвольный сканер корректно обрабатывает вложенные {} и любой порядок ключей."""
+    sections = []
+    depth = 0
+    start = -1
+    for i, ch in enumerate(text):
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start != -1:
+                raw = text[start:i + 1]
+                if '"content"' in raw:
+                    try:
+                        obj = json.loads(raw)
+                        if isinstance(obj, dict):
+                            t = str(obj.get("title",   "")).strip()
+                            v = str(obj.get("time",    "")).strip() or "0:00"
+                            c = str(obj.get("content", "")).strip()
+                            if t and c:
+                                sections.append({"title": t, "time": v, "content": c})
+                    except Exception:
+                        pass
+                start = -1
+    return sections
+
+def visible_length(text: str) -> int:
+    """
+    Считает длину текста так, как его видит Telegram после парсинга HTML:
+      • все теги (<b>, <a href="...">, </a>, <tg-emoji ...>, </tg-emoji> и т.д.) не считаются
+      • &amp; &lt; &gt; &quot; &#32; и т.п. считаются как 1 символ каждый
+      • <tg-emoji>...</tg-emoji> — считается вложенный текст (обычно 1 emoji)
+      • <a href="...">текст</a> — считается только «текст»
+    Не использует внешних библиотек. Работает через re.
+    """
+    # Убираем все теги целиком, оставляя только их текстовое содержимое
+    # Порядок важен: сначала убираем самозакрывающиеся / пустые теги без текста внутри
+    s = text
+    # A08 FIX: используем pre-compiled паттерны вместо компиляции при каждом вызове
+    s = _VL_TAG_RE.sub('', text)
+    s = _VL_NAMED_RE.sub('x', s)
+    s = _VL_DEC_RE.sub('x', s)
+    s = _VL_HEX_RE.sub('x', s)
+    # Одиночный & (не являющийся частью сущности) — 1 символ, не трогаем
+    # Telegram считает символы в UTF-16 code units (суррогатные пары = 2 единицы)
+    # Эмодзи вне BMP (U+1F000+) занимают 2 единицы → корректируем
+    extra = sum(1 for ch in s if ord(ch) > 0xFFFF)
+    return len(s) + extra
+
+
+def safe_trim_caption(caption: str, limit: int = 1024) -> str:
+    """
+    Обрезает caption по видимой длине, не ломая HTML.
+    Используется ТОЛЬКО как последний резерв — вызывать после всех попыток
+    пересобрать caption через _build().
+    Гарантирует: visible_length(result) <= limit и все HTML-теги закрыты.
+    """
+    if visible_length(caption) <= limit:
+        return caption
+
+    # Разбиваем на строки и добавляем по одной, пока влезает
+    lines = caption.split("\n")
+    result_lines = []
+    current_len = 0
+    for line in lines:
+        line_vlen = visible_length(line)
+        # +1 за \n (кроме первой строки)
+        sep = 1 if result_lines else 0
+        if current_len + sep + line_vlen > limit:
+            # Если это первая строка и она уже длиннее лимита —
+            # обрезаем посимвольно (без лома тегов внутри неё)
+            if not result_lines:
+                buf = ""
+                vis = 0
+                i = 0
+                while i < len(line):
+                    if line[i] == '<':
+                        end = line.find('>', i)
+                        if end == -1:
+                            break
+                        tag_chunk = line[i:end + 1]
+                        buf += tag_chunk
+                        i = end + 1
+                    elif line[i] == '&':
+                        end = line.find(';', i)
+                        if end == -1 or end - i > 10:
+                            if vis < limit:
+                                buf += line[i]
+                                vis += 1
+                            i += 1
+                        else:
+                            entity = line[i:end + 1]
+                            if vis < limit:
+                                buf += entity
+                                vis += 1
+                            i = end + 1
+                    else:
+                        if vis < limit:
+                            buf += line[i]
+                            vis += 1
+                        i += 1
+                result_lines.append(buf)
+                current_len = vis
+            # Строка не влезает (первая уже добавлена с обрезкой, остальные пропускаем)
+            break
+        else:
+            result_lines.append(line)
+            current_len += sep + line_vlen
+
+    result = "\n".join(result_lines)
+
+    # Закрываем незакрытые теги (простые парные теги Telegram HTML)
+    _PAIRED = ["b", "i", "u", "s", "a", "tg-emoji", "code", "pre", "spoiler"]
+    open_tags = []
+    for m in re.finditer(r'<(/?)(\w[\w-]*)(?:\s[^>]*)?>',  result):
+        closing, tag = m.group(1), m.group(2).lower()
+        if tag not in _PAIRED:
+            continue
+        if closing:
+            # Ищем тег в стеке (не только вершину) — на случай неправильной вложенности
+            if tag in open_tags:
+                # Убираем все теги от вершины до найденного включительно
+                while open_tags and open_tags[-1] != tag:
+                    open_tags.pop()
+                if open_tags:
+                    open_tags.pop()
+        else:
+            open_tags.append(tag)
+    for tag in reversed(open_tags):
+        result += f"</{tag}>"
+
+    return result
+
+
+def _trim_timestamps(timestamps_str: str, max_lines: int) -> str:
+    """
+    Умная обрезка таймкодов — сохраняет покрытие всего материала.
+    Всегда сохраняет первый (0:00) и последний таймкод,
+    остальные слоты распределяет равномерно по всей длительности.
+    Результат покрывает материал от начала до конца, а не только первую половину.
+    """
+    lines = [l for l in timestamps_str.split("\n") if l.strip()]
+    if len(lines) <= max_lines:
+        return timestamps_str
+    if max_lines <= 0:
+        return ""
+    if max_lines == 1:
+        return lines[0]
+    if max_lines == 2:
+        return "\n".join([lines[0], lines[-1]])
+
+    # Всегда первый и последний
+    result = [lines[0]]
+    middle_lines = lines[1:-1]
+    remaining_slots = max_lines - 2
+
+    if remaining_slots >= len(middle_lines):
+        result.extend(middle_lines)
+    else:
+        # Равномерная выборка из середины
+        step = len(middle_lines) / remaining_slots
+        for i in range(remaining_slots):
+            idx = int(i * step)
+            result.append(middle_lines[idx])
+
+    result.append(lines[-1])
+    return "\n".join(result)
+
+
+def get_caption_timestamp_limit(format_name: str) -> int:
+    """Возвращает максимальное число строк таймкодов в caption по format.
+    Поскольку полное описание отправляется отдельным сообщением (4096 символов),
+    лимиты увеличены: qa — все вопросы, sermon/lecture — умное покрытие."""
+    return {
+        "sermon":     30,   # умная выборка равномерно по всей проповеди
+        "lecture":    30,   # то же для лекций и семинаров
+        "qa":         999,  # все вопросы без обрезки
+        "interview":  25,
+        "discussion": 25,
+        "other":      20,
+    }.get(format_name or "other", 20)
+
+

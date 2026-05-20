@@ -22,17 +22,18 @@ __all__ = [
     "generate_sermon_pdf",
     "generate_sermon_pdf_async",
     "clear_telegraph_cache",
+    "invalidate_telegraph_url",
     "SECTIONS",
 ]
 
 import asyncio
-import functools
 import html as html_module
 import logging
 import os
 import platform as _platform
 import re
 import shutil as _shutil
+import subprocess as _subprocess
 import tempfile
 import threading
 import time as _time
@@ -275,35 +276,43 @@ _KT = TypeVar("_KT", bound=Hashable)
 _VT = TypeVar("_VT")
 
 
-class _LRUCache(OrderedDict, Generic[_KT, _VT]):
-    """Потокобезопасный LRU-кеш на базе OrderedDict."""
+class _LRUCache(Generic[_KT, _VT]):
+    """Потокобезопасный LRU-кеш на базе OrderedDict (композиция)."""
 
     def __init__(self, maxsize: int = 64) -> None:
-        super().__init__()
+        self._data: OrderedDict[_KT, _VT] = OrderedDict()
         self._max = maxsize
         self._lock = threading.Lock()
 
     def get_cached(self, key: _KT) -> Optional[_VT]:
         """Возвращает значение по ключу или None, сдвигая в конец."""
         with self._lock:
-            if key in self:
-                self.move_to_end(key)
-                return self[key]
+            if key in self._data:
+                self._data.move_to_end(key)
+                return self._data[key]
         return None
 
     def put(self, key: _KT, value: _VT) -> None:
         """Добавляет элемент, вытесняя старейший при переполнении."""
         with self._lock:
-            if key in self:
-                self.move_to_end(key)
-            self[key] = value
-            while len(self) > self._max:
-                self.popitem(last=False)
+            if key in self._data:
+                self._data.move_to_end(key)
+            self._data[key] = value
+            while len(self._data) > self._max:
+                self._data.popitem(last=False)
 
     def clear_safe(self) -> None:
         """Thread-safe полная очистка."""
         with self._lock:
-            self.clear()
+            self._data.clear()
+
+    def delete(self, key: _KT) -> bool:
+        """Thread-safe удаление одного ключа. Возвращает True если ключ был в кеше."""
+        with self._lock:
+            if key in self._data:
+                del self._data[key]
+                return True
+        return False
 
 
 _TELEGRAPH_CACHE: _LRUCache[str, str] = _LRUCache(64)
@@ -312,6 +321,13 @@ _TELEGRAPH_CACHE: _LRUCache[str, str] = _LRUCache(64)
 def clear_telegraph_cache() -> None:
     """Thread-safe очистка кеша Telegraph-страниц."""
     _TELEGRAPH_CACHE.clear_safe()
+
+
+def invalidate_telegraph_url(url: str) -> None:
+    """#105: инвалидирует одну запись кеша Telegraph по URL (после успешного editPage)."""
+    removed = _TELEGRAPH_CACHE.delete(url)
+    if removed:
+        logger.debug("Telegraph cache invalidated for URL: %s", url)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -430,13 +446,19 @@ def _parse_font_filename(filename: str) -> Tuple[str, int, str]:
     return family, weight, style
 
 
-@functools.lru_cache(maxsize=1)
+_font_face_cache: Dict[str, str] = {}
+_font_face_lock = threading.Lock()  # FIXED #108: защита от double-compute при параллельных PDF
+
+
 def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
     """Генерирует CSS @font-face для всех шрифтов в директории."""
     if not fonts_dir:
         fonts_dir = os.environ.get("PDF_FONTS_DIR", "").strip()
     if not fonts_dir:
         fonts_dir = str(Path(__file__).parent / "fonts")
+    with _font_face_lock:
+        if fonts_dir in _font_face_cache:
+            return _font_face_cache[fonts_dir]
     d = Path(fonts_dir)
     if not d.exists():
         logger.warning("PDF fonts: директория не найдена: %s", d)
@@ -464,7 +486,10 @@ def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
             "PDF fonts: загружено %d начертаний из %s",
             len(css_parts), d,
         )
-    return "\n".join(css_parts)
+    result = "\n".join(css_parts)
+    with _font_face_lock:
+        _font_face_cache[fonts_dir] = result
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -494,7 +519,7 @@ CSS_TEMPLATE = r"""
 
 html, body {{
     margin: 0; padding: 0;
-    background: #fdf9f4;
+    background: #fff;
 }}
 
 body.reading-pdf {{
@@ -502,7 +527,7 @@ body.reading-pdf {{
     font-size: 10.9pt;
     line-height: 1.78;
     color: #171717;
-    background: #fdf9f4;
+    background: #fff;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     font-kerning: normal;
@@ -748,13 +773,14 @@ a.bt {{
 # ══════════════════════════════════════════════════════════════
 
 def _esc(t: str) -> str:
-    """Экранирует спецсимволы HTML (&, <, >, \")."""
+    """Экранирует спецсимволы HTML (&, <, >, \", ')."""
     return (
         (t or "")
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
+        .replace("'", "&#39;")
     )
 
 
@@ -937,20 +963,7 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
     parts = _RE_TAG_SPLIT.split(html_str)
     depth_a = 0
     result: List[str] = []
-
-    def _repl(m: re.Match) -> str:
-        tc = m.group(1)
-        pre = m.string[max(0, m.start() - 50):m.start()]
-        if _is_bible_ref_before(pre):
-            return tc
-        secs = _tc_to_seconds(tc)
-        url = _video_ts_url(video_url, secs)
-        if url:
-            return (
-                f'<a class="tc" href="{_esc(url)}" title="{tc}">'
-                f'{tc}</a>'
-            )
-        return tc
+    cumulative_text = ""
 
     for seg in parts:
         if seg.startswith("<"):
@@ -961,9 +974,28 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
                 depth_a = max(0, depth_a - 1)
             result.append(seg)
         elif depth_a > 0:
+            cumulative_text += seg
             result.append(seg)
         else:
+            ctx = cumulative_text
+
+            def _repl(m: re.Match) -> str:
+                tc = m.group(1)
+                local_pre = m.string[max(0, m.start() - 50):m.start()]
+                pre = (ctx + local_pre)[-50:]
+                if _is_bible_ref_before(pre):
+                    return tc
+                secs = _tc_to_seconds(tc)
+                url = _video_ts_url(video_url, secs)
+                if url:
+                    return (
+                        f'<a class="tc" href="{_esc(url)}" title="{tc}">'
+                        f'{tc}</a>'
+                    )
+                return tc
+
             result.append(_TIMECODE_RE.sub(_repl, seg))
+            cumulative_text += seg
     return "".join(result)
 
 
@@ -991,7 +1023,10 @@ def _fetch_url(
                     url, exc, retries + 1,
                 )
                 return None
-            _time.sleep(1)
+            # #104: time.sleep в sync-функции внутри executor блокирует поток пула.
+            # Используем минимальную задержку (0.1s) — только чтобы дать сети восстановиться;
+            # длинный sleep (1s) не нужен, т.к. повторная попытка — последняя (retries=1).
+            _time.sleep(0.1)
     return None  # pragma: no cover
 
 
@@ -1015,6 +1050,7 @@ def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
         pre_ctx = raw[:m.start()]
         if not _is_bible_ref_before(pre_ctx):
             time_str = m.group(1)
+            break
 
     platforms: List[str] = []
     if _RE_PLATFORM_YT.search(raw):
@@ -1064,9 +1100,22 @@ def _strip_leading_ol(html_str: str) -> str:
     hl = html_str.lower()
     h3p, olp = hl.find("<h3"), hl.find("<ol")
     if olp != -1 and (h3p == -1 or olp < h3p):
-        ol_end = hl.find("</ol>", olp)
-        if ol_end != -1:
-            html_str = html_str[:olp] + html_str[ol_end + 5:]
+        depth = 1
+        pos = olp + 3
+        while pos < len(hl) and depth > 0:
+            next_open = hl.find("<ol", pos)
+            next_close = hl.find("</ol>", pos)
+            if next_close == -1:
+                break
+            if next_open != -1 and next_open < next_close:
+                depth += 1
+                pos = next_open + 3
+            else:
+                depth -= 1
+                if depth == 0:
+                    html_str = html_str[:olp] + html_str[next_close + 5:]
+                else:
+                    pos = next_close + 5
     return html_str
 
 
@@ -1102,7 +1151,7 @@ def _enrich_h3_headings(html_str: str) -> str:
         title, time_str, _ = _extract_h3_parts(inner)
         title = _clean_heading(title)
         if not title:
-            return ""
+            return "<hr>"
 
         yt = _enrich_url_with_time(yt, time_str)
         rt = _enrich_url_with_time(rt, time_str)
@@ -1126,7 +1175,8 @@ def _enrich_h3_headings(html_str: str) -> str:
             )
 
         if pp:
-            built = f'{_esc_safe(title)} \u2014 {" \u00B7 ".join(pp)}'
+            sep = " \u00B7 "
+            built = f'{_esc_safe(title)} \u2014 {sep.join(pp)}'
         elif time_str:
             built = f"{_esc_safe(title)} \u2014 {_esc_safe(time_str)}"
         else:
@@ -1147,7 +1197,10 @@ def _clean_block_elements(html_str: str) -> str:
         return f"<{tag}{attrs}>{_clean_text_with_html(inner)}</{tag}>"
 
     html_str = _RE_BLOCK_P_H4.sub(_fix_block, html_str)
-    html_str = _RE_BLOCKQUOTE.sub(_fix_block, html_str)
+    prev = ""
+    while prev != html_str:
+        prev = html_str
+        html_str = _RE_BLOCKQUOTE.sub(_fix_block, html_str)
     return html_str
 
 
@@ -1516,6 +1569,7 @@ def _build_html(
 _MIN_PDF_SIZE: int = 200
 _WKHTMLTOPDF_TIMEOUT: int = 120
 _ASYNC_FETCH_TIMEOUT: int = 90
+_POPEN_PATCH_LOCK = threading.Lock()
 
 
 def _pdfkit_options(title: str, performer: str) -> Dict[str, str]:
@@ -1562,8 +1616,8 @@ def _gen_wkhtmltopdf(
     """
     Генерирует PDF через wkhtmltopdf/pdfkit.
 
-    Thread-safe таймаут через threading.Thread (без monkey-patching).
-    При таймауте daemon-поток остаётся в фоне до завершения процесса.
+    При таймауте убивает дочерний процесс wkhtmltopdf через
+    перехват subprocess.Popen.
 
     Returns:
         Путь к файлу или None.
@@ -1586,14 +1640,27 @@ def _gen_wkhtmltopdf(
             f.write(html_str)
             tmp = f.name
 
-        # Thread-safe таймаут без monkey-patching subprocess
         error_holder: List[Optional[Exception]] = [None]
+        proc_holder: List[Optional[_subprocess.Popen]] = [None]
+        _orig_popen = _subprocess.Popen
+
+        class _TrackedPopen(_orig_popen):  # type: ignore[misc]
+            """Обёртка для захвата PID дочернего процесса."""
+            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                super().__init__(*args, **kwargs)
+                proc_holder[0] = self
 
         def _worker() -> None:
             try:
-                pdfkit.from_file(  # type: ignore[union-attr]
-                    tmp, out, options=opts, configuration=cfg,
-                )
+                with _POPEN_PATCH_LOCK:
+                    _subprocess.Popen = _TrackedPopen  # type: ignore[misc]
+                try:
+                    pdfkit.from_file(  # type: ignore[union-attr]
+                        tmp, out, options=opts, configuration=cfg,
+                    )
+                finally:
+                    with _POPEN_PATCH_LOCK:
+                        _subprocess.Popen = _orig_popen  # type: ignore[misc]
             except Exception as exc:
                 error_holder[0] = exc
 
@@ -1603,12 +1670,18 @@ def _gen_wkhtmltopdf(
 
         if worker.is_alive():
             logger.error(
-                "wkhtmltopdf: таймаут %ds, процесс может остаться в фоне",
+                "wkhtmltopdf: таймаут %ds, убиваем процесс",
                 _WKHTMLTOPDF_TIMEOUT,
             )
+            proc = proc_holder[0]
+            if proc is not None:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
             return None
 
-        # ── FIX v2.8.1: логируем ошибку из потока вместо raise ──
         if error_holder[0] is not None:
             logger.error("wkhtmltopdf: %s", error_holder[0])
             try:
@@ -1772,6 +1845,7 @@ async def generate_sermon_pdf_async(
 
     keys = [k for k in _SECTION_KEYS if urls.get(k)]
     if not keys:
+        logger.warning("generate_sermon_pdf_async: нет URL секций в urls=%r — возвращаем None", list(urls.keys()))
         await _safe_progress(progress_callback, "Нет контента", 100)
         return None
 
@@ -1818,12 +1892,19 @@ async def generate_sermon_pdf_async(
             "PDF: таймаут загрузки %ds, используем %d/%d секций",
             _ASYNC_FETCH_TIMEOUT, len(sections), total,
         )
-        # Отменяем незавершённые задачи (executor threads завершатся сами)
+        # Незавершённые executor-потоки нельзя прервать через cancel() —
+        # они завершатся сами по HTTP-таймауту (_fetch_url timeout=20s).
+        # cancel() лишь предотвращает обработку результата в event loop.
         for task in tasks:
             if not task.done():
                 task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
     if not sections:
+        logger.warning("generate_sermon_pdf_async: все секции вернули пустой контент (keys=%r) — возвращаем None", keys)
         await _safe_progress(progress_callback, "Нет контента", 100)
         return None
 
@@ -1848,4 +1929,11 @@ async def generate_sermon_pdf_async(
 
     status = "Готово" if result else "Ошибка"
     await _safe_progress(progress_callback, status, 100)
+    if not result:
+        logger.warning(
+            "generate_sermon_pdf_async: _gen_wkhtmltopdf и _gen_weasyprint оба вернули None/False "
+            "для output_path=%r — возвращаем None",
+            output_path,
+        )
+        return None
     return result

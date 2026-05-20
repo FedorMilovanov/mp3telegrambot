@@ -1,0 +1,542 @@
+#!/usr/bin/env python3
+"""
+Clips & Montage rendering — render_clip, create_clip_snapshot,
+build_clip_caption, render_montage_short, create_extras_candidates.
+Извлечено из bot.py строки 11169–11354, 11921–12239.
+"""
+from core.globals import (
+    DOWNLOAD_DIR, THUMBS_DIR,
+    GEMINI_CLIENTS, HAS_GEMINI,        # FIX render
+    gemini_generate,                    # FIX render
+)
+from core.database import GEMINI_MODEL       # FIX render
+from services.ffmpeg import _get_video_encoder
+from services.ffmpeg import _find_silence_end    # FIX render
+from core.utils import cleanup_files, format_timestamp
+from services.shorts_video import _build_links_block  # FIX render
+from core.text_utils import _clean_field, title_case_fragment  # FIX render
+from core.core_utils import time_to_seconds                      # FIX: moved to core_utils (был в json_parser)
+from core.prompts import EXTRAS_PROMPT                          # FIX render
+
+import asyncio
+import json       # FIX render
+import logging
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+# types — из google.genai
+try:
+    from google.genai import types
+except ImportError:
+    types = None
+
+logger = logging.getLogger(__name__)
+
+async def render_clip(
+    source_video_path: Path,
+    output_path: Path,
+    start_seconds: int,
+    end_seconds: int,
+) -> bool:
+    """
+    Вырезает длинный clip из исходного видео через ffmpeg.
+    Сохраняет оригинальное соотношение сторон (16:9 или как есть).
+    Без вертикальной трансформации — clips не для Shorts.
+    Возвращает True при успехе.
+    """
+    try:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            logger.warning("render_clip: ffmpeg не найден")
+            return False
+        if not source_video_path.exists():
+            logger.warning(f"render_clip: исходный файл не найден: {source_video_path}")
+            return False
+        if end_seconds <= start_seconds:
+            logger.warning(f"render_clip: невалидный диапазон {start_seconds}..{end_seconds}")
+            return False
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Корректируем точку конца до ближайшей паузы
+        adjusted_end = await _find_silence_end(source_video_path, float(end_seconds), search_window=6.0)
+        if abs(adjusted_end - end_seconds) > 0.1:
+            logger.info(f"Clip end adjusted: {end_seconds}s → {adjusted_end:.1f}s (silence snap)")
+            end_seconds = int(round(adjusted_end))
+        clip_duration = end_seconds - start_seconds
+        if clip_duration <= 0:
+            logger.warning("render_clip: clip_duration ≤ 0 после коррекции паузы")
+            return False
+
+        _enc, _quality, _preset = _get_video_encoder()
+        # Clips: чуть лучше качество чем у shorts — cq/crf 22 вместо 23
+        _quality_clip = ["-rc", "vbr", "-cq", "22"] if _enc == "h264_nvenc" else ["-crf", "22"]
+        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        cmd = [
+            ffmpeg,
+            *_hwaccel,
+            "-ss", str(start_seconds),
+            "-i", str(source_video_path),
+            "-t", str(clip_duration),
+            "-c:v", _enc,
+            *_preset,
+            *_quality_clip,
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            "-y",
+            str(output_path),
+        ]
+
+        proc = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=900),
+        )
+        if proc.returncode != 0:
+            stderr_tail = (proc.stderr or '')[-800:]
+            # ffmpeg на Windows иногда завершается с кодом != 0 после "received signal 2"
+            # (SIGINT от родительского процесса), но файл при этом уже записан корректно.
+            # Если файл существует и не пуст — считаем успехом.
+            file_ok = output_path.exists() and output_path.stat().st_size > 0
+            if file_ok and "received signal 2" in stderr_tail:
+                logger.info(
+                    f"render_clip: ffmpeg вышел по signal 2, но файл создан — "
+                    f"считаем успехом (rc={proc.returncode})"
+                )
+            else:
+                logger.warning(f"render_clip ffmpeg error: {stderr_tail}")
+                return False
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            logger.warning("render_clip: выходной файл не создан или пуст")
+            return False
+
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        logger.info(
+            f"Clip rendered: {output_path.name} "
+            f"({start_seconds}s..{end_seconds}s, {clip_duration}s, {size_mb:.1f}MB)"
+        )
+        return True
+
+    except subprocess.TimeoutExpired:
+        logger.warning("render_clip: ffmpeg timeout")
+        return False
+    except Exception as e:
+        logger.warning(f"render_clip error: {type(e).__name__}: {e}")
+        return False
+
+
+async def create_clip_snapshot(
+    video_path: Path,
+    snapshot_path: Path,
+    clip_duration_seconds: float,
+) -> bool:
+    """
+    Извлекает кадр-постер из clip (20% от длины — раньше чем у Shorts,
+    т.к. clips начинаются с содержательного момента).
+    Возвращает True при успехе.
+    """
+    try:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg or not video_path.exists():
+            return False
+        seek_time = max(2.0, clip_duration_seconds * 0.20)
+        cmd = [
+            ffmpeg,
+            "-ss", str(seek_time),
+            "-i", str(video_path),
+            "-vframes", "1",
+            "-q:v", "2",
+            "-y",
+            str(snapshot_path),
+        ]
+        proc = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=60),
+        )
+        if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
+            logger.warning(f"create_clip_snapshot: не удалось извлечь кадр из {video_path.name}")
+            return False
+        logger.info(f"Clip snapshot: {snapshot_path.name} (t={seek_time:.1f}s)")
+        return True
+    except Exception as e:
+        logger.warning(f"create_clip_snapshot error: {type(e).__name__}: {e}")
+        return False
+
+
+def build_clip_caption(
+    candidate: dict,
+    performer: str,
+    real_author: str,
+    real_event: str,
+    format_name: str,
+    yt_url: str = "",
+    vk_url: str = "",
+    rutube_url: str = "",
+) -> str:
+    """
+    Строит подпись для длинного clip-фрагмента.
+    Компактный стиль: заголовок - Автор ✂️ [старт — конец], ссылки с эмодзи, хэштеги.
+    """
+    title        = (candidate.get("title") or "").strip()
+    tags         = candidate.get("hashtags") or []
+    start_s      = candidate.get("start_seconds", 0)
+    end_s        = candidate.get("end_seconds", 0)
+    author_label = real_author or performer or ""
+
+    def _fmt(secs: int) -> str:
+        m, s = divmod(int(secs), 60)
+        h, m = divmod(m, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    kind = (candidate.get("kind") or "").strip()
+    _KIND_EMOJI = {
+        "sermon_highlight":   "🔥",
+        "conviction_appeal":  "⚡",
+        "illustration_story": "📖",
+        "doctrinal_moment":   "💡",
+        "application_block":  "👣",
+        # QA-типы оставляем ✂️
+    }
+    clip_emoji = _KIND_EMOJI.get(kind, "✂️")
+    range_label = f"{clip_emoji} [{_fmt(start_s)} — {_fmt(end_s)}]"
+
+    title_tc = title_case_fragment(title) if title else ""
+    if title_tc and author_label:
+        if title_tc[-1] in ("?", "!"):
+            first_line = f"{title_tc} {author_label} {range_label}"
+        else:
+            first_line = f"{title_tc} — {author_label} {range_label}"
+    elif title_tc:
+        first_line = f"{title_tc} {range_label}"
+    else:
+        first_line = range_label
+
+    links_block = _build_links_block(yt_url, rutube_url, vk_url)
+    tags_line   = " ".join(f"#{t}" for t in tags[:4]) if tags else ""
+
+    parts = [p for p in [first_line, links_block, tags_line] if p]
+    return "\n\n".join(parts)
+
+
+
+async def render_montage_short(
+    source_video_path: Path,
+    output_path: Path,
+    fragments: list[dict],
+    *,
+    visual_mode: str = "full_frame_vertical",
+) -> bool:
+    """Склеивает несколько фрагментов в один Short 9:16 через ffmpeg concat."""
+    try:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg or not source_video_path.exists() or not fragments:
+            return False
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        loop = asyncio.get_running_loop()
+
+        if visual_mode == "crop_zoom":
+            vf = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=720:1280"
+            _use_fc = False
+        else:
+            vf = (
+                "[0:v]split=2[bg][fg];"
+                "[bg]scale=720:1280,gblur=sigma=20[blurred];"
+                "[fg]scale=720:-2[small];"
+                "[blurred][small]overlay=(W-w)/2:(H-h)/2[out]"
+            )
+            _use_fc = True
+
+        temp_parts: list[Path] = []
+        concat_list_path: Path | None = None
+        _enc, _quality, _preset = _get_video_encoder()
+        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        for i, frag in enumerate(fragments):
+            part_path = output_path.parent / f"{output_path.stem}_part{i}.mp4"
+            temp_parts.append(part_path)
+            start_s = frag["start_seconds"]
+            end_s   = frag["end_seconds"]
+            dur     = end_s - start_s
+            if dur <= 0:
+                continue
+            _vf_args_m = (
+                ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"]
+                if _use_fc else ["-vf", vf]
+            )
+            cmd = [
+                ffmpeg, *_hwaccel,
+                "-ss", str(start_s), "-i", str(source_video_path),
+                "-t", str(dur), *_vf_args_m,
+                "-c:v", _enc, *_preset, *_quality,
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                "-y", str(part_path),
+            ]
+            proc = await loop.run_in_executor(
+                None, lambda c=cmd: subprocess.run(c, capture_output=True, text=True, timeout=120)
+            )
+            if proc.returncode != 0 or not part_path.exists():
+                logger.warning(f"Montage: фрагмент {i} не отрендерен")
+                for p in temp_parts: p.unlink(missing_ok=True)
+                return False
+
+        existing_parts = [p for p in temp_parts if p.exists() and p.stat().st_size > 0]
+        if len(existing_parts) < 2:
+            for p in temp_parts: p.unlink(missing_ok=True)
+            return False
+
+        concat_list_path = output_path.parent / f"{output_path.stem}_concat.txt"
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for part_path in existing_parts:
+                f.write(f"file '{part_path.resolve()}'\n")
+
+        concat_cmd = [
+            ffmpeg, *_hwaccel, "-f", "concat", "-safe", "0", "-i", str(concat_list_path),
+            "-c:v", _enc, *_preset, *_quality,
+            "-c:a", "aac", "-b:a", "128k",
+            "-vsync", "vfr",    # убирает drift между фрагментами с разным GOP
+            "-af", "aresample=async=1",  # синхронизирует аудио после склейки
+            "-movflags", "+faststart",
+            "-y", str(output_path),
+        ]
+        proc = await loop.run_in_executor(
+            None, lambda: subprocess.run(concat_cmd, capture_output=True, text=True, timeout=300)
+        )
+        for p in temp_parts: p.unlink(missing_ok=True)
+        concat_list_path.unlink(missing_ok=True)
+
+        if proc.returncode != 0 or not output_path.exists():
+            logger.warning(f"Montage: concat failed: {(proc.stderr or '')[-300:]}")
+            return False
+
+        total_dur = sum(f["end_seconds"] - f["start_seconds"] for f in fragments)
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        logger.info(f"Montage rendered: {output_path.name} ({len(existing_parts)} фрагм., {total_dur}s, {size_mb:.1f}MB)")
+        return True
+    except subprocess.TimeoutExpired:
+        logger.warning("render_montage_short: ffmpeg timeout")
+        for p in temp_parts:
+            try: p.unlink(missing_ok=True)
+            except Exception: pass
+        if concat_list_path:
+            try: concat_list_path.unlink(missing_ok=True)
+            except Exception: pass
+        return False
+    except Exception as e:
+        logger.warning(f"render_montage_short error: {type(e).__name__}: {e}")
+        for p in temp_parts:
+            try: p.unlink(missing_ok=True)
+            except Exception: pass
+        if concat_list_path:
+            try: concat_list_path.unlink(missing_ok=True)
+            except Exception: pass
+        return False
+
+
+async def create_extras_candidates(
+    ai_data: dict,
+    title: str,
+    performer: str,
+    duration: int,
+) -> dict:
+    """
+    Один text-only Gemini запрос на Montage + Highlights.
+    Возвращает:
+    {
+        "montage_candidates": [...],
+        "highlights_candidates": [...]
+    }
+    """
+    if not GEMINI_CLIENTS or not HAS_GEMINI:
+        return {"montage_candidates": [], "highlights_candidates": []}
+
+    try:
+        format_name      = (ai_data or {}).get("format", "other") or "other"
+        real_author      = (ai_data or {}).get("real_author", "") or performer or ""
+        analysis_summary = (ai_data or {}).get("analysis_summary", "") or ""
+        argument_arc     = (ai_data or {}).get("argument_arc", "") or ""
+        key_categories   = "; ".join((ai_data or {}).get("key_categories", []) or [])
+        timestamps       = (ai_data or {}).get("timestamps", "") or ""
+
+        prompt = EXTRAS_PROMPT.format(
+            title=title,
+            duration=format_timestamp(duration),
+            format_name=format_name,
+            real_author=real_author,
+            analysis_summary=analysis_summary[:800],
+            argument_arc=argument_arc[:700],
+            timestamps=timestamps[:1200],
+            key_categories=key_categories,
+        )
+
+        async def _call(client):
+            return await client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=14000,
+                ),
+            )
+
+        response = await gemini_generate(GEMINI_CLIENTS, _call)
+
+        raw_text = ""
+        try:
+            raw_text = response.text or ""
+        except Exception:
+            if response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if not getattr(part, "thought", False):
+                        raw_text += part.text or ""
+
+        if not raw_text.strip():
+            return {"montage_candidates": [], "highlights_candidates": []}
+
+        clean = re.sub(r"^```[a-z]*\s*", "", raw_text.strip())
+        clean = re.sub(r"\s*```$", "", clean).strip()
+        s, e = clean.find("{"), clean.rfind("}")
+        if s == -1 or e <= s:
+            return {"montage_candidates": [], "highlights_candidates": []}
+
+        try:
+            data = json.loads(clean[s:e + 1])
+        except json.JSONDecodeError:
+            logger.warning("Extras candidates: JSONDecodeError")
+            return {"montage_candidates": [], "highlights_candidates": []}
+
+        montage_candidates = []
+        for item in (data.get("montage_candidates", []) or [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            theme = _clean_field(str(item.get("theme", "")))
+            clip_title = _clean_field(str(item.get("title", "")))
+            raw_tags = item.get("hashtags", [])
+            hashtags = [
+                str(t).strip().lstrip("#")
+                for t in (raw_tags if isinstance(raw_tags, list) else [])
+                if str(t).strip()
+            ][:4]
+
+            frags_raw = item.get("fragments", [])
+            if not isinstance(frags_raw, list) or len(frags_raw) < 3:
+                continue
+
+            parsed_frags = []
+            total_dur = 0
+            prev_start = None
+
+            for frag in frags_raw:
+                if not isinstance(frag, dict):
+                    continue
+                ss = time_to_seconds(str(frag.get("start", "")).strip())
+                ee = time_to_seconds(str(frag.get("end", "")).strip())
+                if ss is None or ee is None or ee <= ss or ee > duration + 5:
+                    continue
+                fd = ee - ss
+                if fd < 7 or fd > 30:
+                    continue
+                if prev_start is not None and abs(ss - prev_start) < 90:
+                    continue
+                parsed_frags.append({
+                    "start_seconds": ss,
+                    "end_seconds": ee,
+                    "summary": _clean_field(str(frag.get("summary", ""))),
+                })
+                prev_start = ss
+                total_dur += fd
+
+            if len(parsed_frags) >= 3 and 45 <= total_dur <= 100:
+                montage_candidates.append({
+                    "theme": theme,
+                    "title": clip_title[:120],
+                    "hashtags": hashtags,
+                    "fragments": parsed_frags,
+                    "total_dur": total_dur,
+                })
+
+        highlights_candidates = []
+        hl = data.get("highlights", {})
+        if isinstance(hl, dict):
+            clip_title = _clean_field(str(hl.get("title", "")))
+            raw_tags = hl.get("hashtags", [])
+            hashtags = [
+                str(t).strip().lstrip("#")
+                for t in (raw_tags if isinstance(raw_tags, list) else [])
+                if str(t).strip()
+            ][:4]
+
+            frags_raw = hl.get("fragments", [])
+            parsed_frags = []
+            total_dur = 0
+
+            if isinstance(frags_raw, list):
+                for frag in frags_raw:
+                    if not isinstance(frag, dict):
+                        continue
+                    ss = time_to_seconds(str(frag.get("start", "")).strip())
+                    ee = time_to_seconds(str(frag.get("end", "")).strip())
+                    if ss is None or ee is None or ee <= ss or ee > duration + 5:
+                        continue
+                    fd = ee - ss
+                    if fd < 4 or fd > 18:
+                        continue
+                    parsed_frags.append({
+                        "start_seconds": ss,
+                        "end_seconds": ee,
+                        "hook": _clean_field(str(frag.get("hook", ""))),
+                    })
+                    total_dur += fd
+
+            if len(parsed_frags) >= 4 and 50 <= total_dur <= 100:
+                highlights_candidates.append({
+                    "title": clip_title[:120],
+                    "hashtags": hashtags,
+                    "fragments": parsed_frags,
+                    "total_dur": total_dur,
+                })
+
+        logger.info(
+            f"Extras candidates: montage={len(montage_candidates)} "
+            f"highlights={len(highlights_candidates)}"
+        )
+        return {
+            "montage_candidates": montage_candidates,
+            "highlights_candidates": highlights_candidates,
+        }
+
+    except Exception as e:
+        logger.warning(f"create_extras_candidates error: {type(e).__name__}: {e}")
+        return {"montage_candidates": [], "highlights_candidates": []}
+
+
+def build_montage_caption(
+    theme: str, title: str, performer: str, real_author: str,
+    format_name: str, fragment_count: int, hashtags: list[str],
+    yt_url: str = "", vk_url: str = "", rutube_url: str = "",
+) -> str:
+    author_label = real_author or performer or ""
+    title_tc     = title_case_fragment(title) if title else ""
+    first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
+    context      = f"Тематическая подборка: {theme}" if theme else ""
+    links_block  = _build_links_block(yt_url, rutube_url, vk_url)
+    tags_line    = " ".join(f"#{t}" for t in hashtags[:4]) if hashtags else ""
+    parts = [p for p in [first_line, context, links_block, tags_line] if p]
+    return "\n\n".join(parts)
+
+
+def build_highlights_caption(
+    title: str, performer: str, real_author: str, format_name: str,
+    fragment_count: int, hashtags: list[str],
+    yt_url: str = "", vk_url: str = "", rutube_url: str = "",
+) -> str:
+    author_label = real_author or performer or ""
+    title_tc     = title_case_fragment(title) if title else ""
+    first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
+    context      = f"Лучшие моменты ({fragment_count} фрагментов)"
+    links_block  = _build_links_block(yt_url, rutube_url, vk_url)
+    tags_line    = " ".join(f"#{t}" for t in hashtags[:4]) if hashtags else ""
+    parts = [p for p in [first_line, context, links_block, tags_line] if p]
+    return "\n\n".join(parts)
+
+

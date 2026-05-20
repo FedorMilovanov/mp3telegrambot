@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""
+Utils — cleanup_files, prepare_thumbnail, format_timestamp,
+check_rate_limit, update_rate_limit, is_media_url, parse_title.
+Извлечено из bot.py строки 730–1045.
+"""
+from core.globals import (
+    BOT_TOKEN, DOWNLOAD_DIR, THUMBS_DIR, HAS_PILLOW,
+    _video_processing_locks, _video_locks_mutex, _get_video_lock,
+    # FIX #33: импортируем константы лимитов из globals
+    COOLDOWN_SECONDS, DAILY_LIMIT,
+    DB_PATH, _THUMBS_CLEANUP_INTERVAL,
+)
+from core.database import (
+    db_get, db_init, settings_get, settings_get_all,
+    # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
+    WHITELIST_IDS, CACHE_TTL_DAYS,
+)
+
+import logging
+import re
+import sqlite3          # FIX #21: не было импорта
+import time             # FIX #21: не было импорта
+from datetime import date  # FIX #21: не было импорта
+from io import BytesIO
+from pathlib import Path
+
+# FIX #21: PIL Image — импортируем только если Pillow установлен
+if HAS_PILLOW:
+    from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+VIDEO_REGEX = re.compile(
+    r"(?:https?://)?"
+    r"(?:www\.)?"
+    r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/live/)"
+    r"[\w\-]{11}"
+)
+
+PLAYLIST_REGEX = re.compile(
+    r"(?:https?://)?"
+    r"(?:www\.)?"
+    r"youtube\.com/(?:playlist\?list=|watch\?.*list=)"
+    r"[\w\-]+"
+)
+
+TITLE_SEPARATORS = [" — ", " - ", " | ", " // ", ": ", " – "]
+
+# FIX: _THUMBS_LAST_CLEANUP мутируется через global в cleanup_files —
+# переменная должна быть определена в этом модуле, а не импортироваться
+_THUMBS_LAST_CLEANUP: float = 0.0
+
+# ─── Базовые настройки yt-dlp ─────────────────────────────────
+# FIX #5: PYTHON_EXEC и COOKIES_FILE перенесены в ffmpeg.py (они нужны там).
+# YTDLP_BASE_ARGS строится один раз в ffmpeg.py и импортируется сюда.
+from services.ffmpeg import YTDLP_BASE_ARGS  # noqa: E402 (импорт после констант — намеренно
+
+# ─── Вспомогательные функции ─────────────────────────────────
+
+def is_media_url(text: str) -> bool:
+    return bool(VIDEO_REGEX.search(text) or PLAYLIST_REGEX.search(text))
+
+
+def is_playlist_url(text: str) -> bool:
+    return bool(PLAYLIST_REGEX.search(text))
+
+
+def extract_media_url(text: str) -> str | None:
+    url_match = re.search(r"(https?://[^\s]+)", text)
+    if url_match:
+        url = url_match.group(0)
+        if "youtube.com" in url or "youtu.be" in url:
+            return url
+    match = PLAYLIST_REGEX.search(text) or VIDEO_REGEX.search(text)
+    return match.group(0) if match else None
+
+
+def parse_title(full_title: str, channel_name: str = "") -> tuple[str, str]:
+    full_title = full_title.strip()
+    for sep in TITLE_SEPARATORS:
+        if sep in full_title:
+            parts = full_title.split(sep, 1)
+            left  = parts[0].strip()
+            right = parts[1].strip()
+            if not left or not right:
+                continue
+            channel_lower = channel_name.lower().strip()
+            if channel_lower and channel_lower in left.lower():
+                return left, right
+            elif channel_lower and channel_lower in right.lower():
+                return right, left
+            left_words  = len(left.split())
+            right_words = len(right.split())
+            if left_words <= 4 and right_words > left_words:
+                return left, right
+            if right_words <= 4 and left_words > right_words:
+                return right, left
+            return left, right
+    if channel_name:
+        return channel_name, full_title
+    return "", full_title
+
+
+def _crop_black_bars_image(img):
+    # Обрезает черные полосы (letterbox/pillarbox) с изображения
+    THRESHOLD = 18
+    MIN_STRIP = 4
+    try:
+        import numpy as np
+        arr = np.array(img.convert("L"))
+        h, w = arr.shape
+        top = 0
+        while top < h and arr[top, :].mean() < THRESHOLD:
+            top += 1
+        bottom = h - 1
+        while bottom > top and arr[bottom, :].mean() < THRESHOLD:
+            bottom -= 1
+        bottom += 1
+        left = 0
+        while left < w and arr[:, left].mean() < THRESHOLD:
+            left += 1
+        right = w - 1
+        while right > left and arr[:, right].mean() < THRESHOLD:
+            right -= 1
+        right += 1
+        crop_top    = top    if top    >= MIN_STRIP else 0
+        crop_bottom = bottom if h - bottom >= MIN_STRIP else h
+        crop_left   = left   if left   >= MIN_STRIP else 0
+        crop_right  = right  if w - right >= MIN_STRIP else w
+        if (crop_top, crop_left, crop_bottom, crop_right) != (0, 0, h, w):
+            img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
+    except Exception:
+        pass
+    return img
+
+
+def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
+    try:
+        if HAS_PILLOW:
+            with Image.open(thumb_path) as img:
+                img = img.convert("RGB")
+                # Убираем черные полосы перед кропом в квадрат
+                img = _crop_black_bars_image(img)
+                width, height = img.size
+                min_side = min(width, height)
+                left   = (width  - min_side) // 2
+                top    = (height - min_side) // 2
+                right  = left + min_side
+                bottom = top  + min_side
+                img = img.crop((left, top, right, bottom))
+                img = img.resize((480, 480), Image.LANCZOS)
+                buffer = BytesIO()
+                img.save(buffer, format="JPEG", quality=85)
+                buffer.seek(0)
+                buffer.name = "thumb.jpg"
+                return buffer
+        else:
+            # Без Pillow: читаем файл, но проверяем что это действительно JPEG
+            # (по магическим байтам FF D8 FF)
+            raw = thumb_path.read_bytes()
+            if raw[:2] == b"\xff\xd8":
+                buffer = BytesIO(raw)
+                buffer.name = "thumb.jpg"
+                return buffer
+            # Не JPEG — Telegram может не принять, пропускаем thumbnail
+            logger.warning(f"prepare_thumbnail: {thumb_path.name} не является JPEG (нет Pillow для конвертации)")
+            return None
+    except Exception as e:
+        logger.warning(f"Не удалось подготовить обложку: {e}")
+        return None
+
+
+def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
+    for f in DOWNLOAD_DIR.glob(f"{media_id}*"):
+        if not f.is_file():
+            continue
+        # Сохраняем mp3 и обложку для повторного использования
+        if keep_mp3 and (f.suffix == ".mp3" or "_thumb" in f.name):
+            continue
+        # Сохраняем nosub-файлы: нужны для кнопки 🚫Sub в течение 24ч.
+        # Их удаляет cleanup_nosub_files() по расписанию.
+        if "_nosub.mp4" in f.name:
+            continue
+        f.unlink(missing_ok=True)
+    # Удаляем устаревшие обложки из THUMBS_DIR (старше CACHE_TTL_DAYS)
+    # FIXED #36: обход всего THUMBS_DIR не чаще одного раза в час
+    global _THUMBS_LAST_CLEANUP
+    _now = time.time()
+    if _now - _THUMBS_LAST_CLEANUP >= _THUMBS_CLEANUP_INTERVAL:
+        _THUMBS_LAST_CLEANUP = _now
+        try:
+            _thumbs_cutoff = _now - CACHE_TTL_DAYS * 86400
+            for _tf in THUMBS_DIR.iterdir():
+                if _tf.is_file() and _tf.stat().st_mtime < _thumbs_cutoff:
+                    _tf.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def cleanup_nosub_files(max_age_hours: int = 24) -> int:
+    """Удаляет nosub-файлы старше max_age_hours часов."""
+    cutoff = time.time() - max_age_hours * 3600
+    deleted = 0
+    try:
+        for f in DOWNLOAD_DIR.glob("*_nosub.mp4"):
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+                deleted += 1
+        if deleted:
+            logger.info(f"Автоочистка: удалено {deleted} nosub-файлов старше {max_age_hours}ч")
+    except Exception as e:
+        logger.warning(f"cleanup_nosub_files error: {e}")
+    return deleted
+
+# Автоочистка nosub-файлов — вызываем после определения функции
+cleanup_nosub_files()
+
+
+def format_timestamp(seconds: float) -> str:
+    seconds = max(0, seconds)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+# ─── Защита от спама ─────────────────────────────────────────
+
+def check_rate_limit(user_id: int) -> tuple[bool, str]:
+    """Проверяет лимиты. Возвращает (разрешено, причина). Данные хранятся в SQLite.
+
+    Намеренно использует обычное чтение (без EXCLUSIVE): check и update разделены
+    по дизайну — update вызывается только после успешной обработки, поэтому
+    объединить их в одну транзакцию невозможно без изменения архитектуры.
+    Гонка при конкурентных запросах от одного пользователя маловероятна
+    на практике (Telegram не шлёт параллельные updates от одного user_id).
+    Атомарность записи гарантируется в update_rate_limit через единый SQL UPSERT.
+    """
+    if user_id in WHITELIST_IDS:
+        return True, ""
+
+    now   = time.time()
+    today = str(date.today())
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT last_request, daily_count, daily_date FROM rate_limit WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+    except Exception as e:
+        logger.warning("check_rate_limit DB error: %s", e, exc_info=True)
+        return True, ""  # при ошибке БД не блокируем пользователя
+
+    last_request = row[0] if row else 0.0
+    daily_count  = row[1] if row else 0
+    daily_date   = row[2] if row else ""
+
+    # Антиспам: cooldown между запросами
+    elapsed = now - last_request
+    if elapsed < COOLDOWN_SECONDS:
+        wait = int(COOLDOWN_SECONDS - elapsed)
+        return False, (
+            f"⏳ Подождите ещё {wait} сек.\n"
+            f"Ограничение: 1 запрос в "
+            + (f"{COOLDOWN_SECONDS // 60} мин." if COOLDOWN_SECONDS >= 60 else f"{COOLDOWN_SECONDS} сек.")
+        )
+
+    # Дневной лимит
+    if daily_date != today:
+        daily_count = 0
+    if daily_count >= DAILY_LIMIT:
+        return False, (
+            f"📵 Дневной лимит исчерпан ({DAILY_LIMIT} видео/день).\n"
+            f"Приходите завтра! 🙏"
+        )
+
+    return True, ""
+
+
+def update_rate_limit(user_id: int) -> None:
+    """Обновляет счётчики после запроса в SQLite.
+
+    Атомарность обеспечивается единым SQL UPSERT: инкремент счётчика
+    вычисляется прямо в SQL без отдельного SELECT + Python-логики.
+    Это устраняет race condition между SELECT и INSERT из предыдущей версии
+    (там BEGIN EXCLUSIVE + отдельный SELECT + INSERT были тремя шагами).
+    SQLite сам сериализует одиночные write-запросы — BEGIN EXCLUSIVE не нужен.
+    """
+    if user_id in WHITELIST_IDS:
+        return
+    today = str(date.today())
+    now   = time.time()
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute(
+                """
+                INSERT INTO rate_limit (user_id, last_request, daily_count, daily_date)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    last_request = excluded.last_request,
+                    daily_count  = CASE
+                                       WHEN daily_date = excluded.daily_date
+                                       THEN daily_count + 1
+                                       ELSE 1
+                                   END,
+                    daily_date   = excluded.daily_date
+                """,
+                (user_id, now, today)
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"update_rate_limit DB error: {e}")
+
+
+# ─── Gemini AI анализ ─────────────────────────────────────────
+
+# ─── Gemini AI анализ ─────────────────────────────────────────
+
+
+# ─── Безопасное логирование — маскировка секретов ─────────────
+
+import re as _re_utils
+_API_KEY_RE = _re_utils.compile(r'AIza[0-9A-Za-z_-]{35}')
+
+def mask_api_key(text: str) -> str:
+    """Маскирует API-ключи вида AIza... для безопасного логирования.
+    Используется в logger.error/warning перед выводом str(e).
+    """
+    return _API_KEY_RE.sub('***APIKEY***', str(text))
