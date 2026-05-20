@@ -18,7 +18,8 @@ BUG-B01 fix: docstring приведён в соответствие с реал�
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS,           # FIX gemini_analyze
-    is_quota_error, is_overload_error,  # FIX gemini_analyze
+    is_quota_error, is_overload_error,  # FIX gemini_analyze,
+    make_audio_config,
 )
 from core.database import GEMINI_MODEL     # FIX gemini_analyze
 from core.json_parser import _parse_gemini_response  # FIX gemini_analyze
@@ -156,9 +157,11 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     config=types.UploadFileConfig(mime_type="audio/mpeg", display_name=f"{performer} - {title}")
                 )
                 # BUG-B02: таймаут на обработку файла Gemini
-                _poll_start = asyncio.get_event_loop().time()
+                # AUDIT C4: get_event_loop() → get_running_loop() (Python 3.12+ deprecated)
+                _loop = asyncio.get_running_loop()
+                _poll_start = _loop.time()
                 while uf.state == "PROCESSING":
-                    if asyncio.get_event_loop().time() - _poll_start > _MAX_UPLOAD_WAIT:
+                    if _loop.time() - _poll_start > _MAX_UPLOAD_WAIT:
                         raise TimeoutError(
                             f"Gemini file processing timeout ({_MAX_UPLOAD_WAIT}s)"
                         )
@@ -208,7 +211,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             _c.aio.models.generate_content(
                                 model=GEMINI_MODEL,
                                 contents=[_ap, prompt],
-                                config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=65536),
+                                config=make_audio_config(temperature=0.1, max_output_tokens=65536),
                             ),
                             timeout=960.0,
                         )

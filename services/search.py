@@ -77,9 +77,19 @@ def _best_match(results: list, title: str, duration: int, platform: str,
     candidates: list[tuple[float, str, str]] = []   # (score, url, log_line)
 
     for item in results:
+        # AUDIT M13: пропускаем элементы без id для RuTube — иначе URL "https://rutube.ru/video//"
+        # пройдёт скоринг и попадёт в кэш как "найденная альт-ссылка".
+        if platform == "rutube":
+            _rid = (item.get("id") or "").strip()
+            if not _rid:
+                continue
+            item_url = f"https://rutube.ru/video/{_rid}/"
+        else:
+            item_url = item.get("url") or item.get("player", "")
+            if not item_url:
+                continue
         item_title    = item.get("title", "") or item.get("name", "")
         item_duration = _normalize_duration(item.get("duration", 0))
-        item_url      = f"https://rutube.ru/video/{item.get('id','')}/" if platform == "rutube" else (item.get("url") or item.get("player", ""))
         if duration > 300 and 0 < item_duration < 60:
             continue
         norm_item  = _normalize(item_title)
@@ -584,19 +594,7 @@ def build_platform_links(url: str = "", rutube_url: str = "", vk_url: str = "") 
 
 
 
-# ─── Группировка настроек для /settings ─────────────────────
-_SETTINGS_GROUPS: list[tuple[str, list[str | tuple[str, str]]]] = [
-    # ── Конспект и разборы ──────────────────────────────────────
-    ("📋 Конспект", ["synopsis", "caption_full_text", "generate_pdf"]),
-    ("📖 Разборы",  ["study_analysis", "reflection_application"]),
-    ("📊 Компактные", ["analytics", "questions", "terms"]),
-    # ── Шортс ───────────────────────────────────────────────────
-    ("✂️ Шортс",   ["shorts", "shorts_audio_normalize", "shorts_subtitles",
-                     "shorts_subtitles_karaoke", "shorts_subtitles_light",
-                     "shorts_title_poster", "shorts_snapshot",
-                     "shorts_montage", "shorts_highlights",
-                     "__speed__"]),
-    # ── Клипы ───────────────────────────────────────────────────
-    ("🎬 Клипы",    ["clips", "clips_snapshot"]),
-]
+# AUDIT M19: _SETTINGS_GROUPS переехал в core/database.py как SETTINGS_GROUPS.
+# Оставляем алиас для обратной совместимости (вдруг где-то ещё импортируется).
+from core.database import SETTINGS_GROUPS as _SETTINGS_GROUPS  # noqa: F401
 

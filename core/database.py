@@ -14,6 +14,7 @@ import hashlib  # FIX #6: был не импортирован — нужен д
 import json
 import logging
 import os          # FIX #6: был не импортирован — нужен для os.getenv
+import re
 import sqlite3
 import time
 
@@ -23,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
+        # AUDIT M17: WAL + busy_timeout — для безопасной параллельной записи
+        # rate_limit / video_cache / bot_settings из разных async-обработчиков.
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except Exception:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS video_cache (
                 video_id        TEXT PRIMARY KEY,
@@ -112,21 +121,48 @@ def db_init():
             conn.execute("ALTER TABLE short_trims ADD COLUMN nosub_expiry INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # Колонка уже есть
+        # AUDIT M5: добавляем длительность исходного видео — для ограничения end_s при ретриме
+        try:
+            conn.execute("ALTER TABLE short_trims ADD COLUMN source_duration INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Колонка уже есть
         conn.commit()
         if migrated:
             pass
 
 def db_cleanup_old_records():
-    """Удаляет записи кэша старше CACHE_TTL_DAYS. Вызывать после определения констант."""
+    """Удаляет записи кэша старше CACHE_TTL_DAYS. Вызывать после определения констант.
+
+    AUDIT M18: чистим и legacy-записи (updated_at=0) по created_at — иначе они копятся вечно.
+    """
     try:
         cutoff = int(time.time()) - CACHE_TTL_DAYS * 86400
         with sqlite3.connect(DB_PATH) as conn:
             deleted = conn.execute(
                 "DELETE FROM video_cache WHERE updated_at > 0 AND updated_at < ?", (cutoff,)
             ).rowcount
+            # AUDIT M18: legacy записи без updated_at — чистим по created_at
+            try:
+                legacy = conn.execute(
+                    "DELETE FROM video_cache WHERE updated_at = 0 AND created_at < ?",
+                    (cutoff,),
+                ).rowcount
+            except sqlite3.OperationalError:
+                legacy = 0
+            # AUDIT M9: чистим short_trims старше 7 дней
+            try:
+                trims_cutoff = int(time.time()) - 7 * 86400
+                trims = conn.execute(
+                    "DELETE FROM short_trims WHERE created_at < ?", (trims_cutoff,)
+                ).rowcount
+            except sqlite3.OperationalError:
+                trims = 0
             conn.commit()
-        if deleted:
-            logging.getLogger(__name__).info(f"db_cleanup: удалено {deleted} устаревших записей")
+        total = (deleted or 0) + (legacy or 0)
+        if total or trims:
+            logging.getLogger(__name__).info(
+                f"db_cleanup: video_cache -{total} (legacy {legacy}), short_trims -{trims}"
+            )
     except Exception as _ce:
         pass
 
@@ -242,27 +278,42 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
                     vk_url: str = "", rutube_url: str = "", performer: str = "",
                     real_author: str = "", real_event: str = "", format_name: str = "",
                     candidate_json: str = "{}", video_path_nosub: str = "",
-                    nosub_expiry: int = 0) -> None:
+                    nosub_expiry: int = 0, source_duration: int = 0) -> None:
+    """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
             INSERT OR REPLACE INTO short_trims
                 (short_id, video_path, start_seconds, end_seconds, visual_mode,
                  yt_url, vk_url, rutube_url, performer, real_author, real_event,
-                 format_name, candidate_json, video_path_nosub, nosub_expiry)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 format_name, candidate_json, video_path_nosub, nosub_expiry,
+                 source_duration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (short_id, video_path, start_seconds, end_seconds, visual_mode,
               yt_url, vk_url, rutube_url, performer, real_author, real_event,
-              format_name, candidate_json, video_path_nosub, nosub_expiry))
+              format_name, candidate_json, video_path_nosub, nosub_expiry,
+              source_duration))
         conn.commit()
 
 def short_trim_get(short_id: str) -> dict | None:
     with sqlite3.connect(DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT video_path, start_seconds, end_seconds, visual_mode, yt_url, vk_url, "
-            "rutube_url, performer, real_author, real_event, format_name, candidate_json, "
-            "video_path_nosub, nosub_expiry "
-            "FROM short_trims WHERE short_id = ?", (short_id,)
-        ).fetchone()
+        # AUDIT M5: добавлено поле source_duration
+        try:
+            row = conn.execute(
+                "SELECT video_path, start_seconds, end_seconds, visual_mode, yt_url, vk_url, "
+                "rutube_url, performer, real_author, real_event, format_name, candidate_json, "
+                "video_path_nosub, nosub_expiry, source_duration "
+                "FROM short_trims WHERE short_id = ?", (short_id,)
+            ).fetchone()
+            has_src_dur = True
+        except sqlite3.OperationalError:
+            # Колонка ещё не смигрировала — fallback на старую схему
+            row = conn.execute(
+                "SELECT video_path, start_seconds, end_seconds, visual_mode, yt_url, vk_url, "
+                "rutube_url, performer, real_author, real_event, format_name, candidate_json, "
+                "video_path_nosub, nosub_expiry "
+                "FROM short_trims WHERE short_id = ?", (short_id,)
+            ).fetchone()
+            has_src_dur = False
     if not row:
         return None
     return {
@@ -273,6 +324,7 @@ def short_trim_get(short_id: str) -> dict | None:
         "candidate_json": row[11] or "{}",
         "video_path_nosub": row[12] or "",
         "nosub_expiry": row[13] or 0,
+        "source_duration": (row[14] or 0) if has_src_dur else 0,
     }
 
 
@@ -428,6 +480,31 @@ async def asettings_get_all() -> dict[str, bool]:
     return await loop.run_in_executor(None, settings_get_all)
 
 
+# AUDIT M4: async-обёртки для shorts_speed_* — больше не блокируют event loop
+async def ashorts_speed_get() -> str:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, shorts_speed_get)
+
+
+async def ashorts_speed_cycle() -> str:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, shorts_speed_cycle)
+
+
+async def acheck_rate_limit(user_id: int):
+    """AUDIT M4: async-обёртка для check_rate_limit (вызывается в handle_message)."""
+    from core.utils import check_rate_limit
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, check_rate_limit, user_id)
+
+
+async def aupdate_rate_limit(user_id: int) -> None:
+    """AUDIT M4: async-обёртка для update_rate_limit."""
+    from core.utils import update_rate_limit
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, update_rate_limit, user_id)
+
+
 # ─── Маппинг каналов YouTube → RuTube / VK ───────────────────
 # YouTube-канал "Fedor Milovanov" → RuTube "Господь Бог - Сила Моя" (ID 1876662)
 #                                 → VK "† Господь Бог - Сила Моя! †" (vk_owner_id — заполнить!)
@@ -453,13 +530,22 @@ def load_channel_mappings():
 load_channel_mappings()
 
 def get_channel_mapping(channel_name: str) -> dict | None:
+    """AUDIT M8: subset-match по словам вместо fuzzy in.
+
+    Раньше "fedor" → "fedor milovanov" давало True (ложное совпадение).
+    Теперь нужно чтобы ВСЕ слова map_key входили в имя канала.
+    """
     if not channel_name:
         return None
     key = channel_name.lower().strip()
     if key in CHANNEL_MAP:
         return CHANNEL_MAP[key]
+    key_words = set(re.findall(r"\w+", key))
+    if not key_words:
+        return None
     for map_key, mapping in CHANNEL_MAP.items():
-        if map_key in key or key in map_key:
+        map_words = set(re.findall(r"\w+", map_key))
+        if map_words and map_words.issubset(key_words):
             return mapping
     return None
 MAX_FILE_SIZE_MB  = 50
@@ -479,9 +565,21 @@ if _AUDIO_ANALYSIS_MODE not in {"deep", "balanced", "fast"}:
     _AUDIO_ANALYSIS_MODE = "deep"
 
 
+def _hash_prompts_source() -> str:
+    """AUDIT L10: SHA от исходника core/prompts.py — любое изменение промта
+    автоматически инвалидирует кэш. Без необходимости вручную бампить
+    PROMPT_SCHEMA_VERSION."""
+    try:
+        from pathlib import Path as _P
+        src_path = _P(__file__).parent / "prompts.py"
+        return hashlib.sha256(src_path.read_bytes()).hexdigest()[:8]
+    except Exception:
+        return "no-hash"
+
+
 def get_prompt_fingerprint() -> str:
-    """SHA-256 от сочетания версии промпта, режима анализа и модели → первые 16 hex-символов."""
-    raw = f"{PROMPT_SCHEMA_VERSION}|{GEMINI_MODEL}|{_AUDIO_ANALYSIS_MODE}"
+    """SHA-256 от сочетания версии промпта, режима, модели и SHA исходника промтов."""
+    raw = f"{PROMPT_SCHEMA_VERSION}|{GEMINI_MODEL}|{_AUDIO_ANALYSIS_MODE}|{_hash_prompts_source()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 # ─── Защита от спама ─────────────────────────────────────────
@@ -498,3 +596,18 @@ ADMIN_IDS: set[int] = {int(x) for x in _admin_raw.split(",") if x.strip().lstrip
 
 # FIX #2: вызываем после определения CACHE_TTL_DAYS и всех констант
 db_cleanup_old_records()
+
+
+# AUDIT M19: SETTINGS_GROUPS переехал сюда из services/search.py —
+# конфигурация UI должна жить рядом с SETTINGS_DEFAULTS/SETTINGS_LABELS.
+SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
+    ("📋 Конспект", ["synopsis", "caption_full_text", "generate_pdf"]),
+    ("📖 Разборы",  ["study_analysis", "reflection_application"]),
+    ("📊 Компактные", ["analytics", "questions", "terms"]),
+    ("✂️ Шортс",   ["shorts", "shorts_audio_normalize", "shorts_subtitles",
+                    "shorts_subtitles_karaoke", "shorts_subtitles_light",
+                    "shorts_title_poster", "shorts_snapshot",
+                    "shorts_montage", "shorts_highlights",
+                    "__speed__"]),
+    ("🎬 Клипы",    ["clips", "clips_snapshot"]),
+]

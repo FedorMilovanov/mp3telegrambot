@@ -39,28 +39,50 @@ async def run_bot_async():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN не найден!")
         return
+
+    # AUDIT C5: чистим словарь per-video locks. После краша run_bot_async и
+    # создания нового event loop старые Lock'и привязаны к мёртвому loop,
+    # что в Python 3.10+ даёт RuntimeError при первом параллельном запросе.
+    from core.globals import _video_processing_locks, _video_locks_mutex
+    with _video_locks_mutex:
+        _stale = len(_video_processing_locks)
+        _video_processing_locks.clear()
+    if _stale:
+        logger.info(f"🧹 Очищено per-video locks от предыдущего запуска: {_stale}")
+
     logger.info("🚀 Бот запускается...")
     logger.info(f"🧠 AI ({GEMINI_MODEL}): {'✅' if GEMINI_CLIENTS else '❌'} (ключей: {len(GEMINI_CLIENTS)})")
-    # #38: проверяем GEMINI_MODEL против списка живых моделей
+
+    # AUDIT L6: обновлённые списки моделей по официальной странице
+    # https://ai.google.dev/gemini-api/docs/deprecations (на 2026-05-20)
     _KNOWN_LIVE_MODELS = {
+        # Gemini 3
         "gemini-3-flash-preview",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite-preview",
+        # Gemini 2.5 (stable до 16 окт 2026, 2.5-flash/pro до 17 июня 2026)
         "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
         "gemini-2.5-pro",
         "gemini-2.5-pro-preview",
     }
     _DEPRECATED_MODELS = {
         "gemini-2.0-flash",
+        "gemini-2.0-flash-001",
         "gemini-2.0-flash-lite",
         "gemini-1.5-pro",
         "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
         "gemini-1.0-pro",
+        "gemini-pro",
+        "gemini-pro-vision",
     }
     if GEMINI_MODEL in _DEPRECATED_MODELS:
         logger.warning(
-            "⚠️  GEMINI_MODEL='%s' — эта модель устарела и может быть отключена. "
-            "Обновите переменную окружения GEMINI_MODEL на актуальную модель "
-            "(например, 'gemini-3-flash-preview'). Бот продолжает работу.",
+            "⚠️  GEMINI_MODEL='%s' — устарела и скоро будет отключена. "
+            "Рекомендуется GEMINI_MODEL='gemini-2.5-flash' (стабильная) или "
+            "'gemini-3-flash-preview' (новая, free tier).",
             GEMINI_MODEL,
         )
     elif GEMINI_MODEL not in _KNOWN_LIVE_MODELS:
@@ -148,8 +170,27 @@ async def run_bot_async():
             except Exception:
                 pass
 
+        # AUDIT M9: фоновая периодическая чистка временных файлов и БД
+        from core.utils import cleanup_nosub_files
+        from core.database import db_cleanup_old_records
+        from core.globals import mark_bot_alive
+
+        async def _periodic_maintenance():
+            loop = asyncio.get_running_loop()
+            while True:
+                mark_bot_alive()
+                try:
+                    await loop.run_in_executor(None, cleanup_nosub_files)
+                    await loop.run_in_executor(None, db_cleanup_old_records)
+                except Exception as _e:
+                    logger.warning(f"periodic maintenance: {_e}")
+                await asyncio.sleep(3600)
+
+        asyncio.create_task(_periodic_maintenance())
+
         while True:
-            await asyncio.sleep(3600)
+            mark_bot_alive()
+            await asyncio.sleep(60)
 
 
 def run_bot():
@@ -160,8 +201,9 @@ def run_bot():
         try:
             loop.run_until_complete(run_bot_async())
         except Exception as e:
-            print(f"❌ Ошибка бота: {e}")
-            logger.error(f"run_bot завершился с ошибкой: {e}")
+            # AUDIT L7: убран print() — logger.error и так пишет ошибку,
+            # а print не маскирует токены через _TokenMaskFilter.
+            logger.error(f"run_bot завершился с ошибкой: {e}", exc_info=True)
         finally:
             try:
                 loop.close()

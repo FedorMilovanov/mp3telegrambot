@@ -9,7 +9,8 @@ from core.globals import (
 )
 from core.database import (
     adb_get, adb_save, asettings_get, settings_get,
-    short_trim_save, shorts_speed_get,           # FIX shorts
+    short_trim_save, shorts_speed_get,
+    ashorts_speed_get,                            # AUDIT M4
 )
 from core.utils import cleanup_files
 from services.shorts_video import (
@@ -66,8 +67,8 @@ async def process_and_send_shorts(
     video_path = None
     short_paths: list[Path] = []
     poster_paths: list[Path] = []
-    # Читаем speed один раз в начале — используется и для кандидатов и для рендера
-    speed = float(shorts_speed_get())
+    # AUDIT M4: ashorts_speed_get вместо синхронного — не блокирует event loop
+    speed = float(await ashorts_speed_get())
     # Читаем заранее — используется в finally (await там нельзя).
     # Если исключение случится до строки внутри try где это читалось — UnboundLocalError.
     _keep_for_montage = False  # будет перезаписан внутри try после загрузки видео
@@ -324,6 +325,7 @@ async def process_and_send_shorts(
                     candidate_json=json.dumps(c, ensure_ascii=False),
                     video_path_nosub=str(nosub_path) if nosub_path else "",
                     nosub_expiry=int(time.time()) + 86400 if nosub_path else 0,  # #31: 24ч
+                    source_duration=int(duration or 0),  # AUDIT M5: для ограничения end_s при ретриме
                 )
                 _nosub_buttons = []
                 if subtitles_applied:

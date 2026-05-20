@@ -20,7 +20,8 @@ from converters.md_telegraph import (
 from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # FIX: circular imports
 from core.globals import (
     TELEGRAPH_TOKEN, GEMINI_CLIENTS,
-    gemini_generate,          # FIX telegraph
+    gemini_generate,          # FIX telegraph,
+    make_audio_config,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
@@ -230,7 +231,7 @@ def _clean_telegraph_nodes(nodes: list) -> list:
     return cleaned
 
 
-async def _telegraph_post(title: str, author: str, nodes: list, loop) -> str | None:
+async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url: str = "") -> str | None:
     """Публикует страницу в Telegraph, возвращает URL или None.
     При CONTENT_TOO_BIG автоматически разбивает на части и создаёт оглавление."""
 
@@ -269,6 +270,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop) -> str | N
             resp = await loop.run_in_executor(None, lambda: requests.post(
                 "https://api.telegra.ph/createPage",
                 json={"access_token": token, "title": t, "author_name": author,
+                      "author_url": (author_url or "")[:512],  # AUDIT M21
                       "content": ns, "return_content": False},
                 timeout=15,
             ))
@@ -414,10 +416,18 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _syn_sections    = "8-16"
                 _syn_section_len = "400-1300"
                 _syn_total       = "5500"
-            # fix #124: format-specific instructions for interview/discussion
+            # AUDIT M6: расширили карту format → инструкция. Раньше для
+            # sermon/lecture/topical/narrative/testimony в промт уходила
+            # пустая строка, и Gemini угадывал голос (1-е лицо vs безличное) по заголовку.
             _format_note_map = {
-                "interview":   "Формат: ИНТЕРВЬЮ — материал это беседа двух людей. Сохраняй диалоговую структуру: голос ведущего и голос гостя. Не своди к монологу.",
-                "discussion":  "Формат: ДИСКУССИЯ — несколько участников. Сохраняй обмен позициями, не сглаживай разногласия в единый нарратив.",
+                "interview":  "Формат: ИНТЕРВЬЮ — беседа двух людей. Сохраняй диалоговую структуру: голос ведущего и голос гостя, не сводя к монологу.",
+                "discussion": "Формат: ДИСКУССИЯ — несколько участников. Сохраняй обмен позициями, не сглаживай разногласия в единый нарратив.",
+                "sermon":     "Формат: ПРОПОВЕДЬ — гомилетический материал. Сохраняй пасторский голос проповедника и обращения к слушателям (вы/мы), сохраняй риторические повторы.",
+                "lecture":    "Формат: ЛЕКЦИЯ — академический материал. Безличный регистр, чёткая логическая структура, термины не упрощай.",
+                "testimony":  "Формат: СВИДЕТЕЛЬСТВО — личный нарратив. Сохраняй 1-е лицо рассказчика, эмоциональную тональность и хронологию событий.",
+                "topical":    "Формат: ТЕМАТИЧЕСКИЙ ОБЗОР — несколько подтем под общей рамкой. Каждая секция должна заметно отличаться по подтеме.",
+                "narrative":  "Формат: НАРРАТИВ — повествование с сюжетной аркой. Сохраняй порядок событий и ключевые повороты.",
+                "qa":         "Формат: Q&A — вопросы и ответы. Каждая секция = один вопрос + развёрнутый ответ; не объединяй разные вопросы в одну секцию.",
             }
             _format_note = _format_note_map.get(_fmt, "")
             prompt = SYNOPSIS_PROMPT_V2.format(
@@ -445,7 +455,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return await client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=[audio, prompt_text],
-                config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=32000),
+                config=make_audio_config(temperature=0.1, max_output_tokens=32000),
             )
 
         def _extract_response_text(resp) -> str:
@@ -476,7 +486,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 response = await existing_client.aio.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=[existing_audio_part, prompt],
-                    config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=32000),
+                    config=make_audio_config(temperature=0.1, max_output_tokens=32000),
                 )
             except Exception as e:
                 logger.warning(f"Synopsis v2 existing_audio_part failed: {e}, re-uploading...")
@@ -573,7 +583,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         retry_response = await existing_client.aio.models.generate_content(
                             model=GEMINI_MODEL,
                             contents=[existing_audio_part, retry_prompt],
-                            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=32000),
+                            config=make_audio_config(temperature=0.1, max_output_tokens=32000),
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
@@ -627,7 +637,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                                 simple_response = await existing_client.aio.models.generate_content(
                                     model=GEMINI_MODEL,
                                     contents=[existing_audio_part, simple_prompt],
-                                    config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=32000),
+                                    config=make_audio_config(temperature=0.1, max_output_tokens=32000),
                                 )
                             except Exception:
                                 simple_response = None

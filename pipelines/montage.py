@@ -4,7 +4,7 @@ Montage / Highlights Pipeline.
 Извлечено из bot.py строки 12240–12432.
 """
 from core.globals import DOWNLOAD_DIR
-from core.database import asettings_get, shorts_speed_get  # FIX montage
+from core.database import asettings_get, shorts_speed_get, ashorts_speed_get  # AUDIT M4
 from core.utils import cleanup_files
 from services.render_clips_montage import (
     render_montage_short, create_extras_candidates,
@@ -44,7 +44,7 @@ async def _run_montage_or_highlights_pipeline(
     do_snapshot  = await asettings_get("shorts_snapshot")
     do_subtitles = await asettings_get("shorts_subtitles")
     do_poster    = await asettings_get("shorts_title_poster")
-    speed        = float(shorts_speed_get())
+    speed        = float(await ashorts_speed_get())  # AUDIT M4
 
     raw_path      = DOWNLOAD_DIR / f"{media_id}_{prefix}_raw.mp4"
     post_path     = DOWNLOAD_DIR / f"{media_id}_{prefix}_post.mp4"

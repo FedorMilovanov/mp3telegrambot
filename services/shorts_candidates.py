@@ -5,7 +5,8 @@ Shorts Candidates — create_shorts_candidates, create_clips_candidates.
 """
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
-    GEMINI_CLIENTS, gemini_generate,    # FIX shorts_candidates
+    GEMINI_CLIENTS, gemini_generate,    # FIX shorts_candidates,
+    make_audio_config,
 )
 from core.database import GEMINI_MODEL       # FIX shorts_candidates
 from core.json_parser import (
@@ -170,7 +171,7 @@ async def create_shorts_candidates(
                 response = await existing_client.aio.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=[existing_audio_part, prompt],
-                    config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=16000),
+                    config=make_audio_config(temperature=0.2, max_output_tokens=16000),
                 )
             except Exception as e:
                 logger.warning(f"Shorts candidates existing_audio_part failed: {e}")
@@ -203,7 +204,7 @@ async def create_shorts_candidates(
                     return await client.aio.models.generate_content(
                         model=GEMINI_MODEL,
                         contents=[audio_part, prompt],
-                        config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=16000),
+                        config=make_audio_config(temperature=0.2, max_output_tokens=16000),
                     )
                 finally:
                     if _uploaded:
@@ -395,7 +396,7 @@ async def create_clips_candidates(
                 response = await existing_client.aio.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=[existing_audio_part, prompt],
-                    config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=12000),
+                    config=make_audio_config(temperature=0.2, max_output_tokens=12000),
                 )
             except Exception as e:
                 logger.warning(f"Clips candidates existing_audio_part failed: {e}")
@@ -428,7 +429,7 @@ async def create_clips_candidates(
                     return await client.aio.models.generate_content(
                         model=GEMINI_MODEL,
                         contents=[audio_part, prompt],
-                        config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=12000),
+                        config=make_audio_config(temperature=0.2, max_output_tokens=12000),
                     )
                 finally:
                     if _uploaded:

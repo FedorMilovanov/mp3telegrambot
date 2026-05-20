@@ -1172,6 +1172,7 @@ async def _create_telegraph_page_single(title: str, author: str,
                     "access_token": token,
                     "title": title,
                     "author_name": author,
+                    "author_url": (author_url or "")[:512],  # AUDIT M21
                     "content": nodes,
                     "return_content": False,
                 },
@@ -1202,7 +1203,7 @@ async def _create_telegraph_page_single(title: str, author: str,
 
 
 async def _edit_telegraph_page(page_url: str, title: str, author: str,
-                                nodes: list, loop) -> bool:
+                                nodes: list, loop, author_url: str = "") -> bool:
     """Обновляет существующую Telegraph-страницу навигационными ссылками."""
     token = TELEGRAPH_TOKEN
     if not token:
@@ -1217,6 +1218,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
                 "access_token": token,
                 "title": title,
                 "author_name": author,
+                "author_url": (author_url or "")[:512],  # AUDIT M21
                 "content": nodes,
                 "return_content": False,
             },

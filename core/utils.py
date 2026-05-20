@@ -31,11 +31,19 @@ if HAS_PILLOW:
 
 logger = logging.getLogger(__name__)
 
+# AUDIT M16: расширенное покрытие — embed/, m.youtube, youtube-nocookie, vkvideo, rutube.
 VIDEO_REGEX = re.compile(
     r"(?:https?://)?"
-    r"(?:www\.)?"
-    r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/live/)"
-    r"[\w\-]{11}"
+    r"(?:www\.|m\.)?"
+    r"(?:"
+    r"youtube\.com/(?:watch\?v=|shorts/|live/|embed/|v/)[\w\-]{11}"
+    r"|youtu\.be/[\w\-]{11}"
+    r"|youtube-nocookie\.com/embed/[\w\-]{11}"
+    r"|vkvideo\.ru/video[\-\w]+"
+    r"|vk\.com/video[\-\w]+"
+    r"|rutube\.ru/video/[\w\-]+"
+    r")",
+    re.IGNORECASE,
 )
 
 PLAYLIST_REGEX = re.compile(
@@ -46,6 +54,22 @@ PLAYLIST_REGEX = re.compile(
 )
 
 TITLE_SEPARATORS = [" — ", " - ", " | ", " // ", ": ", " – "]
+
+
+# AUDIT L8: дневной лимит сбрасывается в полночь по Москве, а не по UTC сервера.
+try:
+    from zoneinfo import ZoneInfo
+    _LIMIT_TZ = ZoneInfo("Europe/Moscow")
+except Exception:
+    _LIMIT_TZ = None  # type: ignore
+
+
+def _today_str() -> str:
+    if _LIMIT_TZ is None:
+        return str(date.today())
+    from datetime import datetime
+    return datetime.now(tz=_LIMIT_TZ).date().isoformat()
+
 
 # FIX: _THUMBS_LAST_CLEANUP мутируется через global в cleanup_files —
 # переменная должна быть определена в этом модуле, а не импортироваться
@@ -67,10 +91,19 @@ def is_playlist_url(text: str) -> bool:
 
 
 def extract_media_url(text: str) -> str | None:
+    """AUDIT M16: расширили поддержку — vkvideo.ru, rutube.ru, youtube-nocookie.com."""
+    _SUPPORTED_HOSTS = (
+        "youtube.com", "youtu.be", "m.youtube.com",
+        "youtube-nocookie.com",
+        "vkvideo.ru", "vk.com/video",
+        "rutube.ru",
+    )
     url_match = re.search(r"(https?://[^\s]+)", text)
     if url_match:
         url = url_match.group(0)
-        if "youtube.com" in url or "youtu.be" in url:
+        # Чистим хвост (кавычки, скобки, точки в конце)
+        url = url.rstrip(').,;:!?»"\'>')
+        if any(h in url for h in _SUPPORTED_HOSTS):
             return url
     match = PLAYLIST_REGEX.search(text) or VIDEO_REGEX.search(text)
     return match.group(0) if match else None
@@ -243,7 +276,7 @@ def check_rate_limit(user_id: int) -> tuple[bool, str]:
         return True, ""
 
     now   = time.time()
-    today = str(date.today())
+    today = _today_str()  # AUDIT L8
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -292,7 +325,7 @@ def update_rate_limit(user_id: int) -> None:
     """
     if user_id in WHITELIST_IDS:
         return
-    today = str(date.today())
+    today = _today_str()  # AUDIT L8
     now   = time.time()
     try:
         with sqlite3.connect(DB_PATH, timeout=5) as conn:

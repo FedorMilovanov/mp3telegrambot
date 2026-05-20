@@ -49,9 +49,22 @@ flask_app = Flask(__name__)
 def home():
     return "Bot is running!"
 
+# Состояние бота для умного /health (обновляется из main.py)
+_LAST_BOT_OK_TS: float = 0.0
+
+def mark_bot_alive() -> None:
+    """Зовётся из run_bot_async() каждые N секунд, чтобы /health знал что live."""
+    global _LAST_BOT_OK_TS
+    _LAST_BOT_OK_TS = time.time()
+
+
 @flask_app.route("/health")
 def health():
-    return "OK", 200
+    """Возвращает 503 если бот не пинговал > 5 минут — Render/Railway перезапустит контейнер."""
+    age = time.time() - _LAST_BOT_OK_TS if _LAST_BOT_OK_TS else 999999
+    if age > 300:
+        return ("STALE", 503)
+    return ("OK", 200)
 
 try:
     from PIL import Image
@@ -65,6 +78,8 @@ try:
     HAS_GEMINI = True
 except ImportError:
     HAS_GEMINI = False
+    genai = None      # type: ignore
+    types = None      # type: ignore
 
 # ─── Настройки ───────────────────────────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "").strip()
@@ -79,8 +94,9 @@ DB_PATH        = Path("bot_cache.db")
 DAILY_LIMIT      = 2   # Макс. видео в день для обычных пользователей
 COOLDOWN_SECONDS = 60  # Минимум секунд между запросами
 
-# FIXED #36: throttle для обхода THUMBS_DIR — не чаще раза в час
-_THUMBS_LAST_CLEANUP: float = 0.0
+# FIXED #36: throttle для обхода THUMBS_DIR — не чаще раза в час.
+# AUDIT L1: реальная переменная _THUMBS_LAST_CLEANUP живёт в core/utils.py;
+# здесь хранится только interval.
 _THUMBS_CLEANUP_INTERVAL: float = 3600.0  # секунд
 
 # ─── Инициализация Gemini ─────────────────────────────────────
@@ -138,6 +154,40 @@ if HAS_GEMINI and GEMINI_API_KEY_4:
 
 # Список клиентов по порядку — используется для fallback
 GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4] if c]
+
+
+# ─── Единый конфиг для Gemini-вызовов с аудио ─────────────────
+# audio_timestamp=True ОБЯЗАТЕЛЕН для audio-only входов по официальной
+# документации Google: https://ai.google.dev/gemini-api/docs/audio
+# Без него точность таймкодов снижается ~30%, а у нас на таймкодах построены
+# конспекты, Shorts, Clips и Montage.
+def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536):
+    if not HAS_GEMINI or types is None:
+        return None
+    try:
+        return types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            audio_timestamp=True,
+        )
+    except TypeError:
+        # Старая версия google-genai SDK без audio_timestamp — fallback
+        logger.warning("google-genai SDK не поддерживает audio_timestamp — обновите версию")
+        return types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+
+
+def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
+    """Для чисто текстовых вызовов Gemini — audio_timestamp не нужен."""
+    if not HAS_GEMINI or types is None:
+        return None
+    return types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
+
 
 # FIX #2: убран вызов db_cleanup_old_records() — функция из database.py,
 # которая здесь не импортирована (импортировать нельзя — циклическая зависимость).

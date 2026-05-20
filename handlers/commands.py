@@ -14,8 +14,9 @@ from core.globals import (
 from core.database import (
     adb_get, adb_save, asettings_get, asettings_get_all,
     db_init, is_cache_valid,
-    WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,            # FIX #9
-    MAX_PLAYLIST_SIZE, DB_PATH,                        # FIX #9
+    WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
+    MAX_PLAYLIST_SIZE, DB_PATH,
+    acheck_rate_limit, aupdate_rate_limit,            # AUDIT M4
 )
 from core.utils import (
     is_media_url, is_playlist_url, check_rate_limit, update_rate_limit,
@@ -289,12 +290,37 @@ async def stop_command(update, context):
             f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
         )
         return
+    # AUDIT C3: graceful shutdown через PTB вместо os._exit.
+    # os._exit не запускает atexit, не закрывает SQLite, не доотправляет
+    # сообщения и не отменяет фоновые задачи — файлы в downloads/ остаются висеть.
     await update.message.reply_text("🛑 Останавливаю бота...")
-    logger.info(f"Stop command от admin {user_id} — завершаю процесс")
-    asyncio.get_running_loop().call_later(1.0, lambda: os._exit(0))
+    logger.info(f"Stop command от admin {user_id} — graceful shutdown")
+    app = context.application
+
+    async def _graceful():
+        await asyncio.sleep(0.5)
+        try:
+            if app.updater and app.updater.running:
+                await app.updater.stop()
+            if app.running:
+                await app.stop()
+            await app.shutdown()
+        except Exception as _e:
+            logger.warning(f"graceful shutdown error: {_e}")
+        finally:
+            # main.py крутится в while True — нужен жёсткий выход, но уже после
+            # того как PTB корректно закрыл всё своё хозяйство.
+            await asyncio.sleep(0.3)
+            os._exit(0)
+
+    asyncio.create_task(_graceful())
 
 
 async def handle_message(update, context):
+    # AUDIT M20: отбиваем сообщения от других ботов
+    if update.effective_user and update.effective_user.is_bot:
+        return
+
     text = update.message.text.strip()
     if not is_media_url(text):
         await update.message.reply_text("🤔 Отправьте ссылку на видео или плейлист.")
@@ -303,10 +329,15 @@ async def handle_message(update, context):
     # ── Проверка лимитов ──────────────────────────────────────
     user_id = update.effective_user.id
     is_vip  = user_id in WHITELIST_IDS
-    allowed, reason = check_rate_limit(user_id)
-    if not allowed:
-        await update.message.reply_text(reason)
-        return
+
+    # AUDIT M1: VIP явно обходят rate-limit (check_rate_limit и так не блокирует
+    # VIP, но явная проверка делает поведение очевидным и страхует от регрессий).
+    # AUDIT M4: check_rate_limit — синхронный SQLite, через executor.
+    if not is_vip:
+        allowed, reason = await acheck_rate_limit(user_id)
+        if not allowed:
+            await update.message.reply_text(reason)
+            return
 
     url = extract_media_url(text)
     if not url:
@@ -317,25 +348,22 @@ async def handle_message(update, context):
 
     if is_playlist_url(text):
         await handle_playlist(url, update, context, user_id=user_id)
-        # update_rate_limit вызывается внутри handle_playlist за каждое видео
     else:
         label = " 👑" if is_vip else ""
         msg   = await update.message.reply_text(f"⏳ Обрабатываю...{label}")
-        # ── Per-video lock: если одно и то же видео уже обрабатывается другим
-        # пользователем — ждём завершения, после чего process_single_video
-        # обнаружит готовый кэш и отдаст результат без повторного скачивания.
         _vid_id_hint = _extract_yt_id_from_text(url) or url
         _vlock = _get_video_lock(_vid_id_hint)
         if _vlock.locked():
-            logger.info(f"Video {_vid_id_hint}: параллельный запрос — жду завершения первого...")
+            logger.info(
+                f"Video {_vid_id_hint}: параллельный запрос — жду завершения первого..."
+            )
         async with _vlock:
             ok = await process_single_video(url, update, msg, context=context)
-        # Удаляем лок из словаря после завершения — предотвращаем утечку памяти.
-        # Следующий запрос к тому же video_id создаст новый лок.
         with _video_locks_mutex:
             _video_processing_locks.pop(_vid_id_hint, None)
-        if ok:
-            update_rate_limit(user_id)
+        if ok and not is_vip:
+            # AUDIT M4: update_rate_limit — синхронный SQLite, через executor
+            await aupdate_rate_limit(user_id)
         try:
             await msg.delete()
         except Exception:

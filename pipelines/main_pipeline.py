@@ -47,7 +47,8 @@ from pipelines.montage import process_and_send_montage, process_and_send_highlig
 from core.progress import set_progress
 
 import asyncio
-import json       # FIX #11
+import json
+import os       # FIX #11
 import logging
 import re         # FIX #11
 import requests   # FIX #11
@@ -58,7 +59,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None):
+async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
     thumb_buffer = None
     _pp = progress_prefix  # short alias for progress calls
     used_audio_part = None  # инициализируем здесь — finally обращается к ним безусловно
@@ -89,6 +90,32 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     continue
         if not info_dict:
             raise Exception("Не удалось получить метаданные видео")
+
+        # AUDIT M10: отбивка live-stream — yt-dlp начнёт качать бесконечный поток
+        if info_dict.get("is_live") or info_dict.get("live_status") in (
+            "is_live", "is_upcoming", "post_live"
+        ):
+            msg = "⚠️ Live-трансляции не поддерживаются. Дождитесь окончания и загрузите запись."
+            if not silent_errors:
+                await update.message.reply_text(msg)
+            logger.info(f"Пропуск live-stream: {url}")
+            return False
+
+        # AUDIT M10: ограничение по длительности — Gemini обрежет конспект для слишком длинных,
+        # пользователь получит обрезанный результат при потраченной квоте.
+        _max_dur = int(os.getenv("MAX_VIDEO_DURATION_SEC", "10800"))  # дефолт 3 часа
+        _video_duration_meta = int(info_dict.get("duration") or 0)
+        if _video_duration_meta and _video_duration_meta > _max_dur:
+            msg = (
+                f"⚠️ Видео {_video_duration_meta // 60} мин — превышает лимит "
+                f"{_max_dur // 60} мин. Скиньте видео покороче."
+            )
+            if not silent_errors:
+                await update.message.reply_text(msg)
+            logger.info(
+                f"Пропуск длинного видео: {url} ({_video_duration_meta}s > {_max_dur}s)"
+            )
+            return False
 
         full_title   = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
@@ -1013,15 +1040,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         return True
 
     except Exception as e:
-        # Маскируем API-ключи перед логированием и отправкой пользователю
+        # AUDIT M3: silent_errors=True (плейлист) — не спамим пользователю
+        # AUDIT M15: проверяем media_id через locals() вместо except NameError,
+        # который опасно поглощает OSError от cleanup_files.
         from core.utils import mask_api_key as _mask
         _safe = _mask(str(e))
-        logger.error(f"Ошибка: {_safe}")
-        await update.message.reply_text(f"❌ Ошибка: {_safe[:200]}")
-        try:
-            cleanup_files(media_id)
-        except NameError:
-            pass  # media_id ещё не определён
+        logger.error(f"Ошибка: {_safe}", exc_info=True)
+        if not silent_errors:
+            try:
+                await update.message.reply_text(f"❌ Ошибка: {_safe[:200]}")
+            except Exception:
+                pass
+        if "media_id" in locals():
+            try:
+                cleanup_files(media_id)
+            except Exception as _ce:
+                logger.warning(f"cleanup_files после ошибки: {_ce}")
         return False
     finally:
         # Удаляем audio_part из Gemini Files API — ТОЛЬКО ЗДЕСЬ,

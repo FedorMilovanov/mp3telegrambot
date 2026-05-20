@@ -34,7 +34,7 @@ def _build_ytdlp_base_args() -> list:
     elif shutil.which("firefox"):
         args += ["--cookies-from-browser", "firefox"]
     else:
-        print("⚠️ Нет cookies — YouTube может блокировать запросы")
+        logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
     # JS runtime для решения YouTube n challenge
     # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
     # deno быстрее для YouTube. node — fallback при отсутствии deno.
@@ -47,7 +47,7 @@ def _build_ytdlp_base_args() -> list:
         args += ["--js-runtimes", ",".join(js_runtimes)]
         args += ["--remote-components", "ejs:github"]
     else:
-        print("⚠️ Node.js/Deno не найдены — js-runtimes отключён")
+        logger.warning("⚠️ Node.js/Deno не найдены — js-runtimes отключён")
     return args
 
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()
@@ -160,12 +160,27 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
             return ""
         loop = asyncio.get_running_loop()
 
-        # Три точки: начало фрагмента + 2с, середина, + 10с — берём наиболее стабильный результат
-        sample_points = [
-            sample_start + 2.0,
-            sample_start + 10.0,
-            sample_start + 20.0,
-        ]
+        # AUDIT L4: ограничиваем точки длительностью видео — для коротких клипов
+        # +20 секунд может уйти за EOF, ffmpeg впустую тратит 30 c CPU.
+        try:
+            from subprocess import run as _sp_run
+            probe = _sp_run(
+                [ffmpeg, "-i", str(video_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            m_dur = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
+            if m_dur:
+                _video_total = (
+                    int(m_dur.group(1)) * 3600 + int(m_dur.group(2)) * 60 + float(m_dur.group(3))
+                )
+            else:
+                _video_total = sample_start + 30.0  # fallback: считаем что хватит на 30s
+        except Exception:
+            _video_total = sample_start + 30.0
+        candidate_points = [sample_start + 2.0, sample_start + 10.0, sample_start + 20.0]
+        sample_points = [p for p in candidate_points if p + 4.0 < _video_total]
+        if not sample_points:
+            sample_points = [sample_start + 0.5]
 
         crop_votes: dict[str, int] = {}
         for sp in sample_points:
@@ -223,5 +238,6 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
 
 
 
-# Alias
-_ytdlp_base_args = _build_ytdlp_base_args
+# AUDIT L3: алиас _ytdlp_base_args = _build_ytdlp_base_args был ловушкой —
+# выглядел как список аргументов, на деле был ссылкой на функцию.
+# Используйте YTDLP_BASE_ARGS (готовый список).
