@@ -226,37 +226,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             # BUG-B06: безопасное удаление через хелпер
                             asyncio.create_task(_safe_delete_gemini_file(client, audio_part.name))
                         last_err = e
-                        # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
-                        if is_overload_error(e) and attempt < 2:
-                            _wait_503 = 15 * (attempt + 1)  # 15s, 30s
-                            logger.info(f"Gemini 503: жду {_wait_503}s и повторяю тем же ключом (попытка {attempt+2}/3)...")
-                            await asyncio.sleep(_wait_503)
-                            continue  # следующая попытка на ЭТОМ же ключе
-                        break  # все попытки на ключе исчерпаны — следующий клиент
+                        break  # следующий клиент
                     raise  # неизвестная ошибка — пробрасываем
-
-        # AUDIT FIX 503-RETRY: если все ключи упали с 503, ждём 60s и второй круг
-        if response is None and last_err is not None and is_overload_error(last_err):
-            logger.warning("Gemini 503 на всех ключах — жду 60s и пробую ещё раз весь круг...")
-            await asyncio.sleep(60)
-            for client in GEMINI_CLIENTS:
-                try:
-                    audio_part, used_client = await upload_to_client(client)
-                    response = await asyncio.wait_for(
-                        client.aio.models.generate_content(
-                            model=GEMINI_MODEL,
-                            contents=[audio_part, prompt],
-                            config=make_audio_config(temperature=0.1, max_output_tokens=65536),
-                        ),
-                        timeout=960.0,
-                    )
-                    used_audio_part = audio_part
-                    logger.info("Gemini: второй круг успешен!")
-                    break
-                except Exception as e2:
-                    logger.warning(f"Gemini второй круг: {type(e2).__name__}: {str(e2)[:150]}")
-                    last_err = e2
-                    continue
 
         if response is None:
             raise last_err or RuntimeError("Все Gemini-клиенты недоступны")
