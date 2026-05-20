@@ -119,14 +119,41 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
             line = _scrub_inline(line)
             if not line or any(re.search(p, line, re.IGNORECASE) for p in BAD_META_PATTERNS):
                 continue
-            # DEEP-QUALITY FIX [C]: НЕ снимаем **жирный** из топиков таймкодов,
-            # а конвертируем в HTML <b> для визуального акцента в Telegram caption.
-            # Юзер: 'жирным в важных словах - это норм, даже круто, более визуально считываемы'
+            # AUDIT-FIX BUG 2: правильно конвертируем **bold** в HTML <b>
+            # для визуального акцента в темах таймкодов Telegram caption.
+            # (DEEP-QUALITY FIX [C] добавил только комментарий, но не заменил код — исправлено)
             _p = line.split(' ', 1)
             time_str = _p[0]
             topic_str = _p[1].strip() if len(_p) == 2 else ""
-            # Вставляем zero-width space после ":" в топике чтобы Telegram не делал ссылку
-            topic_escaped = re.sub(r':(\d)', r':​\1', html_mod.escape(topic_str)) if topic_str else ""
+
+            def _topic_bold_to_html(t: str) -> str:
+                """Конвертирует **bold** → <b>bold</b>, остальное экранирует.
+                Это безопаснее чем html_mod.escape потом regex по escape'нутым символам.
+                """
+                if not t:
+                    return ""
+                # Чиним непарные ** (если есть)
+                _count = t.count('**')
+                if _count % 2 == 1:
+                    # Удаляем последний непарный
+                    _last = t.rfind('**')
+                    t = t[:_last] + t[_last + 2:]
+                # Расщепляем по **bold**, чередующиеся куски: text, bold, text, bold, ...
+                parts = re.split(r'\*\*([^*\n]+)\*\*', t)
+                out = []
+                for i, p in enumerate(parts):
+                    if i % 2 == 0:
+                        # обычный текст — экранируем
+                        out.append(html_mod.escape(p))
+                    else:
+                        # жирный — экранируем содержимое и оборачиваем
+                        out.append(f"<b>{html_mod.escape(p)}</b>")
+                result = "".join(out)
+                # zero-width space после двоеточия + цифра (чтобы Telegram не сделал ссылку)
+                result = re.sub(r':(\d)', r':​\1', result)
+                return result
+
+            topic_escaped = _topic_bold_to_html(topic_str)
             # Делаем таймкод кликабельной ссылкой на YouTube если передан url
             if url and topic_escaped:
                 secs = time_to_seconds(time_str)

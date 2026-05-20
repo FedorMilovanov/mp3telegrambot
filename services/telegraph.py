@@ -17,7 +17,7 @@ from converters.md_telegraph import (
     _extract_partial_sections,# FIX telegraph
 )
 # _fix_rtl_in_text и _md_parse_inline перенесены в core_utils (разрыв цикла markdown ↔ caption/telegraph)
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # FIX: circular imports
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text  # FIX: circular imports + AUDIT-FIX BUG 1
 from core.globals import (
     TELEGRAPH_TOKEN, GEMINI_CLIENTS,
     gemini_generate,          # FIX telegraph,

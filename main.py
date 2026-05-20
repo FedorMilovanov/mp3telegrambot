@@ -56,7 +56,10 @@ async def run_bot_async():
     # AUDIT L6: обновлённые списки моделей по официальной странице
     # https://ai.google.dev/gemini-api/docs/deprecations (на 2026-05-20)
     _KNOWN_LIVE_MODELS = {
+        # Gemini 3.5 (GA с 19 мая 2026 — AUDIT-FIX BUG 3)
+        "gemini-3.5-flash",
         # Gemini 3
+        "gemini-3-flash",
         "gemini-3-flash-preview",
         "gemini-3.1-pro-preview",
         "gemini-3.1-flash-lite",
