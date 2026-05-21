@@ -83,6 +83,12 @@ def _md_to_telegraph_nodes(md: str) -> list:
         s = _demote_paragraph_bold(s)
         # FINAL-POLISH FIX 2-4: чистим слипания таймкодов и точек
         s = _polish_timestamps_in_text(s)
+        # v10b FIX: --- / *** / ___ → <hr> до фильтра мусора
+        # (fullmatch r'[.\-...]' поглощал их раньше)
+        if s in ("---", "***", "___"):
+            nodes.append({"tag": "hr"})
+            prev_was_empty = False
+            continue
         # Пропускаем строки из одних знаков препинания/разделителей (. .. ─── и т.п.)
         # Gemini иногда генерирует одиночную точку как визуальный разделитель между блоками
         if re.fullmatch(r'[.\-–—─·•*_~\s]+', s):
