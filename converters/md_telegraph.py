@@ -853,8 +853,15 @@ def _section_to_nodes_v2(
     # ------------------------------------------------------------------
 
     # Не даём схлопнуться служебным заголовкам аудиторий/разделов с первым подпунктом
+    # v10b FIX: исключаем случай «Иврит: **תְּשׁוּבָה**» — ** здесь не начало списка,
+    # а inline bold с ивритом/греческим/арабским. Без этого "Иврит:" отрывается в отдельный абзац.
     content = re.sub(
-        r'(?m)^(?!\d+\.)\s*([^\n:]{5,120}(?<!\d):)\s+([•\-]|\d+\.|\*\*)',
+        r'(?m)^(?!\d+\.)\s*([^\n:]{5,120}(?<!\d):)\s+(\*\*(?![\u0590-\u05FF\u0600-\u06FF\u0370-\u03FF\w]))',
+        r'\1\n\n\2',
+        content
+    )
+    content = re.sub(
+        r'(?m)^(?!\d+\.)\s*([^\n:]{5,120}(?<!\d):)\s+([•\-]|\d+\.)',
         r'\1\n\n\2',
         content
     )
@@ -952,9 +959,17 @@ def _section_to_nodes_v2(
                 return node
             tag = node.get("tag", "")
             if tag in ("p", "blockquote", "li"):
-                if any(_has_rtl_deep(c) for c in node.get("children", [])):
+                children = node.get("children", [])
+                if any(_has_rtl_deep(c) for c in children):
                     node = dict(node)
                     node["attrs"] = {**node.get("attrs", {}), "dir": "ltr"}
+                    # v10b RTL FIX: если первый child — dict(b/i) с ивритом,
+                    # браузер BiDi «улетает» вправо. LTR Mark перед ним — якорь.
+                    if (children
+                            and isinstance(children[0], dict)
+                            and children[0].get("tag") in ("b", "i")
+                            and _has_rtl_deep(children[0])):
+                        node["children"] = ["\u200e"] + list(children)
             return node
 
         content_nodes = [_apply_ltr_attr(n) for n in content_nodes]

@@ -193,7 +193,16 @@ def _md_to_telegraph_nodes(md: str) -> list:
             # иначе браузер переключает выравнивание всего абзаца вправо.
             _has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', s))
             _s_for_parse = _fix_rtl_in_text(s) if _has_rtl else s
-            _p_node = {"tag": "p", "children": _md_parse_inline(_s_for_parse)}
+            _p_children = _md_parse_inline(_s_for_parse)
+            # v10b RTL FIX: если первый child — dict (bold/italic) с ивритом,
+            # браузер BiDi считает весь абзац RTL и «улетает» вправо.
+            # Вставляем LTR Mark (U+200E) первым символом → абзац остаётся LTR.
+            # Telegraph strips dir="ltr" attr, поэтому только текстовый якорь работает.
+            if (_has_rtl and _p_children
+                    and isinstance(_p_children[0], dict)
+                    and _p_children[0].get("tag") in ("b", "i")):
+                _p_children = ["\u200e"] + _p_children
+            _p_node = {"tag": "p", "children": _p_children}
             if _has_rtl:
                 _p_node["attrs"] = {"dir": "ltr"}
             nodes.append(_p_node)
