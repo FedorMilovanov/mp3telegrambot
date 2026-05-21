@@ -9,15 +9,14 @@ from core.globals import (
     GEMINI_CLIENTS, DAILY_LIMIT, COOLDOWN_SECONDS,   # FIX #9
     InlineKeyboardButton, InlineKeyboardMarkup,       # FIX #9
     html_mod,                                          # FIX #9
-    _get_video_lock, _video_locks_mutex,               # FIX #9
-    _video_processing_locks,                           # FIX #9
+    _get_video_lock, _release_video_lock,              # FIX #9 / PART5
 )
 from core.database import (
     adb_get, adb_save, asettings_get, asettings_get_all,
     db_init, is_cache_valid,
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
     MAX_PLAYLIST_SIZE, DB_PATH,
-    acheck_rate_limit, aupdate_rate_limit,            # AUDIT M4
+    acheck_rate_limit, aupdate_rate_limit, areserve_rate_limit,  # AUDIT M4/PART5
 )
 from core.utils import (
     is_media_url, is_playlist_url, check_rate_limit, update_rate_limit,
@@ -334,15 +333,6 @@ async def handle_message(update, context):
     user_id = update.effective_user.id
     is_vip  = user_id in WHITELIST_IDS
 
-    # AUDIT M1: VIP явно обходят rate-limit (check_rate_limit и так не блокирует
-    # VIP, но явная проверка делает поведение очевидным и страхует от регрессий).
-    # AUDIT M4: check_rate_limit — синхронный SQLite, через executor.
-    if not is_vip:
-        allowed, reason = await acheck_rate_limit(user_id)
-        if not allowed:
-            await update.message.reply_text(reason)
-            return
-
     url = extract_media_url(text)
     if not url:
         await update.message.reply_text("❌ Не удалось распознать ссылку.")
@@ -351,8 +341,17 @@ async def handle_message(update, context):
         url = "https://" + url
 
     if is_playlist_url(text):
+        # Плейлист сам резервирует лимит перед каждым видео; не списываем отдельный
+        # слот за сам факт отправки playlist URL.
         await handle_playlist(url, update, context, user_id=user_id)
     else:
+        # PART5: check+reserve под per-user async lock. Раньше check и update были
+        # разделены, поэтому два параллельных запроса могли одновременно пройти лимит.
+        if not is_vip:
+            allowed, reason = await areserve_rate_limit(user_id)
+            if not allowed:
+                await update.message.reply_text(reason)
+                return
         label = " 👑" if is_vip else ""
         msg   = await update.message.reply_text(f"⏳ Обрабатываю...{label}")
         _vid_id_hint = _extract_yt_id_from_text(url) or url
@@ -363,15 +362,8 @@ async def handle_message(update, context):
             )
         async with _vlock:
             ok = await process_single_video(url, update, msg, context=context)
-        # AUDIT-V2-LOCKPOP: pop только если lock свободен
-        # Если второй запрос ещё держит lock, pop создаст возможность
-        # для третьего запроса создать новый lock и обработать параллельно
-        with _video_locks_mutex:
-            if not _vlock.locked():
-                _video_processing_locks.pop(_vid_id_hint, None)
-        if ok and not is_vip:
-            # AUDIT M4: update_rate_limit — синхронный SQLite, через executor
-            await aupdate_rate_limit(user_id)
+        _release_video_lock(_vid_id_hint, _vlock)
+        # PART5: rate-limit уже зарезервирован до обработки через areserve_rate_limit().
         try:
             await msg.delete()
         except Exception:

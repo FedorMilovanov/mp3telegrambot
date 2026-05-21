@@ -17,10 +17,10 @@ import os
 import shutil
 import yt_dlp
 
-from core.globals import GEMINI_CLIENTS
+from core.globals import GEMINI_CLIENTS, _get_video_lock, _release_video_lock
 from core.database import (
     MAX_PLAYLIST_SIZE,
-    acheck_rate_limit, aupdate_rate_limit,
+    acheck_rate_limit, aupdate_rate_limit, areserve_rate_limit,
     WHITELIST_IDS,
 )
 from services.ffmpeg import COOKIES_FILE
@@ -90,9 +90,11 @@ async def handle_playlist(url, update, context, user_id: int = 0):
         is_vip = user_id in WHITELIST_IDS
 
         for i, entry in enumerate(entries, 1):
-            # AUDIT M2: проверяем rate-limit ПЕРЕД каждым видео
+            # PART5: атомарная reservation перед каждым видео. Это закрывает bypass,
+            # когда два параллельных плейлиста одного пользователя одновременно
+            # проходили check_rate_limit до update_rate_limit.
             if user_id and not is_vip:
-                allowed, reason = await acheck_rate_limit(user_id)
+                allowed, reason = await areserve_rate_limit(user_id)
                 if not allowed:
                     await status_msg.edit_text(
                         f"📋 {title}\n"
@@ -116,15 +118,24 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             except Exception:
                 pass
 
-            # AUDIT M3: silent_errors=True — process_single_video не шлёт reply_text
-            ok = await process_single_video(
-                media_url, update, status_msg, prefix,
-                context=context, silent_errors=True,
-            )
+            # PART5: тот же per-video lock, что и в single-video handler.
+            # Иначе два одинаковых entry в плейлисте или два параллельных плейлиста
+            # могли одновременно пройти cache miss и начать двойную обработку.
+            _vid_lock_key = str(entry.get("id") or media_url)
+            _vlock = _get_video_lock(_vid_lock_key)
+            if _vlock.locked():
+                logger.info("Playlist video %s: duplicate request — waiting for lock", _vid_lock_key)
+            async with _vlock:
+                # AUDIT M3: silent_errors=True — process_single_video не шлёт reply_text
+                ok = await process_single_video(
+                    media_url, update, status_msg, prefix,
+                    context=context, silent_errors=True,
+                )
+            _release_video_lock(_vid_lock_key, _vlock)
+
             if ok:
                 success += 1
-                if user_id:
-                    await aupdate_rate_limit(user_id)
+                # rate-limit уже зарезервирован до обработки через areserve_rate_limit()
             else:
                 fail += 1
                 failed_entries.append(f"[{i}] {media_url}")

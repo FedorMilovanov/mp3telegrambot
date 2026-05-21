@@ -186,7 +186,8 @@ _RE_TIMECODE_STAR_AFTER = re.compile(
 )
 _RE_STRIP_TAGS = re.compile(r"<[^>]+>")
 _RE_MULTI_INLINE_SPACE = re.compile(r" {2,}")
-_RE_CLI_UNSAFE = re.compile(r"""["\'\\\n\r\t`$|;&<>]""")
+# PART5: sanitize_cli теперь использует translate(), regex для этого не нужен.
+_CLI_UNSAFE_TRANSLATION = str.maketrans({ch: " " for ch in "\"\'\\\n\r\t`$|;&<>"})
 
 # Telegraph article parsing
 _RE_ARTICLE = re.compile(
@@ -790,8 +791,13 @@ def _esc_safe(t: str) -> str:
 
 
 def _sanitize_cli(t: str) -> str:
-    """Очищает строку для безопасной передачи в CLI-аргумент."""
-    return _RE_CLI_UNSAFE.sub(" ", t or "").strip()[:120]
+    """Очищает строку для безопасной передачи в CLI-аргумент.
+
+    Раньше это делалось regex-ом. Там не было практического ReDoS
+    (обычный character class), но translate() проще, быстрее и исключает
+    сам класс regex-рисков для CLI sanitizing.
+    """
+    return (t or "").translate(_CLI_UNSAFE_TRANSLATION).strip()[:120]
 
 
 def _safe_url(url: str) -> str:

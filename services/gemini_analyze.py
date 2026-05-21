@@ -239,9 +239,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         async def _do_generate(_c=client, _ap=audio_part):
                             return await asyncio.wait_for(
                                 _c.aio.models.generate_content(
-                                    model=GEMINI_MODEL,
+                                    model=_current_model,
                                     contents=[_ap, prompt],
-                                    config=make_audio_config(temperature=0.1, max_output_tokens=65536),
+                                    config=make_audio_config(temperature=0.1, max_output_tokens=65536, model_name=_current_model),
                                 ),
                                 timeout=960.0,
                             )
@@ -274,9 +274,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         audio_part, used_client = await upload_to_client(client)
                         response = await asyncio.wait_for(
                             client.aio.models.generate_content(
-                                model=GEMINI_MODEL,
+                                model=_current_model,
                                 contents=[audio_part, prompt],
-                                config=make_audio_config(temperature=0.1, max_output_tokens=65536),
+                                config=make_audio_config(temperature=0.1, max_output_tokens=65536, model_name=_current_model),
                             ),
                             timeout=960.0,
                         )

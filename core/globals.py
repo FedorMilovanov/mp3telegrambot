@@ -163,16 +163,17 @@ GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, g
 # конспекты, Shorts, Clips и Montage.
 def _is_gemini_3x(model_name: str) -> bool:
     """Определяет 3.x семейство Gemini моделей.
-    Для 3.x: используем thinking_level (новый параметр), не используем temperature.
-    Для 2.x: используем temperature (там thinking_config работает иначе).
 
-    v10 FIX #19: убран токен "gemini-3.1" — модель платная и выведена из ротации.
-    Активна: gemini-3.5-flash (GA 19.05.2026, бесплатный tier).
+    Важно: проверяем всё семейство 3.x, а не только текущий default
+    gemini-3.5-flash. Иначе резервные/preview-имена вида gemini-3.1-*
+    или gemini-3-* получают конфиг как 2.x: temperature вместо
+    thinking_config. Это не security-баг, но реальная quality-regression.
     """
     if not model_name:
         return False
-    m = model_name.lower()
-    return any(tok in m for tok in ("gemini-3.5", "gemini-3-", "gemini-3.0"))
+    m = model_name.lower().strip()
+    # gemini-3.5-flash, gemini-3.1-flash-lite, gemini-3-flash-preview, gemini-3-...
+    return bool(re.search(r'(^|[^a-z0-9])gemini-3(?:[.\-]\d+)?(?:[\-_.]|$)', m))
 
 
 def _build_thinking_config(level: str = "high"):
@@ -281,15 +282,56 @@ def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
 # db_cleanup_old_records() вызывается в конце database.py после определения констант.
 
 # ─── Per-video lock ───────────────────────────────────────────
-_video_processing_locks = {}  # dict[str, asyncio.Lock]
+# dict[str, asyncio.Lock] оставлен для совместимости импортов, но добавлена
+# мета-информация и централизованный release. TTL чистит только НЕЗАНЯТЫЕ
+# lock-и: принудительно "разлочивать" активный asyncio.Lock небезопасно.
+_video_processing_locks: dict[str, asyncio.Lock] = {}
+_video_lock_meta: dict[str, float] = {}
 _video_locks_mutex = threading.Lock()
+_VIDEO_LOCK_TTL_SEC = float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600"))
+
+def _cleanup_video_locks_locked(now: float | None = None) -> None:
+    now = now or time.time()
+    stale = []
+    for vid, lock in list(_video_processing_locks.items()):
+        last_seen = _video_lock_meta.get(vid, now)
+        if not lock.locked() and now - last_seen > _VIDEO_LOCK_TTL_SEC:
+            stale.append(vid)
+    for vid in stale:
+        _video_processing_locks.pop(vid, None)
+        _video_lock_meta.pop(vid, None)
 
 def _get_video_lock(video_id: str) -> asyncio.Lock:
-    """Возвращает (или создаёт) asyncio.Lock для данного video_id."""
+    """Возвращает (или создаёт) asyncio.Lock для данного video_id.
+
+    Созданный, но не захваченный lock не блокирует обработку; проблема была
+    не в deadlock, а в потенциальном росте словаря. TTL решает именно это.
+    """
+    video_id = str(video_id or "").strip() or "unknown"
+    now = time.time()
     with _video_locks_mutex:
-        if video_id not in _video_processing_locks:
-            _video_processing_locks[video_id] = asyncio.Lock()
-        return _video_processing_locks[video_id]
+        _cleanup_video_locks_locked(now)
+        lock = _video_processing_locks.get(video_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _video_processing_locks[video_id] = lock
+        _video_lock_meta[video_id] = now
+        return lock
+
+def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None:
+    """Удаляет per-video lock из registry, если он уже свободен.
+
+    Важно проверять identity: если за время ожидания был создан новый lock с тем
+    же video_id, старый обработчик не должен удалить чужую запись.
+    """
+    video_id = str(video_id or "").strip() or "unknown"
+    with _video_locks_mutex:
+        current = _video_processing_locks.get(video_id)
+        if current is not None and (lock is None or current is lock) and not current.locked():
+            _video_processing_locks.pop(video_id, None)
+            _video_lock_meta.pop(video_id, None)
+        else:
+            _video_lock_meta[video_id] = time.time()
 
 
 def is_quota_error(e) -> bool:

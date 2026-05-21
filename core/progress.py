@@ -8,6 +8,7 @@ AUDIT M11: set_progress теперь корректно обрабатывает
 """
 import asyncio
 import logging
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,26 @@ def _progress_bar(pct: int) -> str:
     return "🟦" * filled + "⬜" * (10 - filled) + f" {pct}%"
 
 
-# AUDIT M11: дедупликация — храним последний отправленный текст в message_id
-_last_text_cache: dict[int, str] = {}
+# AUDIT M11/PART5: дедупликация прогресса.
+# Был plain dict + clear() при >1000 записей: память формально не текла,
+# но на больших плейлистах возникал cache thrashing и терялась дедупликация.
+# OrderedDict даёт настоящий LRU с ограниченным размером.
+_PROGRESS_CACHE_MAX = 500
+_last_text_cache: OrderedDict[int, str] = OrderedDict()
+
+
+def _progress_cache_get(message_id: int) -> str | None:
+    value = _last_text_cache.get(message_id)
+    if value is not None:
+        _last_text_cache.move_to_end(message_id)
+    return value
+
+
+def _progress_cache_put(message_id: int, text: str) -> None:
+    _last_text_cache[message_id] = text
+    _last_text_cache.move_to_end(message_id)
+    while len(_last_text_cache) > _PROGRESS_CACHE_MAX:
+        _last_text_cache.popitem(last=False)
 
 
 async def set_progress(status_msg, step: int, info: dict | None = None, prefix: str = ""):
@@ -52,16 +71,13 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
     msg_id = getattr(status_msg, "message_id", None)
 
     # AUDIT M11: дедупликация — Telegram отвечает BadRequest("message is not modified")
-    if msg_id is not None and _last_text_cache.get(msg_id) == text:
+    if msg_id is not None and _progress_cache_get(msg_id) == text:
         return
 
     try:
         await status_msg.edit_text(text)
         if msg_id is not None:
-            _last_text_cache[msg_id] = text
-            # Простейшая защита от утечки памяти: ограничиваем размер кэша
-            if len(_last_text_cache) > 1000:
-                _last_text_cache.clear()
+            _progress_cache_put(msg_id, text)
     except Exception as e:
         # AUDIT M11: специально обрабатываем RetryAfter (FloodWait)
         cls_name = type(e).__name__
@@ -73,12 +89,12 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
                 await asyncio.sleep(float(wait) + 0.5)
                 await status_msg.edit_text(text)
                 if msg_id is not None:
-                    _last_text_cache[msg_id] = text
+                    _progress_cache_put(msg_id, text)
             except Exception as e2:
                 logger.debug(f"set_progress retry: {e2}")
         elif "not modified" in msg_text:
             # Telegram сказал что текст не изменился — заносим в кэш чтобы не повторять
             if msg_id is not None:
-                _last_text_cache[msg_id] = text
+                _progress_cache_put(msg_id, text)
         else:
             logger.debug(f"set_progress: {cls_name}: {e}")

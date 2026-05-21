@@ -537,6 +537,41 @@ async def aupdate_rate_limit(user_id: int) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, update_rate_limit, user_id)
 
+# PART5: atomic-ish reservation for async handlers in this bot process.
+# check_rate_limit() и update_rate_limit() исторически разделены, поэтому два
+# параллельных handler-а могли одновременно пройти check. Этот lock сериализует
+# check+reserve per user_id. Резервация делается ДО обработки: это защищает лимит
+# от bypass ценой того, что неуспешная обработка тоже считается попыткой.
+_rate_limit_async_locks: dict[int, asyncio.Lock] = {}
+_rate_limit_locks_guard = asyncio.Lock()
+
+
+async def _get_rate_limit_lock(user_id: int) -> asyncio.Lock:
+    async with _rate_limit_locks_guard:
+        lock = _rate_limit_async_locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _rate_limit_async_locks[user_id] = lock
+        return lock
+
+
+async def areserve_rate_limit(user_id: int) -> tuple[bool, str]:
+    """Атомарно для текущего процесса: проверить лимит и сразу зарезервировать слот.
+
+    Возвращает (allowed, reason). VIP/whitelist проходят без записи.
+    Использовать в Telegram handlers вместо пары acheck_rate_limit()+aupdate_rate_limit(),
+    когда важно не допустить параллельный bypass.
+    """
+    if user_id in WHITELIST_IDS:
+        return True, ""
+    lock = await _get_rate_limit_lock(user_id)
+    async with lock:
+        allowed, reason = await acheck_rate_limit(user_id)
+        if not allowed:
+            return False, reason
+        await aupdate_rate_limit(user_id)
+        return True, ""
+
 
 # ─── Маппинг каналов YouTube → RuTube / VK ───────────────────
 # YouTube-канал "Fedor Milovanov" → RuTube "Господь Бог - Сила Моя" (ID 1876662)
