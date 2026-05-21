@@ -16,10 +16,10 @@ from core.database import (
     db_init, is_cache_valid,
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
     MAX_PLAYLIST_SIZE, DB_PATH,
-    acheck_rate_limit, aupdate_rate_limit, areserve_rate_limit,  # AUDIT M4/PART5
+    areserve_rate_limit,  # AUDIT M4/PART5
 )
 from core.utils import (
-    is_media_url, is_playlist_url, check_rate_limit, update_rate_limit,
+    is_media_url, is_playlist_url,
     extract_media_url, format_timestamp,               # FIX #9
 )
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX #9
@@ -360,9 +360,13 @@ async def handle_message(update, context):
             logger.info(
                 f"Video {_vid_id_hint}: параллельный запрос — жду завершения первого..."
             )
-        async with _vlock:
-            ok = await process_single_video(url, update, msg, context=context)
-        _release_video_lock(_vid_id_hint, _vlock)
+        try:
+            async with _vlock:
+                ok = await process_single_video(url, update, msg, context=context)
+        finally:
+            # async with сам освобождает asyncio.Lock даже при исключении,
+            # а registry чистим отдельно и тоже гарантированно.
+            _release_video_lock(_vid_id_hint, _vlock)
         # PART5: rate-limit уже зарезервирован до обработки через areserve_rate_limit().
         try:
             await msg.delete()

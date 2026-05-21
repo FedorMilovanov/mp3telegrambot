@@ -20,7 +20,7 @@ import yt_dlp
 from core.globals import GEMINI_CLIENTS, _get_video_lock, _release_video_lock
 from core.database import (
     MAX_PLAYLIST_SIZE,
-    acheck_rate_limit, aupdate_rate_limit, areserve_rate_limit,
+    areserve_rate_limit,
     WHITELIST_IDS,
 )
 from services.ffmpeg import COOKIES_FILE
@@ -90,9 +90,14 @@ async def handle_playlist(url, update, context, user_id: int = 0):
         is_vip = user_id in WHITELIST_IDS
 
         for i, entry in enumerate(entries, 1):
-            # PART5: атомарная reservation перед каждым видео. Это закрывает bypass,
-            # когда два параллельных плейлиста одного пользователя одновременно
-            # проходили check_rate_limit до update_rate_limit.
+            media_url = _build_media_url(entry)
+            if not media_url:
+                fail += 1
+                failed_entries.append(f"[{i}] (нет URL у entry)")
+                continue
+
+            # PART5: атомарная reservation перед каждым видео. Делаем её ПОСЛЕ
+            # проверки URL, чтобы битый playlist entry не съедал дневной лимит.
             if user_id and not is_vip:
                 allowed, reason = await areserve_rate_limit(user_id)
                 if not allowed:
@@ -103,12 +108,6 @@ async def handle_playlist(url, update, context, user_id: int = 0):
                         f"{reason}"
                     )
                     break
-
-            media_url = _build_media_url(entry)
-            if not media_url:
-                fail += 1
-                failed_entries.append(f"[{i}] (нет URL у entry)")
-                continue
 
             prefix = f"[{i}/{total}] "
             try:
@@ -125,13 +124,16 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             _vlock = _get_video_lock(_vid_lock_key)
             if _vlock.locked():
                 logger.info("Playlist video %s: duplicate request — waiting for lock", _vid_lock_key)
-            async with _vlock:
-                # AUDIT M3: silent_errors=True — process_single_video не шлёт reply_text
-                ok = await process_single_video(
-                    media_url, update, status_msg, prefix,
-                    context=context, silent_errors=True,
-                )
-            _release_video_lock(_vid_lock_key, _vlock)
+            try:
+                async with _vlock:
+                    # AUDIT M3: silent_errors=True — process_single_video не шлёт reply_text
+                    ok = await process_single_video(
+                        media_url, update, status_msg, prefix,
+                        context=context, silent_errors=True,
+                    )
+            finally:
+                # async with освобождает lock, release чистит registry даже при исключении.
+                _release_video_lock(_vid_lock_key, _vlock)
 
             if ok:
                 success += 1
