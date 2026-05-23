@@ -150,11 +150,11 @@ async def run_bot_async():
     # Кастомный request с увеличенными таймаутами — решает проблему
     # обрывов соединения в httpx 0.28+ (агрессивное закрытие idle-соединений)
     t_request = HTTPXRequest(
-        connection_pool_size=8,
-        read_timeout=60.0,
-        write_timeout=60.0,
-        connect_timeout=60.0,
-        pool_timeout=60.0,
+        connection_pool_size=32,
+        read_timeout=120.0,
+        write_timeout=120.0,
+        connect_timeout=120.0,
+        pool_timeout=120.0,
     )
 
     app = Application.builder().token(BOT_TOKEN).request(t_request).build()
@@ -171,7 +171,7 @@ async def run_bot_async():
     async with app:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True, read_timeout=120, pool_timeout=120)
 
         # Регистрируем команды — появится кнопка «Menu» слева от поля ввода
         from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat

@@ -349,16 +349,26 @@ def is_overload_error(e) -> bool:
     )
 
 
+_current_client_idx = 0
+
 async def gemini_generate(client_list, fn):
-    """Пробует каждый клиент по порядку, переключается при квоте. При 503 — retry с паузой."""
+    global _current_client_idx
     last_err = None
-    for client in client_list:
+    if not client_list:
+        raise RuntimeError("No Gemini clients available")
+        
+    start_idx = _current_client_idx
+    for i in range(len(client_list)):
+        idx = (start_idx + i) % len(client_list)
+        client = client_list[idx]
+        _current_client_idx = (idx + 1) % len(client_list)
+        
         for attempt in range(3):
             try:
                 return await fn(client)
             except Exception as e:
                 if is_quota_error(e):
-                    logger.warning("Gemini квота, пробую следующий ключ...")
+                    logger.warning(f"Gemini квота на ключе {idx}, пробую следующий...")
                     last_err = e
                     break
                 elif is_overload_error(e):

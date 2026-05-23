@@ -526,7 +526,13 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             _client_err = None
             _got_response = False
 
-            for client in _CLIENTS:
+            import core.globals
+            start_idx = getattr(core.globals, "_current_client_idx", 0)
+            
+            for i in range(len(_CLIENTS)):
+                idx = (start_idx + i) % len(_CLIENTS)
+                client = _CLIENTS[idx]
+                core.globals._current_client_idx = (idx + 1) % len(_CLIENTS)
                 try:
                     resp = await client.aio.models.generate_content(
                         model=model_name,

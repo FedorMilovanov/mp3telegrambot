@@ -565,25 +565,25 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 return await _synopsis_with_client(client, _upload, prompt, loop)
 
             # AUDIT-SUPER-FIX-BUG3: multi-model fallback для synopsis
-        # Если GEMINI_MODEL не работает (429/503) — пробуем gemini-2.5-flash-lite
-        response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis)
+            # Если GEMINI_MODEL не работает (429/503) — пробуем gemini-2.5-flash-lite
+            response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis)
 
-        # 429 / 503 на основной модели → пробуем резервную
-        if response is None:
-            logger.warning("Synopsis: основная модель недоступна — пробую gemini-2.5-flash-lite")
-            try:
-                _fallback_config = make_audio_config(temperature=0.1, max_output_tokens=32000, model_name="gemini-2.5-flash-lite")
-                async def _call_fallback(client):
-                    audio = await _upload(client)
-                    return await client.aio.models.generate_content(
-                        model="gemini-2.5-flash-lite",
-                        contents=[audio, prompt],
-                        config=_fallback_config,
-                    )
-                response = await gemini_generate(GEMINI_CLIENTS, _call_fallback)
-                logger.info("Synopsis: fallback модель успешна")
-            except Exception as _fb_err:
-                logger.warning(f"Synopsis fallback failed: {_fb_err}")
+            # 429 / 503 на основной модели → пробуем резервную
+            if response is None:
+                logger.warning("Synopsis: основная модель недоступна — пробую gemini-2.5-flash-lite")
+                try:
+                    _fallback_config = make_audio_config(temperature=0.1, max_output_tokens=32000, model_name="gemini-2.5-flash-lite")
+                    async def _call_fallback(client):
+                        audio = await _upload(client)
+                        return await client.aio.models.generate_content(
+                            model="gemini-2.5-flash-lite",
+                            contents=[audio, prompt],
+                            config=_fallback_config,
+                        )
+                    response = await gemini_generate(GEMINI_CLIENTS, _call_fallback)
+                    logger.info("Synopsis: fallback модель успешна")
+                except Exception as _fb_err:
+                    logger.warning(f"Synopsis fallback failed: {_fb_err}")
 
         # ── Извлекаем текст ответа ────────────────────────────
         synopsis_text = _extract_response_text(response)
