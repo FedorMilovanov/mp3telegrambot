@@ -22,14 +22,6 @@ from core.globals import html_mod                       # FIX #7: html_mod = htm
 
 import re
 
-# ULTIMATE FIX 3.5-FLASH: gemini-3.5-flash склонна добавлять **markdown** в любое поле,
-# даже когда промпт это запрещает. Этот helper чистит **bold** из любого текста, оставляя
-# его жирным только если это сделано через переопределённую функцию _topic_to_html
-# (которая конвертирует ** в <b>).
-def _strip_markdown_artifacts(text: str) -> str:
-    """Убирает **жирный** и _курсив_ из текста — для полей где они не должны быть."""
-    if not text:
-        return text
     # **bold** -> bold (для случаев когда не должно быть форматирования)
     text = re.sub(r'\*\*([^*\n]+)\*\*', r'\1', text)
     # *italic* -> italic (но не путаем с маркером списка в начале строки)

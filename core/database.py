@@ -548,6 +548,11 @@ _rate_limit_locks_guard = asyncio.Lock()
 
 async def _get_rate_limit_lock(user_id: int) -> asyncio.Lock:
     async with _rate_limit_locks_guard:
+        # FIX 2026-05-24: cleanup stale locks to prevent memory leak
+        if len(_rate_limit_async_locks) > 500:
+            stale = [uid for uid, lk in _rate_limit_async_locks.items() if not lk.locked()]
+            for uid in stale:
+                del _rate_limit_async_locks[uid]
         lock = _rate_limit_async_locks.get(user_id)
         if lock is None:
             lock = asyncio.Lock()

@@ -45,6 +45,9 @@ def _demote_paragraph_bold(line: str) -> str:
     """DEEP-QUALITY FIX [D]: если в строке **bold** покрывает >70% символов —
     это явно жирный АБЗАЦ (плохо визуально). Понижаем: убираем **, оставляя текст обычным.
     Если жирное короткое (<50% строки) — оставляем как есть, это нормальный акцент.
+
+    FIX 2026-05-24: MIN_LINE_LEN=80 — короткие строки (<80 символов)
+    целиком bold — это осознанные акценты (тезисы, поворотные фразы).
     """
     if not line or '**' not in line:
         return line
@@ -57,6 +60,11 @@ def _demote_paragraph_bold(line: str) -> str:
     if total_len == 0:
         return line
     bold_ratio = bold_len / total_len
+    # FIX 2026-05-24: короткие строки (<80 символов) —
+    # осознанные акценты, не трогаем.
+    MIN_LINE_LEN = 80
+    if total_len < MIN_LINE_LEN:
+        return line
     if bold_ratio > 0.7:
         # Жирный абзац — снимаем **
         return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)

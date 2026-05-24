@@ -145,8 +145,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     _user_model = GEMINI_MODEL
     _fallback_models = [
         _user_model,                # из .env, рекомендуется gemini-3.5-flash
-        "gemini-3.1-flash-lite", "gemini-2.5-flash-lite",  # FINAL-POLISH FIX 1            # 5 RPM / 20 RPD — тоже свежая 3.x
-        "gemini-3.1-flash-lite",     # 15 RPM / 500 RPD — последний шанс, точно прорвётся
+        "gemini-2.5-flash-lite",    # 5 RPM / 20 RPD — свежая модель
+        "gemini-3.1-flash-lite",    # 15 RPM / 500 RPD — последний шанс
     ]
     _seen = set()
     _models_to_try = []

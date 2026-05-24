@@ -510,6 +510,138 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
     return result
 
 
+
+# ─── FIX 2026-05-24: subsection + scripture normalization ──────────────────
+
+_SUBSECTION_EMOJIS = ('\u26a0\ufe0f', '\u2705', '\u274c', '\U0001f7e2',
+                       '\U0001f535', '\U0001f511', '\U0001f4d6',
+                       '\U0001f4dc', '\U0001f5fa\ufe0f', '\U0001f3db\ufe0f',
+                       '\u2696\ufe0f', '\U0001f4da', '\U0001f9e9',
+                       '\U0001f30d', '\U0001f524')
+
+def _patch_subsection_headers(content: str) -> str:
+    """Normalize subsection headers from Gemini."""
+    lines = content.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        m1 = _re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', s)
+        if m1:
+            prev_empty = (i == 0) or (not lines[i-1].strip())
+            next_s = lines[i+1].strip() if i+1 < len(lines) else ''
+            if prev_empty and next_s and not next_s.startswith(('*', '#', '>')):
+                text = m1.group(1).strip().rstrip('.')
+                result.append(f'- **{text}.**')
+                i += 1
+                continue
+        if s in _SUBSECTION_EMOJIS and i+1 < len(lines):
+            next_s = lines[i+1].strip()
+            m2 = _re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', next_s)
+            if m2:
+                text = m2.group(1).strip().rstrip('.')
+                result.append(f'{s} **{text}.**')
+                i += 2
+                continue
+            m2b = _re.match(r'^([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', next_s)
+            if m2b:
+                text = m2b.group(1).strip().rstrip('.')
+                result.append(f'{s} **{text}.**')
+                i += 2
+                continue
+        for _emoji in _SUBSECTION_EMOJIS:
+            if s.startswith(_emoji) and len(s) > len(_emoji) + 2:
+                _rest = s[len(_emoji):].strip()
+                if _rest and len(_rest) > 3 and not _rest.startswith('**'):
+                    _title = _rest.rstrip('.')
+                    result.append(f'{_emoji} **{_title}.**')
+                    i += 1
+                    break
+        else:
+            m4 = _re.match(r'^[-\u2022]\s+([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', s)
+            if m4 and i+1 < len(lines):
+                next_s = lines[i+1].strip()
+                if (next_s and
+                    not next_s.startswith(('-', '\u2022', '*', '#', '>', '\u26a0\ufe0f', '\u2705', '\u274c')) and
+                    '**' not in m4.group(1)):
+                    title = m4.group(1).strip().rstrip('.')
+                    result.append(f'- **{title}.**')
+                    i += 1
+                    continue
+            result.append(lines[i])
+            i += 1
+    return '\n'.join(result)
+
+def _patch_scripture_format(content: str) -> str:
+    """"• Book X:Y – Z.\n*«quote»*" → "**• Book X:Y–Z**: *«quote»*"
+    """
+    _BOOKS = (
+        r'\u0411\u044b\u0442\u0438\u0435|\u0418\u0441\u0445\u043e\u0434|'
+        r'\u041b\u0435\u0432\u0438\u0442|\u0427\u0438\u0441\u043b\u0430|'
+        r'\u0412\u0442\u043e\u0440\u043e\u0437\u0430\u043a\u043e\u043d\u0438\u0435|'
+        r'\u0418\u0438\u0441\u0443\u0441 \u041d\u0430\u0432\u0438\u043d|'
+        r'\u0421\u0443\u0434\u044c\u0438|\u0420\u0443\u0444\u044c|'
+        r'1\s*(?:\u0426\u0430\u0440\u0441\u0442\u0432|\u041f\u0430\u0440)|'
+        r'2\s*(?:\u0426\u0430\u0440\u0441\u0442\u0432|\u041f\u0430\u0440)|'
+        r'3\s*\u0426\u0430\u0440\u0441\u0442\u0432|4\s*\u0426\u0430\u0440\u0441\u0442\u0432|'
+        r'\u0415\u0437\u0434\u0440\u0430|\u041d\u0435\u0435\u043c\u0438\u044f|'
+        r'\u0415\u0441\u0444\u0438\u0440\u044c|\u0418\u043e\u0432|'
+        r'\u041f\u0441\u0430\u043b\u043e\u043c|\u041f\u0440\u0438\u0442\u0447\u0438|'
+        r'\u0415\u043a\u043a\u043b\u0435\u0441\u0438\u0430\u0441\u0442|\u041f\u0435\u0441\u043d\u044c|'
+        r'\u0418\u0441\u0430\u0438\u044f|\u0418\u0435\u0440\u0435\u043c\u0438\u044f|'
+        r'\u041f\u043b\u0430\u0447|\u0418\u0435\u0437\u0435\u043a\u0438\u043b\u044c|'
+        r'\u0414\u0430\u043d\u0438\u0438\u043b|\u041e\u0441\u0438\u044f|'
+        r'\u0418\u043e\u0438\u043b\u044c|\u0410\u043c\u043e\u0441|'
+        r'\u0410\u0432\u0434\u0438\u0439|\u0418\u043e\u043d\u0430|'
+        r'\u041c\u0438\u0445\u0435\u0439|\u041d\u0430\u0443\u043c|'
+        r'\u0410\u0432\u0432\u0430\u043a\u0443\u043c|\u0421\u043e\u0444\u043e\u043d\u0438\u044f|'
+        r'\u0410\u0433\u0433\u0435\u0439|\u0417\u0430\u0445\u0430\u0440\u0438\u044f|'
+        r'\u041c\u0430\u043b\u0430\u0445\u0438\u044f|'
+        r'\u041c\u0430\u0442\u0444\u0435\u044f|\u041c\u0430\u0440\u043a\u0430|'
+        r'\u041b\u0443\u043a\u0438|\u0418\u043e\u0430\u043d\u043d\u0430|'
+        r'\u0414\u0435\u044f\u043d\u0438\u044f|\u0420\u0438\u043c\u043b\u044f\u043d\u0430\u043c|'
+        r'1\s*\u041a\u043e\u0440\u0438\u043d\u0444\u044f\u043d\u0430\u043c|'
+        r'2\s*\u041a\u043e\u0440\u0438\u043d\u0444\u044f\u043d\u0430\u043c|'
+        r'\u0413\u0430\u043b\u0430\u0442\u0430\u043c|\u0415\u0444\u0435\u0441\u044f\u043d\u0430\u043c|'
+        r'\u0424\u0438\u043b\u0438\u043f\u043f\u0438\u0439\u0446\u0430\u043c|'
+        r'\u041a\u043e\u043b\u043e\u0441\u0441\u044f\u043d\u0430\u043c|'
+        r'1\s*\u0424\u0435\u0441\u0441\u0430\u043b\u043e\u043d\u0438\u043a\u0438\u0439\u0446\u0430\u043c|'
+        r'2\s*\u0424\u0435\u0441\u0441\u0430\u043b\u043e\u043d\u0438\u043a\u0438\u0439\u0446\u0430\u043c|'
+        r'1\s*\u0422\u0438\u043c\u043e\u0444\u0435\u044e|2\s*\u0422\u0438\u043c\u043e\u0444\u0435\u044e|'
+        r'\u0422\u0438\u0442\u0443|\u0424\u043b\u0438\u043c\u043e\u043d\u0443|'
+        r'\u0415\u0432\u0440\u0435\u044f\u043c|\u0418\u0430\u043a\u043e\u0432\u0430|'
+        r'1\s*\u041f\u0435\u0442\u0440\u0430|2\s*\u041f\u0435\u0442\u0440\u0430|'
+        r'1\s*\u0418\u043e\u0430\u043d\u043d\u0430|2\s*\u0418\u043e\u0430\u043d\u043d\u0430|'
+        r'3\s*\u0418\u043e\u0430\u043d\u043d\u0430|\u0418\u0443\u0434\u044b|'
+        r'\u041e\u0442\u043a\u0440\u043e\u0432\u0435\u043d\u0438\u0435'
+    )
+    _RE = _re.compile(rf'^(\u2022\s+)({_BOOKS})\.?\s+(\d[\d\s:,;.\u2013\u2014-]*?)\.?\s*$')
+    lines = content.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        m = _RE.match(s)
+        if m:
+            bullet = m.group(1)
+            book = m.group(2).strip().rstrip('.')
+            verses = m.group(3).strip().rstrip('.')
+            verses = _re.sub(r'(\d)\s*[\u2013\u2014-]\s*(\d)', r'\1\u2013\2', verses)
+            ref = f'{book} {verses}'
+            if i+1 < len(lines):
+                next_s = lines[i+1].strip()
+                m_q = _re.match(r'^\*?[\u00ab\u201c](.*?)[\u00bb\u201d]\*?\.?\s*$', next_s)
+                if m_q:
+                    result.append(f'**{bullet}{ref}**: *\u00ab{m_q.group(1)}\u00bb*')
+                    i += 2
+                    continue
+            result.append(f'**{bullet}{ref}**')
+            i += 1
+            continue
+        result.append(lines[i])
+        i += 1
+    return '\n'.join(result)
+
 def _section_to_nodes_v2(
     section: dict,
     yt_url: str = "",
@@ -573,6 +705,12 @@ def _section_to_nodes_v2(
     # Пустые / двойные blockquote markers
     content = re.sub(r'^>\s*>\s*', '> ', content, flags=re.MULTILINE)
     content = re.sub(r'^>\s*$', '', content, flags=re.MULTILINE)
+    # FIX 2026-05-24: subsection + scripture normalization
+
+    content = _patch_subsection_headers(content)
+
+    content = _patch_scripture_format(content)
+
 
     # Слишком много звёздочек
     content = re.sub(r'\*{4,}', '**', content)
