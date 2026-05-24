@@ -544,7 +544,15 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                             thinking_level="high",
                         ),
                     )
-                    result = resp.text or ""
+                    try:
+                        result = resp.text or ""
+                    except (ValueError, AttributeError):
+                        result = ""
+                        if resp.candidates:
+                            for part in resp.candidates[0].content.parts:
+                                if not getattr(part, "thought", False) and getattr(part, "text", None):
+                                    result = part.text
+                                    break
                     if result:
                         return result
                     logger.warning(
@@ -599,7 +607,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     return None
 
 
-def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 100_000) -> tuple[list, list] | None:
+def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 500_000) -> tuple[list, list] | None:
     """Парсит JSON {outline, sections} из ответа Gemini. Возвращает (outline, sections) или None.
     Поддерживает восстановление обрезанного JSON (max_tokens hit).
 
@@ -607,7 +615,8 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 1
     """
     text = text.strip()
     # Убираем Unicode bidi-изоляторы которые Gemini иногда вставляет вокруг иврита/арабского
-    text = re.sub(r'[\u2066-\u2069\u202a-\u202e\u200e\u200f]', '', text)
+    # PATCH: keep \u200e/\u200f for RTL
+    text = re.sub(r'[\u2066-\u2069\u202a-\u202e]', '', text)
     if text.startswith("```"):
         text = re.sub(r"^```[a-z]*\n?", "", text)
         text = re.sub(r"\n?```$", "", text.strip())
@@ -881,7 +890,8 @@ async def _run_expanded_pipeline(
                 "Повтори строго: только валидный JSON {outline, sections}, "
                 "без ```json, без текста до/после.\n\n" + prompt
             )
-            raw2 = await _gemini_text_request(retry_prompt, temperature=0.1, max_tokens=max_tokens)
+            _retry_tokens = min(max_tokens * 2, 65000)  # PATCH: escalate
+            raw2 = await _gemini_text_request(retry_prompt, temperature=0.1, max_tokens=_retry_tokens)
             if raw2:
                 parsed = _parse_expanded_json(raw2)
             if parsed is None:
@@ -1085,7 +1095,7 @@ async def create_telegraph_study_analysis(
         yt_url=yt_url,
         include_toc=True,
         fallback_fn=compact_fn,
-        max_tokens=16000,
+        max_tokens=32000,   # PATCH: was 16K
         rutube_url=rutube_url,
         vk_url=vk_url,
         duration=int(effective_duration) if effective_duration else 0,
@@ -1200,7 +1210,7 @@ async def create_telegraph_reflection_application(
         yt_url=yt_url,
         include_toc=True,
         fallback_fn=compact_fn,
-        max_tokens=14000,
+        max_tokens=24000,   # PATCH: was 14K
         rutube_url=rutube_url,
         vk_url=vk_url,
         duration=int(duration) if duration else 0,

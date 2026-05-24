@@ -1367,6 +1367,7 @@ async def _create_telegraph_page_single(title: str, author: str,
         return None, "no_token"
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn(nodes)
+    nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
 
     _NETWORK_ERRS = (ConnectionError, TimeoutError, OSError)
     last_err = "unknown"
@@ -1417,6 +1418,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
         return False
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn2(nodes)
+    nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
     try:
         path = page_url.replace("https://telegra.ph/", "")
         resp = await loop.run_in_executor(None, lambda: requests.post(
@@ -1633,3 +1635,69 @@ def get_caption_timestamp_limit(format_name: str) -> int:
     }.get(format_name or "other", 20)
 
 
+
+
+# ════════════════════════════════════════════════════════
+# CONSPECT QUALITY PATCH: postprocess Telegraph nodes
+# ════════════════════════════════════════════════════════
+
+def _postprocess_telegraph_nodes(nodes: list) -> list:
+    """Fix common Gemini generation bugs in Telegraph nodes:
+    space before/after ⏱, double spaces, '. .', hyphen→dash in verses,
+    Unicode spaces, bidi isolates, merge adjacent text nodes,
+    space between <strong> and <a>⏱
+    """
+    def _fix_text(text):
+        if not isinstance(text, str):
+            return text
+        text = re.sub(r'(\S)\u23f1', r'\1 \u23f1', text)
+        text = re.sub(r'\u23f1(\S)', r'\u23f1 \1', text)
+        text = re.sub(r' {2,}', ' ', text)
+        text = re.sub(r'\.\s+\.', '.', text)
+        for ch in ['\u00a0', '\u2009', '\u202f']:
+            text = text.replace(ch, ' ')
+        for ch in ['\u200b', '\u00ad']:
+            text = text.replace(ch, '')
+        text = re.sub(r'[\u2066-\u2069\u202a-\u202e]', '', text)
+        text = re.sub(r'(\d+:\d+)\s*-\s*(\d+)', r'\1\u2013\2', text)
+        return text
+
+    def _ends_no_space(n):
+        if isinstance(n, str):
+            return bool(n) and not n.endswith(" ")
+        if isinstance(n, dict):
+            ch = n.get("children", [])
+            return _ends_no_space(ch[-1]) if ch else False
+        return False
+
+    def _walk(nodes_in):
+        result = []
+        for node in nodes_in:
+            if isinstance(node, str):
+                fixed = _fix_text(node)
+                if result and isinstance(result[-1], str):
+                    result[-1] += fixed
+                else:
+                    result.append(fixed)
+            elif isinstance(node, dict):
+                nn = dict(node)
+                if "children" in nn:
+                    nn["children"] = _walk(nn["children"])
+                    patched = []
+                    for j, child in enumerate(nn["children"]):
+                        if (j > 0 and isinstance(child, dict)
+                                and child.get("tag") == "a"
+                                and child.get("children")
+                                and isinstance(child["children"][0], str)
+                                and child["children"][0].lstrip().startswith("\u23f1")):
+                            prev = patched[-1] if patched else None
+                            if prev is not None and _ends_no_space(prev):
+                                patched.append(" ")
+                        patched.append(child)
+                    nn["children"] = patched
+                result.append(nn)
+            else:
+                result.append(node)
+        return result
+
+    return _walk(nodes)
