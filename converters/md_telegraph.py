@@ -1686,14 +1686,16 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         _ENDASH = '–'  # –
         text = re.sub(r'(\S)⏱', lambda m: m.group(1) + ' ' + _CLOCK, text)
         text = re.sub(r'⏱(\S)',  lambda m: _CLOCK + ' ' + m.group(1), text)
+        # Strip leading zero from minute in timestamps: 05:32 → 5:32
+        text = re.sub(r'\b0(\d:\d{2})\b', r'\1', text)
         text = re.sub(r' {2,}', ' ', text)
         text = re.sub(r'\.\s+\.', '.', text)
         for ch in [' ', ' ', ' ']:
             text = text.replace(ch, ' ')
         for ch in ['​', '­']:
             text = text.replace(ch, '')
-        text = re.sub(r'[⁦-⁩‪-‮]', '', text)
-        text = re.sub(r'(\d+:\d+)\s*-\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)
+        text = re.sub(r'[⁦-⁩‪-‮‎‏]', '', text)  # incl. LTR/RTL marks
+        text = re.sub(r'(\d+:\d+)\s*[-–]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen AND en-dash in verse ranges
         return text
 
     def _ends_no_space(n):
@@ -1734,4 +1736,27 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 result.append(node)
         return result
 
-    return _walk(nodes)
+    def _is_emoji_stub_node(node) -> bool:
+        """True if node is <p><b>EMOJI.</b></p> — useless stub from Gemini section labels."""
+        import unicodedata
+        if not isinstance(node, dict) or node.get('tag') != 'p':
+            return False
+        ch = node.get('children', [])
+        if len(ch) != 1 or not isinstance(ch[0], dict) or ch[0].get('tag') != 'b':
+            return False
+        b_children = ch[0].get('children', [])
+        if not b_children:
+            return False
+        text = ''.join(c if isinstance(c, str) else '' for c in b_children).strip().rstrip('.')
+        if not text:
+            return False
+        # All chars must be emoji/symbol — no real text
+        return all(
+            unicodedata.category(c) in ('So', 'Mn', 'Cf', 'Co') or
+            ord(c) > 0x1F000 or ord(c) in range(0x2600, 0x2700) or
+            ord(c) in range(0x2300, 0x2400)
+            for c in text if c.strip()
+        )
+
+    walked = _walk(nodes)
+    return [n for n in walked if not _is_emoji_stub_node(n)]
