@@ -976,7 +976,16 @@ async def _run_expanded_pipeline(
         return await fallback_fn() if fallback_fn else None
 
     except Exception as e:
-        logger.exception("%s: unexpected error -- fallback: %s", label, e)
+        # FALLBACK-DIAG: явно показываем, что мы СВАЛИЛИСЬ на compact-страницу.
+        # Раньше юзер видел в Telegram '📖 Разбор материала', не подозревая что
+        # это короткая Аналитика-fallback. Теперь это видно в логах громко.
+        logger.error(
+            "%s: ❌ UNEXPECTED ERROR (%s: %s) — переключаюсь на COMPACT-FALLBACK. "
+            "Это значит, что в Telegram пользователь увидит УРЕЗАННУЮ версию страницы. "
+            "Чините ошибку выше.",
+            label, type(e).__name__, str(e)[:200],
+        )
+        logger.exception("%s: traceback ↓", label)
         return await fallback_fn() if fallback_fn else None
 
 

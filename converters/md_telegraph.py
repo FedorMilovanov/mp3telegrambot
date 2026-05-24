@@ -1651,16 +1651,24 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
     def _fix_text(text):
         if not isinstance(text, str):
             return text
-        text = re.sub(r'(\S)\u23f1', r'\1 \u23f1', text)
-        text = re.sub(r'\u23f1(\S)', r'\u23f1 \1', text)
+        # FIX (Python 3.12+): replacement-строка в re.sub НЕ понимает \uXXXX —
+        # это вызывало re.PatternError 'bad escape \u at position 3' и КАСКАДНО
+        # ломало публикацию Synopsis / StudyAnalysis / ReflectionApplication
+        # (все три страницы Gemini генерировал успешно, но post-process падал).
+        # Решение: lambda вместо raw-replacement, чтобы Python разрешал \u23f1
+        # на этапе компиляции литерала, а не передавал в parser re.
+        _CLOCK = '⏱'  # ⏱
+        _ENDASH = '–'  # –
+        text = re.sub(r'(\S)⏱', lambda m: m.group(1) + ' ' + _CLOCK, text)
+        text = re.sub(r'⏱(\S)',  lambda m: _CLOCK + ' ' + m.group(1), text)
         text = re.sub(r' {2,}', ' ', text)
         text = re.sub(r'\.\s+\.', '.', text)
-        for ch in ['\u00a0', '\u2009', '\u202f']:
+        for ch in [' ', ' ', ' ']:
             text = text.replace(ch, ' ')
-        for ch in ['\u200b', '\u00ad']:
+        for ch in ['​', '­']:
             text = text.replace(ch, '')
-        text = re.sub(r'[\u2066-\u2069\u202a-\u202e]', '', text)
-        text = re.sub(r'(\d+:\d+)\s*-\s*(\d+)', r'\1\u2013\2', text)
+        text = re.sub(r'[⁦-⁩‪-‮]', '', text)
+        text = re.sub(r'(\d+:\d+)\s*-\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)
         return text
 
     def _ends_no_space(n):
