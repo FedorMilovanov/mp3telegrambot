@@ -573,53 +573,105 @@ def _patch_subsection_headers(content: str) -> str:
     return '\n'.join(result)
 
 def _patch_scripture_format(content: str) -> str:
-    """Normalize scripture references.
+    """Normalize scripture references: merge ref + quote into one line.
 
-    '• Book X:Y – Z.\n*«quote»*' → '**• Book X:Y–Z**: *«quote»*'
-    Also normalizes dash spacing in verse ranges.
+    Handles both plain and already-bolded references from Gemini:
+      '• Матфея 7:21 – 23.\n*«quote»*'       → '• **Матфея 7:21–23:** *«quote»*'
+      '• **Матфея 7:21 – 23.**\n*«quote»*'    → '• **Матфея 7:21–23:** *«quote»*'
+
+    Also normalizes dash spacing: "7:21 – 23" → "7:21–23"
     """
-    _BOOKS = (
-        r'Бытие|Исход|Левит|Числа|Второзаконие|Иисус Навин|Судьи|Руфь|'
-        r'1\s*(?:Царств|Пар)|2\s*(?:Царств|Пар)|3\s*Царств|4\s*Царств|'
-        r'Ездра|Неемия|Есфирь|Иов|Псалом|Притчи|Екклесиаст|Песнь|'
-        r'Исаия|Иеремия|Плач|Иезекиль|Даниил|Осия|Иоиль|Амос|Авдий|Иона|'
-        r'Михей|Наум|Аввакум|Софония|Аггей|Захария|Малахия|'
-        r'Матфея|Марка|Луки|Иоанна|Деяния|Римлянам|'
-        r'1\s*Коринфянам|2\s*Коринфянам|Галатам|Ефесянам|Филиппийцам|Колоссянам|'
-        r'1\s*Фессалоникийцам|2\s*Фессалоникийцам|1\s*Тимофею|2\s*Тимофею|'
-        r'Титу|Филимону|Евреям|Иакова|1\s*Петра|2\s*Петра|'
-        r'1\s*Иоанна|2\s*Иоанна|3\s*Иоанна|Иуды|Откровение'
+    _BOOKS_RU = (
+        'Бытие|Исход|Левит|Числа|Второзаконие|Иисус Навин|Судьи|Руфь|'
+        '1\\s*(?:Царств|Пар)|2\\s*(?:Царств|Пар)|3\\s*Царств|4\\s*Царств|'
+        'Ездра|Неемия|Есфирь|Иов|Псалом|Псалмы|Притчи|Екклесиаст|Песнь|'
+        'Исаия|Иеремия|Плач|Иезекииль|Иезекиль|Даниил|Осия|Иоиль|Амос|Авдий|Иона|'
+        'Михей|Наум|Аввакум|Софония|Аггей|Захария|Малахия|'
+        'Матфея|Марка|Луки|Луки|Иоанна|Деяния|Римлянам|'
+        '1\\s*Коринфянам|2\\s*Коринфянам|Галатам|Ефесянам|Филиппийцам|Колоссянам|'
+        '1\\s*Фессалоникийцам|2\\s*Фессалоникийцам|1\\s*Тимофею|2\\s*Тимофею|'
+        'Титу|Филимону|Евреям|Иакова|1\\s*Петра|2\\s*Петра|'
+        '1\\s*Иоанна|2\\s*Иоанна|3\\s*Иоанна|Иуды|Откровение|'
+        'Езекииль|Езекиль'
     )
-    _RE = re.compile(rf'^(•\s+)({_BOOKS})\.?\s+(\d[\d\s:,;.–—-]*?)\.?\s*$')
+
+    # Pattern A: plain   "• Матфея 7:21 – 23."
+    _RE_PLAIN = re.compile(
+        rf'^(•\s+)({_BOOKS_RU})\s+(\d[\d\s:,;.–—-]*?)\s*\.?\s*$'
+    )
+    # Pattern B: bolded  "• **Матфея 7:21 – 23.**" or "• **Матфея 7:21 – 23**"
+    _RE_BOLD = re.compile(
+        rf'^(•\s+)\*\*({_BOOKS_RU})\s+(\d[\d\s:,;.–—-]*?)\s*\.?\*\*\.?\s*$'
+    )
+
+    def _norm_verses(v):
+        """'7:21 – 23' → '7:21–23'"""
+        v = v.strip().rstrip('.')
+        return re.sub(r'(\d)\s*[–—-]\s*(\d)', r'\1–\2', v)
+
+    def _is_quote_line(s):
+        """Check if line is an italic quote: *«...»* or _«...»_ etc."""
+        s = s.strip()
+        # *«text»*  or  _«text»_
+        if re.match(r'^[*_]?[«"„].*[»"""][*_]?\.?\s*$', s):
+            return True
+        # «text» without italic markers
+        if re.match(r'^[«"„].*[»"""]\.?\s*$', s):
+            return True
+        return False
+
+    def _extract_quote(s):
+        """Extract clean quote text from a quote line."""
+        s = s.strip()
+        # Remove leading/trailing * or _
+        s = re.sub(r'^[*_]+', '', s)
+        s = re.sub(r'[*_]+\.?\s*$', '', s)
+        # Remove trailing .
+        s = s.rstrip('.').rstrip()
+        # Strip ONLY outermost quotes (not inner)
+        if s.startswith('«') and '»' in s:
+            last_rq = s.rfind('»')
+            s = s[1:last_rq]
+        elif s.startswith('“') and '”' in s:
+            last_rq = s.rfind('”')
+            s = s[1:last_rq]
+        return s.strip()
+
     lines = content.split('\n')
     result = []
     i = 0
     while i < len(lines):
         s = lines[i].strip()
-        m = _RE.match(s)
+
+        # Try Pattern A (plain) then Pattern B (bolded)
+        m = _RE_PLAIN.match(s)
+        if not m:
+            m = _RE_BOLD.match(s)
+
         if m:
-            bullet = m.group(1)
-            book = m.group(2).strip().rstrip('.')
-            verses = m.group(3).strip().rstrip('.')
-            # Normalize dash spacing: "7:21 – 23" → "7:21–23"
-            verses = re.sub(r'(\d)\s*[–—-]\s*(\d)', r'\1–\2', verses)
+            bullet = m.group(1)   # "• "
+            book = m.group(2).strip()
+            verses = _norm_verses(m.group(3))
             ref = f'{book} {verses}'
-            # Check next line for quote
-            if i+1 < len(lines):
-                next_s = lines[i+1].strip()
-                m_q = re.match(r'^\*?[«"](.*?)[»"]\*?\.?\s*$', next_s)
-                if m_q:
-                    result.append(f'**{bullet}{ref}**: *«{m_q.group(1)}»*')
-                    i += 2
-                    continue
-            # No quote — just bold the reference
-            result.append(f'**{bullet}{ref}**')
-            i += 1
-            continue
+
+            # Check next non-empty line for quote (skip blank lines)
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and _is_quote_line(lines[j]):
+                quote = _extract_quote(lines[j])
+                result.append(f'• **{ref}:** *«{quote}»*')
+                i = j + 1
+                continue
+            else:
+                # No quote on next line — just bold the reference with colon
+                result.append(f'• **{ref}.**')
+                i += 1
+                continue
+
         result.append(lines[i])
         i += 1
     return '\n'.join(result)
-
 
 
 def _section_to_nodes_v2(
