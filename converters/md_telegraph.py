@@ -526,7 +526,7 @@ def _patch_subsection_headers(content: str) -> str:
     i = 0
     while i < len(lines):
         s = lines[i].strip()
-        m1 = _re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', s)
+        m1 = re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', s)
         if m1:
             prev_empty = (i == 0) or (not lines[i-1].strip())
             next_s = lines[i+1].strip() if i+1 < len(lines) else ''
@@ -537,13 +537,13 @@ def _patch_subsection_headers(content: str) -> str:
                 continue
         if s in _SUBSECTION_EMOJIS and i+1 < len(lines):
             next_s = lines[i+1].strip()
-            m2 = _re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', next_s)
+            m2 = re.match(r'^\*\*(.{3,120}?)\*\*\.?\s*$', next_s)
             if m2:
                 text = m2.group(1).strip().rstrip('.')
                 result.append(f'{s} **{text}.**')
                 i += 2
                 continue
-            m2b = _re.match(r'^([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', next_s)
+            m2b = re.match(r'^([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', next_s)
             if m2b:
                 text = m2b.group(1).strip().rstrip('.')
                 result.append(f'{s} **{text}.**')
@@ -558,7 +558,7 @@ def _patch_subsection_headers(content: str) -> str:
                     i += 1
                     break
         else:
-            m4 = _re.match(r'^[-\u2022]\s+([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', s)
+            m4 = re.match(r'^[-\u2022]\s+([\u0410-\u042f\u0401A-Z\u00ab\u201c"][^\n]{5,100}[\u2026.\u2026)])\s*$', s)
             if m4 and i+1 < len(lines):
                 next_s = lines[i+1].strip()
                 if (next_s and
@@ -615,7 +615,7 @@ def _patch_scripture_format(content: str) -> str:
         r'3\s*\u0418\u043e\u0430\u043d\u043d\u0430|\u0418\u0443\u0434\u044b|'
         r'\u041e\u0442\u043a\u0440\u043e\u0432\u0435\u043d\u0438\u0435'
     )
-    _RE = _re.compile(rf'^(\u2022\s+)({_BOOKS})\.?\s+(\d[\d\s:,;.\u2013\u2014-]*?)\.?\s*$')
+    _RE = re.compile(rf'^(\u2022\s+)({_BOOKS})\.?\s+(\d[\d\s:,;.\u2013\u2014-]*?)\.?\s*$')
     lines = content.split('\n')
     result = []
     i = 0
@@ -626,11 +626,11 @@ def _patch_scripture_format(content: str) -> str:
             bullet = m.group(1)
             book = m.group(2).strip().rstrip('.')
             verses = m.group(3).strip().rstrip('.')
-            verses = _re.sub(r'(\d)\s*[\u2013\u2014-]\s*(\d)', r'\1\u2013\2', verses)
+            verses = re.sub(r'(\d)\s*[\u2013\u2014-]\s*(\d)', r'\1\u2013\2', verses)
             ref = f'{book} {verses}'
             if i+1 < len(lines):
                 next_s = lines[i+1].strip()
-                m_q = _re.match(r'^\*?[\u00ab\u201c](.*?)[\u00bb\u201d]\*?\.?\s*$', next_s)
+                m_q = re.match(r'^\*?[\u00ab\u201c](.*?)[\u00bb\u201d]\*?\.?\s*$', next_s)
                 if m_q:
                     result.append(f'**{bullet}{ref}**: *\u00ab{m_q.group(1)}\u00bb*')
                     i += 2
