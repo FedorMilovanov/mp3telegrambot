@@ -22,15 +22,6 @@ from core.globals import html_mod                       # FIX #7: html_mod = htm
 
 import re
 
-    # **bold** -> bold (для случаев когда не должно быть форматирования)
-    text = re.sub(r'\*\*([^*\n]+)\*\*', r'\1', text)
-    # *italic* -> italic (но не путаем с маркером списка в начале строки)
-    text = re.sub(r'(?<![*\w])\*([^*\n]+)\*(?![*\w])', r'\1', text)
-    # _underline_ -> underline
-    text = re.sub(r'(?<![_\w])_([^_\n]+)_(?![_\w])', r'\1', text)
-    return text
-
-
 def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrate="128", url="", telegraph_url="", rutube_url="", vk_url="", quotes_tg_url="", questions_tg_url="", terms_tg_url="", study_tg_url="", reflection_tg_url="", full_mode=False):
     parts = []
 
