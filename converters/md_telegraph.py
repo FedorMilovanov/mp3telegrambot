@@ -1050,13 +1050,38 @@ def _section_to_nodes_v2(
     # 7. H3 + TIMESTAMP LINKS В ЗАГОЛОВКЕ SECTION
     # ------------------------------------------------------------------
 
+    def _strip_emoji_and_prefix(s: str) -> str:
+        """Убирает эмодзи, пунктуацию и служебные префиксы для fuzzy-сравнения заголовков."""
+        # Убираем эмодзи и спец-символы
+        s = re.sub(r'[\U0001F300-\U0001FFFE\U00002700-\U000027BF'
+                    r'\u2600-\u26FF\u2700-\u27BF\u23F0-\u23FF\u2B50]', '', s)
+        # Убираем префиксы вида "Разбор материала: " / "📖 Разбор материала: "
+        s = re.sub(r'^[\w\s]+:\s*', '', s.strip())
+        # Убираем суффиксы вида " (часть 1/2)"
+        s = re.sub(r'\s*\(\s*часть\s*\d+/\d+\s*\)\s*$', '', s)
+        return s.strip().lower()
+
+    _norm_title = _strip_emoji_and_prefix(title or "")
+    _norm_page  = _strip_emoji_and_prefix(page_title or "")
     _title_is_page_title = (
         page_title and title and
-        title.strip().lower() == page_title.strip().lower()
+        # Точное совпадение ИЛИ section_title является частью page_title
+        (_norm_title == _norm_page or
+         (_norm_title and _norm_page and
+          (_norm_title in _norm_page or _norm_page in _norm_title)))
     )
 
     if title and not _title_is_page_title:
         _clean_title = _HEADING_BOLD_STRIP_RE.sub(r'\1', title)
+        # FIX: убираем trailing эмодзи из h3 заголовков секций (на мобильных выглядят нелепо)
+        # \uFE00-\uFE0F — variation selectors (e.g. ⚖️ = U+2696 + U+FE0F)
+        _clean_title = re.sub(
+            r'[\U0001F300-\U0001FFFE\U00002700-\U000027BF'
+            r'\u2600-\u26FF\u2700-\u27BF\u23F0-\u23FF\u2B50'
+            r'\U0001FA00-\U0001FA9F\U0001F900-\U0001F9FF'
+            r'\uFE00-\uFE0F]+\s*$',
+            '', _clean_title
+        ).rstrip()
         nodes.append({"tag": "h3", "children": [_clean_title]})
 
         if time_str:

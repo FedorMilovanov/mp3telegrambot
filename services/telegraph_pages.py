@@ -833,6 +833,11 @@ async def _publish_expanded_page(
         if include_toc and i == 0:
             final_nodes.extend(_build_toc_nodes_v2(outline, yt_url=yt_url, parts=parts, duration=duration))
 
+        # Nav вверху для частей 2+ (не для первой — там TOC)
+        if total > 1 and i > 0:
+            final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
+            final_nodes.append({"tag": "hr"})
+
         for sec_idx, sec in enumerate(part_secs):
             if sec_idx > 0:
                 final_nodes.append({"tag": "hr"})
@@ -842,6 +847,7 @@ async def _publish_expanded_page(
                                                      plain_scripture=plain_scripture))
 
         if total > 1:
+            final_nodes.append({"tag": "hr"})
             final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
         ok = False
@@ -1108,7 +1114,7 @@ async def create_telegraph_study_analysis(
     return await _run_expanded_pipeline(
         label="StudyAnalysis",
         prompt=prompt,
-        page_prefix="Разбор материала",
+        page_prefix="📖 Разбор материала",
         tg_title=tg_title,
         author=author_clean,
         yt_url=yt_url,
@@ -1223,7 +1229,7 @@ async def create_telegraph_reflection_application(
     return await _run_expanded_pipeline(
         label="ReflectionApplication",
         prompt=prompt,
-        page_prefix="Размышление и применение",
+        page_prefix="🙏 Размышление и применение",
         tg_title=tg_title,
         author=author_clean,
         yt_url=yt_url,
