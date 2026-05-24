@@ -35,7 +35,8 @@ _VL_DEC_RE      = re.compile(r'&#\d+;')
 _VL_HEX_RE      = re.compile(r'&#x[0-9a-fA-F]+;')
 
 # ─── Missing regex patterns (BUG FIX: were lost during refactoring) ──────────
-_HEADING_BOLD_STRIP_RE = re.compile(r'^\*\*(?!\*)(.*?)(?<!\*)\*\*$', re.DOTALL)
+# PATCH v2: убран re.DOTALL — заголовки должны быть однострочными
+_HEADING_BOLD_STRIP_RE = re.compile(r'^\*\*(?!\*)(.*?)(?<!\*)\*\*$')
 
 # FIXED #117: паттерны вынесены на уровень модуля — ранее компилировались
 # при каждом вызове _ensure_trailing_period (сотни раз за прогон).

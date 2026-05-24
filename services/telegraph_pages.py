@@ -554,6 +554,16 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                     result = part.text
                                     break
                     if result:
+                        # PATCH v2: thinking tokens logging
+                        _meta = getattr(resp, 'usage_metadata', None)
+                        if _meta:
+                            logger.info(
+                                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s",
+                                model_name,
+                                getattr(_meta, 'prompt_token_count', '?'),
+                                getattr(_meta, 'thoughts_token_count', '?'),
+                                getattr(_meta, 'candidates_token_count', '?'),
+                            )
                         return result
                     logger.warning(
                         "_gemini_text_request[%s]: пустой ответ (finish=%s)",
