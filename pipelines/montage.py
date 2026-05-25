@@ -87,14 +87,14 @@ async def _run_montage_or_highlights_pipeline(
         if do_poster:
             try:
                 if await create_short_title_poster(current_path, poster_path, cand["title"], total_dur) and poster_path.exists():
-                    thumb_buf = BytesIO(poster_path.read_bytes())
+                    thumb_buf = open(poster_path, "rb")
                     thumb_buf.name = poster_path.name
             except Exception:
                 pass
         if thumb_buf is None and do_snapshot:
             try:
                 if await create_short_snapshot(current_path, snapshot_path, total_dur) and snapshot_path.exists():
-                    thumb_buf = BytesIO(snapshot_path.read_bytes())
+                    thumb_buf = open(snapshot_path, "rb")
                     thumb_buf.name = snapshot_path.name
             except Exception:
                 pass
@@ -205,6 +205,13 @@ async def process_and_send_highlights(
         real_author = (ai_data or {}).get("real_author", "") or performer or ""
         format_name = (ai_data or {}).get("format", "other") or "other"
         cand = candidates[0]
+        if not cand.get("fragments") or not cand.get("title"):
+            logger.warning("Highlights: кандидат невалидный (нет fragments/title): %s", list(cand.keys()))
+            try:
+                await update.message.reply_text("🌟 Highlights: данные кандидата повреждены.")
+            except Exception:
+                pass
+            return
         logger.info(f"Highlights: рендер '{cand['title']}'")
         ok = await _run_montage_or_highlights_pipeline(
             cand=cand, video_path=video_path, media_id=media_id,

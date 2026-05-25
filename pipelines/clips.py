@@ -129,7 +129,7 @@ async def process_and_send_clips(
                         clip_path, snap_path, c["duration_seconds"]
                     )
                     if snap_ok and snap_path.exists():
-                        thumb_buf = BytesIO(snap_path.read_bytes())
+                        thumb_buf = open(snap_path, "rb")
                         thumb_buf.name = snap_path.name
                 except Exception as snap_err:
                     logger.warning(f"Clips {i}/{total}: snapshot error: {snap_err}")

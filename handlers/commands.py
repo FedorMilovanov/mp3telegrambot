@@ -125,12 +125,12 @@ async def _do_resetcache_one(video_id: str, update) -> None:
     rows = await loop.run_in_executor(None, _delete)
     if rows:
         await update.message.reply_text(
-            f"✅ Кэш сброшен: `{video_id}`\nТеперь отправь ссылку заново.",
-            parse_mode="Markdown")
+            f"✅ Кэш сброшен: <code>{video_id}</code>\nТеперь отправь ссылку заново.",
+            parse_mode="HTML")
     else:
         await update.message.reply_text(
-            f"⚠️ Не найдено в кэше: `{video_id}`",
-            parse_mode="Markdown")
+            f"⚠️ Не найдено в кэше: <code>{video_id}</code>",
+            parse_mode="HTML")
 
 
 async def reset_cache_command(update, context):
