@@ -121,3 +121,27 @@ def test_log_gemini_response_extracts_usage_and_finish_reason(tmp_path, monkeypa
             (row_id,),
         ).fetchone()
     assert row == (5, 8, 13, 26, 1234, "MAX_TOKENS", "truncated")
+
+
+def test_log_gemini_run_persists_validation_summary(tmp_path, monkeypatch):
+    db_path = tmp_path / "obs_validation.db"
+    monkeypatch.setattr(observability, "DB_PATH", db_path)
+
+    row_id = log_gemini_run(
+        task="shorts_candidates",
+        postprocess_fixes=3,
+        validation_summary={
+            "accepted": 2,
+            "rejected": 3,
+            "total": 5,
+            "reasons": {"too_short": 2, "end_after_duration": 1},
+        },
+    )
+    assert isinstance(row_id, int)
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT postprocess_fixes, validation_summary FROM gemini_runs WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+    assert row[0] == 3
+    assert '"too_short": 2' in row[1]

@@ -384,7 +384,7 @@ async def create_shorts_candidates(
         await alog_gemini_response(
             response=response, task="shorts_candidates", video_id=mp3_path.stem,
             model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-            json_valid=True, postprocess_fixes=report.rejected,
+            json_valid=True, postprocess_fixes=report.rejected, validation_summary=report.to_json(),
         )
         return out[:5]
 
@@ -667,7 +667,7 @@ async def create_clips_candidates(
         await alog_gemini_response(
             response=response, task="clips_candidates", video_id=mp3_path.stem,
             model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-            json_valid=True, postprocess_fixes=report.rejected,
+            json_valid=True, postprocess_fixes=report.rejected, validation_summary=report.to_json(),
         )
         return out[:3]
 

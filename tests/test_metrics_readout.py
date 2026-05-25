@@ -29,6 +29,13 @@ def test_metrics_summary_and_report_include_task_tokens_and_errors(tmp_path, mon
         thinking_level="low",
         duration_ms=500,
         json_valid=False,
+        postprocess_fixes=3,
+        validation_summary={
+            "accepted": 2,
+            "rejected": 3,
+            "total": 5,
+            "reasons": {"too_short": 2, "end_after_duration": 1},
+        },
         error="json_decode_error",
         finish_reason="MAX_TOKENS",
     )
@@ -38,6 +45,8 @@ def test_metrics_summary_and_report_include_task_tokens_and_errors(tmp_path, mon
     assert summary["errors"] == 1
     assert summary["json_invalid"] == 1
     assert summary["total_tokens"] == 35
+    assert summary["candidate_rejections"] == 3
+    assert summary["candidate_rejection_reasons"][0] == {"reason": "too_short", "count": 2}
     assert {row["task"] for row in summary["by_task"]} == {"audio_analysis", "shorts_candidates"}
 
     report = format_gemini_metrics_report(hours=24, recent_limit=5)
@@ -46,6 +55,8 @@ def test_metrics_summary_and_report_include_task_tokens_and_errors(tmp_path, mon
     assert "shorts_candidates" in report
     assert "json_decode_error" in report
     assert "MAX_TOKENS" in report
+    assert "Candidate rejection reasons" in report
+    assert "too_short" in report
 
     with sqlite3.connect(db_path) as conn:
         indexes = {row[1] for row in conn.execute("PRAGMA index_list(gemini_runs)").fetchall()}

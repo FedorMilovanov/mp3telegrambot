@@ -9,6 +9,7 @@ canonical timing validator and produces a small validation report.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from typing import Callable
 
 
@@ -37,6 +38,36 @@ class CandidateValidationReport:
             return f"accepted={self.accepted} rejected={self.rejected}"
         top = ", ".join(f"{k}:{v}" for k, v in sorted(self.reasons.items())[:8])
         return f"accepted={self.accepted} rejected={self.rejected} reasons={top}"
+
+    def to_dict(self) -> dict:
+        return {
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "total": self.total,
+            "reasons": dict(self.reasons),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True)
+
+
+def parse_validation_summary(value: str | None) -> dict:
+    """Parse validation_summary JSON stored in gemini_runs."""
+    if not value:
+        return {"accepted": 0, "rejected": 0, "total": 0, "reasons": {}}
+    try:
+        data = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {"accepted": 0, "rejected": 0, "total": 0, "reasons": {}}
+    reasons = data.get("reasons") if isinstance(data, dict) else {}
+    if not isinstance(reasons, dict):
+        reasons = {}
+    return {
+        "accepted": int(data.get("accepted") or 0) if isinstance(data, dict) else 0,
+        "rejected": int(data.get("rejected") or 0) if isinstance(data, dict) else 0,
+        "total": int(data.get("total") or 0) if isinstance(data, dict) else 0,
+        "reasons": {str(k): int(v or 0) for k, v in reasons.items()},
+    }
 
 
 def validate_candidate_times(

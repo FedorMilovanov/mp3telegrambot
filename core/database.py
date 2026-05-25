@@ -95,6 +95,7 @@ def db_init():
                 is_fallback        INTEGER DEFAULT 0,
                 json_valid         INTEGER,
                 postprocess_fixes  INTEGER DEFAULT 0,
+                validation_summary TEXT DEFAULT '',
                 finish_reason      TEXT DEFAULT '',
                 error              TEXT DEFAULT '',
                 prompt_version     TEXT DEFAULT '',
@@ -104,6 +105,10 @@ def db_init():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
+        try:
+            conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         # Миграция video_cache: добавляем колонки если их нет (для старых баз данных)
         migrated = []
         for col, default in [

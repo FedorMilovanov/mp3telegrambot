@@ -1,4 +1,4 @@
-from core.candidate_schema import CandidateValidationReport, validate_candidate_times
+from core.candidate_schema import CandidateValidationReport, parse_validation_summary, validate_candidate_times
 from core.core_utils import time_to_seconds
 
 
@@ -47,3 +47,16 @@ def test_validate_candidate_times_rejects_bad_ranges():
     )
     assert ok is False
     assert reason == "too_long"
+
+
+def test_candidate_validation_report_json_roundtrip():
+    report = CandidateValidationReport()
+    report.accept()
+    report.reject("too_short")
+    parsed = parse_validation_summary(report.to_json())
+    assert parsed == {
+        "accepted": 1,
+        "rejected": 1,
+        "total": 2,
+        "reasons": {"too_short": 1},
+    }

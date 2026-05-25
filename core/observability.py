@@ -8,12 +8,14 @@ real Gemini clients and can be called from sync or async pipeline stages.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sqlite3
 import time
 from typing import Any
 
 from core.globals import DB_PATH
+from core.candidate_schema import parse_validation_summary
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,7 @@ def _ensure_gemini_runs_table(conn: sqlite3.Connection) -> None:
             is_fallback        INTEGER DEFAULT 0,
             json_valid         INTEGER,
             postprocess_fixes  INTEGER DEFAULT 0,
+            validation_summary TEXT DEFAULT '',
             finish_reason      TEXT DEFAULT '',
             error              TEXT DEFAULT '',
             prompt_version     TEXT DEFAULT '',
@@ -119,6 +122,10 @@ def _ensure_gemini_runs_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
+    try:
+        conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
 
 
 def log_gemini_run(
@@ -137,6 +144,7 @@ def log_gemini_run(
     is_fallback: bool = False,
     json_valid: bool | None = None,
     postprocess_fixes: int = 0,
+    validation_summary: str | dict | None = "",
     finish_reason: str = "",
     error: str | None = None,
     prompt_version: str = "",
@@ -145,6 +153,8 @@ def log_gemini_run(
 ) -> int | None:
     """Persist one Gemini run metric row. Returns row id or None on failure."""
     task = _safe_text(task, 80) or "unknown"
+    if isinstance(validation_summary, dict):
+        validation_summary = json.dumps(validation_summary, ensure_ascii=False, sort_keys=True)
     row = (
         float(ts if ts is not None else time.time()),
         _safe_text(video_id, 200),
@@ -161,6 +171,7 @@ def log_gemini_run(
         1 if is_fallback else 0,
         _bool_to_db(json_valid),
         _safe_int(postprocess_fixes),
+        _safe_text(validation_summary, 1000),
         _safe_text(finish_reason, 120),
         _safe_text(error, 1000),
         _safe_text(prompt_version, 120),
@@ -176,8 +187,8 @@ def log_gemini_run(
                     ts, video_id, task, model, thinking_level,
                     input_tokens, output_tokens, cached_tokens, thinking_tokens,
                     total_tokens, duration_ms, retry_num, is_fallback, json_valid,
-                    postprocess_fixes, finish_reason, error, prompt_version, cache_key
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    postprocess_fixes, validation_summary, finish_reason, error, prompt_version, cache_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row,
             )
@@ -206,6 +217,7 @@ def log_gemini_response(
     is_fallback: bool = False,
     json_valid: bool | None = None,
     postprocess_fixes: int = 0,
+    validation_summary: str | dict | None = "",
     error: str | None = None,
     prompt_version: str = "",
     cache_key: str = "",
@@ -222,6 +234,7 @@ def log_gemini_response(
         is_fallback=is_fallback,
         json_valid=json_valid,
         postprocess_fixes=postprocess_fixes,
+        validation_summary=validation_summary,
         finish_reason=extract_finish_reason(response),
         error=error,
         prompt_version=prompt_version,
@@ -248,7 +261,7 @@ def fetch_recent_gemini_runs(limit: int = 10) -> list[dict[str, Any]]:
                 SELECT ts, video_id, task, model, thinking_level,
                        input_tokens, output_tokens, cached_tokens, thinking_tokens,
                        total_tokens, duration_ms, retry_num, is_fallback, json_valid,
-                       postprocess_fixes, finish_reason, error
+                       postprocess_fixes, validation_summary, finish_reason, error
                 FROM gemini_runs
                 ORDER BY ts DESC
                 LIMIT ?
@@ -279,6 +292,8 @@ def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
         "avg_duration_ms": 0,
         "by_task": [],
         "by_finish_reason": [],
+        "candidate_rejections": 0,
+        "candidate_rejection_reasons": [],
         "recent_errors": [],
     }
     try:
@@ -343,6 +358,26 @@ def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
                 """,
                 (since,),
             ).fetchall()
+            validation_rows = conn.execute(
+                """
+                SELECT validation_summary
+                FROM gemini_runs
+                WHERE ts >= ? AND validation_summary != ''
+                """,
+                (since,),
+            ).fetchall()
+
+        rejection_reasons: dict[str, int] = {}
+        candidate_rejections = 0
+        for row in validation_rows:
+            parsed = parse_validation_summary(row["validation_summary"])
+            candidate_rejections += _safe_int(parsed.get("rejected"))
+            for reason, count in (parsed.get("reasons") or {}).items():
+                rejection_reasons[reason] = rejection_reasons.get(reason, 0) + _safe_int(count)
+        candidate_rejection_reasons = [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(rejection_reasons.items(), key=lambda item: (-item[1], item[0]))
+        ][:10]
 
         return {
             "hours": hours,
@@ -358,6 +393,8 @@ def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
             "avg_duration_ms": _safe_int(totals["avg_duration_ms"]),
             "by_task": [dict(row) for row in by_task],
             "by_finish_reason": [dict(row) for row in by_finish],
+            "candidate_rejections": candidate_rejections,
+            "candidate_rejection_reasons": candidate_rejection_reasons,
             "recent_errors": [dict(row) for row in recent_errors],
         }
     except Exception as exc:
@@ -409,6 +446,17 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
             ", ".join(
                 f"<code>{_safe_text(row.get('finish_reason'), 30)}</code>={_fmt_int(row.get('runs'))}"
                 for row in summary["by_finish_reason"][:6]
+            )
+        )
+
+    if summary["candidate_rejection_reasons"]:
+        lines.append("")
+        lines.append("<b>Candidate rejection reasons</b>")
+        lines.append(f"Total rejected: <b>{_fmt_int(summary['candidate_rejections'])}</b>")
+        lines.append(
+            ", ".join(
+                f"<code>{_safe_text(row.get('reason'), 32)}</code>={_fmt_int(row.get('count'))}"
+                for row in summary["candidate_rejection_reasons"][:8]
             )
         )
 

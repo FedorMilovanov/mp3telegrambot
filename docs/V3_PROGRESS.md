@@ -70,11 +70,9 @@ Tag: `v3-pre-schema-stable`
 4. recent Gemini runs readout
 5. token/latency summary
 
-## Текущая фаза
+## Завершено: Phase 4.1 — Structured Output candidates
 
-**Phase 4.1 — Structured Output candidates**
-
-В одном патче:
+Добавлено:
 
 1. schema contract for Shorts candidates
 2. schema contract for Clips candidates
@@ -83,15 +81,27 @@ Tag: `v3-pre-schema-stable`
 5. legacy JSON fallback if SDK/model rejects schema
 6. tests for schema/config/fallback contracts
 
-## Следующая фаза
+## Текущая фаза
 
 **Phase 4.2 — Candidate quality comparison + admin readout**
 
+В одном патче:
+
+1. store candidate validation summaries in `gemini_runs`
+2. expose rejection reasons in `/metrics`
+3. aggregate rejected candidate counts by reason
+4. keep `postprocess_fixes` as numeric rejected-count for compatibility
+5. tests for validation summary persistence and metrics report
+
+## Следующая фаза
+
+**Phase 4.3 — Canonical candidate objects + admin quality loop**
+
 Порядок:
 
-1. compare candidate parse failure rate before/after Structured Output
-2. expose candidate rejection reasons in `/metrics`
-3. add per-task parse-failure counters
+1. canonical dataclasses for accepted Shorts/Clips/Extras candidates
+2. include rejection reasons in debug logs/admin readout
+3. compare parse failure rate before/after Structured Output
 4. затем canonical audio analysis adapter
 
 ## Release rule
