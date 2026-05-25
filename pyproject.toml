@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = [
+  ".git",
+  ".pytest_cache",
+  "__pycache__",
+  "downloads",
+  "node_modules",
+]
+
+[tool.ruff.lint]
+# На старте V3 включаем только классы, которые ловят синтаксические/опасные ошибки
+# без массового style-churn в легаси-коде. Расширять после schema/observability.
+select = ["E9", "F63", "F7", "F82"]
