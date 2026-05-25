@@ -130,3 +130,19 @@ python -m compileall -q .
 python -m pytest -q
 git diff --check
 ```
+
+## Завершено: Phase 4.3 — Prompt quality hardening (patch 7)
+
+1. `core/text_utils.py`: git/tech artifact scrub (BUG-R3-01 fix)
+2. `core/prompt_rules.py`: THIRD_PERSON_BAN + FEW_SHOT_FIRST_SECTION constants
+3. `core/prompts.py`: SYNOPSIS_V2 uses THIRD_PERSON_BAN + FEW_SHOT_FIRST_SECTION via expand
+4. `core/prompts.py`: STUDY_ANALYSIS КРИТИЧЕСКИ ВАЖНО reduced 15 → 11
+5. Eval baseline recorded (3 runs): Synopsis avg 4.13/5, Study 4.30/5, Reflection 4.40/5
+
+## Следующая фаза
+
+**Phase 5 — Prompt Caching + SOURCE_PACKS**
+
+1. context caching для system_instruction (Study/Reflection)
+2. SOURCE_PACKS — релевантные источники по теме вместо 100+ авторов
+3. Eval run после рефакторинга (сравнение с baseline)

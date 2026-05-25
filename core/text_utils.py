@@ -47,6 +47,9 @@ _INLINE_SCRUB_PATTERNS = [
     r"\w+\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}",    # "March 7 at 5:11"
     r"текст\s+подготовлен\s+с\s+помощью[^.]*",
     r"подготовлен[оа]?\s+с\s+помощью\s+gemini\s*ai[^.]*",
+    # BUG-R3-01: git/tech английские слова попадающие в русский текст через
+    # YouTube-субтитры или транскрипцию Whisper — «опубли commit вавшего»
+    r"\b(commit|push|merge|branch|diff|rebase|checkout|stash|fetch|pull request)\b",
 ]
 
 
