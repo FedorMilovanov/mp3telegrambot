@@ -5,7 +5,7 @@ build_clip_caption, render_montage_short, create_extras_candidates.
 Извлечено из bot.py строки 11169–11354, 11921–12239.
 """
 from core.globals import (
-    DOWNLOAD_DIR, THUMBS_DIR,
+    DOWNLOAD_DIR, THUMBS_DIR, make_text_config_smart,
     GEMINI_CLIENTS, HAS_GEMINI,        # FIX render
     gemini_generate,                    # FIX render
 )
@@ -373,9 +373,9 @@ async def create_extras_candidates(
             return await client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=[prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
+                config=make_text_config_smart(
                     max_output_tokens=14000,
+                    thinking_level="low",
                 ),
             )
 

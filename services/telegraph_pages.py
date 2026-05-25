@@ -907,7 +907,7 @@ async def _run_expanded_pipeline(
                 "без ```json, без текста до/после.\n\n" + prompt
             )
             _retry_tokens = min(max_tokens * 2, 65000)  # PATCH: escalate
-            raw2 = await _gemini_text_request(retry_prompt, temperature=0.1, max_tokens=_retry_tokens)
+            raw2 = await _gemini_text_request(retry_prompt, max_tokens=_retry_tokens)
             if raw2:
                 parsed = _parse_expanded_json(raw2)
             if parsed is None:

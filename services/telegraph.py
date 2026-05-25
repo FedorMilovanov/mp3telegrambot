@@ -78,6 +78,10 @@ def _demote_paragraph_bold(line: str) -> str:
                 return inner
             return m.group(0)
         return re.sub(r'\*\*([^*\n]+)\*\*', _demote_if_long, line)
+    # FIX 2026-05-25: source cards — if line starts with "• **Author, *Title*"
+    # and bold covers >50%, it's a bold-wrapped source card — demote
+    if bold_ratio > 0.5 and line.lstrip().startswith('• **') and '*' in line and ',' in line:
+        return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)
     # Общий ratio check — если вся строка >70% жирная, снимаем всё
     if bold_ratio > 0.7:
         return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)

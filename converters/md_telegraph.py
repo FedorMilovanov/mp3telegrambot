@@ -1816,6 +1816,22 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         children = _strip_leading_icon_prefix(children)
         children = _deb0ld_marker(children)
+
+        # FIX 2026-05-25: fix "( **Term**)" → "(**Term**)" spacing in term definitions
+        def _fix_paren_bold_space(ch):
+            """Fix '( **' → '(**' in text nodes before bold children."""
+            out = list(ch)
+            for i in range(len(out)):
+                if isinstance(out[i], str) and out[i].rstrip().endswith('('):
+                    # Next child is bold? Check if we need to remove trailing space
+                    if i + 1 < len(out) and isinstance(out[i+1], dict) and out[i+1].get('tag') in ('b', 'strong'):
+                        out[i] = out[i].rstrip() + '('
+                        out[i] = out[i].replace('( (', '(')  # avoid double
+                        if out[i].endswith('(('):
+                            out[i] = out[i][:-1]
+            return out
+
+        children = _fix_paren_bold_space(children)
         node['children'] = children
 
         plain = _flatten_text(node).strip()
