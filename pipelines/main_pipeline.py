@@ -725,7 +725,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         path = page_url.replace("https://telegra.ph/", "")
                         resp = await loop.run_in_executor(None, lambda: requests.get(
                             f"https://api.telegra.ph/getPage/{path}?return_content=true",
-                            timeout=15,
+                            timeout=30,
                         ))
                         data = resp.json()
                         if not data.get("ok"):
@@ -780,7 +780,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                             _p_path = _part_url.replace("https://telegra.ph/", "")
                                             _p_resp = await loop.run_in_executor(None, lambda: requests.get(
                                                 f"https://api.telegra.ph/getPage/{_p_path}?return_content=true",
-                                                timeout=15,
+                                                timeout=30,
                                             ))
                                             _p_data = _p_resp.json()
                                             if _p_data.get("ok"):

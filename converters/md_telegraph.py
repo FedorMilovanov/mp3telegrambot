@@ -1772,5 +1772,60 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         return False
 
+    def _flatten_text(node) -> str:
+        if isinstance(node, str):
+            return node
+        if isinstance(node, dict):
+            return ''.join(_flatten_text(c) for c in node.get('children', []))
+        return ''
+
+    def _normalize_paragraph_node(node):
+        """Post-fixes for common Gemini Telegraph regressions:
+        1) strip section-leading emoji labels like `🔑 ` / `📖 ` / `🗣️ `
+        2) de-bold bare list markers like `**•**` / `**-**`
+        3) make standalone question paragraphs visually explicit in diagnostics sections
+        """
+        if not isinstance(node, dict) or node.get('tag') != 'p':
+            return node
+        children = list(node.get('children', []))
+        if not children:
+            return node
+
+        def _strip_leading_icon_prefix(ch):
+            icon_re = re.compile(r'^\s*[🔑📖🏛️⚖️📚📜🛡️🗣️🧭🗝️]+(?:️)?\s*')
+            out = list(ch)
+            while out and isinstance(out[0], str):
+                new0 = icon_re.sub('', out[0])
+                if new0 != out[0]:
+                    if new0:
+                        out[0] = new0
+                        break
+                    out = out[1:]
+                    continue
+                break
+            return out
+
+        def _deb0ld_marker(ch):
+            if not ch or not isinstance(ch[0], dict) or ch[0].get('tag') not in ('b', 'strong'):
+                return ch
+            raw = ''.join(_flatten_text(c) for c in ch[0].get('children', [])).strip()
+            raw = raw.replace('\\-', '-').strip()
+            if raw in {'•', '-', '–', '—'}:
+                return ['• '] + ch[1:]
+            return ch
+
+        children = _strip_leading_icon_prefix(children)
+        children = _deb0ld_marker(children)
+        node['children'] = children
+
+        plain = _flatten_text(node).strip()
+        has_links = any(isinstance(c, dict) and c.get('tag') == 'a' for c in children)
+        has_bold = any(isinstance(c, dict) and c.get('tag') in ('b', 'strong') for c in children)
+        if (plain.endswith('?') and not has_links and not has_bold and 12 <= len(plain) <= 180
+                and plain.count('?') == 1 and plain.count('.') <= 1 and plain.count('!') == 0):
+            node['children'] = [{'tag': 'b', 'children': children}]
+        return node
+
     walked = _walk(nodes)
-    return [n for n in walked if not _is_emoji_stub_node(n)]
+    cleaned = [n for n in walked if not _is_emoji_stub_node(n)]
+    return [_normalize_paragraph_node(n) for n in cleaned]

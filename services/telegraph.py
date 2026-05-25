@@ -329,7 +329,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                       "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
                       "author_url": (author_url or "")[:512],  # AUDIT M21
                       "content": ns, "return_content": False},
-                timeout=15,
+                timeout=30,
             ))
             data = resp.json()
             if data.get("ok"):
