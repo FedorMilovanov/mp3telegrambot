@@ -32,6 +32,7 @@ from core.json_parser import (
 from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
 from core.utils import format_timestamp               # FIX telegraph_pages
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
+from core.observability import alog_gemini_response, alog_gemini_run
 
 import asyncio
 import json      # FIX telegraph_pages
@@ -458,7 +459,8 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
 # ─── Helper: единый Gemini text-only запрос (без аудио) ──────────────────
 
 async def _gemini_text_request(prompt: str, temperature: float = 0.4,
-                                max_tokens: int = 8000) -> str | None:
+                                max_tokens: int = 8000, task: str = "telegraph_text",
+                                video_id: str = "", thinking_level: str = "high") -> str | None:
     """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
 
     v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
@@ -484,6 +486,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     import time as _time
     _start_time = _time.time()
     _TIME_BUDGET = 180  # секунд
+
+    def _duration_ms() -> int:
+        return int((_time.time() - _start_time) * 1000)
 
     # ВСЕ на максимальном качестве — 3.5-flash
     # Резерв: 2.5-flash-lite (свежая модель, не lite по качеству)
@@ -541,7 +546,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                             temperature=temperature,
                             max_output_tokens=max_tokens,
                             model_name=model_name,
-                            thinking_level="high",
+                            thinking_level=thinking_level,
                         ),
                     )
                     try:
@@ -564,6 +569,17 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 getattr(_meta, 'thoughts_token_count', '?'),
                                 getattr(_meta, 'candidates_token_count', '?'),
                             )
+                        await alog_gemini_response(
+                            response=resp,
+                            task=task,
+                            video_id=video_id,
+                            model=model_name,
+                            thinking_level=thinking_level,
+                            duration_ms=_duration_ms(),
+                            retry_num=attempt,
+                            is_fallback=model_idx > 0,
+                            json_valid=True,
+                        )
                         return result
                     logger.warning(
                         "_gemini_text_request[%s]: пустой ответ (finish=%s)",
@@ -614,6 +630,17 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             "_gemini_text_request: все модели исчерпаны (за %.1fs), последняя ошибка: %s",
             elapsed, str(last_err)[:200],
         )
+    await alog_gemini_run(
+        task=task,
+        video_id=video_id,
+        model=_models[-1] if _models else GEMINI_MODEL,
+        thinking_level=thinking_level,
+        duration_ms=_duration_ms(),
+        retry_num=_max_attempts - 1 if '_max_attempts' in locals() else 0,
+        is_fallback=len(_models) > 1,
+        json_valid=False,
+        error=(str(last_err)[:300] if last_err else "empty_response"),
+    )
     return None
 
 
@@ -891,7 +918,10 @@ async def _run_expanded_pipeline(
 
     try:
         logger.info("%s: запрос к Gemini", label)
-        raw = await _gemini_text_request(prompt, temperature=0.4, max_tokens=max_tokens)
+        raw = await _gemini_text_request(
+            prompt, temperature=0.4, max_tokens=max_tokens,
+            task=f"telegraph_{label.lower()}", thinking_level="high",
+        )
         if not raw:
             logger.warning("%s: Gemini вернул пустой ответ -- fallback", label)
             return await fallback_fn() if fallback_fn else None
@@ -907,7 +937,10 @@ async def _run_expanded_pipeline(
                 "без ```json, без текста до/после.\n\n" + prompt
             )
             _retry_tokens = min(max_tokens * 2, 65000)  # PATCH: escalate
-            raw2 = await _gemini_text_request(retry_prompt, max_tokens=_retry_tokens)
+            raw2 = await _gemini_text_request(
+                retry_prompt, max_tokens=_retry_tokens,
+                task=f"telegraph_{label.lower()}_retry", thinking_level="high",
+            )
             if raw2:
                 parsed = _parse_expanded_json(raw2)
             if parsed is None:

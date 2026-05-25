@@ -17,6 +17,7 @@ from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
 from core.core_utils import time_to_seconds                      # FIX: moved to core_utils (был в json_parser)
 from core.json_parser import _recover_truncated_json                # V3-P0: partial JSON recovery
+from core.observability import alog_gemini_response, alog_gemini_run
 from core.prompts import EXTRAS_PROMPT                          # FIX render
 
 import asyncio
@@ -25,6 +26,7 @@ import logging
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 # types — из google.genai
@@ -351,6 +353,11 @@ async def create_extras_candidates(
     if not GEMINI_CLIENTS or not HAS_GEMINI:
         return {"montage_candidates": [], "highlights_candidates": []}
 
+    _obs_started = time.perf_counter()
+
+    def _obs_ms() -> int:
+        return int((time.perf_counter() - _obs_started) * 1000)
+
     try:
         format_name      = (ai_data or {}).get("format", "other") or "other"
         real_author      = (ai_data or {}).get("real_author", "") or performer or ""
@@ -392,12 +399,22 @@ async def create_extras_candidates(
                         raw_text += part.text or ""
 
         if not raw_text.strip():
+            await alog_gemini_response(
+                response=response, task="extras_candidates", model=GEMINI_MODEL,
+                thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                error="empty_response",
+            )
             return {"montage_candidates": [], "highlights_candidates": []}
 
         clean = re.sub(r"^```[a-z]*\s*", "", raw_text.strip())
         clean = re.sub(r"\s*```$", "", clean).strip()
         s, e = clean.find("{"), clean.rfind("}")
         if s == -1 or e <= s:
+            await alog_gemini_response(
+                response=response, task="extras_candidates", model=GEMINI_MODEL,
+                thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                error="json_not_found",
+            )
             return {"montage_candidates": [], "highlights_candidates": []}
 
         try:
@@ -406,6 +423,11 @@ async def create_extras_candidates(
             logger.warning("Extras candidates: JSONDecodeError: %s", exc)
             recovered = _recover_truncated_json(clean[s:])
             if recovered is None:
+                await alog_gemini_response(
+                    response=response, task="extras_candidates", model=GEMINI_MODEL,
+                    thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                    error="json_decode_error",
+                )
                 return {"montage_candidates": [], "highlights_candidates": []}
             logger.info("Extras candidates: JSON восстановлен (partial/truncated)")
             data = recovered
@@ -509,6 +531,10 @@ async def create_extras_candidates(
             f"Extras candidates: montage={len(montage_candidates)} "
             f"highlights={len(highlights_candidates)}"
         )
+        await alog_gemini_response(
+            response=response, task="extras_candidates", model=GEMINI_MODEL,
+            thinking_level="low", duration_ms=_obs_ms(), json_valid=True,
+        )
         return {
             "montage_candidates": montage_candidates,
             "highlights_candidates": highlights_candidates,
@@ -516,6 +542,11 @@ async def create_extras_candidates(
 
     except Exception as e:
         logger.warning(f"create_extras_candidates error: {type(e).__name__}: {e}")
+        await alog_gemini_run(
+            task="extras_candidates", model=GEMINI_MODEL, thinking_level="low",
+            duration_ms=_obs_ms(), json_valid=False,
+            error=f"{type(e).__name__}: {str(e)[:300]}",
+        )
         return {"montage_candidates": [], "highlights_candidates": []}
 
 

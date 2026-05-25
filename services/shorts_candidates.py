@@ -21,11 +21,14 @@ from core.prompts import (
     SHORTS_PROMPT, EXTRAS_PROMPT, CLIPS_PROMPT, CLIPS_SERMON_PROMPT,
     CLIPS_MIN_SEC, CLIPS_MAX_SEC, CLIPS_IDEAL_MAX_SEC,  # FIX shorts_candidates
 )
+from core.candidate_schema import CandidateValidationReport, validate_candidate_times
+from core.observability import alog_gemini_response, alog_gemini_run
 
 import asyncio
 import json      # FIX shorts_candidates
 import logging
 import re
+import time
 from pathlib import Path  # FIX shorts_candidates
 
 # types — из google.genai
@@ -119,6 +122,11 @@ async def create_shorts_candidates(
     """
     if not GEMINI_CLIENTS or not HAS_GEMINI:
         return []
+
+    _obs_started = time.perf_counter()
+
+    def _obs_ms() -> int:
+        return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
         format_name      = (ai_data or {}).get("format", "other") or "other"
@@ -229,6 +237,11 @@ async def create_shorts_candidates(
 
         if not raw_text.strip():
             logger.warning("Shorts candidates: Gemini вернул пустой ответ")
+            await alog_gemini_response(
+                response=response, task="shorts_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="empty_response",
+            )
             return []
 
         clean = raw_text.strip()
@@ -238,6 +251,11 @@ async def create_shorts_candidates(
         end   = clean.rfind("}")
         if start == -1 or end <= start:
             logger.warning(f"Shorts candidates: JSON не найден | текст: {raw_text[:500]}")
+            await alog_gemini_response(
+                response=response, task="shorts_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="json_not_found",
+            )
             return []
 
         try:
@@ -250,12 +268,23 @@ async def create_shorts_candidates(
                 logger.info("Shorts candidates: JSON восстановлен (обрезанный ответ)")
                 data = _recovered
             else:
+                await alog_gemini_response(
+                    response=response, task="shorts_candidates", video_id=mp3_path.stem,
+                    model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                    json_valid=False, error="json_decode_error",
+                )
                 return []
 
         candidates_raw = data.get("shorts_candidates", [])
         if not isinstance(candidates_raw, list):
+            await alog_gemini_response(
+                response=response, task="shorts_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="candidates_not_list",
+            )
             return []
 
+        report = CandidateValidationReport()
         out: list[dict] = []
         seen_ranges: set[tuple[int, int]] = set()
 
@@ -283,20 +312,12 @@ async def create_shorts_candidates(
             if not start_t or not end_t or not clip_title:
                 continue
 
-            start_s = time_to_seconds(start_t)
-            end_s   = time_to_seconds(end_t)
-            if start_s is None or end_s is None:
-                continue
-            if start_s < 0 or end_s <= start_s:
-                continue
-            if duration and end_s > duration:
-                logger.info(
-                    f"Shorts: пропускаю '{clip_title}' — end {end_s}s за пределами duration {duration}s"
-                )
-                continue
-
-            clip_len = end_s - start_s
-            if clip_len < _shorts_min or clip_len > _shorts_max:
+            ok_time, reject_reason, start_s, end_s, clip_len = validate_candidate_times(
+                start_t, end_t, duration=duration, min_sec=_shorts_min, max_sec=_shorts_max,
+                time_to_seconds=time_to_seconds,
+            )
+            if not ok_time:
+                report.reject(reject_reason)
                 continue
 
             key = (start_s, end_s)
@@ -304,6 +325,7 @@ async def create_shorts_candidates(
                 continue
             seen_ranges.add(key)
 
+            report.accept()
             out.append({
                 "start":            start_t,
                 "end":              end_t,
@@ -317,13 +339,26 @@ async def create_shorts_candidates(
                 "duration_seconds": clip_len,
             })
 
-        logger.info(f"Shorts candidates: найдено {len(out)} из {len(candidates_raw)} предложенных")
+        logger.info(
+            f"Shorts candidates: найдено {len(out)} из {len(candidates_raw)} предложенных; "
+            f"validation: {report.summary()}"
+        )
         # BUG-D02: убираем overlap-клипы (>10% пересечения)
         out = _remove_overlapping_shorts(out)
+        await alog_gemini_response(
+            response=response, task="shorts_candidates", video_id=mp3_path.stem,
+            model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+            json_valid=True, postprocess_fixes=report.rejected,
+        )
         return out[:5]
 
     except Exception as e:
         logger.warning(f"create_shorts_candidates error: {type(e).__name__}: {e}")
+        await alog_gemini_run(
+            task="shorts_candidates", video_id=mp3_path.stem, model=GEMINI_MODEL,
+            thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+            error=f"{type(e).__name__}: {str(e)[:300]}",
+        )
         return []
 
 
@@ -348,6 +383,11 @@ async def create_clips_candidates(
     """
     if not GEMINI_CLIENTS or not HAS_GEMINI:
         return []
+
+    _obs_started = time.perf_counter()
+
+    def _obs_ms() -> int:
+        return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
         format_name      = (ai_data or {}).get("format", "other") or "other"
@@ -457,6 +497,11 @@ async def create_clips_candidates(
 
         if not raw_text.strip():
             logger.warning("Clips candidates: Gemini вернул пустой ответ")
+            await alog_gemini_response(
+                response=response, task="clips_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="empty_response",
+            )
             return []
 
         clean = raw_text.strip()
@@ -466,6 +511,11 @@ async def create_clips_candidates(
         end   = clean.rfind("}")
         if start == -1 or end <= start:
             logger.warning(f"Clips candidates: JSON не найден | текст: {raw_text[:500]}")
+            await alog_gemini_response(
+                response=response, task="clips_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="json_not_found",
+            )
             return []
 
         try:
@@ -478,12 +528,23 @@ async def create_clips_candidates(
                 logger.info("Clips candidates: JSON восстановлен (обрезанный ответ)")
                 data = _recovered
             else:
+                await alog_gemini_response(
+                    response=response, task="clips_candidates", video_id=mp3_path.stem,
+                    model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                    json_valid=False, error="json_decode_error",
+                )
                 return []
 
         candidates_raw = data.get("clip_candidates", [])
         if not isinstance(candidates_raw, list):
+            await alog_gemini_response(
+                response=response, task="clips_candidates", video_id=mp3_path.stem,
+                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+                json_valid=False, error="candidates_not_list",
+            )
             return []
 
+        report = CandidateValidationReport()
         out: list[dict] = []
         seen_ranges: set[tuple[int, int]] = set()
 
@@ -508,34 +569,13 @@ async def create_clips_candidates(
             if not start_t or not end_t or not clip_title:
                 continue
 
-            start_s = time_to_seconds(start_t)
-            end_s   = time_to_seconds(end_t)
-            if start_s is None or end_s is None:
-                continue
-            if start_s < 0 or end_s <= start_s:
-                continue
-            if duration and end_s > duration:
-                logger.info(
-                    f"Clips: пропускаю '{clip_title}' — end {end_s}s за пределами duration {duration}s"
-                )
-                continue
-            if end_s <= start_s:
-                continue
-
-            clip_len = end_s - start_s
-
-            # Жёсткие границы длины
-            if clip_len < CLIPS_MIN_SEC:
-                logger.info(
-                    f"Clips: пропускаю '{clip_title}' — слишком короткий "
-                    f"({clip_len:.0f}s < {CLIPS_MIN_SEC}s)"
-                )
-                continue
-            if clip_len > CLIPS_MAX_SEC:
-                logger.info(
-                    f"Clips: пропускаю '{clip_title}' — слишком длинный "
-                    f"({clip_len:.0f}s > {CLIPS_MAX_SEC}s)"
-                )
+            ok_time, reject_reason, start_s, end_s, clip_len = validate_candidate_times(
+                start_t, end_t, duration=duration, min_sec=CLIPS_MIN_SEC, max_sec=CLIPS_MAX_SEC,
+                time_to_seconds=time_to_seconds,
+            )
+            if not ok_time:
+                report.reject(reject_reason)
+                logger.info(f"Clips: пропускаю '{clip_title}' — {reject_reason}")
                 continue
 
             # Мягкая эвристика против раздутых клипов:
@@ -570,6 +610,7 @@ async def create_clips_candidates(
                 continue
 
             seen_ranges.add((start_s, end_s))
+            report.accept()
             out.append({
                 "start":            start_t,
                 "end":              end_t,
@@ -585,12 +626,22 @@ async def create_clips_candidates(
         _durations = [f"{c['duration_seconds']:.0f}s" for c in out]
         logger.info(
             f"Clips candidates: принято {len(out)} из {len(candidates_raw)} предложенных "
-            f"(длины: {_durations})"
+            f"(длины: {_durations}); validation: {report.summary()}"
+        )
+        await alog_gemini_response(
+            response=response, task="clips_candidates", video_id=mp3_path.stem,
+            model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
+            json_valid=True, postprocess_fixes=report.rejected,
         )
         return out[:3]
 
     except Exception as e:
         logger.warning(f"create_clips_candidates error: {type(e).__name__}: {e}")
+        await alog_gemini_run(
+            task="clips_candidates", video_id=mp3_path.stem, model=GEMINI_MODEL,
+            thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+            error=f"{type(e).__name__}: {str(e)[:300]}",
+        )
         return []
 
 
