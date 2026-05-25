@@ -77,6 +77,33 @@ def db_init():
                 created_at    INTEGER DEFAULT (strftime('%s','now'))
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS gemini_runs (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts                 REAL NOT NULL,
+                video_id           TEXT DEFAULT '',
+                task               TEXT NOT NULL,
+                model              TEXT DEFAULT '',
+                thinking_level     TEXT DEFAULT '',
+                input_tokens       INTEGER DEFAULT 0,
+                output_tokens      INTEGER DEFAULT 0,
+                cached_tokens      INTEGER DEFAULT 0,
+                thinking_tokens    INTEGER DEFAULT 0,
+                total_tokens       INTEGER DEFAULT 0,
+                duration_ms        INTEGER DEFAULT 0,
+                retry_num          INTEGER DEFAULT 0,
+                is_fallback        INTEGER DEFAULT 0,
+                json_valid         INTEGER,
+                postprocess_fixes  INTEGER DEFAULT 0,
+                finish_reason      TEXT DEFAULT '',
+                error              TEXT DEFAULT '',
+                prompt_version     TEXT DEFAULT '',
+                cache_key          TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
         # Миграция video_cache: добавляем колонки если их нет (для старых баз данных)
         migrated = []
         for col, default in [

@@ -18,29 +18,41 @@ Tag: `v3-pre-schema-stable`
 - MM:SS timestamps without leading zero
 - Block B runtime stability gaps
 
-## Текущая фаза
+## Завершено: Phase 2.5 — Safety net before Schema + Observability
 
-**Phase 2.5 — Safety net before Schema + Observability**
-
-Цель: перед большими изменениями иметь локальные и GitHub checks:
+Добавлено:
 
 - `compileall`
 - `pytest`
 - fatal `ruff` checks
 - prompt/runtime contract tests
+- GitHub Actions CI
 
-## Следующая фаза
+## Текущая фаза
 
-**Phase 3 — Schema + Observability**
+**Phase 3.1 — Observability foundation**
 
-Порядок:
+Добавляем безопасный фундамент без подключения ко всем Gemini-вызовам сразу:
 
 1. `core/observability.py`
 2. таблица `gemini_runs`
-3. логирование Gemini calls
-4. validation report для candidates
-5. schema для Shorts/Clips/Extras
-6. затем canonical audio analysis adapter
+3. sync/async логирование Gemini runs
+4. usage/finish_reason extraction helpers
+5. tests без реальных Gemini clients
+
+## Следующая фаза
+
+**Phase 3.2 — Gemini call integration**
+
+Порядок подключения:
+
+1. `services/gemini_analyze.py`
+2. `services/telegraph_pages.py`
+3. `services/shorts_candidates.py`
+4. `services/render_clips_montage.py`
+5. validation report для candidates
+6. schema для Shorts/Clips/Extras
+7. затем canonical audio analysis adapter
 
 ## Release rule
 
