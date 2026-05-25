@@ -19,6 +19,8 @@ import re
 from core.prompt_rules import (
     INLINE_TIMESTAMP_RULES,
     STRICT_BANS,
+    STRICT_BANS_STUDY,
+    QA_TIMESTAMP_RULE,
     AUTHOR_NAMING_RULE,
     JSON_OUTPUT_RULE,
     SECTION_TITLE_RULE,
@@ -36,6 +38,8 @@ def _expand_prompt_rules(text: str) -> str:
         text
         .replace("{INLINE_TIMESTAMP_RULES}", INLINE_TIMESTAMP_RULES)
         .replace("{STRICT_BANS}", STRICT_BANS)
+        .replace("{STRICT_BANS_STUDY}", STRICT_BANS_STUDY)
+        .replace("{QA_TIMESTAMP_RULE}", QA_TIMESTAMP_RULE)
         .replace("{AUTHOR_NAMING_RULE}", AUTHOR_NAMING_RULE)
         .replace("{JSON_OUTPUT_RULE}", JSON_OUTPUT_RULE)
         .replace("{SECTION_TITLE_RULE}", SECTION_TITLE_RULE)
@@ -2596,7 +2600,14 @@ Blockquote (`> текст`) — для реально звучащего тек�
 ✓ JSON валиден: только ключи outline и sections?
 
 Верни только чистый JSON, без ```json и без пояснений.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+СТРОГИЕ ЗАПРЕТЫ — СТИЛЬ ВЫВОДА
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+{STRICT_BANS_STUDY}
 """
+STUDY_ANALYSIS_PROMPT = _expand_prompt_rules(STUDY_ANALYSIS_PROMPT)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -3738,5 +3749,4 @@ CLIPS_SERMON_PROMPT = """\
 CLIPS_MIN_SEC = 5 * 60    # 5 минут
 CLIPS_MAX_SEC = 15 * 60   # 15 минут
 CLIPS_IDEAL_MAX_SEC = 12 * 60  # желательный максимум
-
 
