@@ -191,10 +191,10 @@ def _build_thinking_config(level: str = "high"):
             return None
 
 
-def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None):
+def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high"):
     """ULTIMATE FIX 3.5-FLASH: конфиг для audio-вызовов с авто-адаптацией под поколение.
 
-    Для 3.x: thinking_level="high" (default=medium слабее чем 3-flash-preview!), без temperature
+    Для 3.x: thinking_level настраивается по задаче, без temperature
     Для 2.x: temperature как раньше
 
     max_output_tokens снижен до 40000 для 3.x — оставляем место для thinking-токенов
@@ -220,7 +220,7 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
     kwargs = {"max_output_tokens": _safe_max}
 
     if is_3x:
-        tc = _build_thinking_config("high")
+        tc = _build_thinking_config(thinking_level)
         if tc is not None:
             kwargs["thinking_config"] = tc
         # На 3.x Google рекомендует НЕ переопределять temperature/top_p/top_k

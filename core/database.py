@@ -164,7 +164,7 @@ def db_cleanup_old_records():
                 f"db_cleanup: video_cache -{total} (legacy {legacy}), short_trims -{trims}"
             )
     except Exception as _ce:
-        pass
+        logger.warning("db_cleanup_old_records failed: %s", _ce, exc_info=True)
 
 def db_save(video_id: str, url: str, questions: list,
             quotes_tg_url: str = "", questions_tg_url: str = "",

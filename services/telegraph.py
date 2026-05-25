@@ -53,6 +53,9 @@ def _demote_paragraph_bold(line: str) -> str:
     """
     if not line or '**' not in line:
         return line
+    if "||" in line:
+        # Legacy terms_data / source separators: не трогаем форматные разделители.
+        return line
     # Считаем длину жирных кусков
     bold_matches = re.findall(r'\*\*([^*\n]+)\*\*', line)
     if not bold_matches:

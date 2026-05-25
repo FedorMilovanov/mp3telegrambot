@@ -153,6 +153,12 @@ async def reset_cache_command(update, context):
             if video_id:
                 await _do_resetcache_one(video_id, update)
                 return
+            await update.message.reply_text(
+                "⚠️ Не удалось извлечь YouTube ID из сообщения, на которое вы ответили.\n"
+                "Используйте: <code>/resetcache &lt;url или video_id&gt;</code>",
+                parse_mode="HTML",
+            )
+            return
 
         # reply не помог — показываем краткую инструкцию
         keyboard = InlineKeyboardMarkup([[

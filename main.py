@@ -30,6 +30,7 @@ from handlers.callbacks import handle_callback, settings_command
 import asyncio
 import logging
 import os
+import signal
 import threading
 import time
 
@@ -166,6 +167,28 @@ async def run_bot_async():
     app.add_handler(CommandHandler("pdf",        pdf_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
+
+    # V3-P1: Render/Railway присылают SIGTERM при redeploy/stop.
+    # Переводим его в тот же graceful path, что и /stop. На Windows
+    # add_signal_handler недоступен — используем signal.signal fallback.
+    loop = asyncio.get_running_loop()
+
+    def _request_stop_from_signal(sig_name: str) -> None:
+        logger.warning("🛑 Получен %s — graceful shutdown requested", sig_name)
+        app.bot_data["stop_requested"] = True
+
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(_sig, _request_stop_from_signal, _sig.name)
+        except (NotImplementedError, RuntimeError, ValueError):
+            try:
+                signal.signal(
+                    _sig,
+                    lambda _signum, _frame, name=_sig.name: _request_stop_from_signal(name),
+                )
+            except (ValueError, RuntimeError):
+                logger.debug("signal handler не установлен для %s", _sig)
+
     logger.info("✅ Бот запущен!")
 
     async def _stop_started_application() -> None:
