@@ -11,6 +11,7 @@ from core.text_utils import (   # FIX json_parser
     _clean_field, _clean_meta_line, _filter_times_str,
     _scrub_inline, _strip_meta_lines, is_meta_garbage,
     normalize_author_name, normalize_title_text,
+    normalize_hashtag,
 )
 
 logger = logging.getLogger(__name__)
@@ -189,20 +190,8 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
             logger.warning(f"Отброшены таймкоды > длительности ({duration}s): {dropped}")
         result["timestamps"] = "\n".join(lines)
 
-    # hashtags → строка "#Тег #Тег ..." с правильной CamelCase-нормализацией
-    # (аналог _normalize_hashtag из shorts_candidates.py для основного анализа)
-    #
-    # BUG-FIX: ранее использовался w.capitalize(), который ВСЕГДА приводит
-    # остальные буквы к нижнему регистру: "ПолВошер".capitalize() → "Полвошер".
-    # Это убивало CamelCase, корректно присланный Gemini, и в посте появлялись
-    # неработающие хэштеги вида #Полвошер, #Новоетворение, #Личнаявстреча.
-    # Решение: если тег — одно «слитное» слово, оставляем casing как есть
-    # (только гарантируем заглавную первую). Если в теге пробелы/_/- —
-    # склеиваем по словам через `w[0].upper() + w[1:]`, что сохраняет
-    # внутренние заглавные.
-    # Нормализуем hashtags: поддерживаем list, str, отбрасываем None/пустое.
-    # Gemini иногда возвращает строку "Тег1 Тег2 Тег3" вместо массива —
-    # в этом случае сами разбиваем по пробелам.
+    # hashtags → строка "#Тег #Тег ..." через normalize_hashtag (core/text_utils).
+    # Gemini иногда возвращает строку "Тег1 Тег2 Тег3" вместо массива.
     ht_raw = data.get("hashtags", [])
     if isinstance(ht_raw, str):
         ht_list = [w for w in ht_raw.split() if w]
@@ -213,36 +202,21 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
 
     if ht_list:
         tags = []
-        seen = set()  # дедупликация по нормализованному виду (lower)
-        for tag in ht_list[:8]:
-            # None / NoneType / пустые — пропускаем (Gemini иногда подсыпает null)
-            if tag is None:
+        seen: set[str] = set()
+        for raw_tag in ht_list[:8]:
+            if raw_tag is None:
                 continue
-            tag = str(tag).strip().lstrip("#").strip()
-            if not tag or tag.lower() == "none":
+            raw_tag = str(raw_tag).strip()
+            if not raw_tag or raw_tag.lower() == "none":
                 continue
-            # Разбиваем по любым разделителям слов: пробелы, _, -
-            words = [w for w in re.split(r"[\s_\-]+", tag) if w]
-            if not words:
-                continue
-            if len(words) == 1:
-                w0 = words[0]
-                # Уже одно слово: сохраняем все буквы как есть, поднимаем
-                # только первую (если она lowercase). Это сохраняет
-                # пришедший CamelCase: "ПолВошер" → "ПолВошер".
-                camel = w0[0].upper() + w0[1:]
-            else:
-                # Несколько слов: каждое — UpperFirst + остаток как есть
-                # (а НЕ .capitalize(), чтобы не уронить внутренние заглавные).
-                camel = "".join((w[0].upper() + w[1:]) for w in words if w)
+            camel = normalize_hashtag(raw_tag)
             if not camel:
                 continue
-            # Дедупликация — Gemini иногда повторяет один и тот же тег
-            key = camel.lower()
+            key = camel.lstrip("#").lower()
             if key in seen:
                 continue
             seen.add(key)
-            tags.append(f"#{camel}")
+            tags.append(camel)
         result["hashtags"] = " ".join(tags)
 
     result["analysis_summary"] = _scrub_inline(_strip_meta_lines(

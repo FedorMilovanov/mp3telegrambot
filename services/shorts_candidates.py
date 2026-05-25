@@ -15,6 +15,7 @@ from core.json_parser import (
 )
 from core.text_utils import (
     _clean_field, _scrub_inline, _strip_meta_lines,  # FIX shorts_candidates
+    normalize_hashtag,
 )
 from core.utils import format_timestamp      # FIX shorts_candidates
 from core.prompts import (
@@ -79,31 +80,9 @@ def _remove_overlapping_shorts(clips: list[dict]) -> list[dict]:
 
 
 # ── BUG-D03: нормализация хэштегов в CamelCase ───────────────────────────
-def _normalize_hashtag(tag: str) -> str:
-    """Нормализует хэштег без потери уже валидного CamelCase.
-
-    'реформированный баптист'   → '#РеформированныйБаптист'
-    'ПолВошер'                  → '#ПолВошер'   (а НЕ '#Полвошер')
-    'НовоеТворение'             → '#НовоеТворение'
-    'личная_встреча'            → '#ЛичнаяВстреча'
-
-    BUG-FIX: ранее использовался str.capitalize(), который приводит
-    ВСЕ буквы кроме первой к нижнему регистру и убивает CamelCase,
-    корректно присланный Gemini.
-    """
-    tag = str(tag).lstrip("#").strip()
-    if not tag:
-        return ""
-    # Разделители: пробел, подчёркивание, дефис
-    words = [w for w in re.split(r"[\s_\-]+", tag) if w]
-    if not words:
-        return ""
-    if len(words) == 1:
-        # Одно слово — сохраняем casing, только заглавная первая буква
-        w0 = words[0]
-        return "#" + (w0[0].upper() + w0[1:])
-    # Несколько слов — UpperFirst + остаток как есть, без .capitalize()
-    return "#" + "".join((w[0].upper() + w[1:]) for w in words)
+# Каноническая реализация перенесена в core/text_utils.normalize_hashtag (DRY).
+# Алиас сохранён для обратной совместимости внутри модуля.
+_normalize_hashtag = normalize_hashtag
 
 
 def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):

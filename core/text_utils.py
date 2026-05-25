@@ -266,3 +266,26 @@ def _filter_times_str(times_str: str, duration: int) -> str:
     return ", ".join(good)
 
 
+
+def normalize_hashtag(tag: str) -> str:
+    """Нормализует хэштег без потери уже валидного CamelCase.
+
+    Единственная каноническая реализация (DRY) — ранее дублировалась
+    в services/shorts_candidates.py и core/json_parser.py.
+
+    Примеры:
+      'реформированный баптист' → '#РеформированныйБаптист'
+      'ПолВошер'                → '#ПолВошер'  (НЕ '#Полвошер')
+      'НовоеТворение'           → '#НовоеТворение'
+      'личная_встреча'          → '#ЛичнаяВстреча'
+    """
+    tag = str(tag).lstrip("#").strip()
+    if not tag:
+        return ""
+    words = [w for w in re.split(r"[\s_\-]+", tag) if w]
+    if not words:
+        return ""
+    if len(words) == 1:
+        w0 = words[0]
+        return "#" + (w0[0].upper() + w0[1:])
+    return "#" + "".join((w[0].upper() + w[1:]) for w in words)

@@ -401,9 +401,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
                 if not sl:
                     return sl
                 for abbr, full in _DICT_ABBREVS.items():
-                    # Заменяем только если аббревиатура стоит как отдельное слово
-                    import re as _re
-                    sl = _re.sub(r'\b' + abbr + r'\b', full, sl)
+                    sl = re.sub(r'\b' + abbr + r'\b', full, sl)
                 return sl
 
             if original_word:
@@ -1065,9 +1063,8 @@ async def create_telegraph_study_analysis(
     prompt_title = title_case_fragment(prompt_title)
     # v10 FIX #18 (P3): нормализация пунктуации заголовка после Gemini.
     # «Свидетельство. Трус» → «Свидетельство: Трус»,  « - » → « — »
-    import re as _re_p3
-    prompt_title = _re_p3.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
-    prompt_title = _re_p3.sub(r'\s+-\s+', ' — ', prompt_title)
+    prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
+    prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
 
     _fmt = _ai.get("format", "other") or "other"
 
@@ -1192,9 +1189,8 @@ async def create_telegraph_reflection_application(
     prompt_title = normalize_title_text(_ai.get("real_title") or "") or title_clean
     prompt_title = title_case_fragment(prompt_title)  # единый стиль капитализации
     # v10 FIX #18 (P3): нормализация пунктуации (зеркало fix в create_telegraph_study_analysis)
-    import re as _re_p3r
-    prompt_title = _re_p3r.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
-    prompt_title = _re_p3r.sub(r'\s+-\s+', ' — ', prompt_title)
+    prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
+    prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
 
     _ts       = (_ai.get("timestamps") or "").strip()
     _ts_block = "\n".join(
