@@ -235,7 +235,7 @@ async def run_bot_async():
                 pass
 
         # AUDIT M9: фоновая периодическая чистка временных файлов и БД
-        from core.utils import cleanup_nosub_files
+        from core.utils import cleanup_nosub_files, cleanup_stale_downloads
         from core.database import db_cleanup_old_records
         from core.globals import mark_bot_alive
 
@@ -245,6 +245,7 @@ async def run_bot_async():
                 mark_bot_alive()
                 try:
                     await loop.run_in_executor(None, cleanup_nosub_files)
+                    await loop.run_in_executor(None, cleanup_stale_downloads)
                     await loop.run_in_executor(None, db_cleanup_old_records)
                 except Exception as _e:
                     logger.warning(f"periodic maintenance: {_e}")

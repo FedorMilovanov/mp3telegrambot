@@ -231,6 +231,39 @@ def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
             pass
 
 
+def cleanup_stale_downloads(max_age_hours: int = 3) -> int:
+    """Удаляет видео-файлы из downloads/ старше max_age_hours часов.
+
+    Защита от orphaned файлов: если highlights/montage упал после скачивания
+    видео, файл оставался навсегда.  Вызывается из periodic_maintenance раз в час.
+
+    Чистит только видео-расширения (mp4, mkv, webm, mov) — MP3 и thumb не трогает.
+    Порог по умолчанию — 3 часа (достаточно для самого длинного pipeline).
+    """
+    import time as _time
+    cutoff = _time.time() - max_age_hours * 3600
+    deleted = 0
+    video_exts = {".mp4", ".mkv", ".webm", ".mov"}
+    try:
+        for f in DOWNLOAD_DIR.iterdir():
+            if not f.is_file():
+                continue
+            if f.suffix.lower() not in video_exts:
+                continue
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    deleted += 1
+                    logger.info("cleanup_stale_downloads: удалён %s", f.name)
+            except OSError as _e:
+                logger.debug("cleanup_stale_downloads: не удалось удалить %s: %s", f.name, _e)
+    except Exception as _e:
+        logger.warning("cleanup_stale_downloads: ошибка обхода downloads/: %s", _e)
+    if deleted:
+        logger.info("cleanup_stale_downloads: удалено %d видеофайлов старше %dч", deleted, max_age_hours)
+    return deleted
+
+
 def cleanup_nosub_files(max_age_hours: int = 24) -> int:
     """Удаляет nosub-файлы старше max_age_hours часов."""
     cutoff = time.time() - max_age_hours * 3600
