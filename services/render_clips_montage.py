@@ -18,6 +18,7 @@ from core.text_utils import _clean_field, title_case_fragment  # FIX render
 from core.core_utils import time_to_seconds                      # FIX: moved to core_utils (был в json_parser)
 from core.json_parser import _recover_truncated_json                # V3-P0: partial JSON recovery
 from core.observability import alog_gemini_response, alog_gemini_run
+from core.candidate_schema import extras_response_schema, structured_json_config_kwargs
 from core.prompts import EXTRAS_PROMPT                          # FIX render
 
 import asyncio
@@ -336,6 +337,36 @@ async def render_montage_short(
         return False
 
 
+def _extras_text_config(max_output_tokens: int, schema: dict | None = None):
+    return make_text_config_smart(
+        max_output_tokens=max_output_tokens,
+        thinking_level="low",
+        **structured_json_config_kwargs(schema),
+    )
+
+
+async def _generate_extras_content(client, *, model: str, prompt: str, max_output_tokens: int, schema: dict | None):
+    """Try structured JSON for extras, then fall back to legacy JSON config."""
+    try:
+        return await client.aio.models.generate_content(
+            model=model,
+            contents=[prompt],
+            config=_extras_text_config(max_output_tokens, schema),
+        )
+    except Exception as exc:
+        if not schema:
+            raise
+        logger.warning(
+            "extras_candidates: structured output failed (%s: %s) — retry legacy JSON config",
+            type(exc).__name__, str(exc)[:180],
+        )
+        return await client.aio.models.generate_content(
+            model=model,
+            contents=[prompt],
+            config=_extras_text_config(max_output_tokens, None),
+        )
+
+
 async def create_extras_candidates(
     ai_data: dict,
     title: str,
@@ -377,14 +408,12 @@ async def create_extras_candidates(
             key_categories=key_categories,
         )
 
+        _structured_schema = extras_response_schema()
+
         async def _call(client):
-            return await client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[prompt],
-                config=make_text_config_smart(
-                    max_output_tokens=14000,
-                    thinking_level="low",
-                ),
+            return await _generate_extras_content(
+                client, model=GEMINI_MODEL, prompt=prompt,
+                max_output_tokens=14000, schema=_structured_schema,
             )
 
         response = await gemini_generate(GEMINI_CLIENTS, _call)

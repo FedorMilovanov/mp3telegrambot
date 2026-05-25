@@ -13,7 +13,8 @@ def test_telegraph_text_request_has_observability_contract():
 
 def test_video_candidate_generators_log_observability_and_use_schema_report():
     source = Path("services/shorts_candidates.py").read_text(encoding="utf-8")
-    assert "from core.candidate_schema import CandidateValidationReport, validate_candidate_times" in source
+    assert "CandidateValidationReport" in source
+    assert "validate_candidate_times" in source
     assert "from core.observability import alog_gemini_response, alog_gemini_run" in source
     assert 'task="shorts_candidates"' in source
     assert 'task="clips_candidates"' in source

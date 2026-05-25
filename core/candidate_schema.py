@@ -74,3 +74,131 @@ def validate_candidate_times(
     if clip_len > max_sec:
         return False, "too_long", start_s, end_s, clip_len
     return True, "ok", start_s, end_s, clip_len
+
+
+def _string_schema() -> dict:
+    return {"type": "string"}
+
+
+def _string_array_schema() -> dict:
+    return {"type": "array", "items": _string_schema()}
+
+
+def shorts_response_schema() -> dict:
+    """Gemini structured-output schema for Shorts candidates."""
+    return {
+        "type": "object",
+        "properties": {
+            "shorts_candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": _string_schema(),
+                        "end": _string_schema(),
+                        "title": _string_schema(),
+                        "hook": _string_schema(),
+                        "reason": _string_schema(),
+                        "kind": _string_schema(),
+                        "hashtags": _string_array_schema(),
+                    },
+                    "required": ["start", "end", "title", "reason", "kind", "hashtags"],
+                },
+            }
+        },
+        "required": ["shorts_candidates"],
+    }
+
+
+def clips_response_schema() -> dict:
+    """Gemini structured-output schema for long clip candidates."""
+    return {
+        "type": "object",
+        "properties": {
+            "clip_candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": _string_schema(),
+                        "end": _string_schema(),
+                        "title": _string_schema(),
+                        "reason": _string_schema(),
+                        "kind": _string_schema(),
+                        "hashtags": _string_array_schema(),
+                    },
+                    "required": ["start", "end", "title", "reason", "kind", "hashtags"],
+                },
+            }
+        },
+        "required": ["clip_candidates"],
+    }
+
+
+def extras_response_schema() -> dict:
+    """Gemini structured-output schema for Montage + Highlights candidates."""
+    fragment_summary = {
+        "type": "object",
+        "properties": {
+            "start": _string_schema(),
+            "end": _string_schema(),
+            "summary": _string_schema(),
+        },
+        "required": ["start", "end"],
+    }
+    fragment_hook = {
+        "type": "object",
+        "properties": {
+            "start": _string_schema(),
+            "end": _string_schema(),
+            "hook": _string_schema(),
+        },
+        "required": ["start", "end"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "montage_candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "theme": _string_schema(),
+                        "title": _string_schema(),
+                        "hashtags": _string_array_schema(),
+                        "fragments": {"type": "array", "items": fragment_summary},
+                    },
+                    "required": ["theme", "title", "hashtags", "fragments"],
+                },
+            },
+            "highlights": {
+                "type": "object",
+                "properties": {
+                    "title": _string_schema(),
+                    "hashtags": _string_array_schema(),
+                    "fragments": {"type": "array", "items": fragment_hook},
+                },
+                "required": ["title", "hashtags", "fragments"],
+            },
+            "highlights_candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": _string_schema(),
+                        "hashtags": _string_array_schema(),
+                        "fragments": {"type": "array", "items": fragment_hook},
+                    },
+                    "required": ["title", "hashtags", "fragments"],
+                },
+            },
+        },
+        "required": ["montage_candidates"],
+    }
+
+
+def structured_json_config_kwargs(schema: dict | None) -> dict:
+    """Config kwargs for Gemini structured JSON output, or empty dict."""
+    if not schema:
+        return {}
+    return {"response_mime_type": "application/json", "response_schema": schema}

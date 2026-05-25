@@ -60,11 +60,9 @@ Tag: `v3-pre-schema-stable`
 4. lightweight `core/candidate_schema.py`
 5. validation reports for Shorts/Clips candidates
 
-## Текущая фаза
+## Завершено: Phase 3.6 — First dashboard/admin readout
 
-**Phase 3.6 — First dashboard/admin readout**
-
-Добавляем:
+Добавлено:
 
 1. `/metrics [hours]` admin command
 2. aggregate by task/model/finish_reason
@@ -72,17 +70,29 @@ Tag: `v3-pre-schema-stable`
 4. recent Gemini runs readout
 5. token/latency summary
 
-## Следующая фаза
+## Текущая фаза
 
 **Phase 4.1 — Structured Output candidates**
 
-Порядок:
+В одном патче:
 
 1. schema contract for Shorts candidates
 2. schema contract for Clips candidates
 3. schema contract for Extras candidates
-4. compare parse failure rate before/after
-5. затем canonical audio analysis adapter
+4. structured JSON config for Gemini calls
+5. legacy JSON fallback if SDK/model rejects schema
+6. tests for schema/config/fallback contracts
+
+## Следующая фаза
+
+**Phase 4.2 — Candidate quality comparison + admin readout**
+
+Порядок:
+
+1. compare candidate parse failure rate before/after Structured Output
+2. expose candidate rejection reasons in `/metrics`
+3. add per-task parse-failure counters
+4. затем canonical audio analysis adapter
 
 ## Release rule
 

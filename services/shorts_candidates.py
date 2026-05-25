@@ -21,7 +21,10 @@ from core.prompts import (
     SHORTS_PROMPT, EXTRAS_PROMPT, CLIPS_PROMPT, CLIPS_SERMON_PROMPT,
     CLIPS_MIN_SEC, CLIPS_MAX_SEC, CLIPS_IDEAL_MAX_SEC,  # FIX shorts_candidates
 )
-from core.candidate_schema import CandidateValidationReport, validate_candidate_times
+from core.candidate_schema import (
+    CandidateValidationReport, clips_response_schema, shorts_response_schema,
+    structured_json_config_kwargs, validate_candidate_times,
+)
 from core.observability import alog_gemini_response, alog_gemini_run
 
 import asyncio
@@ -102,6 +105,39 @@ def _normalize_hashtag(tag: str) -> str:
     # Несколько слов — UpperFirst + остаток как есть, без .capitalize()
     return "#" + "".join((w[0].upper() + w[1:]) for w in words)
 
+
+def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):
+    return make_audio_config(
+        max_output_tokens=max_output_tokens,
+        thinking_level="low",
+        **structured_json_config_kwargs(schema),
+    )
+
+
+async def _generate_audio_candidate_content(
+    client, *, model: str, contents: list, max_output_tokens: int, schema: dict | None, task: str
+):
+    """Try Gemini structured JSON first, then fall back to legacy JSON prompt mode."""
+    try:
+        return await client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=_candidate_audio_config(max_output_tokens, schema),
+        )
+    except Exception as exc:
+        if not schema:
+            raise
+        logger.warning(
+            "%s: structured output failed (%s: %s) — retry legacy JSON config",
+            task, type(exc).__name__, str(exc)[:180],
+        )
+        return await client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=_candidate_audio_config(max_output_tokens, None),
+        )
+
+
 async def create_shorts_candidates(
     mp3_path: Path,
     ai_data: dict,
@@ -146,6 +182,8 @@ async def create_shorts_candidates(
         _ideal_max   = round(120 * speed)   # желательный максимум
         _shorts_min  = 35                   # минимум не масштабируем
 
+        _structured_schema = shorts_response_schema()
+
         prompt = SHORTS_PROMPT.format(
             title=title,
             duration=format_timestamp(duration),
@@ -176,10 +214,9 @@ async def create_shorts_candidates(
 
         if existing_audio_part is not None and existing_client is not None:
             try:
-                response = await existing_client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=[existing_audio_part, prompt],
-                    config=make_audio_config(max_output_tokens=16000, thinking_level="low"),
+                response = await _generate_audio_candidate_content(
+                    existing_client, model=GEMINI_MODEL, contents=[existing_audio_part, prompt],
+                    max_output_tokens=16000, schema=_structured_schema, task="shorts_candidates",
                 )
             except Exception as e:
                 logger.warning(f"Shorts candidates existing_audio_part failed: {e}")
@@ -209,10 +246,9 @@ async def create_shorts_candidates(
                 audio_part = await _upload(client)
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
-                    return await client.aio.models.generate_content(
-                        model=GEMINI_MODEL,
-                        contents=[audio_part, prompt],
-                        config=make_audio_config(max_output_tokens=16000, thinking_level="low"),
+                    return await _generate_audio_candidate_content(
+                        client, model=GEMINI_MODEL, contents=[audio_part, prompt],
+                        max_output_tokens=16000, schema=_structured_schema, task="shorts_candidates",
                     )
                 finally:
                     if _uploaded:
@@ -430,16 +466,17 @@ async def create_clips_candidates(
             )
             logger.info(f"Clips: используем sermon-промпт (format={format_name})")
 
+        _structured_schema = clips_response_schema()
+
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
         response = None
 
         # Используем уже загруженный audio_part (переиспользование из основного пайплайна)
         if existing_audio_part is not None and existing_client is not None:
             try:
-                response = await existing_client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=[existing_audio_part, prompt],
-                    config=make_audio_config(max_output_tokens=12000, thinking_level="low"),
+                response = await _generate_audio_candidate_content(
+                    existing_client, model=GEMINI_MODEL, contents=[existing_audio_part, prompt],
+                    max_output_tokens=12000, schema=_structured_schema, task="clips_candidates",
                 )
             except Exception as e:
                 logger.warning(f"Clips candidates existing_audio_part failed: {e}")
@@ -469,10 +506,9 @@ async def create_clips_candidates(
                 audio_part = await _upload(client)
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
-                    return await client.aio.models.generate_content(
-                        model=GEMINI_MODEL,
-                        contents=[audio_part, prompt],
-                        config=make_audio_config(max_output_tokens=12000, thinking_level="low"),
+                    return await _generate_audio_candidate_content(
+                        client, model=GEMINI_MODEL, contents=[audio_part, prompt],
+                        max_output_tokens=12000, schema=_structured_schema, task="clips_candidates",
                     )
                 finally:
                     if _uploaded:

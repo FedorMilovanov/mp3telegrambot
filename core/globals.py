@@ -191,7 +191,7 @@ def _build_thinking_config(level: str = "high"):
             return None
 
 
-def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high"):
+def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):
     """ULTIMATE FIX 3.5-FLASH: конфиг для audio-вызовов с авто-адаптацией под поколение.
 
     Для 3.x: thinking_level настраивается по задаче, без temperature
@@ -218,6 +218,10 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
 
     kwargs = {"max_output_tokens": _safe_max}
+    if response_mime_type:
+        kwargs["response_mime_type"] = response_mime_type
+    if response_schema is not None:
+        kwargs["response_schema"] = response_schema
 
     if is_3x:
         tc = _build_thinking_config(thinking_level)
@@ -231,7 +235,7 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
     return types.GenerateContentConfig(**kwargs)
 
 
-def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14000, model_name: str = None, thinking_level: str = "high"):
+def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14000, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):
     """ULTIMATE FIX 3.5-FLASH: конфиг для ТЕКСТОВЫХ вызовов с thinking_level для 3.x.
 
     Используется в services/telegraph_pages.py:_gemini_text_request для StudyAnalysis
@@ -256,6 +260,10 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
 
     kwargs = {"max_output_tokens": _safe_max}
+    if response_mime_type:
+        kwargs["response_mime_type"] = response_mime_type
+    if response_schema is not None:
+        kwargs["response_schema"] = response_schema
 
     if is_3x:
         tc = _build_thinking_config(thinking_level)
