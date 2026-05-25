@@ -50,9 +50,7 @@ Tag: `v3-pre-schema-stable`
 - empty responses
 - MAX_TOKENS
 
-## Текущая фаза
-
-**Phase 3.3–3.5 — Combined observability + candidate schema**
+## Завершено: Phase 3.3–3.5 — Combined observability + candidate schema
 
 В одном безопасном патче:
 
@@ -62,16 +60,28 @@ Tag: `v3-pre-schema-stable`
 4. lightweight `core/candidate_schema.py`
 5. validation reports for Shorts/Clips candidates
 
-## Следующая фаза
+## Текущая фаза
 
 **Phase 3.6 — First dashboard/admin readout**
 
+Добавляем:
+
+1. `/metrics [hours]` admin command
+2. aggregate by task/model/finish_reason
+3. parse failure and MAX_TOKENS visibility through `error`/`finish_reason`
+4. recent Gemini runs readout
+5. token/latency summary
+
+## Следующая фаза
+
+**Phase 4.1 — Structured Output candidates**
+
 Порядок:
 
-1. `/metrics` or admin command for latest Gemini runs
-2. aggregate by task/model/finish_reason
-3. show parse failure and MAX_TOKENS counts
-4. prepare for Structured Output candidates
+1. schema contract for Shorts candidates
+2. schema contract for Clips candidates
+3. schema contract for Extras candidates
+4. compare parse failure rate before/after
 5. затем canonical audio analysis adapter
 
 ## Release rule

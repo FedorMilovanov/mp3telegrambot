@@ -23,6 +23,7 @@ from core.utils import (
     extract_media_url, format_timestamp,               # FIX #9
 )
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX #9
+from core.observability import format_gemini_metrics_report
 from pipelines.main_pipeline import process_single_video
 from pipelines.playlist import handle_playlist
 
@@ -47,7 +48,8 @@ async def start(update, context):
             admin_section = (
                 "\n\n🔧 <b>Команды администратора:</b>\n"
                 "/resetcache &lt;url или video_id&gt;\n"
-                "/resetcache all — очистить весь кэш"
+                "/resetcache all — очистить весь кэш\n"
+                "/metrics [hours] — Gemini метрики"
             )
         text = (
             f"🎵 <b>Media Audio Converter</b>\n\n"
@@ -192,6 +194,28 @@ async def reset_cache_command(update, context):
     # ── /resetcache <url или video_id> ────────────────────────
     video_id = _extract_yt_id_from_text(arg) or arg
     await _do_resetcache_one(video_id, update)
+
+
+async def metrics_command(update, context):
+    """Показывает администратору сводку Gemini observability."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
+        )
+        return
+
+    hours = 24
+    if context.args:
+        try:
+            hours = int(str(context.args[0]).strip())
+        except (TypeError, ValueError):
+            hours = 24
+    hours = max(1, min(hours, 24 * 30))
+
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(None, lambda: format_gemini_metrics_report(hours=hours, recent_limit=7))
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def pdf_command(update, context):

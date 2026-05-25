@@ -234,3 +234,204 @@ async def alog_gemini_response(**kwargs: Any) -> int | None:
     """Async wrapper for log_gemini_response."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: log_gemini_response(**kwargs))
+
+
+def fetch_recent_gemini_runs(limit: int = 10) -> list[dict[str, Any]]:
+    """Return recent Gemini run rows as dictionaries for admin readouts."""
+    limit = max(1, min(_safe_int(limit, 10), 50))
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_gemini_runs_table(conn)
+            rows = conn.execute(
+                """
+                SELECT ts, video_id, task, model, thinking_level,
+                       input_tokens, output_tokens, cached_tokens, thinking_tokens,
+                       total_tokens, duration_ms, retry_num, is_fallback, json_valid,
+                       postprocess_fixes, finish_reason, error
+                FROM gemini_runs
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+    except Exception as exc:
+        logger.warning("fetch_recent_gemini_runs failed: %s", exc, exc_info=True)
+        return []
+
+
+def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
+    """Aggregate Gemini run metrics for the last N hours."""
+    hours = max(1, min(_safe_int(hours, 24), 24 * 30))
+    since = time.time() - hours * 3600
+    empty = {
+        "hours": hours,
+        "total_runs": 0,
+        "errors": 0,
+        "json_invalid": 0,
+        "fallbacks": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "thinking_tokens": 0,
+        "cached_tokens": 0,
+        "avg_duration_ms": 0,
+        "by_task": [],
+        "by_finish_reason": [],
+        "recent_errors": [],
+    }
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_gemini_runs_table(conn)
+            totals = conn.execute(
+                """
+                SELECT COUNT(*) AS total_runs,
+                       SUM(CASE WHEN error != '' THEN 1 ELSE 0 END) AS errors,
+                       SUM(CASE WHEN json_valid = 0 THEN 1 ELSE 0 END) AS json_invalid,
+                       SUM(CASE WHEN is_fallback = 1 THEN 1 ELSE 0 END) AS fallbacks,
+                       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                       COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                       COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                       COALESCE(SUM(thinking_tokens), 0) AS thinking_tokens,
+                       COALESCE(SUM(cached_tokens), 0) AS cached_tokens,
+                       COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+                FROM gemini_runs
+                WHERE ts >= ?
+                """,
+                (since,),
+            ).fetchone()
+            if not totals or not totals["total_runs"]:
+                return empty
+
+            by_task = conn.execute(
+                """
+                SELECT task,
+                       COUNT(*) AS runs,
+                       SUM(CASE WHEN error != '' THEN 1 ELSE 0 END) AS errors,
+                       SUM(CASE WHEN json_valid = 0 THEN 1 ELSE 0 END) AS json_invalid,
+                       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                       COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+                FROM gemini_runs
+                WHERE ts >= ?
+                GROUP BY task
+                ORDER BY runs DESC, task ASC
+                LIMIT 12
+                """,
+                (since,),
+            ).fetchall()
+            by_finish = conn.execute(
+                """
+                SELECT COALESCE(NULLIF(finish_reason, ''), 'unknown') AS finish_reason,
+                       COUNT(*) AS runs
+                FROM gemini_runs
+                WHERE ts >= ?
+                GROUP BY COALESCE(NULLIF(finish_reason, ''), 'unknown')
+                ORDER BY runs DESC
+                LIMIT 8
+                """,
+                (since,),
+            ).fetchall()
+            recent_errors = conn.execute(
+                """
+                SELECT ts, task, model, error
+                FROM gemini_runs
+                WHERE ts >= ? AND error != ''
+                ORDER BY ts DESC
+                LIMIT 5
+                """,
+                (since,),
+            ).fetchall()
+
+        return {
+            "hours": hours,
+            "total_runs": _safe_int(totals["total_runs"]),
+            "errors": _safe_int(totals["errors"]),
+            "json_invalid": _safe_int(totals["json_invalid"]),
+            "fallbacks": _safe_int(totals["fallbacks"]),
+            "total_tokens": _safe_int(totals["total_tokens"]),
+            "input_tokens": _safe_int(totals["input_tokens"]),
+            "output_tokens": _safe_int(totals["output_tokens"]),
+            "thinking_tokens": _safe_int(totals["thinking_tokens"]),
+            "cached_tokens": _safe_int(totals["cached_tokens"]),
+            "avg_duration_ms": _safe_int(totals["avg_duration_ms"]),
+            "by_task": [dict(row) for row in by_task],
+            "by_finish_reason": [dict(row) for row in by_finish],
+            "recent_errors": [dict(row) for row in recent_errors],
+        }
+    except Exception as exc:
+        logger.warning("summarize_gemini_runs failed: %s", exc, exc_info=True)
+        return empty
+
+
+def _fmt_int(value: Any) -> str:
+    return f"{_safe_int(value):,}".replace(",", " ")
+
+
+def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
+    """Build an HTML-safe admin report for Telegram."""
+    summary = summarize_gemini_runs(hours)
+    recent = fetch_recent_gemini_runs(recent_limit)
+    hours = summary["hours"]
+
+    lines = [
+        "📊 <b>Gemini metrics</b>",
+        f"Период: <b>{hours}ч</b>",
+        "",
+        f"Всего вызовов: <b>{_fmt_int(summary['total_runs'])}</b>",
+        f"Ошибки: <b>{_fmt_int(summary['errors'])}</b>",
+        f"JSON invalid: <b>{_fmt_int(summary['json_invalid'])}</b>",
+        f"Fallback: <b>{_fmt_int(summary['fallbacks'])}</b>",
+        f"Avg latency: <b>{_safe_int(summary['avg_duration_ms'])}ms</b>",
+        "",
+        "<b>Tokens</b>",
+        f"total={_fmt_int(summary['total_tokens'])} | in={_fmt_int(summary['input_tokens'])} | "
+        f"out={_fmt_int(summary['output_tokens'])} | think={_fmt_int(summary['thinking_tokens'])} | "
+        f"cached={_fmt_int(summary['cached_tokens'])}",
+    ]
+
+    if summary["by_task"]:
+        lines.append("")
+        lines.append("<b>By task</b>")
+        for row in summary["by_task"][:8]:
+            lines.append(
+                f"• <code>{_safe_text(row.get('task'), 40)}</code>: "
+                f"runs={_fmt_int(row.get('runs'))}, err={_fmt_int(row.get('errors'))}, "
+                f"bad_json={_fmt_int(row.get('json_invalid'))}, "
+                f"tok={_fmt_int(row.get('total_tokens'))}, avg={_safe_int(row.get('avg_duration_ms'))}ms"
+            )
+
+    if summary["by_finish_reason"]:
+        lines.append("")
+        lines.append("<b>Finish reasons</b>")
+        lines.append(
+            ", ".join(
+                f"<code>{_safe_text(row.get('finish_reason'), 30)}</code>={_fmt_int(row.get('runs'))}"
+                for row in summary["by_finish_reason"][:6]
+            )
+        )
+
+    if summary["recent_errors"]:
+        lines.append("")
+        lines.append("<b>Recent errors</b>")
+        for row in summary["recent_errors"][:5]:
+            lines.append(
+                f"• <code>{_safe_text(row.get('task'), 32)}</code> "
+                f"{_safe_text(row.get('model'), 32)}: {_safe_text(row.get('error'), 120)}"
+            )
+
+    if recent:
+        lines.append("")
+        lines.append("<b>Recent runs</b>")
+        for row in recent[:recent_limit]:
+            status = "❌" if row.get("error") else ("⚠️" if row.get("json_valid") == 0 else "✅")
+            lines.append(
+                f"{status} <code>{_safe_text(row.get('task'), 30)}</code> "
+                f"{_safe_text(row.get('model'), 28)} "
+                f"{_safe_int(row.get('duration_ms'))}ms "
+                f"tok={_fmt_int(row.get('total_tokens'))}"
+            )
+
+    text = "\n".join(lines)
+    return text[:3900]

@@ -24,7 +24,7 @@ from services.shorts_video import (
     get_subtitles_mode_settings,
     _get_whisper_model,
 )
-from handlers.commands import start, help_command, handle_message, reset_cache_command, pdf_command, stop_command
+from handlers.commands import start, help_command, handle_message, reset_cache_command, pdf_command, stop_command, metrics_command
 from handlers.callbacks import handle_callback, settings_command
 
 import asyncio
@@ -165,6 +165,7 @@ async def run_bot_async():
     app.add_handler(CommandHandler("settings",   settings_command))
     app.add_handler(CommandHandler("stop",       stop_command))
     app.add_handler(CommandHandler("pdf",        pdf_command))
+    app.add_handler(CommandHandler("metrics",    metrics_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -225,6 +226,7 @@ async def run_bot_async():
                     BotCommand("settings",   "⚙️ Настройки бота"),
                     BotCommand("stop",       "🛑 Остановить бота"),
                     BotCommand("pdf",        "📄 PDF из кэша"),
+                    BotCommand("metrics",    "📊 Gemini метрики"),
                 ]
                 await app.bot.set_my_commands(
                     vip_commands, scope=BotCommandScopeChat(chat_id=admin_id)
