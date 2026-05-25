@@ -1706,6 +1706,9 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r' +([.,;:!?)])', r'\1', text)
         # FIX 2026-05-25: пробел после открывающей скобки перед bold
         text = re.sub(r'\(\s+\*\*', '(**', text)
+        # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
+        # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
+        text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
         return text
 
     def _ends_no_space(n):
