@@ -26,10 +26,12 @@ from core.json_parser import _parse_gemini_response  # FIX gemini_analyze
 from core.progress import set_progress     # FIX gemini_analyze
 from core.utils import format_timestamp, mask_api_key as _mask_api_key  # FIX gemini_analyze
 from core.prompts import build_audio_analysis_prompt, AUDIO_ANALYSIS_MODE  # deep prompt builder
+from core.observability import alog_gemini_response, alog_gemini_run  # V3 observability
 
 import asyncio
 import logging
 import re
+import time
 
 # types — из google.genai (условный импорт, уже в globals.py)
 try:
@@ -158,6 +160,15 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
     used_client = None
     used_audio_part = None
+    _obs_started = time.perf_counter()
+    _obs_video_id = getattr(mp3_path, "stem", "") or ""
+    _obs_model = ""
+    _obs_thinking_level = "high"
+    _obs_retry_num = 0
+    _obs_is_fallback = False
+
+    def _obs_duration_ms() -> int:
+        return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
@@ -215,6 +226,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         for _model_idx, _current_model in enumerate(_models_to_try):
             if success:
                 break
+            _obs_model = _current_model
+            _obs_is_fallback = _model_idx > 0
             if _model_idx > 0:
                 logger.warning(
                     f"Gemini переключаюсь на резервную модель: {_current_model} "
@@ -229,6 +242,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     break
                 for attempt in range(3):
                     try:
+                        _obs_retry_num = attempt
                         audio_part = None  # инициализируем до upload, чтобы except не поймал NameError
                         audio_part, used_client = await upload_to_client(client)
                         used_audio_part = audio_part
@@ -271,6 +285,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                 await asyncio.sleep(60)
                 for client in GEMINI_CLIENTS:
                     try:
+                        _obs_retry_num = 3
                         audio_part, used_client = await upload_to_client(client)
                         response = await asyncio.wait_for(
                             client.aio.models.generate_content(
@@ -289,7 +304,19 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         continue
 
         if response is None:
-            raise last_err or RuntimeError("Все Gemini-клиенты недоступны")
+            _err = last_err or RuntimeError("Все Gemini-клиенты недоступны")
+            await alog_gemini_run(
+                task="audio_analysis",
+                video_id=_obs_video_id,
+                model=_obs_model,
+                thinking_level=_obs_thinking_level,
+                duration_ms=_obs_duration_ms(),
+                retry_num=_obs_retry_num,
+                is_fallback=_obs_is_fallback,
+                json_valid=False,
+                error=f"{type(_err).__name__}: {_mask_api_key(str(_err))[:300]}",
+            )
+            raise _err
 
         # AUDIT DIAG: логируем финальный finish_reason и длину ответа
         try:
@@ -315,6 +342,18 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         break
         if not raw_text:
             logger.warning("Gemini вернул пустой ответ (thinking-only или safety filter)")
+            await alog_gemini_response(
+                response=response,
+                task="audio_analysis",
+                video_id=_obs_video_id,
+                model=_obs_model or _current_model,
+                thinking_level=_obs_thinking_level,
+                duration_ms=_obs_duration_ms(),
+                retry_num=_obs_retry_num,
+                is_fallback=_obs_is_fallback,
+                json_valid=False,
+                error="empty_response",
+            )
             return None, used_client, used_audio_part
         answer = raw_text.strip()
         logger.info(f"Gemini ответ (первые 2000 символов): {answer[:2000]}")
@@ -328,6 +367,18 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     f"Gemini обрезал ответ (MAX_TOKENS). Длина: {len(answer)} символов. "
                     "Возвращаем None."
                 )
+                await alog_gemini_response(
+                    response=response,
+                    task="audio_analysis",
+                    video_id=_obs_video_id,
+                    model=_obs_model or _current_model,
+                    thinking_level=_obs_thinking_level,
+                    duration_ms=_obs_duration_ms(),
+                    retry_num=_obs_retry_num,
+                    is_fallback=_obs_is_fallback,
+                    json_valid=False,
+                    error="max_tokens",
+                )
                 return None, used_client, used_audio_part
             elif _finish_str not in ("FinishReason.STOP", "STOP", "1"):
                 logger.warning(
@@ -340,6 +391,19 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         if parsed is not None:
             parsed = _validate_and_fix_timestamps(parsed, duration)
 
+        await alog_gemini_response(
+            response=response,
+            task="audio_analysis",
+            video_id=_obs_video_id,
+            model=_obs_model or _current_model,
+            thinking_level=_obs_thinking_level,
+            duration_ms=_obs_duration_ms(),
+            retry_num=_obs_retry_num,
+            is_fallback=_obs_is_fallback,
+            json_valid=parsed is not None,
+            error="" if parsed is not None else "parse_failed",
+        )
+
         # Файл НЕ удаляем здесь — нужен для create_telegraph_synopsis
         return parsed, used_client, used_audio_part
 
@@ -348,6 +412,17 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         err_type = type(e).__name__
         safe_err = _mask_api_key(str(e))
         logger.error(f"Ошибка Gemini AI: {err_type}: {safe_err[:300]}")
+        await alog_gemini_run(
+            task="audio_analysis",
+            video_id=_obs_video_id,
+            model=_obs_model,
+            thinking_level=_obs_thinking_level,
+            duration_ms=_obs_duration_ms(),
+            retry_num=_obs_retry_num,
+            is_fallback=_obs_is_fallback,
+            json_valid=False,
+            error=f"{err_type}: {safe_err[:300]}",
+        )
         if used_audio_part and hasattr(used_audio_part, 'name') and used_client:
             # BUG-B06: безопасное удаление через хелпер
             asyncio.create_task(_safe_delete_gemini_file(used_client, used_audio_part.name))
