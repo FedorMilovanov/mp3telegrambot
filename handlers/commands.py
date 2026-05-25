@@ -140,8 +140,8 @@ async def reset_cache_command(update, context):
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
             f"⛔ Нет доступа.\n"
-            f"Ваш Telegram ID: `{user_id}`\n"
-            f"Добавьте его в переменную ADMIN_IDS на Render.", parse_mode="Markdown")
+            f"Ваш Telegram ID: <code>{user_id}</code>\n"
+            f"Добавьте его в переменную ADMIN_IDS на Render.", parse_mode="HTML")
         return
 
     args = context.args
@@ -188,7 +188,7 @@ async def reset_cache_command(update, context):
                 return r
         rows = await loop.run_in_executor(None, _delete_all)
         await update.message.reply_text(
-            f"🗑 Весь кэш удалён: {rows} записей.", parse_mode="Markdown")
+            f"🗑 Весь кэш удалён: {rows} записей.", parse_mode="HTML")
         return
 
     # ── /resetcache <url или video_id> ────────────────────────
@@ -201,7 +201,7 @@ async def metrics_command(update, context):
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
-            f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
         )
         return
 
@@ -223,7 +223,7 @@ async def pdf_command(update, context):
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
-            f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown")
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
         return
 
     args = context.args
@@ -320,7 +320,7 @@ async def stop_command(update, context):
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
         await update.message.reply_text(
-            f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
         )
         return
     # V3-P0: нормальный /stop больше не делает os._exit() как основной путь.
@@ -419,4 +419,3 @@ async def handle_message(update, context):
 
 
 # ─── Запуск ──────────────────────────────────────────────────
-

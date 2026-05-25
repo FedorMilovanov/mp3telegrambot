@@ -295,7 +295,7 @@ async def process_and_send_shorts(
                         c["title"], c["duration_seconds"],
                     )
                     if poster_ok and title_poster_path.exists():
-                        thumb_buf = BytesIO(title_poster_path.read_bytes())
+                        thumb_buf = open(title_poster_path, "rb")
                         thumb_buf.name = title_poster_path.name
                         logger.info(f"Shorts {i}/{total}: title poster создан")
                 except Exception as poster_err:
@@ -308,7 +308,7 @@ async def process_and_send_shorts(
                         current_path, snapshot_path, c["duration_seconds"]
                     )
                     if snap_ok and snapshot_path.exists():
-                        thumb_buf = BytesIO(snapshot_path.read_bytes())
+                        thumb_buf = open(snapshot_path, "rb")
                         thumb_buf.name = snapshot_path.name
                 except Exception as snap_err:
                     logger.warning(f"Shorts {i}/{total}: snapshot error: {snap_err}")

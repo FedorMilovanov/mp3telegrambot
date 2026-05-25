@@ -170,6 +170,7 @@ def db_cleanup_old_records():
     try:
         cutoff = int(time.time()) - CACHE_TTL_DAYS * 86400
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA busy_timeout=5000")
             deleted = conn.execute(
                 "DELETE FROM video_cache WHERE updated_at > 0 AND updated_at < ?", (cutoff,)
             ).rowcount
@@ -210,6 +211,7 @@ def db_save(video_id: str, url: str, questions: list,
     _model_name     = model_name     or GEMINI_MODEL
     _updated_at     = int(time.time())
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""
             INSERT INTO video_cache
                 (video_id, url, questions, quotes_tg_url, questions_tg_url,
@@ -246,6 +248,7 @@ def db_save(video_id: str, url: str, questions: list,
 
 def db_get(video_id: str) -> dict | None:
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         row = conn.execute(
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
             "cache_version, prompt_version, model_name, updated_at, terms_tg_url, "
@@ -346,6 +349,7 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
                     nosub_expiry: int = 0, source_duration: int = 0) -> None:
     """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s."""
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""
             INSERT OR REPLACE INTO short_trims
                 (short_id, video_path, start_seconds, end_seconds, visual_mode,
@@ -361,6 +365,7 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
 
 def short_trim_get(short_id: str) -> dict | None:
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         # AUDIT M5: добавлено поле source_duration
         try:
             row = conn.execute(
@@ -476,6 +481,7 @@ def shorts_speed_get() -> str:
     """Читает текущую скорость Shorts из БД."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA busy_timeout=5000")
             row = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = 'shorts_speed'"
             ).fetchone()
@@ -488,6 +494,7 @@ def shorts_speed_get() -> str:
 def shorts_speed_set(value: str) -> None:
     """Сохраняет скорость Shorts в БД."""
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('shorts_speed', ?)",
             (value,)
@@ -510,6 +517,7 @@ def settings_get(key: str) -> bool:
     """Читает настройку из БД. Fallback на дефолт если не задана."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA busy_timeout=5000")
             row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
         if row:
             return row[0].lower() in ("1", "true", "yes")
@@ -521,6 +529,7 @@ def settings_get(key: str) -> bool:
 def settings_set(key: str, value: bool) -> None:
     """Сохраняет настройку в БД."""
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
             (key, "1" if value else "0")
@@ -532,6 +541,7 @@ def settings_get_all() -> dict[str, bool]:
     """Возвращает все настройки за один SELECT вместо N отдельных соединений."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA busy_timeout=5000")
             rows = conn.execute("SELECT key, value FROM bot_settings").fetchall()
         db_vals = {k: (v.lower() in ("1", "true", "yes")) for k, v in rows}
     except Exception:
