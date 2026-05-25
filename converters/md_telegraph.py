@@ -1410,7 +1410,7 @@ async def _create_telegraph_page_single(title: str, author: str,
                     "content": nodes,
                     "return_content": False,
                 },
-                timeout=15,
+                timeout=30,  # BP-16: 15→30s для большого Study Analysis
             ))
             data = resp.json()
             if data.get("ok"):
@@ -1457,7 +1457,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
                 "content": nodes,
                 "return_content": False,
             },
-            timeout=15,
+            timeout=30,  # BP-16: увеличен с 15 до 30s — Study Analysis 60+ nodes
         ))
         data = resp.json()
         ok = bool(data.get("ok"))

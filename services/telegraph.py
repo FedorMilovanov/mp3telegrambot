@@ -487,11 +487,35 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 "qa":         "Формат: Q&A — вопросы и ответы. Каждая секция = один вопрос + развёрнутый ответ; не объединяй разные вопросы в одну секцию.",
             }
             _format_note = _format_note_map.get(_fmt, "")
+            # BP-01 FIX: передаём primary-анализ в конспект, чтобы
+            # Gemini не изобретал материал заново, а достраивал уже известное.
+            _main_topic     = (ai_data.get("main_topic") or "").strip()[:600]
+            _analysis_summ  = (ai_data.get("analysis_summary") or "").strip()[:500]
+            _arg_arc        = (ai_data.get("argument_arc") or "").strip()[:300]
+            _key_cats_raw   = ai_data.get("key_categories") or []
+            _key_cats_str2  = ", ".join(_key_cats_raw[:6]) if isinstance(_key_cats_raw, list) else str(_key_cats_raw)[:200]
+            # Таймкоды из первичного анализа — как якорная сетка
+            _ts_raw = ai_data.get("timestamps") or []
+            _ts_anchor = ""
+            if isinstance(_ts_raw, list) and _ts_raw:
+                _ts_lines = [f"{t.get('time','?')} — {t.get('topic','')}" for t in _ts_raw[:8] if isinstance(t, dict)]
+                _ts_anchor = "\n".join(_ts_lines)
+            _primary_context = ""
+            if _main_topic or _analysis_summ:
+                _primary_context = (
+                    f"\n\n--- ЧТО УЖЕ ИЗВЕСТНО О МАТЕРИАЛЕ (не переизобретай) ---\n"
+                    f"Главная тема: {_main_topic}\n"
+                    f"Суть: {_analysis_summ}\n"
+                    + (f"Ключевые категории: {_key_cats_str2}\n" if _key_cats_str2 else "")
+                    + (f"Опорные таймкоды:\n{_ts_anchor}\n" if _ts_anchor else "")
+                    + "НЕ ПРОТИВОРЕЧЬ этим данным. Достраивай конспект, не переизобретай.\n"
+                    + "--- КОНЕЦ КОНТЕКСТА ---"
+                )
             prompt = SYNOPSIS_PROMPT_V2.format(
                 title=prompt_title,
                 duration=duration_str,
                 hermeneutic_method=_hm,
-                format_note=_format_note,
+                format_note=_format_note + _primary_context,
                 syn_sections=_syn_sections,
                 syn_section_len=_syn_section_len,
                 syn_total=_syn_total,
