@@ -1301,15 +1301,16 @@ def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, dur
     return nodes
 
 
-def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list) -> list:
+def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list, leading_hr: bool = True) -> list:
     """
     Строит навигационный блок между частями в формате [N/total].
     Пример: ⬅ Назад: [1/3]     ➡ Дальше: [3/3]
+    leading_hr: если False — не добавляет <hr> перед навигацией (для верхнего nav блока).
     """
     if total_parts <= 1:
         return []
 
-    nodes = [{"tag": "hr"}]
+    nodes = [{"tag": "hr"}] if leading_hr else []
     nav_children = []
 
     if part_idx > 0:
@@ -1698,6 +1699,13 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'(\d+:\d+)\s*[-–]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen AND en-dash in verse ranges
         # BUG-D: strip stray space before , or ) after Hebrew/RTL words (LTR mark removal leaves space)
         text = re.sub(r'\*\*\s+([,;)])', r'**\1', text)  # **word** , → **word**,
+        # FIX 2026-05-25: NBSP (\xa0) нормализация — Gemini часто вставляет
+        text = text.replace('\u00a0', ' ')  # NBSP → обычный пробел
+        text = re.sub(r' {2,}', ' ', text)  # повторный проход после NBSP замены
+        # FIX 2026-05-25: пробел перед пунктуацией
+        text = re.sub(r' +([.,;:!?)])', r'\1', text)
+        # FIX 2026-05-25: пробел после открывающей скобки перед bold
+        text = re.sub(r'\(\s+\*\*', '(**', text)
         return text
 
     def _ends_no_space(n):
@@ -1832,6 +1840,41 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             return out
 
         children = _fix_paren_bold_space(children)
+
+        # FIX 2026-05-25: de-bold source cards in "Карта источников"
+        # Pattern: <p>• <b>Author, <em>Title</em>...</b></p> → unwrap <b>
+        def _debold_source_card(ch):
+            """Unwrap bold from source card entries like • **Author, *Title*...**"""
+            if len(ch) < 2:
+                return ch
+            # Check: first child is "• " text, second is <b> with comma inside
+            first_text = ch[0] if isinstance(ch[0], str) else ""
+            if not first_text.strip().startswith("•"):
+                return ch
+            second = ch[1] if len(ch) > 1 else None
+            if not isinstance(second, dict) or second.get("tag") not in ("b", "strong"):
+                return ch
+            # Check if <b> contains a comma (Author, Title pattern)
+            b_text = ""
+            for bc in second.get("children", []):
+                if isinstance(bc, str):
+                    b_text += bc
+                elif isinstance(bc, dict):
+                    b_text += "".join(str(x) for x in bc.get("children", []))
+            if "," not in b_text:
+                return ch
+            # Has italic inside? (book title)
+            has_italic = any(
+                isinstance(bc, dict) and bc.get("tag") in ("em", "i")
+                for bc in second.get("children", [])
+            )
+            if not has_italic:
+                return ch
+            # Unwrap: replace <b>...</b> with its children
+            out = [ch[0]] + list(second.get("children", [])) + list(ch[2:])
+            return out
+
+        children = _debold_source_card(children)
         node['children'] = children
 
         plain = _flatten_text(node).strip()

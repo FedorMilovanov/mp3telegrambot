@@ -835,7 +835,7 @@ async def _publish_expanded_page(
 
         # Nav вверху для частей 2+ (не для первой — там TOC)
         if total > 1 and i > 0:
-            final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
+            final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
             final_nodes.append({"tag": "hr"})
 
         for sec_idx, sec in enumerate(part_secs):

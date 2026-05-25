@@ -781,6 +781,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                             and "➡" in str(_ch.get("children", []))):
                                         _href = _ch.get("attrs", {}).get("href", "")
                                         if _href:
+                                            # Normalize relative URLs to full
+                                            if _href.startswith("/"):
+                                                _href = "https://telegra.ph" + _href
                                             urls.append(_href)
                                     # Also check nested children (nav block may have deeper structure)
                                     if isinstance(_ch, dict):
@@ -789,6 +792,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                                     and "➡" in str(_gch.get("children", []))):
                                                 _href = _gch.get("attrs", {}).get("href", "")
                                                 if _href:
+                                                    if _href.startswith("/"):
+                                                        _href = "https://telegra.ph" + _href
                                                     urls.append(_href)
                             return urls
 
@@ -799,7 +804,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 continue
                             _visited_parts.add(_part_url)
                             try:
-                                _p_path = _part_url.replace("https://telegra.ph/", "")
+                                _p_path = _part_url.replace("https://telegra.ph/", "").lstrip("/")
                                 _p_resp = await loop.run_in_executor(None, lambda _pp=_p_path: requests.get(
                                     f"https://api.telegra.ph/getPage/{_pp}?return_content=true",
                                     timeout=30,
