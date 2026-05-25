@@ -224,9 +224,13 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
         kwargs["response_schema"] = response_schema
 
     if is_3x:
-        tc = _build_thinking_config(thinking_level)
-        if tc is not None:
-            kwargs["thinking_config"] = tc
+        # Gemini Structured Output and thinking_config are not always accepted
+        # together by the API. For schema-constrained calls, prefer schema
+        # stability and skip explicit thinking_config.
+        if response_schema is None and not response_mime_type:
+            tc = _build_thinking_config(thinking_level)
+            if tc is not None:
+                kwargs["thinking_config"] = tc
         # На 3.x Google рекомендует НЕ переопределять temperature/top_p/top_k
         # (Gemini Developer Guide май 2026)
     else:
@@ -266,9 +270,11 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
         kwargs["response_schema"] = response_schema
 
     if is_3x:
-        tc = _build_thinking_config(thinking_level)
-        if tc is not None:
-            kwargs["thinking_config"] = tc
+        # Schema-constrained calls should not force thinking_config.
+        if response_schema is None and not response_mime_type:
+            tc = _build_thinking_config(thinking_level)
+            if tc is not None:
+                kwargs["thinking_config"] = tc
     else:
         kwargs["temperature"] = temperature
 

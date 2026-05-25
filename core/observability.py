@@ -18,6 +18,7 @@ from core.globals import DB_PATH
 from core.candidate_schema import parse_validation_summary
 
 logger = logging.getLogger(__name__)
+_TABLE_ENSURED_DB_PATHS: set[str] = set()
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -180,7 +181,10 @@ def log_gemini_run(
 
     try:
         with sqlite3.connect(DB_PATH, timeout=5) as conn:
-            _ensure_gemini_runs_table(conn)
+            db_key = str(DB_PATH)
+            if db_key not in _TABLE_ENSURED_DB_PATHS:
+                _ensure_gemini_runs_table(conn)
+                _TABLE_ENSURED_DB_PATHS.add(db_key)
             cur = conn.execute(
                 """
                 INSERT INTO gemini_runs (
@@ -482,4 +486,6 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
             )
 
     text = "\n".join(lines)
-    return text[:3900]
+    if len(text) > 3900:
+        text = text[:3820].rstrip() + "\n\n<i>⚠️ Отчёт обрезан. Используйте меньший период.</i>"
+    return text

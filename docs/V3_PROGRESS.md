@@ -104,6 +104,23 @@ Tag: `v3-pre-schema-stable`
 3. compare parse failure rate before/after Structured Output
 4. затем canonical audio analysis adapter
 
+## Pass 3 audit follow-up
+
+Закрыто после внешнего аудита:
+
+- skip explicit `thinking_config` when using Gemini `response_schema`
+- avoid repeated observability DDL on every log write
+- show truncation notice in long `/metrics` reports
+- CI now runs on Python 3.11 and 3.13
+
+Ложные/устаревшие находки:
+
+- `/start` already uses HTML, not Markdown `**bold**`
+- `/metrics` already uses HTML tags
+- `extras_response_schema()` is wired into real Extras Gemini call
+- PDF timecode linker already uses bounded `context_tail`
+- `_RE_H3` is used by `_add_h3_platform_links()` and must not be deleted
+
 ## Release rule
 
 Перед каждым push:
