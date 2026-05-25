@@ -48,6 +48,8 @@ def _demote_paragraph_bold(line: str) -> str:
 
     FIX 2026-05-24: MIN_LINE_LEN=80 — короткие строки (<80 символов)
     целиком bold — это осознанные акценты (тезисы, поворотные фразы).
+    FIX 2026-05-25: per-block check — проверяем каждый bold-кусок по отдельности,
+    а не всю строку. Demote только если ОДИН кусок > 120 символов.
     """
     if not line or '**' not in line:
         return line
@@ -65,8 +67,19 @@ def _demote_paragraph_bold(line: str) -> str:
     MIN_LINE_LEN = 80
     if total_len < MIN_LINE_LEN:
         return line
+    # FIX 2026-05-25: per-block — если есть хотя бы один ОЧЕНЬ длинный bold-кусок
+    # (>120 символов), снимаем bold только с НЕГО. Короткие не трогаем.
+    MAX_SINGLE_BOLD = 120
+    has_oversized = any(len(b) > MAX_SINGLE_BOLD for b in bold_matches)
+    if has_oversized:
+        def _demote_if_long(m):
+            inner = m.group(1)
+            if len(inner) > MAX_SINGLE_BOLD:
+                return inner
+            return m.group(0)
+        return re.sub(r'\*\*([^*\n]+)\*\*', _demote_if_long, line)
+    # Общий ratio check — если вся строка >70% жирная, снимаем всё
     if bold_ratio > 0.7:
-        # Жирный абзац — снимаем **
         return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)
     return line
 
@@ -536,7 +549,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return await client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=[audio, prompt_text],
-                config=make_audio_config(temperature=0.1, max_output_tokens=32000),
+                config=make_audio_config(max_output_tokens=32000),
             )
 
         def _extract_response_text(resp) -> str:
@@ -567,7 +580,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 response = await existing_client.aio.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=[existing_audio_part, prompt],
-                    config=make_audio_config(temperature=0.1, max_output_tokens=32000),
+                    config=make_audio_config(max_output_tokens=32000),
                 )
             except Exception as e:
                 logger.warning(f"Synopsis v2 existing_audio_part failed: {e}, re-uploading...")
@@ -604,7 +617,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             if response is None:
                 logger.warning("Synopsis: основная модель недоступна — пробую gemini-2.5-flash-lite")
                 try:
-                    _fallback_config = make_audio_config(temperature=0.1, max_output_tokens=32000, model_name="gemini-2.5-flash-lite")
+                    _fallback_config = make_audio_config(max_output_tokens=32000, model_name="gemini-2.5-flash-lite")
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await client.aio.models.generate_content(
@@ -646,6 +659,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         if c == '"': in_str = not in_str
                         if in_str and c == "\n": result.append("\\n"); i += 1; continue
                         if in_str and c == "\r": result.append("\\r"); i += 1; continue
+                        if in_str and c == "\t": result.append("\\t"); i += 1; continue
                         result.append(c); i += 1
                     return "".join(result)
                 try:
@@ -683,7 +697,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         retry_response = await existing_client.aio.models.generate_content(
                             model=GEMINI_MODEL,
                             contents=[existing_audio_part, retry_prompt],
-                            config=make_audio_config(temperature=0.1, max_output_tokens=32000),
+                            config=make_audio_config(max_output_tokens=32000),
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
@@ -737,7 +751,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                                 simple_response = await existing_client.aio.models.generate_content(
                                     model=GEMINI_MODEL,
                                     contents=[existing_audio_part, simple_prompt],
-                                    config=make_audio_config(temperature=0.1, max_output_tokens=32000),
+                                    config=make_audio_config(max_output_tokens=32000),
                                 )
                             except Exception:
                                 simple_response = None
@@ -799,6 +813,14 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if not sections:
             logger.warning("Synopsis v2: все sections пусты после фильтрации content — abort")
             return None, None
+
+        # ── Валидация плотности sections (BP-04) ─────────────
+        _thin_count = sum(1 for s in sections if len((s.get("content") or "").strip()) < 100)
+        if _thin_count > 0:
+            logger.warning(
+                f"Synopsis v2: {_thin_count}/{len(sections)} sections имеют content < 100 символов — "
+                f"возможно неполный конспект"
+            )
 
         # ── Защита от рассинхрона outline / sections ─────────
         # Для QA: промпт инструктирует модель НЕ включать 4 секции применения

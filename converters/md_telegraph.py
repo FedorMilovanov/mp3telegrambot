@@ -1343,7 +1343,7 @@ def _final_telegraph_polish(nodes: list) -> list:
     Запускать ДО любого createPage/editPage.
     Гарантирует: нет orphaned **, нет пустых nodes, нет h1/h2/h5/h6, нет bidi-мусора."""
     _ORPHAN_BOLD_RE = re.compile(r'(?<!\*)\*{2,3}(?!\*)')
-    _BIDI_RE = re.compile(r'[\u2066-\u2069\u202a-\u202e\u200e\u200f]')
+    _BIDI_RE = re.compile(r'[\u2066-\u2069\u202a-\u202e\u200f]')  # U+200E (LTR mark) excluded — inserted by RTL fix
 
     def _polish_node(node):
         if isinstance(node, str):
@@ -1694,7 +1694,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             text = text.replace(ch, ' ')
         for ch in ['​', '­']:
             text = text.replace(ch, '')
-        text = re.sub(r'[⁦-⁩‪-‮‎‏]', '', text)  # incl. LTR/RTL marks
+        text = re.sub(r'[⁦-⁩‪-‮‏]', '', text)  # bidi isolates + RTL mark; U+200E (LTR) preserved for RTL fix
         text = re.sub(r'(\d+:\d+)\s*[-–]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen AND en-dash in verse ranges
         # BUG-D: strip stray space before , or ) after Hebrew/RTL words (LTR mark removal leaves space)
         text = re.sub(r'\*\*\s+([,;)])', r'**\1', text)  # **word** , → **word**,
