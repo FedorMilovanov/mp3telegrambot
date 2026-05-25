@@ -374,9 +374,12 @@ async def handle_message(update, context):
         finally:
             if _lock_acquired:
                 try:
-                    _vlock.release()
+                    if _vlock.locked():
+                        _vlock.release()
+                    else:
+                        logger.warning("Video lock %s уже был освобождён до release", _vid_id_hint)
                 except RuntimeError:
-                    logger.warning("Video lock %s уже был освобождён", _vid_id_hint)
+                    logger.warning("Video lock %s release вызвал RuntimeError", _vid_id_hint)
             _release_video_lock(_vid_id_hint, _vlock)
         # PART5: rate-limit уже зарезервирован до обработки через areserve_rate_limit().
         try:

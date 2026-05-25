@@ -133,7 +133,6 @@ async def process_and_send_montage(
     prefetched_candidates: list[dict] | None = None,
 ) -> None:
     video_path, owned_video = None, False
-    _has_highlights = await asettings_get("shorts_highlights")
     try:
         candidates = prefetched_candidates or []
         if not candidates:
@@ -172,10 +171,13 @@ async def process_and_send_montage(
     finally:
         if video_path and owned_video:
             try:
-                if not _has_highlights:
-                    video_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+                # V3-P0: montage больше не оставляет видео "для highlights".
+                # Если highlights-кандидатов нет или highlights упадёт до download,
+                # файл становился orphaned. Лучше удалить и при необходимости скачать
+                # заново в highlights, чем копить большие видео в downloads/.
+                video_path.unlink(missing_ok=True)
+            except Exception as _cleanup_err:
+                logger.warning("Montage: не удалось удалить временное видео %s: %s", video_path, _cleanup_err)
 
 
 async def process_and_send_highlights(

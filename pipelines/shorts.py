@@ -146,22 +146,37 @@ async def process_and_send_shorts(
             # после speed пользователь слышал завершённую мысль.
             # Пример: speed=1.1, end=808s → реально берём до 808+5=813s,
             # после ускорения это ужмётся обратно до ~807s.
+            try:
+                render_start = max(0.0, float(c.get("start_seconds", 0)))
+                source_end = float(c.get("end_seconds", 0))
+            except (TypeError, ValueError):
+                logger.warning("Shorts: invalid candidate times %s/%s: %r", i, total, c)
+                continue
+
+            if render_start != c.get("start_seconds"):
+                logger.warning(
+                    "Shorts: start_seconds %.2f < 0 или невалиден — clamp до %.2f",
+                    float(c.get("start_seconds", 0) or 0), render_start,
+                )
+                c["start_seconds"] = render_start
+                c["start"] = "0:00"
+
             speed_extra = 0
             if speed > 1.01:
-                speed_extra = int((c["end_seconds"] - c["start_seconds"]) * (speed - 1.0)) + 2
-            render_end = c["end_seconds"] + speed_extra
+                speed_extra = int((source_end - render_start) * (speed - 1.0)) + 2
+            render_end = source_end + speed_extra
             if duration:
                 render_end = min(float(duration), float(render_end))
-            if render_end <= c["start_seconds"]:
+            if render_end <= render_start:
                 logger.warning(
                     f"Shorts: invalid render range {i}/{total}: "
-                    f"start={c['start_seconds']} end={render_end} duration={duration}"
+                    f"start={render_start} end={render_end} duration={duration}"
                 )
                 continue
 
             ok = await render_short_clip(
                 video_path, raw_path,
-                c["start_seconds"], render_end,
+                render_start, render_end,
                 visual_mode=visual_mode,
             )
             if not ok:
