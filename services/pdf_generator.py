@@ -969,7 +969,15 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
     parts = _RE_TAG_SPLIT.split(html_str)
     depth_a = 0
     result: List[str] = []
-    cumulative_text = ""
+    # V3-P0: раньше здесь накапливался весь plain-text документа
+    # (cumulative_text), что давало лишнюю память на больших Telegraph/PDF.
+    # Для проверки Bible-ref перед таймкодом достаточно короткого хвоста.
+    context_tail = ""
+
+    def _remember_text(text: str) -> None:
+        nonlocal context_tail
+        if text:
+            context_tail = (context_tail + text)[-120:]
 
     for seg in parts:
         if seg.startswith("<"):
@@ -980,10 +988,10 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
                 depth_a = max(0, depth_a - 1)
             result.append(seg)
         elif depth_a > 0:
-            cumulative_text += seg
+            _remember_text(seg)
             result.append(seg)
         else:
-            ctx = cumulative_text
+            ctx = context_tail
 
             def _repl(m: re.Match) -> str:
                 tc = m.group(1)
@@ -1001,7 +1009,7 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
                 return tc
 
             result.append(_TIMECODE_RE.sub(_repl, seg))
-            cumulative_text += seg
+            _remember_text(seg)
     return "".join(result)
 
 

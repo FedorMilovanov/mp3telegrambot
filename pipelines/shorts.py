@@ -147,9 +147,17 @@ async def process_and_send_shorts(
             # Пример: speed=1.1, end=808s → реально берём до 808+5=813s,
             # после ускорения это ужмётся обратно до ~807s.
             speed_extra = 0
-            if abs(speed - 1.0) > 0.01:
+            if speed > 1.01:
                 speed_extra = int((c["end_seconds"] - c["start_seconds"]) * (speed - 1.0)) + 2
             render_end = c["end_seconds"] + speed_extra
+            if duration:
+                render_end = min(float(duration), float(render_end))
+            if render_end <= c["start_seconds"]:
+                logger.warning(
+                    f"Shorts: invalid render range {i}/{total}: "
+                    f"start={c['start_seconds']} end={render_end} duration={duration}"
+                )
+                continue
 
             ok = await render_short_clip(
                 video_path, raw_path,

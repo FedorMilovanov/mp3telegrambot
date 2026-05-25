@@ -42,7 +42,7 @@ def _valid_clip(clip: dict, duration: int) -> bool:
     try:
         s = float(clip["start_seconds"])
         e = float(clip["end_seconds"])
-        return 0 <= s < e <= duration + 10  # +10s допуск как в оригинале
+        return 0 <= s < e and (duration <= 0 or e <= duration)
     except (KeyError, TypeError, ValueError):
         return False
 
@@ -289,7 +289,10 @@ async def create_shorts_candidates(
                 continue
             if start_s < 0 or end_s <= start_s:
                 continue
-            if end_s > duration + 5:
+            if duration and end_s > duration:
+                logger.info(
+                    f"Shorts: пропускаю '{clip_title}' — end {end_s}s за пределами duration {duration}s"
+                )
                 continue
 
             clip_len = end_s - start_s
@@ -511,8 +514,11 @@ async def create_clips_candidates(
                 continue
             if start_s < 0 or end_s <= start_s:
                 continue
-            if end_s > duration + 10:
-                end_s = duration
+            if duration and end_s > duration:
+                logger.info(
+                    f"Clips: пропускаю '{clip_title}' — end {end_s}s за пределами duration {duration}s"
+                )
+                continue
             if end_s <= start_s:
                 continue
 

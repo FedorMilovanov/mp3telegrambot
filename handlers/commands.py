@@ -293,30 +293,22 @@ async def stop_command(update, context):
             f"⛔ Нет доступа.\nВаш Telegram ID: `{user_id}`", parse_mode="Markdown"
         )
         return
-    # AUDIT C3: graceful shutdown через PTB вместо os._exit.
-    # os._exit не запускает atexit, не закрывает SQLite, не доотправляет
-    # сообщения и не отменяет фоновые задачи — файлы в downloads/ остаются висеть.
-    await update.message.reply_text("🛑 Останавливаю бота...")
-    logger.info(f"Stop command от admin {user_id} — graceful shutdown")
+    # V3-P0: нормальный /stop больше не делает os._exit() как основной путь.
+    # Команда ставит флаг, main.py выходит из polling-loop, async context PTB
+    # корректно закрывает updater/application, а run_bot() НЕ перезапускает процесс.
+    # Жёсткий выход оставлен только как аварийный env-fallback для хостингов.
+    await update.message.reply_text("🛑 Останавливаю бота gracefully...")
+    logger.info(f"Stop command от admin {user_id} — graceful shutdown requested")
     app = context.application
+    app.bot_data["stop_requested"] = True
 
-    async def _graceful():
-        await asyncio.sleep(0.5)
-        try:
-            if app.updater and app.updater.running:
-                await app.updater.stop()
-            if app.running:
-                await app.stop()
-            await app.shutdown()
-        except Exception as _e:
-            logger.warning(f"graceful shutdown error: {_e}")
-        finally:
-            # main.py крутится в while True — нужен жёсткий выход, но уже после
-            # того как PTB корректно закрыл всё своё хозяйство.
-            await asyncio.sleep(0.3)
+    if os.getenv("FORCE_EXIT_ON_STOP", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        async def _force_exit_fallback():
+            await asyncio.sleep(5)
+            logger.warning("FORCE_EXIT_ON_STOP=1 — аварийный os._exit(0) после grace period")
             os._exit(0)
 
-    asyncio.create_task(_graceful())
+        asyncio.create_task(_force_exit_fallback())
 
 
 async def handle_message(update, context):

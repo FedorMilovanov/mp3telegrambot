@@ -215,8 +215,16 @@ async def run_bot_async():
         asyncio.create_task(_periodic_maintenance())
 
         while True:
+            if app.bot_data.get("stop_requested"):
+                logger.info("🛑 Stop requested — выходим из polling-loop без restart")
+                return "stop_requested"
             mark_bot_alive()
-            await asyncio.sleep(60)
+            # Спим короткими шагами, чтобы /stop не ждал до 60 секунд.
+            for _ in range(60):
+                if app.bot_data.get("stop_requested"):
+                    logger.info("🛑 Stop requested — выходим из polling-loop без restart")
+                    return "stop_requested"
+                await asyncio.sleep(1)
 
 
 def run_bot():
@@ -225,7 +233,10 @@ def run_bot():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(run_bot_async())
+            result = loop.run_until_complete(run_bot_async())
+            if result == "stop_requested":
+                logger.info("🛑 Бот остановлен по /stop — без автоматического restart")
+                break
         except Exception as e:
             # AUDIT L7: убран print() — logger.error и так пишет ошибку,
             # а print не маскирует токены через _TokenMaskFilter.

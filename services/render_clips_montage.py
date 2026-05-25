@@ -16,6 +16,7 @@ from core.utils import cleanup_files, format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
 from core.core_utils import time_to_seconds                      # FIX: moved to core_utils (был в json_parser)
+from core.json_parser import _recover_truncated_json                # V3-P0: partial JSON recovery
 from core.prompts import EXTRAS_PROMPT                          # FIX render
 
 import asyncio
@@ -401,9 +402,13 @@ async def create_extras_candidates(
 
         try:
             data = json.loads(clean[s:e + 1])
-        except json.JSONDecodeError:
-            logger.warning("Extras candidates: JSONDecodeError")
-            return {"montage_candidates": [], "highlights_candidates": []}
+        except json.JSONDecodeError as exc:
+            logger.warning("Extras candidates: JSONDecodeError: %s", exc)
+            recovered = _recover_truncated_json(clean[s:])
+            if recovered is None:
+                return {"montage_candidates": [], "highlights_candidates": []}
+            logger.info("Extras candidates: JSON восстановлен (partial/truncated)")
+            data = recovered
 
         montage_candidates = []
         for item in (data.get("montage_candidates", []) or [])[:3]:
@@ -431,7 +436,7 @@ async def create_extras_candidates(
                     continue
                 ss = time_to_seconds(str(frag.get("start", "")).strip())
                 ee = time_to_seconds(str(frag.get("end", "")).strip())
-                if ss is None or ee is None or ee <= ss or ee > duration + 5:
+                if ss is None or ee is None or ee <= ss or (duration and ee > duration):
                     continue
                 fd = ee - ss
                 if fd < 7 or fd > 30:
@@ -457,6 +462,10 @@ async def create_extras_candidates(
 
         highlights_candidates = []
         hl = data.get("highlights", {})
+        if not isinstance(hl, dict):
+            # Поддерживаем альтернативную схему, которую часто возвращают structured prompts.
+            hl_list = data.get("highlights_candidates", [])
+            hl = hl_list[0] if isinstance(hl_list, list) and hl_list and isinstance(hl_list[0], dict) else {}
         if isinstance(hl, dict):
             clip_title = _clean_field(str(hl.get("title", "")))
             raw_tags = hl.get("hashtags", [])
@@ -476,7 +485,7 @@ async def create_extras_candidates(
                         continue
                     ss = time_to_seconds(str(frag.get("start", "")).strip())
                     ee = time_to_seconds(str(frag.get("end", "")).strip())
-                    if ss is None or ee is None or ee <= ss or ee > duration + 5:
+                    if ss is None or ee is None or ee <= ss or (duration and ee > duration):
                         continue
                     fd = ee - ss
                     if fd < 4 or fd > 18:

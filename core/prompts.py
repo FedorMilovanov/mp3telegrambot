@@ -39,8 +39,57 @@ def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
     except (TypeError, ValueError):
         dur = 0
 
-    short = dur and dur < 20 * 60
-    medium = dur and dur < 60 * 60 and not short
+    if dur <= 0:
+        # V3-P0: неизвестная длительность раньше попадала в long-profile,
+        # из-за чего Gemini искусственно раздувал анализ коротких/неполных
+        # материалов. Даём отдельный консервативный профиль без long-targets.
+        if mode == "fast":
+            return {
+                "mode": mode,
+                "ts_target": "5–8",
+                "q_target": "4–6",
+                "keycat_target": "3–5",
+                "concepts_target": "2–4",
+                "scripture_target": "1–3",
+                "translations_target": "0–1",
+                "lexicon_target": "0–1",
+                "hints_target": "10–18",
+                "density_note": "Длительность неизвестна: не используй long-profile и не раздувай ответ. Выбирай только явно звучащие сильные элементы.",
+                "analysis_len": "3–4",
+                "arc_len": "3–4",
+            }
+        if mode == "balanced":
+            return {
+                "mode": mode,
+                "ts_target": "6–10",
+                "q_target": "5–7",
+                "keycat_target": "4–6",
+                "concepts_target": "3–5",
+                "scripture_target": "2–4",
+                "translations_target": "0–2",
+                "lexicon_target": "0–1",
+                "hints_target": "12–24",
+                "density_note": "Длительность неизвестна: держи среднюю плотность, не имитируй длинный материал объёмом.",
+                "analysis_len": "4–5",
+                "arc_len": "4–5",
+            }
+        return {
+            "mode": "deep",
+            "ts_target": "7–12",
+            "q_target": "6–8",
+            "keycat_target": "4–6",
+            "concepts_target": "3–5",
+            "scripture_target": "2–4",
+            "translations_target": "0–2",
+            "lexicon_target": "0–1",
+            "hints_target": "14–28",
+            "density_note": "Длительность неизвестна: работай глубоко, но как с материалом неизвестного объёма — без long-profile, без искусственного расширения.",
+            "analysis_len": "4–5",
+            "arc_len": "4–5",
+        }
+
+    short = dur < 20 * 60
+    medium = dur < 60 * 60 and not short
 
     if mode == "fast":
         if short:
@@ -202,8 +251,7 @@ def build_audio_analysis_prompt(
     performer = _normalize_prompt_text(performer, "не указан", 180)
     duration_str = _normalize_prompt_text(duration_str, "не указана", 40)
 
-    return f"""\\
-Ты — ассистент для глубокого анализа проповедей, лекций, бесед и Q&A по аудиоматериалу.
+    return f"""Ты — ассистент для глубокого анализа проповедей, лекций, бесед и Q&A по аудиоматериалу.
 
 YouTube-название: {title}
 YouTube-канал: {performer}
