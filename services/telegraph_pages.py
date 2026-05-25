@@ -847,7 +847,7 @@ async def _publish_expanded_page(
                                                      plain_scripture=plain_scripture))
 
         if total > 1:
-            final_nodes.append({"tag": "hr"})
+            # _build_nav_nodes_v2 already includes its own leading <hr> — do NOT add extra one
             final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
         ok = False

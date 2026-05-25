@@ -764,6 +764,44 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         final_nodes = clean_nodes + nav_nodes
                         await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
                         logger.info(f"Navigation: добавлена навигация на {page_url}")
+
+                        # BUG-C FIX: also apply cross-nav to part 2, 3... of multi-part pages
+                        # Find ➡ Дальше links in current_nodes and apply nav there too
+                        import re as _re
+                        for _part_node in current_nodes:
+                            if not isinstance(_part_node, dict):
+                                continue
+                            for _child in _part_node.get("children", []):
+                                if (isinstance(_child, dict) and _child.get("tag") == "a"
+                                        and "➡" in str(_child.get("children", []))):
+                                    _part_url = _child.get("attrs", {}).get("href", "")
+                                    if _part_url and _part_url != page_url:
+                                        try:
+                                            _p_path = _part_url.replace("https://telegra.ph/", "")
+                                            _p_resp = await loop.run_in_executor(None, lambda: requests.get(
+                                                f"https://api.telegra.ph/getPage/{_p_path}?return_content=true",
+                                                timeout=15,
+                                            ))
+                                            _p_data = _p_resp.json()
+                                            if _p_data.get("ok"):
+                                                _p_nodes = _p_data["result"].get("content", [])
+                                                _p_title = _p_data["result"].get("title", "")
+                                                _p_author = _p_data["result"].get("author_name", "")
+                                                # Check if cross-nav already added
+                                                _already = any(
+                                                    isinstance(n, dict) and
+                                                    "Читать также" in str(n.get("children", ""))
+                                                    for n in _p_nodes[-3:]
+                                                )
+                                                if not _already:
+                                                    await _edit_telegraph_page(
+                                                        _part_url, _p_title, _p_author,
+                                                        _p_nodes + nav_nodes, loop
+                                                    )
+                                                    logger.info(f"Navigation: добавлена навигация на {_part_url} (часть 2+)")
+                                        except Exception as _e:
+                                            logger.warning(f"Navigation: не удалось добавить на часть {_part_url}: {_e}")
+
                         return  # успех — выходим из retry-цикла
                     except Exception as _nav_err:
                         if _nav_attempt == 0:

@@ -1696,6 +1696,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             text = text.replace(ch, '')
         text = re.sub(r'[⁦-⁩‪-‮‎‏]', '', text)  # incl. LTR/RTL marks
         text = re.sub(r'(\d+:\d+)\s*[-–]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen AND en-dash in verse ranges
+        # BUG-D: strip stray space before , or ) after Hebrew/RTL words (LTR mark removal leaves space)
+        text = re.sub(r'\*\*\s+([,;)])', r'**\1', text)  # **word** , → **word**,
         return text
 
     def _ends_no_space(n):
@@ -1737,26 +1739,38 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         return result
 
     def _is_emoji_stub_node(node) -> bool:
-        """True if node is <p><b>EMOJI.</b></p> — useless stub from Gemini section labels."""
+        """True if node is <p><b>EMOJI.</b></p> or <p>EMOJI.</p> — useless stub from Gemini section labels."""
         import unicodedata
         if not isinstance(node, dict) or node.get('tag') != 'p':
             return False
         ch = node.get('children', [])
-        if len(ch) != 1 or not isinstance(ch[0], dict) or ch[0].get('tag') != 'b':
+        if not ch:
             return False
-        b_children = ch[0].get('children', [])
-        if not b_children:
-            return False
-        text = ''.join(c if isinstance(c, str) else '' for c in b_children).strip().rstrip('.')
-        if not text:
-            return False
-        # All chars must be emoji/symbol — no real text
-        return all(
-            unicodedata.category(c) in ('So', 'Mn', 'Cf', 'Co') or
-            ord(c) > 0x1F000 or ord(c) in range(0x2600, 0x2700) or
-            ord(c) in range(0x2300, 0x2400)
-            for c in text if c.strip()
-        )
+
+        def _emoji_only(text: str) -> bool:
+            """True if string contains only emoji/symbols (+ optional dot/space)."""
+            t = text.strip().rstrip('.')
+            if not t:
+                return False
+            return all(
+                unicodedata.category(c) in ('So', 'Mn', 'Cf', 'Co') or
+                ord(c) > 0x1F000 or ord(c) in range(0x2600, 0x2700) or
+                ord(c) in range(0x2300, 0x2400)
+                for c in t if c.strip()
+            )
+
+        # Case 1: <p><b>EMOJI.</b></p>
+        if (len(ch) == 1 and isinstance(ch[0], dict) and ch[0].get('tag') == 'b'):
+            b_children = ch[0].get('children', [])
+            text = ''.join(c if isinstance(c, str) else '' for c in b_children)
+            return _emoji_only(text)
+
+        # Case 2: <p>EMOJI.</p> — plain text, no bold
+        if all(isinstance(c, str) for c in ch):
+            text = ''.join(ch)
+            return _emoji_only(text)
+
+        return False
 
     walked = _walk(nodes)
     return [n for n in walked if not _is_emoji_stub_node(n)]
