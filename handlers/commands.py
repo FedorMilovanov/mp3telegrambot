@@ -352,12 +352,31 @@ async def handle_message(update, context):
             logger.info(
                 f"Video {_vid_id_hint}: параллельный запрос — жду завершения первого..."
             )
+        _lock_acquired = False
         try:
-            async with _vlock:
-                ok = await process_single_video(url, update, msg, context=context)
+            # V3-P0: timeout только на ОЖИДАНИЕ чужой обработки этого же video_id.
+            # Сам process_single_video может длиться дольше 5 минут на длинном видео,
+            # поэтому не оборачиваем весь pipeline в asyncio.timeout().
+            _lock_timeout = float(os.getenv("VIDEO_LOCK_WAIT_TIMEOUT_SEC", "300"))
+            await asyncio.wait_for(_vlock.acquire(), timeout=_lock_timeout)
+            _lock_acquired = True
+            ok = await process_single_video(url, update, msg, context=context)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Video lock timeout для %s после %.0fs ожидания",
+                _vid_id_hint, _lock_timeout,
+            )
+            try:
+                await msg.edit_text("⚠️ Это видео уже обрабатывается слишком долго. Попробуйте позже.")
+            except Exception:
+                await update.message.reply_text("⚠️ Это видео уже обрабатывается слишком долго. Попробуйте позже.")
+            return
         finally:
-            # async with сам освобождает asyncio.Lock даже при исключении,
-            # а registry чистим отдельно и тоже гарантированно.
+            if _lock_acquired:
+                try:
+                    _vlock.release()
+                except RuntimeError:
+                    logger.warning("Video lock %s уже был освобождён", _vid_id_hint)
             _release_video_lock(_vid_id_hint, _vlock)
         # PART5: rate-limit уже зарезервирован до обработки через areserve_rate_limit().
         try:

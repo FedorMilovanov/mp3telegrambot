@@ -168,6 +168,19 @@ async def run_bot_async():
     app.add_handler(CallbackQueryHandler(handle_callback))
     logger.info("✅ Бот запущен!")
 
+    async def _stop_started_application() -> None:
+        """Останавливает polling/application перед выходом из async context."""
+        try:
+            if app.updater and app.updater.running:
+                await app.updater.stop()
+        except Exception as _e:
+            logger.warning("updater.stop during /stop: %s", _e)
+        try:
+            if app.running:
+                await app.stop()
+        except Exception as _e:
+            logger.warning("app.stop during /stop: %s", _e)
+
     async with app:
         await app.initialize()
         await app.start()
@@ -216,13 +229,15 @@ async def run_bot_async():
 
         while True:
             if app.bot_data.get("stop_requested"):
-                logger.info("🛑 Stop requested — выходим из polling-loop без restart")
+                logger.info("🛑 Stop requested — останавливаем polling/application")
+                await _stop_started_application()
                 return "stop_requested"
             mark_bot_alive()
             # Спим короткими шагами, чтобы /stop не ждал до 60 секунд.
             for _ in range(60):
                 if app.bot_data.get("stop_requested"):
-                    logger.info("🛑 Stop requested — выходим из polling-loop без restart")
+                    logger.info("🛑 Stop requested — останавливаем polling/application")
+                    await _stop_started_application()
                     return "stop_requested"
                 await asyncio.sleep(1)
 
