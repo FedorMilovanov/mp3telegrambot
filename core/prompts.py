@@ -33,8 +33,12 @@ _INJECTION_RE = re.compile(
     r"(?i)("
     r"ignore\s+(?:all\s+)?(?:previous|above|earlier)\s+instructions?|"
     r"disregard\s+(?:all\s+)?(?:previous|above|earlier)\s+instructions?|"
+    r"игнорируй\s+(?:все\s+)?(?:предыдущие|вышестоящие|прошлые)\s+инструкции|"
+    r"забудь\s+(?:все\s+)?(?:предыдущие|вышестоящие|прошлые)\s+инструкции|"
+    r"системн(?:ый|ые)\s+промпт|сообщени[ея]\s+разработчика|"
     r"system\s+prompt|developer\s+message|assistant\s*:|system\s*:|developer\s*:|"
-    r"return\s+only|output\s+only|```|<\s*/?\s*(?:instructions?|system|assistant|developer)\b[^>]*>"
+    r"ассистент\s*:|система\s*:|разработчик\s*:|"
+    r"return\s+only|output\s+only|верни\s+только|ответь\s+только|```|<\s*/?\s*(?:instructions?|system|assistant|developer)\b[^>]*>"
     r")"
 )
 

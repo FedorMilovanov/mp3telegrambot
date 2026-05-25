@@ -179,7 +179,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
             parts_t = t_str.split(":")
             try:
                 if len(parts_t) == 2:
-                    t_str = f"{int(parts_t[0]):02d}:{parts_t[1].zfill(2)}"
+                    t_str = f"{int(parts_t[0])}:{parts_t[1].zfill(2)}"
                 elif len(parts_t) == 3:
                     t_str = f"{int(parts_t[0])}:{int(parts_t[1]):02d}:{parts_t[2].zfill(2)}"
             except ValueError:

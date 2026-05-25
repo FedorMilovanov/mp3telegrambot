@@ -7,7 +7,7 @@ mp3bot/
 ├── bot_new.py              ← Точка входа (запускать ЭТО)
 ├── bot.py                  ← Совместимый launcher (перенаправляет на bot_new.py)
 ├── main.py                 ← run_bot_async(), main()
-├── Start.bat               ← Windows launcher
+├── Start Bot.bat               ← Windows launcher
 ├── cookies.txt             ← Куки для yt-dlp
 ├── yt-dlp.conf             ← Конфиг yt-dlp
 ├── .env                    ← Переменные окружения (создать самому!)
@@ -73,7 +73,7 @@ python bot_new.py        # Linux/macOS
 py -3.13 bot_new.py      # Windows
 ```
 
-Или дважды кликните `Start.bat` на Windows.
+Или дважды кликните `Start Bot.bat` на Windows.
 
 ## Исправленные баги (относительно рефакторинга)
 
@@ -96,7 +96,7 @@ py -3.13 bot_new.py      # Windows
 4. **`telegraph_pages.py` импортировал `_fix_rtl_in_text` из `md_telegraph`** — 
    но эта функция определена в `core_utils.py`. Импорт исправлен.
 
-5. **`Start.bat` использовал абсолютный путь** — заменён на `%~dp0` (относительный).
+5. **`Start Bot.bat` использовал абсолютный путь** — заменён на `%~dp0` (относительный).
 
 ### 🟢 Улучшения
 
