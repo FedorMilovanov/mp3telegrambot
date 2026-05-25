@@ -1706,6 +1706,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r' +([.,;:!?)])', r'\1', text)
         # FIX 2026-05-25: пробел после открывающей скобки перед bold
         text = re.sub(r'\(\s+\*\*', '(**', text)
+        # FIX 2026-05-25: malformed hour timestamps: 1:0:00 → 1:00:00
+        text = re.sub(r'(\d+):(\d):(\d{2})', lambda m: f"{m.group(1)}:{m.group(2).zfill(2)}:{m.group(3)}", text)
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
