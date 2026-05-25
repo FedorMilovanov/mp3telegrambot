@@ -316,7 +316,8 @@ class _LRUCache(Generic[_KT, _VT]):
         return False
 
 
-_TELEGRAPH_CACHE: _LRUCache[str, str] = _LRUCache(64)
+_TELEGRAPH_CACHE_SIZE: int = int(os.environ.get("PDF_TELEGRAPH_CACHE_SIZE", "64"))
+_TELEGRAPH_CACHE: _LRUCache[str, str] = _LRUCache(_TELEGRAPH_CACHE_SIZE)
 
 
 def clear_telegraph_cache() -> None:

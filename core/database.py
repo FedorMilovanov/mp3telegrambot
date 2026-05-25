@@ -258,13 +258,13 @@ def db_get(video_id: str) -> dict | None:
     if row[4]:
         try:
             ai_data = json.loads(row[4])
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("db_get: ai_data JSON parse failed for %s: %s", video_id, _e)
     questions = []
     try:
         questions = json.loads(row[1]) if row[1] else []
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("db_get: questions JSON parse failed for %s: %s", video_id, _e)
     return {
         "url":               row[0],
         "questions":         questions,

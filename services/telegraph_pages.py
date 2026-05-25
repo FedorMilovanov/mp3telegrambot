@@ -38,6 +38,7 @@ import asyncio
 import json      # FIX telegraph_pages
 import logging
 import re
+import time
 
 # types — из google.genai
 try:
@@ -481,12 +482,11 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     # Никаких lite — fallback только на 2.5-flash-lite (свежая модель).
     #
     # Time-budget 180с — защита от зависания.
-    import time as _time
-    _start_time = _time.time()
+    _start_time = time.time()
     _TIME_BUDGET = 180  # секунд
 
     def _duration_ms() -> int:
-        return int((_time.time() - _start_time) * 1000)
+        return int((time.time() - _start_time) * 1000)
 
     # ВСЕ на максимальном качестве — 3.5-flash
     # Резерв: 2.5-flash-lite (свежая модель, не lite по качеству)
@@ -504,7 +504,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     last_err = None
     for model_idx, model_name in enumerate(_models):
         # Time-budget check
-        if _time.time() - _start_time > _TIME_BUDGET:
+        if time.time() - _start_time > _TIME_BUDGET:
             logger.warning(
                 "_gemini_text_request: TIME-BUDGET (%ds) исчерпан — fallback",
                 _TIME_BUDGET,
@@ -523,19 +523,13 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
 
         for attempt in range(_max_attempts):
             # Time-budget check
-            if _time.time() - _start_time > _TIME_BUDGET:
+            if time.time() - _start_time > _TIME_BUDGET:
                 break
 
             _client_err = None
             _got_response = False
 
-            import core.globals
-            start_idx = getattr(core.globals, "_current_client_idx", 0)
-            
-            for i in range(len(_CLIENTS)):
-                idx = (start_idx + i) % len(_CLIENTS)
-                client = _CLIENTS[idx]
-                core.globals._current_client_idx = (idx + 1) % len(_CLIENTS)
+            for i, client in enumerate(_CLIENTS):
                 try:
                     resp = await client.aio.models.generate_content(
                         model=model_name,
@@ -623,7 +617,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 await asyncio.sleep(wait)
 
     if last_err:
-        elapsed = _time.time() - _start_time
+        elapsed = time.time() - _start_time
         logger.warning(
             "_gemini_text_request: все модели исчерпаны (за %.1fs), последняя ошибка: %s",
             elapsed, str(last_err)[:200],

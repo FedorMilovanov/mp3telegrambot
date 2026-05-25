@@ -1502,8 +1502,8 @@ def _extract_partial_sections(text: str) -> list:
                             c = str(obj.get("content", "")).strip()
                             if t and c:
                                 sections.append({"title": t, "time": v, "content": c})
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("_extract_partial_sections: skipped malformed section: %s", _e)
                 start = -1
     return sections
 
