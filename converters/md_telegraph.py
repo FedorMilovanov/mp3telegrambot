@@ -1170,6 +1170,31 @@ def _section_to_nodes_v2(
 
         content_nodes = [_apply_ltr_attr(n) for n in content_nodes]
 
+        def _unwrap_source_map_bold(node):
+            """Keep «Карта источников» source cards visually consistent.
+
+            Gemini sometimes emits one card as `• **Чикагское заявление...**`
+            while neighbouring cards are plain. Source-card headings should not
+            be bold; book titles inside them may stay italic. This is applied
+            only inside source-map sections, never to regular term bullets.
+            """
+            if not isinstance(node, dict):
+                return node
+            nn = dict(node)
+            if "children" in nn:
+                nn["children"] = [_unwrap_source_map_bold(c) for c in nn.get("children", [])]
+            if nn.get("tag") != "p":
+                return nn
+            ch = list(nn.get("children", []))
+            if len(ch) >= 2 and isinstance(ch[0], str) and ch[0].strip().startswith("•"):
+                first_inline = ch[1]
+                if isinstance(first_inline, dict) and first_inline.get("tag") in ("b", "strong"):
+                    nn["children"] = [ch[0]] + list(first_inline.get("children", [])) + ch[2:]
+            return nn
+
+        if re.search(r'карта\s+источников', title or "", flags=re.IGNORECASE):
+            content_nodes = [_unwrap_source_map_bold(n) for n in content_nodes]
+
         if yt_url:
             content_nodes = _linkify_inline_timestamps(content_nodes, yt_url, duration=duration)
         nodes.extend(content_nodes)
@@ -2023,15 +2048,23 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         head = ch[:italic_idx + 1]
         tail = ch[italic_idx + 1:]
-        # Trim whitespace-only separators at the split boundary.
+        # Trim whitespace-only separators and stray punctuation after the quote.
+        # Gemini often writes `*«quote»*.`; that dot must not become a separate
+        # paragraph after splitting the scripture micro-block.
         while tail and isinstance(tail[0], str) and not tail[0].strip():
             tail.pop(0)
         if tail and isinstance(tail[0], str):
             tail[0] = tail[0].lstrip()
-        if not ''.join(_flatten_text(x) for x in tail).strip():
-            return [node]
+            tail[0] = re.sub(r'^[\s.。]+', '', tail[0]).lstrip()
+            if tail[0] == "":
+                tail.pop(0)
+        while tail and isinstance(tail[0], str) and not tail[0].strip():
+            tail.pop(0)
+
         new_head = dict(node)
         new_head['children'] = head
+        if not ''.join(_flatten_text(x) for x in tail).strip():
+            return [new_head]
         new_tail = {'tag': 'p', 'children': tail}
         return [new_head, new_tail]
 
