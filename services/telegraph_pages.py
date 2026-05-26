@@ -33,6 +33,7 @@ from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
 from core.utils import format_timestamp               # FIX telegraph_pages
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
+from core.source_packs import get_source_pack_for_ai_data
 
 import asyncio
 import json      # FIX telegraph_pages
@@ -1112,6 +1113,9 @@ async def create_telegraph_study_analysis(
     else:
         _synopsis_context = ""
 
+    # V3 SOURCE_PACKS: тематический пакет источников по key_categories
+    _source_pack = get_source_pack_for_ai_data(_ai)
+
     prompt = STUDY_ANALYSIS_PROMPT.format(
         title=prompt_title,
         author=real_author,
@@ -1128,6 +1132,7 @@ async def create_telegraph_study_analysis(
         translations=_fmt_block(translations, 8),
         lexicon_notes=_fmt_block(lexicon_notes, 8),
         synopsis_context=_synopsis_context,
+        source_pack=_source_pack,
     )
 
     tg_title = prompt_title
