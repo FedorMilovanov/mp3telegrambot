@@ -33,6 +33,37 @@ BAD_META_PATTERNS = [
 ]
 
 # Паттерны для инлайн-замены (встречаются внутри строки, не только в начале)
+_COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    # Live-run polish: frequent Gemini/ASR Russian typos seen in Telegraph pages.
+    # Kept deliberately narrow: these are unambiguous spelling/case fixes.
+    ("доктлиналь", "доктриналь"),
+    ("Доктлиналь", "Доктриналь"),
+    ("богологами", "богословами"),
+    ("Богологами", "Богословами"),
+    ("богологов", "богословов"),
+    ("Богологов", "Богословов"),
+    ("богологи", "богословы"),
+    ("Богологи", "Богословы"),
+    ("боголог", "богослов"),
+    ("Боголог", "Богослов"),
+    ("Божьего Слово", "Божьего Слова"),
+)
+
+
+def normalize_common_typos(text: str) -> str:
+    """Fix narrow, recurring Russian typos from Gemini/ASR output.
+
+    This is intentionally not a general grammar corrector. It only patches
+    unambiguous regressions observed in production pages, so it is safe for
+    titles, TOC entries, captions and Telegraph body text.
+    """
+    if not text:
+        return text
+    for src, dst in _COMMON_TYPO_REPLACEMENTS:
+        text = text.replace(src, dst)
+    return text
+
+
 _INLINE_SCRUB_PATTERNS = [
     # Только строки-маркеры которые встречаются внутри текста как вставки
     r"cocoon\s*ai\s*summary",
@@ -61,6 +92,7 @@ def _scrub_inline(text: str) -> str:
         return text
     for pat in _INLINE_SCRUB_PATTERNS:
         text = re.sub(pat, "", text, flags=re.IGNORECASE)
+    text = normalize_common_typos(text)
     # Схлопываем только множественные пробелы/табы внутри строки
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text

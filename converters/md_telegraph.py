@@ -5,7 +5,7 @@ Markdown → Telegraph nodes конвертер.
 """
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, _has_dirty_meta,
-    normalize_author_name, title_case_fragment,
+    normalize_author_name, normalize_common_typos, title_case_fragment,
 )
 from core.url_utils import get_youtube_timestamp_url
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
@@ -1740,6 +1740,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
+        text = normalize_common_typos(text)
         return text
 
     def _ends_no_space(n):
