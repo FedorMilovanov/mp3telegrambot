@@ -875,11 +875,13 @@ async def _publish_expanded_page(
             ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
             if ok:
                 break
+            # Exponential backoff: 3s, 6s, 12s — даём Telegraph API время восстановиться
+            _backoff = 3 * (2 ** retry_attempt)  # 3, 6, 12
             logger.warning(
-                "Expanded publish: editPage часть %d/%d попытка %d/3 failed для %s",
-                part_num, total, retry_attempt + 1, page_url,
+                "Expanded publish: editPage часть %d/%d попытка %d/3 failed для %s, жду %dс...",
+                part_num, total, retry_attempt + 1, page_url, _backoff,
             )
-            await asyncio.sleep(3)
+            await asyncio.sleep(_backoff)
 
         if ok:
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)

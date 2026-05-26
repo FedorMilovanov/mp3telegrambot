@@ -1470,6 +1470,10 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
                 invalidate_telegraph_url(page_url)
             except Exception:
                 pass
+        else:
+            # Логируем что именно вернул Telegraph API — помогает диагностировать failures
+            err_msg = data.get("error", "unknown error")
+            logger.debug("_edit_telegraph_page: API returned ok=False, error=%r, url=%s", err_msg, page_url)
         return ok
     except Exception as e:
         logger.warning(f"Telegraph editPage: {e}")
