@@ -26,6 +26,7 @@ from core.prompt_rules import (
     SECTION_TITLE_RULE,
     THIRD_PERSON_BAN,
     FEW_SHOT_FIRST_SECTION,
+    VERIFIED_CONTEXT_RULE,
 )
 
 
@@ -47,6 +48,7 @@ def _expand_prompt_rules(text: str) -> str:
         .replace("{SECTION_TITLE_RULE}", SECTION_TITLE_RULE)
         .replace("{THIRD_PERSON_BAN}", THIRD_PERSON_BAN)
         .replace("{FEW_SHOT_FIRST_SECTION}", FEW_SHOT_FIRST_SECTION)
+        .replace("{VERIFIED_CONTEXT_RULE}", VERIFIED_CONTEXT_RULE)
     )
 
 _audio_mode_raw = os.getenv("AUDIO_ANALYSIS_MODE", "deep").strip().lower() or "deep"
@@ -1106,6 +1108,8 @@ Blockquote — только для реально звучащего текст�
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {FEW_SHOT_FIRST_SECTION}
+
+{VERIFIED_CONTEXT_RULE}
 
 ФИНАЛЬНАЯ ПРОВЕРКА
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
