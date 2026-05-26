@@ -870,6 +870,9 @@ async def _publish_expanded_page(
             # _build_nav_nodes_v2 already includes its own leading <hr> — do NOT add extra one
             final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
+        # V3-P16: пауза перед editPage — Telegraph rate limit при >50 nodes.
+        if i == 0:  # пауза только перед первым editPage
+            await asyncio.sleep(2)
         ok = False
         for retry_attempt in range(3):
             ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)

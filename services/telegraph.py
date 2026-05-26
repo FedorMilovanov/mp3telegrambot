@@ -990,6 +990,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         logger.info(f"Synopsis v2: опубликовано {total} частей")
 
         # ── Переименовываем и добавляем TOC + навигацию ──────
+        # V3-P16: пауза перед editPage — Telegraph rate limit после быстрой публикации.
+        # Без паузы editPage падает 3/3 при >50 nodes (0.7с между create и edit).
+        await asyncio.sleep(2)
         for i, (part_secs, page_url) in enumerate(published_parts):
             part_num   = i + 1
             part_title = tg_title if total == 1 else f"{tg_title} [{part_num}/{total}]"

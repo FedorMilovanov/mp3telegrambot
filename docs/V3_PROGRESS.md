@@ -166,3 +166,23 @@ git diff --check
 - Кешировать стабильную часть Study system_instruction (1024+ tokens)
 - TTL 1 час, инвалидация при изменении PROMPT_VERSION
 - Ожидаемая экономия: 15-25% Study input tokens
+
+## Завершено: Phase 6.3 — editPage rate limit fix + audio key_categories hint
+
+Прогон 8 (Раб Иеговы, МакАртур):
+- editPage: 0 failures ✅
+- Study thoughts: 9800 (хорошо)
+- main_topic: без пафоса и 3-го лица ✅
+- Verified context: 'раввины коверкали Его имя' — исторический факт ✅
+
+Прогон 9 (Q&A Shepherds 2004, МакАртур+Спрол+Молер 80 мин):
+- editPage: 2 failures (0.7с между create→edit при 87 nodes)
+- QA 15/15 вопросительных ✅
+- Study thoughts: 6110 (отличный результат, сложная тема)
+- Reflection thoughts: 9916 (сложное приложение)
+
+Patch 16:
+1. telegraph.py: sleep(2) перед editPage loop в Synopsis
+2. telegraph_pages.py: sleep(2) перед editPage в _publish_expanded_page
+3. audio prompt key_categories: подсказка использовать богословски точные термины
+   (они билдят source_pack для Study Analysis)
