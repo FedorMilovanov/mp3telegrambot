@@ -74,3 +74,21 @@ def test_audio_prompt_example_stays_neutral():
     example = prompt[example_pos:example_pos + 260]
     assert "МакАртур задаёт" not in example
     assert "Он вскрывает" not in example
+
+
+def test_normalize_common_typos_fixes_mixed_greek_cyrillic_terms():
+    assert normalize_common_typos("βασιлеία") == "βασιλεία"
+    assert normalize_common_typos("μορφύω и μεταμορφύω") == "μορφόω и μεταμορφόω"
+
+
+def test_source_map_prefers_original_title_over_invented_russian_title():
+    from converters.md_telegraph import _section_to_nodes_v2
+    nodes = _section_to_nodes_v2({
+        "title": "Карта источников для дальнейшего изучения",
+        "content": "• Синклер Фергюсон, _«Искушение молитвой Господней»_ ( _Sinclair Ferguson, The Lord's Prayer_).\n\nОписание.",
+    })
+    card = next(n for n in nodes if isinstance(n, dict) and n.get("tag") == "p" and _flat(n).startswith("•"))
+    flat = _flat(card)
+    assert "Искушение молитвой Господней" not in flat
+    assert "The Lord's Prayer" in flat
+    assert "Sinclair Ferguson" not in flat  # English author duplicate is stripped from title

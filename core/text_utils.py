@@ -47,6 +47,10 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("боголог", "богослов"),
     ("Боголог", "Богослов"),
     ("Божьего Слово", "Божьего Слова"),
+    # Mixed Cyrillic/Greek letters in original-language terms.
+    ("βασιлеία", "βασιλεία"),
+    ("μορφύω", "μορφόω"),
+    ("μεταμορφύω", "μεταμορφόω"),
 )
 
 

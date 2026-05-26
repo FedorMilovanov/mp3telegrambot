@@ -1175,9 +1175,20 @@ def _section_to_nodes_v2(
 
             Gemini sometimes emits one card as `• **Чикагское заявление...**`
             while neighbouring cards are plain. Source-card headings should not
-            be bold; book titles inside them may stay italic. This is applied
-            only inside source-map sections, never to regular term bullets.
+            be bold; book titles inside them may stay italic.
+
+            Also protects against invented Russian book titles in source cards:
+            `Автор, _«Выдуманный русский»_ (_Author, Original Title_)` becomes
+            `Автор, _Original Title_`. This is safer for bibliography because an
+            original title is verifiable while Russian titles are often guessed.
             """
+            def _flat_local(n):
+                if isinstance(n, str):
+                    return n
+                if isinstance(n, dict):
+                    return "".join(_flat_local(c) for c in n.get("children", []))
+                return ""
+
             if not isinstance(node, dict):
                 return node
             nn = dict(node)
@@ -1189,7 +1200,35 @@ def _section_to_nodes_v2(
             if len(ch) >= 2 and isinstance(ch[0], str) and ch[0].strip().startswith("•"):
                 first_inline = ch[1]
                 if isinstance(first_inline, dict) and first_inline.get("tag") in ("b", "strong"):
-                    nn["children"] = [ch[0]] + list(first_inline.get("children", [])) + ch[2:]
+                    ch = [ch[0]] + list(first_inline.get("children", [])) + ch[2:]
+
+                # Prefer original English title over possibly invented Russian translation.
+                # Pattern: • Author, <i>«Русский»</i> ( <i>Author, Original</i> ).
+                for i, item in enumerate(ch):
+                    if not (isinstance(item, dict) and item.get("tag") in ("i", "em")):
+                        continue
+                    ru_title = _flat_local(item).strip()
+                    if not (ru_title.startswith("«") and ru_title.endswith("»")):
+                        continue
+                    # Find following italic original title, usually after a text node with '('.
+                    for j in range(i + 1, min(len(ch), i + 4)):
+                        nxt = ch[j]
+                        if isinstance(nxt, dict) and nxt.get("tag") in ("i", "em"):
+                            en_title = _flat_local(nxt).strip()
+                            if not re.search(r'[A-Za-z]', en_title):
+                                continue
+                            if "," in en_title:
+                                en_title = en_title.split(",", 1)[1].strip()
+                            prefix = ch[:i]
+                            # Drop glue nodes like ' ( ' between Russian and English titles.
+                            suffix = ch[j + 1:]
+                            if suffix and isinstance(suffix[0], str):
+                                suffix[0] = re.sub(r'^\s*\)\.?\s*', '.', suffix[0])
+                            ch = prefix + [{"tag": "i", "children": [en_title]}] + suffix
+                            break
+                    break
+
+                nn["children"] = ch
             return nn
 
         if re.search(r'карта\s+источников', title or "", flags=re.IGNORECASE):
