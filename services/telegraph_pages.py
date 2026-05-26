@@ -908,6 +908,7 @@ async def _run_expanded_pipeline(
     vk_url: str = "",
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: пробрасывается в _publish_expanded_page
+    thinking_level: str = "high",  # V3-P14: настраивается по типу задачи
 ) -> str | None:
     """Универсальный runner для article-like pages: Gemini -> парсинг -> публикация -> fallback."""
 
@@ -915,7 +916,7 @@ async def _run_expanded_pipeline(
         logger.info("%s: запрос к Gemini", label)
         raw = await _gemini_text_request(
             prompt, temperature=0.4, max_tokens=max_tokens,
-            task=f"telegraph_{label.lower()}", thinking_level="high",
+            task=f"telegraph_{label.lower()}", thinking_level=thinking_level,
         )
         if not raw:
             logger.warning("%s: Gemini вернул пустой ответ -- fallback", label)
@@ -934,7 +935,7 @@ async def _run_expanded_pipeline(
             _retry_tokens = min(max_tokens * 2, 65000)  # PATCH: escalate
             raw2 = await _gemini_text_request(
                 retry_prompt, max_tokens=_retry_tokens,
-                task=f"telegraph_{label.lower()}_retry", thinking_level="high",
+                task=f"telegraph_{label.lower()}_retry", thinking_level=thinking_level,
             )
             if raw2:
                 parsed = _parse_expanded_json(raw2)
@@ -1270,6 +1271,7 @@ async def create_telegraph_reflection_application(
         vk_url=vk_url,
         duration=int(duration) if duration else 0,
         plain_scripture=True,  # FIXED #127: REFLECTION требует plain text для Scripture refs в скобках
+        thinking_level="medium",  # V3-P14: пастырский стиль не требует high reasoning
     )
 
 

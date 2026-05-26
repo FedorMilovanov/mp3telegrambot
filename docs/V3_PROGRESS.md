@@ -146,3 +146,23 @@ git diff --check
 1. context caching для system_instruction (Study/Reflection)
 2. SOURCE_PACKS — релевантные источники по теме вместо 100+ авторов
 3. Eval run после рефакторинга (сравнение с baseline)
+
+## Завершено: Phase 6.1 — Reflection thinking_level=medium
+
+Данные из 5 прогонов:
+- Study thoughts avg: 11954 tokens @ $9/1M = $0.108/прогон
+- Reflection thoughts avg: 7556 tokens @ $9/1M = $0.068/прогон
+- Reflection = пастырский стиль, не аналитика → medium достаточно
+
+Изменения patch 14:
+1. `_run_expanded_pipeline`: параметр `thinking_level` (default=high)
+2. `create_telegraph_reflection_application`: thinking_level="medium"
+3. Study остаётся high — богословская сложность оправдана
+4. Ожидаемая экономия: ~35% от Reflection thoughts = ~$0.024/прогон
+
+## Следующая фаза
+
+**Phase 6.2 — Context Caching**
+- Кешировать стабильную часть Study system_instruction (1024+ tokens)
+- TTL 1 час, инвалидация при изменении PROMPT_VERSION
+- Ожидаемая экономия: 15-25% Study input tokens
