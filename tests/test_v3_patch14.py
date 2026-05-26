@@ -24,11 +24,13 @@ def test_run_expanded_pipeline_passes_thinking_level():
         "_run_expanded_pipeline must pass thinking_level to _gemini_text_request"
 
 
-def test_reflection_uses_medium_thinking():
+def test_reflection_reverted_to_high_quality():
+    # V3-P15+17: quality first — Reflection uses default high
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
-    # Reflection call must explicitly pass medium
-    assert 'thinking_level="medium"' in src, \
-        "Reflection must use thinking_level=medium"
+    refl_pos = src.find('label="ReflectionApplication"')
+    refl_block = src[max(0, refl_pos-20):refl_pos+500] if refl_pos != -1 else ""
+    assert 'thinking_level="medium"' not in refl_block, \
+        "Reflection must use default high, not medium"
 
 
 def test_study_keeps_default_high():
