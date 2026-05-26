@@ -1700,7 +1700,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         for ch in ['​', '­']:
             text = text.replace(ch, '')
         text = re.sub(r'[⁦-⁩‪-‮‏]', '', text)  # bidi isolates + RTL mark; U+200E (LTR) preserved for RTL fix
-        text = re.sub(r'(\d+:\d+)\s*[-–]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen AND en-dash in verse ranges
+        text = re.sub(r'(\d+:\d+)\s*[-–—]\s*(\d+)', lambda m: m.group(1) + _ENDASH + m.group(2), text)  # fix hyphen/en/em-dash in verse ranges
         # BUG-D: strip stray space before , or ) after Hebrew/RTL words (LTR mark removal leaves space)
         text = re.sub(r'\*\*\s+([,;)])', r'**\1', text)  # **word** , → **word**,
         # FIX 2026-05-25: NBSP (\xa0) нормализация — Gemini часто вставляет
@@ -1834,6 +1834,98 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         children = _strip_leading_icon_prefix(children)
         children = _deb0ld_marker(children)
 
+        def _trim_inline_spacing(ch):
+            """Normalize spaces across inline Telegraph children.
+
+            Fixes visible glitches such as:
+              <b>Term. </b> + " Text"  → <b>Term.</b> + " Text"
+              <i> (1 Кор 4:13)</i>       → <i>(1 Кор 4:13)</i>
+            without touching semantic spaces inside normal text.
+            """
+            def _trim_node_edges(n):
+                if isinstance(n, dict) and n.get('tag') in ('b', 'strong', 'i', 'em'):
+                    nn = dict(n)
+                    cc = list(nn.get('children', []))
+                    if cc and isinstance(cc[0], str):
+                        cc[0] = cc[0].lstrip()
+                    if cc and isinstance(cc[-1], str):
+                        cc[-1] = cc[-1].rstrip()
+                    # Verse ranges inside bold refs: 1:26 – 28 → 1:26–28
+                    cc = [
+                        re.sub(r'(\d+:\d+)\s*[-–—]\s*(\d+)', r'\1–\2', x)
+                        if isinstance(x, str) else x
+                        for x in cc
+                    ]
+                    nn['children'] = cc
+                    return nn
+                if isinstance(n, str):
+                    return re.sub(r'(\d+:\d+)\s*[-–—]\s*(\d+)', r'\1–\2', n)
+                return n
+
+            out = [_trim_node_edges(x) for x in ch]
+            compact = []
+            for item in out:
+                if isinstance(item, str) and compact:
+                    prev = compact[-1]
+                    prev_text = _flatten_text(prev) if isinstance(prev, dict) else str(prev)
+                    if prev_text.endswith(' ') and item.startswith(' '):
+                        item = item.lstrip()
+                compact.append(item)
+            return compact
+
+        children = _trim_inline_spacing(children)
+
+        def _normalize_quote_ref_bullet(ch):
+            """Turn quote-first bullets into canonical scripture micro-blocks.
+
+            Gemini sometimes emits:
+              • «Как прах...» *(1 Кор 4:13)*.
+              • **«Безумное мира» *(1 Кор 1:27)*.**
+            Canonical form is:
+              • **1 Кор 4:13:** *«Как прах...»*
+            """
+            if not ch:
+                return ch
+            first = ch[0] if isinstance(ch[0], str) else ''
+            if not first.strip().startswith('•'):
+                return ch
+
+            def _mk(ref, quote):
+                ref = ref.strip().strip('()').rstrip('.:')
+                quote = quote.strip().strip('*_').strip()
+                quote = quote.rstrip('.')
+                if not quote.startswith('«'):
+                    quote = '«' + quote.lstrip('"“')
+                if not quote.endswith('»'):
+                    quote = quote.rstrip('"”') + '»'
+                return ['• ', {'tag': 'b', 'children': [f'{ref}:']}, ' ', {'tag': 'i', 'children': [quote]}]
+
+            # Case A: plain quote + italic ref. After _walk(), the marker and
+            # quote may be either separate (`['• ', '«quote» ', <i>ref</i>]`)
+            # or merged into one string (`['• «quote» ', <i>ref</i>]`).
+            quote_idx = 1 if len(ch) >= 3 and isinstance(ch[1], str) and '«' in ch[1] else None
+            italic_idx = 2
+            if quote_idx is None and len(ch) >= 2 and isinstance(ch[0], str) and '«' in ch[0]:
+                quote_idx = 0
+                italic_idx = 1
+            if quote_idx is not None and len(ch) > italic_idx:
+                italic = ch[italic_idx]
+                if isinstance(italic, dict) and italic.get('tag') in ('i', 'em'):
+                    ref = _flatten_text(italic).strip()
+                    if re.match(r'^\(?\s*(?:[1-3]\s*)?[А-ЯЁA-Z][^)]*\d+:\d+', ref):
+                        quote = ch[quote_idx].replace('•', '', 1).strip()
+                        return _mk(ref, quote)
+
+            # Case B: whole quote+ref accidentally bolded
+            if len(ch) >= 2 and isinstance(ch[1], dict) and ch[1].get('tag') in ('b', 'strong'):
+                btxt = _flatten_text(ch[1]).strip()
+                m = re.search(r'([«"](.+?)[»"])\s*\(?\s*((?:[1-3]\s*)?[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z.\s]*\d+:\d+(?:[–—-]\d+)?)\s*\)?', btxt)
+                if m:
+                    return _mk(m.group(3), m.group(1))
+            return ch
+
+        children = _normalize_quote_ref_bullet(children)
+
         # FIX 2026-05-25: fix "( **Term**)" → "(**Term**)" spacing in term definitions
         def _fix_paren_bold_space(ch):
             """Fix '( **' → '(**' in text nodes before bold children."""
@@ -1849,6 +1941,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             return out
 
         children = _fix_paren_bold_space(children)
+        children = _trim_inline_spacing(children)
 
         # FIX 2026-05-25: de-bold source cards in "Карта источников"
         # Pattern: <p>• <b>Author, <em>Title</em>...</b></p> → unwrap <b>
@@ -1884,6 +1977,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             return out
 
         children = _debold_source_card(children)
+        children = _trim_inline_spacing(children)
         node['children'] = children
 
         plain = _flatten_text(node).strip()
@@ -1894,6 +1988,57 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             node['children'] = [{'tag': 'b', 'children': children}]
         return node
 
+    def _split_scripture_explanation_node(node):
+        """Split `• **Ref:** *«quote»* Explanation...` into two paragraphs.
+
+        In the Study page section «Ключевые тексты» the ref+quote should be the
+        first line, and the explanation should start below as its own paragraph.
+        This is a formatting-only fix; it preserves links and inline nodes.
+        """
+        if not isinstance(node, dict) or node.get('tag') != 'p':
+            return [node]
+        ch = list(node.get('children', []))
+        if len(ch) < 4:
+            return [node]
+        if not (isinstance(ch[0], str) and ch[0].strip().startswith('•')):
+            return [node]
+        bold_idx = next((i for i, c in enumerate(ch[:3])
+                         if isinstance(c, dict) and c.get('tag') in ('b', 'strong')), None)
+        if bold_idx is None:
+            return [node]
+        btxt = _flatten_text(ch[bold_idx]).strip()
+        if not re.search(r'\b(?:[1-3]\s*)?[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z.\s]+\d+:\d+', btxt):
+            return [node]
+        if ':' not in btxt:
+            return [node]
+        italic_idx = None
+        for i in range(bold_idx + 1, min(len(ch), bold_idx + 5)):
+            if isinstance(ch[i], dict) and ch[i].get('tag') in ('i', 'em'):
+                itxt = _flatten_text(ch[i]).strip()
+                if itxt.startswith('«') or itxt.startswith('"') or itxt.startswith('“'):
+                    italic_idx = i
+                    break
+        if italic_idx is None or italic_idx >= len(ch) - 1:
+            return [node]
+
+        head = ch[:italic_idx + 1]
+        tail = ch[italic_idx + 1:]
+        # Trim whitespace-only separators at the split boundary.
+        while tail and isinstance(tail[0], str) and not tail[0].strip():
+            tail.pop(0)
+        if tail and isinstance(tail[0], str):
+            tail[0] = tail[0].lstrip()
+        if not ''.join(_flatten_text(x) for x in tail).strip():
+            return [node]
+        new_head = dict(node)
+        new_head['children'] = head
+        new_tail = {'tag': 'p', 'children': tail}
+        return [new_head, new_tail]
+
     walked = _walk(nodes)
     cleaned = [n for n in walked if not _is_emoji_stub_node(n)]
-    return [_normalize_paragraph_node(n) for n in cleaned]
+    normalized = [_normalize_paragraph_node(n) for n in cleaned]
+    split = []
+    for n in normalized:
+        split.extend(_split_scripture_explanation_node(n))
+    return split
