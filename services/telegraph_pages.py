@@ -34,6 +34,7 @@ from core.utils import format_timestamp               # FIX telegraph_pages
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.source_packs import get_source_pack_for_ai_data
+from core.content_audit import audit_expanded_sections, format_content_audit_issues
 
 import asyncio
 import json      # FIX telegraph_pages
@@ -957,6 +958,18 @@ async def _run_expanded_pipeline(
         if not sections:
             logger.warning("%s: sections пуст после валидации -- fallback", label)
             return await fallback_fn() if fallback_fn else None
+
+        sections, outline, _content_audit = audit_expanded_sections(
+            sections,
+            outline if isinstance(outline, list) else [],
+            label=label,
+        )
+        if _content_audit:
+            logger.warning(
+                "%s: content audit before publish: %s",
+                label,
+                format_content_audit_issues(_content_audit),
+            )
 
         if (
             isinstance(outline, list)

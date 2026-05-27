@@ -26,6 +26,7 @@ from core.globals import (
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA  # FIX telegraph
+from core.content_audit import audit_expanded_sections, format_content_audit_issues
 
 import asyncio
 import json      # FIX telegraph
@@ -820,6 +821,17 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if not sections:
             logger.warning("Synopsis v2: все sections пусты после фильтрации content — abort")
             return None, None
+
+        sections, outline, _content_audit = audit_expanded_sections(
+            sections,
+            outline if isinstance(outline, list) else [],
+            label="Synopsis",
+        )
+        if _content_audit:
+            logger.warning(
+                "Synopsis v2: content audit before publish: %s",
+                format_content_audit_issues(_content_audit),
+            )
 
         # ── Валидация плотности sections (BP-04) ─────────────
         _thin_count = sum(1 for s in sections if len((s.get("content") or "").strip()) < 100)
