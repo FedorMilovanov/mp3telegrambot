@@ -241,11 +241,20 @@ async def run_bot_async():
         for admin_id in ADMIN_IDS:
             try:
                 vip_commands = default_commands + [
-                    BotCommand("resetcache", "🗑 Сбросить кэш видео"),
                     BotCommand("settings",   "⚙️ Настройки бота"),
-                    BotCommand("stop",       "🛑 Остановить бота"),
-                    BotCommand("pdf",        "📄 PDF из кэша"),
+                    BotCommand("archive",    "📚 Последние страницы"),
+                    BotCommand("search",     "🔎 Поиск по архиву"),
+                    BotCommand("segments",   "🧩 Сегменты видео"),
+                    BotCommand("cutseg",     "🎬 Вырезать сегмент"),
+                    BotCommand("repairpage", "🛠 Ремонт Telegraph"),
+                    BotCommand("archivefile", "📁 Файл архива"),
+                    BotCommand("segmentfile", "🧩 Файл сегментов"),
                     BotCommand("metrics",    "📊 Gemini метрики"),
+                    BotCommand("prompthealth", "🧪 Здоровье промптов"),
+                    BotCommand("codehealth", "🧰 Regex/code health"),
+                    BotCommand("pdf",        "📄 PDF из кэша"),
+                    BotCommand("resetcache", "🗑 Сбросить кэш видео"),
+                    BotCommand("stop",       "🛑 Остановить бота"),
                 ]
                 await app.bot.set_my_commands(
                     vip_commands, scope=BotCommandScopeChat(chat_id=admin_id)
