@@ -21,7 +21,7 @@ from core.utils import (
 )
 from core.text_utils import (
     _scrub_inline, normalize_author_name, normalize_title_text,
-    _has_dirty_meta,                                   # FIX #11
+    normalize_common_typos, _has_dirty_meta,                                   # FIX #11
 )
 from converters.md_telegraph import (
     visible_length, safe_trim_caption,                 # FIX #11
@@ -857,6 +857,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         rutube_url = alt_links.get("rutube") or ""
         vk_url     = alt_links.get("vk")     or ""
 
+        _partial_missing = []
+        if not telegraph_url:
+            _partial_missing.append("конспект")
+        if _feat_study_analysis and not study_analysis_tg:
+            _partial_missing.append("разбор материала")
+        if _feat_reflection_application and not reflection_application_tg:
+            _partial_missing.append("размышление")
+        _ai_caption_base = ai_data
+        if ai_data and _partial_missing:
+            _warn = "Частичный разбор: не созданы " + ", ".join(_partial_missing) + "."
+            logger.warning("Partial publication for %s: missing=%s", media_id, ",".join(_partial_missing))
+            _ai_caption_base = {**ai_data, "_partial_publication_warning": _warn}
+
         def _build(data, **kw):
             return build_caption(performer, title, duration, file_size_mb,
                                  data, bitrate, url, telegraph_url, rutube_url, vk_url,
@@ -867,11 +880,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         _ts_limit = get_caption_timestamp_limit(_mat_format)
         # Применяем format-лимит к таймкодам сразу (до проверки переполнения)
-        _ai_for_caption = ai_data
-        if ai_data and ai_data.get("timestamps"):
-            ts_limited = _trim_timestamps(ai_data["timestamps"], _ts_limit)
-            if ts_limited != ai_data["timestamps"]:
-                _ai_for_caption = {**ai_data, "timestamps": ts_limited}
+        _ai_for_caption = _ai_caption_base
+        if _ai_caption_base and _ai_caption_base.get("timestamps"):
+            ts_limited = _trim_timestamps(_ai_caption_base["timestamps"], _ts_limit)
+            if ts_limited != _ai_caption_base["timestamps"]:
+                _ai_for_caption = {**_ai_caption_base, "timestamps": ts_limited}
         caption = _build(_ai_for_caption)
         # Полный текст для отдельного сообщения (лимит 4096) — без обрезки
         # Все таймкоды + полный main_topic + хэштеги
@@ -882,7 +895,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                  study_tg_url=study_analysis_tg or "",
                                  reflection_tg_url=reflection_application_tg or "",
                                  full_mode=True)
-        full_caption = _build_full(ai_data) if ai_data else caption
+        full_caption = _build_full(_ai_caption_base) if _ai_caption_base else caption
         if visible_length(full_caption) > 4096:
             full_caption = safe_trim_caption(full_caption, 4096)
         # Умное обрезание до 1024 видимых символов (без HTML-тегов)
@@ -950,8 +963,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     reflection_tg_url=reflection_application_tg or "")
 
         with open(mp3_path, "rb") as audio_file:
-            audio_title     = normalize_title_text((ai_data or {}).get("real_title")  or title) or title
-            audio_performer = normalize_author_name((ai_data or {}).get("real_author") or performer) or performer
+            audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)
+            audio_performer = normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author") or performer) or performer)
             # Увеличенный таймаут для больших файлов + retry при сетевых ошибках
             for _attempt in range(3):
                 try:

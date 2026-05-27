@@ -47,11 +47,135 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("боголог", "богослов"),
     ("Боголог", "Богослов"),
     ("Божьего Слово", "Божьего Слова"),
+    ("Слово Божьего", "Слова Божьего"),
+    ("авторитет Слово Божьего", "авторитет Слова Божьего"),
+    ("Стину Лоусону", "Стиву Лоусону"),
+    ("Стин Лоусон", "Стив Лоусон"),
+    ("душевпопечение", "душепопечение"),
+    ("Душевпопечение", "Душепопечение"),
+    ("МакАртора", "МакАртура"),
+    ("епифанита", "Епафродита"),
+    ("Епифанита", "Епафродита"),
+    ("Странный огонь", "Чуждый огонь"),
+    ("странный огонь", "чуждый огонь"),
     # Mixed Cyrillic/Greek letters in original-language terms.
     ("βασιлеία", "βασιλεία"),
     ("μορφύω", "μορφόω"),
     ("μεταμορφύω", "μεταμορφόω"),
+    ("μεлеτάω", "μελετάω"),
+    ("ὑπόκрисις", "ὑπόκρισις"),
 )
+
+
+_GREEK_RE = re.compile(r"[Ͱ-Ͽἀ-῿]")
+_CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
+_MIXED_GREEK_CYRILLIC_TOKEN_RE = re.compile(
+    r"(?=[\wͰ-Ͽἀ-῿]*[Ͱ-Ͽἀ-῿])"
+    r"(?=[\wͰ-Ͽἀ-῿]*[Ѐ-ӿ])"
+    r"[\wͰ-Ͽἀ-῿]+",
+    re.UNICODE,
+)
+
+
+def find_mixed_greek_cyrillic_tokens(text: str) -> list[str]:
+    """Return word-like tokens that mix Greek and Cyrillic letters.
+
+    Page-level text often contains both scripts legitimately (Russian prose +
+    Greek lemmas). The bug is a *single token* like ``μεлеτάω`` or
+    ``ὑπόκрисις`` that contains letters from both scripts.
+    """
+    if not text:
+        return []
+    seen: list[str] = []
+    for m in _MIXED_GREEK_CYRILLIC_TOKEN_RE.finditer(text):
+        token = m.group(0)
+        if _GREEK_RE.search(token) and _CYRILLIC_RE.search(token) and token not in seen:
+            seen.append(token)
+    return seen
+
+
+def has_mixed_greek_cyrillic(text: str) -> bool:
+    """True if at least one token mixes Greek and Cyrillic letters."""
+    return bool(find_mixed_greek_cyrillic_tokens(text))
+
+
+def _cap_first(value: str) -> str:
+    for i, ch in enumerate(value):
+        if ch.isalpha():
+            return value[:i] + ch.upper() + value[i + 1:]
+    return value
+
+
+_THIRD_PERSON_PREFIX_RE = re.compile(
+    r"(^|[.!?…]\s+)(?:(?:Джон\s+)?МакАртур|автор|проповедник|спикер|лектор)\s+"
+    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает)"
+    r"[^.?!…]{0,180}?,\s*(?:говоря\s+о\s+том,\s*)?что\s+([а-яёa-z])",
+    re.IGNORECASE,
+)
+
+_THIRD_PERSON_WHEN_RE = re.compile(
+    r"(^|[.!?…]\s+)(?:(?:Джон\s+)?МакАртур|автор|проповедник|спикер|лектор)\s+"
+    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает)"
+    r"[^.?!…]{0,180}?,\s*когда\s+говорит\s+о\s+",
+    re.IGNORECASE,
+)
+
+
+def scrub_third_person_phrases(text: str) -> str:
+    """Remove common third-person analytic wrappers from generated prose.
+
+    This is deliberately conservative: it only strips wrappers that introduce
+    the real content with ``что`` or ``когда говорит о``. It does not try to
+    rewrite arbitrary sentences.
+    """
+    if not text:
+        return text
+
+    def repl_that(m: re.Match) -> str:
+        return m.group(1) + m.group(2).upper()
+
+    text = _THIRD_PERSON_PREFIX_RE.sub(repl_that, text)
+    text = _THIRD_PERSON_WHEN_RE.sub(lambda m: m.group(1) + "Речь идёт о ", text)
+    return text
+
+
+_AUTHOR_DEDUPE_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("Кевин ДеЯнг, Грег Гилберт, Greg Gilbert,", "Кевин ДеЯнг и Грег Гилберт,"),
+    ("Грег Гилберт, Greg Gilbert,", "Грег Гилберт,"),
+    ("Джон МакАртур, John MacArthur,", "Джон МакАртур,"),
+    ("Пол Вошер, Paul Washer,", "Пол Вошер,"),
+    ("Джоэл Бики, Joel Beeke,", "Джоэл Бики,"),
+)
+
+_SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<author>[А-ЯЁA-Z][^,\n]{1,80}),\s+"
+    r"(?P<ru_title>[^()\n]{3,140}?)\s*"
+    r"\(\s*(?P<en_author>[A-Z][A-Za-z .’'\-]{2,80}),\s*"
+    r"(?P<en_title>[A-Za-z][^()]{2,180})\s*\)"
+    r"(?P<tail>\.?\s*)$"
+)
+
+
+def normalize_source_map_text(line: str) -> str:
+    """Normalize bibliography/source-map card headings.
+
+    Prefer verifiable original English titles over invented Russian titles, and
+    dedupe bilingual author echoes. Safe for a single source-card line; for
+    normal prose it is a no-op.
+    """
+    if not line:
+        return line
+    out = line
+    for src, dst in _AUTHOR_DEDUPE_REPLACEMENTS:
+        out = out.replace(src, dst)
+    m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())
+    if m and re.search(r"[A-Za-z]", m.group("en_title")):
+        bullet = m.group("bullet") or ""
+        author = m.group("author").strip()
+        en_title = m.group("en_title").strip().rstrip(".")
+        out = f"{bullet}{author}, {en_title}."
+    return out
 
 
 def normalize_common_typos(text: str) -> str:
@@ -65,6 +189,7 @@ def normalize_common_typos(text: str) -> str:
         return text
     for src, dst in _COMMON_TYPO_REPLACEMENTS:
         text = text.replace(src, dst)
+    text = normalize_source_map_text(text)
     return text
 
 
@@ -97,6 +222,7 @@ def _scrub_inline(text: str) -> str:
     for pat in _INLINE_SCRUB_PATTERNS:
         text = re.sub(pat, "", text, flags=re.IGNORECASE)
     text = normalize_common_typos(text)
+    text = scrub_third_person_phrases(text)
     # Схлопываем только множественные пробелы/табы внутри строки
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text
@@ -173,6 +299,7 @@ def normalize_author_name(s: str) -> str:
     s = re.sub(r"[—–]", "-", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     s = s.strip("-").strip()
+    s = normalize_common_typos(s)
     return s
 
 
@@ -213,6 +340,7 @@ def normalize_title_text(s: str) -> str:
     s = re.sub(r"[\s|]+$", "", s).strip()
     s = re.sub(r"\s{2,}", " ", s).strip()
     s = re.sub(r"(?<!\.)\.(?!\.)$", "", s).strip()
+    s = normalize_common_typos(s)
 
     return s
 

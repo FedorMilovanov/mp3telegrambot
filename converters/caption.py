@@ -5,7 +5,7 @@ Caption builder — формирование подписей к аудио.
 """
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_author_name,
-    normalize_title_text, title_case_fragment, BAD_META_PATTERNS,  # FIX #7
+    normalize_title_text, title_case_fragment, BAD_META_PATTERNS, normalize_common_typos,  # FIX #7
 )
 from core.url_utils import get_youtube_timestamp_url    # FIX #7
 from services.search import build_platform_links, build_telegraph_links  # FIX #7
@@ -26,9 +26,9 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
     parts = []
 
     # Шапка — используем данные от Gemini если есть, иначе из yt-dlp
-    real_author = normalize_author_name((ai_data or {}).get("real_author", "") or performer)
-    real_title  = title_case_fragment(normalize_title_text((ai_data or {}).get("real_title", "") or title) or title)
-    real_event  = _scrub_inline((ai_data or {}).get("real_event", ""))
+    real_author = normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author", "") or performer))
+    real_title  = normalize_common_typos(title_case_fragment(normalize_title_text((ai_data or {}).get("real_title", "") or title) or title))
+    real_event  = normalize_common_typos(_scrub_inline((ai_data or {}).get("real_event", "")))
 
     # PATCH V2 FIX: показываем real_event только если это реальный бренд-серии,
     # а не описание площадки/аудитории ("Конференция для семей..." → скрываем).
@@ -56,6 +56,10 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
     parts.append(f"<b>{title_emoji}{safe_title}</b>")
     if real_author:
         parts.append(f"<b>👤 {html_mod.escape(real_author)}</b>")
+
+    if ai_data and ai_data.get("_partial_publication_warning"):
+        parts.append("")
+        parts.append("⚠️ " + html_mod.escape(str(ai_data.get("_partial_publication_warning"))))
 
     # Краткое описание (main_topic) — между шапкой и таймкодами
     main_topic = _scrub_inline((ai_data or {}).get("main_topic", ""))

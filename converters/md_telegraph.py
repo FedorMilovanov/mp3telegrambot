@@ -5,9 +5,11 @@ Markdown → Telegraph nodes конвертер.
 """
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, _has_dirty_meta,
-    normalize_author_name, normalize_common_typos, title_case_fragment,
+    normalize_author_name, normalize_common_typos, normalize_source_map_text,
+    scrub_third_person_phrases, title_case_fragment,
 )
 from core.url_utils import get_youtube_timestamp_url
+from core.page_audit import audit_telegraph_page, format_audit_issues
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
 from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text  # FIX: circular imports
 from core.globals import TELEGRAPH_TOKEN        # FIX markdown
@@ -1459,6 +1461,9 @@ async def _create_telegraph_page_single(title: str, author: str,
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
+    _audit = audit_telegraph_page(title, nodes, page_type="create")
+    if _audit:
+        logger.warning("Telegraph createPage audit: %s", format_audit_issues(_audit))
 
     _NETWORK_ERRS = (ConnectionError, TimeoutError, OSError)
     last_err = "unknown"
@@ -1510,6 +1515,9 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn2(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
+    _audit = audit_telegraph_page(title, nodes, page_type="edit")
+    if _audit:
+        logger.warning("Telegraph editPage audit for %s: %s", page_url, format_audit_issues(_audit))
     try:
         path = page_url.replace("https://telegra.ph/", "")
         resp = await loop.run_in_executor(None, lambda: requests.post(
@@ -1780,6 +1788,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
         text = normalize_common_typos(text)
+        text = scrub_third_person_phrases(text)
         return text
 
     def _ends_no_space(n):
@@ -2043,6 +2052,15 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         children = _debold_source_card(children)
         children = _trim_inline_spacing(children)
+
+        # V3-P21: source-map cards — prefer original titles and dedupe bilingual authors
+        # even when Gemini did not use italic/quote markup, e.g.
+        # • Джон МакАртур, Странный огонь (John MacArthur, Strange Fire).
+        _plain_before_source_norm = _flatten_text({'children': children}).strip()
+        _source_norm = normalize_source_map_text(_plain_before_source_norm)
+        if _source_norm != _plain_before_source_norm and _plain_before_source_norm.startswith(('•', '-')):
+            children = [_source_norm]
+
         node['children'] = children
 
         plain = _flatten_text(node).strip()
