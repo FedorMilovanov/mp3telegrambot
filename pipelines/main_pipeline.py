@@ -45,6 +45,7 @@ from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.progress import set_progress
+from core.publication_status import build_publication_status, missing_to_json
 
 import asyncio
 import json
@@ -857,18 +858,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         rutube_url = alt_links.get("rutube") or ""
         vk_url     = alt_links.get("vk")     or ""
 
-        _partial_missing = []
-        if not telegraph_url:
-            _partial_missing.append("конспект")
-        if _feat_study_analysis and not study_analysis_tg:
-            _partial_missing.append("разбор материала")
-        if _feat_reflection_application and not reflection_application_tg:
-            _partial_missing.append("размышление")
+        _pub_status = build_publication_status(
+            synopsis_url=telegraph_url or "",
+            study_url=study_analysis_tg or "",
+            reflection_url=reflection_application_tg or "",
+            expect_synopsis=True,
+            expect_study=bool(_feat_study_analysis),
+            expect_reflection=bool(_feat_reflection_application),
+        )
         _ai_caption_base = ai_data
-        if ai_data and _partial_missing:
-            _warn = "Частичный разбор: не созданы " + ", ".join(_partial_missing) + "."
-            logger.warning("Partial publication for %s: missing=%s", media_id, ",".join(_partial_missing))
-            _ai_caption_base = {**ai_data, "_partial_publication_warning": _warn}
+        if ai_data and _pub_status.warning:
+            logger.warning(
+                "Publication status for %s: status=%s missing=%s",
+                media_id, _pub_status.status, ",".join(_pub_status.missing),
+            )
+            _ai_caption_base = {**ai_data, "_partial_publication_warning": _pub_status.warning}
 
         def _build(data, **kw):
             return build_caption(performer, title, duration, file_size_mb,
@@ -960,7 +964,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     rutube_url=rutube_url or "",
                     vk_url=vk_url or "",
                     study_tg_url=study_analysis_tg or "",
-                    reflection_tg_url=reflection_application_tg or "")
+                    reflection_tg_url=reflection_application_tg or "",
+                    publication_status=_pub_status.status,
+                    publication_missing=missing_to_json(_pub_status.missing),
+                    publication_warning=_pub_status.warning)
 
         with open(mp3_path, "rb") as audio_file:
             audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)

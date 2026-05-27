@@ -35,6 +35,7 @@ from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.source_packs import get_source_pack_for_ai_data
 from core.content_audit import audit_expanded_sections, format_content_audit_issues
+from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 
 import asyncio
 import json      # FIX telegraph_pages
@@ -964,12 +965,16 @@ async def _run_expanded_pipeline(
             outline if isinstance(outline, list) else [],
             label=label,
         )
-        if _content_audit:
+        _audit_mode = get_content_audit_mode()
+        if _content_audit and _audit_mode != "off":
             logger.warning(
                 "%s: content audit before publish: %s",
                 label,
                 format_content_audit_issues(_content_audit),
             )
+        if _content_audit and should_abort_for_content_audit(_content_audit):
+            logger.warning("%s: content audit strict abort -- fallback", label)
+            return await fallback_fn() if fallback_fn else None
 
         if (
             isinstance(outline, list)

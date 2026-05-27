@@ -132,6 +132,10 @@ def db_init():
             # Новые article-like страницы
             ("study_tg_url",         "''"),
             ("reflection_tg_url",    "''"),
+            # Publication completeness/status (V3-P23)
+            ("publication_status",  "'unknown'"),
+            ("publication_missing", "'[]'"),
+            ("publication_warning", "''"),
         ]:
             # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
             # быть поглощён блоком except sqlite3.OperationalError
@@ -205,7 +209,10 @@ def db_save(video_id: str, url: str, questions: list,
             cache_version: str = "", prompt_version: str = "", model_name: str = "",
             terms_tg_url: str = "",
             rutube_url: str = "", vk_url: str = "",
-            study_tg_url: str = "", reflection_tg_url: str = ""):
+            study_tg_url: str = "", reflection_tg_url: str = "",
+            publication_status: str = "unknown", publication_missing: str = "[]",
+            publication_warning: str = ""):
+    # busy_timeout is set inside the sqlite connection below.
     _cache_version  = cache_version  or CACHE_VERSION
     _prompt_version = prompt_version or get_prompt_fingerprint()
     _model_name     = model_name     or GEMINI_MODEL
@@ -217,8 +224,9 @@ def db_save(video_id: str, url: str, questions: list,
                 (video_id, url, questions, quotes_tg_url, questions_tg_url,
                  ai_data, telegraph_url,
                  cache_version, prompt_version, model_name, updated_at, terms_tg_url,
-                 rutube_url, vk_url, study_tg_url, reflection_tg_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 rutube_url, vk_url, study_tg_url, reflection_tg_url,
+                 publication_status, publication_missing, publication_warning)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET
                 url              = excluded.url,
                 questions        = excluded.questions,
@@ -234,7 +242,10 @@ def db_save(video_id: str, url: str, questions: list,
                 rutube_url       = excluded.rutube_url,
                 vk_url           = excluded.vk_url,
                 study_tg_url     = excluded.study_tg_url,
-                reflection_tg_url = excluded.reflection_tg_url
+                reflection_tg_url = excluded.reflection_tg_url,
+                publication_status = excluded.publication_status,
+                publication_missing = excluded.publication_missing,
+                publication_warning = excluded.publication_warning
         """, (video_id, url,
               json.dumps(questions, ensure_ascii=False),
               quotes_tg_url, questions_tg_url,
@@ -243,7 +254,9 @@ def db_save(video_id: str, url: str, questions: list,
               _cache_version, _prompt_version, _model_name, _updated_at,
               terms_tg_url or "",
               rutube_url or "", vk_url or "",
-              study_tg_url or "", reflection_tg_url or ""))
+              study_tg_url or "", reflection_tg_url or "",
+              publication_status or "unknown", publication_missing or "[]",
+              publication_warning or ""))
         conn.commit()
 
 def db_get(video_id: str) -> dict | None:
@@ -252,7 +265,8 @@ def db_get(video_id: str) -> dict | None:
         row = conn.execute(
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
             "cache_version, prompt_version, model_name, updated_at, terms_tg_url, "
-            "rutube_url, vk_url, study_tg_url, reflection_tg_url "
+            "rutube_url, vk_url, study_tg_url, reflection_tg_url, "
+            "publication_status, publication_missing, publication_warning "
             "FROM video_cache WHERE video_id = ?", (video_id,)
         ).fetchone()
     if not row:
@@ -284,6 +298,9 @@ def db_get(video_id: str) -> dict | None:
         "vk_url":            row[12] or "",
         "study_tg_url":      row[13] or "",
         "reflection_tg_url": row[14] or "",
+        "publication_status":  row[15] or "unknown",
+        "publication_missing": row[16] or "[]",
+        "publication_warning": row[17] or "",
     }
 
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────

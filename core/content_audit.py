@@ -10,6 +10,7 @@ and reports warnings for classes that should be inspected but not guessed.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -184,3 +185,22 @@ def format_content_audit_issues(issues: list[ContentAuditIssue], limit: int = 6)
     if len(issues) > limit:
         rendered.append(f"... и ещё {len(issues) - limit}")
     return " || ".join(rendered)
+
+
+_CRITICAL_CONTENT_CODES = {
+    "mixed_greek_cyrillic_warning",
+    "bare_translation_forks_warning",
+}
+
+
+def get_content_audit_mode() -> str:
+    """Return CONTENT_AUDIT_MODE: off | warn | strict. Default: warn."""
+    mode = (os.getenv("CONTENT_AUDIT_MODE", "warn") or "warn").strip().lower()
+    return mode if mode in {"off", "warn", "strict"} else "warn"
+
+
+def should_abort_for_content_audit(issues: list[ContentAuditIssue]) -> bool:
+    """True only in strict mode and only for critical issue classes."""
+    if get_content_audit_mode() != "strict":
+        return False
+    return any(i.code in _CRITICAL_CONTENT_CODES for i in issues or [])
