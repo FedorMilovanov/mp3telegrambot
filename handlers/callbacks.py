@@ -195,6 +195,172 @@ async def handle_callback(update, context) -> None:
             logger.debug(f"edit_message_reply_markup (toggle): {e}")
         return
 
+
+
+    # ── Segment list pagination from /segments ─────────────────
+    if data.startswith("segpage:"):
+        user_id = update.effective_user.id
+        if not ADMIN_IDS or user_id not in ADMIN_IDS:
+            await query.answer("⛔ Нет доступа.", show_alert=True)
+            return
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            await query.answer("Неверная страница.", show_alert=True)
+            return
+        _, video_id, page_raw = parts
+        try:
+            page = int(page_raw)
+        except ValueError:
+            page = 0
+        if not await asettings_get("segments"):
+            await query.answer("🧩 Сегменты выключены.", show_alert=True)
+            return
+        try:
+            from handlers.commands import _build_segments_keyboard, _format_segments_page_text, _resolve_segment_source, _segments_from_cache
+            import html as _html
+            _vid, cache, archive_record = await _resolve_segment_source(video_id)
+            if not cache:
+                await query.answer("Нет video_cache с ai_data.", show_alert=True)
+                return
+            segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+            text = _format_segments_page_text(_vid, title, fmt, segments, page=page)
+            safe = _html.escape(text)
+            if len(safe) > 3900:
+                safe = safe[:3850] + "\n…обрезано"
+            await query.answer(f"Страница {page + 1}")
+            await query.edit_message_text(
+                f"<pre>{safe}</pre>",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=_build_segments_keyboard(_vid, segments, page=page),
+            )
+        except Exception as exc:
+            logger.warning("segpage callback failed: %s", exc, exc_info=True)
+            await query.answer("Ошибка страницы сегментов.", show_alert=True)
+        return
+
+    # ── Segment cut from /segments inline buttons ─────────────
+    if data.startswith("segcut:"):
+        user_id = update.effective_user.id
+        if not ADMIN_IDS or user_id not in ADMIN_IDS:
+            await query.answer("⛔ Нет доступа.", show_alert=True)
+            return
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            await query.answer("Неверный сегмент.", show_alert=True)
+            return
+        _, video_id, idx = parts
+        if not await asettings_get("segments"):
+            await query.answer("🧩 Сегменты выключены.", show_alert=True)
+            return
+        if not await asettings_get("segments_render"):
+            await query.answer("🎞 Рендер сегментов выключен.", show_alert=True)
+            return
+        await query.answer(f"🎬 Рендерю сегмент {idx}...")
+        try:
+            from core.database import MAX_FILE_SIZE_MB
+            from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
+            from core.segment_planner import get_segment_by_index, seconds_to_timestamp
+            from handlers.commands import _resolve_segment_source, _segments_from_cache
+            from services.render_clips_montage import render_clip
+            from services.shorts_video import (
+                HAS_FASTER_WHISPER, burn_subtitles_into_short,
+                download_video_for_shorts, transcribe_short_clip,
+            )
+            import html as _html
+
+            _vid, cache, archive_record = await _resolve_segment_source(video_id)
+            if not cache:
+                await query.message.reply_text("⚠️ Нужна запись в video_cache с ai_data для нарезки.")
+                return
+            segments, title, _duration, _fmt = _segments_from_cache(cache, archive_record)
+            segment = get_segment_by_index(segments, idx)
+            if not segment:
+                await query.message.reply_text("⚠️ Сегмент не найден.")
+                return
+            source_url = (cache or {}).get("url") or (archive_record or {}).get("source_url") or (archive_record or {}).get("youtube_url") or ""
+            if not source_url:
+                await query.message.reply_text("⚠️ Нет source_url для скачивания видео.")
+                return
+            _render_token = await try_acquire_render_lock(render_lock_key("segment", _vid))
+            if _render_token is None:
+                await query.message.reply_text("⏳ Для этого видео уже идёт рендер сегмента. Дождитесь окончания.")
+                return
+            msg = await query.message.reply_text(
+                f"🎬 Рендерю сегмент {segment.index}: {_html.escape(segment.title[:120])}\n"
+                f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
+            )
+            video_path = await download_video_for_shorts(source_url, _vid)
+            if not video_path:
+                await msg.edit_text("❌ Не удалось скачать видео для сегмента.")
+                await release_render_lock(_render_token)
+                return
+            clip_path = DOWNLOAD_DIR / f"{_vid}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
+            sub_path = DOWNLOAD_DIR / f"{_vid}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
+            try:
+                ok = await render_clip(video_path, clip_path, segment.start, segment.end)
+                if not ok or not clip_path.exists():
+                    await msg.edit_text("❌ Не удалось вырезать сегмент.")
+                    return
+                final_clip_path = clip_path
+                if await asettings_get("segments_subtitles"):
+                    if not HAS_FASTER_WHISPER:
+                        logger.warning("Segment callback subtitles: faster-whisper не установлен, отправляю без субтитров")
+                    else:
+                        try:
+                            sub_segments = await transcribe_short_clip(clip_path, ai_data=(cache or {}).get("ai_data") or {})
+                            if sub_segments:
+                                sub_ok = await burn_subtitles_into_short(clip_path, sub_path, sub_segments)
+                                if sub_ok and sub_path.exists():
+                                    final_clip_path = sub_path
+                            else:
+                                logger.warning("Segment callback subtitles: пустая транскрипция для segment %s", segment.index)
+                        except Exception as _seg_sub_err:
+                            logger.warning("Segment callback subtitles failed for %s: %s", segment.index, _seg_sub_err)
+                size_mb = final_clip_path.stat().st_size / (1024 * 1024)
+                if size_mb > MAX_FILE_SIZE_MB:
+                    await msg.edit_text(f"❌ Сегмент слишком большой: {size_mb:.0f}MB.")
+                    return
+                caption = (
+                    f"🎬 <b>{_html.escape(title[:120])}</b>\n"
+                    f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
+                    f"({seconds_to_timestamp(segment.duration)})\n"
+                    f"<b>{_html.escape(segment.title[:220])}</b>"
+                )
+                with open(final_clip_path, "rb") as vf:
+                    await query.message.reply_video(
+                        video=vf,
+                        caption=caption,
+                        duration=int(segment.duration),
+                        supports_streaming=True,
+                        parse_mode="HTML",
+                        write_timeout=300,
+                        read_timeout=300,
+                        connect_timeout=60,
+                    )
+                await msg.edit_text("✅ Сегмент отправлен.")
+            finally:
+                try:
+                    clip_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    sub_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                await release_render_lock(_render_token)
+        except Exception as exc:
+            try:
+                await release_render_lock(_render_token)
+            except Exception:
+                pass
+            logger.warning("segcut callback failed: %s", exc, exc_info=True)
+            try:
+                await query.message.reply_text(f"❌ Ошибка сегмента: {str(exc)[:160]}")
+            except Exception:
+                pass
+        return
+
     # ── Short trim (подрезка начала/конца) ──────────────────────
     if data.startswith("strim:"):
         parts = data.split(":", 2)

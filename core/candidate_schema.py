@@ -233,3 +233,89 @@ def structured_json_config_kwargs(schema: dict | None) -> dict:
     if not schema:
         return {}
     return {"response_mime_type": "application/json", "response_schema": schema}
+
+
+def audio_analysis_response_schema() -> dict:
+    """Gemini structured-output schema for the primary audio analysis JSON.
+
+    This mirrors the contract consumed by core.json_parser._parse_gemini_response.
+    Fields intentionally stay string/list based where the legacy parser expects
+    compact `||` records, so structured output improves JSON validity without a
+    risky downstream schema migration.
+    """
+    timestamp_item = {
+        "type": "object",
+        "properties": {
+            "time": _string_schema(),
+            "topic": _string_schema(),
+        },
+        "required": ["time", "topic"],
+    }
+    terms_data = {
+        "type": "object",
+        "properties": {
+            "concepts": _string_array_schema(),
+            "scripture": _string_array_schema(),
+            "translations": _string_array_schema(),
+            "lexicon_notes": _string_array_schema(),
+        },
+        "required": ["concepts", "scripture", "translations", "lexicon_notes"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "real_author": _string_schema(),
+            "real_title": _string_schema(),
+            "real_event": _string_schema(),
+            "format": _string_schema(),
+            "main_topic": _string_schema(),
+            "timestamps": {"type": "array", "items": timestamp_item},
+            "hashtags": _string_array_schema(),
+            "analysis_summary": _string_schema(),
+            "argument_arc": _string_schema(),
+            "key_categories": _string_array_schema(),
+            "questions": _string_array_schema(),
+            "terms_data": terms_data,
+            "whisper_hints": _string_array_schema(),
+            "hermeneutic_method": _string_schema(),
+        },
+        "required": [
+            "real_author", "real_title", "real_event", "format", "main_topic",
+            "timestamps", "hashtags", "analysis_summary", "argument_arc",
+            "key_categories", "questions", "terms_data", "whisper_hints",
+            "hermeneutic_method",
+        ],
+    }
+
+
+def expanded_page_response_schema() -> dict:
+    """Gemini structured-output schema for expanded Telegraph pages.
+
+    Used by StudyAnalysis and ReflectionApplication. It preserves the existing
+    downstream contract consumed by _parse_expanded_json: {outline, sections}.
+    """
+    outline_item = {
+        "type": "object",
+        "properties": {
+            "title": _string_schema(),
+            "time": _string_schema(),
+        },
+        "required": ["title", "time"],
+    }
+    section_item = {
+        "type": "object",
+        "properties": {
+            "title": _string_schema(),
+            "time": _string_schema(),
+            "content": _string_schema(),
+        },
+        "required": ["title", "time", "content"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "outline": {"type": "array", "items": outline_item},
+            "sections": {"type": "array", "items": section_item},
+        },
+        "required": ["outline", "sections"],
+    }

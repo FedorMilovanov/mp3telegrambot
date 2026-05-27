@@ -15,7 +15,7 @@ from core.database import (
     adb_get, adb_save, asettings_get, asettings_get_all,
     db_init, is_cache_valid,
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
-    MAX_PLAYLIST_SIZE, DB_PATH,
+    MAX_PLAYLIST_SIZE, MAX_FILE_SIZE_MB, DB_PATH,
     areserve_rate_limit,  # AUDIT M4/PART5
 )
 from core.utils import (
@@ -23,9 +23,29 @@ from core.utils import (
     extract_media_url, format_timestamp,               # FIX #9
 )
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX #9
+from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
+from core.segment_planner import (
+    build_segments_from_timestamps, format_segments_text, get_segment_by_index, parse_segment_selection, seconds_to_timestamp,
+)
 from core.observability import format_gemini_metrics_report
-from core.generated_pages import ARCHIVE_DIR, aquery_generated_pages
+from core.prompt_health import format_prompt_health_report
+from core.code_health import format_code_health_report
+from core.generated_pages import (
+    ARCHIVE_DIR, aget_generated_page_record, aquery_generated_pages,
+    asave_segment_plan_export, aupdate_generated_page_repair_status,
+    get_archive_export_path, get_segment_export_paths,
+)
+from services.telegraph_repair import (
+    collect_record_page_urls, format_batch_repair_results, format_repair_results,
+    repair_generated_page_record, repair_generated_page_records,
+    repair_telegraph_page_url, telegraph_path_from_url,
+)
 from pipelines.main_pipeline import process_single_video
+from services.shorts_video import (
+    HAS_FASTER_WHISPER, burn_subtitles_into_short, download_video_for_shorts,
+    transcribe_short_clip,
+)
+from services.render_clips_montage import render_clip
 from pipelines.playlist import handle_playlist
 
 import asyncio
@@ -33,6 +53,7 @@ import logging
 import os        # FIX #9
 import re        # FIX #9
 import sqlite3   # FIX #9
+import uuid
 from pathlib import Path  # FIX #9
 
 logger = logging.getLogger(__name__)
@@ -52,7 +73,10 @@ async def start(update, context):
                 "/resetcache all — очистить весь кэш\n"
                 "/metrics [hours] — Gemini метрики\n"
                 "/archive [n] — последние опубликованные страницы\n"
-                "/search &lt;текст&gt; — поиск по архиву"
+                "/search &lt;текст&gt; — поиск по архиву\n"
+                "/repairpage &lt;url|video_id|last&gt; — перечинить Telegraph без Gemini\n"
+                "/prompthealth — аудит размера и баланса промптов\n"
+                "/codehealth — аудит regex/postprocess слоя"
             )
         text = (
             f"🎵 <b>Media Audio Converter</b>\n\n"
@@ -220,6 +244,32 @@ async def metrics_command(update, context):
 
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, lambda: format_gemini_metrics_report(hours=hours, recent_limit=7))
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def codehealth_command(update, context):
+    """Admin readout for regex/postprocess code health."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(None, format_code_health_report)
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def prompthealth_command(update, context):
+    """Admin readout for prompt size/balance diagnostics."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(None, format_prompt_health_report)
     await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
 
 
@@ -528,3 +578,385 @@ async def scripture_archive_command(update, context):
         _archive_format_records(records, title=f"Писание: {ref}"),
         parse_mode="HTML", disable_web_page_preview=True,
     )
+
+
+async def repairpage_command(update, context):
+    """Repair Telegraph pages using current deterministic postprocess, without Gemini calls."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    target = " ".join(context.args or []).strip()
+    if not target:
+        await update.message.reply_text(
+            "🛠 Использование:\n"
+            "<code>/repairpage https://telegra.ph/...</code>\n"
+            "<code>/repairpage VIDEO_ID</code>\n"
+            "<code>/repairpage last</code>\n\n"
+            "Gemini не вызывается: только fetch → postprocess → editPage.",
+            parse_mode="HTML",
+        )
+        return
+
+    if target.lower().startswith("recent"):
+        parts = target.split()
+        limit = _archive_parse_limit(parts[1:], 5)
+        records = await aquery_generated_pages(limit=limit)
+        batch = await repair_generated_page_records(records, limit=limit)
+        for item in batch:
+            await aupdate_generated_page_repair_status(
+                item.video_id,
+                changed_pages=sum(1 for r in item.results if r.changed),
+                errors=[r.error for r in item.results if r.error],
+            )
+        text = html_mod.escape(format_batch_repair_results(batch))
+        if len(text) > 3900:
+            text = text[:3850] + "\n…обрезано"
+        await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+        return
+
+    if telegraph_path_from_url(target):
+        results = [await repair_telegraph_page_url(target)]
+    else:
+        if target.lower() == "last":
+            records = await aquery_generated_pages(limit=1)
+            record = records[0] if records else None
+        else:
+            record = await aget_generated_page_record(target)
+            if record is None:
+                matches = await aquery_generated_pages(limit=1, query=target)
+                record = matches[0] if matches else None
+        if not record:
+            await update.message.reply_text("⚠️ Не найдено в архиве. Попробуйте URL Telegraph или точный video_id.")
+            return
+        if not collect_record_page_urls(record):
+            await update.message.reply_text("⚠️ В записи архива нет Telegraph-ссылок для ремонта.")
+            return
+        results = await repair_generated_page_record(record)
+        await aupdate_generated_page_repair_status(
+            str(record.get("video_id") or ""),
+            changed_pages=sum(1 for r in results if r.changed),
+            errors=[r.error for r in results if r.error],
+        )
+
+    text = html_mod.escape(format_repair_results(results))
+    if len(text) > 3900:
+        text = text[:3850] + "\n…обрезано"
+    await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def repairrecent_command(update, context):
+    """Repair recent archive records without Gemini calls."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    limit = _archive_parse_limit(context.args, 5)
+    records = await aquery_generated_pages(limit=limit)
+    batch = await repair_generated_page_records(records, limit=limit)
+    for item in batch:
+        await aupdate_generated_page_repair_status(
+            item.video_id,
+            changed_pages=sum(1 for r in item.results if r.changed),
+            errors=[r.error for r in item.results if r.error],
+        )
+    text = html_mod.escape(format_batch_repair_results(batch))
+    if len(text) > 3900:
+        text = text[:3850] + "\n…обрезано"
+    await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict | None]:
+    """Resolve target into (video_id, cache_record, archive_record)."""
+    target = str(target or "").strip()
+    archive_record = None
+    if target.lower() == "last":
+        records = await aquery_generated_pages(limit=1)
+        archive_record = records[0] if records else None
+        target = str((archive_record or {}).get("video_id") or "")
+    cache = await adb_get(target) if target else None
+    if archive_record is None and target:
+        archive_record = await aget_generated_page_record(target)
+    return target, cache, archive_record
+
+
+def _segments_from_cache(cache: dict | None, archive_record: dict | None = None) -> tuple[list, str, int, str]:
+    ai = (cache or {}).get("ai_data") or {}
+    duration = int((ai or {}).get("duration") or (archive_record or {}).get("duration") or 0)
+    title = (ai or {}).get("real_title") or (archive_record or {}).get("title") or "Без названия"
+    fmt = (ai or {}).get("format") or (archive_record or {}).get("format") or ""
+    segments = build_segments_from_timestamps((ai or {}).get("timestamps", ""), duration, format_name=fmt)
+    return segments, title, duration, fmt
+
+
+def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, per_page: int = 12) -> InlineKeyboardMarkup | None:
+    """Build paginated inline keyboard for segment rendering."""
+    if not segments:
+        return None
+    total_pages = max(1, (len(segments) + per_page - 1) // per_page)
+    page = max(0, min(int(page or 0), total_pages - 1))
+    visible = segments[page * per_page:page * per_page + per_page]
+    buttons = []
+    row = []
+    for segment in visible:
+        row.append(InlineKeyboardButton(f"🎬 {segment.index}", callback_data=f"segcut:{video_id}:{segment.index}"))
+        if len(row) == 4:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("⬅️", callback_data=f"segpage:{video_id}:{page - 1}"))
+        nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("➡️", callback_data=f"segpage:{video_id}:{page + 1}"))
+        buttons.append(nav)
+    return InlineKeyboardMarkup(buttons) if buttons else None
+
+
+def _format_segments_page_text(video_id: str, title: str, fmt: str, segments: list, *, page: int = 0, per_page: int = 12) -> str:
+    total_pages = max(1, (len(segments) + per_page - 1) // per_page) if segments else 1
+    page = max(0, min(int(page or 0), total_pages - 1))
+    visible = segments[page * per_page:page * per_page + per_page]
+    text = format_segments_text(visible, title=f"Сегменты: {title} ({fmt or 'format?'}) · стр. {page + 1}/{total_pages}")
+    text += f"\n\nВырезать: /cutseg {video_id} N"
+    if total_pages > 1:
+        text += "\nЛистайте кнопками ⬅️/➡️."
+    return text
+
+
+async def segments_command(update, context):
+    """List selectable Q&A/theme segments from cached AI timestamps."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    if not await asettings_get("segments"):
+        await update.message.reply_text("🧩 Сегменты выключены в настройках. Включите: /settings → 🧩 Сегменты")
+        return
+    target = (context.args[0].strip() if context.args else "last")
+    video_id, cache, archive_record = await _resolve_segment_source(target)
+    if not cache:
+        await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data. Используйте video_id недавней обработки или `last`.")
+        return
+    segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+    text = format_segments_text(segments, title=f"Сегменты: {title} ({fmt or 'format?'})")
+    text += f"\n\nВырезать: /cutseg {video_id} N"
+    safe = html_mod.escape(text)
+    if len(safe) > 3900:
+        safe = safe[:3850] + "\n…обрезано"
+    buttons = []
+    row = []
+    for s in segments[:12]:
+        row.append(InlineKeyboardButton(f"🎬 {s.index}", callback_data=f"segcut:{video_id}:{s.index}"))
+        if len(row) == 4:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    markup = InlineKeyboardMarkup(buttons) if buttons else None
+    await update.message.reply_text(
+        f"<pre>{safe}</pre>",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=markup,
+    )
+
+
+async def cutseg_command(update, context):
+    """Render and send deterministic segment(s) by timestamp boundary."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    if len(context.args or []) < 2:
+        await update.message.reply_text(
+            "🎬 Использование: <code>/cutseg VIDEO_ID N</code>, "
+            "<code>/cutseg VIDEO_ID 1,3,5</code> или <code>/cutseg last N</code>",
+            parse_mode="HTML",
+        )
+        return
+    if not await asettings_get("segments"):
+        await update.message.reply_text("🧩 Сегменты выключены в настройках. Включите: /settings → 🧩 Сегменты")
+        return
+    if not await asettings_get("segments_render"):
+        await update.message.reply_text("🎞 Рендер сегментов выключен в настройках. Включите: /settings → 🧩 Сегменты")
+        return
+    target = context.args[0].strip()
+    selection = context.args[1].strip()
+    video_id, cache, archive_record = await _resolve_segment_source(target)
+    if not cache:
+        await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data для нарезки.")
+        return
+    segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+    indexes = parse_segment_selection(selection, len(segments), max_count=5)
+    if not indexes:
+        await update.message.reply_text("⚠️ Сегмент не найден. Посмотрите список: <code>/segments VIDEO_ID</code>", parse_mode="HTML")
+        return
+    if len(indexes) > 1 and not await asettings_get("segments_batch_render"):
+        await update.message.reply_text("📦 Пакетная нарезка выключена. Включите: /settings → 🧩 Сегменты → 📦 Пакетная нарезка")
+        return
+    source_url = (cache or {}).get("url") or (archive_record or {}).get("source_url") or (archive_record or {}).get("youtube_url") or ""
+    if not source_url:
+        await update.message.reply_text("⚠️ Нет source_url для скачивания видео.")
+        return
+    _render_token = await try_acquire_render_lock(render_lock_key("segment", video_id))
+    if _render_token is None:
+        await update.message.reply_text("⏳ Для этого видео уже идёт рендер сегмента. Дождитесь окончания или выберите позже.")
+        return
+    msg = await update.message.reply_text(f"🎬 Готовлю видео и рендерю сегменты: {', '.join(map(str, indexes))}")
+    video_path = None
+    clip_paths: list[Path] = []
+    sub_paths: list[Path] = []
+    sent = 0
+    try:
+        video_path = await download_video_for_shorts(source_url, video_id)
+        if not video_path:
+            await msg.edit_text("❌ Не удалось скачать видео для сегмента.")
+            return
+        for idx in indexes:
+            segment = get_segment_by_index(segments, idx)
+            if not segment:
+                continue
+            clip_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
+            clip_paths.append(clip_path)
+            await msg.edit_text(
+                f"🎬 Рендерю {segment.index}/{len(segments)}: {html_mod.escape(segment.title[:120])}\n"
+                f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
+            )
+            ok = await render_clip(video_path, clip_path, segment.start, segment.end)
+            if not ok or not clip_path.exists():
+                await update.message.reply_text(f"❌ Не удалось вырезать сегмент {segment.index}.")
+                continue
+            final_clip_path = clip_path
+            if await asettings_get("segments_subtitles"):
+                if not HAS_FASTER_WHISPER:
+                    logger.warning("Segments subtitles: faster-whisper не установлен, отправляю без субтитров")
+                else:
+                    sub_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
+                    sub_paths.append(sub_path)
+                    try:
+                        sub_segments = await transcribe_short_clip(clip_path, ai_data=(cache or {}).get("ai_data") or {})
+                        if sub_segments:
+                            sub_ok = await burn_subtitles_into_short(clip_path, sub_path, sub_segments)
+                            if sub_ok and sub_path.exists():
+                                final_clip_path = sub_path
+                        else:
+                            logger.warning("Segments subtitles: пустая транскрипция для segment %s", segment.index)
+                    except Exception as _seg_sub_err:
+                        logger.warning("Segments subtitles failed for %s: %s", segment.index, _seg_sub_err)
+            size_mb = final_clip_path.stat().st_size / (1024 * 1024)
+            if size_mb > MAX_FILE_SIZE_MB:
+                await update.message.reply_text(f"❌ Сегмент {segment.index} слишком большой: {size_mb:.0f}MB.")
+                continue
+            caption = (
+                f"🎬 <b>{html_mod.escape(title)}</b>\n"
+                f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
+                f"({seconds_to_timestamp(segment.duration)})\n"
+                f"<b>{html_mod.escape(segment.title)}</b>"
+            )
+            if len(caption) > 1024:
+                caption = (
+                    f"🎬 <b>{html_mod.escape(title[:120])}</b>\n"
+                    f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
+                    f"({seconds_to_timestamp(segment.duration)})\n"
+                    f"<b>{html_mod.escape(segment.title[:220])}</b>"
+                )
+            with open(final_clip_path, "rb") as vf:
+                await update.message.reply_video(
+                    video=vf,
+                    caption=caption,
+                    duration=int(segment.duration),
+                    supports_streaming=True,
+                    parse_mode="HTML",
+                    write_timeout=300,
+                    read_timeout=300,
+                    connect_timeout=60,
+                )
+            sent += 1
+        await msg.edit_text(f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
+    except Exception as exc:
+        logger.warning("cutseg failed: %s", exc, exc_info=True)
+        await msg.edit_text(f"❌ Ошибка нарезки: {str(exc)[:180]}")
+    finally:
+        for clip_path in clip_paths:
+            try:
+                clip_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        for sub_path in sub_paths:
+            try:
+                sub_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        await release_render_lock(_render_token)
+
+
+async def archivefile_command(update, context):
+    """Send human-readable archive export files."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    kind = (context.args[0].strip() if context.args else "latest")
+    path = get_archive_export_path(kind)
+    if not path or not path.exists():
+        await update.message.reply_text(
+            "⚠️ Файл архива не найден. Варианты: <code>latest</code>, <code>all</code>, <code>jsonl</code>, <code>readme</code>, <code>sqlite</code>",
+            parse_mode="HTML",
+        )
+        return
+    with open(path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=path.name,
+            caption=f"📁 Archive export: {path.name}",
+            write_timeout=180,
+            read_timeout=180,
+            connect_timeout=60,
+        )
+
+
+async def segmentfile_command(update, context):
+    """Send segment plan export for a cached/archived video."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    target = (context.args[0].strip() if context.args else "last")
+    kind = (context.args[1].strip().lower() if len(context.args or []) > 1 else "md")
+    if kind not in {"md", "json"}:
+        kind = "md"
+    video_id, cache, archive_record = await _resolve_segment_source(target)
+    if not video_id:
+        await update.message.reply_text("⚠️ Не найден video_id. Используйте <code>/segmentfile last</code> или <code>/segmentfile VIDEO_ID</code>.", parse_mode="HTML")
+        return
+    paths = get_segment_export_paths(video_id)
+    path = Path(paths.get(kind, ""))
+    if (not path.exists()) and cache:
+        ai = (cache or {}).get("ai_data") or {}
+        try:
+            await asave_segment_plan_export(
+                video_id=video_id,
+                title=(ai.get("real_title") or (archive_record or {}).get("title") or video_id),
+                author=(ai.get("real_author") or (archive_record or {}).get("author") or ""),
+                timestamps=ai.get("timestamps", ""),
+                duration=int(ai.get("duration") or (archive_record or {}).get("duration") or 0),
+                format_name=(ai.get("format") or (archive_record or {}).get("format") or ""),
+            )
+        except Exception as exc:
+            logger.warning("segmentfile export rebuild failed: %s", exc)
+    if not path.exists():
+        await update.message.reply_text("⚠️ Файл сегментов не найден. Нужен video_cache с ai_data или уже созданный export.")
+        return
+    with open(path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=path.name,
+            caption=f"🧩 Segment export: {path.name}",
+            write_timeout=180,
+            read_timeout=180,
+            connect_timeout=60,
+        )

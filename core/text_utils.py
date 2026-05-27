@@ -4,6 +4,7 @@
 Извлечено из bot.py строки 1587–1845.
 """
 import re
+from core.source_titles import normalize_source_card_line
 from core.core_utils import time_to_seconds  # разрыв цикла: ранее был lazy import из json_parser
 
 BAD_META_PATTERNS = [
@@ -139,43 +140,13 @@ def scrub_third_person_phrases(text: str) -> str:
     return text
 
 
-_AUTHOR_DEDUPE_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    ("Кевин ДеЯнг, Грег Гилберт, Greg Gilbert,", "Кевин ДеЯнг и Грег Гилберт,"),
-    ("Грег Гилберт, Greg Gilbert,", "Грег Гилберт,"),
-    ("Джон МакАртур, John MacArthur,", "Джон МакАртур,"),
-    ("Пол Вошер, Paul Washer,", "Пол Вошер,"),
-    ("Джоэл Бики, Joel Beeke,", "Джоэл Бики,"),
-)
-
-_SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
-    r"^(?P<bullet>\s*[•\-]\s*)?"
-    r"(?P<author>[А-ЯЁA-Z][^,\n]{1,80}),\s+"
-    r"(?P<ru_title>[^()\n]{3,140}?)\s*"
-    r"\(\s*(?P<en_author>[A-Z][A-Za-z .’'\-]{2,80}),\s*"
-    r"(?P<en_title>[A-Za-z][^()]{2,180})\s*\)"
-    r"(?P<tail>\.?\s*)$"
-)
-
-
 def normalize_source_map_text(line: str) -> str:
     """Normalize bibliography/source-map card headings.
 
-    Prefer verifiable original English titles over invented Russian titles, and
-    dedupe bilingual author echoes. Safe for a single source-card line; for
-    normal prose it is a no-op.
+    Delegates canonical author/title handling to core.source_titles while
+    preserving the legacy public function used across postprocessors/tests.
     """
-    if not line:
-        return line
-    out = line
-    for src, dst in _AUTHOR_DEDUPE_REPLACEMENTS:
-        out = out.replace(src, dst)
-    m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())
-    if m and re.search(r"[A-Za-z]", m.group("en_title")):
-        bullet = m.group("bullet") or ""
-        author = m.group("author").strip()
-        en_title = m.group("en_title").strip().rstrip(".")
-        out = f"{bullet}{author}, {en_title}."
-    return out
+    return normalize_source_card_line(line, prefer_original=True)
 
 
 def normalize_common_typos(text: str) -> str:

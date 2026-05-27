@@ -34,6 +34,11 @@ from core.utils import format_timestamp               # FIX telegraph_pages
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.source_packs import get_source_pack_for_ai_data
+from core.candidate_schema import expanded_page_response_schema
+from core.analysis_profiles import get_expanded_analysis_profile
+from core.reasoning_guidance import build_reasoning_first_block
+from core.adaptive_generation import get_adaptive_text_generation_params
+from core.prompt_compactor import compact_prompt_for_generation
 from core.content_audit import audit_expanded_sections, format_content_audit_issues
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 
@@ -42,6 +47,7 @@ import json      # FIX telegraph_pages
 import logging
 import re
 import time
+import os
 
 # types — из google.genai
 try:
@@ -50,6 +56,12 @@ except ImportError:
     types = None
 
 logger = logging.getLogger(__name__)
+
+
+def _expanded_structured_output_enabled() -> bool:
+    """Opt-out flag for Study/Reflection structured {outline, sections}."""
+    return (os.getenv("EXPANDED_PAGES_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
 
 async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
                                       yt_url: str = "") -> str | None:
@@ -462,7 +474,9 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
 
 async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 max_tokens: int = 8000, task: str = "telegraph_text",
-                                video_id: str = "", thinking_level: str = "high") -> str | None:
+                                video_id: str = "", thinking_level: str = "high",
+                                response_mime_type: str | None = None,
+                                response_schema=None) -> str | None:
     """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
 
     v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
@@ -471,6 +485,14 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     """
     if not GEMINI_CLIENTS:
         return None
+
+    _compacted = compact_prompt_for_generation(prompt)
+    if _compacted.saved_chars:
+        logger.info(
+            "_gemini_text_request[%s]: prompt compacted %d -> %d chars (removed_lines=%d)",
+            task, _compacted.original_chars, _compacted.compacted_chars, _compacted.removed_lines,
+        )
+    prompt = _compacted.text
 
     # QUOTA-SMART FIX: умный 429 handling + time-budget
     #
@@ -534,16 +556,39 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
 
             for i, client in enumerate(_CLIENTS):
                 try:
-                    resp = await client.aio.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=make_text_config_smart(
-                            temperature=temperature,
-                            max_output_tokens=max_tokens,
-                            model_name=model_name,
-                            thinking_level=thinking_level,
-                        ),
-                    )
+                    try:
+                        resp = await client.aio.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=make_text_config_smart(
+                                temperature=temperature,
+                                max_output_tokens=max_tokens,
+                                model_name=model_name,
+                                thinking_level=thinking_level,
+                                response_mime_type=response_mime_type,
+                                response_schema=response_schema,
+                            ),
+                        )
+                    except Exception as _schema_err:
+                        # Schema support can vary by SDK/model. Quota/overload/internal
+                        # must keep existing fallback semantics; schema-incompatibility
+                        # retries once with legacy JSON config on the same client.
+                        if response_schema is None or is_quota_error(_schema_err) or is_overload_error(_schema_err) or _is_internal_error(_schema_err):
+                            raise
+                        logger.warning(
+                            "_gemini_text_request[%s]: structured output failed (%s: %s) — retry legacy JSON config",
+                            model_name, type(_schema_err).__name__, str(_schema_err)[:180],
+                        )
+                        resp = await client.aio.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=make_text_config_smart(
+                                temperature=temperature,
+                                max_output_tokens=max_tokens,
+                                model_name=model_name,
+                                thinking_level=thinking_level,
+                            ),
+                        )
                     try:
                         result = resp.text or ""
                     except (ValueError, AttributeError):
@@ -919,9 +964,19 @@ async def _run_expanded_pipeline(
 
     try:
         logger.info("%s: запрос к Gemini", label)
+        _task_name = f"telegraph_{label.lower()}"  # task=f"telegraph_{label.lower()}"
+        _adaptive = get_adaptive_text_generation_params(_task_name, 0.4, max_tokens)
+        if _adaptive.reason != "baseline":
+            logger.warning(
+                "%s: adaptive generation params: temperature=%.2f max_tokens=%d (%s)",
+                label, _adaptive.temperature, _adaptive.max_tokens, _adaptive.reason,
+            )
+        _structured_schema = expanded_page_response_schema() if _expanded_structured_output_enabled() else None
         raw = await _gemini_text_request(
-            prompt, temperature=0.4, max_tokens=max_tokens,
-            task=f"telegraph_{label.lower()}", thinking_level=thinking_level,
+            prompt, temperature=_adaptive.temperature, max_tokens=_adaptive.max_tokens,
+            task=_task_name, thinking_level=thinking_level,
+            response_mime_type=("application/json" if _structured_schema else None),
+            response_schema=_structured_schema,
         )
         if not raw:
             logger.warning("%s: Gemini вернул пустой ответ -- fallback", label)
@@ -937,10 +992,12 @@ async def _run_expanded_pipeline(
                 "Повтори строго: только валидный JSON {outline, sections}, "
                 "без ```json, без текста до/после.\n\n" + prompt
             )
-            _retry_tokens = min(max_tokens * 2, 65000)  # PATCH: escalate
+            _retry_tokens = min(max(_adaptive.max_tokens * 2, max_tokens * 2), 65000)  # adaptive retry escalate
             raw2 = await _gemini_text_request(
                 retry_prompt, max_tokens=_retry_tokens,
                 task=f"telegraph_{label.lower()}_retry", thinking_level=thinking_level,
+                response_mime_type=("application/json" if _structured_schema else None),
+                response_schema=_structured_schema,
             )
             if raw2:
                 parsed = _parse_expanded_json(raw2)
@@ -1139,6 +1196,11 @@ async def create_telegraph_study_analysis(
 
     # V3 SOURCE_PACKS: тематический пакет источников по key_categories
     _source_pack = get_source_pack_for_ai_data(_ai)
+    _study_profile = get_expanded_analysis_profile(effective_duration, page_kind="study")
+    _profile_block = build_reasoning_first_block("study") + "\n\n" + _study_profile.prompt_block("study")
+    _synopsis_context_for_prompt = (
+        _profile_block + "\n\n" + _synopsis_context if _synopsis_context else _profile_block
+    )
 
     prompt = STUDY_ANALYSIS_PROMPT.format(
         title=prompt_title,
@@ -1155,7 +1217,7 @@ async def create_telegraph_study_analysis(
         scripture=_fmt_scripture(scripture, 12),
         translations=_fmt_block(translations, 8),
         lexicon_notes=_fmt_block(lexicon_notes, 8),
-        synopsis_context=_synopsis_context,
+        synopsis_context=_synopsis_context_for_prompt,
         source_pack=_source_pack,
     )
 
@@ -1173,7 +1235,7 @@ async def create_telegraph_study_analysis(
         yt_url=yt_url,
         include_toc=True,
         fallback_fn=compact_fn,
-        max_tokens=32000,   # PATCH: was 16K
+        max_tokens=_study_profile.max_tokens,   # V3-P27: duration-aware
         rutube_url=rutube_url,
         vk_url=vk_url,
         duration=int(effective_duration) if effective_duration else 0,
@@ -1257,6 +1319,12 @@ async def create_telegraph_reflection_application(
     else:
         _synopsis_context = ""
 
+    _reflection_profile = get_expanded_analysis_profile(duration, page_kind="reflection")
+    _profile_block = build_reasoning_first_block("reflection") + "\n\n" + _reflection_profile.prompt_block("reflection")
+    _synopsis_context_for_prompt = (
+        _profile_block + "\n\n" + _synopsis_context if _synopsis_context else _profile_block
+    )
+
     prompt = REFLECTION_APPLICATION_PROMPT.format(
         title=prompt_title,
         author=real_author,
@@ -1268,7 +1336,7 @@ async def create_telegraph_reflection_application(
         key_categories=_key_cats_str,
         questions_block=questions_block,
         timestamps_block=_ts_block,
-        synopsis_context=_synopsis_context,
+        synopsis_context=_synopsis_context_for_prompt,
     )
 
     tg_title = (
@@ -1287,7 +1355,7 @@ async def create_telegraph_reflection_application(
         yt_url=yt_url,
         include_toc=True,
         fallback_fn=compact_fn,
-        max_tokens=24000,   # PATCH: was 14K
+        max_tokens=_reflection_profile.max_tokens,   # V3-P27: duration-aware
         rutube_url=rutube_url,
         vk_url=vk_url,
         duration=int(duration) if duration else 0,

@@ -27,11 +27,14 @@ from core.progress import set_progress     # FIX gemini_analyze
 from core.utils import format_timestamp, mask_api_key as _mask_api_key  # FIX gemini_analyze
 from core.prompts import build_audio_analysis_prompt, AUDIO_ANALYSIS_MODE  # deep prompt builder
 from core.observability import alog_gemini_response, alog_gemini_run  # V3 observability
+from core.candidate_schema import audio_analysis_response_schema
+from core.prompt_compactor import compact_prompt_for_generation
 
 import asyncio
 import logging
 import re
 import time
+import os
 
 # types — из google.genai (условный импорт, уже в globals.py)
 try:
@@ -40,6 +43,12 @@ except ImportError:
     types = None
 
 logger = logging.getLogger(__name__)
+
+
+def _audio_structured_output_enabled() -> bool:
+    """Opt-out flag for primary audio structured JSON output."""
+    return (os.getenv("AUDIO_ANALYSIS_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
 
 # BUG-B02: максимальное время ожидания обработки файла Gemini
 _MAX_UPLOAD_WAIT = 600  # 10 минут
@@ -210,6 +219,15 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             duration_seconds=duration,
             mode=AUDIO_ANALYSIS_MODE,
         )
+        _compacted_prompt = compact_prompt_for_generation(prompt)
+        if _compacted_prompt.saved_chars:
+            logger.info(
+                "Gemini audio prompt compacted %d -> %d chars (removed_lines=%d)",
+                _compacted_prompt.original_chars,
+                _compacted_prompt.compacted_chars,
+                _compacted_prompt.removed_lines,
+            )
+        prompt = _compacted_prompt.text
         logger.info(
             "Gemini audio analysis prompt prepared: mode=%s chars=%s duration=%ss",
             AUDIO_ANALYSIS_MODE,
@@ -251,6 +269,32 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         # Используем default-args чтобы зафиксировать текущие client/audio_part
                         # и избежать late-binding closure на переменные цикла.
                         async def _do_generate(_c=client, _ap=audio_part):
+                            _use_schema = _audio_structured_output_enabled()
+                            if _use_schema:
+                                try:
+                                    return await asyncio.wait_for(
+                                        _c.aio.models.generate_content(
+                                            model=_current_model,
+                                            contents=[_ap, prompt],
+                                            config=make_audio_config(
+                                                max_output_tokens=65536,
+                                                model_name=_current_model,
+                                                response_mime_type="application/json",
+                                                response_schema=audio_analysis_response_schema(),
+                                            ),
+                                        ),
+                                        timeout=960.0,
+                                    )
+                                except Exception as _schema_err:
+                                    # Quota/overload are not schema problems; let outer fallback
+                                    # rotate keys/models normally. For SDK/model schema incompatibility,
+                                    # retry the same call with legacy JSON config.
+                                    if is_quota_error(_schema_err) or is_overload_error(_schema_err):
+                                        raise
+                                    logger.warning(
+                                        "audio_analysis structured output failed (%s: %s) — retry legacy JSON config",
+                                        type(_schema_err).__name__, str(_schema_err)[:180],
+                                    )
                             return await asyncio.wait_for(
                                 _c.aio.models.generate_content(
                                     model=_current_model,

@@ -7,6 +7,7 @@ import json
 import logging
 import re
 
+from core.timestamp_quality import audit_timestamp_coverage
 from core.text_utils import (   # FIX json_parser
     _clean_field, _clean_meta_line, _filter_times_str,
     _scrub_inline, _strip_meta_lines, is_meta_garbage,
@@ -189,6 +190,16 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
         if dropped:
             logger.warning(f"Отброшены таймкоды > длительности ({duration}s): {dropped}")
         result["timestamps"] = "\n".join(lines)
+        _coverage_issue = audit_timestamp_coverage(result["timestamps"], duration)
+        if _coverage_issue:
+            logger.warning(
+                "Timestamp coverage warning: %s last=%ss duration=%ss ratio=%.2f",
+                _coverage_issue.code,
+                _coverage_issue.last_seconds,
+                _coverage_issue.duration_seconds,
+                _coverage_issue.coverage_ratio,
+            )
+            result["timestamp_coverage_warning"] = _coverage_issue.message
 
     # hashtags → строка "#Тег #Тег ..." через normalize_hashtag (core/text_utils).
     # Gemini иногда возвращает строку "Тег1 Тег2 Тег3" вместо массива.

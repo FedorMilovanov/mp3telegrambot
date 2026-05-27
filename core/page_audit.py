@@ -42,7 +42,7 @@ _POMPOUS_RE = re.compile(
 )
 
 _SOURCE_RU_ORIGINAL_RE = re.compile(
-    r"[А-ЯЁ][^\n]{2,120}\(\s*[A-Z][A-Za-z .'-]{2,80},\s*[A-Za-z][^)]{2,160}\)",
+    r"^\s*[•\-]\s*[А-ЯЁ][^\n]{2,120}\(\s*[A-Z][A-Za-z .'-]{2,80},\s*[A-Za-z][^)]{2,160}\)",
 )
 
 _BARE_BULLET_RE = re.compile(
@@ -95,8 +95,28 @@ def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[P
         for m in _BARE_BULLET_RE.finditer(text):
             issues.append(PageAuditIssue("possible_bare_bullet", "possible bare bullet heading", _snippet(text, m.start(), m.end())))
 
-    for m in _SOURCE_RU_ORIGINAL_RE.finditer(text):
-        issues.append(PageAuditIssue("source_map_original_title", "source card may contain invented Russian title before original title", _snippet(text, m.start(), m.end())))
+    # Source-title hallucination audit must be source-card scoped. A global
+    # regex produced false positives on translation-fork analysis like
+    # «укрепляет душу» vs “restoring the soul”. Only inspect bullet-like source
+    # cards after/inside «Карта источников» context.
+    in_source_map = False
+    for line in text.splitlines():
+        low = line.lower()
+        if "карта источников" in low:
+            in_source_map = True
+            continue
+        if in_source_map and line.strip() and not line.lstrip().startswith(("•", "-")):
+            # Keep context through short description paragraphs, but do not run
+            # source-card regex on prose.
+            continue
+        if in_source_map:
+            m = _SOURCE_RU_ORIGINAL_RE.search(line)
+            if m:
+                issues.append(PageAuditIssue(
+                    "source_map_original_title",
+                    "source card may contain invented Russian title before original title",
+                    line[:240],
+                ))
 
     return issues
 

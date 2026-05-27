@@ -27,6 +27,7 @@ from services.shorts_candidates import create_shorts_candidates
 
 import json
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -106,6 +107,7 @@ async def process_and_send_shorts(
         do_normalize     = await asettings_get("shorts_audio_normalize")
         do_snapshot      = await asettings_get("shorts_snapshot")
         do_subtitles     = await asettings_get("shorts_subtitles")
+        do_boundary_pad  = await asettings_get("shorts_boundary_padding")
         do_title_poster  = await asettings_get("shorts_title_poster")
         # speed читается в начале функции — не повторяем здесь
         # Читаем заранее — используется в finally (await там нельзя)
@@ -153,7 +155,13 @@ async def process_and_send_shorts(
                 logger.warning("Shorts: invalid candidate times %s/%s: %r", i, total, c)
                 continue
 
-            if render_start != c.get("start_seconds"):
+            if do_boundary_pad:
+                pre_roll = float(os.getenv("SHORTS_PREROLL_SECONDS", "1.5"))
+                post_roll = float(os.getenv("SHORTS_POSTROLL_SECONDS", "2.5"))
+                render_start = max(0.0, render_start - pre_roll)
+                source_end = source_end + post_roll
+
+            if render_start != c.get("start_seconds") and not do_boundary_pad:
                 logger.warning(
                     "Shorts: start_seconds %.2f < 0 или невалиден — clamp до %.2f",
                     float(c.get("start_seconds", 0) or 0), render_start,

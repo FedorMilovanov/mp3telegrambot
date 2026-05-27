@@ -9,7 +9,7 @@ from core.globals import (
 )
 from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars  # FIX shorts_video
 from core.database import settings_get   # FIX shorts_video
-from core.text_utils import title_case_fragment  # FIX shorts_video
+from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
 from core.url_utils import get_youtube_video_url # FIX shorts_video
 
 import asyncio
@@ -853,6 +853,7 @@ def get_subtitles_mode_settings() -> dict:
         "karaoke":         karaoke,
         "word_timestamps": karaoke,   # word-level нужен только для karaoke
         "light":           light,
+        "gemini_hints":    bool(settings_get("shorts_subtitles_gemini_hints")),
     }
 
 
@@ -890,6 +891,62 @@ def preload_whisper_if_needed():
         logger.info(f"Whisper preloaded on startup: {sub_cfg['model_name']}")
     except Exception as e:
         logger.warning(f"Whisper preload failed: {e}")
+
+
+def _extract_subtitle_hint_terms(ai_data: dict | None, limit: int = 80) -> list[str]:
+    """Extract high-value Gemini hints for Whisper without using generated prose as subtitles."""
+    if not ai_data:
+        return []
+    hints: list[str] = []
+    for key in ("real_author", "real_event", "real_title"):
+        value = normalize_common_typos(str(ai_data.get(key) or "").strip())
+        if value:
+            hints.append(value)
+    for raw in ai_data.get("whisper_hints") or []:
+        value = normalize_common_typos(str(raw or "").strip())
+        if value:
+            hints.append(value)
+    td = ai_data.get("terms_data") or {}
+    for group in ("concepts", "scripture", "translations", "lexicon_notes"):
+        for item in td.get(group, []) or []:
+            parts = [p.strip() for p in str(item).split("||") if p.strip()]
+            for part in parts[:3]:
+                part = normalize_common_typos(part).strip().strip(".")
+                if 2 <= len(part) <= 80:
+                    hints.append(part)
+    out: list[str] = []
+    seen: set[str] = set()
+    for h in hints:
+        key = h.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def build_whisper_initial_prompt(ai_data: dict | None = None, *, use_gemini_hints: bool = True) -> str:
+    """Build Whisper initial_prompt from Gemini vocabulary hints.
+
+    We do NOT use Gemini-generated text as subtitles. Whisper remains the timing
+    source; Gemini only supplies names/terms/scripture vocabulary so ASR writes
+    МакАртур, Исаия 53, Раб Иеговы, etc. correctly.
+    """
+    base = "Проповедь на русском языке. Сохраняй богословские термины, имена и ссылки на Писание точно."
+    if not use_gemini_hints:
+        return base
+    hints = _extract_subtitle_hint_terms(ai_data)
+    if not hints:
+        return base
+    return base + " Ключевые слова и имена: " + ", ".join(hints[:80]) + "."
+
+
+def _polish_subtitle_text(text: str) -> str:
+    text = normalize_common_typos(str(text or "").strip())
+    text = text.replace(" ,", ",").replace(" .", ".").replace(" ?", "?").replace(" !", "!")
+    return " ".join(text.split())
 
 
 async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[dict]:
@@ -968,28 +1025,13 @@ async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[
         )
         _wav_path_for_thread = wav_path  # явная копия для closure
 
-        # Строим initial_prompt из Gemini-подсказок для точной транскрипции
-        _whisper_initial_prompt = "Проповедь на русском языке."
-        if ai_data:
-            hints = (ai_data.get("whisper_hints") or [])
-            _extra_names = []
-            _real_author = (ai_data.get("real_author") or "").strip()
-            if _real_author:
-                _extra_names.append(_real_author)
-            _real_event = (ai_data.get("real_event") or "").strip()
-            if _real_event:
-                _extra_names.append(_real_event)
-            all_hints = _extra_names + hints
-            if all_hints:
-                hints_str = ", ".join(all_hints[:70])
-                _whisper_initial_prompt = (
-                    f"Проповедь на русском языке. "
-                    f"Ключевые слова и имена: {hints_str}."
-                )
-                logger.info(
-                    f"Subtitles: initial_prompt построен, "
-                    f"{len(all_hints)} подсказок: {hints_str[:120]}..."
-                )
+        # Gemini is used only as vocabulary/context hints for Whisper, not as
+        # subtitle text. Timing and transcript still come from ASR.
+        _whisper_initial_prompt = build_whisper_initial_prompt(
+            ai_data,
+            use_gemini_hints=bool(subtitle_cfg.get("gemini_hints", True)),
+        )
+        logger.info("Subtitles: initial_prompt chars=%d gemini_hints=%s", len(_whisper_initial_prompt), subtitle_cfg.get("gemini_hints", True))
         _initial_prompt_for_thread = _whisper_initial_prompt
 
         def _run_whisper():
@@ -1015,9 +1057,9 @@ async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[
                 {
                     "start": s.start,
                     "end":   s.end,
-                    "text":  s.text.strip(),
+                    "text":  _polish_subtitle_text(s.text),
                     "words": [
-                        {"word": w.word, "start": w.start, "end": w.end}
+                        {"word": _polish_subtitle_text(w.word), "start": w.start, "end": w.end}
                         for w in (s.words or [])
                     ],
                 }

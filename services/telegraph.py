@@ -22,16 +22,21 @@ from core.globals import (
     TELEGRAPH_TOKEN, GEMINI_CLIENTS,
     gemini_generate,          # FIX telegraph,
     make_audio_config,
+    is_quota_error, is_overload_error,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
+from core.candidate_schema import expanded_page_response_schema
+from core.reasoning_guidance import build_synopsis_reasoning_note
+from core.prompt_compactor import compact_prompt_for_generation
 
 import asyncio
 import json      # FIX telegraph
 import logging
+import os
 import re
 import requests
 
@@ -42,6 +47,15 @@ except ImportError:
     types = None
 
 logger = logging.getLogger(__name__)
+
+
+SYNOPSIS_REASONING_FIRST_NOTE = build_synopsis_reasoning_note()
+
+
+def _synopsis_structured_output_enabled() -> bool:
+    """Opt-out flag for Synopsis structured {outline, sections}."""
+    return (os.getenv("SYNOPSIS_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
 
 def _demote_paragraph_bold(line: str) -> str:
     """DEEP-QUALITY FIX [D]: если в строке **bold** покрывает >70% символов —
@@ -467,7 +481,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             timestamps_block = "\n".join(f"- {l}" for l in _ts_lines)
             _qa_prompt_template = SYNOPSIS_PROMPT_QA
             logger.info("Synopsis QA: единый промпт для всех вызовов")
-            prompt = _qa_prompt_template.format(
+            prompt = SYNOPSIS_REASONING_FIRST_NOTE + "\n\n" + _qa_prompt_template.format(
                 title=prompt_title,
                 duration=duration_str,
                 timestamps_block=timestamps_block,
@@ -537,7 +551,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 title=prompt_title,
                 duration=duration_str,
                 hermeneutic_method=_hm,
-                format_note=_format_note + _primary_context,
+                format_note=SYNOPSIS_REASONING_FIRST_NOTE + "\n" + _format_note + _primary_context,
                 syn_sections=_syn_sections,
                 syn_section_len=_syn_section_len,
                 syn_total=_syn_total,
@@ -545,8 +559,44 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             logger.info(
                 f"Synopsis: mode=normal format={_fmt} hermeneutic={_hm} duration={int(_duration)//60}min"
             )
+        _compacted_prompt = compact_prompt_for_generation(prompt)
+        if _compacted_prompt.saved_chars:
+            logger.info(
+                "Synopsis: prompt compacted %d -> %d chars (removed_lines=%d)",
+                _compacted_prompt.original_chars, _compacted_prompt.compacted_chars,
+                _compacted_prompt.removed_lines,
+            )
+        prompt = _compacted_prompt.text
+
         loop   = asyncio.get_running_loop()
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+
+        async def _generate_synopsis_content(client, model_name: str, contents, max_tokens: int = 32000):
+            """Generate synopsis JSON with structured-output first, legacy fallback second."""
+            if _synopsis_structured_output_enabled():
+                try:
+                    return await client.aio.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=make_audio_config(
+                            max_output_tokens=max_tokens,
+                            model_name=model_name,
+                            response_mime_type="application/json",
+                            response_schema=expanded_page_response_schema(),
+                        ),
+                    )
+                except Exception as _schema_err:
+                    if is_quota_error(_schema_err) or is_overload_error(_schema_err):
+                        raise
+                    logger.warning(
+                        "Synopsis structured output failed (%s: %s) — retry legacy JSON config",
+                        type(_schema_err).__name__, str(_schema_err)[:180],
+                    )
+            return await client.aio.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=make_audio_config(max_output_tokens=max_tokens, model_name=model_name),
+            )
 
         async def _synopsis_with_client(client, upload_fn, prompt_text, _loop):
             """fix #2: вспомогательная функция — загружает аудио и вызывает Gemini."""
@@ -555,11 +605,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 raise RuntimeError("_synopsis_with_client: upload_fn вернул None")
             if getattr(audio, "state", None) == "FAILED":
                 raise RuntimeError("_synopsis_with_client: файл в состоянии FAILED")
-            return await client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[audio, prompt_text],
-                config=make_audio_config(max_output_tokens=32000),
-            )
+            return await _generate_synopsis_content(client, GEMINI_MODEL, [audio, prompt_text], max_tokens=32000)
 
         def _extract_response_text(resp) -> str:
             if resp is None:
@@ -586,10 +632,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
         if existing_audio_part is not None and existing_client is not None:
             try:
-                response = await existing_client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=[existing_audio_part, prompt],
-                    config=make_audio_config(max_output_tokens=32000),
+                response = await _generate_synopsis_content(
+                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt], max_tokens=32000
                 )
             except Exception as e:
                 logger.warning(f"Synopsis v2 existing_audio_part failed: {e}, re-uploading...")
@@ -626,13 +670,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             if response is None:
                 logger.warning("Synopsis: основная модель недоступна — пробую gemini-2.5-flash-lite")
                 try:
-                    _fallback_config = make_audio_config(max_output_tokens=32000, model_name="gemini-2.5-flash-lite")
                     async def _call_fallback(client):
                         audio = await _upload(client)
-                        return await client.aio.models.generate_content(
-                            model="gemini-2.5-flash-lite",
-                            contents=[audio, prompt],
-                            config=_fallback_config,
+                        return await _generate_synopsis_content(
+                            client, "gemini-2.5-flash-lite", [audio, prompt], max_tokens=32000
                         )
                     response = await gemini_generate(GEMINI_CLIENTS, _call_fallback)
                     logger.info("Synopsis: fallback модель успешна")
@@ -703,10 +744,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 )
                 if existing_audio_part is not None and existing_client is not None:
                     try:
-                        retry_response = await existing_client.aio.models.generate_content(
-                            model=GEMINI_MODEL,
-                            contents=[existing_audio_part, retry_prompt],
-                            config=make_audio_config(max_output_tokens=32000),
+                        retry_response = await _generate_synopsis_content(
+                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt], max_tokens=32000
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
@@ -757,10 +796,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     try:
                         if existing_audio_part is not None and existing_client is not None:
                             try:
-                                simple_response = await existing_client.aio.models.generate_content(
-                                    model=GEMINI_MODEL,
-                                    contents=[existing_audio_part, simple_prompt],
-                                    config=make_audio_config(max_output_tokens=32000),
+                                simple_response = await _generate_synopsis_content(
+                                    existing_client, GEMINI_MODEL, [existing_audio_part, simple_prompt], max_tokens=32000
                                 )
                             except Exception:
                                 simple_response = None

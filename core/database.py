@@ -456,11 +456,17 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "shorts_subtitles":         True,   # Субтитры (burn-in) для Shorts — ВКЛ по умолчанию (AUDIT)
     "shorts_subtitles_karaoke": True,   # Karaoke word-level подсветка
     "shorts_subtitles_light":   False,  # Лёгкий режим: medium модель вместо large-v3
+    "shorts_subtitles_gemini_hints": True,  # Gemini terms/title hints for Whisper initial_prompt
+    "shorts_boundary_padding": True,  # Take a little before/after selected short boundaries
     "shorts_montage":         False,  # Тематическая склейка из разных моментов
     "shorts_highlights":      False,  # Рекламный highlights reel
     "shorts_title_poster":    True,   # Стильный постер с заголовком для Shorts
     "clips":                  False,  # Длинные clips (5–15 мин) из Q&A / лекций
     "clips_snapshot":         True,   # Poster/snapshot для каждого clip
+    "segments":               False,  # Selectable timestamp-based Q&A/theme cuts
+    "segments_render":        True,   # Allow /cutseg rendering from timestamp segments
+    "segments_subtitles":     True,   # Burn subtitles into /cutseg rendered segments
+    "segments_batch_render":  False,  # Allow /cutseg VIDEO_ID 1,3,5 / all
     # ── Новая продуктовая модель: две сильных article-like страницы ──────────
     "study_analysis":         True,   # «Разбор материала» (аналитика+термины+богословие)
     "reflection_application": True,   # «Размышление и применение» (пасторский guide)
@@ -479,11 +485,17 @@ SETTINGS_LABELS: dict[str, str] = {
     "shorts_subtitles":       "💬 Субтитры",
     "shorts_subtitles_karaoke": "🎤 Karaoke",
     "shorts_subtitles_light": "⚡ Light model",
+    "shorts_subtitles_gemini_hints": "🧠 Gemini hints",
+    "shorts_boundary_padding": "↔️ Запас краёв",
     "shorts_title_poster":    "🖼 Poster",
     "shorts_montage":         "🎬 Montage",
     "shorts_highlights":      "🌟 Highlights",
     "clips":                  "🎬 Clips",
     "clips_snapshot":         "📸 Poster",
+    "segments":               "🧩 Сегменты",
+    "segments_render":        "🎞 Рендер сегментов",
+    "segments_subtitles":     "💬 Субтитры сегментов",
+    "segments_batch_render":  "📦 Пакетная нарезка",
     "study_analysis":         "📖 Разбор материала",
     "reflection_application": "🙏 Размышление и применение",
     "caption_full_text":      "📋 Полный текст отдельно",
@@ -740,8 +752,10 @@ SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
     ("📊 Компактные", ["analytics", "questions", "terms"]),
     ("✂️ Шортс",   ["shorts", "shorts_audio_normalize", "shorts_subtitles",
                     "shorts_subtitles_karaoke", "shorts_subtitles_light",
+                    "shorts_subtitles_gemini_hints", "shorts_boundary_padding",
                     "shorts_title_poster", "shorts_snapshot",
                     "shorts_montage", "shorts_highlights",
                     "__speed__"]),
     ("🎬 Клипы",    ["clips", "clips_snapshot"]),
+    ("🧩 Сегменты", ["segments", "segments_render", "segments_subtitles", "segments_batch_render"]),
 ]

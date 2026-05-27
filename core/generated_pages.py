@@ -153,13 +153,28 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             publication_warning TEXT DEFAULT '',
             model TEXT DEFAULT '',
             prompt_version TEXT DEFAULT '',
+            last_repaired_at INTEGER DEFAULT 0,
+            repair_count INTEGER DEFAULT 0,
+            last_repair_changed_pages INTEGER DEFAULT 0,
+            last_repair_errors TEXT DEFAULT '',
             created_at INTEGER DEFAULT 0,
             updated_at INTEGER DEFAULT 0
         )
     """)
+    for col, ddl in [
+        ("last_repaired_at", "INTEGER DEFAULT 0"),
+        ("repair_count", "INTEGER DEFAULT 0"),
+        ("last_repair_changed_pages", "INTEGER DEFAULT 0"),
+        ("last_repair_errors", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE generated_pages ADD COLUMN {col} {ddl}")
+        except sqlite3.OperationalError:
+            pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_updated ON generated_pages(updated_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_author ON generated_pages(author)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_status ON generated_pages(publication_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_repaired ON generated_pages(last_repaired_at)")
 
 
 def _record_values(record: dict[str, Any]) -> tuple:
@@ -185,7 +200,8 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
                youtube_url, rutube_url, vk_url, synopsis_url, study_url, reflection_url,
                terms_url, questions_url, hashtags, key_categories, scripture_refs,
                publication_status, publication_missing, publication_warning,
-               model, prompt_version, created_at, updated_at
+               model, prompt_version, last_repaired_at, repair_count,
+               last_repair_changed_pages, last_repair_errors, created_at, updated_at
         FROM generated_pages
         ORDER BY updated_at DESC
         LIMIT ?
@@ -197,7 +213,8 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
         "youtube_url", "rutube_url", "vk_url", "synopsis_url", "study_url", "reflection_url",
         "terms_url", "questions_url", "hashtags", "key_categories", "scripture_refs",
         "publication_status", "publication_missing", "publication_warning",
-        "model", "prompt_version", "created_at", "updated_at",
+        "model", "prompt_version", "last_repaired_at", "repair_count",
+        "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
     ]
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -239,6 +256,14 @@ def _md_record(record: dict[str, Any]) -> str:
         lines.append("- Tags: " + " ".join("#" + str(x).lstrip("#") for x in record["hashtags"]))
     if record.get("scripture_refs"):
         lines.append("- Scripture: " + "; ".join(record["scripture_refs"][:12]))
+    if int(record.get("last_repaired_at") or 0):
+        lines.append(
+            f"- Repaired: {_fmt_ts(record.get('last_repaired_at') or 0)} "
+            f"(count={int(record.get('repair_count') or 0)}, "
+            f"changed={int(record.get('last_repair_changed_pages') or 0)})"
+        )
+        if record.get("last_repair_errors"):
+            lines.append(f"- Repair errors: {record['last_repair_errors']}")
     lines.append(f"- Updated: {_fmt_ts(record.get('updated_at') or record.get('created_at') or 0)}")
     lines.append("")
     return "\n".join(lines)
@@ -399,3 +424,152 @@ def query_generated_pages(
 async def aquery_generated_pages(**kwargs) -> list[dict[str, Any]]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: query_generated_pages(**kwargs))
+
+
+def update_generated_page_repair_status(
+    video_id: str,
+    *,
+    changed_pages: int = 0,
+    errors: list[str] | None = None,
+    base_dir: Path | None = None,
+) -> None:
+    """Persist repair metadata and refresh Markdown exports."""
+    video_id = str(video_id or "").strip()
+    if not video_id:
+        return
+    base = Path(base_dir or ARCHIVE_DIR)
+    db_path = base / ARCHIVE_DB
+    if not db_path.exists():
+        return
+    now = _now_ts()
+    err_text = "; ".join(str(e)[:180] for e in (errors or []) if str(e).strip())[:1000]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
+        _ensure_schema(conn)
+        conn.execute(
+            """
+            UPDATE generated_pages
+            SET last_repaired_at = ?,
+                repair_count = COALESCE(repair_count, 0) + 1,
+                last_repair_changed_pages = ?,
+                last_repair_errors = ?,
+                updated_at = ?
+            WHERE video_id = ?
+            """,
+            (now, int(changed_pages or 0), err_text, now, video_id),
+        )
+        conn.commit()
+        recent = _load_recent(conn, limit=200)
+    _write_markdown_exports(base, recent)
+
+
+async def aupdate_generated_page_repair_status(video_id: str, **kwargs) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: update_generated_page_repair_status(video_id, **kwargs))
+
+
+def get_generated_page_record(video_id: str, base_dir: Path | None = None) -> dict[str, Any] | None:
+    """Return one archived generated_pages record by exact video_id."""
+    video_id = str(video_id or "").strip()
+    if not video_id:
+        return None
+    base = Path(base_dir or ARCHIVE_DIR)
+    db_path = base / ARCHIVE_DB
+    if not db_path.exists():
+        return None
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
+        _ensure_schema(conn)
+        rows = _load_recent(conn, limit=500)
+    for row in rows:
+        if str(row.get("video_id") or "") == video_id:
+            return row
+    return None
+
+
+async def aget_generated_page_record(video_id: str, base_dir: Path | None = None) -> dict[str, Any] | None:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: get_generated_page_record(video_id, base_dir=base_dir))
+
+
+def save_segment_plan_export(
+    *,
+    video_id: str,
+    title: str,
+    author: str = "",
+    timestamps: Any = "",
+    duration: int | float = 0,
+    format_name: str = "",
+    base_dir: Path | None = None,
+) -> dict[str, str]:
+    """Write human/machine segment plan export for a processed video."""
+    from core.segment_planner import build_segments_from_timestamps, format_segments_text
+
+    video_id = _safe_text(video_id, 160) or _slug(title or str(_now_ts()))
+    segments = build_segments_from_timestamps(timestamps, duration, format_name=format_name)
+    base = Path(base_dir or ARCHIVE_DIR) / "segments"
+    base.mkdir(parents=True, exist_ok=True)
+    stem = _slug(video_id, 120)
+    json_path = base / f"{stem}_segments.json"
+    md_path = base / f"{stem}_segments.md"
+    payload = {
+        "video_id": video_id,
+        "title": _safe_text(title, 400),
+        "author": _safe_text(author, 240),
+        "format": _safe_text(format_name, 80),
+        "duration": int(duration or 0),
+        "segments": [
+            {"index": s.index, "start": s.start, "end": s.end, "duration": s.duration, "title": s.title, "kind": s.kind}
+            for s in segments
+        ],
+        "updated_at": _now_ts(),
+    }
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    md = [f"# Segments — {title or video_id}", ""]
+    if author:
+        md.append(f"Author: {author}")
+    md.append(f"Video ID: `{video_id}`")
+    md.append("")
+    md.append(format_segments_text(segments) if segments else "Сегменты не найдены.")
+    md.append("")
+    md.append("Render examples:")
+    md.append(f"- `/segments {video_id}`")
+    md.append(f"- `/cutseg {video_id} 1`")
+    md.append(f"- `/cutseg {video_id} 1,3,5`")
+    md_path.write_text("\n".join(md).strip() + "\n", encoding="utf-8")
+    return {"json": str(json_path), "md": str(md_path), "count": str(len(segments))}
+
+
+async def asave_segment_plan_export(**kwargs) -> dict[str, str]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: save_segment_plan_export(**kwargs))
+
+
+def get_segment_export_paths(video_id: str, base_dir: Path | None = None) -> dict[str, str]:
+    """Return expected segment export paths for a video_id."""
+    video_id = _safe_text(video_id, 160)
+    if not video_id:
+        return {}
+    base = Path(base_dir or ARCHIVE_DIR) / "segments"
+    stem = _slug(video_id, 120)
+    return {
+        "md": str(base / f"{stem}_segments.md"),
+        "json": str(base / f"{stem}_segments.json"),
+    }
+
+
+def get_archive_export_path(kind: str, base_dir: Path | None = None) -> Path | None:
+    """Return a known archive export path by user-facing kind."""
+    base = Path(base_dir or ARCHIVE_DIR)
+    kind = (kind or "latest").strip().lower()
+    mapping = {
+        "latest": base / "latest.md",
+        "last": base / "latest.md",
+        "all": base / "all_links.md",
+        "links": base / "all_links.md",
+        "jsonl": base / ARCHIVE_JSONL,
+        "readme": base / "README.md",
+        "db": base / ARCHIVE_DB,
+        "sqlite": base / ARCHIVE_DB,
+    }
+    return mapping.get(kind)

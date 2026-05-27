@@ -47,7 +47,8 @@ from pipelines.montage import process_and_send_montage, process_and_send_highlig
 from core.progress import set_progress
 from core.publication_status import build_publication_status, missing_to_json
 from core.generated_pages import (
-    asave_generated_page_record, build_generated_page_record, extract_scripture_refs,
+    asave_generated_page_record, asave_segment_plan_export,
+    build_generated_page_record, extract_scripture_refs,
 )
 
 import asyncio
@@ -918,10 +919,28 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             ts_half = _trim_timestamps(_ai_for_caption["timestamps"], max(_ts_limit // 2, 3))
             caption = _build({**_ai_for_caption, "hashtags": "", "timestamps": ts_half})
             _cap_ts_str = ts_half
-        # Шаг 3: убрать таймкоды полностью
+        # Шаг 3: раньше таймкоды удалялись полностью. Это давало ts_in_cap=0
+        # даже при 11–13 таймкодах и визуально выглядело как «половина ролика
+        # потерялась». Сначала пробуем сверхкомпактный равномерный набор,
+        # сохраняющий начало/середину/финал материала.
         if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-            caption = _build({**_ai_for_caption, "hashtags": "", "timestamps": ""})
-            _cap_ts_str = ""
+            _fit_found = False
+            for _mini_limit in (7, 5, 3):
+                ts_mini = _trim_timestamps(_ai_for_caption["timestamps"], min(_mini_limit, _ts_limit))
+                candidate = _build({
+                    **_ai_for_caption,
+                    "hashtags": "",
+                    "main_topic": "",
+                    "timestamps": ts_mini,
+                })
+                if visible_length(candidate) <= 1024:
+                    caption = candidate
+                    _cap_ts_str = ts_mini
+                    _fit_found = True
+                    break
+            if not _fit_found:
+                caption = _build({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": ""})
+                _cap_ts_str = ""
         # Шаг 4: последний резерв — шапка + ссылки, обрезаем без лома тегов
         if visible_length(caption) > 1024:
             platform_block = build_platform_links(url, rutube_url, vk_url)
@@ -1000,7 +1019,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     prompt_version=get_prompt_fingerprint(),
                 )
                 await asave_generated_page_record(_archive_record)
-                logger.info("Generated pages archive saved for %s", media_id)
+                _segment_export = await asave_segment_plan_export(
+                    video_id=media_id,
+                    title=_archive_record.get("title", ""),
+                    author=_archive_record.get("author", ""),
+                    timestamps=(ai_data or {}).get("timestamps", ""),
+                    duration=duration,
+                    format_name=_mat_format,
+                )
+                logger.info("Generated pages archive saved for %s; segments=%s", media_id, _segment_export.get("count"))
             except Exception as _archive_err:
                 logger.warning("Generated pages archive save failed for %s: %s", media_id, _archive_err)
 
