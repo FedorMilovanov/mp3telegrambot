@@ -338,3 +338,64 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
 async def asave_generated_page_record(record: dict[str, Any], base_dir: Path | None = None) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: save_generated_page_record(record, base_dir=base_dir))
+
+
+def query_generated_pages(
+    *,
+    limit: int = 10,
+    query: str = "",
+    author: str = "",
+    scripture: str = "",
+    status: str = "",
+    base_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Query generated pages archive for bot commands.
+
+    SQLite ``LIKE`` is not reliably case-insensitive for Cyrillic, so we load a
+    bounded recent window and filter in Python with ``casefold()``. The archive
+    command is an admin/readout path, not a high-volume public search engine.
+    """
+    base = Path(base_dir or ARCHIVE_DIR)
+    db_path = base / ARCHIVE_DB
+    if not db_path.exists():
+        return []
+    limit = max(1, min(int(limit or 10), 50))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
+        _ensure_schema(conn)
+        candidates = _load_recent(conn, limit=500)
+
+    q = str(query or "").strip().casefold()
+    a = str(author or "").strip().casefold()
+    sr = str(scripture or "").strip().casefold()
+    st = str(status or "").strip().casefold()
+
+    def haystack(r: dict[str, Any]) -> str:
+        parts = [
+            r.get("title", ""), r.get("author", ""), r.get("event", ""),
+            r.get("format", ""), r.get("publication_status", ""),
+            " ".join(r.get("hashtags") or []),
+            " ".join(r.get("key_categories") or []),
+            " ".join(r.get("scripture_refs") or []),
+        ]
+        return " ".join(str(x) for x in parts).casefold()
+
+    out: list[dict[str, Any]] = []
+    for r in candidates:
+        h = haystack(r)
+        if q and q not in h:
+            continue
+        if a and a not in str(r.get("author", "")).casefold():
+            continue
+        if sr and sr not in (" ".join(r.get("scripture_refs") or []) + " " + str(r.get("title", ""))).casefold():
+            continue
+        if st and st != str(r.get("publication_status", "")).casefold():
+            continue
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+async def aquery_generated_pages(**kwargs) -> list[dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: query_generated_pages(**kwargs))

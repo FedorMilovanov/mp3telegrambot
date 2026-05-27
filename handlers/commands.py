@@ -24,6 +24,7 @@ from core.utils import (
 )
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX #9
 from core.observability import format_gemini_metrics_report
+from core.generated_pages import ARCHIVE_DIR, aquery_generated_pages
 from pipelines.main_pipeline import process_single_video
 from pipelines.playlist import handle_playlist
 
@@ -49,7 +50,9 @@ async def start(update, context):
                 "\n\n🔧 <b>Команды администратора:</b>\n"
                 "/resetcache &lt;url или video_id&gt;\n"
                 "/resetcache all — очистить весь кэш\n"
-                "/metrics [hours] — Gemini метрики"
+                "/metrics [hours] — Gemini метрики\n"
+                "/archive [n] — последние опубликованные страницы\n"
+                "/search &lt;текст&gt; — поиск по архиву"
             )
         text = (
             f"🎵 <b>Media Audio Converter</b>\n\n"
@@ -104,7 +107,9 @@ async def help_command(update, context):
         f"📌 Тема • ⏱ Таймкоды • 🏷 Хэштеги\n\n"
         f"🔒 Ваши лимиты: {limit_line}\n\n"
         f"/start — Приветствие\n"
-        f"/help  — Справка"
+        f"/help  — Справка\n"
+        f"/archive — Последние публикации\n"
+        f"/search <текст> — Поиск по архиву"
     )
 
 
@@ -419,3 +424,107 @@ async def handle_message(update, context):
 
 
 # ─── Запуск ──────────────────────────────────────────────────
+
+
+def _archive_parse_limit(args, default: int = 7) -> int:
+    if not args:
+        return default
+    try:
+        return max(1, min(int(str(args[-1]).strip()), 20))
+    except (TypeError, ValueError):
+        return default
+
+
+def _archive_format_records(records: list[dict], *, title: str) -> str:
+    if not records:
+        return f"📚 <b>{html_mod.escape(title)}</b>\n\nНичего не найдено."
+    parts = [f"📚 <b>{html_mod.escape(title)}</b>", ""]
+    for i, r in enumerate(records, 1):
+        name = html_mod.escape(r.get("title") or "Без названия")
+        author = html_mod.escape(r.get("author") or "Автор не указан")
+        status = html_mod.escape(r.get("publication_status") or "unknown")
+        parts.append(f"<b>{i}. {name}</b>")
+        parts.append(f"👤 {author} · <code>{status}</code>")
+        links = []
+        for label, key in (("YouTube", "youtube_url"), ("Конспект", "synopsis_url"), ("Разбор", "study_url"), ("Размышление", "reflection_url")):
+            url = r.get(key) or ""
+            if url:
+                links.append(f'<a href="{html_mod.escape(url)}">{label}</a>')
+        if links:
+            parts.append(" · ".join(links))
+        if r.get("publication_warning"):
+            parts.append("⚠️ " + html_mod.escape(str(r.get("publication_warning"))))
+        parts.append("")
+    text = "\n".join(parts).strip()
+    if len(text) > 3900:
+        text = text[:3850] + "\n\n…обрезано, уточните запрос."
+    return text
+
+
+async def archive_command(update, context):
+    """Shows latest generated Telegraph pages from the durable archive."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    limit = _archive_parse_limit(context.args, 7)
+    records = await aquery_generated_pages(limit=limit)
+    text = _archive_format_records(records, title=f"Последние публикации ({limit})")
+    text += f"\n\n📁 Папка архива: <code>{html_mod.escape(str(ARCHIVE_DIR))}</code>"
+    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def lastpages_command(update, context):
+    """Alias for /archive."""
+    await archive_command(update, context)
+
+
+async def search_archive_command(update, context):
+    """Search generated pages archive by free text."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    query = " ".join(context.args or []).strip()
+    if not query:
+        await update.message.reply_text("🔎 Использование: <code>/search молитва</code>", parse_mode="HTML")
+        return
+    records = await aquery_generated_pages(limit=10, query=query)
+    await update.message.reply_text(
+        _archive_format_records(records, title=f"Поиск: {query}"),
+        parse_mode="HTML", disable_web_page_preview=True,
+    )
+
+
+async def author_archive_command(update, context):
+    """Search archive by author."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    author = " ".join(context.args or []).strip()
+    if not author:
+        await update.message.reply_text("👤 Использование: <code>/author Джон МакАртур</code>", parse_mode="HTML")
+        return
+    records = await aquery_generated_pages(limit=10, author=author)
+    await update.message.reply_text(
+        _archive_format_records(records, title=f"Автор: {author}"),
+        parse_mode="HTML", disable_web_page_preview=True,
+    )
+
+
+async def scripture_archive_command(update, context):
+    """Search archive by scripture reference."""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
+        return
+    ref = " ".join(context.args or []).strip()
+    if not ref:
+        await update.message.reply_text("📖 Использование: <code>/scripture Исаия 53</code>", parse_mode="HTML")
+        return
+    records = await aquery_generated_pages(limit=10, scripture=ref)
+    await update.message.reply_text(
+        _archive_format_records(records, title=f"Писание: {ref}"),
+        parse_mode="HTML", disable_web_page_preview=True,
+    )
