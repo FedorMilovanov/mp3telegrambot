@@ -46,6 +46,9 @@ from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.progress import set_progress
 from core.publication_status import build_publication_status, missing_to_json
+from core.generated_pages import (
+    asave_generated_page_record, build_generated_page_record, extract_scripture_refs,
+)
 
 import asyncio
 import json
@@ -968,6 +971,38 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     publication_status=_pub_status.status,
                     publication_missing=missing_to_json(_pub_status.missing),
                     publication_warning=_pub_status.warning)
+
+            # V3-P24: durable human-readable archive independent of expiring cache.
+            try:
+                _archive_record = build_generated_page_record(
+                    video_id=media_id,
+                    source_url=url,
+                    title=normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title") or search_title or title) or (search_title or title)),
+                    author=normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author") or tg_author or performer) or (tg_author or performer)),
+                    event=normalize_common_typos(_scrub_inline((ai_data or {}).get("real_event", ""))),
+                    format_name=_mat_format,
+                    duration=duration,
+                    youtube_url=url,
+                    rutube_url=rutube_url or "",
+                    vk_url=vk_url or "",
+                    synopsis_url=telegraph_url or "",
+                    study_url=study_analysis_tg or "",
+                    reflection_url=reflection_application_tg or "",
+                    terms_url=terms_tg or "",
+                    questions_url=questions_tg or "",
+                    hashtags=(ai_data or {}).get("hashtags", []),
+                    key_categories=(ai_data or {}).get("key_categories", []),
+                    scripture_refs=extract_scripture_refs(ai_data),
+                    publication_status=_pub_status.status,
+                    publication_missing=_pub_status.missing,
+                    publication_warning=_pub_status.warning,
+                    model=GEMINI_MODEL,
+                    prompt_version=get_prompt_fingerprint(),
+                )
+                await asave_generated_page_record(_archive_record)
+                logger.info("Generated pages archive saved for %s", media_id)
+            except Exception as _archive_err:
+                logger.warning("Generated pages archive save failed for %s: %s", media_id, _archive_err)
 
         with open(mp3_path, "rb") as audio_file:
             audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)

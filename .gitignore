@@ -59,3 +59,9 @@ logs/
 # Окружение
 .env
 !.env.example
+
+# Generated pages archive runtime exports (created automatically by bot)
+/data/generated_pages/*.sqlite
+/data/generated_pages/*.jsonl
+/data/generated_pages/*.md
+/data/generated_pages/by_date/
