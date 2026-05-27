@@ -58,7 +58,7 @@ def run_checks(root: Path, *, skip_pytest: bool = False, skip_ruff: bool = False
         result = _run(name, command, root)
         results.append(result)
         if not result.ok:
-            print(f"\n❌ {name} failed with exit code {result.returncode}")
+            print(f"\n[FAIL] {name} failed with exit code {result.returncode}")
             break
     return results
 
@@ -75,11 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     failed = [r for r in results if not r.ok]
     print("\n=== SUMMARY ===")
     for r in results:
-        mark = "✅" if r.ok else "❌"
-        print(f"{mark} {r.name}")
+        mark = "OK" if r.ok else "FAIL"
+        print(f"[{mark}] {r.name}")
     if failed:
         return failed[0].returncode or 1
-    print("✅ Repository verification passed")
+    print("Repository verification passed")
     return 0
 
 
