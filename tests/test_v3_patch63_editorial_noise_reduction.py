@@ -22,8 +22,8 @@ def test_telegraph_pipelines_log_fix_only_audits_as_info_not_warning():
     telegraph = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "has_content_audit_warnings" in pages
     assert "has_content_audit_warnings" in telegraph
-    assert "and logger.warning or logger.info" in pages
-    assert "and logger.warning or logger.info" in telegraph
+    assert "logger.warning if has_content_audit_warnings" in pages
+    assert "logger.warning if has_content_audit_warnings" in telegraph
 
 
 def test_source_pack_isaiah_servant_no_longer_forces_chou():

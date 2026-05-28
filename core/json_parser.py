@@ -71,6 +71,49 @@ def _recover_truncated_json(chunk: str) -> dict | None:
     return None
 
 
+
+def _strip_json_code_fence(text: str) -> str:
+    """Remove one outer markdown code fence without touching nested/backticked JSON strings."""
+    t = str(text or "").strip()
+    m = re.match(r"^```[a-zA-Z0-9_-]*\s*\n?(.*?)\n?```\s*$", t, flags=re.DOTALL)
+    return m.group(1).strip() if m else t
+
+
+def _extract_json_object_chunk(text: str) -> tuple[str, bool] | None:
+    """Return (chunk, complete) for the first top-level JSON object.
+
+    Unlike naive ``find('{')`` + ``rfind('}')``, this ignores braces inside
+    strings and returns an incomplete tail when MAX_TOKENS truncates before the
+    final closing brace, allowing _recover_truncated_json() to run.
+    """
+    t = _strip_json_code_fence(text)
+    start = t.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for idx in range(start, len(t)):
+        ch = t[idx]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return t[start:idx + 1], True
+    return t[start:], False
+
 def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     """v3.2 — парсит плоский JSON от Gemini + terms_data. При ошибке возвращает None.
 
@@ -105,35 +148,38 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
         return out
 
     try:
-        clean = text.strip()
-        clean = re.sub(r"^```[a-z]*\s*", "", clean)
-        clean = re.sub(r"\s*```$", "", clean).strip()
-        start = clean.find("{")
-        end   = clean.rfind("}")
-        if start == -1 or end <= start:
+        extracted = _extract_json_object_chunk(text)
+        if extracted is None:
             logger.warning("_parse_gemini_response: JSON не найден в ответе")
             return None
-        clean = clean[start:end + 1]
-        data  = json.loads(clean)
-    except json.JSONDecodeError as e:
-        logger.warning(f"_parse_gemini_response JSONDecodeError: {e} | текст: {text[:300]}")
-        # Попытка восстановить обрезанный JSON (MAX_TOKENS от Gemini)
-        _chunk = text.strip()
-        _chunk = re.sub(r"^```[a-z]*\s*", "", _chunk)
-        _chunk = re.sub(r"\s*```$", "", _chunk).strip()
-        _s = _chunk.find("{")
-        if _s != -1:
-            _recovered = _recover_truncated_json(_chunk[_s:])
-            if _recovered is not None:
-                logger.info(
-                    f"_parse_gemini_response: восстановлен обрезанный JSON "
-                    f"(ключей в ответе: {len(_recovered)})"
-                )
-                data = _recovered
-            else:
-                logger.warning("_parse_gemini_response: восстановление не удалось — возвращаю None")
+        clean, complete = extracted
+        if not complete:
+            _recovered = _recover_truncated_json(clean)
+            if _recovered is None:
+                logger.warning("_parse_gemini_response: truncated JSON recovery failed — returning None")
                 return None
+            logger.info(
+                f"_parse_gemini_response: восстановлен обрезанный JSON "
+                f"(ключей в ответе: {len(_recovered)})"
+            )
+            data = _recovered
         else:
+            data = json.loads(clean)
+    except json.JSONDecodeError as e:
+        logger.warning(f"_parse_gemini_response JSONDecodeError: {e} | текст: {str(text)[:300]}")
+        extracted = _extract_json_object_chunk(text)
+        if extracted is None:
+            return None
+        _chunk, _complete = extracted
+        _recovered = _recover_truncated_json(_chunk)
+        if _recovered is not None:
+            logger.info(
+                f"_parse_gemini_response: восстановлен обрезанный JSON "
+                f"(ключей в ответе: {len(_recovered)})"
+            )
+            data = _recovered
+        else:
+            logger.warning("_parse_gemini_response: восстановление не удалось — возвращаю None")
             return None
 
     result: dict = {

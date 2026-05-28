@@ -84,6 +84,67 @@ _SEARCH_STOPWORDS: frozenset = frozenset({
     "пол", "вошер", "paul", "washer", "том", "пеннингтон", "tom", "pennington",
 })
 
+
+def _score_candidate_match(
+    meaningful_words: set[str],
+    item_meaningful: set[str],
+    rare_words: set[str],
+    *,
+    duration: int = 0,
+    item_duration: int = 0,
+) -> tuple[float, float, float, float, int]:
+    """Return (score, f1_word_score, dur_score, recall, intersection_count).
+
+    Patch 68/69 search safety: the old denominator ``min(query,candidate)`` made
+    one-word/author-only candidates look perfect.  F1 keeps both precision and
+    recall visible, and hard gates below prevent RuTube/VK false positives from
+    being published as alternative links.
+    """
+    if not meaningful_words or not item_meaningful:
+        return 0.0, 0.0, 0.0, 0.0, 0
+    intersection = meaningful_words & item_meaningful
+    inter_count = len(intersection)
+    precision = inter_count / max(len(item_meaningful), 1)
+    recall = inter_count / max(len(meaningful_words), 1)
+    word_score = 0.0 if (precision + recall) <= 0 else (2 * precision * recall / (precision + recall))
+
+    dur_diff = abs(item_duration - duration) if duration and item_duration else 999
+    dur_score = (
+        1.0 if dur_diff < 30 else
+        0.7 if dur_diff < 120 else
+        0.4 if dur_diff < 300 else
+        0.15 if dur_diff < 600 else
+        0.0
+    )
+
+    # Hard safety gates for long materials. One matched author/event word must
+    # never beat a real sermon title just because duration is close.
+    if duration >= 600:
+        if inter_count < 2:
+            return 0.0, word_score, dur_score, recall, inter_count
+        if recall < 0.30:
+            return 0.0, word_score, dur_score, recall, inter_count
+
+    # Short clips can have 1-2 meaningful words, but still need at least one
+    # real token match.
+    if inter_count <= 0:
+        return 0.0, word_score, dur_score, recall, inter_count
+
+    rare_bonus = 0.1 * len(rare_words & item_meaningful) / max(len(rare_words), 1) if rare_words else 0.0
+    score = word_score * 0.60 + dur_score * 0.30 + rare_bonus * 0.10
+
+    # Candidate is much longer than query: likely a conference/session umbrella.
+    excess_ratio = len(item_meaningful) / max(len(meaningful_words), 1)
+    if excess_ratio > 3.0:
+        score *= 0.7
+
+    # Duration mismatch must cap long-video candidates below the public return
+    # threshold. This specifically blocks VK hits with dur_score=0.0.
+    if duration >= 600 and item_duration and dur_score == 0.0:
+        score = min(score, 0.49)
+
+    return score, word_score, dur_score, recall, inter_count
+
 # Порог досрочного выхода: score >= этого значения считается надёжным совпадением
 _EARLY_EXIT_SCORE  = 0.80
 # Сколько лучших кандидатов выводить в лог (остальные молча отбрасываются)
@@ -120,34 +181,17 @@ def _best_match(results: list, title: str, duration: int, platform: str,
         norm_item  = _normalize(item_title)
         item_words = set(norm_item.split())
         item_meaningful = item_words - _SEARCH_STOPWORDS if len(item_words) > 2 else item_words
-        # Двустороннее сравнение по значимым словам (без стоп-слов)
+        score, word_score, dur_score, recall, inter_count = _score_candidate_match(
+            meaningful_words, item_meaningful, rare_words,
+            duration=duration, item_duration=item_duration,
+        )
         intersection = meaningful_words & item_meaningful
-        if not meaningful_words or not item_meaningful:
-            word_score = 0.0
-        else:
-            word_score = min(len(intersection) / min(len(meaningful_words), len(item_meaningful)), 1.0)
-        # Штраф за большой избыток слов у кандидата (много лишнего в названии)
-        excess_ratio = len(item_meaningful) / max(len(meaningful_words), 1)
-        if excess_ratio > 3.0:
-            word_score *= 0.7  # кандидат в 3+ раза длиннее запроса — скорее всего не то
-        rare_bonus = 0.1 * len(rare_words & item_meaningful) / max(len(rare_words), 1) if rare_words else 0
-        dur_diff   = abs(item_duration - duration) if duration and item_duration else 999
-        dur_score  = (1.0 if dur_diff < 30 else 0.7 if dur_diff < 120
-                      else 0.4 if dur_diff < 300 else 0.15 if dur_diff < 600 else 0.0)
-        score      = word_score * 0.60 + dur_score * 0.30 + rare_bonus * 0.10
-
-        # Минимальный порог по словам: запрет возвращать результат только
-        # потому что совпало имя автора, а название проповеди — нет.
-        # Для коротких запросов (≤3 слова) порог ниже — там всё важно.
-        min_word_score = 0.20 if len(meaningful_words) <= 3 else 0.30
-        if word_score < min_word_score:
-            score = 0.0  # обнуляем — даже хорошая длительность не спасёт
 
         if score > threshold:
             log_line = (
                 f"  [{platform}] '{item_title[:55]}' dur={item_duration}s "
                 f"words={len(intersection)}/{len(title_words)}∩{len(item_words)} "
-                f"word={word_score:.2f} dur={dur_score:.1f} rare={rare_bonus:.2f} → {score:.2f}"
+                f"word_f1={word_score:.2f} recall={recall:.2f} dur={dur_score:.1f} → {score:.2f}"
             )
             candidates.append((score, item_url, log_line))
 
@@ -184,20 +228,10 @@ def _best_match_confident(results: list, title: str, duration: int) -> bool:
         norm_item  = _normalize(item_title)
         item_words = set(norm_item.split())
         item_meaningful = item_words - _SEARCH_STOPWORDS if len(item_words) > 2 else item_words
-        intersection = meaningful_words & item_meaningful
-        if not meaningful_words or not item_meaningful:
-            continue
-        word_score = min(len(intersection) / min(len(meaningful_words), len(item_meaningful)), 1.0)
-        # Синхронизировано с _best_match: минимальный порог по словам
-        # без него score от duration может дать ложное "уверенное" совпадение
-        min_word_score = 0.20 if len(meaningful_words) <= 3 else 0.30
-        if word_score < min_word_score:
-            continue
-        rare_bonus = 0.1 * len(rare_words & item_words) / max(len(rare_words), 1) if rare_words else 0
-        dur_diff   = abs(item_duration - duration) if duration and item_duration else 999
-        dur_score  = (1.0 if dur_diff < 30 else 0.7 if dur_diff < 120
-                      else 0.4 if dur_diff < 300 else 0.15 if dur_diff < 600 else 0.0)
-        score = word_score * 0.60 + dur_score * 0.30 + rare_bonus * 0.10
+        score, _word_score, _dur_score, _recall, _inter_count = _score_candidate_match(
+            meaningful_words, item_meaningful, rare_words,
+            duration=duration, item_duration=item_duration,
+        )
         if score >= threshold:
             return True
     return False

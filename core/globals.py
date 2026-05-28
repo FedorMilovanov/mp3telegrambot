@@ -172,8 +172,9 @@ def _is_gemini_3x(model_name: str) -> bool:
     if not model_name:
         return False
     m = model_name.lower().strip()
-    # gemini-3.5-flash, gemini-3.1-flash-lite, gemini-3-flash-preview, gemini-3-...
-    return bool(re.search(r'(^|[^a-z0-9])gemini-3(?:[.\-]\d+)?(?:[\-_.]|$)', m))
+    # gemini-3.5-flash, gemini-3.1-flash-lite, gemini-3-flash-preview.
+    # Use fullmatch so aliases like "my-gemini-3-proxy" do not get 3.x config.
+    return bool(re.fullmatch(r'gemini-3(?:[.\-]\d+)?(?:[\-_.].*)?', m))
 
 
 def _build_thinking_config(level: str = "high"):
@@ -224,10 +225,9 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
         kwargs["response_schema"] = response_schema
 
     if is_3x:
-        # Gemini Structured Output and thinking_config are not always accepted
-        # together by the API. For schema-constrained calls, prefer schema
-        # stability and skip explicit thinking_config.
-        if response_schema is None and not response_mime_type:
+        # 3.x supports schema-constrained output together with thinking_config.
+        # Keep an opt-out env flag for SDK/API regressions.
+        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
@@ -270,8 +270,7 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
         kwargs["response_schema"] = response_schema
 
     if is_3x:
-        # Schema-constrained calls should not force thinking_config.
-        if response_schema is None and not response_mime_type:
+        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
@@ -348,6 +347,44 @@ def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None
             _video_lock_meta[video_id] = time.time()
 
 
+_EXHAUSTED_MODELS: dict[str, float] = {}
+
+
+def _quota_retry_delay_seconds(e, default: int = 3600) -> int:
+    m = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)s", str(e), re.IGNORECASE)
+    if not m:
+        m = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", str(e), re.IGNORECASE)
+    if m:
+        try:
+            return max(60, min(int(float(m.group(1))) + 5, 24 * 3600))
+        except (TypeError, ValueError):
+            pass
+    return default
+
+
+def mark_model_exhausted(model_name: str, err=None, *, seconds: int | None = None) -> None:
+    """Remember project/model-level Gemini quota exhaustion in-memory."""
+    model = str(model_name or "").strip()
+    if not model:
+        m = re.search(r"model['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_.-]+)", str(err), re.IGNORECASE)
+        model = m.group(1) if m else ""
+    if not model:
+        return
+    ttl = int(seconds if seconds is not None else _quota_retry_delay_seconds(err))
+    _EXHAUSTED_MODELS[model] = time.time() + max(60, ttl)
+
+
+def is_model_exhausted(model_name: str) -> bool:
+    model = str(model_name or "").strip()
+    if not model:
+        return False
+    until = _EXHAUSTED_MODELS.get(model, 0)
+    if until and until > time.time():
+        return True
+    if until:
+        _EXHAUSTED_MODELS.pop(model, None)
+    return False
+
 def is_quota_error(e) -> bool:
     s = str(e).lower()
     return "quota" in s or "429" in s or "resource_exhausted" in s
@@ -365,12 +402,15 @@ def is_overload_error(e) -> bool:
 
 _current_client_idx = 0
 
-async def gemini_generate(client_list, fn):
+async def gemini_generate(client_list, fn, model_name: str = ""):
     global _current_client_idx
     last_err = None
     if not client_list:
         raise RuntimeError("No Gemini clients available")
         
+    if model_name and is_model_exhausted(model_name):
+        raise RuntimeError(f"Gemini model quota exhausted in-memory: {model_name}")
+
     start_idx = _current_client_idx
     for i in range(len(client_list)):
         idx = (start_idx + i) % len(client_list)
@@ -382,7 +422,9 @@ async def gemini_generate(client_list, fn):
                 return await fn(client)
             except Exception as e:
                 if is_quota_error(e):
-                    logger.warning(f"Gemini квота на ключе {idx}, пробую следующий...")
+                    if model_name:
+                        mark_model_exhausted(model_name, e)
+                    logger.warning(f"Gemini квота на ключе {idx}, модель помечена exhausted; пробую fallback...")
                     last_err = e
                     break
                 elif is_overload_error(e):

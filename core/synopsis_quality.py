@@ -49,7 +49,11 @@ def audit_synopsis_density(sections: list[dict], duration_seconds: int | float =
     profile = get_synopsis_density_profile(duration_seconds)
     issues: list[SynopsisQualityIssue] = []
     valid = [s for s in sections or [] if isinstance(s, dict)]
-    total_chars = sum(len(str(s.get("content") or "").strip()) for s in valid)
+    total_chars = sum(
+        len(str(s.get("content") or "").strip())
+        + sum(len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or "")) for b in (s.get("blocks") or []) if isinstance(b, dict))
+        for s in valid
+    )
     if len(valid) < profile.min_sections:
         issues.append(SynopsisQualityIssue(
             "synopsis_too_few_sections",
@@ -82,15 +86,21 @@ def format_synopsis_quality_issues(issues: list[SynopsisQualityIssue]) -> str:
 def synopsis_density_score(sections: list[dict], duration_seconds: int | float = 0) -> int:
     """Simple monotonic score for comparing original vs retry Synopsis."""
     valid = [s for s in sections or [] if isinstance(s, dict)]
-    total_chars = sum(len(str(s.get("content") or "").strip()) for s in valid)
+    total_chars = sum(
+        len(str(s.get("content") or "").strip())
+        + sum(len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or "")) for b in (s.get("blocks") or []) if isinstance(b, dict))
+        for s in valid
+    )
     times = [_section_time_seconds(s) for s in valid]
     times = [t for t in times if t is not None]
     try:
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
         dur = 0
-    coverage_bonus = int((max(times) / dur) * 2000) if times and dur else 0
-    return total_chars + len(valid) * 500 + coverage_bonus
+    # Coverage is a tie-breaker, not a substitute for real content.
+    # Old bonus=2000 could make a thin retry beat a substantially deeper original.
+    coverage_bonus = min(250, int((max(times) / dur) * 250)) if times and dur else 0
+    return total_chars + len(valid) * 350 + coverage_bonus
 
 
 def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_seconds: int | float = 0) -> bool:

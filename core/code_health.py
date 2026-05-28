@@ -33,6 +33,11 @@ class CodeHealthReport:
     top_files: tuple[FileHealthItem, ...]
     source_title_registry_entries: int
     typo_replacements: int
+    regex_threshold: int = 300
+
+    @property
+    def regex_over_threshold(self) -> bool:
+        return self.total_regex_markers > self.regex_threshold
 
 
 def _iter_py_files(root: Path, dirs: Iterable[str] = DEFAULT_SCAN_DIRS) -> list[Path]:
@@ -105,6 +110,12 @@ def format_code_health_report(root: Path | str = ".") -> str:
         f"postprocess_markers=<code>{report.total_postprocess_markers}</code>",
         f"source_title_registry_entries=<code>{report.source_title_registry_entries}</code> "
         f"typo_replacements=<code>{report.typo_replacements}</code>",
+        (
+            f"⚠️ regex_markers above soft threshold "
+            f"<code>{report.regex_threshold}</code>: add regression tests for every new regex."
+            if report.regex_over_threshold else
+            f"regex_markers below soft threshold <code>{report.regex_threshold}</code>"
+        ),
         "",
         "<b>Top complexity files</b>",
     ]

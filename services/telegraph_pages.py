@@ -7,7 +7,7 @@ Analytics, Questions, Terms, Study Analysis, Reflection.
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS, gemini_generate,   # FIX telegraph_pages
-    is_overload_error, is_quota_error, make_text_config_smart,  # ULTIMATE FIX 3.5-FLASH
+    is_overload_error, is_quota_error, is_model_exhausted, mark_model_exhausted, make_text_config_smart,  # ULTIMATE FIX 3.5-FLASH
 )
 from core.database import GEMINI_MODEL      # FIX telegraph_pages
 from core.text_utils import (
@@ -528,6 +528,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
 
     last_err = None
     for model_idx, model_name in enumerate(_models):
+        if is_model_exhausted(model_name):
+            logger.warning("_gemini_text_request: пропускаю модель %s — quota exhausted in-memory", model_name)
+            continue
         # Time-budget check
         if time.time() - _start_time > _TIME_BUDGET:
             logger.warning(
@@ -632,9 +635,11 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 except Exception as e:
                     _client_err = e
                     if is_quota_error(e):
-                        # 429 — квота проекта, все ключи дадут тот же результат
-                        # Не тратим время, сразу к следующей модели
-                        continue
+                        mark_model_exhausted(model_name, e)
+                        # 429 — квота проекта/model; key rotation wastes attempts.
+                        _all_keys_quota = True
+                        _client_err = e
+                        break
                     # 503/500 или другая ошибка
                     _all_keys_quota = False
                     if _is_internal_error(e) or is_overload_error(e):
@@ -1012,7 +1017,7 @@ async def _run_expanded_pipeline(
             logger.warning("%s: sections не список -- fallback", label)
             return await fallback_fn() if fallback_fn else None
 
-        sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content"))]
+        sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
         if not sections:
             logger.warning("%s: sections пуст после валидации -- fallback", label)
             return await fallback_fn() if fallback_fn else None
@@ -1025,7 +1030,8 @@ async def _run_expanded_pipeline(
         )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
-            (_content_audit and has_content_audit_warnings(_content_audit) and logger.warning or logger.info)(
+            _log_audit = logger.warning if has_content_audit_warnings(_content_audit) else logger.info
+            _log_audit(
                 "%s: content audit before publish: %s",
                 label,
                 format_content_audit_issues(_content_audit),

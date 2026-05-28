@@ -11,7 +11,7 @@ def _dump_config(config) -> str:
     return str(config).lower()
 
 
-def test_structured_output_configs_skip_explicit_thinking_config():
+def test_structured_output_configs_allow_thinking_config_with_schema_for_3x():
     schema = shorts_response_schema()
     audio_cfg = make_audio_config(
         model_name="gemini-3.5-flash",
@@ -26,8 +26,8 @@ def test_structured_output_configs_skip_explicit_thinking_config():
         response_schema=schema,
     )
     assert "thinking_config=" in _dump_config(audio_cfg)
-    assert "thinking_config=none" in _dump_config(audio_cfg)
-    assert "thinking_config=none" in _dump_config(text_cfg)
+    assert "thinkinglevel.low" in _dump_config(audio_cfg) or "thinking_level" in _dump_config(audio_cfg)
+    assert "thinkinglevel.low" in _dump_config(text_cfg) or "thinking_level" in _dump_config(text_cfg)
     assert "response_mime_type='application/json'" in _dump_config(audio_cfg)
 
 

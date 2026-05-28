@@ -49,8 +49,10 @@ from core.title_topic_audit import choose_safe_public_title
 from core.publication_status import build_publication_status, missing_to_json
 from core.generated_pages import (
     asave_generated_page_record, asave_segment_plan_export,
-    build_generated_page_record, extract_scripture_refs,
+    build_generated_page_record, collect_quality_warnings, extract_scripture_refs,
+    timestamp_coverage_archive_fields,
 )
+from core.timestamp_quality import timestamp_coverage_ratio
 
 import asyncio
 import json
@@ -254,12 +256,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
             _c_fmt    = (c_ai or {}).get("format", "other")
             _ts_limit = get_caption_timestamp_limit(_c_fmt)
+            _c_ts_total = len([l for l in ((c_ai or {}).get("timestamps") or "").split("\n") if l.strip()])
             # Применяем format-лимит к таймкодам сразу (до проверки переполнения)
             _ai_for_caption = c_ai
             if c_ai and c_ai.get("timestamps"):
                 ts_limited = _trim_timestamps(c_ai["timestamps"], _ts_limit)
                 if ts_limited != c_ai["timestamps"]:
-                    _ai_for_caption = {**c_ai, "timestamps": ts_limited}
+                    _ai_for_caption = {
+                        **c_ai,
+                        "timestamps": ts_limited,
+                        "_caption_timestamps_trimmed": True,
+                        "_caption_timestamps_total": _c_ts_total,
+                        "_caption_timestamps_shown": min(_c_ts_total, _ts_limit),
+                    }
             caption = _build_c(_ai_for_caption)
             # Умное обрезание до 1024 видимых символов (без HTML-тегов)
             _cap_ts_str = (_ai_for_caption or {}).get("timestamps", "") or ""  # отслеживаем фактические ts в caption
@@ -274,10 +283,26 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ts_half = _trim_timestamps(_ai_for_caption["timestamps"], max(_ts_limit // 2, 3))
                 caption = _build_c({**_ai_for_caption, "hashtags": "", "timestamps": ts_half})
                 _cap_ts_str = ts_half
-            # Шаг 3: убрать таймкоды полностью
+            # Шаг 3: сохранить мини-набор таймкодов вместо полного удаления
             if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-                caption = _build_c({**_ai_for_caption, "hashtags": "", "timestamps": ""})
-                _cap_ts_str = ""
+                _fit_found = False
+                for _mini_limit in (7, 5, 3):
+                    ts_mini = _trim_timestamps(_ai_for_caption["timestamps"], min(_mini_limit, _ts_limit))
+                    candidate = _build_c({
+                        **_ai_for_caption,
+                        "hashtags": "",
+                        "main_topic": "",
+                        "timestamps": ts_mini,
+                        "_caption_timestamps_trimmed": True,
+                    })
+                    if visible_length(candidate) <= 1024:
+                        caption = candidate
+                        _cap_ts_str = ts_mini
+                        _fit_found = True
+                        break
+                if not _fit_found:
+                    caption = _build_c({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": "", "_caption_timestamps_trimmed": True})
+                    _cap_ts_str = ""
             # Шаг 4: последний резерв — шапка + ссылки, обрезаем без лома тегов
             if visible_length(caption) > 1024:
                 platform_block = build_platform_links(url, rutube_url, vk_url)
@@ -872,6 +897,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         rutube_url = alt_links.get("rutube") or ""
         vk_url     = alt_links.get("vk")     or ""
 
+        if ai_data:
+            _coverage_ratio = timestamp_coverage_ratio((ai_data or {}).get("timestamps", ""), duration)
+            _segments_status = "partial" if (duration >= 600 and _coverage_ratio and _coverage_ratio < 0.75) else "complete"
+            if (ai_data or {}).get("timestamp_coverage_warning") and duration >= 600:
+                _segments_status = "partial"
+            ai_data = {
+                **ai_data,
+                "timestamp_coverage_ratio": _coverage_ratio,
+                "segments_status": _segments_status,
+            }
+
         _pub_status = build_publication_status(
             synopsis_url=telegraph_url or "",
             study_url=study_analysis_tg or "",
@@ -881,12 +917,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             expect_reflection=bool(_feat_reflection_application),
         )
         _ai_caption_base = ai_data
+        if _ai_caption_base and _ts_total > 0:
+            _cap_limit_preview = get_caption_timestamp_limit(_mat_format)
+            if _ts_total > _cap_limit_preview:
+                _ai_caption_base = {
+                    **_ai_caption_base,
+                    "_caption_timestamps_trimmed": True,
+                    "_caption_timestamps_total": _ts_total,
+                    "_caption_timestamps_shown": min(_ts_total, _cap_limit_preview),
+                }
         if ai_data and _pub_status.warning:
             logger.warning(
                 "Publication status for %s: status=%s missing=%s",
                 media_id, _pub_status.status, ",".join(_pub_status.missing),
             )
-            _ai_caption_base = {**ai_data, "_partial_publication_warning": _pub_status.warning}
+            _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
 
         def _build(data, **kw):
             return build_caption(performer, title, duration, file_size_mb,
@@ -902,7 +947,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         if _ai_caption_base and _ai_caption_base.get("timestamps"):
             ts_limited = _trim_timestamps(_ai_caption_base["timestamps"], _ts_limit)
             if ts_limited != _ai_caption_base["timestamps"]:
-                _ai_for_caption = {**_ai_caption_base, "timestamps": ts_limited}
+                _ai_for_caption = {
+                    **_ai_caption_base,
+                    "timestamps": ts_limited,
+                    "_caption_timestamps_trimmed": True,
+                    "_caption_timestamps_total": _ts_total,
+                    "_caption_timestamps_shown": min(_ts_total, _ts_limit),
+                }
         caption = _build(_ai_for_caption)
         # Полный текст для отдельного сообщения (лимит 4096) — без обрезки
         # Все таймкоды + полный main_topic + хэштеги
@@ -927,7 +978,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # Шаг 2: сократить таймкоды ещё сильнее (половина лимита)
         if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
             ts_half = _trim_timestamps(_ai_for_caption["timestamps"], max(_ts_limit // 2, 3))
-            caption = _build({**_ai_for_caption, "hashtags": "", "timestamps": ts_half})
+            caption = _build({**_ai_for_caption, "hashtags": "", "timestamps": ts_half, "_caption_timestamps_trimmed": True})
             _cap_ts_str = ts_half
         # Шаг 3: раньше таймкоды удалялись полностью. Это давало ts_in_cap=0
         # даже при 11–13 таймкодах и визуально выглядело как «половина ролика
@@ -942,6 +993,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     "hashtags": "",
                     "main_topic": "",
                     "timestamps": ts_mini,
+                    "_caption_timestamps_trimmed": True,
                 })
                 if visible_length(candidate) <= 1024:
                     caption = candidate
@@ -949,7 +1001,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     _fit_found = True
                     break
             if not _fit_found:
-                caption = _build({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": ""})
+                caption = _build({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": "", "_caption_timestamps_trimmed": True})
                 _cap_ts_str = ""
         # Шаг 4: последний резерв — шапка + ссылки, обрезаем без лома тегов
         if visible_length(caption) > 1024:
@@ -977,8 +1029,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # ts_in_cap — считаем из финального состояния после всех шагов trimming
         _ts_in_cap = len([l for l in _cap_ts_str.split("\n") if l.strip()])
+        _caption_trim_stage = ""
+        if _ts_total > _ts_in_cap:
+            _caption_trim_stage = "timestamps_trimmed" if _ts_in_cap else "timestamps_removed"
         logger.info(f"Caption visible_len={visible_length(caption)} format={_mat_format} ts_total={_ts_total} ts_cap_limit={_ts_limit} ts_in_cap={_ts_in_cap}")
         if ai_data:
+            ai_data = {
+                **ai_data,
+                "caption_trim_stage": _caption_trim_stage,
+                "caption_timestamps_total": _ts_total,
+                "caption_timestamps_shown": _ts_in_cap,
+            }
             # Добавляем duration в ai_data чтобы /pdf мог его читать из кэша
             if duration and not ai_data.get("duration"):
                 ai_data = {**ai_data, "duration": duration}
@@ -1025,6 +1086,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     publication_status=_pub_status.status,
                     publication_missing=_pub_status.missing,
                     publication_warning=_pub_status.warning,
+                    quality_warnings=collect_quality_warnings(ai_data),
+                    timestamp_coverage_ratio=timestamp_coverage_archive_fields(ai_data)[0],
+                    segments_status=timestamp_coverage_archive_fields(ai_data)[1],
+                    caption_trim_stage=(ai_data or {}).get("caption_trim_stage", ""),
+                    caption_timestamps_total=(ai_data or {}).get("caption_timestamps_total", 0),
+                    caption_timestamps_shown=(ai_data or {}).get("caption_timestamps_shown", 0),
                     model=GEMINI_MODEL,
                     prompt_version=get_prompt_fingerprint(),
                 )
@@ -1036,6 +1103,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     timestamps=(ai_data or {}).get("timestamps", ""),
                     duration=duration,
                     format_name=_mat_format,
+                    segments_status=(ai_data or {}).get("segments_status", "complete"),
+                    timestamp_coverage_ratio=(ai_data or {}).get("timestamp_coverage_ratio", 0.0),
                 )
                 logger.info("Generated pages archive saved for %s; segments=%s", media_id, _segment_export.get("count"))
             except Exception as _archive_err:

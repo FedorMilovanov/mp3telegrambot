@@ -680,13 +680,14 @@ async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict |
     return target, cache, archive_record
 
 
-def _segments_from_cache(cache: dict | None, archive_record: dict | None = None) -> tuple[list, str, int, str]:
+def _segments_from_cache(cache: dict | None, archive_record: dict | None = None) -> tuple[list, str, int, str, str]:
     ai = (cache or {}).get("ai_data") or {}
     duration = int((ai or {}).get("duration") or (archive_record or {}).get("duration") or 0)
     title = (ai or {}).get("real_title") or (archive_record or {}).get("title") or "Без названия"
     fmt = (ai or {}).get("format") or (archive_record or {}).get("format") or ""
     segments = build_segments_from_timestamps((ai or {}).get("timestamps", ""), duration, format_name=fmt)
-    return segments, title, duration, fmt
+    status = (ai or {}).get("segments_status") or (archive_record or {}).get("segments_status") or "complete"
+    return segments, title, duration, fmt, status
 
 
 def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, per_page: int = 12) -> InlineKeyboardMarkup | None:
@@ -741,8 +742,10 @@ async def segments_command(update, context):
     if not cache:
         await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data. Используйте video_id недавней обработки или `last`.")
         return
-    segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+    segments, title, _duration, fmt, seg_status = _segments_from_cache(cache, archive_record)
     text = format_segments_text(segments, title=f"Сегменты: {title} ({fmt or 'format?'})")
+    if seg_status == "partial":
+        text = "⚠️ Сегменты построены по неполной сетке таймкодов.\n\n" + text
     text += f"\n\nВырезать: /cutseg {video_id} N"
     safe = html_mod.escape(text)
     if len(safe) > 3900:
@@ -790,7 +793,7 @@ async def cutseg_command(update, context):
     if not cache:
         await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data для нарезки.")
         return
-    segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+    segments, title, _duration, fmt, _seg_status = _segments_from_cache(cache, archive_record)
     indexes = parse_segment_selection(selection, len(segments), max_count=5)
     if not indexes:
         await update.message.reply_text("⚠️ Сегмент не найден. Посмотрите список: <code>/segments VIDEO_ID</code>", parse_mode="HTML")

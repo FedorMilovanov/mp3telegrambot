@@ -38,8 +38,9 @@ def audit_title_topic_consistency(real_title: str, main_topic: str = "", timesta
     if not body_terms:
         return None
     overlap = len(title_terms & body_terms) / max(len(title_terms), 1)
-    # Scripture refs/titles with rare title terms should have at least one strong overlap.
-    if overlap < 0.34 and not (title_terms & body_terms):
+    # One shared generic/weak word should not silence the audit; use ratio, not
+    # a boolean intersection guard.
+    if overlap < 0.34:
         return TitleTopicIssue(
             code="title_topic_low_overlap",
             message="real_title has low lexical overlap with main_topic/timestamps",

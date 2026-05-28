@@ -820,7 +820,12 @@ SYNOPSIS_PROMPT_V2 = """\
     {{
       "title": "Название раздела",
       "time": "0:00",
-      "content": "Markdown..."
+      "content": "Markdown fallback...",
+      "blocks": [
+        {{"type": "paragraph", "text": "Отдельный абзац без / / разделителей."}},
+        {{"type": "bullet", "text": "Отдельный пункт списка."}},
+        {{"type": "source", "author": "Автор", "title_original": "Original Title", "why_relevant": "Почему источник важен."}}
+      ]
     }}
   ]
 }}
@@ -2659,7 +2664,11 @@ Blockquote (`> текст`) — для реально звучащего тек�
     {{
       "title": "Ключевые понятия",
       "time": "",
-      "content": "• **Оправдание** (**Justification**) — определение.\\n\\n• **Покаяние** (**Repentance**) — определение."
+      "content": "• **Оправдание** (**Justification**) — определение.\\n\\n• **Покаяние** (**Repentance**) — определение.",
+      "blocks": [
+        {{"type": "bullet", "text": "**Оправдание** (**Justification**) — определение."}},
+        {{"type": "bullet", "text": "**Покаяние** (**Repentance**) — определение."}}
+      ]
     }}
   ]
 }}
@@ -2667,6 +2676,7 @@ Blockquote (`> текст`) — для реально звучащего тек�
 ПРАВИЛА JSON:
 - time всегда пустая строка ""
 - outline и sections должны совпадать
+- если используешь blocks, каждый смысловой абзац/буллит/источник/цитату делай отдельным block; не пиши разделители / / внутри content
 - не включай нерелевантные sections
 - не включай пустые sections
 - минимум 5 sections, максимум 7
@@ -3372,7 +3382,13 @@ TYPE 8 — ЕВАНГЕЛЬСКИЙ ПРИЗЫВ И ПРОВЕРКА ВЕРЫ (�
     {{
       "title": "Заголовок раздела",
       "time": "",
-      "content": "Markdown..."
+      "content": "Markdown fallback...",
+      "blocks": [
+        {{"type": "paragraph", "text": "Отдельный абзац."}},
+        {{"type": "bullet", "text": "Отдельный пункт."}},
+        {{"type": "scripture", "ref": "Ин. 6:37", "quote": "...", "timestamp": "18:32"}},
+        {{"type": "lexicon", "lemma": "ἑλκύω", "role_in_argument": "Как слово работает в аргументе."}}
+      ]
     }},
     ...
   ]

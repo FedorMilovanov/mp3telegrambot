@@ -670,7 +670,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
             # AUDIT-SUPER-FIX-BUG3: multi-model fallback для synopsis
             # Если GEMINI_MODEL не работает (429/503) — пробуем gemini-2.5-flash-lite
-            response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis)
+            response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis, model_name=GEMINI_MODEL)
 
             # 429 / 503 на основной модели → пробуем резервную
             if response is None:
@@ -681,7 +681,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         return await _generate_synopsis_content(
                             client, "gemini-2.5-flash-lite", [audio, prompt], max_tokens=_syn_max_tokens
                         )
-                    response = await gemini_generate(GEMINI_CLIENTS, _call_fallback)
+                    response = await gemini_generate(GEMINI_CLIENTS, _call_fallback, model_name=GEMINI_MODEL)
                     logger.info("Synopsis: fallback модель успешна")
                 except Exception as _fb_err:
                     logger.warning(f"Synopsis fallback failed: {_fb_err}")
@@ -780,7 +780,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if retry_response is None:
                     async def _call_synopsis_retry(client):
                         return await _synopsis_with_client(client, _upload_retry, retry_prompt, loop)
-                    retry_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_retry)
+                    retry_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_retry, model_name=GEMINI_MODEL)
                 retry_text = _extract_response_text(retry_response)
                 parsed_retry = _try_parse_synopsis_json(retry_text)
                 if parsed_retry is not None:
@@ -810,7 +810,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         if simple_response is None:
                             async def _call_synopsis_simple(client):
                                 return await _synopsis_with_client(client, _upload_retry, simple_prompt, loop)
-                            simple_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_simple)
+                            simple_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_simple, model_name=GEMINI_MODEL)
                         simple_text = _extract_response_text(simple_response)
                         parsed_simple = _try_parse_synopsis_json(simple_text)
                         if parsed_simple is not None:
@@ -854,7 +854,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return None, None
 
         total_before_filter = len(sections)
-        sections = [s for s in sections if (s.get("content") or "").strip()]
+        sections = [s for s in sections if ((s.get("content") or "").strip() or s.get("blocks"))]
         removed_empty = total_before_filter - len(sections)
         if removed_empty > 0:
             logger.warning(
@@ -874,7 +874,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
-            (_content_audit and has_content_audit_warnings(_content_audit) and logger.warning or logger.info)(
+            _log_audit = logger.warning if has_content_audit_warnings(_content_audit) else logger.info
+            _log_audit(
                 "Synopsis v2: content audit before publish: %s",
                 format_content_audit_issues(_content_audit),
             )
@@ -911,7 +912,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _retry_parsed = _try_parse_synopsis_json(_retry_text)
                 if _retry_parsed is not None:
                     _retry_outline, _retry_sections = _retry_parsed
-                    _retry_sections = [s for s in _retry_sections if isinstance(s, dict) and (s.get("content") or "").strip()]
+                    _retry_sections = [s for s in _retry_sections if isinstance(s, dict) and ((s.get("content") or "").strip() or s.get("blocks"))]
                     _retry_sections, _retry_outline, _retry_audit = audit_expanded_sections(
                         _retry_sections,
                         _retry_outline if isinstance(_retry_outline, list) else [],
@@ -928,7 +929,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 logger.warning("Synopsis v2: density retry failed non-fatally: %s", str(_density_retry_err)[:180])
 
         # ── Валидация плотности sections (BP-04) ─────────────
-        _thin_count = sum(1 for s in sections if len((s.get("content") or "").strip()) < 100)
+        _thin_count = sum(1 for s in sections if len(((s.get("content") or "").strip() or s.get("blocks"))) < 100)
         if _thin_count > 0:
             logger.warning(
                 f"Synopsis v2: {_thin_count}/{len(sections)} sections имеют content < 100 символов — "

@@ -222,7 +222,7 @@ async def handle_callback(update, context) -> None:
             if not cache:
                 await query.answer("Нет video_cache с ai_data.", show_alert=True)
                 return
-            segments, title, _duration, fmt = _segments_from_cache(cache, archive_record)
+            segments, title, _duration, fmt, _seg_status = _segments_from_cache(cache, archive_record)
             text = _format_segments_page_text(_vid, title, fmt, segments, page=page)
             safe = _html.escape(text)
             if len(safe) > 3900:
@@ -273,7 +273,7 @@ async def handle_callback(update, context) -> None:
             if not cache:
                 await query.message.reply_text("⚠️ Нужна запись в video_cache с ai_data для нарезки.")
                 return
-            segments, title, _duration, _fmt = _segments_from_cache(cache, archive_record)
+            segments, title, _duration, _fmt, _seg_status = _segments_from_cache(cache, archive_record)
             segment = get_segment_by_index(segments, idx)
             if not segment:
                 await query.message.reply_text("⚠️ Сегмент не найден.")

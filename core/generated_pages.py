@@ -70,6 +70,36 @@ def extract_scripture_refs(ai_data: dict | None) -> list[str]:
     return refs
 
 
+
+
+def collect_quality_warnings(ai_data: dict | None) -> list[str]:
+    """Collect non-fatal quality warnings that should survive outside logs."""
+    ai = ai_data or {}
+    out: list[str] = []
+    if ai.get("timestamp_coverage_warning"):
+        out.append("timestamp: " + _safe_text(ai.get("timestamp_coverage_warning"), 400))
+    if ai.get("title_topic_warning"):
+        out.append("title-topic: " + _safe_text(ai.get("title_topic_warning"), 400))
+    for raw in _json_list(ai.get("quality_warnings") or []):
+        if raw not in out:
+            out.append(_safe_text(raw, 400))
+    if ai.get("segments_status") == "partial":
+        msg = "segments: partial timestamp coverage"
+        if msg not in out:
+            out.append(msg)
+    return out
+
+
+def timestamp_coverage_archive_fields(ai_data: dict | None) -> tuple[float, str]:
+    """Return (ratio, segments_status) from enriched ai_data for archive/export."""
+    ai = ai_data or {}
+    try:
+        ratio = float(ai.get("timestamp_coverage_ratio") or 0.0)
+    except (TypeError, ValueError):
+        ratio = 0.0
+    status = str(ai.get("segments_status") or "complete").strip() or "complete"
+    return ratio, status
+
 def build_generated_page_record(
     *,
     video_id: str,
@@ -93,6 +123,12 @@ def build_generated_page_record(
     publication_status: str = "unknown",
     publication_missing: Any = None,
     publication_warning: str = "",
+    quality_warnings: Any = None,
+    timestamp_coverage_ratio: float = 0.0,
+    segments_status: str = "complete",
+    caption_trim_stage: str = "",
+    caption_timestamps_total: int = 0,
+    caption_timestamps_shown: int = 0,
     model: str = "",
     prompt_version: str = "",
     created_at: int | None = None,
@@ -120,6 +156,12 @@ def build_generated_page_record(
         "publication_status": _safe_text(publication_status or "unknown", 40),
         "publication_missing": _json_list(publication_missing),
         "publication_warning": _safe_text(publication_warning, 800),
+        "quality_warnings": _json_list(quality_warnings),
+        "timestamp_coverage_ratio": float(timestamp_coverage_ratio or 0.0),
+        "segments_status": _safe_text(segments_status or "complete", 40),
+        "caption_trim_stage": _safe_text(caption_trim_stage, 80),
+        "caption_timestamps_total": int(caption_timestamps_total or 0),
+        "caption_timestamps_shown": int(caption_timestamps_shown or 0),
         "model": _safe_text(model, 120),
         "prompt_version": _safe_text(prompt_version, 120),
         "created_at": ts,
@@ -151,6 +193,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             publication_status TEXT DEFAULT 'unknown',
             publication_missing TEXT DEFAULT '[]',
             publication_warning TEXT DEFAULT '',
+            quality_warnings TEXT DEFAULT '[]',
+            timestamp_coverage_ratio REAL DEFAULT 0,
+            segments_status TEXT DEFAULT 'complete',
+            caption_trim_stage TEXT DEFAULT '',
+            caption_timestamps_total INTEGER DEFAULT 0,
+            caption_timestamps_shown INTEGER DEFAULT 0,
             model TEXT DEFAULT '',
             prompt_version TEXT DEFAULT '',
             last_repaired_at INTEGER DEFAULT 0,
@@ -162,6 +210,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
     """)
     for col, ddl in [
+        ("quality_warnings", "TEXT DEFAULT '[]'"),
+        ("timestamp_coverage_ratio", "REAL DEFAULT 0"),
+        ("segments_status", "TEXT DEFAULT 'complete'"),
+        ("caption_trim_stage", "TEXT DEFAULT ''"),
+        ("caption_timestamps_total", "INTEGER DEFAULT 0"),
+        ("caption_timestamps_shown", "INTEGER DEFAULT 0"),
         ("last_repaired_at", "INTEGER DEFAULT 0"),
         ("repair_count", "INTEGER DEFAULT 0"),
         ("last_repair_changed_pages", "INTEGER DEFAULT 0"),
@@ -188,7 +242,11 @@ def _record_values(record: dict[str, Any]) -> tuple:
         _json_dumps(record.get("hashtags", [])), _json_dumps(record.get("key_categories", [])),
         _json_dumps(record.get("scripture_refs", [])),
         record.get("publication_status", "unknown"), _json_dumps(record.get("publication_missing", [])),
-        record.get("publication_warning", ""), record.get("model", ""), record.get("prompt_version", ""),
+        record.get("publication_warning", ""), _json_dumps(record.get("quality_warnings", [])),
+        float(record.get("timestamp_coverage_ratio") or 0.0), record.get("segments_status", "complete"),
+        record.get("caption_trim_stage", ""), int(record.get("caption_timestamps_total") or 0),
+        int(record.get("caption_timestamps_shown") or 0),
+        record.get("model", ""), record.get("prompt_version", ""),
         int(record.get("created_at") or _now_ts()), int(record.get("updated_at") or _now_ts()),
     )
 
@@ -200,6 +258,8 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
                youtube_url, rutube_url, vk_url, synopsis_url, study_url, reflection_url,
                terms_url, questions_url, hashtags, key_categories, scripture_refs,
                publication_status, publication_missing, publication_warning,
+               quality_warnings, timestamp_coverage_ratio, segments_status,
+               caption_trim_stage, caption_timestamps_total, caption_timestamps_shown,
                model, prompt_version, last_repaired_at, repair_count,
                last_repair_changed_pages, last_repair_errors, created_at, updated_at
         FROM generated_pages
@@ -213,13 +273,15 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
         "youtube_url", "rutube_url", "vk_url", "synopsis_url", "study_url", "reflection_url",
         "terms_url", "questions_url", "hashtags", "key_categories", "scripture_refs",
         "publication_status", "publication_missing", "publication_warning",
+        "quality_warnings", "timestamp_coverage_ratio", "segments_status",
+        "caption_trim_stage", "caption_timestamps_total", "caption_timestamps_shown",
         "model", "prompt_version", "last_repaired_at", "repair_count",
         "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
     ]
     out: list[dict[str, Any]] = []
     for row in rows:
         item = dict(zip(keys, row))
-        for k in ("hashtags", "key_categories", "scripture_refs", "publication_missing"):
+        for k in ("hashtags", "key_categories", "scripture_refs", "publication_missing", "quality_warnings"):
             try:
                 item[k] = json.loads(item.get(k) or "[]")
             except Exception:
@@ -242,6 +304,17 @@ def _md_record(record: dict[str, Any]) -> str:
     lines.append(f"- Status: `{status}`")
     if record.get("publication_warning"):
         lines.append(f"- Warning: {record['publication_warning']}")
+    if record.get("quality_warnings"):
+        lines.append("- Quality warnings: " + "; ".join(_json_list(record.get("quality_warnings"))[:8]))
+    if record.get("segments_status") and record.get("segments_status") != "complete":
+        ratio = float(record.get("timestamp_coverage_ratio") or 0.0)
+        lines.append(f"- Segments: `{record.get('segments_status')}` (timestamp coverage {ratio:.0%})")
+    if int(record.get("caption_timestamps_total") or 0) > int(record.get("caption_timestamps_shown") or 0) >= 0:
+        lines.append(
+            f"- Caption timestamps: {int(record.get('caption_timestamps_shown') or 0)}/"
+            f"{int(record.get('caption_timestamps_total') or 0)}"
+            + (f" ({record.get('caption_trim_stage')})" if record.get("caption_trim_stage") else "")
+        )
     if record.get("source_url"):
         lines.append(f"- Source: {record['source_url']}")
     for label, key in [
@@ -324,8 +397,10 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                  youtube_url, rutube_url, vk_url, synopsis_url, study_url, reflection_url,
                  terms_url, questions_url, hashtags, key_categories, scripture_refs,
                  publication_status, publication_missing, publication_warning,
+                 quality_warnings, timestamp_coverage_ratio, segments_status,
+                 caption_trim_stage, caption_timestamps_total, caption_timestamps_shown,
                  model, prompt_version, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET
                 source_url=excluded.source_url,
                 title=excluded.title,
@@ -347,6 +422,12 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                 publication_status=excluded.publication_status,
                 publication_missing=excluded.publication_missing,
                 publication_warning=excluded.publication_warning,
+                quality_warnings=excluded.quality_warnings,
+                timestamp_coverage_ratio=excluded.timestamp_coverage_ratio,
+                segments_status=excluded.segments_status,
+                caption_trim_stage=excluded.caption_trim_stage,
+                caption_timestamps_total=excluded.caption_timestamps_total,
+                caption_timestamps_shown=excluded.caption_timestamps_shown,
                 model=excluded.model,
                 prompt_version=excluded.prompt_version,
                 updated_at=excluded.updated_at
@@ -399,6 +480,7 @@ def query_generated_pages(
         parts = [
             r.get("title", ""), r.get("author", ""), r.get("event", ""),
             r.get("format", ""), r.get("publication_status", ""),
+            " ".join(r.get("quality_warnings") or []), r.get("segments_status", ""),
             " ".join(r.get("hashtags") or []),
             " ".join(r.get("key_categories") or []),
             " ".join(r.get("scripture_refs") or []),
@@ -500,6 +582,8 @@ def save_segment_plan_export(
     timestamps: Any = "",
     duration: int | float = 0,
     format_name: str = "",
+    segments_status: str = "complete",
+    timestamp_coverage_ratio: float = 0.0,
     base_dir: Path | None = None,
 ) -> dict[str, str]:
     """Write human/machine segment plan export for a processed video."""
@@ -518,6 +602,8 @@ def save_segment_plan_export(
         "author": _safe_text(author, 240),
         "format": _safe_text(format_name, 80),
         "duration": int(duration or 0),
+        "segments_status": _safe_text(segments_status or "complete", 40),
+        "timestamp_coverage_ratio": float(timestamp_coverage_ratio or 0.0),
         "segments": [
             {"index": s.index, "start": s.start, "end": s.end, "duration": s.duration, "title": s.title, "kind": s.kind}
             for s in segments
@@ -529,6 +615,8 @@ def save_segment_plan_export(
     if author:
         md.append(f"Author: {author}")
     md.append(f"Video ID: `{video_id}`")
+    if segments_status and segments_status != "complete":
+        md.append(f"⚠️ Сегменты построены по неполной сетке таймкодов (coverage {float(timestamp_coverage_ratio or 0.0):.0%}).")
     md.append("")
     md.append(format_segments_text(segments) if segments else "Сегменты не найдены.")
     md.append("")

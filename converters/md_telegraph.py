@@ -677,6 +677,89 @@ def _patch_scripture_format(content: str) -> str:
     return '\n'.join(result)
 
 
+
+def _structured_blocks_to_nodes_v2(
+    blocks: list,
+    *,
+    yt_url: str = "",
+    duration: int = 0,
+    plain_scripture: bool = False,
+) -> list:
+    """Render structured Gemini blocks without reverse-engineering flat content.
+
+    This is a forward-compatible path for schemas that return section.blocks.
+    The old ``content`` string remains a fallback, but when blocks are present we
+    preserve paragraph/source/scripture/bullet boundaries explicitly instead of
+    relying on slash/bullet regex repairs.
+    """
+    if not isinstance(blocks, list):
+        return []
+    from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
+
+    chunks: list[str] = []
+    for raw in blocks:
+        if not isinstance(raw, dict):
+            continue
+        btype = str(raw.get("type") or "paragraph").strip().lower()
+        text = _scrub_inline(str(raw.get("text") or "").strip())
+        if btype in {"paragraph", "para"}:
+            if text:
+                chunks.append(text)
+        elif btype in {"bullet", "list_item", "point"}:
+            if text:
+                chunks.append("• " + text.lstrip("•- ").strip())
+        elif btype in {"scripture", "scripture_quote"}:
+            ref = _scrub_inline(str(raw.get("ref") or "").strip())
+            quote = _scrub_inline(str(raw.get("quote") or text or "").strip())
+            ts = _scrub_inline(str(raw.get("timestamp") or "").strip())
+            line = ""
+            if ref and quote:
+                line = f"• **{ref}:** *«{quote.strip('«»')}»*"
+            elif ref:
+                line = f"• **{ref}.**"
+            elif quote:
+                line = f"• *«{quote.strip('«»')}»*"
+            if line and ts:
+                line += f" ⏱ {ts}"
+            if line:
+                chunks.append(line)
+        elif btype in {"source", "source_card", "bibliography"}:
+            author = _scrub_inline(str(raw.get("author") or "").strip())
+            title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
+            why = _scrub_inline(str(raw.get("why_relevant") or text or "").strip())
+            head = ", ".join(x for x in (author, title_original) if x)
+            if head and why:
+                chunks.append(f"• {head}. — {why}")
+            elif head:
+                chunks.append(f"• {head}.")
+            elif why:
+                chunks.append("• " + why)
+        elif btype in {"lexicon", "term"}:
+            lemma = _scrub_inline(str(raw.get("lemma") or "").strip())
+            role = _scrub_inline(str(raw.get("role_in_argument") or text or "").strip())
+            if lemma and role:
+                chunks.append(f"• **{lemma}** — {role}")
+            elif role:
+                chunks.append("• " + role)
+        elif btype in {"heading", "subheading"}:
+            if text:
+                chunks.append(f"**{text.rstrip(':')}:**")
+        else:
+            if text:
+                chunks.append(text)
+
+    markdown = "\n\n".join(c for c in chunks if c.strip()).strip()
+    if not markdown:
+        return []
+    if duration:
+        markdown = _clamp_content_timestamps(markdown, duration)
+    if plain_scripture:
+        markdown = re.sub(r'\*((?:\([^)]*\d+:\d+[^)]*\)))\*', r'\1', markdown)
+    nodes = _md_to_nodes_fn(markdown)
+    if yt_url:
+        nodes = _linkify_inline_timestamps(nodes, yt_url, duration=duration)
+    return nodes
+
 def _section_to_nodes_v2(
     section: dict,
     yt_url: str = "",
@@ -1136,6 +1219,15 @@ def _section_to_nodes_v2(
     # ------------------------------------------------------------------
     # 8. CONTENT -> TELEGRAPH NODES
     # ------------------------------------------------------------------
+
+    blocks = section.get("blocks")
+    if isinstance(blocks, list) and blocks:
+        block_nodes = _structured_blocks_to_nodes_v2(
+            blocks, yt_url=yt_url, duration=duration, plain_scripture=plain_scripture
+        )
+        if block_nodes:
+            nodes.extend(block_nodes)
+            return nodes
 
     if content:
         from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
@@ -1796,7 +1888,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r"([а-яё])«", r"\1 «", text)
         text = re.sub(r"([.!?])([А-ЯЁA-Z])", r"\1 \2", text)
         text = re.sub(r",\s*\*", ", *", text)
-        text = re.sub(r"/\s*/+", "", text)
+        # Preserve paragraph boundaries from Gemini pseudo-separators; guard URLs (https://).
+        text = re.sub(r"(?<!:)\s+/\s*/\s+", "\n\n", text)
         text = normalize_common_typos(text)
         text = scrub_third_person_phrases(text)
         return text

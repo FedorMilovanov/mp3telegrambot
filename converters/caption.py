@@ -61,6 +61,19 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
         parts.append("")
         parts.append("⚠️ " + html_mod.escape(str(ai_data.get("_partial_publication_warning"))))
 
+    if ai_data and ai_data.get("timestamp_coverage_warning"):
+        ratio = ai_data.get("timestamp_coverage_ratio")
+        try:
+            ratio_txt = f"{float(ratio):.0%}" if ratio else "неполную часть"
+        except (TypeError, ValueError):
+            ratio_txt = "неполную часть"
+        parts.append("")
+        parts.append(f"⚠️ Таймкоды покрывают только {html_mod.escape(ratio_txt)} материала.")
+
+    if ai_data and ai_data.get("_caption_timestamps_trimmed"):
+        parts.append("")
+        parts.append("⏱ Таймкоды сокращены; полный список в конспекте.")
+
     # Краткое описание (main_topic) — между шапкой и таймкодами
     main_topic = _scrub_inline((ai_data or {}).get("main_topic", ""))
     if main_topic:

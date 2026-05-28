@@ -48,6 +48,32 @@ _FIRST_PERSON_AUTHOR_RE = re.compile(
 )
 
 
+_DOUBLE_SLASH_RE = re.compile(r"(?<!:)\s+/\s*/\s+")
+_GLUE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"([а-яё])([A-Z])"), r"\1 \2"),
+    (re.compile(r"([а-яё])«"), r"\1 «"),
+    (re.compile(r"([.!?…])([А-ЯЁA-Z])"), r"\1 \2"),
+    (re.compile(r"(^|\n)-(?=[А-ЯЁA-Z])"), r"\1- "),
+)
+
+
+def normalize_generated_markdown_separators(text: str) -> str:
+    """Preserve layout semantics before Telegraph node rendering.
+
+    Gemini sometimes emits pseudo-separators like ``/ /`` between logical
+    paragraphs.  Treat them as paragraph breaks instead of deleting them.  The
+    glue fixes are deliberately narrow and do not touch URLs (``://`` is guarded)
+    or markdown links.
+    """
+    out = str(text or "")
+    out = _DOUBLE_SLASH_RE.sub("\n\n", out)
+    for pattern, repl in _GLUE_FIXES:
+        out = pattern.sub(repl, out)
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out
+
+
 def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Remove hallucinated first-person name appositions when they mismatch expected author."""
     if not text or not expected_author:
@@ -82,21 +108,59 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     issues: list[ContentAuditIssue] = []
 
     text = normalize_common_typos(original)
+    if text != original:
+        _looks_source_fix = bool(re.search(r"[A-Za-z].*,|\([^)]*[A-Za-z]{3,}[^)]*\)", original))
+        issues.append(ContentAuditIssue(
+            code="source_card_fixed" if _looks_source_fix else "typo_fixed",
+            location=location,
+            message="source-card normalization applied" if _looks_source_fix else "common typo normalization applied",
+            before=_short(original),
+            after=_short(text),
+        ))
+        issues.append(ContentAuditIssue(
+            code="normalized_text",
+            location=location,
+            message="legacy compatibility: typo/source-map normalization applied",
+            before=_short(original),
+            after=_short(text),
+        ))
+
+    sep_before = text
+    text = normalize_generated_markdown_separators(text)
+    if text != sep_before:
+        issues.append(ContentAuditIssue(
+            code="separator_fixed",
+            location=location,
+            message=(
+                f"removed_double_slash={len(_DOUBLE_SLASH_RE.findall(sep_before))}; "
+                f"paragraphs_before={sep_before.count(chr(10)+chr(10))}; paragraphs_after={text.count(chr(10)+chr(10))}"
+            ),
+            before=_short(sep_before),
+            after=_short(text),
+        ))
+
+    source_before = text
     if source_map:
         text = "\n".join(normalize_source_map_text(line) for line in text.splitlines())
     else:
         # Safe no-op for non-source lines; still catches inline source-card strings.
         text = "\n".join(normalize_source_map_text(line) for line in text.splitlines())
-
-    after_typo_source = text
-    if after_typo_source != original:
+    if text != source_before:
         issues.append(ContentAuditIssue(
-            code="normalized_text",
+            code="source_card_fixed",
             location=location,
-            message="common typo/source-map normalization applied",
-            before=_short(original),
-            after=_short(after_typo_source),
+            message="source-card normalization applied",
+            before=_short(source_before),
+            after=_short(text),
         ))
+        if not any(i.code == "normalized_text" and i.location == location for i in issues):
+            issues.append(ContentAuditIssue(
+                code="normalized_text",
+                location=location,
+                message="legacy compatibility: typo/source-map normalization applied",
+                before=_short(source_before),
+                after=_short(text),
+            ))
 
     third_before = text
     text = scrub_third_person_phrases(text)
@@ -209,6 +273,29 @@ def audit_expanded_sections(
         issues.extend(_audit_translation_forks(new_content, location=f"{base_loc}:{new_title}"))
         issues.extend(_audit_translation_semantics(new_content, location=f"{base_loc}:{new_title}"))
         sec["content"] = new_content
+
+        blocks = sec.get("blocks")
+        if isinstance(blocks, list):
+            new_blocks: list[dict] = []
+            for bidx, raw_block in enumerate(blocks):
+                if not isinstance(raw_block, dict):
+                    continue
+                block = dict(raw_block)
+                for field in ("text", "quote", "why_relevant", "role_in_argument"):
+                    if field in block and isinstance(block.get(field), str):
+                        block_text, got_block = _audit_text(
+                            block.get(field, ""),
+                            location=f"{base_loc}.blocks[{bidx}].{field}",
+                            expected_author=expected_author,
+                        )
+                        issues.extend(got_block)
+                        block[field] = block_text
+                for field in ("author", "title_original", "lemma", "ref", "timestamp", "type"):
+                    if field in block and isinstance(block.get(field), str):
+                        block[field] = str(block.get(field) or "").strip()
+                new_blocks.append(block)
+            sec["blocks"] = new_blocks
+
         new_sections.append(sec)
 
     new_outline: list[dict] = []
@@ -242,15 +329,23 @@ def format_content_audit_issues(issues: list[ContentAuditIssue], limit: int = 6)
     if not issues:
         return ""
     rendered: list[str] = []
-    for issue in issues[:limit]:
+    specific_locations = {
+        i.location for i in issues or []
+        if i.code in {"typo_fixed", "source_card_fixed", "separator_fixed", "whitespace_fixed"}
+    }
+    display_issues = [
+        i for i in (issues or [])
+        if not (i.code == "normalized_text" and i.location in specific_locations)
+    ]
+    for issue in display_issues[:limit]:
         detail = issue.message
         if issue.before:
             detail += f" | before={issue.before}"
         if issue.after:
             detail += f" | after={issue.after}"
         rendered.append(f"{issue.code}@{issue.location}: {detail}")
-    if len(issues) > limit:
-        rendered.append(f"... и ещё {len(issues) - limit}")
+    if len(display_issues) > limit:
+        rendered.append(f"... и ещё {len(display_issues) - limit}")
     return " || ".join(rendered)
 
 

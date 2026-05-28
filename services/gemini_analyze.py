@@ -18,11 +18,11 @@ BUG-B01 fix: docstring приведён в соответствие с реал�
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS,           # FIX gemini_analyze
-    is_quota_error, is_overload_error,  # FIX gemini_analyze,
+    is_quota_error, is_overload_error, is_model_exhausted, mark_model_exhausted,  # FIX gemini_analyze,
     make_audio_config,
 )
 from core.database import GEMINI_MODEL     # FIX gemini_analyze
-from core.json_parser import _parse_gemini_response  # FIX gemini_analyze
+from core.json_parser import _parse_gemini_response, _recover_truncated_json  # FIX gemini_analyze
 from core.progress import set_progress     # FIX gemini_analyze
 from core.utils import format_timestamp, mask_api_key as _mask_api_key  # FIX gemini_analyze
 from core.prompts import build_audio_analysis_prompt, AUDIO_ANALYSIS_MODE  # deep prompt builder
@@ -106,9 +106,12 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         return parsed
     current = parsed.get("timestamps") or ""
     min_final = _format_ts_for_prompt(int(max(0, int(duration or 0)) * 0.88))
+    _current_secs = [time_to_seconds(line.split(" ", 1)[0]) for line in str(current or "").splitlines() if line.strip()]
+    _last_current = max([x for x in _current_secs if x is not None] or [0])
+    _missing_from = _format_ts_for_prompt(_last_current)
     prompt = (
-        "Исправь ТОЛЬКО список timestamps для этого аудиоматериала. "
-        "Нужно покрыть ход мысли от 0:00 до финальной части материала. "
+        "Исправь ТОЛЬКО недостающее покрытие timestamps для этого аудиоматериала. "
+        f"Особенно восстанови смысловые повороты с {_missing_from} до конца; итоговый список должен покрыть весь материал. "
         f"Длительность: {_format_ts_for_prompt(duration)}. "
         f"Последний смысловой таймкод должен быть примерно не раньше {min_final}, если материал не закончился раньше. "
         "Верни JSON только вида {\"timestamps\":[{\"time\":\"M:SS\",\"topic\":\"...\"}]}. "
@@ -132,7 +135,12 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         )
         raw = (resp.text or "").strip()
         import json as _json
-        repaired = _json.loads(raw)
+        try:
+            repaired = _json.loads(raw)
+        except _json.JSONDecodeError:
+            repaired = _recover_truncated_json(raw)
+            if repaired is None:
+                raise
         repaired_lines = _format_repaired_timestamps(repaired, duration)
         if repaired_lines and len(repaired_lines.splitlines()) >= max(3, len(str(current).splitlines())):
             parsed = {**parsed, "timestamps": repaired_lines}
@@ -343,6 +351,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         _current_model = _models_to_try[0]
 
         for _model_idx, _current_model in enumerate(_models_to_try):
+            if is_model_exhausted(_current_model):
+                logger.warning("Gemini пропускаю модель %s: quota exhausted in-memory", _current_model)
+                continue
             if success:
                 break
             _obs_model = _current_model
@@ -422,6 +433,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             last_err = e
                             # Quota is project/model-level; retrying same key only wastes time.
                             if _is_quota:
+                                mark_model_exhausted(_current_model, e)
                                 break
                             # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
                             if _is_overload and attempt < 2:

@@ -302,12 +302,31 @@ def expanded_page_response_schema() -> dict:
         },
         "required": ["title", "time"],
     }
+    block_item = {
+        "type": "object",
+        "properties": {
+            "type": _string_schema(),
+            "text": _string_schema(),
+            "ref": _string_schema(),
+            "quote": _string_schema(),
+            "timestamp": _string_schema(),
+            "author": _string_schema(),
+            "title_original": _string_schema(),
+            "why_relevant": _string_schema(),
+            "lemma": _string_schema(),
+            "role_in_argument": _string_schema(),
+        },
+        "required": ["type"],
+    }
     section_item = {
         "type": "object",
         "properties": {
             "title": _string_schema(),
             "time": _string_schema(),
             "content": _string_schema(),
+            # Optional structured blocks. ``content`` remains required for
+            # backwards compatibility; renderers prefer blocks when present.
+            "blocks": {"type": "array", "items": block_item},
         },
         "required": ["title", "time", "content"],
     }
