@@ -728,10 +728,12 @@ def _structured_blocks_to_nodes_v2(
             title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or text or "").strip())
             head = ", ".join(x for x in (author, title_original) if x)
+            if head:
+                head = normalize_source_map_text(f"• {head}.").rstrip(".")
             if head and why:
-                chunks.append(f"• {head}. — {why}")
+                chunks.append(f"{head}. — {why}")
             elif head:
-                chunks.append(f"• {head}.")
+                chunks.append(f"{head}.")
             elif why:
                 chunks.append("• " + why)
         elif btype in {"lexicon", "term"}:

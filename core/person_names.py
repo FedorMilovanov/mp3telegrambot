@@ -52,3 +52,8 @@ def normalize_person_names(text: str) -> str:
         changed = True
         out = out2
     return out.strip() if changed else out
+
+
+def canonical_person_name(value: str) -> str:
+    """Return one canonical display form for a person/source author name."""
+    return normalize_person_names(str(value or "").strip())

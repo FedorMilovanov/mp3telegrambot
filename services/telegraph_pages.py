@@ -35,6 +35,7 @@ from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.source_packs import get_source_pack_for_ai_data
 from core.candidate_schema import expanded_page_response_schema
+from core.candidate_schema import combined_expanded_pages_response_schema
 from core.analysis_profiles import get_expanded_analysis_profile
 from core.reasoning_guidance import build_reasoning_first_block
 from core.adaptive_generation import get_adaptive_text_generation_params
@@ -61,6 +62,15 @@ logger = logging.getLogger(__name__)
 def _expanded_structured_output_enabled() -> bool:
     """Opt-out flag for Study/Reflection structured {outline, sections}."""
     return (os.getenv("EXPANDED_PAGES_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def combined_study_reflection_enabled() -> bool:
+    """Opt-in only: quality-first default keeps Study and Reflection separate.
+
+    Combined generation saves one Gemini request, but it is a larger multi-task
+    prompt. Keep disabled unless explicitly enabled for quota experiments.
+    """
+    return (os.getenv("COMBINE_STUDY_REFLECTION", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
@@ -1247,6 +1257,238 @@ async def create_telegraph_study_analysis(
         vk_url=vk_url,
         duration=int(effective_duration) if effective_duration else 0,
     )
+
+
+
+
+async def create_telegraph_study_reflection_combined(
+    ai_data: dict | None,
+    questions: list,
+    title: str,
+    author: str,
+    yt_url: str = "",
+    study_compact_fn=None,
+    reflection_compact_fn=None,
+    rutube_url: str = "",
+    vk_url: str = "",
+    synopsis_outline: list | None = None,
+    duration: float = 0,
+) -> tuple[str | None, str | None]:
+    """Optional one-call Study+Reflection generator.
+
+    Disabled by default in the pipeline. It is intended for controlled quota/A-B
+    experiments; quality-first runs should keep separate calls unless the owner
+    explicitly enables COMBINE_STUDY_REFLECTION=1.
+    """
+    if not combined_study_reflection_enabled():
+        return None, None
+    if not GEMINI_CLIENTS:
+        return None, None
+
+    _ai = ai_data or {}
+    if not questions:
+        logger.info("Combined Study+Reflection: questions missing — skip combined path")
+        return None, None
+
+    author_clean = _clean_meta_line(author or "") or "Автор не указан"
+    title_clean = _clean_meta_line(title or "") or "Без названия"
+    real_author = normalize_author_name(_ai.get("real_author") or author) or author_clean
+    prompt_title = title_case_fragment(normalize_title_text(_ai.get("real_title") or "") or title_clean)
+    prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
+    prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
+
+    try:
+        effective_duration = float(_ai.get("duration") or duration or 0)
+    except (TypeError, ValueError):
+        effective_duration = float(duration or 0)
+    duration_str = format_timestamp(effective_duration) if effective_duration else "не указана"
+    _fmt = _ai.get("format", "other") or "other"
+    _hm = _ai.get("hermeneutic_method") or "mixed"
+
+    _key_cats = _ai.get("key_categories", []) or []
+    key_cats_str = "\n".join(f"- {c}" for c in _key_cats[:12]) if _key_cats else "не указаны"
+    _td = _ai.get("terms_data") or {}
+
+    def _fmt_block(items, max_n=12):
+        if not items:
+            return "не указаны"
+        return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n])
+
+    def _fmt_scripture(items, max_n=12):
+        if not items:
+            return "не указаны"
+        parts = []
+        for x in items[:max_n]:
+            fields = str(x).split("||")
+            ref = fields[0].strip() if fields else ""
+            use = fields[1].strip() if len(fields) > 1 else ""
+            parts.append(f"- {ref}: {use}" if use else f"- {ref}")
+        return "\n".join(parts)
+
+    if synopsis_outline is not None:
+        _outline_lines = "\n".join(
+            f"  {i + 1}. {sec.get('title', '')} [{sec.get('time', '')}]"
+            for i, sec in enumerate(synopsis_outline)
+        )
+        study_synopsis_context = (
+            f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
+            "НЕ ПОВТОРЯЙ содержание этих разделов. Дай исследовательскую глубину, "
+            "богословский анализ, разбор терминов и Писания."
+        )
+        reflection_synopsis_context = (
+            f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
+            "НЕ ПОВТОРЯЙ содержание этих разделов. Дай пасторское применение, "
+            "самоиспытание, молитвенный отклик и личные вопросы."
+        )
+    else:
+        study_synopsis_context = ""
+        reflection_synopsis_context = ""
+
+    _source_pack = get_source_pack_for_ai_data(_ai)
+    study_profile = get_expanded_analysis_profile(effective_duration, page_kind="study")
+    reflection_profile = get_expanded_analysis_profile(effective_duration, page_kind="reflection")
+    study_context = build_reasoning_first_block("study") + "\n\n" + study_profile.prompt_block("study")
+    reflection_context = build_reasoning_first_block("reflection") + "\n\n" + reflection_profile.prompt_block("reflection")
+    if study_synopsis_context:
+        study_context += "\n\n" + study_synopsis_context
+    if reflection_synopsis_context:
+        reflection_context += "\n\n" + reflection_synopsis_context
+
+    study_prompt = STUDY_ANALYSIS_PROMPT.format(
+        title=prompt_title,
+        author=real_author,
+        duration=duration_str,
+        format_name=_fmt,
+        hermeneutic_method=_hm,
+        main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
+        analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указано",
+        argument_arc=(_ai.get("argument_arc") or "").strip()[:800] or "не указан",
+        key_categories=key_cats_str,
+        timestamps=(_ai.get("timestamps") or "").strip()[:800] or "не указаны",
+        concepts=_fmt_block(_td.get("concepts", []) or [], 12),
+        scripture=_fmt_scripture(_td.get("scripture", []) or [], 12),
+        translations=_fmt_block(_td.get("translations", []) or [], 8),
+        lexicon_notes=_fmt_block(_td.get("lexicon_notes", []) or [], 8),
+        synopsis_context=study_context,
+        source_pack=_source_pack,
+    )
+
+    merged_questions = []
+    if isinstance(questions, list):
+        green = [q for q in questions if str(q).startswith("\U0001f7e2")]
+        blue = [q for q in questions if str(q).startswith("\U0001f535")]
+        other = [q for q in questions if not str(q).startswith(("\U0001f7e2", "\U0001f535"))]
+        merged_questions = (green + other + blue)[:15]
+    _question_marker_re = re.compile(r"^[\U0001f7e2\U0001f535]\s*")
+    questions_block = "\n".join(f"- {_question_marker_re.sub('', str(q)).strip()}" for q in merged_questions)
+    timestamps_block = "\n".join(f"- {line.strip()}" for line in str(_ai.get("timestamps") or "").splitlines() if line.strip()) or "не указаны"
+
+    reflection_prompt = REFLECTION_APPLICATION_PROMPT.format(
+        title=prompt_title,
+        author=real_author,
+        duration=duration_str,
+        hermeneutic_method=_hm,
+        main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
+        analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указана",
+        argument_arc=(_ai.get("argument_arc") or "").strip()[:800] or "не указан",
+        key_categories=key_cats_str,
+        questions_block=questions_block,
+        timestamps_block=timestamps_block,
+        synopsis_context=reflection_context,
+    )
+
+    combined_prompt = (
+        "QUALITY-FIRST EXPERIMENT: выполни ДВЕ независимые страницы за один вызов. "
+        "Не сокращай глубину ради краткости. Верни только JSON вида "
+        "{\"study\":{\"outline\":[],\"sections\":[]},"
+        "\"reflection\":{\"outline\":[],\"sections\":[]}}. "
+        "Каждая страница должна соответствовать своему заданию полностью.\n\n"
+        "=== STUDY_ANALYSIS TASK ===\n" + study_prompt + "\n\n"
+        "=== REFLECTION_APPLICATION TASK ===\n" + reflection_prompt
+    )
+
+    schema = combined_expanded_pages_response_schema() if _expanded_structured_output_enabled() else None
+    max_tokens = min(max(study_profile.max_tokens + reflection_profile.max_tokens, 32000), 65000)
+    combined_thinking_level = "high"
+    raw = await _gemini_text_request(
+        combined_prompt,
+        temperature=0.35,
+        max_tokens=max_tokens,
+        task="telegraph_studyreflection_combined",
+        thinking_level=combined_thinking_level,
+        response_mime_type=("application/json" if schema else None),
+        response_schema=schema,
+    )
+    if not raw:
+        logger.warning("Combined Study+Reflection: empty Gemini response")
+        return None, None
+
+    parsed = _parse_combined_expanded_json(raw)
+    if parsed is None:
+        logger.warning("Combined Study+Reflection: broken JSON; falling back to separate calls")
+        return None, None
+
+    results: dict[str, str | None] = {"study": None, "reflection": None}
+    for key, label, page_prefix, plain_scripture in [
+        ("study", "StudyAnalysisCombined", "📖 Разбор материала", False),
+        ("reflection", "ReflectionApplicationCombined", "🙏 Размышление и применение", True),
+    ]:
+        outline, sections = parsed.get(key, ([], []))
+        sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
+        if not sections:
+            logger.warning("%s: sections empty in combined response", label)
+            continue
+        sections, outline, issues = audit_expanded_sections(sections, outline if isinstance(outline, list) else [], label=label, expected_author=author_clean)
+        if issues:
+            _log_audit = logger.warning if has_content_audit_warnings(issues) else logger.info
+            _log_audit("%s: content audit before publish: %s", label, format_content_audit_issues(issues))
+        if issues and should_abort_for_content_audit(issues):
+            logger.warning("%s: strict content audit abort in combined response", label)
+            continue
+        if not outline or len(outline) != len(sections):
+            outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
+        tg_title = f"{prompt_title} — {real_author}" if real_author and real_author != "Автор не указан" else prompt_title
+        results[key] = await _publish_expanded_page(
+            sections,
+            outline,
+            page_prefix,
+            tg_title[:256],
+            author_clean,
+            yt_url=yt_url,
+            include_toc=True,
+            rutube_url=rutube_url,
+            vk_url=vk_url,
+            duration=int(effective_duration) if effective_duration else 0,
+            plain_scripture=plain_scripture,
+        )
+
+    return results["study"], results["reflection"]
+
+
+def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | None:
+    """Parse {study:{outline,sections}, reflection:{outline,sections}}."""
+    raw = str(text or "").strip()
+    raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
+    raw = re.sub(r"\s*```\s*$", "", raw).strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    out: dict[str, tuple[list, list]] = {}
+    for key in ("study", "reflection"):
+        page = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(page, dict):
+            return None
+        outline = page.get("outline", [])
+        sections = page.get("sections", [])
+        if not isinstance(outline, list) or not isinstance(sections, list):
+            return None
+        out[key] = (outline, sections)
+    return out
 
 
 # ════════════════════════════════════════════════════════════════════════════

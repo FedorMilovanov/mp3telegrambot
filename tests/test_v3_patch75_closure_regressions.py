@@ -63,7 +63,7 @@ def test_synopsis_quality_prefers_blocks_over_content_fallback_not_double_count(
 
 def test_source_card_legacy_dedupes_cyrillic_latin_duplicate_parenthetical():
     line = "• Джон МакАртур, Strange Fire (John MacArthur, Strange Fire)."
-    assert normalize_source_card_line(line) == "• Джон МакАртур, Strange Fire."
+    assert normalize_source_card_line(line) == "• Джон МакАртур, Чуждый огонь (Strange Fire)."
 
 
 def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned():

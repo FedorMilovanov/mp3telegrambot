@@ -340,6 +340,19 @@ def expanded_page_response_schema() -> dict:
     }
 
 
+
+def combined_expanded_pages_response_schema() -> dict:
+    """Structured-output schema for optional combined Study+Reflection call."""
+    page_schema = expanded_page_response_schema()
+    return {
+        "type": "object",
+        "properties": {
+            "study": page_schema,
+            "reflection": page_schema,
+        },
+        "required": ["study", "reflection"],
+    }
+
 def timestamp_repair_response_schema() -> dict:
     """Structured-output schema for targeted timestamp coverage repair."""
     timestamp_item = {

@@ -75,6 +75,36 @@ def normalize_generated_markdown_separators(text: str) -> str:
     return out
 
 
+
+BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "paragraph": ("text",),
+    "para": ("text",),
+    "bullet": ("text",),
+    "list_item": ("text",),
+    "point": ("text",),
+    "scripture": ("ref",),
+    "scripture_quote": ("ref",),
+    "source": ("author", "title_original"),
+    "source_card": ("author", "title_original"),
+    "bibliography": ("author", "title_original"),
+    "lexicon": ("lemma", "role_in_argument"),
+    "term": ("lemma", "role_in_argument"),
+}
+
+
+def _validate_block_required_fields(block: dict, *, location: str) -> list[ContentAuditIssue]:
+    btype = str(block.get("type") or "paragraph").strip().lower()
+    required = BLOCK_REQUIRED_FIELDS.get(btype, ("text",))
+    missing = [field for field in required if not str(block.get(field) or "").strip()]
+    if not missing:
+        return []
+    return [ContentAuditIssue(
+        code="block_schema_warning",
+        location=location,
+        message=f"block type {btype!r} missing required fields: {', '.join(missing)}",
+        before=_short(block),
+    )]
+
 def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Remove hallucinated first-person name appositions when they mismatch expected author."""
     if not text or not expected_author:
@@ -267,6 +297,7 @@ def audit_expanded_sections(
                 if not isinstance(raw_block, dict):
                     continue
                 block = dict(raw_block)
+                issues.extend(_validate_block_required_fields(block, location=f"{base_loc}.blocks[{bidx}"))
                 for field in ("text", "quote", "why_relevant", "role_in_argument"):
                     if field in block and isinstance(block.get(field), str):
                         block_text, got_block = _audit_text(
@@ -303,6 +334,7 @@ _WARNING_CODES = {
     "bare_translation_forks_warning",
     "translation_semantic_warning",
     "third_person_warning",
+    "block_schema_warning",
 }
 
 

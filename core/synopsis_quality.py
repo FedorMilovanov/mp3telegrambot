@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import re
+
 from core.core_utils import time_to_seconds
 
 
@@ -53,6 +55,49 @@ def _section_text_chars(section: dict[str, Any]) -> int:
             for b in blocks if isinstance(b, dict)
         )
     return len(str((section or {}).get("content") or "").strip())
+
+
+ORGANIZATIONAL_ANNOUNCEMENT_RE = re.compile(
+    r"\b(регистрац|зарегистр|конференци[яиюе]|пройд[её]т|состоится|"
+    r"reformation\s+heritage|grand\s+rapids|registration|announc|conference\s+will)\b",
+    re.IGNORECASE,
+)
+CONTENT_SERMON_RE = re.compile(
+    r"\b(писани|евангели|христ|бог|грех|покаяни|вер[ауы]|дух|церк|проповед|"
+    r"scripture|gospel|christ|repent|faith|church|sermon)\b",
+    re.IGNORECASE,
+)
+
+
+def looks_like_organizational_announcement(section: dict[str, Any]) -> bool:
+    """True for leading logistics/registration announcements, not sermon content."""
+    text = " ".join(str((section or {}).get(k) or "") for k in ("title", "content"))
+    blocks = (section or {}).get("blocks") or []
+    if isinstance(blocks, list):
+        text += " " + " ".join(
+            str(b.get("text") or b.get("quote") or b.get("why_relevant") or "")
+            for b in blocks if isinstance(b, dict)
+        )
+    if not text.strip():
+        return False
+    org_hits = len(ORGANIZATIONAL_ANNOUNCEMENT_RE.findall(text))
+    content_hits = len(CONTENT_SERMON_RE.findall(text))
+    return org_hits >= 2 and content_hits <= 2
+
+
+def filter_organizational_announcement_sections(sections: list[dict]) -> tuple[list[dict], list[SynopsisQualityIssue]]:
+    """Drop only leading logistics announcements from Synopsis sections."""
+    valid = [s for s in sections or [] if isinstance(s, dict)]
+    if len(valid) < 2:
+        return valid, []
+    first = valid[0]
+    if looks_like_organizational_announcement(first):
+        title = str(first.get("title") or "").strip()[:80]
+        return valid[1:], [SynopsisQualityIssue(
+            "synopsis_organizational_announcement_removed",
+            f"removed leading organizational announcement section: {title or 'untitled'}",
+        )]
+    return valid, []
 
 def audit_synopsis_density(sections: list[dict], duration_seconds: int | float = 0) -> list[SynopsisQualityIssue]:
     """Return warnings when Synopsis looks too thin for material duration."""

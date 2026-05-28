@@ -10,7 +10,7 @@ used to correct wrong Russian variants such as «Странный огонь».
 from __future__ import annotations
 
 import re
-from core.person_names import normalize_person_names
+from core.person_names import canonical_person_name, normalize_person_names
 
 AUTHOR_CANONICAL: dict[str, str] = {
     "John MacArthur": "Джон МакАртур",
@@ -39,6 +39,8 @@ AUTHOR_CANONICAL: dict[str, str] = {
 OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("John MacArthur", "Strange Fire"): "Чуждый огонь",
     ("John MacArthur", "Ashamed of the Gospel"): "Стыжусь ли я Евангелия?",
+    ("R.C. Sproul", "The Holiness of God"): "Святость Бога",
+    ("R. C. Sproul", "The Holiness of God"): "Святость Бога",
     ("John Owen", "The Death of Death in the Death of Christ"): "Смерть смерти в смерти Христа",
     ("John Owen", "Of the Mortification of Sin in Believers"): "Об умерщвлении греха в верующих",
     ("Andrew Fuller", "The Gospel Worthy of All Acceptation"): "Евангелие, достойное всякого принятия",
@@ -62,7 +64,7 @@ _SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
 
 _EN_AUTHOR_WITH_TITLE_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
-    r"(?P<en_author>[A-Z][A-Za-z .’'\-]{2,100}),\s+"
+    r"(?P<en_author>[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z .’'\-]{2,100}),\s+"
     r"(?P<title>[A-Za-z][^\n]{2,220})$"
 )
 
@@ -97,13 +99,20 @@ def _same_title(a: str, b: str) -> bool:
 
 def canonical_author_name(value: str) -> str:
     value = str(value or "").strip()
-    return AUTHOR_CANONICAL.get(value, value)
+    return canonical_person_name(AUTHOR_CANONICAL.get(value, value))
 
 
 def official_ru_title(en_author: str, en_title: str) -> str:
     author = str(en_author or "").strip()
     title = str(en_title or "").strip().rstrip(".")
-    return OFFICIAL_RU_TITLES.get((author, title), "")
+    direct = OFFICIAL_RU_TITLES.get((author, title), "")
+    if direct:
+        return direct
+    author_canon = canonical_person_name(author)
+    for known_author, known_title in OFFICIAL_RU_TITLES:
+        if known_title == title and canonical_person_name(AUTHOR_CANONICAL.get(known_author, known_author)) == author_canon:
+            return OFFICIAL_RU_TITLES[(known_author, known_title)]
+    return ""
 
 
 def correct_known_ru_title(value: str) -> str:
@@ -128,6 +137,23 @@ def dedupe_bilingual_authors(line: str) -> str:
     return out.strip()
 
 
+
+def _format_canonical_source_card(bullet: str, author: str, en_author: str, en_title: str, *, fallback_ru_title: str = "") -> str:
+    """Return consistent Russian source-card display with original title in parentheses.
+
+    Policy: Russian author + Russian title when known, with verifiable original
+    title in parentheses. If no Russian title is known/provided, keep the
+    original title rather than inventing a translation.
+    """
+    en_title = str(en_title or "").strip().rstrip(".")
+    ru_title = official_ru_title(en_author, en_title) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
+    # Do not use a fallback Russian title if it is actually an English/original title.
+    if ru_title and re.search(r"[A-Za-z]", ru_title) and not re.search(r"[А-Яа-яЁё]", ru_title):
+        ru_title = ""
+    if ru_title and en_title and ru_title.casefold() != en_title.casefold():
+        return f"{bullet}{author}, {ru_title} ({en_title})."
+    return f"{bullet}{author}, {en_title}."
+
 def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> str:
     """Normalize one bibliography/source-card line.
 
@@ -141,7 +167,7 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     out = normalize_person_names(correct_known_ru_title(str(line or "")))
     # Only source-card-like lines need aggressive whitespace/dedupe normalization.
     # Plain inline nodes such as "• " must keep their spacing.
-    looks_like_source = bool(re.search(r"[A-Za-z].*,|\([^)]*[A-Za-z]{3,}[^)]*\)", out))
+    looks_like_source = bool(re.search(r"[A-Za-z].*,|,\s*[A-Za-z][A-Za-z ]{2,}|\([^)]*[A-Za-z]{3,}[^)]*\)", out))
     if looks_like_source:
         out = dedupe_bilingual_authors(out)
 
@@ -159,7 +185,10 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         if author == flex_dup.group("paren_author"):
             author = normalize_person_names(flex_dup.group("head_author").strip())
         title = flex_dup.group("paren_title").strip().rstrip(".")
-        return f"{bullet}{author}, {title}."
+        return _format_canonical_source_card(
+            bullet, author, flex_dup.group("paren_author"), title,
+            fallback_ru_title=flex_dup.group("title"),
+        )
 
     m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())
     if m and re.search(r"[A-Za-z]", m.group("en_title")):
@@ -167,11 +196,10 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         en_author = m.group("en_author").strip()
         en_title = m.group("en_title").strip().rstrip(".")
         author = canonical_author_name(en_author) or m.group("author").strip()
-        if prefer_original:
-            return f"{bullet}{author}, {en_title}."
-        ru_official = official_ru_title(en_author, en_title)
-        title = f"{en_title} / {ru_official}" if ru_official else en_title
-        return f"{bullet}{author}, {title}."
+        return _format_canonical_source_card(
+            bullet, author, en_author, en_title,
+            fallback_ru_title=m.group("ru_title"),
+        )
 
     m2 = _EN_AUTHOR_WITH_TITLE_RE.match(out.strip())
     if m2:
@@ -179,7 +207,9 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         en_author = m2.group("en_author").strip()
         title = m2.group("title").strip().rstrip(".")
         author = canonical_author_name(en_author)
-        if author != en_author:
-            return f"{bullet}{author}, {title}."
+        if author != en_author or re.search(r"[A-Za-z]", title):
+            return _format_canonical_source_card(bullet, author, en_author, title)
 
+    if looks_like_source and out.strip().startswith(("•", "-")) and not re.search(r"[.!?]\s*$", out):
+        return out.rstrip() + "."
     return out

@@ -131,6 +131,7 @@ def build_generated_page_record(
     caption_timestamps_shown: int = 0,
     model: str = "",
     prompt_version: str = "",
+    prompt_variant: str = "",
     created_at: int | None = None,
 ) -> dict[str, Any]:
     ts = int(created_at or _now_ts())
@@ -164,6 +165,7 @@ def build_generated_page_record(
         "caption_timestamps_shown": int(caption_timestamps_shown or 0),
         "model": _safe_text(model, 120),
         "prompt_version": _safe_text(prompt_version, 120),
+        "prompt_variant": _safe_text(prompt_variant or os.getenv("PROMPT_EXPERIMENT_TAG", ""), 120),
         "created_at": ts,
         "updated_at": ts,
     }
@@ -201,6 +203,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             caption_timestamps_shown INTEGER DEFAULT 0,
             model TEXT DEFAULT '',
             prompt_version TEXT DEFAULT '',
+            prompt_variant TEXT DEFAULT '',
             last_repaired_at INTEGER DEFAULT 0,
             repair_count INTEGER DEFAULT 0,
             last_repair_changed_pages INTEGER DEFAULT 0,
@@ -221,6 +224,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         ("caption_trim_stage", "TEXT DEFAULT ''"),
         ("caption_timestamps_total", "INTEGER DEFAULT 0"),
         ("caption_timestamps_shown", "INTEGER DEFAULT 0"),
+        ("prompt_variant", "TEXT DEFAULT ''"),
         ("last_repaired_at", "INTEGER DEFAULT 0"),
         ("repair_count", "INTEGER DEFAULT 0"),
         ("last_repair_changed_pages", "INTEGER DEFAULT 0"),
@@ -251,7 +255,7 @@ def _record_values(record: dict[str, Any]) -> tuple:
         float(record.get("timestamp_coverage_ratio") or 0.0), record.get("segments_status", "complete"),
         record.get("caption_trim_stage", ""), int(record.get("caption_timestamps_total") or 0),
         int(record.get("caption_timestamps_shown") or 0),
-        record.get("model", ""), record.get("prompt_version", ""),
+        record.get("model", ""), record.get("prompt_version", ""), record.get("prompt_variant", ""),
         int(record.get("created_at") or _now_ts()), int(record.get("updated_at") or _now_ts()),
     )
 
@@ -265,7 +269,7 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
                publication_status, publication_missing, publication_warning,
                quality_warnings, timestamp_coverage_ratio, segments_status,
                caption_trim_stage, caption_timestamps_total, caption_timestamps_shown,
-               model, prompt_version, last_repaired_at, repair_count,
+               model, prompt_version, prompt_variant, last_repaired_at, repair_count,
                last_repair_changed_pages, last_repair_errors, created_at, updated_at
         FROM generated_pages
         ORDER BY updated_at DESC
@@ -280,7 +284,7 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
         "publication_status", "publication_missing", "publication_warning",
         "quality_warnings", "timestamp_coverage_ratio", "segments_status",
         "caption_trim_stage", "caption_timestamps_total", "caption_timestamps_shown",
-        "model", "prompt_version", "last_repaired_at", "repair_count",
+        "model", "prompt_version", "prompt_variant", "last_repaired_at", "repair_count",
         "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
     ]
     out: list[dict[str, Any]] = []
@@ -306,6 +310,8 @@ def _md_record(record: dict[str, Any]) -> str:
     lines = [f"### {title} — {author}", ""]
     if record.get("event"):
         lines.append(f"- Event: {record['event']}")
+    if record.get("prompt_variant"):
+        lines.append(f"- Prompt variant: `{record['prompt_variant']}`")
     lines.append(f"- Status: `{status}`")
     if record.get("publication_warning"):
         lines.append(f"- Warning: {record['publication_warning']}")
@@ -404,8 +410,8 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                  publication_status, publication_missing, publication_warning,
                  quality_warnings, timestamp_coverage_ratio, segments_status,
                  caption_trim_stage, caption_timestamps_total, caption_timestamps_shown,
-                 model, prompt_version, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 model, prompt_version, prompt_variant, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET
                 source_url=excluded.source_url,
                 title=excluded.title,
@@ -435,6 +441,7 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                 caption_timestamps_shown=excluded.caption_timestamps_shown,
                 model=excluded.model,
                 prompt_version=excluded.prompt_version,
+                prompt_variant=excluded.prompt_variant,
                 updated_at=excluded.updated_at
             """,
             _record_values(record),
@@ -486,6 +493,7 @@ def query_generated_pages(
             r.get("title", ""), r.get("author", ""), r.get("event", ""),
             r.get("format", ""), r.get("publication_status", ""),
             " ".join(r.get("quality_warnings") or []), r.get("segments_status", ""),
+            r.get("prompt_variant", ""),
             " ".join(r.get("hashtags") or []),
             " ".join(r.get("key_categories") or []),
             " ".join(r.get("scripture_refs") or []),

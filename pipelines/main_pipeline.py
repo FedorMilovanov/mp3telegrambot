@@ -38,7 +38,8 @@ from services.telegraph import create_telegraph_synopsis
 from services.telegraph_pages import (
     create_telegraph_analytics, create_telegraph_questions,
     create_telegraph_terms, create_telegraph_study_analysis,
-    create_telegraph_reflection_application,
+    create_telegraph_reflection_application, create_telegraph_study_reflection_combined,
+    combined_study_reflection_enabled,
 )
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
@@ -688,17 +689,39 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _terms_pipeline(),
             return_exceptions=True,
         )
-        # Study и Reflection — последовательно, чтобы не удваивать нагрузку на Gemini
-        try:
-            study_analysis_tg = await _study_analysis_pipeline()
-        except Exception as _e_study:
-            logger.warning(f"StudyAnalysis pipeline error: {_e_study}")
-            study_analysis_tg = None
-        try:
-            reflection_application_tg = await _reflection_application_pipeline()
-        except Exception as _e_refl:
-            logger.warning(f"ReflectionApplication pipeline error: {_e_refl}")
-            reflection_application_tg = None
+        # Study и Reflection: quality-first default keeps separate calls.
+        # Optional combined mode is opt-in only (COMBINE_STUDY_REFLECTION=1)
+        # and falls back to separate calls if either page is missing.
+        study_analysis_tg = None
+        reflection_application_tg = None
+        if _feat_study_analysis and _feat_reflection_application and combined_study_reflection_enabled():
+            try:
+                logger.info("Study+Reflection combined: enabled by COMBINE_STUDY_REFLECTION=1")
+                _study_compact = lambda: create_telegraph_analytics(ai_data, search_title, tg_author, url)
+                _reflection_compact = lambda: create_telegraph_questions(_questions, search_title, tg_author)
+                study_analysis_tg, reflection_application_tg = await create_telegraph_study_reflection_combined(
+                    ai_data, _questions, search_title, tg_author, yt_url=url,
+                    study_compact_fn=_study_compact, reflection_compact_fn=_reflection_compact,
+                    rutube_url=_pre_rutube, vk_url=_pre_vk,
+                    synopsis_outline=synopsis_outline, duration=duration,
+                )
+            except Exception as _e_combined:
+                logger.warning(f"Study+Reflection combined pipeline error: {_e_combined}")
+                study_analysis_tg = None
+                reflection_application_tg = None
+
+        if not study_analysis_tg:
+            try:
+                study_analysis_tg = await _study_analysis_pipeline()
+            except Exception as _e_study:
+                logger.warning(f"StudyAnalysis pipeline error: {_e_study}")
+                study_analysis_tg = None
+        if not reflection_application_tg:
+            try:
+                reflection_application_tg = await _reflection_application_pipeline()
+            except Exception as _e_refl:
+                logger.warning(f"ReflectionApplication pipeline error: {_e_refl}")
+                reflection_application_tg = None
         if isinstance(alt_links, Exception):
             logger.warning(f"find_alternative_links error: {alt_links}", exc_info=alt_links)
             alt_links = {"rutube": None, "vk": None}
@@ -1094,6 +1117,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     caption_timestamps_shown=(ai_data or {}).get("caption_timestamps_shown", 0),
                     model=GEMINI_MODEL,
                     prompt_version=get_prompt_fingerprint(),
+                    prompt_variant=os.getenv("PROMPT_EXPERIMENT_TAG", ""),
                 )
                 await asave_generated_page_record(_archive_record)
                 _segment_export = await asave_segment_plan_export(

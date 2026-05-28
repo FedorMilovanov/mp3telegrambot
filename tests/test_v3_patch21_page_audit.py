@@ -83,7 +83,7 @@ def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
     assert "Джон МакАртур подчеркивает" not in flat
     assert "Верность важна" in flat
     assert "Странный огонь" not in flat
-    assert "Джон МакАртур, Strange Fire" in flat
+    assert "Джон МакАртур, Чуждый огонь (Strange Fire)" in flat
     assert "Грег Гилберт, Greg Gilbert" not in flat
     assert "Кевин ДеЯнг и Грег Гилберт" in flat
 
@@ -91,7 +91,7 @@ def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
 def test_patch21_source_map_normalizer_prefers_original_titles():
     assert normalize_source_map_text(
         "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
-    ) == "• Джон МакАртур, Strange Fire."
+    ) == "• Джон МакАртур, Чуждый огонь (Strange Fire)."
     assert normalize_source_map_text(
         "• Кевин ДеЯнг, Грег Гилберт, Greg Gilbert, What Is the Mission of the Church?."
     ).startswith("• Кевин ДеЯнг и Грег Гилберт, What Is the Mission")

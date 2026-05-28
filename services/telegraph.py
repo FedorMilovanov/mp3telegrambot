@@ -32,9 +32,9 @@ from core.content_audit import get_content_audit_mode, should_abort_for_content_
 from core.candidate_schema import expanded_page_response_schema
 from core.reasoning_guidance import build_synopsis_reasoning_note
 from core.synopsis_quality import (
-    audit_synopsis_density, format_synopsis_quality_issues,
-    get_synopsis_density_profile, should_retry_synopsis_density,
-    synopsis_density_score,
+    audit_synopsis_density, filter_organizational_announcement_sections,
+    format_synopsis_quality_issues, get_synopsis_density_profile,
+    should_retry_synopsis_density, synopsis_density_score,
 )
 from core.prompt_compactor import compact_prompt_for_generation
 
@@ -879,6 +879,14 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 "Synopsis v2: content audit before publish: %s",
                 format_content_audit_issues(_content_audit),
             )
+        sections, _org_issues = filter_organizational_announcement_sections(sections)
+        if _org_issues:
+            logger.warning(
+                "Synopsis v2: organizational announcement filter: %s",
+                format_synopsis_quality_issues(_org_issues),
+            )
+            outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
+
         if _content_audit and should_abort_for_content_audit(_content_audit):
             logger.warning("Synopsis v2: content audit strict abort")
             return None, None
