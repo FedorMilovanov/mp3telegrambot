@@ -6,7 +6,7 @@ from core.title_topic_audit import choose_safe_public_title
 
 
 def test_choose_safe_public_title_uses_fallback_only_when_warning_present():
-    ai = {"real_title": "Святой Дух Откровения", "title_topic_warning": "low overlap"}
+    ai = {"real_title": "Святой Дух Откровения", "title_topic_warning": "low overlap", "main_topic": "Пастырская верность и библейская экклезиология"}
     assert choose_safe_public_title(ai, "Пастырская верность и библейская экклезиология") == (
         "Пастырская верность и библейская экклезиология"
     )

@@ -714,11 +714,11 @@ def _structured_blocks_to_nodes_v2(
             ts = _scrub_inline(str(raw.get("timestamp") or "").strip())
             line = ""
             if ref and quote:
-                line = f"• **{ref}:** *«{quote.strip('«»')}»*"
+                line = f"• **{ref}:** *«{quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote}»*"
             elif ref:
                 line = f"• **{ref}.**"
             elif quote:
-                line = f"• *«{quote.strip('«»')}»*"
+                line = f"• *«{quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote}»*"
             if line and ts:
                 line += f" ⏱ {ts}"
             if line:
@@ -922,7 +922,8 @@ def _section_to_nodes_v2(
     # ------------------------------------------------------------------
 
     # Пробел после точки/восклиц./вопроса/двоеточия, если дальше буква
-    content = re.sub(r'([.!?…:])([А-ЯЁA-Z])', r'\1 \2', content)
+    content = re.sub(r'(?<!\d)([.!?…:])([А-ЯЁA-Z])', r'\1 \2', content)
+    content = re.sub(r'(:\d{1,3})\.([А-ЯЁA-Z])', r'\1. \2', content)
     # FIX 2026-05-21 P0: добавляем пробел между .!?…: и **bold** только если
     # за ** идёт непустой символ (т.е. ** — открывающий маркер). Иначе закрывающий
     # ** после ':' получает разделение и вся пара '**...**' сдвигается → ломается весь абзац.
@@ -1886,7 +1887,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r"(^|\n)-\*\s+\*", r"\1- **", text)
         text = re.sub(r"([а-яё])([A-Z][A-Za-z])", r"\1 \2", text)
         text = re.sub(r"([а-яё])«", r"\1 «", text)
-        text = re.sub(r"([.!?])([А-ЯЁA-Z])", r"\1 \2", text)
+        text = re.sub(r"(?<!\d)([.!?])([А-ЯЁA-Z])", r"\1 \2", text)
+        text = re.sub(r"(:\d{1,3})\.([А-ЯЁA-Z])", r"\1. \2", text)
         text = re.sub(r",\s*\*", ", *", text)
         # Preserve paragraph boundaries from Gemini pseudo-separators; guard URLs (https://).
         text = re.sub(r"(?<!:)\s+/\s*/\s+", "\n\n", text)

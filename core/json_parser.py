@@ -7,6 +7,7 @@ import json
 import logging
 import re
 
+from core.core_utils import time_to_seconds
 from core.timestamp_quality import audit_timestamp_coverage
 from core.title_topic_audit import audit_title_topic_consistency
 from core.text_utils import (   # FIX json_parser
@@ -120,20 +121,13 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     FIX 2026-05-21 #11 P2: убираем code-fence ```json / ``` перед поиском JSON,
     иначе s.find('{') не учитывает текст fence и логи замусориваются 'JSON не найден'.
     """
-    # FIX 2026-05-21 #11: убираем code-fence префикс/суффикс если есть
-    if isinstance(text, str):
-        _t = text.strip()
-        if _t.startswith('```'):
-            # ```json\n{...}\n``` → {...}
-            _t = re.sub(r'^```[a-zA-Z]*\s*', '', _t)
-            _t = re.sub(r'\s*```\s*$', '', _t)
-            text = _t
-
     def _valid_time(t: str) -> bool:
         if not duration or not t:
             return True
         secs = time_to_seconds(t)
-        return secs is not None and secs <= duration + 30
+        # Keep a small tolerance for platform rounding, but reject obvious
+        # hallucinated tail timestamps before they poison coverage/segments.
+        return secs is not None and secs <= duration + 10
 
     def _clean_times(times_raw) -> list:
         out = []
@@ -512,11 +506,6 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     ])
     return result if has_content else None
 
-
-# Перенесено в core_utils.py для разрыва цикла json_parser → text_utils → json_parser.
-# Re-export для обратной совместимости: все модули, импортирующие time_to_seconds
-# из json_parser, продолжают работать без изменений.
-from core.core_utils import time_to_seconds  # noqa: F401  (re-export)
 
 
 # Alias для совместимости

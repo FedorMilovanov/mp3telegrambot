@@ -74,6 +74,27 @@ _DUPLICATE_PAREN_RE = re.compile(
 )
 
 
+_FLEX_DUPLICATE_PAREN_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<head_author>[^,\n]{2,120}),\s*"
+    r"(?P<title>[^()\n]{2,220}?)\.?\s*"
+    r"\(\s*(?P<paren_author>[^,\n]{2,120}),\s*"
+    r"(?P<paren_title>[^()\n]{2,220}?)\.?\s*\)\.?$"
+)
+
+
+def _same_author(a: str, b: str) -> bool:
+    aa = canonical_author_name(str(a or "").strip())
+    bb = canonical_author_name(str(b or "").strip())
+    return normalize_person_names(aa).casefold() == normalize_person_names(bb).casefold()
+
+
+def _same_title(a: str, b: str) -> bool:
+    def norm(x: str) -> str:
+        return re.sub(r"\W+", "", str(x or "").strip().rstrip(".").casefold())
+    return bool(norm(a)) and norm(a) == norm(b)
+
+
 def canonical_author_name(value: str) -> str:
     value = str(value or "").strip()
     return AUTHOR_CANONICAL.get(value, value)
@@ -129,6 +150,15 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         bullet = dup.group("bullet") or ""
         author = normalize_person_names(dup.group("head_author").strip())
         title = dup.group("title").strip().rstrip(".")
+        return f"{bullet}{author}, {title}."
+
+    flex_dup = _FLEX_DUPLICATE_PAREN_RE.match(out.strip())
+    if flex_dup and _same_author(flex_dup.group("head_author"), flex_dup.group("paren_author")) and _same_title(flex_dup.group("title"), flex_dup.group("paren_title")):
+        bullet = flex_dup.group("bullet") or ""
+        author = canonical_author_name(flex_dup.group("paren_author"))
+        if author == flex_dup.group("paren_author"):
+            author = normalize_person_names(flex_dup.group("head_author").strip())
+        title = flex_dup.group("paren_title").strip().rstrip(".")
         return f"{bullet}{author}, {title}."
 
     m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())

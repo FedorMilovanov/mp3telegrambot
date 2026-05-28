@@ -44,16 +44,22 @@ def _section_time_seconds(section: dict[str, Any]) -> int | None:
     return time_to_seconds(t) if t else None
 
 
+
+def _section_text_chars(section: dict[str, Any]) -> int:
+    blocks = section.get("blocks") if isinstance(section, dict) else None
+    if isinstance(blocks, list) and blocks:
+        return sum(
+            len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or ""))
+            for b in blocks if isinstance(b, dict)
+        )
+    return len(str((section or {}).get("content") or "").strip())
+
 def audit_synopsis_density(sections: list[dict], duration_seconds: int | float = 0) -> list[SynopsisQualityIssue]:
     """Return warnings when Synopsis looks too thin for material duration."""
     profile = get_synopsis_density_profile(duration_seconds)
     issues: list[SynopsisQualityIssue] = []
     valid = [s for s in sections or [] if isinstance(s, dict)]
-    total_chars = sum(
-        len(str(s.get("content") or "").strip())
-        + sum(len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or "")) for b in (s.get("blocks") or []) if isinstance(b, dict))
-        for s in valid
-    )
+    total_chars = sum(_section_text_chars(s) for s in valid)
     if len(valid) < profile.min_sections:
         issues.append(SynopsisQualityIssue(
             "synopsis_too_few_sections",
@@ -86,11 +92,7 @@ def format_synopsis_quality_issues(issues: list[SynopsisQualityIssue]) -> str:
 def synopsis_density_score(sections: list[dict], duration_seconds: int | float = 0) -> int:
     """Simple monotonic score for comparing original vs retry Synopsis."""
     valid = [s for s in sections or [] if isinstance(s, dict)]
-    total_chars = sum(
-        len(str(s.get("content") or "").strip())
-        + sum(len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or "")) for b in (s.get("blocks") or []) if isinstance(b, dict))
-        for s in valid
-    )
+    total_chars = sum(_section_text_chars(s) for s in valid)
     times = [_section_time_seconds(s) for s in valid]
     times = [t for t in times if t is not None]
     try:

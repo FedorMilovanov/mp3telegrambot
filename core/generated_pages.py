@@ -26,7 +26,7 @@ def _now_ts() -> int:
     return int(time.time())
 
 
-def _safe_text(value: Any, limit: int = 2000) -> str:
+def _safe_text(value: Any, limit: int = 4000) -> str:
     text = str(value or "").replace("\r", " ").strip()
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text[:limit]
@@ -136,26 +136,26 @@ def build_generated_page_record(
     ts = int(created_at or _now_ts())
     return {
         "video_id": _safe_text(video_id, 160),
-        "source_url": _safe_text(source_url, 800),
+        "source_url": _safe_text(source_url, 4096),
         "title": _safe_text(title, 400),
         "author": _safe_text(author, 240),
         "event": _safe_text(event, 240),
         "format": _safe_text(format_name, 80),
         "duration": int(duration or 0),
-        "youtube_url": _safe_text(youtube_url or source_url, 800),
-        "rutube_url": _safe_text(rutube_url, 800),
-        "vk_url": _safe_text(vk_url, 800),
-        "synopsis_url": _safe_text(synopsis_url, 800),
-        "study_url": _safe_text(study_url, 800),
-        "reflection_url": _safe_text(reflection_url, 800),
-        "terms_url": _safe_text(terms_url, 800),
-        "questions_url": _safe_text(questions_url, 800),
+        "youtube_url": _safe_text(youtube_url or source_url, 4096),
+        "rutube_url": _safe_text(rutube_url, 4096),
+        "vk_url": _safe_text(vk_url, 4096),
+        "synopsis_url": _safe_text(synopsis_url, 4096),
+        "study_url": _safe_text(study_url, 4096),
+        "reflection_url": _safe_text(reflection_url, 4096),
+        "terms_url": _safe_text(terms_url, 4096),
+        "questions_url": _safe_text(questions_url, 4096),
         "hashtags": _json_list(hashtags),
         "key_categories": _json_list(key_categories),
         "scripture_refs": _json_list(scripture_refs),
         "publication_status": _safe_text(publication_status or "unknown", 40),
         "publication_missing": _json_list(publication_missing),
-        "publication_warning": _safe_text(publication_warning, 800),
+        "publication_warning": _safe_text(publication_warning, 2000),
         "quality_warnings": _json_list(quality_warnings),
         "timestamp_coverage_ratio": float(timestamp_coverage_ratio or 0.0),
         "segments_status": _safe_text(segments_status or "complete", 40),
@@ -209,6 +209,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             updated_at INTEGER DEFAULT 0
         )
     """)
+    def _trusted_ident(name: str) -> str:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError(f"unsafe column name: {name!r}")
+        return name
+
     for col, ddl in [
         ("quality_warnings", "TEXT DEFAULT '[]'"),
         ("timestamp_coverage_ratio", "REAL DEFAULT 0"),
@@ -222,7 +227,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         ("last_repair_errors", "TEXT DEFAULT ''"),
     ]:
         try:
-            conn.execute(f"ALTER TABLE generated_pages ADD COLUMN {col} {ddl}")
+            conn.execute(f"ALTER TABLE generated_pages ADD COLUMN {_trusted_ident(col)} {ddl}")
         except sqlite3.OperationalError:
             pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_updated ON generated_pages(updated_at)")

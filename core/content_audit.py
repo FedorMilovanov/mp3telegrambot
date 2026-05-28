@@ -52,7 +52,8 @@ _DOUBLE_SLASH_RE = re.compile(r"(?<!:)\s+/\s*/\s+")
 _GLUE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"([а-яё])([A-Z])"), r"\1 \2"),
     (re.compile(r"([а-яё])«"), r"\1 «"),
-    (re.compile(r"([.!?…])([А-ЯЁA-Z])"), r"\1 \2"),
+    (re.compile(r"(?<!\d)([.!?…])([А-ЯЁA-Z])"), r"\1 \2"),
+    (re.compile(r"(:\d{1,3})\.([А-ЯЁA-Z])"), r"\1. \2"),
     (re.compile(r"(^|\n)-(?=[А-ЯЁA-Z])"), r"\1- "),
 )
 
@@ -107,20 +108,13 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     original = str(value or "")
     issues: list[ContentAuditIssue] = []
 
-    text = normalize_common_typos(original)
+    text = normalize_common_typos(original, source_map=False)
     if text != original:
         _looks_source_fix = bool(re.search(r"[A-Za-z].*,|\([^)]*[A-Za-z]{3,}[^)]*\)", original))
         issues.append(ContentAuditIssue(
             code="source_card_fixed" if _looks_source_fix else "typo_fixed",
             location=location,
             message="source-card normalization applied" if _looks_source_fix else "common typo normalization applied",
-            before=_short(original),
-            after=_short(text),
-        ))
-        issues.append(ContentAuditIssue(
-            code="normalized_text",
-            location=location,
-            message="legacy compatibility: typo/source-map normalization applied",
             before=_short(original),
             after=_short(text),
         ))
@@ -153,14 +147,6 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
             before=_short(source_before),
             after=_short(text),
         ))
-        if not any(i.code == "normalized_text" and i.location == location for i in issues):
-            issues.append(ContentAuditIssue(
-                code="normalized_text",
-                location=location,
-                message="legacy compatibility: typo/source-map normalization applied",
-                before=_short(source_before),
-                after=_short(text),
-            ))
 
     third_before = text
     text = scrub_third_person_phrases(text)

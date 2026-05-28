@@ -25,6 +25,28 @@ def _terms(text: str) -> set[str]:
     return {w for w in words if w not in _STOP}
 
 
+
+
+def _overlap_score(title: str, body: str) -> float:
+    title_terms = _terms(title)
+    if not title_terms:
+        return 0.0
+    body_terms = _terms(body)
+    if not body_terms:
+        return 0.0
+    return len(title_terms & body_terms) / max(len(title_terms), 1)
+
+
+def _body_for_ai(ai_data: dict | None) -> str:
+    ai = ai_data or {}
+    body = str(ai.get("main_topic") or "")
+    ts = ai.get("timestamps")
+    if isinstance(ts, list):
+        body += " " + " ".join(str(x.get("topic", "")) for x in ts if isinstance(x, dict))
+    else:
+        body += " " + str(ts or "")
+    return body
+
 def audit_title_topic_consistency(real_title: str, main_topic: str = "", timestamps: Any = None) -> TitleTopicIssue | None:
     title_terms = _terms(real_title)
     if len(title_terms) < 1:
@@ -61,5 +83,11 @@ def choose_safe_public_title(ai_data: dict | None, fallback_title: str = "") -> 
     fallback = str(fallback_title or "").strip()
     current = str(ai_data.get("real_title") or "").strip()
     if ai_data.get("title_topic_warning") and len(fallback) >= 8:
-        return fallback
+        # Do not blindly overwrite a human/editorial current title. Fallback is
+        # safer only when it is measurably more aligned with topic/timestamps.
+        body = _body_for_ai(ai_data)
+        fallback_score = _overlap_score(fallback, body)
+        current_score = _overlap_score(current, body)
+        if fallback_score >= 0.34 and fallback_score > current_score:
+            return fallback
     return current or fallback

@@ -154,7 +154,7 @@ def normalize_source_map_text(line: str) -> str:
     return normalize_source_card_line(line, prefer_original=True)
 
 
-def normalize_common_typos(text: str) -> str:
+def normalize_common_typos(text: str, *, source_map: bool = True) -> str:
     """Fix narrow, recurring Russian typos from Gemini/ASR output.
 
     This is intentionally not a general grammar corrector. It only patches
@@ -166,7 +166,8 @@ def normalize_common_typos(text: str) -> str:
     for src, dst in _COMMON_TYPO_REPLACEMENTS:
         text = text.replace(src, dst)
     text = normalize_person_names(text)
-    text = normalize_source_map_text(text)
+    if source_map:
+        text = normalize_source_map_text(text)
     return text
 
 

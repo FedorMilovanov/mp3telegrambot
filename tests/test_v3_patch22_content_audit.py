@@ -23,7 +23,7 @@ def test_content_audit_normalizes_section_title_content_and_outline():
     assert "Стиву Лоусону" in out_sections[0]["content"]
     assert out_outline[0]["title"] == "Чуждый огонь"
     codes = {i.code for i in issues}
-    assert "normalized_text" in codes
+    assert "typo_fixed" in codes
     assert "third_person_fixed" in codes
 
 
@@ -45,7 +45,7 @@ def test_content_audit_source_map_prefers_original_and_dedupes_authors():
     assert "• Джон МакАртур, Strange Fire." in content
     assert "Грег Гилберт, Greg Gilbert" not in content
     assert "Кевин ДеЯнг и Грег Гилберт" in content
-    assert any(i.code == "normalized_text" for i in issues)
+    assert any(i.code == "source_card_fixed" for i in issues)
 
 
 def test_content_audit_warns_about_mixed_greek_after_known_fixes():
