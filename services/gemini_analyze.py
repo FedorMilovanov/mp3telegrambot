@@ -27,8 +27,10 @@ from core.progress import set_progress     # FIX gemini_analyze
 from core.utils import format_timestamp, mask_api_key as _mask_api_key  # FIX gemini_analyze
 from core.prompts import build_audio_analysis_prompt, AUDIO_ANALYSIS_MODE  # deep prompt builder
 from core.observability import alog_gemini_response, alog_gemini_run  # V3 observability
-from core.candidate_schema import audio_analysis_response_schema
+from core.candidate_schema import audio_analysis_response_schema, timestamp_repair_response_schema
 from core.prompt_compactor import compact_prompt_for_generation
+from core.core_utils import time_to_seconds
+from core.text_utils import _scrub_inline
 
 import asyncio
 import logging
@@ -57,6 +59,97 @@ def _audio_structured_timeout() -> float:
     except (TypeError, ValueError):
         return 180.0
 
+
+
+def _timestamp_repair_enabled() -> bool:
+    return (os.getenv("AUDIO_TIMESTAMP_REPAIR", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _format_ts_for_prompt(seconds: int | float = 0) -> str:
+    try:
+        sec = max(0, int(seconds or 0))
+    except (TypeError, ValueError):
+        sec = 0
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _format_repaired_timestamps(data: dict, duration: int) -> str:
+    items = data.get("timestamps") if isinstance(data, dict) else []
+    if not isinstance(items, list):
+        return ""
+    lines: list[str] = []
+    seen: set[str] = set()
+    for item in items[:40]:
+        if not isinstance(item, dict):
+            continue
+        t = str(item.get("time") or "").strip()
+        topic = _scrub_inline(str(item.get("topic") or "").strip())
+        if not t or not topic:
+            continue
+        sec = time_to_seconds(t)
+        if sec is None or sec < 0 or (duration and sec > duration + 30):
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        lines.append(f"{_format_ts_for_prompt(sec)} {topic}")
+    return "\n".join(lines)
+
+
+async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict | None, duration: int, model_name: str, video_id: str) -> dict | None:
+    """One targeted, non-fatal repair pass for low timestamp coverage."""
+    if not parsed or not _timestamp_repair_enabled() or not parsed.get("timestamp_coverage_warning"):
+        return parsed
+    if client is None or audio_part is None:
+        return parsed
+    current = parsed.get("timestamps") or ""
+    min_final = _format_ts_for_prompt(int(max(0, int(duration or 0)) * 0.88))
+    prompt = (
+        "Исправь ТОЛЬКО список timestamps для этого аудиоматериала. "
+        "Нужно покрыть ход мысли от 0:00 до финальной части материала. "
+        f"Длительность: {_format_ts_for_prompt(duration)}. "
+        f"Последний смысловой таймкод должен быть примерно не раньше {min_final}, если материал не закончился раньше. "
+        "Верни JSON только вида {\"timestamps\":[{\"time\":\"M:SS\",\"topic\":\"...\"}]}. "
+        "Не меняй автора, тему и другие поля. Не делай механическую нарезку; ставь таймкоды только на смысловые повороты.\n\n"
+        f"Текущий неполный список:\n{current[:3000]}"
+    )
+    try:
+        resp = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model_name,
+                contents=[audio_part, prompt],
+                config=make_audio_config(
+                    max_output_tokens=12000,
+                    model_name=model_name,
+                    response_mime_type="application/json",
+                    response_schema=timestamp_repair_response_schema(),
+                    thinking_level="low",
+                ),
+            ),
+            timeout=float(os.getenv("AUDIO_TIMESTAMP_REPAIR_TIMEOUT", "240")),
+        )
+        raw = (resp.text or "").strip()
+        import json as _json
+        repaired = _json.loads(raw)
+        repaired_lines = _format_repaired_timestamps(repaired, duration)
+        if repaired_lines and len(repaired_lines.splitlines()) >= max(3, len(str(current).splitlines())):
+            parsed = {**parsed, "timestamps": repaired_lines}
+            parsed.pop("timestamp_coverage_warning", None)
+            logger.info("Timestamp coverage repair applied: %d lines", len(repaired_lines.splitlines()))
+        await alog_gemini_response(
+            response=resp, task="audio_timestamp_repair", video_id=video_id,
+            model=model_name, thinking_level="low", json_valid=bool(repaired_lines),
+            error="" if repaired_lines else "empty_repair",
+        )
+    except Exception as exc:
+        logger.warning("Timestamp coverage repair failed non-fatally: %s: %s", type(exc).__name__, str(exc)[:180])
+        await alog_gemini_run(
+            task="audio_timestamp_repair", video_id=video_id, model=model_name,
+            thinking_level="low", json_valid=False, error=f"{type(exc).__name__}: {str(exc)[:240]}",
+        )
+    return parsed
 
 # BUG-B02: максимальное время ожидания обработки файла Gemini
 _MAX_UPLOAD_WAIT = 600  # 10 минут
@@ -442,6 +535,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         parsed = _parse_gemini_response(answer, duration)
         if parsed is not None:
             parsed = _validate_and_fix_timestamps(parsed, duration)
+            parsed = await _repair_timestamp_coverage_if_needed(
+                used_client, used_audio_part, parsed, duration, _obs_model or _current_model, _obs_video_id
+            )
 
         await alog_gemini_response(
             response=response,

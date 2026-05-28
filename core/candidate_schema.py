@@ -319,3 +319,22 @@ def expanded_page_response_schema() -> dict:
         },
         "required": ["outline", "sections"],
     }
+
+
+def timestamp_repair_response_schema() -> dict:
+    """Structured-output schema for targeted timestamp coverage repair."""
+    timestamp_item = {
+        "type": "object",
+        "properties": {
+            "time": _string_schema(),
+            "topic": _string_schema(),
+        },
+        "required": ["time", "topic"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "timestamps": {"type": "array", "items": timestamp_item},
+        },
+        "required": ["timestamps"],
+    }
