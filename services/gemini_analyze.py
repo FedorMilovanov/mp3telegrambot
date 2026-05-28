@@ -409,14 +409,22 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         success = True
                         break
                     except Exception as e:
-                        if is_quota_error(e) or is_overload_error(e):
-                            logger.warning(f"Gemini {'квота' if is_quota_error(e) else '503/disconnect'}: {type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ...")
+                        _is_quota = is_quota_error(e)
+                        _is_overload = is_overload_error(e) and not _is_quota
+                        if _is_quota or _is_overload:
+                            logger.warning(
+                                f"Gemini {'квота' if _is_quota else '503/disconnect'}: "
+                                f"{type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ..."
+                            )
                             if file_size_mb > 20 and audio_part is not None and hasattr(audio_part, 'name'):
                                 # BUG-B06: безопасное удаление через хелпер
                                 asyncio.create_task(_safe_delete_gemini_file(client, audio_part.name))
                             last_err = e
+                            # Quota is project/model-level; retrying same key only wastes time.
+                            if _is_quota:
+                                break
                             # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
-                            if is_overload_error(e) and attempt < 2:
+                            if _is_overload and attempt < 2:
                                 _wait_503 = 15 * (attempt + 1)  # 15s, 30s
                                 logger.info(f"Gemini 503: жду {_wait_503}s и повторяю тем же ключом (попытка {attempt+2}/3)...")
                                 await asyncio.sleep(_wait_503)
@@ -425,7 +433,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         raise  # неизвестная ошибка — пробрасываем
 
             # AUDIT FIX 503-RETRY: если все ключи упали с 503, ждём 60s и второй круг
-            if response is None and last_err is not None and is_overload_error(last_err):
+            if response is None and last_err is not None and (not is_quota_error(last_err)) and is_overload_error(last_err):
                 logger.warning("Gemini 503 на всех ключах — жду 60s и пробую ещё раз весь круг...")
                 await asyncio.sleep(60)
                 for client in GEMINI_CLIENTS:
