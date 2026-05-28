@@ -43,12 +43,40 @@ _TRANSLATION_FORKS_HEADING_RE = re.compile(r"переводческ\w*\s+раз�
 _BULLET_LINE_RE = re.compile(r"^\s*[•\-]\s+(.+?)\s*$")
 
 
+_FIRST_PERSON_AUTHOR_RE = re.compile(
+    r"\b(?P<prefix>Я|Для меня),\s+(?P<name>[А-ЯЁ][А-ЯЁа-яё]+(?:\s+[А-ЯЁ][А-ЯЁа-яё]+){0,2}),\s*"
+)
+
+
+def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
+    """Remove hallucinated first-person name appositions when they mismatch expected author."""
+    if not text or not expected_author:
+        return text, []
+    expected_norm = re.sub(r"\s+", " ", expected_author).strip().lower()
+    issues: list[ContentAuditIssue] = []
+
+    def repl(m: re.Match) -> str:
+        name = re.sub(r"\s+", " ", m.group("name")).strip()
+        if name.lower() in expected_norm or expected_norm in name.lower():
+            return m.group(0)
+        issues.append(ContentAuditIssue(
+            code="first_person_author_fixed",
+            location="",
+            message=f"removed mismatched first-person author name: {name}",
+            before=m.group(0),
+            after=m.group("prefix") + " ",
+        ))
+        return m.group("prefix") + " "
+
+    return _FIRST_PERSON_AUTHOR_RE.sub(repl, text), issues
+
+
 def _short(value: Any, limit: int = 180) -> str:
     text = str(value or "").replace("\n", " / ").strip()
     return text[:limit]
 
 
-def _audit_text(value: str, *, location: str, source_map: bool = False) -> tuple[str, list[ContentAuditIssue]]:
+def _audit_text(value: str, *, location: str, source_map: bool = False, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Normalize one title/content string and return issues."""
     original = str(value or "")
     issues: list[ContentAuditIssue] = []
@@ -86,6 +114,16 @@ def _audit_text(value: str, *, location: str, source_map: bool = False) -> tuple
             location=location,
             message="third-person wrapper still present after conservative scrub",
             before=_short(text),
+        ))
+
+    text, author_issues = _scrub_mismatched_first_person_author(text, expected_author)
+    for issue in author_issues:
+        issues.append(ContentAuditIssue(
+            code=issue.code,
+            location=location,
+            message=issue.message,
+            before=issue.before,
+            after=issue.after,
         ))
 
     mixed = find_mixed_greek_cyrillic_tokens(text)
@@ -128,6 +166,7 @@ def audit_expanded_sections(
     outline: list[dict] | None = None,
     *,
     label: str = "",
+    expected_author: str = "",
 ) -> tuple[list[dict], list[dict], list[ContentAuditIssue]]:
     """Audit and normalize parsed Gemini ``sections``/``outline``.
 
@@ -145,13 +184,13 @@ def audit_expanded_sections(
         base_loc = f"{label or 'expanded'}.sections[{idx}]"
 
         title = str(sec.get("title") or "")
-        new_title, got = _audit_text(title, location=f"{base_loc}.title")
+        new_title, got = _audit_text(title, location=f"{base_loc}.title", expected_author=expected_author)
         issues.extend(got)
         sec["title"] = new_title
 
         content = str(sec.get("content") or "")
         source_map = bool(_SOURCE_MAP_HEADING_RE.search(new_title))
-        new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map)
+        new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author)
         issues.extend(got)
         issues.extend(_audit_translation_forks(new_content, location=f"{base_loc}:{new_title}"))
         sec["content"] = new_content
@@ -163,7 +202,7 @@ def audit_expanded_sections(
             continue
         oi = dict(raw)
         title = str(oi.get("title") or "")
-        new_title, got = _audit_text(title, location=f"{label or 'expanded'}.outline[{idx}].title")
+        new_title, got = _audit_text(title, location=f"{label or 'expanded'}.outline[{idx}].title", expected_author=expected_author)
         issues.extend(got)
         oi["title"] = new_title
         new_outline.append(oi)

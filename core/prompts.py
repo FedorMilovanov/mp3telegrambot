@@ -31,6 +31,16 @@ from core.prompt_rules import (
 )
 
 
+
+def _format_prompt_timestamp(seconds: int | float = 0) -> str:
+    try:
+        sec = max(0, int(seconds or 0))
+    except (TypeError, ValueError):
+        sec = 0
+    h, rem = divmod(sec, 3600)
+    m, ss = divmod(rem, 60)
+    return f"{h}:{m:02d}:{ss:02d}" if h else f"{m}:{ss:02d}"
+
 def _expand_prompt_rules(text: str) -> str:
     """Разворачивает shared-константы в тексте промпта ДО вызова .format().
 
@@ -307,6 +317,10 @@ def build_audio_analysis_prompt(
     title = _sanitize_metadata_text(title, "Без названия", 260)
     performer = _sanitize_metadata_text(performer, "не указан", 180)
     duration_str = _normalize_prompt_text(duration_str, "не указана", 40)
+    try:
+        _min_final_ts = _format_prompt_timestamp(int(max(0, int(duration_seconds or 0)) * 0.88))
+    except Exception:
+        _min_final_ts = "финальная часть материала"
 
     return f"""Ты — ассистент для глубокого анализа проповедей, лекций, бесед и Q&A по аудиоматериалу.
 
@@ -425,6 +439,8 @@ YouTube-канал: {performer}
 - первый таймкод всегда 0:00;
 - все таймкоды строго в пределах 0:00 — {duration_str};
 - последний таймкод не должен обрывать материал на середине; покрывай ход мысли до финала;
+- для этой длительности последний смысловой таймкод должен быть примерно не раньше {_min_final_ts}, если материал не закончился объективно раньше;
+- если после середины есть новый аргумент, пример, призыв, молитва или заключение — ОБЯЗАТЕЛЬНО дай отдельный поздний таймкод;
 - таймкоды строго по возрастанию;
 - не делай механическую нарезку по 5/10/15 минут;
 - таймкод ставится только там, где действительно меняется тема, вопрос, аргумент или фаза материала;

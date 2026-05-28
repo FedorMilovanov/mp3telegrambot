@@ -1021,6 +1021,7 @@ async def _run_expanded_pipeline(
             sections,
             outline if isinstance(outline, list) else [],
             label=label,
+            expected_author=author,
         )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
