@@ -45,6 +45,7 @@ from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.progress import set_progress
+from core.title_topic_audit import choose_safe_public_title
 from core.publication_status import build_publication_status, missing_to_json
 from core.generated_pages import (
     asave_generated_page_record, asave_segment_plan_export,
@@ -518,6 +519,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
             if ai_data:
                 await set_progress(status_msg, 5, prefix=_pp)
+
+                if ai_data.get("title_topic_warning"):
+                    _safe_title = normalize_title_text(choose_safe_public_title(ai_data, full_title))
+                    if _safe_title and _safe_title != ai_data.get("real_title"):
+                        logger.warning(
+                            "Title-topic warning: using fallback title for publication: %r -> %r",
+                            ai_data.get("real_title"), _safe_title,
+                        )
+                        ai_data = {**ai_data, "real_title": _safe_title}
 
                 # Ищем alt-links ДО публикации конспекта — чтобы таймкоды
                 # RuTube/VK были доступны уже при первой публикации страницы

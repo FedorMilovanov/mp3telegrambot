@@ -27,10 +27,15 @@ from core.globals import (
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA  # FIX telegraph
-from core.content_audit import audit_expanded_sections, format_content_audit_issues
+from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.candidate_schema import expanded_page_response_schema
 from core.reasoning_guidance import build_synopsis_reasoning_note
+from core.synopsis_quality import (
+    audit_synopsis_density, format_synopsis_quality_issues,
+    get_synopsis_density_profile, should_retry_synopsis_density,
+    synopsis_density_score,
+)
 from core.prompt_compactor import compact_prompt_for_generation
 
 import asyncio
@@ -51,6 +56,11 @@ logger = logging.getLogger(__name__)
 
 SYNOPSIS_REASONING_FIRST_NOTE = build_synopsis_reasoning_note()
 
+
+
+def _synopsis_density_retry_enabled() -> bool:
+    """Opt-out flag for one extra Synopsis retry when long output is too thin."""
+    return (os.getenv("SYNOPSIS_DENSITY_RETRY", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 def _synopsis_structured_output_enabled() -> bool:
     """Opt-out flag for Synopsis structured {outline, sections}."""
@@ -486,6 +496,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 duration=duration_str,
                 timestamps_block=timestamps_block,
             )
+            _syn_profile = get_synopsis_density_profile(_duration)
+            _syn_max_tokens = _syn_profile.max_tokens
             logger.info(
                 f"Synopsis: mode=QA format={_fmt} questions={len(_ts_lines)} "
                 f"duration={int(_duration)//60}min"
@@ -493,22 +505,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         else:
             _hm = (ai_data or {}).get("hermeneutic_method") or "mixed"
 
-            if _duration < 1200:
-                _syn_sections    = "3-5"
-                _syn_section_len = "200-700"
-                _syn_total       = "1200"
-            elif _duration < 3000:
-                _syn_sections    = "4-8"
-                _syn_section_len = "350-1100"
-                _syn_total       = "2500"
-            elif _duration < 5400:
-                _syn_sections    = "8-14"
-                _syn_section_len = "650-1600"
-                _syn_total       = "6500"
-            else:
-                _syn_sections    = "10-18"
-                _syn_section_len = "700-1800"
-                _syn_total       = "8500"
+            _syn_profile = get_synopsis_density_profile(_duration)
+            _syn_sections    = _syn_profile.sections
+            _syn_section_len = _syn_profile.section_len
+            _syn_total       = _syn_profile.total_chars
+            _syn_max_tokens  = _syn_profile.max_tokens
             # AUDIT M6: расширили карту format → инструкция. Раньше для
             # sermon/lecture/topical/narrative/testimony в промт уходила
             # пустая строка, и Gemini угадывал голос (1-е лицо vs безличное) по заголовку.
@@ -610,7 +611,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 raise RuntimeError("_synopsis_with_client: upload_fn вернул None")
             if getattr(audio, "state", None) == "FAILED":
                 raise RuntimeError("_synopsis_with_client: файл в состоянии FAILED")
-            return await _generate_synopsis_content(client, GEMINI_MODEL, [audio, prompt_text], max_tokens=32000)
+            return await _generate_synopsis_content(client, GEMINI_MODEL, [audio, prompt_text], max_tokens=_syn_max_tokens)
 
         def _extract_response_text(resp) -> str:
             if resp is None:
@@ -638,7 +639,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if existing_audio_part is not None and existing_client is not None:
             try:
                 response = await _generate_synopsis_content(
-                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt], max_tokens=32000
+                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt], max_tokens=_syn_max_tokens
                 )
             except Exception as e:
                 logger.warning(f"Synopsis v2 existing_audio_part failed: {e}, re-uploading...")
@@ -678,7 +679,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
-                            client, "gemini-2.5-flash-lite", [audio, prompt], max_tokens=32000
+                            client, "gemini-2.5-flash-lite", [audio, prompt], max_tokens=_syn_max_tokens
                         )
                     response = await gemini_generate(GEMINI_CLIENTS, _call_fallback)
                     logger.info("Synopsis: fallback модель успешна")
@@ -750,7 +751,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if existing_audio_part is not None and existing_client is not None:
                     try:
                         retry_response = await _generate_synopsis_content(
-                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt], max_tokens=32000
+                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt], max_tokens=_syn_max_tokens
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
@@ -873,13 +874,58 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
-            logger.warning(
+            (_content_audit and has_content_audit_warnings(_content_audit) and logger.warning or logger.info)(
                 "Synopsis v2: content audit before publish: %s",
                 format_content_audit_issues(_content_audit),
             )
         if _content_audit and should_abort_for_content_audit(_content_audit):
             logger.warning("Synopsis v2: content audit strict abort")
             return None, None
+
+        _syn_quality_issues = audit_synopsis_density(sections, _duration)
+        if _syn_quality_issues:
+            logger.warning("Synopsis v2: density/coverage audit: %s", format_synopsis_quality_issues(_syn_quality_issues))
+
+        if (
+            _syn_quality_issues
+            and _synopsis_density_retry_enabled()
+            and should_retry_synopsis_density(_syn_quality_issues, _duration)
+            and existing_audio_part is not None
+            and existing_client is not None
+        ):
+            try:
+                _density_retry_prompt = (
+                    prompt
+                    + "\n\nТвой предыдущий Synopsis был слишком сжатым для длительности материала. "
+                    + "Сделай более полный конспект-сжатую стенограмму: больше sections, больше авторского хода, "
+                    + "покрытие до финальной части, без превращения в обзорную статью. "
+                    + f"Проблемы качества: {format_synopsis_quality_issues(_syn_quality_issues)}"
+                )
+                _retry_resp = await _generate_synopsis_content(
+                    existing_client,
+                    GEMINI_MODEL,
+                    [existing_audio_part, _density_retry_prompt],
+                    max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
+                )
+                _retry_text = _extract_response_text(_retry_resp)
+                _retry_parsed = _try_parse_synopsis_json(_retry_text)
+                if _retry_parsed is not None:
+                    _retry_outline, _retry_sections = _retry_parsed
+                    _retry_sections = [s for s in _retry_sections if isinstance(s, dict) and (s.get("content") or "").strip()]
+                    _retry_sections, _retry_outline, _retry_audit = audit_expanded_sections(
+                        _retry_sections,
+                        _retry_outline if isinstance(_retry_outline, list) else [],
+                        label="SynopsisDensityRetry",
+                        expected_author=author,
+                    )
+                    if synopsis_density_score(_retry_sections, _duration) > synopsis_density_score(sections, _duration):
+                        sections, outline = _retry_sections, _retry_outline
+                        _syn_quality_issues = audit_synopsis_density(sections, _duration)
+                        logger.info("Synopsis v2: density retry accepted (sections=%d)", len(sections))
+                    else:
+                        logger.info("Synopsis v2: density retry rejected — not denser than original")
+            except Exception as _density_retry_err:
+                logger.warning("Synopsis v2: density retry failed non-fatally: %s", str(_density_retry_err)[:180])
 
         # ── Валидация плотности sections (BP-04) ─────────────
         _thin_count = sum(1 for s in sections if len((s.get("content") or "").strip()) < 100)

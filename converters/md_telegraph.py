@@ -1789,6 +1789,14 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
         if "⚠️" in text and re.search(r"заблуж|ложн|ошиб|ерес|отриц", text, flags=re.IGNORECASE):
             text = text.replace("⚠️", "❌")
+        # spacing polish for Gemini/Markdown glue in source cards and Study bullets
+        text = re.sub(r"(^|\n)-(?=\S)", r"\1- ", text)
+        text = re.sub(r"(^|\n)-\*\s+\*", r"\1- **", text)
+        text = re.sub(r"([а-яё])([A-Z][A-Za-z])", r"\1 \2", text)
+        text = re.sub(r"([а-яё])«", r"\1 «", text)
+        text = re.sub(r"([.!?])([А-ЯЁA-Z])", r"\1 \2", text)
+        text = re.sub(r",\s*\*", ", *", text)
+        text = re.sub(r"/\s*/+", "", text)
         text = normalize_common_typos(text)
         text = scrub_third_person_phrases(text)
         return text
@@ -2073,6 +2081,53 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             node['children'] = [{'tag': 'b', 'children': children}]
         return node
 
+    def _split_inline_bullet_paragraph_node(node):
+        """Split paragraphs where Gemini glued several bullet cards into one <p>.
+
+        Live example: `• **A** — text. • **B** — text. • **C** — text.`
+        Telegraph renders that as one unreadable paragraph. We split only on a
+        whitespace-prefixed bullet marker, preserving inline children.
+        """
+        if not isinstance(node, dict) or node.get('tag') != 'p':
+            return [node]
+        children = list(node.get('children', []))
+        flat = _flatten_text({'children': children})
+        if flat.count('•') < 2 or ' • ' not in flat:
+            return [node]
+
+        paragraphs: list[list] = []
+        current: list = []
+
+        def _flush():
+            nonlocal current
+            # Trim empty text edges, but keep semantic spaces inside.
+            while current and isinstance(current[0], str) and not current[0].strip():
+                current.pop(0)
+            while current and isinstance(current[-1], str) and not current[-1].strip():
+                current.pop()
+            if current:
+                paragraphs.append(current)
+            current = []
+
+        for child in children:
+            if not isinstance(child, str) or ' • ' not in child:
+                current.append(child)
+                continue
+            parts = re.split(r'(\s+•\s+)', child)
+            for part in parts:
+                if not part:
+                    continue
+                if re.fullmatch(r'\s+•\s+', part):
+                    _flush()
+                    current.append('• ')
+                else:
+                    current.append(part)
+        _flush()
+
+        if len(paragraphs) <= 1:
+            return [node]
+        return [{'tag': 'p', 'children': para} for para in paragraphs]
+
     def _split_scripture_explanation_node(node):
         """Split `• **Ref:** *«quote»* Explanation...` into two paragraphs.
 
@@ -2133,5 +2188,6 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
     normalized = [_normalize_paragraph_node(n) for n in cleaned]
     split = []
     for n in normalized:
-        split.extend(_split_scripture_explanation_node(n))
+        for sn in _split_scripture_explanation_node(n):
+            split.extend(_split_inline_bullet_paragraph_node(sn))
     return split

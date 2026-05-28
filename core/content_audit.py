@@ -138,6 +138,20 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     return text, issues
 
 
+def _audit_translation_semantics(content: str, *, location: str) -> list[ContentAuditIssue]:
+    """Small semantic sanity checks for common translation-fork drift."""
+    low = (content or "").lower()
+    issues: list[ContentAuditIssue] = []
+    if "evil" in low and "лож" in low and "зл" not in low:
+        issues.append(ContentAuditIssue(
+            code="translation_semantic_warning",
+            location=location,
+            message="English 'evil' appears to be rendered as 'ложь' without 'зло'",
+            before=_short(content),
+        ))
+    return issues
+
+
 def _audit_translation_forks(content: str, *, location: str) -> list[ContentAuditIssue]:
     """Warn about bare translation-fork bullet lists without analysis."""
     if not content or not _TRANSLATION_FORKS_HEADING_RE.search(location):
@@ -193,6 +207,7 @@ def audit_expanded_sections(
         new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author)
         issues.extend(got)
         issues.extend(_audit_translation_forks(new_content, location=f"{base_loc}:{new_title}"))
+        issues.extend(_audit_translation_semantics(new_content, location=f"{base_loc}:{new_title}"))
         sec["content"] = new_content
         new_sections.append(sec)
 
@@ -208,6 +223,19 @@ def audit_expanded_sections(
         new_outline.append(oi)
 
     return new_sections, new_outline, issues
+
+
+_WARNING_CODES = {
+    "mixed_greek_cyrillic_warning",
+    "bare_translation_forks_warning",
+    "translation_semantic_warning",
+    "third_person_warning",
+}
+
+
+def has_content_audit_warnings(issues: list[ContentAuditIssue]) -> bool:
+    """True when issues include unresolved warning-level problems, not just fixes."""
+    return any(i.code in _WARNING_CODES for i in issues or [])
 
 
 def format_content_audit_issues(issues: list[ContentAuditIssue], limit: int = 6) -> str:

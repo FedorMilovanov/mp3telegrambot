@@ -24,8 +24,10 @@ def test_synopsis_uses_more_timestamp_anchors_and_larger_long_targets():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "_ts_raw[:24]" in src
     assert "Покрой ход материала до последнего опорного таймкода" in src
-    assert '_syn_sections    = "8-14"' in src
-    assert '_syn_total       = "6500"' in src
+    assert "get_synopsis_density_profile(_duration)" in src
+    from core.synopsis_quality import get_synopsis_density_profile
+    assert get_synopsis_density_profile(3600).sections == "10-16"
+    assert get_synopsis_density_profile(3600).total_chars == "9000"
 
 
 def test_study_prompt_prefers_cross_mark_for_false_views():

@@ -10,6 +10,7 @@ used to correct wrong Russian variants such as «Странный огонь».
 from __future__ import annotations
 
 import re
+from core.person_names import normalize_person_names
 
 AUTHOR_CANONICAL: dict[str, str] = {
     "John MacArthur": "Джон МакАртур",
@@ -65,6 +66,13 @@ _EN_AUTHOR_WITH_TITLE_RE = re.compile(
     r"(?P<title>[A-Za-z][^\n]{2,220})$"
 )
 
+_DUPLICATE_PAREN_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<head_author>[А-ЯЁA-Z][^,\n]{1,100}),\s*"
+    r"(?P<title>[A-Za-z][^()\n]{2,220}?)\.?\s*"
+    r"\(\s*(?P=head_author)\s*,\s*(?P=title)\.?\s*\)\.?$"
+)
+
 
 def canonical_author_name(value: str) -> str:
     value = str(value or "").strip()
@@ -109,12 +117,19 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     """
     if not line:
         return line
-    out = correct_known_ru_title(str(line or ""))
+    out = normalize_person_names(correct_known_ru_title(str(line or "")))
     # Only source-card-like lines need aggressive whitespace/dedupe normalization.
     # Plain inline nodes such as "• " must keep their spacing.
     looks_like_source = bool(re.search(r"[A-Za-z].*,|\([^)]*[A-Za-z]{3,}[^)]*\)", out))
     if looks_like_source:
         out = dedupe_bilingual_authors(out)
+
+    dup = _DUPLICATE_PAREN_RE.match(out.strip())
+    if dup:
+        bullet = dup.group("bullet") or ""
+        author = normalize_person_names(dup.group("head_author").strip())
+        title = dup.group("title").strip().rstrip(".")
+        return f"{bullet}{author}, {title}."
 
     m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())
     if m and re.search(r"[A-Za-z]", m.group("en_title")):

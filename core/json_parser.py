@@ -8,6 +8,7 @@ import logging
 import re
 
 from core.timestamp_quality import audit_timestamp_coverage
+from core.title_topic_audit import audit_title_topic_consistency
 from core.text_utils import (   # FIX json_parser
     _clean_field, _clean_meta_line, _filter_times_str,
     _scrub_inline, _strip_meta_lines, is_meta_garbage,
@@ -200,6 +201,14 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
                 _coverage_issue.coverage_ratio,
             )
             result["timestamp_coverage_warning"] = _coverage_issue.message
+
+    _title_issue = audit_title_topic_consistency(result.get("real_title", ""), result.get("main_topic", ""), ts_list)
+    if _title_issue:
+        logger.warning(
+            "Title/topic warning: %s overlap=%.2f title_terms=%s",
+            _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
+        )
+        result["title_topic_warning"] = _title_issue.message
 
     # hashtags → строка "#Тег #Тег ..." через normalize_hashtag (core/text_utils).
     # Gemini иногда возвращает строку "Тег1 Тег2 Тег3" вместо массива.

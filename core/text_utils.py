@@ -4,6 +4,7 @@
 Извлечено из bot.py строки 1587–1845.
 """
 import re
+from core.person_names import normalize_person_names
 from core.source_titles import normalize_source_card_line
 from core.core_utils import time_to_seconds  # разрыв цикла: ранее был lazy import из json_parser
 
@@ -59,6 +60,8 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("Епифанита", "Епафродита"),
     ("Странный огонь", "Чуждый огонь"),
     ("странный огонь", "чуждый огонь"),
+    ("Вопросы и Ответы", "Вопросы и ответы"),
+    ("Свидания, Брак и Семейная Жизнь", "Свидания, брак и семейная жизнь"),
     # Mixed Cyrillic/Greek letters in original-language terms.
     ("βασιлеία", "βασιλεία"),
     ("μορφύω", "μορφόω"),
@@ -109,14 +112,16 @@ def _cap_first(value: str) -> str:
 
 _THIRD_PERSON_PREFIX_RE = re.compile(
     r"(^|[.!?…]\s+)(?:(?:Джон\s+)?МакАртур|автор|проповедник|спикер|лектор)\s+"
-    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает)"
+    r"(?:подробно\s+|последовательно\s+|прямо\s+|настойчиво\s+)?"
+    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает|разворачивает|обращается|проводит|настаивает|связывает|разбирает)"
     r"[^.?!…]{0,180}?,\s*(?:говоря\s+о\s+том,\s*)?что\s+([а-яёa-z])",
     re.IGNORECASE,
 )
 
 _THIRD_PERSON_WHEN_RE = re.compile(
     r"(^|[.!?…]\s+)(?:(?:Джон\s+)?МакАртур|автор|проповедник|спикер|лектор)\s+"
-    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает)"
+    r"(?:подробно\s+|последовательно\s+|прямо\s+|настойчиво\s+)?"
+    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает|разворачивает|обращается|проводит|настаивает|связывает|разбирает)"
     r"[^.?!…]{0,180}?,\s*когда\s+говорит\s+о\s+",
     re.IGNORECASE,
 )
@@ -160,6 +165,7 @@ def normalize_common_typos(text: str) -> str:
         return text
     for src, dst in _COMMON_TYPO_REPLACEMENTS:
         text = text.replace(src, dst)
+    text = normalize_person_names(text)
     text = normalize_source_map_text(text)
     return text
 
@@ -331,6 +337,69 @@ _PRESERVE_CASE: frozenset = frozenset({
 })
 
 
+_RU_TITLE_PRESERVE_WORDS = {
+    "Бог", "Бога", "Богу", "Богом", "Боге", "Слово", "Слова", "Слову", "Божий", "Божья", "Божье", "Божьего", "Божьей",
+    "Господь", "Господа", "Господу", "Христос", "Христа", "Христу", "Иисус", "Иисуса", "Иисусу",
+    "Дух", "Духа", "Духу", "Святой", "Святого", "Писание", "Писания", "Библия", "Библии",
+    "Евангелие", "Евангелия", "Псалом", "Псалма", "Исаия", "Исаии", "Матфея", "Марка", "Луки", "Иоанна", "Римлянам",
+}
+
+
+def _is_cyrillic_dominant(text: str) -> bool:
+    cyr = len(re.findall(r"[А-Яа-яЁё]", text or ""))
+    lat = len(re.findall(r"[A-Za-z]", text or ""))
+    return cyr > 0 and cyr >= lat * 2
+
+
+def sentence_case_russian_title(s: str) -> str:
+    """Russian-friendly title casing.
+
+    English Title Case looks unnatural in Russian: «Вопросы и Ответы»,
+    «Как Проповедовать Пламенно». This helper lowercases ordinary Russian words
+    while preserving first word, biblical/divine names, acronyms, Latin titles,
+    digits and internal-cap proper names like «МакАртур».
+    """
+    if not s or not _is_cyrillic_dominant(s):
+        return s
+
+    def split_edges(token: str) -> tuple[str, str, str]:
+        m = re.match(r"^([^А-Яа-яЁёA-Za-z0-9]*)(.*?)([^А-Яа-яЁёA-Za-z0-9]*)$", token)
+        if not m:
+            return "", token, ""
+        return m.group(1), m.group(2), m.group(3)
+
+    def cap_word(word: str) -> str:
+        if not word:
+            return word
+        return word[0].upper() + word[1:]
+
+    out: list[str] = []
+    force_cap_next = True
+    for raw in s.split():
+        prefix, core, suffix = split_edges(raw)
+        if not core:
+            out.append(raw)
+            continue
+        preserve = (
+            core in _RU_TITLE_PRESERVE_WORDS
+            or bool(re.search(r"[A-Za-z0-9]", core))
+            or re.fullmatch(r"[А-ЯA-Z]", core)
+            or (len(core) > 1 and core.isupper())
+            or bool(re.search(r"[а-яё][А-ЯЁ]", core))  # МакАртур
+            or bool(re.search(r"-[А-ЯЁ]", core))       # Ллойд-Джонс
+        )
+        if preserve:
+            new_core = core
+        elif force_cap_next:
+            new_core = cap_word(core.lower())
+        else:
+            new_core = core.lower()
+        out.append(prefix + new_core + suffix)
+        force_cap_next = bool(re.search(r"[.!?]$", suffix))
+    result = " ".join(out)
+    return normalize_person_names(result)
+
+
 def title_case_fragment(s: str) -> str:
     """
     Title Case для названий фрагментов (Shorts / Clips).
@@ -339,6 +408,8 @@ def title_case_fragment(s: str) -> str:
     """
     if not s:
         return s
+    if _is_cyrillic_dominant(s):
+        return sentence_case_russian_title(s)
 
     _LOWER_MID = {
         "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от",
@@ -405,6 +476,13 @@ def _filter_times_str(times_str: str, duration: int) -> str:
 
 
 
+_HASHTAG_CANONICAL = {
+    "БиблейскоеСемейство": "БиблейскаяСемья",
+    "Богомыслие": "Богословие",
+    "СемейнаяЖизнь": "ХристианскаяСемья",
+    "БракИСемья": "ХристианскийБрак",
+}
+
 def normalize_hashtag(tag: str) -> str:
     """Нормализует хэштег без потери уже валидного CamelCase.
 
@@ -425,5 +503,8 @@ def normalize_hashtag(tag: str) -> str:
         return ""
     if len(words) == 1:
         w0 = words[0]
-        return "#" + (w0[0].upper() + w0[1:])
-    return "#" + "".join((w[0].upper() + w[1:]) for w in words)
+        tag_body = w0[0].upper() + w0[1:]
+    else:
+        tag_body = "".join((w[0].upper() + w[1:]) for w in words)
+    tag_body = _HASHTAG_CANONICAL.get(tag_body, tag_body)
+    return "#" + tag_body

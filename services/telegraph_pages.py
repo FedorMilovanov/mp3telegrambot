@@ -39,7 +39,7 @@ from core.analysis_profiles import get_expanded_analysis_profile
 from core.reasoning_guidance import build_reasoning_first_block
 from core.adaptive_generation import get_adaptive_text_generation_params
 from core.prompt_compactor import compact_prompt_for_generation
-from core.content_audit import audit_expanded_sections, format_content_audit_issues
+from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 
 import asyncio
@@ -1025,7 +1025,7 @@ async def _run_expanded_pipeline(
         )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
-            logger.warning(
+            (_content_audit and has_content_audit_warnings(_content_audit) and logger.warning or logger.info)(
                 "%s: content audit before publish: %s",
                 label,
                 format_content_audit_issues(_content_audit),

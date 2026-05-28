@@ -55,9 +55,9 @@ _PACKS: dict[str, list[str]] = {
     ],
     "isaiah_servant": [
         "Calvin — Commentary on Isaiah", "Motyer — The Prophecy of Isaiah",
-        "Young — The Book of Isaiah", "Chou — The Hermeneutics of the Biblical Writers",
+        "Young — The Book of Isaiah", "Oswalt — The Book of Isaiah",
         "Owen — The Death of Death in the Death of Christ", "Murray — Redemption Accomplished and Applied",
-        "Oswalt — The Book of Isaiah",
+        "Grogan — Isaiah",
     ],
     "trinity": [
         "Nicene Creed (325/381)", "Athanasius — On the Incarnation",
@@ -306,6 +306,7 @@ def get_source_pack(key_categories: list[str], main_topic: str = "", duration_se
         f"Приоритетные источники для данного материала (темы: {topics_display}; максимум {limit}):",
         "Используй эти источники как ориентир. Не добавляй случайные книги ради украшения.",
         "Названия на английском не переводи, кроме устойчивых официальных русских названий.",
+        "Не смешивай традиции: реформаторы/пуритане не являются диспенсационалистами; Chou/Ryrie уместны только там, где реально обсуждаются Израиль, Церковь, пророчества или герменевтика.",
     ]
     for s in sources:
         lines.append(f"- {s}")
