@@ -50,6 +50,14 @@ def _audio_structured_output_enabled() -> bool:
     return (os.getenv("AUDIO_ANALYSIS_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _audio_structured_timeout() -> float:
+    """Shorter timeout for schema attempt; legacy retry keeps full timeout."""
+    try:
+        return max(30.0, min(float(os.getenv("AUDIO_STRUCTURED_TIMEOUT", "180")), 600.0))
+    except (TypeError, ValueError):
+        return 180.0
+
+
 # BUG-B02: максимальное время ожидания обработки файла Gemini
 _MAX_UPLOAD_WAIT = 600  # 10 минут
 
@@ -283,7 +291,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                                 response_schema=audio_analysis_response_schema(),
                                             ),
                                         ),
-                                        timeout=960.0,
+                                        timeout=_audio_structured_timeout(),
                                     )
                                 except Exception as _schema_err:
                                     # Quota/overload are not schema problems; let outer fallback

@@ -1787,6 +1787,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
+        if "⚠️" in text and re.search(r"заблуж|ложн|ошиб|ерес|отриц", text, flags=re.IGNORECASE):
+            text = text.replace("⚠️", "❌")
         text = normalize_common_typos(text)
         text = scrub_third_person_phrases(text)
         return text

@@ -502,13 +502,13 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _syn_section_len = "350-1100"
                 _syn_total       = "2500"
             elif _duration < 5400:
-                _syn_sections    = "6-12"
-                _syn_section_len = "400-1200"
-                _syn_total       = "4000"
+                _syn_sections    = "8-14"
+                _syn_section_len = "650-1600"
+                _syn_total       = "6500"
             else:
-                _syn_sections    = "8-16"
-                _syn_section_len = "400-1300"
-                _syn_total       = "5500"
+                _syn_sections    = "10-18"
+                _syn_section_len = "700-1800"
+                _syn_total       = "8500"
             # AUDIT M6: расширили карту format → инструкция. Раньше для
             # sermon/lecture/topical/narrative/testimony в промт уходила
             # пустая строка, и Gemini угадывал голос (1-е лицо vs безличное) по заголовку.
@@ -534,7 +534,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             _ts_raw = ai_data.get("timestamps") or []
             _ts_anchor = ""
             if isinstance(_ts_raw, list) and _ts_raw:
-                _ts_lines = [f"{t.get('time','?')} — {t.get('topic','')}" for t in _ts_raw[:8] if isinstance(t, dict)]
+                _ts_source = _ts_raw[:24]
+                # Preserve the final anchor even when the primary analysis has many timestamps.
+                if len(_ts_raw) > 24 and _ts_raw[-1] not in _ts_source:
+                    _ts_source = _ts_source[:-1] + [_ts_raw[-1]]
+                _ts_lines = [f"{t.get('time','?')} — {t.get('topic','')}" for t in _ts_source if isinstance(t, dict)]
                 _ts_anchor = "\n".join(_ts_lines)
             _primary_context = ""
             if _main_topic or _analysis_summ:
@@ -544,6 +548,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     f"Суть: {_analysis_summ}\n"
                     + (f"Ключевые категории: {_key_cats_str2}\n" if _key_cats_str2 else "")
                     + (f"Опорные таймкоды:\n{_ts_anchor}\n" if _ts_anchor else "")
+                    + "Покрой ход материала до последнего опорного таймкода; не обрывай конспект на первой половине.\n"
                     + "НЕ ПРОТИВОРЕЧЬ этим данным. Достраивай конспект, не переизобретай.\n"
                     + "--- КОНЕЦ КОНТЕКСТА ---"
                 )
