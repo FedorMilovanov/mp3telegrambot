@@ -3,6 +3,7 @@
 Markdown → Telegraph nodes конвертер.
 Извлечено из bot.py строки 2913–4213.
 """
+from core.structured_blocks import normalize_structured_block
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, _has_dirty_meta,
     normalize_author_name, normalize_common_typos, normalize_source_map_text,
@@ -698,6 +699,7 @@ def _structured_blocks_to_nodes_v2(
 
     chunks: list[str] = []
     for raw in blocks:
+        raw = normalize_structured_block(raw)
         if not isinstance(raw, dict):
             continue
         btype = str(raw.get("type") or "paragraph").strip().lower()

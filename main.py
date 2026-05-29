@@ -29,7 +29,7 @@ from handlers.commands import (
     stop_command, metrics_command, archive_command, lastpages_command,
     search_archive_command, author_archive_command, scripture_archive_command,
     repairpage_command, repairrecent_command, segments_command, cutseg_command,
-    prompthealth_command, codehealth_command, archivefile_command, segmentfile_command,
+    prompthealth_command, codehealth_command, archivequality_command, archivequalityfile_command, qualityrecords_command, promptrecommend_command, comparevariants_command, archivefile_command, segmentfile_command,
 )
 from handlers.callbacks import handle_callback, settings_command
 
@@ -174,6 +174,11 @@ async def run_bot_async():
     app.add_handler(CommandHandler("metrics",    metrics_command))
     app.add_handler(CommandHandler("prompthealth", prompthealth_command))
     app.add_handler(CommandHandler("codehealth", codehealth_command))
+    app.add_handler(CommandHandler("archivequality", archivequality_command))
+    app.add_handler(CommandHandler("archivequalityfile", archivequalityfile_command))
+    app.add_handler(CommandHandler("qualityrecords", qualityrecords_command))
+    app.add_handler(CommandHandler("promptrecommend", promptrecommend_command))
+    app.add_handler(CommandHandler("comparevariants", comparevariants_command))
     app.add_handler(CommandHandler("archive",    archive_command))
     app.add_handler(CommandHandler("archivefile", archivefile_command))
     app.add_handler(CommandHandler("segmentfile", segmentfile_command))
@@ -252,6 +257,11 @@ async def run_bot_async():
                     BotCommand("metrics",    "📊 Gemini метрики"),
                     BotCommand("prompthealth", "🧪 Здоровье промптов"),
                     BotCommand("codehealth", "🧰 Regex/code health"),
+                    BotCommand("archivequality", "🧪 Качество архива"),
+                    BotCommand("archivequalityfile", "📁 Export качества"),
+                    BotCommand("qualityrecords", "🧯 Quality records"),
+                    BotCommand("promptrecommend", "🧭 Prompt recommend"),
+                    BotCommand("comparevariants", "🧪 Сравнить variants"),
                     BotCommand("pdf",        "📄 PDF из кэша"),
                     BotCommand("resetcache", "🗑 Сбросить кэш видео"),
                     BotCommand("stop",       "🛑 Остановить бота"),

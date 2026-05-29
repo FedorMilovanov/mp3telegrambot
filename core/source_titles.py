@@ -10,6 +10,8 @@ used to correct wrong Russian variants such as «Странный огонь».
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+
 from core.person_names import canonical_person_name, normalize_person_names
 
 AUTHOR_CANONICAL: dict[str, str] = {
@@ -52,6 +54,73 @@ RU_TITLE_CORRECTIONS: dict[str, str] = {
     "Странный огонь": "Чуждый огонь",
     "странный огонь": "чуждый огонь",
 }
+
+
+@dataclass(frozen=True)
+class SourceCard:
+    """Typed source-card representation used by source normalization/rendering.
+
+    ``title_ru`` is optional; when absent, ``title_original`` is displayed as the
+    main title. ``author_original`` is retained for the parenthetical verifier.
+    """
+    author_ru: str
+    title_original: str
+    author_original: str = ""
+    title_ru: str = ""
+    bullet: str = ""
+    why_relevant: str = ""
+
+
+def render_source_card(card: SourceCard, *, trailing_period: bool = True) -> str:
+    """Render source card in the project-wide title-first style."""
+    bullet = card.bullet or ""
+    title_original = str(card.title_original or "").strip().rstrip(".")
+    title_ru = str(card.title_ru or "").strip().rstrip(".")
+    author_ru = canonical_person_name(card.author_ru)
+    author_original = original_author_name(card.author_original or card.author_ru)
+
+    display_title = title_ru or title_original
+    if not display_title:
+        return ""
+
+    original_bits: list[str] = []
+    if title_ru and title_original and title_ru.casefold() != title_original.casefold():
+        original_bits.append(title_original)
+    if author_original and author_original != author_ru:
+        original_bits.append(author_original)
+
+    rendered = f"{bullet}**{display_title}**, {author_ru}" if author_ru else f"{bullet}**{display_title}**"
+    if original_bits:
+        rendered += " (" + ", ".join(original_bits) + ")"
+    if trailing_period and not re.search(r"[.!?]\s*$", rendered):
+        rendered += "."
+    return rendered
+
+
+def build_source_card(
+    *,
+    author: str,
+    title_original: str,
+    original_author: str = "",
+    fallback_ru_title: str = "",
+    bullet: str = "",
+    why_relevant: str = "",
+) -> SourceCard:
+    """Create a canonical SourceCard from raw model/legacy fields."""
+    title_original = str(title_original or "").strip().rstrip(".")
+    original_author = original_author_name(original_author or author)
+    author_ru = canonical_author_name(author or original_author)
+    title_ru = official_ru_title(original_author, title_original) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
+    if title_ru and re.search(r"[A-Za-z]", title_ru) and not re.search(r"[А-Яа-яЁё]", title_ru):
+        title_ru = ""
+    return SourceCard(
+        author_ru=author_ru,
+        title_original=title_original,
+        author_original=original_author,
+        title_ru=title_ru,
+        bullet=bullet,
+        why_relevant=str(why_relevant or "").strip(),
+    )
 
 _SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
@@ -151,24 +220,14 @@ def dedupe_bilingual_authors(line: str) -> str:
 
 
 def _format_canonical_source_card(bullet: str, author: str, en_author: str, en_title: str, *, fallback_ru_title: str = "") -> str:
-    """Return title-first source-card display.
-
-    Policy: title first for readability; Russian title when known, with original
-    title + original author in parentheses. If no reliable Russian title is
-    known, keep the original title and still show the canonical Russian author.
-    """
-    en_author = original_author_name(en_author)
-    en_title = str(en_title or "").strip().rstrip(".")
-    ru_title = official_ru_title(en_author, en_title) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
-    if ru_title and re.search(r"[A-Za-z]", ru_title) and not re.search(r"[А-Яа-яЁё]", ru_title):
-        ru_title = ""
-    display_title = ru_title if (ru_title and en_title and ru_title.casefold() != en_title.casefold()) else en_title
-    original = ", ".join(x for x in (en_title, en_author) if x)
-    if original and display_title != en_title:
-        return f"{bullet}**{display_title}**, {author} ({original})."
-    if en_author and canonical_author_name(en_author) != en_author:
-        return f"{bullet}**{display_title}**, {author} ({en_author})."
-    return f"{bullet}**{display_title}**, {author}."
+    """Backward-compatible wrapper around typed SourceCard rendering."""
+    return render_source_card(build_source_card(
+        author=author,
+        title_original=en_title,
+        original_author=en_author,
+        fallback_ru_title=fallback_ru_title,
+        bullet=bullet,
+    ))
 
 def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> str:
     """Normalize one bibliography/source-card line.

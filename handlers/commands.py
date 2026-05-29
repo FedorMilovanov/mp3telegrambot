@@ -30,6 +30,9 @@ from core.segment_planner import (
 from core.observability import format_gemini_metrics_report
 from core.prompt_health import format_prompt_health_report
 from core.code_health import format_code_health_report
+from core.archive_quality import format_archive_quality_report, format_prompt_variant_comparison
+from core.archive_quality import format_quality_records_report, recommend_prompt_variant
+from core.archive_quality import awrite_archive_quality_exports
 from core.generated_pages import (
     ARCHIVE_DIR, aget_generated_page_record, aquery_generated_pages,
     asave_segment_plan_export, aupdate_generated_page_repair_status,
@@ -76,7 +79,12 @@ async def start(update, context):
                 "/search &lt;текст&gt; — поиск по архиву\n"
                 "/repairpage &lt;url|video_id|last&gt; — перечинить Telegraph без Gemini\n"
                 "/prompthealth — аудит размера и баланса промптов\n"
-                "/codehealth — аудит regex/postprocess слоя"
+                "/codehealth — аудит regex/postprocess слоя\n"
+                "/archivequality [n] — качество архива и prompt A/B\n"
+                "/comparevariants A B [n] — сравнить prompt variants\n"
+                "/archivequalityfile [md|json] [n] — export качества архива\n"
+                "/qualityrecords [n|all n] — записи на ручную проверку\n"
+                "/promptrecommend [n] — лучший prompt variant"
             )
         text = (
             f"🎵 <b>Media Audio Converter</b>\n\n"
@@ -257,6 +265,115 @@ async def codehealth_command(update, context):
         return
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, format_code_health_report)
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def archivequality_command(update, context):
+    """Admin readout for archive quality warnings and prompt variants."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    limit = _archive_parse_limit(context.args, 50) if "_archive_parse_limit" in globals() else 50
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(None, lambda: format_archive_quality_report(limit=limit))
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def comparevariants_command(update, context):
+    """Compare two prompt variants from the archive quality readout."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    args = list(context.args or [])
+    if len(args) < 2:
+        await update.message.reply_text(
+            "🧪 Использование: <code>/comparevariants default synopsis-v2 [50]</code>",
+            parse_mode="HTML",
+        )
+        return
+    left, right = args[0], args[1]
+    limit = _archive_parse_limit(args[2:], 50) if len(args) > 2 else 50
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(
+        None,
+        lambda: format_prompt_variant_comparison(left, right, limit=limit),
+    )
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def archivequalityfile_command(update, context):
+    """Build and send archive quality markdown/json export."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    args = list(context.args or [])
+    kind = (args[0].strip().lower() if args else "md")
+    if kind not in {"md", "json"}:
+        kind = "md"
+        limit_args = args
+    else:
+        limit_args = args[1:]
+    limit = _archive_parse_limit(limit_args, 50)
+    paths = await awrite_archive_quality_exports(limit=limit)
+    path = Path(paths.get(kind, ""))
+    if not path.exists():
+        await update.message.reply_text("⚠️ Archive quality export не создан.")
+        return
+    with open(path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=path.name,
+            caption=f"🧪 Archive quality export: {path.name}",
+            write_timeout=180,
+            read_timeout=180,
+            connect_timeout=60,
+        )
+
+
+async def qualityrecords_command(update, context):
+    """List archive records that need manual quality review."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    args = list(context.args or [])
+    warnings_only = True
+    if args and args[0].strip().lower() == "all":
+        warnings_only = False
+        args = args[1:]
+    limit = _archive_parse_limit(args, 20)
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(
+        None,
+        lambda: format_quality_records_report(limit=limit, warnings_only=warnings_only),
+    )
+    if len(report) > 3900:
+        report = report[:3850] + "\n…обрезано"
+    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def promptrecommend_command(update, context):
+    """Recommend prompt variant promotion candidates from archive warnings."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    limit = _archive_parse_limit(context.args, 50)
+    loop = asyncio.get_running_loop()
+    report = await loop.run_in_executor(None, lambda: recommend_prompt_variant(limit=limit))
     await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
 
 

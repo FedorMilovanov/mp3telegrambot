@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from core.structured_blocks import normalize_structured_block
 from core.text_utils import (
     find_mixed_greek_cyrillic_tokens,
     normalize_common_typos,
@@ -348,7 +349,7 @@ def audit_expanded_sections(
             for bidx, raw_block in enumerate(blocks):
                 if not isinstance(raw_block, dict):
                     continue
-                block = dict(raw_block)
+                block = normalize_structured_block(raw_block) or dict(raw_block)
                 issues.extend(_validate_block_required_fields(block, location=f"{base_loc}.blocks[{bidx}"))
                 for field in ("text", "quote", "why_relevant", "role_in_argument", "common_misreading", "challenge", "concrete_step"):
                     if field in block and isinstance(block.get(field), str):
