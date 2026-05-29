@@ -4,24 +4,13 @@ Globals — импорты и глобальные переменные.
 Telegram Bot: Media Audio Converter + AI Analysis
 """
 
-import uuid
 import os
 import re
 import html as html_mod
-import sqlite3
-import shutil
-import urllib.parse
-import hashlib
-import sys
-import subprocess
 import asyncio
 import logging
-import json
-import requests
 import time
 import threading
-from io import BytesIO
-from datetime import date
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -31,16 +20,7 @@ load_dotenv()
 os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 
 from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-    CallbackQueryHandler,
-)
-import yt_dlp
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # === Flask-сервер (обязателен для Render.com!) ===
 flask_app = Flask(__name__)
@@ -67,7 +47,7 @@ def health():
     return ("OK", 200)
 
 try:
-    from PIL import Image
+    import PIL  # noqa: F401 — HAS_PILLOW flag only
     HAS_PILLOW = True
 except ImportError:
     HAS_PILLOW = False
@@ -132,7 +112,7 @@ _gemini_http_options = None
 if HAS_GEMINI:
     try:
         _gemini_http_options = types.HttpOptions(timeout=900_000)
-    except Exception as _e:
+    except Exception:
         pass
 
 def _make_gemini_client(api_key: str):

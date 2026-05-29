@@ -7,7 +7,6 @@ import asyncio
 import logging
 import os
 import re
-import urllib.parse
 import requests
 import time
 
@@ -108,7 +107,13 @@ def _score_candidate_match(
     recall = inter_count / max(len(meaningful_words), 1)
     word_score = 0.0 if (precision + recall) <= 0 else (2 * precision * recall / (precision + recall))
 
-    dur_diff = abs(item_duration - duration) if duration and item_duration else 999
+    # AUDIT FIX: if both durations are unknown, don't penalize; treat as unknown (0.5)
+    if duration and item_duration:
+        dur_diff = abs(item_duration - duration)
+    elif duration or item_duration:
+        dur_diff = 999  # one is unknown → mismatch
+    else:
+        dur_diff = 0  # both unknown → neutral
     dur_score = (
         1.0 if dur_diff < 30 else
         0.7 if dur_diff < 120 else

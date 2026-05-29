@@ -18,7 +18,15 @@ class RenderLockToken:
 
 
 _ACTIVE_RENDER_KEYS: set[str] = set()
-_RENDER_LOCK_GUARD = asyncio.Lock()
+_RENDER_LOCK_GUARD: asyncio.Lock | None = None  # created lazily per event loop
+
+
+def _get_render_lock_guard() -> asyncio.Lock:
+    """Create or return the lock for the current event loop."""
+    global _RENDER_LOCK_GUARD
+    if _RENDER_LOCK_GUARD is None:
+        _RENDER_LOCK_GUARD = asyncio.Lock()
+    return _RENDER_LOCK_GUARD
 
 
 def render_lock_key(kind: str, video_id: str) -> str:
@@ -30,7 +38,7 @@ async def try_acquire_render_lock(key: str) -> RenderLockToken | None:
     key = str(key or "").strip()
     if not key:
         return None
-    async with _RENDER_LOCK_GUARD:
+    async with _get_render_lock_guard():
         if key in _ACTIVE_RENDER_KEYS:
             return None
         _ACTIVE_RENDER_KEYS.add(key)
@@ -40,10 +48,10 @@ async def try_acquire_render_lock(key: str) -> RenderLockToken | None:
 async def release_render_lock(token: RenderLockToken | None) -> None:
     if token is None:
         return
-    async with _RENDER_LOCK_GUARD:
+    async with _get_render_lock_guard():
         _ACTIVE_RENDER_KEYS.discard(token.key)
 
 
 async def is_render_locked(key: str) -> bool:
-    async with _RENDER_LOCK_GUARD:
+    async with _get_render_lock_guard():
         return str(key or "").strip() in _ACTIVE_RENDER_KEYS
