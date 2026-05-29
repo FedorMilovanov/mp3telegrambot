@@ -21,6 +21,31 @@ from core.code_health import (  # noqa: E402
 )
 
 
+def _configure_stdout() -> None:
+    """Make CLI output safe on Windows cp1251 consoles/pipes.
+
+    Reports include emoji and Cyrillic. On Windows, subprocess text capture can
+    give the child a non-UTF stdout encoding with strict errors, which raises
+    UnicodeEncodeError before tests even inspect the output. Keep the user's
+    encoding but escape unsupported glyphs instead of crashing.
+    """
+    try:
+        sys.stdout.reconfigure(errors="backslashreplace")
+    except Exception:
+        pass
+
+
+def _safe_print(value: object = "") -> None:
+    _configure_stdout()
+    try:
+        print(value)
+    except UnicodeEncodeError:
+        text = str(value)
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        safe = text.encode(encoding, errors="backslashreplace").decode(encoding, errors="replace")
+        print(safe)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Advisory regex/postprocess code-health report")
     parser.add_argument("--root", default=str(ROOT), help="repository root")
@@ -32,10 +57,10 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root)
     if args.write_baseline:
         path = write_code_health_baseline(root, args.baseline_path)
-        print(f"WROTE_BASELINE {path}")
+        _safe_print(f"WROTE_BASELINE {path}")
         return 0
 
-    print(format_code_health_report(root))
+    _safe_print(format_code_health_report(root))
     report = collect_code_health(root)
     if args.strict and report.regex_over_threshold:
         return 1

@@ -1,6 +1,7 @@
 """Regression tests for v3 patch 86 — code-health trend tooling."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -49,15 +50,25 @@ def test_code_health_snapshot_and_delta_are_stable(tmp_path):
 
 
 def test_check_code_health_cli_is_non_blocking_by_default():
+    env = {**os.environ, "PYTHONIOENCODING": "cp1251"}
     result = subprocess.run(
         [sys.executable, "tools/check_code_health.py"],
         text=True,
         capture_output=True,
         timeout=60,
+        env=env,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0
     assert "Code health" in result.stdout
     assert "baseline_delta" in result.stdout
+
+
+def test_check_code_health_cli_configures_stdout_errors():
+    src = Path("tools/check_code_health.py").read_text(encoding="utf-8")
+    assert "backslashreplace" in src
+    assert "_safe_print" in src
 
 
 def test_ci_runs_code_health_advisory():
