@@ -24,7 +24,7 @@ def _flat(node):
 def test_person_name_registry_normalizes_live_variants():
     text = "Ар Си Спраул, Р. Ч. Спрол, Эс Льюиса Джонсона и Мартина Лойда Джонса"
     out = normalize_person_names(text)
-    assert "Р. К. Спроул" in out
+    assert "Р. Ч. Спроул" in out
     assert "С. Льюиса Джонсона" in out
     assert "Мартина Ллойд-Джонса" in out
 

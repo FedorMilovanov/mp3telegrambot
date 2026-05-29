@@ -12,7 +12,7 @@ def test_russian_title_case_uses_sentence_case_not_english_title_case():
 def test_russian_title_case_preserves_divine_biblical_and_internal_caps():
     assert sentence_case_russian_title("Наш Бог — Огонь Поядающий") == "Наш Бог — огонь поядающий"
     assert sentence_case_russian_title("Христос Умер Для Бога") == "Христос умер для Бога"
-    assert sentence_case_russian_title("Джон МакАртур и Р. К. Спроул") == "Джон МакАртур и Р. К. Спроул"
+    assert sentence_case_russian_title("Джон МакАртур и Р. Ч. Спроул") == "Джон МакАртур и Р. Ч. Спроул"
     assert sentence_case_russian_title("Достаточность Писания: Псалом 18") == "Достаточность Писания: Псалом 18"
 
 

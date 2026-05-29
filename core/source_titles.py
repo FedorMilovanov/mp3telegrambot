@@ -16,8 +16,8 @@ from core.person_names import canonical_person_name, normalize_person_names
 
 AUTHOR_CANONICAL: dict[str, str] = {
     "John MacArthur": "Джон МакАртур",
-    "R.C. Sproul": "Р. Ч. Спрол",
-    "R. C. Sproul": "Р. Ч. Спрол",
+    "R.C. Sproul": "Р. Ч. Спроул",
+    "R. C. Sproul": "Р. Ч. Спроул",
     "Paul Washer": "Пол Вошер",
     "Joel Beeke": "Джоэл Бики",
     "Greg Gilbert": "Грег Гилберт",

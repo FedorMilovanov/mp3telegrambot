@@ -27,7 +27,7 @@ def test_render_source_card_title_first_with_original_parenthetical():
 
 def test_build_source_card_uses_registry_and_does_not_invent_ru_title():
     known = build_source_card(author="R.C. Sproul", title_original="The Holiness of God", bullet="• ")
-    assert render_source_card(known) == "• **Святость Бога**, Р. К. Спроул (The Holiness of God, R.C. Sproul)."
+    assert render_source_card(known) == "• **Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
 
     unknown = build_source_card(author="Kevin DeYoung", title_original="What Is the Mission of the Church?", bullet="• ")
     assert render_source_card(unknown) == "• **What Is the Mission of the Church?**, Кевин ДеЯнг (Kevin DeYoung)."

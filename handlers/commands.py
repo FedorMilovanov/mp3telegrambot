@@ -51,6 +51,7 @@ from services.shorts_video import (
 )
 from services.render_clips_montage import render_clip
 from pipelines.playlist import handle_playlist
+from core.progress import safe_edit_text
 
 import asyncio
 import logging

@@ -5,14 +5,14 @@ from __future__ import annotations
 import re
 
 _PERSON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    ("Ар Си Спраул", "Р. К. Спроул"),
-    ("Ар-Си Спраул", "Р. К. Спроул"),
-    ("Р. Ч. Спрол", "Р. К. Спроул"),
-    ("Р. Ч. Спроул", "Р. К. Спроул"),
-    ("Р. К. Спрол", "Р. К. Спроул"),
-    ("R.C. Sproul", "Р. К. Спроул"),
-    ("R. C. Sproul", "Р. К. Спроул"),
-    ("RC Sproul", "Р. К. Спроул"),
+    ("Ар Си Спраул", "Р. Ч. Спроул"),
+    ("Ар-Си Спраул", "Р. Ч. Спроул"),
+    ("Р. Ч. Спрол", "Р. Ч. Спроул"),
+    ("Р. Ч. Спроул", "Р. Ч. Спроул"),
+    ("Р. К. Спрол", "Р. Ч. Спроул"),
+    ("R.C. Sproul", "Р. Ч. Спроул"),
+    ("R. C. Sproul", "Р. Ч. Спроул"),
+    ("RC Sproul", "Р. Ч. Спроул"),
     ("Эс Льюиса Джонсона", "С. Льюиса Джонсона"),
     ("Эс Льюис Джонсон", "С. Льюис Джонсон"),
     ("S. Lewis Johnson", "С. Льюис Джонсон"),
@@ -42,7 +42,7 @@ def normalize_person_names(text: str) -> str:
         if src in out:
             out = out.replace(src, dst)
             changed = True
-    # Initials spacing polish: "Р.К. Спроул" -> "Р. К. Спроул"
+    # Initials spacing polish: "Р.Ч. Спроул" -> "Р. Ч. Спроул"
     out2 = re.sub(r"\b([А-ЯA-Z])\.\s*([А-ЯA-Z])\.\s*", lambda m: f"{m.group(1)}. {m.group(2)}. ", out)
     if out2 != out:
         changed = True
