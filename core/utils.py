@@ -215,7 +215,10 @@ def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
         # Их удаляет cleanup_nosub_files() по расписанию.
         if "_nosub.mp4" in f.name:
             continue
-        f.unlink(missing_ok=True)
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass  # Windows: file may be locked by ffmpeg/Telegram
     # Удаляем устаревшие обложки из THUMBS_DIR (старше CACHE_TTL_DAYS)
     # FIXED #36: обход всего THUMBS_DIR не чаще одного раза в час
     global _THUMBS_LAST_CLEANUP

@@ -330,6 +330,13 @@ def run_bot():
 
 
 def main():
+    # AUDIT: если DISABLE_HEALTH_CHECK=1 (локальный запуск на Windows),
+    # запускаем бота в main thread напрямую без Flask.
+    # Flask daemon=True → если порт занят, бот убивается мгновенно.
+    if os.getenv("DISABLE_HEALTH_CHECK", "").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.info("🏠 Локальный режим: Flask отключён (DISABLE_HEALTH_CHECK=1)")
+        run_bot()
+        return
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     port = int(os.environ.get("PORT", 10000))

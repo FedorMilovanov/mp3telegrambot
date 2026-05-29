@@ -29,6 +29,7 @@ from core.database import (
     SETTINGS_GROUPS,                                # AUDIT M19 (перенесено сюда)
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
+from core.utils import mask_api_key as _mask
 from services.shorts_video import build_short_caption, render_short_clip
 
 import asyncio
@@ -356,7 +357,7 @@ async def handle_callback(update, context) -> None:
                 pass
             logger.warning("segcut callback failed: %s", exc, exc_info=True)
             try:
-                await query.message.reply_text(f"❌ Ошибка сегмента: {str(exc)[:160]}")
+                await query.message.reply_text(f"❌ Ошибка сегмента: {_mask(str(exc))[:160]}")
             except Exception:
                 pass
         return

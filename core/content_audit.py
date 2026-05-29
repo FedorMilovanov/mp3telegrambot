@@ -236,7 +236,7 @@ def _short(value: Any, limit: int = 180) -> str:
     return text[:limit]
 
 
-def _audit_text(value: str, *, location: str, source_map: bool = False, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
+def _audit_text(value: str, *, location: str, source_map: bool = False, expected_author: str = "", label: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Normalize one title/content string and return issues."""
     original = str(value or "")
     issues: list[ContentAuditIssue] = []
@@ -292,8 +292,12 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
             after=_short(text),
         ))
 
+    # Skip third-person scrubbing for analytical pages (Study/Reflection)
+    # where "МакАртур показывает" is the intended analytical style.
+    _is_analytical = any(k in (label or "").lower() for k in ("study", "reflection", "досье"))
     third_before = text
-    text = scrub_third_person_phrases(text)
+    if not _is_analytical:
+        text = scrub_third_person_phrases(text)
     if text != third_before:
         issues.append(ContentAuditIssue(
             code="third_person_fixed",
@@ -392,13 +396,13 @@ def audit_expanded_sections(
         base_loc = f"{label or 'expanded'}.sections[{idx}]"
 
         title = str(sec.get("title") or "")
-        new_title, got = _audit_text(title, location=f"{base_loc}.title", expected_author=expected_author)
+        new_title, got = _audit_text(title, location=f"{base_loc}.title", expected_author=expected_author, label=label)
         issues.extend(got)
         sec["title"] = new_title
 
         content = str(sec.get("content") or "")
         source_map = bool(_SOURCE_MAP_HEADING_RE.search(new_title))
-        new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author)
+        new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author, label=label)
         issues.extend(got)
         issues.extend(_audit_translation_forks(new_content, location=f"{base_loc}:{new_title}"))
         issues.extend(_audit_translation_semantics(new_content, location=f"{base_loc}:{new_title}"))

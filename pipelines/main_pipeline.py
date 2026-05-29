@@ -129,7 +129,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         full_title   = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
         logger.info(f"YouTube channel_name: '{channel_name}'")
-        duration     = info_dict.get("duration", 0)
+        duration     = int(info_dict.get("duration") or 0)
         media_id     = info_dict.get("id", "media")
         performer, title = parse_title(full_title, channel_name)
 

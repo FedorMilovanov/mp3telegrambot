@@ -422,6 +422,20 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+
+# Файловый лог — сохраняет логи при закрытии консоли (Windows local)
+try:
+    from logging.handlers import RotatingFileHandler
+    _file_handler = RotatingFileHandler(
+        "bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
+    )
+    _file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    ))
+    _file_handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(_file_handler)
+except Exception:
+    pass  # Не блокируем старт если лог-файл недоступен
 logger = logging.getLogger(__name__)
 
 

@@ -10,7 +10,7 @@ from core.globals import (
 )
 from core.database import GEMINI_MODEL       # FIX shorts_candidates
 from core.json_parser import (
-    _try_parse_synopsis_json, time_to_seconds,
+    time_to_seconds,
     _recover_truncated_json,            # FIX shorts_candidates
 )
 from core.text_utils import (

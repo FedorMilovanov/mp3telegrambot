@@ -18,13 +18,14 @@ def test_content_audit_normalizes_section_title_content_and_outline():
     out_sections, out_outline, issues = audit_expanded_sections(sections, outline, label="StudyAnalysis")
 
     assert out_sections[0]["title"] == "Чуждый огонь и авторитет Слова Божьего"
-    assert "Джон МакАртур подчеркивает" not in out_sections[0]["content"]
-    assert "Верность важна" in out_sections[0]["content"]
+    # Study pages KEEP third-person analytical framing (label-aware skip)
+    assert "Джон МакАртур подчеркивает" in out_sections[0]["content"]
     assert "Стиву Лоусону" in out_sections[0]["content"]
     assert out_outline[0]["title"] == "Чуждый огонь"
     codes = {i.code for i in issues}
     assert "typo_fixed" in codes
-    assert "third_person_fixed" in codes
+    # third_person NOT scrubbed for Study — no third_person_fixed issue
+    assert "third_person_fixed" not in codes
 
 
 def test_content_audit_source_map_prefers_original_and_dedupes_authors():

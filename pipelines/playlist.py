@@ -25,6 +25,7 @@ from core.database import (
 )
 from services.ffmpeg import COOKIES_FILE
 from pipelines.main_pipeline import process_single_video
+from core.utils import mask_api_key as _mask
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +162,8 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             # Сообщение могло устареть — отправим новым
             await update.message.reply_text(final)
     except Exception as e:
-        logger.error(f"Ошибка плейлиста: {e}")
+        logger.error(f"Ошибка плейлиста: {_mask(str(e))}")
         try:
-            await status_msg.edit_text(f"❌ Ошибка: {str(e)[:300]}")
+            await status_msg.edit_text(f"❌ Ошибка: {_mask(str(e))[:300]}")
         except Exception:
-            await update.message.reply_text(f"❌ Ошибка: {str(e)[:300]}")
+            await update.message.reply_text(f"❌ Ошибка: {_mask(str(e))[:300]}")

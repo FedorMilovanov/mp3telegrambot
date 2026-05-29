@@ -19,6 +19,7 @@ from core.database import (
     areserve_rate_limit,  # AUDIT M4/PART5
 )
 from core.utils import (
+    mask_api_key as _mask,
     is_media_url, is_playlist_url,
     extract_media_url, format_timestamp,               # FIX #9
 )
@@ -504,7 +505,12 @@ async def stop_command(update, context):
     app = context.application
     app.bot_data["stop_requested"] = True
 
-    if os.getenv("FORCE_EXIT_ON_STOP", "0").strip().lower() in {"1", "true", "yes", "on"}:
+    # Авто-exit для локального режима: Flask отключён → main thread = run_bot(),
+    # после stop_requested run_bot() выходит и процесс завершается сам.
+    # Но если Flask включён, процесс висит → нужен force exit.
+    _force = os.getenv("FORCE_EXIT_ON_STOP", "").strip().lower() in {"1", "true", "yes", "on"}
+    _local = os.getenv("DISABLE_HEALTH_CHECK", "").strip().lower() in {"1", "true", "yes", "on"}
+    if _force or (not _local and os.getenv("PORT")):
         async def _force_exit_fallback():
             await asyncio.sleep(5)
             logger.warning("FORCE_EXIT_ON_STOP=1 — аварийный os._exit(0) после grace period")
@@ -999,7 +1005,7 @@ async def cutseg_command(update, context):
         await msg.edit_text(f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
     except Exception as exc:
         logger.warning("cutseg failed: %s", exc, exc_info=True)
-        await msg.edit_text(f"❌ Ошибка нарезки: {str(exc)[:180]}")
+        await msg.edit_text(f"❌ Ошибка нарезки: {_mask(str(exc))[:180]}")
     finally:
         for clip_path in clip_paths:
             try:

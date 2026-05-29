@@ -28,6 +28,7 @@ from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
+from core.observability import alog_gemini_response, alog_gemini_run
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.candidate_schema import expanded_page_response_schema
 from core.reasoning_guidance import build_synopsis_reasoning_note
@@ -688,7 +689,12 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
         # ── Извлекаем текст ответа ────────────────────────────
         synopsis_text = _extract_response_text(response)
+        _obs_video_id = str(getattr(mp3_path, "stem", ""))
         if not synopsis_text:
+            await alog_gemini_run(
+                task="synopsis", video_id=_obs_video_id, model=GEMINI_MODEL,
+                thinking_level="high", json_valid=False, error="empty_response",
+            )
             return None, None
 
         # ── Парсим JSON (с retry при сломанном JSON) ─────────
@@ -737,6 +743,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if parsed is not None:
             outline, sections = parsed
             logger.info("Synopsis: JSON распарсен успешно")
+            await alog_gemini_response(
+                response=response, task="synopsis", video_id=_obs_video_id,
+                model=GEMINI_MODEL, thinking_level="high", json_valid=True,
+            )
         elif _looks_like_json(synopsis_text):
             # Сломанный JSON → один retry с пониженной температурой
             logger.warning("Synopsis: сломанный JSON от Gemini — выполняю retry")

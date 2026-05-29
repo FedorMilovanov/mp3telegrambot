@@ -593,6 +593,10 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                 item["_canonical"] = canonical
             result, _sc = _best_match(items, search_title, duration, "vk")
             logger.info(f"VK best_match (score={_sc:.2f}): {result}")
+            _VK_MIN_RETURN_SCORE = 0.50
+            if result and _sc < _VK_MIN_RETURN_SCORE:
+                logger.info(f"VK: score={_sc:.2f} ниже порога {_VK_MIN_RETURN_SCORE} — отклоняем")
+                return None
             return result
     except Exception as e:
         logger.warning(f"VK Video поиск: {type(e).__name__}: {e}")
