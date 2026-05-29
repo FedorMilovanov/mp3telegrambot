@@ -429,6 +429,7 @@ def audit_expanded_sections(
                             block.get(field, ""),
                             location=f"{base_loc}.blocks[{bidx}].{field}",
                             expected_author=expected_author,
+                            label=label,
                         )
                         issues.extend(got_block)
                         block[field] = block_text
@@ -446,7 +447,7 @@ def audit_expanded_sections(
             continue
         oi = dict(raw)
         title = str(oi.get("title") or "")
-        new_title, got = _audit_text(title, location=f"{label or 'expanded'}.outline[{idx}].title", expected_author=expected_author)
+        new_title, got = _audit_text(title, location=f"{label or 'expanded'}.outline[{idx}].title", expected_author=expected_author, label=label)
         issues.extend(got)
         oi["title"] = new_title
         new_outline.append(oi)
