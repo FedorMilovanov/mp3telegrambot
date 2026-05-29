@@ -35,10 +35,10 @@ def get_synopsis_density_profile(duration_seconds: int | float = 0) -> SynopsisD
     if dur and dur < 20 * 60:
         return SynopsisDensityProfile("short", "3-5", "250-800", "1800", 24000, 3, 1200)
     if dur and dur < 50 * 60:
-        return SynopsisDensityProfile("medium", "5-9", "450-1300", "3500", 32000, 5, 2500)
+        return SynopsisDensityProfile("medium", "6-10", "600-1400", "4500", 40000, 6, 3500)
     if dur and dur < 90 * 60:
-        return SynopsisDensityProfile("long", "10-16", "700-1900", "9000", 48000, 9, 6000)
-    return SynopsisDensityProfile("very_long", "12-20", "800-2200", "13000", 56000, 11, 8500)
+        return SynopsisDensityProfile("long", "10-16", "900-2200", "9000", 60000, 10, 8500)
+    return SynopsisDensityProfile("very_long", "12-20", "1000-2600", "16000", 65000, 12, 12000)
 
 
 def _section_time_seconds(section: dict[str, Any]) -> int | None:
@@ -99,6 +99,20 @@ def filter_organizational_announcement_sections(sections: list[dict]) -> tuple[l
         )]
     return valid, []
 
+_TS_INLINE_RE = re.compile(r"(?:⏱|📌)?\s*\b\d{1,2}:\d{2}(?::\d{2})?\b")
+
+
+def _section_inline_timestamp_count(section: dict[str, Any]) -> int:
+    text = str((section or {}).get("content") or "")
+    blocks = (section or {}).get("blocks") or []
+    if isinstance(blocks, list):
+        for b in blocks:
+            if isinstance(b, dict):
+                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "timestamp", "why_relevant", "role_in_argument", "anchor_timestamp"))
+                for step in b.get("steps") or []:
+                    text += " " + str(step)
+    return len(_TS_INLINE_RE.findall(text))
+
 def audit_synopsis_density(sections: list[dict], duration_seconds: int | float = 0) -> list[SynopsisQualityIssue]:
     """Return warnings when Synopsis looks too thin for material duration."""
     profile = get_synopsis_density_profile(duration_seconds)
@@ -126,6 +140,13 @@ def audit_synopsis_density(sections: list[dict], duration_seconds: int | float =
             issues.append(SynopsisQualityIssue(
                 "synopsis_time_coverage_low",
                 f"last_section_time={max(times)} covers only {max(times)/dur:.0%} of duration",
+            ))
+        inline_count = sum(_section_inline_timestamp_count(s) for s in valid)
+        min_inline = max(4, min(len(valid), dur // 900))
+        if inline_count < min_inline:
+            issues.append(SynopsisQualityIssue(
+                "synopsis_missing_inline_anchors",
+                f"inline_timestamp_anchors={inline_count} below minimum {min_inline} for transcript-like Synopsis",
             ))
     return issues
 
@@ -158,5 +179,5 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
         dur = 0
     if dur < 45 * 60:
         return False
-    critical = {"synopsis_too_few_sections", "synopsis_too_few_chars"}
+    critical = {"synopsis_too_few_sections", "synopsis_too_few_chars", "synopsis_missing_inline_anchors"}
     return any(i.code in critical for i in issues or [])

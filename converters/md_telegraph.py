@@ -702,7 +702,27 @@ def _structured_blocks_to_nodes_v2(
             continue
         btype = str(raw.get("type") or "paragraph").strip().lower()
         text = _scrub_inline(str(raw.get("text") or "").strip())
-        if btype in {"paragraph", "para"}:
+        if btype == "thesis":
+            if text:
+                chunks.append("**Главная мысль:** " + text)
+        elif btype == "argument_spine":
+            steps = raw.get("steps") or []
+            if isinstance(steps, list) and steps:
+                chunks.append("**Ход мысли автора:**\n" + "\n".join(f"- {str(step).strip()}" for step in steps if str(step).strip()))
+            elif text:
+                chunks.append("**Ход мысли автора:** " + text)
+        elif btype == "application":
+            challenge = _scrub_inline(str(raw.get("challenge") or text or "").strip())
+            anchor = _scrub_inline(str(raw.get("anchor_timestamp") or raw.get("timestamp") or "").strip())
+            step = _scrub_inline(str(raw.get("concrete_step") or "").strip())
+            line = f"• **{challenge}**" if challenge else ""
+            if anchor:
+                line += f" ⏱ {anchor}"
+            if step:
+                line += f"\n\nШаг: {step}"
+            if line:
+                chunks.append(line)
+        elif btype in {"paragraph", "para"}:
             if text:
                 chunks.append(text)
         elif btype in {"bullet", "list_item", "point"}:
@@ -710,19 +730,36 @@ def _structured_blocks_to_nodes_v2(
                 chunks.append("• " + text.lstrip("•- ").strip())
         elif btype in {"scripture", "scripture_quote"}:
             ref = _scrub_inline(str(raw.get("ref") or "").strip())
-            quote = _scrub_inline(str(raw.get("quote") or text or "").strip())
+            quote = _scrub_inline(str(raw.get("quote") or "").strip())
+            explanation = _scrub_inline(str(raw.get("role_in_argument") or raw.get("why_relevant") or text or "").strip())
             ts = _scrub_inline(str(raw.get("timestamp") or "").strip())
             line = ""
+            clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
             if ref and quote:
-                line = f"• **{ref}:** *«{quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote}»*"
+                line = f"• **{ref}:** *«{clean_quote}»*"
             elif ref:
                 line = f"• **{ref}.**"
             elif quote:
-                line = f"• *«{quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote}»*"
+                line = f"• *«{clean_quote}»*"
+            elif text:
+                line = "• " + text.lstrip("•- ").strip()
             if line and ts:
                 line += f" ⏱ {ts}"
+            if line and explanation:
+                line += "\n\n" + explanation
             if line:
                 chunks.append(line)
+        elif btype in {"pull_quote"}:
+            quote = _scrub_inline(str(raw.get("quote") or text or "").strip())
+            ts = _scrub_inline(str(raw.get("timestamp") or "").strip())
+            if quote:
+                clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
+                chunks.append(f"> **{clean_quote}**" + (f" ⏱ {ts}" if ts else ""))
+        elif btype in {"quote", "blockquote", "block_quote"}:
+            quote = _scrub_inline(str(raw.get("quote") or text or "").strip())
+            if quote:
+                clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
+                chunks.append(f"> *«{clean_quote}»*")
         elif btype in {"source", "source_card", "bibliography"}:
             author = _scrub_inline(str(raw.get("author") or "").strip())
             title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
@@ -736,7 +773,14 @@ def _structured_blocks_to_nodes_v2(
                 chunks.append(f"{head}.")
             elif why:
                 chunks.append("• " + why)
-        elif btype in {"lexicon", "term"}:
+        elif btype in {"theological_line", "historical_line"}:
+            heading = _scrub_inline(str(raw.get("title_original") or raw.get("text") or "").strip())
+            why = _scrub_inline(str(raw.get("why_relevant") or raw.get("role_in_argument") or "").strip())
+            if heading and why:
+                chunks.append(f"• **{heading}** — {why}")
+            elif why:
+                chunks.append("• " + why)
+        elif btype in {"lexicon", "term", "lexical_analysis"}:
             lemma = _scrub_inline(str(raw.get("lemma") or "").strip())
             role = _scrub_inline(str(raw.get("role_in_argument") or text or "").strip())
             if lemma and role:
@@ -1891,6 +1935,12 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r"([а-яё])«", r"\1 «", text)
         text = re.sub(r"(?<!\d)([.!?])([А-ЯЁA-Z])", r"\1 \2", text)
         text = re.sub(r"(:\d{1,3})\.([А-ЯЁA-Z])", r"\1. \2", text)
+        # Prefer visually cleaner error labels: cross stays in the middle, not at line end.
+        text = re.sub(
+            r"\*\*([^*\n]{3,120}?)\*\*\s*❌\s*\*\*([^*\n]{3,120}?)\s*\.\*\*",
+            lambda m: f"**{m.group(1).strip()}** ❌ **Подмена: {m.group(2).strip().rstrip('.')}.**",
+            text,
+        )
         text = re.sub(r",\s*\*", ", *", text)
         # Preserve paragraph boundaries from Gemini pseudo-separators; guard URLs (https://).
         text = re.sub(r"(?<!:)\s+/\s*/\s+", "\n\n", text)

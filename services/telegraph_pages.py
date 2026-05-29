@@ -44,7 +44,8 @@ from core.content_audit import audit_expanded_sections, format_content_audit_iss
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 
 import asyncio
-import json      # FIX telegraph_pages
+import json
+from dataclasses import dataclass      # FIX telegraph_pages
 import logging
 import re
 import time
@@ -57,6 +58,15 @@ except ImportError:
     types = None
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CombinedStudyReflectionResult:
+    study_url: str | None = None
+    reflection_url: str | None = None
+    study_page_type: str = "study"
+    reflection_page_type: str = "reflection"
+    mode: str = "combined"
 
 
 def _expanded_structured_output_enabled() -> bool:
@@ -486,7 +496,8 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 max_tokens: int = 8000, task: str = "telegraph_text",
                                 video_id: str = "", thinking_level: str = "high",
                                 response_mime_type: str | None = None,
-                                response_schema=None) -> str | None:
+                                response_schema=None,
+                                allow_model_fallback: bool = True) -> str | None:
     """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
 
     v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
@@ -526,7 +537,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     # ВСЕ на максимальном качестве — 3.5-flash
     # Резерв: 2.5-flash-lite (свежая модель, не lite по качеству)
     _models = [GEMINI_MODEL]
-    if GEMINI_MODEL != "gemini-2.5-flash-lite":
+    if allow_model_fallback and GEMINI_MODEL != "gemini-2.5-flash-lite":
         _models.append("gemini-2.5-flash-lite")
 
     def _is_internal_error(e: Exception) -> bool:
@@ -1273,7 +1284,7 @@ async def create_telegraph_study_reflection_combined(
     vk_url: str = "",
     synopsis_outline: list | None = None,
     duration: float = 0,
-) -> tuple[str | None, str | None]:
+) -> CombinedStudyReflectionResult | None:
     """Optional one-call Study+Reflection generator.
 
     Disabled by default in the pipeline. It is intended for controlled quota/A-B
@@ -1281,14 +1292,17 @@ async def create_telegraph_study_reflection_combined(
     explicitly enables COMBINE_STUDY_REFLECTION=1.
     """
     if not combined_study_reflection_enabled():
-        return None, None
+        return None
     if not GEMINI_CLIENTS:
-        return None, None
+        return None
+    if is_model_exhausted(GEMINI_MODEL):
+        logger.warning("Combined Study+Reflection: primary model %s exhausted; using separate quality-first calls", GEMINI_MODEL)
+        return None
 
     _ai = ai_data or {}
     if not questions:
         logger.info("Combined Study+Reflection: questions missing — skip combined path")
-        return None, None
+        return None
 
     author_clean = _clean_meta_line(author or "") or "Автор не указан"
     title_clean = _clean_meta_line(title or "") or "Без названия"
@@ -1407,6 +1421,14 @@ async def create_telegraph_study_reflection_combined(
         "=== REFLECTION_APPLICATION TASK ===\n" + reflection_prompt
     )
 
+    _max_prompt_chars = int(os.getenv("COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS", "90000"))
+    if len(combined_prompt) > _max_prompt_chars:
+        logger.warning(
+            "Combined Study+Reflection: prompt too large for quality-first mode (%d > %d); falling back to separate calls",
+            len(combined_prompt), _max_prompt_chars,
+        )
+        return None
+
     schema = combined_expanded_pages_response_schema() if _expanded_structured_output_enabled() else None
     max_tokens = min(max(study_profile.max_tokens + reflection_profile.max_tokens, 32000), 65000)
     combined_thinking_level = "high"
@@ -1418,15 +1440,16 @@ async def create_telegraph_study_reflection_combined(
         thinking_level=combined_thinking_level,
         response_mime_type=("application/json" if schema else None),
         response_schema=schema,
+        allow_model_fallback=False,
     )
     if not raw:
         logger.warning("Combined Study+Reflection: empty Gemini response")
-        return None, None
+        return None
 
     parsed = _parse_combined_expanded_json(raw)
     if parsed is None:
         logger.warning("Combined Study+Reflection: broken JSON; falling back to separate calls")
-        return None, None
+        return None
 
     results: dict[str, str | None] = {"study": None, "reflection": None}
     for key, label, page_prefix, plain_scripture in [
@@ -1438,6 +1461,8 @@ async def create_telegraph_study_reflection_combined(
         if not sections:
             logger.warning("%s: sections empty in combined response", label)
             continue
+        if not _combined_relevance_ok(sections, _ai, label=label):
+            continue
         sections, outline, issues = audit_expanded_sections(sections, outline if isinstance(outline, list) else [], label=label, expected_author=author_clean)
         if issues:
             _log_audit = logger.warning if has_content_audit_warnings(issues) else logger.info
@@ -1448,11 +1473,18 @@ async def create_telegraph_study_reflection_combined(
         if not outline or len(outline) != len(sections):
             outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
         tg_title = f"{prompt_title} — {real_author}" if real_author and real_author != "Автор не указан" else prompt_title
+        if " — " in tg_title:
+            _sep = ": "
+        elif ":" in tg_title:
+            _sep = " — "
+        else:
+            _sep = ": "
+        full_page_title = f"{page_prefix}{_sep}{tg_title}"[:256]
         results[key] = await _publish_expanded_page(
             sections,
             outline,
-            page_prefix,
-            tg_title[:256],
+            full_page_title,
+            full_page_title,
             author_clean,
             yt_url=yt_url,
             include_toc=True,
@@ -1462,8 +1494,42 @@ async def create_telegraph_study_reflection_combined(
             plain_scripture=plain_scripture,
         )
 
-    return results["study"], results["reflection"]
+    if not (results["study"] and results["reflection"]):
+        logger.warning("Combined Study+Reflection: incomplete result; falling back to separate calls")
+        return None
+    return CombinedStudyReflectionResult(
+        study_url=results["study"],
+        reflection_url=results["reflection"],
+    )
 
+
+
+def _combined_relevance_ok(sections: list[dict], ai_data: dict | None, *, label: str = "combined") -> bool:
+    """Reject obvious cross-run/application contamination in combined mode."""
+    def terms(text: str) -> set[str]:
+        stop = {"когда", "котор", "чтобы", "этот", "такой", "через", "вопрос", "ответ", "применение"}
+        return {w for w in re.findall(r"[А-Яа-яЁёA-Za-z]{5,}", str(text or "").lower().replace("ё", "е")) if w not in stop}
+
+    ai = ai_data or {}
+    source = " ".join([
+        str(ai.get("real_title") or ""),
+        str(ai.get("main_topic") or ""),
+        " ".join(str(x) for x in (ai.get("key_categories") or [])),
+        str(ai.get("timestamps") or ""),
+    ])
+    source_terms = terms(source)
+    if len(source_terms) < 4:
+        return True
+    page_text = " ".join(str(s.get("title") or "") + " " + str(s.get("content") or "") for s in sections if isinstance(s, dict))
+    for sct in sections:
+        for b in (sct.get("blocks") or []) if isinstance(sct, dict) else []:
+            if isinstance(b, dict):
+                page_text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "why_relevant", "role_in_argument", "lemma"))
+    overlap = source_terms & terms(page_text)
+    if len(overlap) < 2:
+        logger.warning("%s: relevance audit failed for combined page; overlap=%s", label, sorted(overlap))
+        return False
+    return True
 
 def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | None:
     """Parse {study:{outline,sections}, reflection:{outline,sections}}."""

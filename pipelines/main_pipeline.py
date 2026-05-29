@@ -699,12 +699,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.info("Study+Reflection combined: enabled by COMBINE_STUDY_REFLECTION=1")
                 _study_compact = lambda: create_telegraph_analytics(ai_data, search_title, tg_author, url)
                 _reflection_compact = lambda: create_telegraph_questions(_questions, search_title, tg_author)
-                study_analysis_tg, reflection_application_tg = await create_telegraph_study_reflection_combined(
+                _combined_result = await create_telegraph_study_reflection_combined(
                     ai_data, _questions, search_title, tg_author, yt_url=url,
                     study_compact_fn=_study_compact, reflection_compact_fn=_reflection_compact,
                     rutube_url=_pre_rutube, vk_url=_pre_vk,
                     synopsis_outline=synopsis_outline, duration=duration,
                 )
+                if _combined_result:
+                    study_analysis_tg = _combined_result.study_url
+                    reflection_application_tg = _combined_result.reflection_url
+                    logger.info(
+                        "Study+Reflection combined result: mode=%s study_type=%s reflection_type=%s",
+                        _combined_result.mode,
+                        _combined_result.study_page_type,
+                        _combined_result.reflection_page_type,
+                    )
             except Exception as _e_combined:
                 logger.warning(f"Study+Reflection combined pipeline error: {_e_combined}")
                 study_analysis_tg = None
@@ -811,7 +820,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
                         nav_nodes = [
                             {"tag": "hr"},
-                            {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также: "]}] + nav_children},
+                            # Keep the space outside <b>; Telegraph/Markdown renderers may trim
+                            # trailing spaces inside bold nodes, producing **...:**[link].
+                            {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также:"]}, " "] + nav_children},
                         ]
 
                         # Убираем старый навигационный блок если уже был (повторный вызов)

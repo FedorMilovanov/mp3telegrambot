@@ -305,7 +305,13 @@ def expanded_page_response_schema() -> dict:
     block_item = {
         "type": "object",
         "properties": {
-            "type": _string_schema(),
+            "type": {
+                "type": "string",
+                "enum": [
+                    "paragraph", "bullet", "scripture", "source", "lexicon", "heading",
+                    "thesis", "argument_spine", "pull_quote", "application",
+                ],
+            },
             "text": _string_schema(),
             "ref": _string_schema(),
             "quote": _string_schema(),
@@ -315,6 +321,11 @@ def expanded_page_response_schema() -> dict:
             "why_relevant": _string_schema(),
             "lemma": _string_schema(),
             "role_in_argument": _string_schema(),
+            "common_misreading": _string_schema(),
+            "steps": _string_array_schema(),
+            "challenge": _string_schema(),
+            "anchor_timestamp": _string_schema(),
+            "concrete_step": _string_schema(),
         },
         "required": ["type"],
     }

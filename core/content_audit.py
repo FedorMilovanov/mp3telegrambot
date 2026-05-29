@@ -76,6 +76,28 @@ def normalize_generated_markdown_separators(text: str) -> str:
 
 
 
+_CHANNEL_POSITION_RE = re.compile(
+    r"(?:^|(?<=[.!?…])\s+)[^.?!…]*(?:канал\s+занимает\s+позици|позици[яю]\s+канала|наш\s+канал|мы\s+придерживаемся)[^.?!…]*[.!?…]?\s*",
+    re.IGNORECASE,
+)
+_MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bВ\s+материале\s+этот\s+термин\s+рассматривается\b", re.IGNORECASE), "Этот термин работает"),
+    (re.compile(r"\bВ\s+материале\s+говорится\b", re.IGNORECASE), "Автор говорит"),
+    (re.compile(r"\bВ\s+материале\s+", re.IGNORECASE), ""),
+    (re.compile(r"\bМатериал\s+(критикует|показывает|подчеркивает|разбирает|указывает|связывает)\b", re.IGNORECASE), r"Автор \1"),
+)
+
+
+def _scrub_prompt_context_leaks(text: str) -> tuple[str, bool]:
+    out = _CHANNEL_POSITION_RE.sub("", str(text or ""))
+    for pattern, repl in _MATERIAL_STYLE_FIXES:
+        out = pattern.sub(repl, out)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    out = re.sub(r"\n[ \t]+", "\n", out).strip()
+    return out, out != str(text or "")
+
+
 BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "paragraph": ("text",),
     "para": ("text",),
@@ -94,8 +116,25 @@ BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 
 def _validate_block_required_fields(block: dict, *, location: str) -> list[ContentAuditIssue]:
     btype = str(block.get("type") or "paragraph").strip().lower()
-    required = BLOCK_REQUIRED_FIELDS.get(btype, ("text",))
-    missing = [field for field in required if not str(block.get(field) or "").strip()]
+    if btype in {"quote", "blockquote", "block_quote"}:
+        missing = [] if (str(block.get("quote") or "").strip() or str(block.get("text") or "").strip()) else ["quote/text"]
+    elif btype in {"scripture", "scripture_quote"}:
+        missing = [] if (str(block.get("text") or "").strip() or str(block.get("ref") or "").strip()) else ["text/ref"]
+    elif btype == "argument_spine":
+        missing = [] if (block.get("steps") or str(block.get("text") or "").strip()) else ["steps/text"]
+    elif btype == "pull_quote":
+        missing = [] if str(block.get("quote") or block.get("text") or "").strip() else ["quote/text"]
+    elif btype == "application":
+        missing = [field for field in ("challenge", "concrete_step") if not str(block.get(field) or "").strip()]
+    elif btype in {"source", "source_card", "bibliography"}:
+        missing = [] if (str(block.get("author") or "").strip() and str(block.get("title_original") or block.get("title") or "").strip()) else ["author + title_original/title"]
+    elif btype in {"lexicon", "term", "lexical_analysis"}:
+        missing = [field for field in ("lemma", "role_in_argument") if not str(block.get(field) or "").strip()]
+    elif btype in {"theological_line", "historical_line"}:
+        missing = [] if (str(block.get("why_relevant") or block.get("text") or "").strip()) else ["why_relevant/text"]
+    else:
+        required = BLOCK_REQUIRED_FIELDS.get(btype, ("text",))
+        missing = [field for field in required if not str(block.get(field) or "").strip()]
     if not missing:
         return []
     return [ContentAuditIssue(
@@ -104,6 +143,7 @@ def _validate_block_required_fields(block: dict, *, location: str) -> list[Conte
         message=f"block type {btype!r} missing required fields: {', '.join(missing)}",
         before=_short(block),
     )]
+
 
 def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Remove hallucinated first-person name appositions when they mismatch expected author."""
@@ -175,6 +215,17 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
             location=location,
             message="source-card normalization applied",
             before=_short(source_before),
+            after=_short(text),
+        ))
+
+    leak_before = text
+    text, leak_changed = _scrub_prompt_context_leaks(text)
+    if leak_changed:
+        issues.append(ContentAuditIssue(
+            code="prompt_context_leak_fixed",
+            location=location,
+            message="removed channel/prompt-context or mechanical material wording",
+            before=_short(leak_before),
             after=_short(text),
         ))
 
@@ -298,7 +349,7 @@ def audit_expanded_sections(
                     continue
                 block = dict(raw_block)
                 issues.extend(_validate_block_required_fields(block, location=f"{base_loc}.blocks[{bidx}"))
-                for field in ("text", "quote", "why_relevant", "role_in_argument"):
+                for field in ("text", "quote", "why_relevant", "role_in_argument", "common_misreading", "challenge", "concrete_step"):
                     if field in block and isinstance(block.get(field), str):
                         block_text, got_block = _audit_text(
                             block.get(field, ""),

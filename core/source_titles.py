@@ -102,6 +102,18 @@ def canonical_author_name(value: str) -> str:
     return canonical_person_name(AUTHOR_CANONICAL.get(value, value))
 
 
+def original_author_name(value: str) -> str:
+    """Best-effort original author label for parenthetical source cards."""
+    raw = str(value or "").strip()
+    if re.search(r"[A-Za-z]", raw):
+        return raw
+    canon = canonical_person_name(raw)
+    for en, ru in AUTHOR_CANONICAL.items():
+        if canonical_person_name(ru) == canon:
+            return en
+    return raw
+
+
 def official_ru_title(en_author: str, en_title: str) -> str:
     author = str(en_author or "").strip()
     title = str(en_title or "").strip().rstrip(".")
@@ -139,20 +151,24 @@ def dedupe_bilingual_authors(line: str) -> str:
 
 
 def _format_canonical_source_card(bullet: str, author: str, en_author: str, en_title: str, *, fallback_ru_title: str = "") -> str:
-    """Return consistent Russian source-card display with original title in parentheses.
+    """Return title-first source-card display.
 
-    Policy: Russian author + Russian title when known, with verifiable original
-    title in parentheses. If no Russian title is known/provided, keep the
-    original title rather than inventing a translation.
+    Policy: title first for readability; Russian title when known, with original
+    title + original author in parentheses. If no reliable Russian title is
+    known, keep the original title and still show the canonical Russian author.
     """
+    en_author = original_author_name(en_author)
     en_title = str(en_title or "").strip().rstrip(".")
     ru_title = official_ru_title(en_author, en_title) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
-    # Do not use a fallback Russian title if it is actually an English/original title.
     if ru_title and re.search(r"[A-Za-z]", ru_title) and not re.search(r"[А-Яа-яЁё]", ru_title):
         ru_title = ""
-    if ru_title and en_title and ru_title.casefold() != en_title.casefold():
-        return f"{bullet}{author}, {ru_title} ({en_title})."
-    return f"{bullet}{author}, {en_title}."
+    display_title = ru_title if (ru_title and en_title and ru_title.casefold() != en_title.casefold()) else en_title
+    original = ", ".join(x for x in (en_title, en_author) if x)
+    if original and display_title != en_title:
+        return f"{bullet}**{display_title}**, {author} ({original})."
+    if en_author and canonical_author_name(en_author) != en_author:
+        return f"{bullet}**{display_title}**, {author} ({en_author})."
+    return f"{bullet}**{display_title}**, {author}."
 
 def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> str:
     """Normalize one bibliography/source-card line.

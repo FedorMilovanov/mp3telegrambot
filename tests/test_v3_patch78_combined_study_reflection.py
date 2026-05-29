@@ -57,3 +57,30 @@ def test_main_pipeline_combined_path_is_feature_flagged_and_fallbacks_to_separat
     assert "create_telegraph_study_reflection_combined" in src
     assert "if not study_analysis_tg" in src
     assert "if not reflection_application_tg" in src
+
+
+def test_combined_path_disables_model_fallback_for_quality():
+    src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert "allow_model_fallback: bool = True" in src
+    assert "if allow_model_fallback and GEMINI_MODEL !=" in src
+    assert "allow_model_fallback=False" in src
+    assert "primary model" in src and "separate quality-first calls" in src
+
+
+def test_combined_result_is_typed_dataclass_not_bare_tuple():
+    src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert "@dataclass(frozen=True)" in src
+    assert "class CombinedStudyReflectionResult" in src
+    assert "study_page_type: str = \"study\"" in src
+    assert "reflection_page_type: str = \"reflection\"" in src
+    assert "return CombinedStudyReflectionResult" in src
+    pipeline = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_combined_result.study_url" in pipeline
+    assert "_combined_result.reflection_url" in pipeline
+
+
+def test_structured_block_schema_uses_canonical_type_enum():
+    schema = combined_expanded_pages_response_schema()
+    block_type = schema["properties"]["study"]["properties"]["sections"]["items"]["properties"]["blocks"]["items"]["properties"]["type"]
+    assert block_type["enum"][:6] == ["paragraph", "bullet", "scripture", "source", "lexicon", "heading"]
+    assert "application" in block_type["enum"]

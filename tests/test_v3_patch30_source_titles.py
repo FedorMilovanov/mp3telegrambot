@@ -34,16 +34,16 @@ def test_source_title_registry_corrects_wrong_ru_title_but_prefers_original_card
     assert correct_known_ru_title("Странный огонь") == "Чуждый огонь"
     assert normalize_source_card_line(
         "• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."
-    ) == "• Джон МакАртур, Чуждый огонь (Strange Fire)."
+    ) == "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
     assert normalize_source_map_text(
         "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
-    ) == "• Джон МакАртур, Чуждый огонь (Strange Fire)."
+    ) == "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
 
 
 def test_source_title_registry_dedupes_generic_bilingual_authors():
     line = "• Кевин ДеЯнг, Грег Гилберт, Greg Gilbert, What Is the Mission of the Church?."
     assert normalize_source_card_line(line).startswith(
-        "• Кевин ДеЯнг и Грег Гилберт, What Is the Mission"
+        "• **What Is the Mission"
     )
     assert "Greg Gilbert" not in normalize_source_card_line(line)
 
@@ -54,10 +54,10 @@ def test_source_title_registry_dedupes_generic_bilingual_authors():
 
 def test_source_title_registry_canonicalizes_english_author_source_cards():
     assert normalize_source_card_line("• John Owen, The Death of Death in the Death of Christ") == (
-        "• Джон Оуэн, Смерть смерти в смерти Христа (The Death of Death in the Death of Christ)."
+        "• **Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
     )
     assert normalize_source_card_line("John Calvin, Commentary on Isaiah") == (
-        "Жан Кальвин, Комментарии на Исаию (Commentary on Isaiah)."
+        "**Комментарии на Исаию**, Жан Кальвин (Commentary on Isaiah, John Calvin)."
     )
 
 
@@ -68,6 +68,6 @@ def test_telegraph_postprocess_uses_source_title_registry():
     ]
     out = _postprocess_telegraph_nodes(nodes)
     flat = "\n".join(_flat(n) for n in out)
-    assert "Джон Оуэн, Смерть смерти в смерти Христа (The Death of Death in the Death of Christ)" in flat
+    assert "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)" in flat
     assert "Странный огонь" not in flat
-    assert "Джон МакАртур, Чуждый огонь (Strange Fire)" in flat
+    assert "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)" in flat

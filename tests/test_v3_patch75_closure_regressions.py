@@ -63,7 +63,7 @@ def test_synopsis_quality_prefers_blocks_over_content_fallback_not_double_count(
 
 def test_source_card_legacy_dedupes_cyrillic_latin_duplicate_parenthetical():
     line = "• Джон МакАртур, Strange Fire (John MacArthur, Strange Fire)."
-    assert normalize_source_card_line(line) == "• Джон МакАртур, Чуждый огонь (Strange Fire)."
+    assert normalize_source_card_line(line) == "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
 
 
 def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned():
@@ -95,4 +95,4 @@ def test_postprocess_sentence_spacing_does_not_split_numeric_acronym_refs():
 def test_normalize_common_typos_can_skip_source_map_pass_for_audit_pipeline():
     src = "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
     assert "John MacArthur" in normalize_common_typos(src, source_map=False)
-    assert "John MacArthur" not in normalize_common_typos(src)
+    assert "Strange Fire, John MacArthur" in normalize_common_typos(src)
