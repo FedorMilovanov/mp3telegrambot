@@ -77,7 +77,7 @@ def normalize_generated_markdown_separators(text: str) -> str:
 
 
 _CHANNEL_POSITION_RE = re.compile(
-    r"(?:^|(?<=[.!?…])\s+)[^.?!…]*(?:канал\s+занимает\s+позици|позици[яю]\s+канала|наш\s+канал|мы\s+придерживаемся)[^.?!…]*[.!?…]?\s*",
+    r"(?:^|(?<=[.!?…])\s+)[^.?!…]*(?:канал\s+занимает\s+позици|позици[яю]\s+канала|наш\s+канал|мы\s+придерживаемся|редакторск\w+\s+позици|конфессиональн\w+\s+рамк\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*",
     re.IGNORECASE,
 )
 _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -85,6 +85,7 @@ _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bВ\s+материале\s+говорится\b", re.IGNORECASE), "Автор говорит"),
     (re.compile(r"\bВ\s+материале\s+", re.IGNORECASE), ""),
     (re.compile(r"\bМатериал\s+(критикует|показывает|подчеркивает|разбирает|указывает|связывает)\b", re.IGNORECASE), r"Автор \1"),
+    (re.compile(r"[^.?!…]*(?:конфессиональн\w+\s+рамк\w+\s+канал\w*|редакторск\w+\s+позици\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*", re.IGNORECASE), ""),
 )
 
 
