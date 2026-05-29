@@ -424,12 +424,12 @@ async def pdf_command(update, context):
 
     rec = await adb_get(video_id)
     if not rec:
-        await msg.edit_text(f"⚠️ Видео <code>{video_id}</code> не найдено в кэше.", parse_mode="HTML")
+        await safe_edit_text(msg, f"⚠️ Видео <code>{video_id}</code> не найдено в кэше.", parse_mode="HTML")
         return
 
     ai_data = rec.get("ai_data")
     if not ai_data:
-        await msg.edit_text("⚠️ В кэше нет AI-данных для этого видео. Обработайте видео заново.")
+        await safe_edit_text(msg, "⚠️ В кэше нет AI-данных для этого видео. Обработайте видео заново.")
         return
 
     telegraph_url     = rec.get("telegraph_url", "")
@@ -444,7 +444,7 @@ async def pdf_command(update, context):
     if terms_tg_url:      pdf_urls["terms"]      = terms_tg_url
 
     if not pdf_urls:
-        await msg.edit_text("⚠️ Нет Telegraph-страниц для сборки PDF. Обработайте видео заново.")
+        await safe_edit_text(msg, "⚠️ Нет Telegraph-страниц для сборки PDF. Обработайте видео заново.")
         return
 
     title     = normalize_title_text(ai_data.get("real_title") or "") or video_id
@@ -480,12 +480,12 @@ async def pdf_command(update, context):
             except Exception: pass
             await msg.delete()
         else:
-            await msg.edit_text("❌ PDF не удалось сгенерировать. Проверьте pdf_generator.")
+            await safe_edit_text(msg, "❌ PDF не удалось сгенерировать. Проверьте pdf_generator.")
     except ImportError:
-        await msg.edit_text("❌ pdf_generator не установлен/не найден рядом с bot.py.")
+        await safe_edit_text(msg, "❌ pdf_generator не установлен/не найден рядом с bot.py.")
     except Exception as e:
         logger.warning(f"PDF команда ошибка: {e}")
-        await msg.edit_text(f"❌ Ошибка генерации PDF: {e}")
+        await safe_edit_text(msg, f"❌ Ошибка генерации PDF: {_mask(str(e))[:200]}")
 
 
 async def stop_command(update, context):
@@ -948,7 +948,7 @@ async def cutseg_command(update, context):
                 continue
             clip_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
             clip_paths.append(clip_path)
-            await msg.edit_text(
+            await safe_edit_text(msg,
                 f"🎬 Рендерю {segment.index}/{len(segments)}: {html_mod.escape(segment.title[:120])}\n"
                 f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
             )
@@ -1002,10 +1002,10 @@ async def cutseg_command(update, context):
                     connect_timeout=60,
                 )
             sent += 1
-        await msg.edit_text(f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
+        await safe_edit_text(msg, f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
     except Exception as exc:
         logger.warning("cutseg failed: %s", exc, exc_info=True)
-        await msg.edit_text(f"❌ Ошибка нарезки: {_mask(str(exc))[:180]}")
+        await safe_edit_text(msg, f"❌ Ошибка нарезки: {_mask(str(exc))[:180]}")
     finally:
         for clip_path in clip_paths:
             try:

@@ -98,3 +98,20 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
                 _progress_cache_put(msg_id, text)
         else:
             logger.debug(f"set_progress: {cls_name}: {e}")
+
+
+async def safe_edit_text(msg, text: str, **kwargs) -> bool:
+    """Edit message text, swallowing Telegram errors (deleted msg, not modified, etc.).
+
+    Returns True if edit succeeded, False otherwise.
+    Use instead of raw msg.edit_text() in handlers/pipelines where the message
+    may have been deleted by the user or expired by Telegram.
+    """
+    try:
+        await msg.edit_text(text, **kwargs)
+        return True
+    except Exception as e:
+        _s = str(e).lower()
+        if "not modified" not in _s:
+            logger.debug("safe_edit_text: %s: %s", type(e).__name__, str(e)[:120])
+        return False

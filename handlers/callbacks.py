@@ -30,6 +30,7 @@ from core.database import (
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
 from core.utils import mask_api_key as _mask
+from core.progress import safe_edit_text
 from services.shorts_video import build_short_caption, render_short_clip
 
 import asyncio
@@ -293,7 +294,7 @@ async def handle_callback(update, context) -> None:
             )
             video_path = await download_video_for_shorts(source_url, _vid)
             if not video_path:
-                await msg.edit_text("❌ Не удалось скачать видео для сегмента.")
+                await safe_edit_text(msg, "❌ Не удалось скачать видео для сегмента.")
                 await release_render_lock(_render_token)
                 return
             clip_path = DOWNLOAD_DIR / f"{_vid}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
@@ -320,7 +321,7 @@ async def handle_callback(update, context) -> None:
                             logger.warning("Segment callback subtitles failed for %s: %s", segment.index, _seg_sub_err)
                 size_mb = final_clip_path.stat().st_size / (1024 * 1024)
                 if size_mb > MAX_FILE_SIZE_MB:
-                    await msg.edit_text(f"❌ Сегмент слишком большой: {size_mb:.0f}MB.")
+                    await safe_edit_text(msg, f"❌ Сегмент слишком большой: {size_mb:.0f}MB.")
                     return
                 caption = (
                     f"🎬 <b>{_html.escape(title[:120])}</b>\n"
@@ -339,7 +340,7 @@ async def handle_callback(update, context) -> None:
                         read_timeout=300,
                         connect_timeout=60,
                     )
-                await msg.edit_text("✅ Сегмент отправлен.")
+                await safe_edit_text(msg, "✅ Сегмент отправлен.")
             finally:
                 try:
                     clip_path.unlink(missing_ok=True)

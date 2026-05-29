@@ -126,6 +126,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
             return False
 
+        # AUDIT: проверка свободного места на диске перед скачиванием
+        try:
+            _free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
+            if _free_gb < 2.0:
+                msg = f"⚠️ Мало места на диске ({_free_gb:.1f} ГБ свободно). Освободите место и повторите."
+                if not silent_errors:
+                    await update.message.reply_text(msg)
+                logger.warning("Пропуск: мало места на диске (%.1f ГБ)", _free_gb)
+                return False
+        except OSError:
+            pass  # disk_usage может не работать на некоторых путях
+
         full_title   = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
         logger.info(f"YouTube channel_name: '{channel_name}'")

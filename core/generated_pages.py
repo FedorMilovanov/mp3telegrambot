@@ -674,3 +674,33 @@ def get_archive_export_path(kind: str, base_dir: Path | None = None) -> Path | N
         "sqlite": base / ARCHIVE_DB,
     }
     return mapping.get(kind)
+
+
+def cleanup_old_segment_files(max_age_days: int = 90) -> int:
+    """Delete segment JSON/MD files older than max_age_days.
+
+    Called from periodic_maintenance in main.py.
+    Only deletes from SEGMENTS_DIR; archive DB records are untouched.
+    """
+    import time as _time
+    cutoff = _time.time() - max_age_days * 86400
+    deleted = 0
+    segments_dir = ARCHIVE_DIR / "segments"
+    if not segments_dir.exists():
+        return 0
+    for f in segments_dir.iterdir():
+        if not f.is_file():
+            continue
+        if f.suffix not in (".json", ".md"):
+            continue
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+                deleted += 1
+        except OSError:
+            pass
+    if deleted:
+        logging.getLogger(__name__).info(
+            "cleanup_old_segment_files: deleted %d files older than %d days", deleted, max_age_days
+        )
+    return deleted

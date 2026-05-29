@@ -25,6 +25,7 @@ from core.database import (
 )
 from services.ffmpeg import COOKIES_FILE
 from pipelines.main_pipeline import process_single_video
+from core.progress import safe_edit_text
 from core.utils import mask_api_key as _mask
 
 logger = logging.getLogger(__name__)
@@ -74,13 +75,13 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             lambda: yt_dlp.YoutubeDL(playlist_opts).extract_info(url, download=False),
         )
         if not info:
-            await status_msg.edit_text("❌ Не удалось загрузить плейлист.")
+            await safe_edit_text(status_msg, "❌ Не удалось загрузить плейлист.")
             return
         title   = info.get("title", "Плейлист")
         entries = info.get("entries", [])[:MAX_PLAYLIST_SIZE]
         total   = len(entries)
         if not entries:
-            await status_msg.edit_text("❌ Плейлист пуст.")
+            await safe_edit_text(status_msg, "❌ Плейлист пуст.")
             return
         ai_status = "✅" if GEMINI_CLIENTS else "❌"
         await status_msg.edit_text(
@@ -112,7 +113,7 @@ async def handle_playlist(url, update, context, user_id: int = 0):
 
             prefix = f"[{i}/{total}] "
             try:
-                await status_msg.edit_text(
+                await safe_edit_text(status_msg,
                     f"📋 {title}\n🔄 {i}/{total} | ✅ {success} | ❌ {fail}"
                 )
             except Exception:

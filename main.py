@@ -285,6 +285,12 @@ async def run_bot_async():
                     await loop.run_in_executor(None, cleanup_nosub_files)
                     await loop.run_in_executor(None, cleanup_stale_downloads)
                     await loop.run_in_executor(None, db_cleanup_old_records)
+                    # Segment export files (JSON/MD) older than 90 days
+                    try:
+                        from core.generated_pages import cleanup_old_segment_files
+                        await loop.run_in_executor(None, cleanup_old_segment_files)
+                    except Exception:
+                        pass
                 except Exception as _e:
                     logger.warning(f"periodic maintenance: {_e}")
                 await asyncio.sleep(3600)
