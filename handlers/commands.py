@@ -562,7 +562,7 @@ async def handle_message(update, context):
             _lock_timeout = float(os.getenv("VIDEO_LOCK_WAIT_TIMEOUT_SEC", "300"))
             await asyncio.wait_for(_vlock.acquire(), timeout=_lock_timeout)
             _lock_acquired = True
-            ok = await process_single_video(url, update, msg, context=context)
+            await process_single_video(url, update, msg, context=context)
         except asyncio.TimeoutError:
             logger.error(
                 "Video lock timeout для %s после %.0fs ожидания",

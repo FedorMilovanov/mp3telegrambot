@@ -659,7 +659,5 @@ def build_platform_links(url: str = "", rutube_url: str = "", vk_url: str = "") 
 
 
 
-# AUDIT M19: _SETTINGS_GROUPS переехал в core/database.py как SETTINGS_GROUPS.
-# Оставляем алиас для обратной совместимости (вдруг где-то ещё импортируется).
-from core.database import SETTINGS_GROUPS as _SETTINGS_GROUPS  # noqa: F401
+# AUDIT M19: SETTINGS_GROUPS lives in core/database.py — dead alias removed.
 

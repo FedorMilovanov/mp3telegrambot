@@ -431,7 +431,7 @@ def is_cache_valid(cached: dict | None) -> tuple[bool, str]:
         return False, f"ttl_expired ({age_days:.1f}d > {CACHE_TTL_DAYS}d)"
     # Версия кэша
     if cached.get("cache_version") != CACHE_VERSION:
-        return False, f"cache_version_mismatch"
+        return False, "cache_version_mismatch"
     # Версия промпта
     fp = get_prompt_fingerprint()
     if cached.get("prompt_version") != fp:

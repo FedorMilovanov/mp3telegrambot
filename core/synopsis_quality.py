@@ -32,11 +32,11 @@ def get_synopsis_density_profile(duration_seconds: int | float = 0) -> SynopsisD
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
         dur = 0
-    if dur and dur < 20 * 60:
+    if dur and dur <= 20 * 60:
         return SynopsisDensityProfile("short", "3-5", "250-800", "1800", 24000, 3, 1200)
-    if dur and dur < 50 * 60:
+    if dur and dur <= 50 * 60:
         return SynopsisDensityProfile("medium", "6-10", "600-1400", "4500", 40000, 6, 3500)
-    if dur and dur < 90 * 60:
+    if dur and dur <= 90 * 60:
         return SynopsisDensityProfile("long", "10-16", "900-2200", "9000", 60000, 10, 8500)
     return SynopsisDensityProfile("very_long", "12-20", "1000-2600", "16000", 65000, 12, 12000)
 

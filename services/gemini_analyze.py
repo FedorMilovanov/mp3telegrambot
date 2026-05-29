@@ -291,7 +291,6 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     try:
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
         await set_progress(status_msg, 4, {"info": "🧠 Загружаю аудио для анализа..."})
-        loop = asyncio.get_running_loop()
         audio_bytes = None  # AUDIT FIX: всегда upload (inline отключён, чтобы избежать 503 на 20+MB base64)
 
         async def upload_to_client(client):

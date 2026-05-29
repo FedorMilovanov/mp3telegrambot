@@ -42,7 +42,6 @@ bot.py — совместимый launcher для MP3Bot.
 
 from __future__ import annotations
 
-import sys
 
 
 _BANNER = (

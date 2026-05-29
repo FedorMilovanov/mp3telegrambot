@@ -528,7 +528,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             # Gemini не изобретал материал заново, а достраивал уже известное.
             _main_topic     = (ai_data.get("main_topic") or "").strip()[:600]
             _analysis_summ  = (ai_data.get("analysis_summary") or "").strip()[:500]
-            _arg_arc        = (ai_data.get("argument_arc") or "").strip()[:300]
+            # argument_arc: available via ai_data if needed later
             _key_cats_raw   = ai_data.get("key_categories") or []
             _key_cats_str2  = ", ".join(_key_cats_raw[:6]) if isinstance(_key_cats_raw, list) else str(_key_cats_raw)[:200]
             # Таймкоды из первичного анализа — как якорная сетка

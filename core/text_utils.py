@@ -341,7 +341,9 @@ _PRESERVE_CASE: frozenset = frozenset({
 _RU_TITLE_PRESERVE_WORDS = {
     "Бог", "Бога", "Богу", "Богом", "Боге", "Слово", "Слова", "Слову", "Божий", "Божья", "Божье", "Божьего", "Божьей",
     "Господь", "Господа", "Господу", "Христос", "Христа", "Христу", "Иисус", "Иисуса", "Иисусу",
-    "Дух", "Духа", "Духу", "Святой", "Святого", "Писание", "Писания", "Библия", "Библии",
+    "Дух", "Духа", "Духу", "Святой", "Святого",
+    "Писание", "Писания", "Писанию", "Писанием", "Писании",
+    "Библия", "Библии", "Библию", "Библией",
     "Евангелие", "Евангелия", "Псалом", "Псалма", "Исаия", "Исаии", "Матфея", "Марка", "Луки", "Иоанна", "Римлянам",
 }
 
@@ -465,7 +467,8 @@ def _filter_times_str(times_str: str, duration: int) -> str:
         if duration < 3600 and secs > duration:
             parts = token.split(":")
             if len(parts) == 3:
-                corrected = f"{parts[1]}:{parts[2]}"
+                _mins = str(int(parts[1]))  # strip leading zero: '00' → '0'
+                corrected = f"{_mins}:{parts[2]}"
                 corrected_secs = time_to_seconds(corrected)
                 if corrected_secs is not None and corrected_secs <= duration:
                     good.append(corrected)

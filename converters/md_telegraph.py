@@ -107,10 +107,10 @@ def _clamp_content_timestamps(content: str, duration: int) -> str:
         return content
 
     def _replace(m: re.Match) -> str:
-        marker = m.group(1) or ''
-        bold_open = m.group(2) or ''
+        _ = m.group(1) or ''
+        _ = m.group(2) or ''
         time_str = m.group(3)
-        bold_close = m.group(4) or ''
+        _ = m.group(4) or ''
         secs = time_to_seconds(time_str)
         if secs is None:
             return m.group(0)
@@ -249,8 +249,7 @@ def _ensure_trailing_period(text: str) -> str:
         if re.search(r':\s*$', _check_colon):
             break
         if s.endswith('**'):
-            tmp = s.replace('***', '\x00\x00\x00')
-            count = tmp.count('**')
+            s.replace('***', '\x00\x00\x00')  # strip *** before counting **
             # Проверяем есть ли точка прямо перед закрывающим ** или *** (с возможным пробелом)
             # Пример: "**Текст.**" или "***Текст.***" — точка уже есть, не дублируем
             _before_stars = re.sub(r'\*{2,3}\s*$', '', s.rstrip())
@@ -653,7 +652,7 @@ def _patch_scripture_format(content: str) -> str:
             m = _RE_BOLD.match(s)
 
         if m:
-            bullet = m.group(1)   # "• "
+            _ = m.group(1)  # "• "
             book = m.group(2).strip()
             verses = _norm_verses(m.group(3))
             ref = f'{book} {verses}'
@@ -1609,7 +1608,7 @@ async def _create_telegraph_page_single(title: str, author: str,
     if _audit:
         logger.warning("Telegraph createPage audit: %s", format_audit_issues(_audit))
 
-    _NETWORK_ERRS = (ConnectionError, TimeoutError, OSError)
+    # ConnectionError / TimeoutError / OSError handled by broad except below
     last_err = "unknown"
 
     for attempt in range(3):
