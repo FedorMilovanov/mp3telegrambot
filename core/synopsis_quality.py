@@ -99,6 +99,29 @@ def filter_organizational_announcement_sections(sections: list[dict]) -> tuple[l
         )]
     return valid, []
 
+_BOLD_PHRASE_RE = re.compile(r"\*\*[^*\n]{6,160}\*\*")
+_YEAR_OR_NAME_RE = re.compile(r"\b(?:1[5-9]\d{2}|20\d{2}|[А-ЯЁ][а-яё]{3,}\s+[А-ЯЁ][а-яё]{3,})\b")
+
+
+def _section_paragraph_count(section: dict[str, Any]) -> int:
+    blocks = section.get("blocks") if isinstance(section, dict) else None
+    if isinstance(blocks, list) and blocks:
+        return sum(1 for b in blocks if isinstance(b, dict) and str(b.get("type") or "paragraph") in {"paragraph", "thesis", "pull_quote", "scripture", "bullet"})
+    content = str((section or {}).get("content") or "")
+    return len([p for p in re.split(r"\n\s*\n", content) if p.strip()])
+
+
+def _section_author_voice_markers(section: dict[str, Any]) -> int:
+    text = str((section or {}).get("content") or "")
+    blocks = section.get("blocks") if isinstance(section, dict) else []
+    if isinstance(blocks, list):
+        for b in blocks:
+            if isinstance(b, dict):
+                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "role_in_argument", "why_relevant"))
+                for step in b.get("steps") or []:
+                    text += " " + str(step)
+    return len(_BOLD_PHRASE_RE.findall(text)) + len(_YEAR_OR_NAME_RE.findall(text))
+
 _TS_INLINE_RE = re.compile(r"(?:⏱|📌)?\s*\b\d{1,2}:\d{2}(?::\d{2})?\b")
 
 
@@ -148,6 +171,20 @@ def audit_synopsis_density(sections: list[dict], duration_seconds: int | float =
                 "synopsis_missing_inline_anchors",
                 f"inline_timestamp_anchors={inline_count} below minimum {min_inline} for transcript-like Synopsis",
             ))
+        paragraph_counts = [_section_paragraph_count(s) for s in valid]
+        thin_paragraph_sections = sum(1 for count in paragraph_counts if count < 3)
+        if valid and thin_paragraph_sections > max(1, len(valid) // 3):
+            issues.append(SynopsisQualityIssue(
+                "synopsis_too_few_paragraphs",
+                f"sections_with_lt3_paragraphs={thin_paragraph_sections}/{len(valid)} for transcript-like Synopsis",
+            ))
+        voice_markers = sum(_section_author_voice_markers(s) for s in valid)
+        min_voice = max(4, len(valid) // 2)
+        if voice_markers < min_voice:
+            issues.append(SynopsisQualityIssue(
+                "synopsis_author_voice_low",
+                f"author_voice_markers={voice_markers} below minimum {min_voice}; preserve quotes, names, dates, examples",
+            ))
     return issues
 
 
@@ -179,5 +216,11 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
         dur = 0
     if dur < 45 * 60:
         return False
-    critical = {"synopsis_too_few_sections", "synopsis_too_few_chars", "synopsis_missing_inline_anchors"}
+    critical = {
+        "synopsis_too_few_sections",
+        "synopsis_too_few_chars",
+        "synopsis_missing_inline_anchors",
+        "synopsis_too_few_paragraphs",
+        "synopsis_author_voice_low",
+    }
     return any(i.code in critical for i in issues or [])

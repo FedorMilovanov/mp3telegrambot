@@ -734,6 +734,7 @@ def _structured_blocks_to_nodes_v2(
             ref = _scrub_inline(str(raw.get("ref") or "").strip())
             quote = _scrub_inline(str(raw.get("quote") or "").strip())
             explanation = _scrub_inline(str(raw.get("role_in_argument") or raw.get("why_relevant") or text or "").strip())
+            misreading = _scrub_inline(str(raw.get("common_misreading") or "").strip())
             ts = _scrub_inline(str(raw.get("timestamp") or "").strip())
             line = ""
             clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
@@ -749,6 +750,8 @@ def _structured_blocks_to_nodes_v2(
                 line += f" ⏱ {ts}"
             if line and explanation:
                 line += "\n\n" + explanation
+            if line and misreading:
+                line += "\n\nЧастая ошибка чтения: " + misreading
             if line:
                 chunks.append(line)
         elif btype in {"pull_quote"}:

@@ -147,6 +147,67 @@ def _validate_block_required_fields(block: dict, *, location: str) -> list[Conte
     )]
 
 
+def _block_has_substantial_text(value: str, *, min_len: int = 90) -> bool:
+    text = re.sub(r"\*+|[«»\"'`]+", "", str(value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return len(text) >= min_len
+
+
+def _audit_structured_block_semantics(
+    block: dict,
+    *,
+    label: str,
+    section_title: str,
+    location: str,
+) -> list[ContentAuditIssue]:
+    """Warn when a structurally valid block is still editorially too thin."""
+    btype = str(block.get("type") or "paragraph").strip().lower()
+    label_low = str(label or "").lower()
+    title_low = str(section_title or "").lower()
+    issues: list[ContentAuditIssue] = []
+
+    if btype == "scripture" and ("study" in label_low or "ключевые текст" in title_low):
+        role = str(block.get("role_in_argument") or block.get("why_relevant") or "")
+        text = str(block.get("text") or "")
+        if not (_block_has_substantial_text(role, min_len=90) or ("\n\n" in text and _block_has_substantial_text(text.split("\n\n", 1)[1], min_len=90))):
+            issues.append(ContentAuditIssue(
+                code="scripture_role_missing_warning",
+                location=location,
+                message="scripture block needs role_in_argument/explanation, not a bare verse card",
+                before=_short(block),
+            ))
+
+    if btype == "source" and "study" in label_low:
+        why = str(block.get("why_relevant") or "")
+        if not _block_has_substantial_text(why, min_len=60):
+            issues.append(ContentAuditIssue(
+                code="source_relevance_missing_warning",
+                location=location,
+                message="source block needs why_relevant for this exact material",
+                before=_short(block),
+            ))
+
+    if btype == "lexicon" and "study" in label_low:
+        role = str(block.get("role_in_argument") or "")
+        if not _block_has_substantial_text(role, min_len=80):
+            issues.append(ContentAuditIssue(
+                code="lexicon_role_thin_warning",
+                location=location,
+                message="lexicon block needs contextual role in the argument, not a dictionary card",
+                before=_short(block),
+            ))
+
+    if btype == "application" and "reflection" in label_low:
+        if not str(block.get("anchor_timestamp") or block.get("timestamp") or "").strip():
+            issues.append(ContentAuditIssue(
+                code="application_anchor_missing_warning",
+                location=location,
+                message="application block should be anchored to a concrete sermon timestamp",
+                before=_short(block),
+            ))
+    return issues
+
+
 def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") -> tuple[str, list[ContentAuditIssue]]:
     """Remove hallucinated first-person name appositions when they mismatch expected author."""
     if not text or not expected_author:
@@ -350,7 +411,14 @@ def audit_expanded_sections(
                 if not isinstance(raw_block, dict):
                     continue
                 block = normalize_structured_block(raw_block) or dict(raw_block)
-                issues.extend(_validate_block_required_fields(block, location=f"{base_loc}.blocks[{bidx}"))
+                block_loc = f"{base_loc}.blocks[{bidx}"
+                issues.extend(_validate_block_required_fields(block, location=block_loc))
+                issues.extend(_audit_structured_block_semantics(
+                    block,
+                    label=label,
+                    section_title=new_title,
+                    location=block_loc,
+                ))
                 for field in ("text", "quote", "why_relevant", "role_in_argument", "common_misreading", "challenge", "concrete_step"):
                     if field in block and isinstance(block.get(field), str):
                         block_text, got_block = _audit_text(
@@ -388,6 +456,10 @@ _WARNING_CODES = {
     "translation_semantic_warning",
     "third_person_warning",
     "block_schema_warning",
+    "scripture_role_missing_warning",
+    "source_relevance_missing_warning",
+    "lexicon_role_thin_warning",
+    "application_anchor_missing_warning",
 }
 
 
