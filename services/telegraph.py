@@ -902,6 +902,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return None, None
 
         _syn_quality_issues = audit_synopsis_density(sections, _duration)
+        # AUDIT #023: validate inline timestamps don't precede section.time
+        from core.synopsis_quality import audit_inline_timestamp_order
+        _ts_order_issues = audit_inline_timestamp_order(sections)
+        if _ts_order_issues:
+            logger.warning("Synopsis v2: inline timestamp order: %s", format_synopsis_quality_issues(_ts_order_issues))
         if _syn_quality_issues:
             logger.warning("Synopsis v2: density/coverage audit: %s", format_synopsis_quality_issues(_syn_quality_issues))
 

@@ -82,6 +82,31 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
             reasoning_style="концентрированный разбор главного тезиса без имитации большой лекции",
         )
 
+    if dur and dur >= 120 * 60:
+        if kind == "reflection":
+            return ExpandedAnalysisProfile(
+                name="very_long",
+                duration_label="очень длинный материал (2+ часа)",
+                max_tokens=36000,
+                target_sections="7–8",
+                target_chars="5500–8000 символов",
+                source_focus="не требуется",
+                original_languages="не требуется",
+                translation_forks="не требуется",
+                reasoning_style="несколько пасторских слоёв с полным покрытием финала: утешение, обличение, самоиспытание, молитвенный отклик, конкретные шаги",
+            )
+        return ExpandedAnalysisProfile(
+            name="very_long",
+            duration_label="очень длинный материал (2+ часа)",
+            max_tokens=40000,
+            target_sections="7–9",
+            target_chars="5500–9000 символов",
+            source_focus="5–6 источников максимум; строго по теме, без декоративных",
+            original_languages="2–4 ключевых слова/формы, каждое через роль в аргументе",
+            translation_forks="1–3 развилки с реальным эффектом на смысл",
+            reasoning_style="полная архитектура: текст, доктрина, историко-богословский фон, границы ошибки, покрытие финала материала",
+        )
+
     if dur and dur >= 60 * 60:
         if kind == "reflection":
             return ExpandedAnalysisProfile(

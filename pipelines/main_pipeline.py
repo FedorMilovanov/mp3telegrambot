@@ -206,7 +206,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.warning(f"Обложка (кэш) не скачана: {e}")
             # Скачиваем аудио
             # Если длительность > 40 минут — сразу качаем в 64kbps
-            audio_quality = "64K" if duration > 2400 else "128K"
+            audio_quality = "64K" if duration > 3600 else "128K"
             mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
             if not mp3_path.exists():
                 dl_cmd = YTDLP_BASE_ARGS + [
@@ -218,7 +218,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if not mp3_path.exists():
                 raise Exception("Не удалось скачать аудио")
             file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-            bitrate = "64" if duration > 2400 else "128"
+            bitrate = "64" if duration > 3600 else "128"
             logger.info(f"Кэш аудио: {mp3_path.name} = {file_size_mb:.1f} MB")
             # Сжимаем если больше лимита
             if file_size_mb > MAX_FILE_SIZE_MB:
@@ -492,7 +492,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             mp3_path = _existing_mp3[0]
             logger.info(f"MP3 кэш: используем существующий файл {mp3_path.name}")
         else:
-            _audio_quality_dl = "64K" if duration > 2400 else "128K"
+            _audio_quality_dl = "64K" if duration > 3600 else "128K"
             audio_cmd = YTDLP_BASE_ARGS + [
                 "--format", "bestaudio/best",
                 "--extract-audio", "--audio-format", "mp3", "--audio-quality", _audio_quality_dl,
@@ -539,7 +539,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 cleanup_files(media_id)
                 return False
 
-        bitrate = "64" if ("_64" in mp3_path.name or duration > 2400) else "128"
+        bitrate = "64" if ("_64" in mp3_path.name or duration > 3600) else "128"
 
         ai_data          = None
         synopsis_outline = None  # инициализируем здесь — closure-функции ниже ссылаются безусловно

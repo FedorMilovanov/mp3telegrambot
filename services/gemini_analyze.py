@@ -81,7 +81,7 @@ def _format_repaired_timestamps(data: dict, duration: int) -> str:
         return ""
     lines: list[str] = []
     seen: set[str] = set()
-    for item in items[:40]:
+    for item in items[:50]:
         if not isinstance(item, dict):
             continue
         t = str(item.get("time") or "").strip()
@@ -116,7 +116,7 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         f"Последний смысловой таймкод должен быть примерно не раньше {min_final}, если материал не закончился раньше. "
         "Верни JSON только вида {\"timestamps\":[{\"time\":\"M:SS\",\"topic\":\"...\"}]}. "
         "Не меняй автора, тему и другие поля. Не делай механическую нарезку; ставь таймкоды только на смысловые повороты.\n\n"
-        f"Текущий неполный список:\n{current[:3000]}"
+        f"Текущий неполный список:\n{current[:4500]}"  # raised from 3000 for better repair context
     )
     try:
         resp = await asyncio.wait_for(
@@ -124,7 +124,7 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
                 model=model_name,
                 contents=[audio_part, prompt],
                 config=make_audio_config(
-                    max_output_tokens=12000,
+                    max_output_tokens=16000,  # raised for longer timestamp lists
                     model_name=model_name,
                     response_mime_type="application/json",
                     response_schema=timestamp_repair_response_schema(),

@@ -74,8 +74,10 @@ def _recover_truncated_json(chunk: str) -> dict | None:
 
 
 def _strip_json_code_fence(text: str) -> str:
-    """Remove one outer markdown code fence without touching nested/backticked JSON strings."""
+    """Remove one outer markdown code fence and common Gemini preamble text."""
     t = str(text or "").strip()
+    # Strip preamble like "Here is the JSON:" or "Вот JSON:"
+    t = re.sub(r"^(?:Here\s+is\s+the\s+JSON[:\s]*|Вот\s+JSON[:\s]*)", "", t, flags=re.IGNORECASE).strip()
     m = re.match(r"^```[a-zA-Z0-9_-]*\s*\n?(.*?)\n?```\s*$", t, flags=re.DOTALL)
     return m.group(1).strip() if m else t
 
@@ -122,7 +124,9 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     иначе s.find('{') не учитывает текст fence и логи замусориваются 'JSON не найден'.
     """
     def _valid_time(t: str) -> bool:
-        if not duration or not t:
+        if not t or not t.strip():
+            return False
+        if not duration:
             return True
         secs = time_to_seconds(t)
         # Keep a small tolerance for platform rounding, but reject obvious
@@ -286,11 +290,17 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
         _clean_field(data.get("argument_arc", ""))
     ))
 
-    # AUDIT #026: if main_topic and analysis_summary start identically, trim overlap
+    # AUDIT #026: if main_topic and analysis_summary start identically, trim first sentence
     _mt = result.get("main_topic", "")
     _as = result.get("analysis_summary", "")
     if _mt and _as and len(_mt) > 30 and _mt[:60] == _as[:60]:
-        logger.warning("main_topic and analysis_summary start identically — trimming overlap")
+        import re as _re026
+        _sentences = _re026.split(r'(?<=[.!?])\s+', _as, maxsplit=1)
+        if len(_sentences) > 1 and len(_sentences[1]) > 40:
+            result["analysis_summary"] = _sentences[1]
+            logger.info("main_topic/analysis_summary overlap trimmed: removed first sentence from analysis_summary")
+        else:
+            logger.warning("main_topic and analysis_summary start identically — cannot trim (single sentence)")
 
     # key_categories — массив строк "Понятие — объяснение"
     kc_raw = data.get("key_categories", [])
@@ -309,6 +319,13 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
             for q in q_raw
             if _clean_field(str(q))
         ][:18]
+
+    # AUDIT #034: log if few questions end with "?"
+    _q_list = result.get("questions", [])
+    if len(_q_list) >= 4:
+        _q_like = sum(1 for q in _q_list if str(q).strip().rstrip(")»\'\"").endswith("?"))
+        if _q_like < len(_q_list) // 2:
+            logger.info("questions: only %d/%d look like actual questions", _q_like, len(_q_list))
 
     # terms_data — плоские массивы строк с || разделителем
     try:

@@ -157,6 +157,7 @@ def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
 
     short = dur < 20 * 60
     medium = dur < 60 * 60 and not short
+    very_long = dur >= 120 * 60
 
     if mode == "fast":
         if short:
@@ -188,6 +189,21 @@ def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
                 "density_note": "Режим FAST: отвечай компактно, но не схематично. Не пытайся заполнить все лимиты любой ценой.",
                 "analysis_len": "3–4",
                 "arc_len": "3–4",
+            }
+        if very_long:
+            return {
+                "mode": mode,
+                "ts_target": "10–16",
+                "q_target": "6–8",
+                "keycat_target": "5–7",
+                "concepts_target": "5–8",
+                "scripture_target": "4–6",
+                "translations_target": "0–3",
+                "lexicon_target": "0–2",
+                "hints_target": "22–40",
+                "density_note": "Режим FAST, материал >2 часов: расширь покрытие таймкодов и ключевых текстов. Финал материала (призыв, молитва, заключение) обязателен.",
+                "analysis_len": "4–5",
+                "arc_len": "4–5",
             }
         return {
             "mode": mode,
@@ -235,6 +251,21 @@ def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
                 "analysis_len": "4–5",
                 "arc_len": "4–5",
             }
+        if very_long:
+            return {
+                "mode": mode,
+                "ts_target": "12–18",
+                "q_target": "8–10",
+                "keycat_target": "6–9",
+                "concepts_target": "5–8",
+                "scripture_target": "5–7",
+                "translations_target": "1–3",
+                "lexicon_target": "0–2",
+                "hints_target": "28–50",
+                "density_note": "Режим BALANCED, материал >2 часов: обеспечь равномерное покрытие всей длительности. Последний блок (призыв, молитва) обязателен в argument_arc.",
+                "analysis_len": "5–6",
+                "arc_len": "5–6",
+            }
         return {
             "mode": mode,
             "ts_target": "9–14",
@@ -280,6 +311,21 @@ def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
             "density_note": "Режим DEEP: предпочитай мыслительную плотность, различай поля по функции, не скатывайся в пересказ или словарь общих слов.",
             "analysis_len": "4–6",
             "arc_len": "4–6",
+        }
+    if very_long:
+        return {
+            "mode": "deep",
+            "ts_target": "14–22",
+            "q_target": "8–10",
+            "keycat_target": "7–10",
+            "concepts_target": "6–10",
+            "scripture_target": "5–8",
+            "translations_target": "1–4",
+            "lexicon_target": "1–3",
+            "hints_target": "30–60",
+            "density_note": "Режим DEEP, материал >2 часов: требуется полное покрытие. Финальная треть материала (призыв, молитва, заключение, Q&A) обязательна. Не обрывай на середине — слушатель должен видеть всю архитектуру речи до последней точки.",
+            "analysis_len": "5–7",
+            "arc_len": "5–7",
         }
     return {
         "mode": "deep",

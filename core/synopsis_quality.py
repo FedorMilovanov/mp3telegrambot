@@ -224,3 +224,44 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
         "synopsis_author_voice_low",
     }
     return any(i.code in critical for i in issues or [])
+
+
+_INLINE_TS_EXTRACT_RE = re.compile(r'[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}')
+
+
+def audit_inline_timestamp_order(sections: list[dict]) -> list[SynopsisQualityIssue]:
+    """Check that inline timestamps in content/blocks don't precede section.time.
+
+    QA_TIMESTAMP_RULE says: 'Таймкод внутри content НИКОГДА не должен указывать
+    на время ДО начала этой секции'. This function enforces it deterministically.
+    """
+    issues: list[SynopsisQualityIssue] = []
+    for idx, sec in enumerate(sections or []):
+        if not isinstance(sec, dict):
+            continue
+        section_time_str = str((sec.get("time") or "")).strip()
+        section_time = time_to_seconds(section_time_str) if section_time_str else None
+        if section_time is None:
+            continue
+
+        # Collect text from content and blocks
+        text = str(sec.get("content") or "")
+        blocks = sec.get("blocks") or []
+        if isinstance(blocks, list):
+            for b in blocks:
+                if isinstance(b, dict):
+                    for k in ("text", "quote", "why_relevant", "role_in_argument"):
+                        text += " " + str(b.get(k) or "")
+
+        # Find all inline timestamps
+        for m in _INLINE_TS_EXTRACT_RE.finditer(text):
+            ts = time_to_seconds(m.group(1))
+            if ts is not None and ts < section_time - 5:  # 5s tolerance
+                issues.append(SynopsisQualityIssue(
+                    code="inline_timestamp_before_section",
+                    message=(
+                        f"sections[{idx}] time={section_time_str}: "
+                        f"inline {m.group(1)} is {section_time - ts:.0f}s before section start"
+                    ),
+                ))
+    return issues
