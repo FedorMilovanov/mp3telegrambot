@@ -209,7 +209,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     if isinstance(ts_list, list):
         lines = []
         dropped = []
-        for ts in ts_list[:35]:
+        for ts in ts_list[:50]:  # raised from 35 to keep final timestamps
             if not isinstance(ts, dict):
                 continue
             t_str = (ts.get("time") or "").strip()
@@ -285,6 +285,12 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     result["argument_arc"] = _scrub_inline(_strip_meta_lines(
         _clean_field(data.get("argument_arc", ""))
     ))
+
+    # AUDIT #026: if main_topic and analysis_summary start identically, trim overlap
+    _mt = result.get("main_topic", "")
+    _as = result.get("analysis_summary", "")
+    if _mt and _as and len(_mt) > 30 and _mt[:60] == _as[:60]:
+        logger.warning("main_topic and analysis_summary start identically — trimming overlap")
 
     # key_categories — массив строк "Понятие — объяснение"
     kc_raw = data.get("key_categories", [])

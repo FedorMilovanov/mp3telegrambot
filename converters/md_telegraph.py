@@ -2219,8 +2219,12 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # • Джон МакАртур, Странный огонь (John MacArthur, Strange Fire).
         _plain_before_source_norm = _flatten_text({'children': children}).strip()
         _source_norm = normalize_source_map_text(_plain_before_source_norm)
-        if _source_norm != _plain_before_source_norm and _plain_before_source_norm.startswith(('•', '-')):
-            children = [_source_norm]
+        if _plain_before_source_norm.startswith(('•', '-')):
+            from core.source_titles import _ensure_source_title_bold
+            _source_norm = _ensure_source_title_bold(_source_norm)
+            if _source_norm != _plain_before_source_norm:
+                from core.core_utils import _md_parse_inline as _parse_inline
+                children = _parse_inline(_source_norm)
 
         node['children'] = children
 

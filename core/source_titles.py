@@ -229,6 +229,50 @@ def _format_canonical_source_card(bullet: str, author: str, en_author: str, en_t
         bullet=bullet,
     ))
 
+_SOURCE_BULLET_RE = re.compile(r'^(\s*[•\-]\s+)')
+
+
+def _ensure_source_title_bold(line: str) -> str:
+    """Ensure the title part of a source card is bold.
+
+    Canonical format: • **Title**, Author (Original, Author).
+    Only acts on source-card-like lines. Skips scripture references.
+    """
+    if not line:
+        return line
+    m = _SOURCE_BULLET_RE.match(line)
+    if not m:
+        return line
+    bullet = m.group(1)
+    rest = line[m.end():]
+    if ',' not in rest:
+        return line
+    # Skip scripture references: lines containing guillemets «»
+    if '\u00ab' in rest or '\u00bb' in rest:
+        return line
+
+    # If already has bold on first segment before comma — trust it
+    first_seg = rest.split(',')[0].strip()
+    if first_seg.startswith('**') and first_seg.endswith('**'):
+        return line
+
+    if '**' not in rest:
+        # No bold at all — add to first part (title)
+        title_part, _, author_part = rest.partition(',')
+        title_part = title_part.strip()
+        if len(title_part) >= 3:
+            return f"{bullet}**{title_part}**,{author_part}"
+        return line
+
+    # Bold exists but NOT on first segment — misplaced
+    clean = rest.replace('**', '')
+    title_part, _, author_part = clean.partition(',')
+    title_part = title_part.strip()
+    if len(title_part) >= 3:
+        return f"{bullet}**{title_part}**,{author_part}"
+    return line
+
+
 def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> str:
     """Normalize one bibliography/source-card line.
 
