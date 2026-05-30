@@ -61,6 +61,11 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
         parts.append("")
         parts.append("⚠️ " + html_mod.escape(str(ai_data.get("_partial_publication_warning"))))
 
+    # PATCH-FIX: surface lite-model fallback warning in caption
+    if ai_data and ai_data.get("_gemini_was_fallback"):
+        parts.append("")
+        parts.append("⚡ Разбор создан на резервной модели — качество может быть ниже обычного.")
+
     if ai_data and ai_data.get("timestamp_coverage_warning"):
         ratio = ai_data.get("timestamp_coverage_ratio")
         try:

@@ -59,6 +59,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# PATCH-FIX: lightweight per-process tracking of whether the last
+# _gemini_text_request call fell back to a non-primary model.
+# Used by the pipeline to surface lite-model warnings in the caption.
+_gemini_last_was_fallback: bool = False
+
 
 @dataclass(frozen=True)
 class CombinedStudyReflectionResult:
@@ -507,6 +512,10 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     if not GEMINI_CLIENTS:
         return None
 
+    # PATCH-FIX: reset fallback flag at the start of each call
+    global _gemini_last_was_fallback
+    _gemini_last_was_fallback = False
+
     _compacted = compact_prompt_for_generation(prompt)
     if _compacted.saved_chars:
         logger.info(
@@ -565,6 +574,8 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 "_gemini_text_request: переключаюсь на модель %s (#%d/%d)",
                 model_name, model_idx + 1, len(_models),
             )
+            # PATCH-FIX: track fallback for downstream visibility
+            _gemini_last_was_fallback = True
 
         # 2 попытки на модель — fast fail
         _max_attempts = 2

@@ -9,6 +9,7 @@ from core.text_utils import (
     normalize_author_name, normalize_common_typos, normalize_source_map_text,
     scrub_third_person_phrases, title_case_fragment,
 )
+from core.source_titles import build_source_card, render_source_card
 from core.url_utils import get_youtube_timestamp_url
 from core.page_audit import audit_telegraph_page, format_audit_issues
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
@@ -759,6 +760,11 @@ def _structured_blocks_to_nodes_v2(
             if quote:
                 clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
                 chunks.append(f"> **{clean_quote}**" + (f" ⏱ {ts}" if ts else ""))
+        # NOTE: after normalize_structured_block(), raw aliases like "quote",
+        # "blockquote", "theological_line", "lexical_analysis" are already
+        # canonical (pull_quote, bullet, lexicon).  The handlers below are
+        # kept as a defensive fallback in case a future code path bypasses
+        # normalize_structured_block().
         elif btype in {"quote", "blockquote", "block_quote"}:
             quote = _scrub_inline(str(raw.get("quote") or text or "").strip())
             if quote:
@@ -768,15 +774,22 @@ def _structured_blocks_to_nodes_v2(
             author = _scrub_inline(str(raw.get("author") or "").strip())
             title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or text or "").strip())
-            head = ", ".join(x for x in (author, title_original) if x)
-            if head:
-                head = normalize_source_map_text(f"• {head}.").rstrip(".")
-            if head and why:
-                chunks.append(f"{head}. — {why}")
-            elif head:
-                chunks.append(f"{head}.")
+            # PATCH-FIX: use canonical SourceCard rendering for consistent
+            # title-first style with known-author corrections and ru titles.
+            card = build_source_card(
+                author=author,
+                title_original=title_original,
+                fallback_ru_title="",
+                why_relevant=why,
+            )
+            rendered = render_source_card(card, trailing_period=False)
+            if rendered:
+                if why and card.why_relevant:
+                    chunks.append(f"• {rendered}. — {why}")
+                else:
+                    chunks.append(f"• {rendered}.")
             elif why:
-                chunks.append("• " + why)
+                chunks.append(f"• {why}")
         elif btype in {"theological_line", "historical_line"}:
             heading = _scrub_inline(str(raw.get("title_original") or raw.get("text") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or raw.get("role_in_argument") or "").strip())
@@ -1281,6 +1294,12 @@ def _section_to_nodes_v2(
             return nodes
 
     if content:
+        # PATCH-FIX: apply prompt-context-leak scrubbing on legacy content
+        # path (blocks path gets this via audit_expanded_sections, but plain
+        # content string does not).  Removes "в материале", "канал занимает
+        # позицию" etc. before Markdown → Telegraph node conversion.
+        from core.content_audit import _scrub_prompt_context_leaks
+        content, _leak_changed = _scrub_prompt_context_leaks(content)
         from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
         content_nodes = _md_to_nodes_fn(content)
 

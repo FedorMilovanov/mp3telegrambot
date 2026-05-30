@@ -40,6 +40,7 @@ from services.telegraph_pages import (
     create_telegraph_terms, create_telegraph_study_analysis,
     create_telegraph_reflection_application, create_telegraph_study_reflection_combined,
     combined_study_reflection_enabled,
+    _gemini_last_was_fallback,
 )
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
@@ -978,6 +979,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 media_id, _pub_status.status, ",".join(_pub_status.missing),
             )
             _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
+
+        # PATCH-FIX: surface lite-model fallback in caption so user knows quality may be reduced
+        if _gemini_last_was_fallback:
+            _ai_caption_base = {**(_ai_caption_base or ai_data), "_gemini_was_fallback": True}
 
         def _build(data, **kw):
             return build_caption(performer, title, duration, file_size_mb,
