@@ -248,10 +248,18 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
 
     _title_issue = audit_title_topic_consistency(result.get("real_title", ""), result.get("main_topic", ""), ts_list)
     if _title_issue:
-        logger.warning(
-            "Title/topic warning: %s overlap=%.2f title_terms=%s",
-            _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
-        )
+        # Если перекрытие почти нулевое - возможно Gemini галлюцинирует и взял не то видео
+        _tt_overlap = getattr(_title_issue, 'overlap', None)
+        if _tt_overlap is not None and _tt_overlap < 0.05:
+            logger.error(
+                "Title/topic MISMATCH: %s overlap=%.2f title_terms=%s — Gemini may have misidentified!",
+                _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
+            )
+        else:
+            logger.warning(
+                "Title/topic warning: %s overlap=%.2f title_terms=%s",
+                _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
+            )
         result["title_topic_warning"] = _title_issue.message
 
     # hashtags → строка "#Тег #Тег ..." через normalize_hashtag (core/text_utils).
