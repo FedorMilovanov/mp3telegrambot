@@ -77,8 +77,20 @@ def normalize_generated_markdown_separators(text: str) -> str:
 
 
 
+# FIX: триггеры сужены до однозначно "канальных" маркеров утечки промпта.
+# Убрано одиночное "мы придерживаемся" — это нормальная речь проповедника,
+# а не утечка системного контекста, и оно ложно срабатывало на авторском тексте.
+_CHANNEL_TRIGGER = (
+    r"(?:канал\s+занимает\s+позици|позици[яю]\s+канала|наш\s+канал|"
+    r"редакторск\w+\s+позици\w*\s+канал\w*|конфессиональн\w+\s+рамк\w+\s+канал\w*)"
+)
+# FIX: концом предложения считаем .!?… только перед пробелом+Заглавной / концом
+# строки / концом текста, а НЕ любую точку. Раньше [^.?!…]* рвался на точке внутри
+# библейских сокращений ("Рим.", "Ис.", "Ин."), из-за чего соседнее легитимное
+# предложение калечилось ("Как в Рим. 8:28 ..." -> "Как в Рим.").
+_SENT_END = r"(?:[.!?…]+(?=\s+[А-ЯЁA-Z«]|\s*$|\n)|\n|$)"
 _CHANNEL_POSITION_RE = re.compile(
-    r"(?:^|(?<=[.!?…])\s+)[^.?!…]*(?:канал\s+занимает\s+позици|позици[яю]\s+канала|наш\s+канал|мы\s+придерживаемся|редакторск\w+\s+позици|конфессиональн\w+\s+рамк\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*",
+    rf"(?:(?<=^)|(?<=\n)|(?<=[.!?…])\s+)[^\n.!?…]*?{_CHANNEL_TRIGGER}.*?{_SENT_END}",
     re.IGNORECASE,
 )
 _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -91,13 +103,19 @@ _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
 
 
 def _scrub_prompt_context_leaks(text: str) -> tuple[str, bool]:
-    out = _CHANNEL_POSITION_RE.sub("", str(text or ""))
+    original = str(text or "")
+    # FIX: заменяем вырезанный фрагмент на пробел (а не пустую строку),
+    # чтобы соседние предложения не склеивались ("приговор.Покаяние").
+    out = _CHANNEL_POSITION_RE.sub(" ", original)
     for pattern, repl in _MATERIAL_STYLE_FIXES:
-        out = pattern.sub(repl, out)
+        out = pattern.sub(" ", out) if repl == "" else pattern.sub(repl, out)
     out = re.sub(r"[ \t]{2,}", " ", out)
+    # FIX: восстанавливаем пробел после знака конца предложения, если из-за
+    # удаления склеились "знак+Заглавная" ("(Ис. 40:6).Дальше" -> ". Дальше").
+    out = re.sub(r"([.!?…»])([А-ЯЁA-Z])", r"\1 \2", out)
     out = re.sub(r"[ \t]+\n", "\n", out)
     out = re.sub(r"\n[ \t]+", "\n", out).strip()
-    return out, out != str(text or "")
+    return out, out != original
 
 
 BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
