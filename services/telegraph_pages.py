@@ -1091,6 +1091,16 @@ async def _run_expanded_pipeline(
             logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
             return await fallback_fn() if fallback_fn else None
             
+            
+        # Quality guard: проверка, не прислала ли Gemini пустой контент везде
+        _all_empty = all(
+            not ((s.get("content") or "").strip() or s.get("blocks"))
+            for s in sections if isinstance(s, dict)
+        )
+        if _all_empty:
+            logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
+            return await fallback_fn() if fallback_fn else None
+            
         # Quality guard: проверка, не прислала ли Gemini пустой контент везде
         _all_empty = all(
             not ((s.get("content") or "").strip() or s.get("blocks"))
