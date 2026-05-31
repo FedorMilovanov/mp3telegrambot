@@ -667,11 +667,12 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 except Exception as e:
                     _client_err = e
                     if is_quota_error(e):
-                        # ВАЖНО: Не баним модель глобально при первом 429! Даем шанс другим ключам.
-                        # Ключи могут иметь РАЗНЫЕ квоты (разные проекты).
-                        _all_keys_quota = False
+                        # ВАЖНО: При 429 переходим к следующему ключу!
+                        # Цикл ключей здесь ВНУТРИ цикла попыток, поэтому нужен continue, а не break.
+                        # Флаг _all_keys_quota не трогаем (остается True). Если все ключи дадут 429, 
+                        # мы без лишних пауз перейдем к fallback-модели.
                         _client_err = e
-                        break
+                        continue
                     # 503/500 или другая ошибка
                     _all_keys_quota = False
                     if _is_internal_error(e) or is_overload_error(e):
