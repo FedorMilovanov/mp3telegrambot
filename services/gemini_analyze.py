@@ -171,6 +171,21 @@ async def _safe_delete_gemini_file(client, file_name: str) -> None:
         logger.warning(f"Не удалось удалить Gemini file {file_name}: {e}")
 
 
+# FIX: храним сильные ссылки на fire-and-forget задачи удаления файлов.
+# Без этого asyncio может собрать задачу GC до завершения (документированное
+# поведение asyncio.create_task), и временный файл в Gemini Files API не удалится.
+_BG_DELETE_TASKS: set = set()
+
+
+def _spawn_safe_delete(client, file_name: str) -> None:
+    """Запускает удаление файла Gemini как фоновую задачу с защитой от GC."""
+    if not file_name or client is None:
+        return
+    task = asyncio.create_task(_safe_delete_gemini_file(client, file_name))
+    _BG_DELETE_TASKS.add(task)
+    task.add_done_callback(_BG_DELETE_TASKS.discard)
+
+
 async def _gemini_call_with_retry(call_fn, max_attempts: int = 3, backoff: int = 30):
     """BUG-B09: единый retry-хелпер для Gemini generate_content с ReadTimeout."""
     last_err = None
@@ -426,9 +441,11 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                 f"Gemini {'квота' if _is_quota else '503/disconnect'}: "
                                 f"{type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ..."
                             )
-                            if file_size_mb > 20 and audio_part is not None and hasattr(audio_part, 'name'):
-                                # BUG-B06: безопасное удаление через хелпер
-                                asyncio.create_task(_safe_delete_gemini_file(client, audio_part.name))
+                            # FIX: удаляем загруженный временный файл при ротации
+                            # ключа независимо от размера. Раньше порог >20MB оставлял
+                            # файлы 0–20MB висеть в Gemini Files API при каждой смене ключа.
+                            if audio_part is not None and hasattr(audio_part, 'name'):
+                                _spawn_safe_delete(client, audio_part.name)
                             last_err = e
                             # Quota is project/model-level; retrying same key only wastes time.
                             if _is_quota:
@@ -591,6 +608,6 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             error=f"{err_type}: {safe_err[:300]}",
         )
         if used_audio_part and hasattr(used_audio_part, 'name') and used_client:
-            # BUG-B06: безопасное удаление через хелпер
-            asyncio.create_task(_safe_delete_gemini_file(used_client, used_audio_part.name))
+            # FIX: GC-safe фоновое удаление (ссылка хранится в _BG_DELETE_TASKS)
+            _spawn_safe_delete(used_client, used_audio_part.name)
         return None, None, None

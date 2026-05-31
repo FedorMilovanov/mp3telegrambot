@@ -970,6 +970,33 @@ async def _publish_expanded_page(
             )
             await asyncio.sleep(_backoff)
 
+        # FIX Edge-A: TOC/nav добавляются ПОСЛЕ size-проверки create-фазы. Если часть
+        # оказалась впритык к лимиту Telegraph, editPage с TOC может упасть с
+        # CONTENT_TOO_BIG. _edit_telegraph_page возвращает только bool, поэтому при
+        # полном провале editPage первой части (где есть TOC) делаем последнюю
+        # попытку БЕЗ оглавления — страница сохранит контент и навигацию, а не
+        # останется без правок молча. TOC в этом случае доступен через сами секции.
+        if not ok and include_toc and i == 0 and total >= 1:
+            _nodes_no_toc: list = []
+            if total > 1 and i > 0:
+                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
+                _nodes_no_toc.append({"tag": "hr"})
+            for sec_idx, sec in enumerate(part_secs):
+                if sec_idx > 0:
+                    _nodes_no_toc.append({"tag": "hr"})
+                _nodes_no_toc.extend(_section_to_nodes_v2(sec, yt_url=yt_url,
+                                                          rutube_url=rutube_url, vk_url=vk_url,
+                                                          page_title=part_title, duration=duration,
+                                                          plain_scripture=plain_scripture))
+            if total > 1:
+                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))
+            logger.warning(
+                "Expanded publish: editPage часть %d/%d упала с TOC — повтор без оглавления (Edge-A fallback)",
+                part_num, total,
+            )
+            await asyncio.sleep(2)
+            ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_toc, loop)
+
         if ok:
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)
         else:

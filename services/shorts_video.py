@@ -371,11 +371,20 @@ def _wrap_subtitle_text(text: str, max_chars: int = 38) -> str:
 
 
 def _seconds_to_ass_time(seconds: float) -> str:
-    """Секунды → ASS-время H:MM:SS.cc"""
+    """Секунды → ASS-время H:MM:SS.cc
+
+    FIX: отрицательный вход (Whisper иногда отдаёт start<0) раньше давал
+    битый таймкод вида '-1:59:59.-50', из-за которого libass/ffmpeg ломали
+    рендеринг всей строки субтитров. Клампим к 0.
+    """
+    if seconds < 0:
+        seconds = 0.0
     h  = int(seconds // 3600)
     m  = int((seconds % 3600) // 60)
     s  = int(seconds % 60)
-    cs = int((seconds - int(seconds)) * 100)
+    cs = int(round((seconds - int(seconds)) * 100))
+    if cs >= 100:  # защита от округления 0.999 → 100
+        cs = 99
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 

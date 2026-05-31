@@ -1606,8 +1606,23 @@ def _final_telegraph_polish(nodes: list) -> list:
                 node["children"] = [c for c in new_ch if c is not None and c != ""]
         return node
 
+    # FIX: пустые контейнерные ноды (например {"tag":"p","children":[]} после
+    # удаления orphaned-маркеров) рендерятся в Telegraph как лишний пустой абзац
+    # с вертикальным отступом. Самозакрывающиеся теги (hr/br/img) — НЕ пустые.
+    _SELF_CLOSING = {"hr", "br", "img"}
+
+    def _is_empty_container(n) -> bool:
+        if not isinstance(n, dict):
+            return False
+        tag = str(n.get("tag", "")).lower()
+        if tag in _SELF_CLOSING:
+            return False
+        if "src" in (n.get("attrs") or {}):
+            return False
+        return not n.get("children")
+
     result = [_polish_node(n) for n in nodes]
-    return [n for n in result if n]
+    return [n for n in result if n and not _is_empty_container(n)]
 
 
 async def _create_telegraph_page_single(title: str, author: str,
