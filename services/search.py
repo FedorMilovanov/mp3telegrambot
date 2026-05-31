@@ -356,7 +356,7 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
                 except Exception as e:
                     logger.warning(f"RuTube листинг стр.{page} ошибка: {e}")
                     # Timeout — пропускаем страницу и продолжаем листинг
-                    if "timed out" in str(e).lower() or "ReadTimeout" in type(e).__name__:
+                    if "timed out" in str(e).lower() or "ReadTimeout" in type(e).__name__ or "ssl" in str(e).lower() or "connection" in str(e).lower() or "eof" in str(e).lower():
                         await asyncio.sleep(1.0)
                         continue
                     # Прочие ошибки (connection refused, DNS) — останавливаем

@@ -287,9 +287,6 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     source_before = text
     if source_map:
         text = "\n".join(normalize_source_map_text(line) for line in text.splitlines())
-    else:
-        # Safe no-op for non-source lines; still catches inline source-card strings.
-        text = "\n".join(normalize_source_map_text(line) for line in text.splitlines())
     if text != source_before:
         issues.append(ContentAuditIssue(
             code="source_card_fixed",
@@ -314,8 +311,8 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     # where "МакАртур показывает" is the intended analytical style.
     _is_analytical = any(k in (label or "").lower() for k in ("study", "reflection", "досье"))
     third_before = text
-    if not _is_analytical:
-        text = scrub_third_person_phrases(text)
+    # ГЛУБОКИЙ ФИКС: Всегда чистим текст от "МакАртур подчеркивает", даже на Study/Reflection.
+    text = scrub_third_person_phrases(text)
     if text != third_before:
         issues.append(ContentAuditIssue(
             code="third_person_fixed",

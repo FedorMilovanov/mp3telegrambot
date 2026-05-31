@@ -449,7 +449,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             last_err = e
                             # Quota is project/model-level; retrying same key only wastes time.
                             if _is_quota:
-                                mark_model_exhausted(_current_model, e)
+                                # Не баним модель глобально (ключи в разных проектах имеют свои квоты)
                                 break
                             # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
                             if _is_overload and attempt < 2:

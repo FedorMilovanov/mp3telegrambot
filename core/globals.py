@@ -402,9 +402,9 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
                 return await fn(client)
             except Exception as e:
                 if is_quota_error(e):
-                    if model_name:
-                        mark_model_exhausted(model_name, e)
-                    logger.warning(f"Gemini квота на ключе {idx}, модель помечена exhausted; пробую fallback...")
+                    # ВАЖНО: Не баним модель глобально при первом 429!
+                    # Ключи могут иметь РАЗНЫЕ квоты (разные проекты).
+                    logger.warning(f"Gemini квота на ключе {idx}; перехожу к следующему ключу...")
                     last_err = e
                     break
                 elif is_overload_error(e):

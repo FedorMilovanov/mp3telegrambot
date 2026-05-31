@@ -279,7 +279,7 @@ async def run_bot_async():
 
         async def _periodic_maintenance():
             loop = asyncio.get_running_loop()
-            while True:
+            while not app.bot_data.get("stop_requested", False):
                 mark_bot_alive()
                 try:
                     await loop.run_in_executor(None, cleanup_nosub_files)

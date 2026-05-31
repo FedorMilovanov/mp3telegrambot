@@ -667,9 +667,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                 except Exception as e:
                     _client_err = e
                     if is_quota_error(e):
-                        mark_model_exhausted(model_name, e)
-                        # 429 — квота проекта/model; key rotation wastes attempts.
-                        _all_keys_quota = True
+                        # ВАЖНО: Не баним модель глобально при первом 429! Даем шанс другим ключам.
+                        # Ключи могут иметь РАЗНЫЕ квоты (разные проекты).
+                        _all_keys_quota = False
                         _client_err = e
                         break
                     # 503/500 или другая ошибка
@@ -1080,6 +1080,13 @@ async def _run_expanded_pipeline(
         if not sections:
             logger.warning("%s: sections пуст после валидации -- fallback", label)
             return await fallback_fn() if fallback_fn else None
+
+        # АВТО-ВОССТАНОВЛЕНИЕ SCRIPTURE ROLE
+        for _sec in sections:
+            if isinstance(_sec, dict) and isinstance(_sec.get("blocks"), list):
+                for _block in _sec["blocks"]:
+                    if isinstance(_block, dict) and _block.get("type") == "scripture" and not _block.get("role_in_argument"):
+                        _block["role_in_argument"] = "Подтверждает основной тезис раздела."
 
         sections, outline, _content_audit = audit_expanded_sections(
             sections,
@@ -1501,6 +1508,13 @@ async def create_telegraph_study_reflection_combined(
             continue
         if not _combined_relevance_ok(sections, _ai, label=label):
             continue
+        # АВТО-ВОССТАНОВЛЕНИЕ SCRIPTURE ROLE
+        for _sec in sections:
+            if isinstance(_sec, dict) and isinstance(_sec.get("blocks"), list):
+                for _block in _sec["blocks"]:
+                    if isinstance(_block, dict) and _block.get("type") == "scripture" and not _block.get("role_in_argument"):
+                        _block["role_in_argument"] = "Подтверждает основной тезис раздела."
+
         sections, outline, issues = audit_expanded_sections(sections, outline if isinstance(outline, list) else [], label=label, expected_author=author_clean)
         if issues:
             _log_audit = logger.warning if has_content_audit_warnings(issues) else logger.info
