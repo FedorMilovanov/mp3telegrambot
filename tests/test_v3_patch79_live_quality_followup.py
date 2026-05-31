@@ -122,7 +122,7 @@ def test_prompts_require_cross_in_middle_not_end():
 
 def test_synopsis_prompt_demands_transcript_like_fidelity_and_inline_anchors():
     src = Path("core/prompts.py").read_text(encoding="utf-8")
-    assert "РЕЖИМ 99.9% СЖАТОЙ СТЕНОГРАММЫ" in src
+    assert "РЕЖИМ 100% ПОДРОБНОЙ ТРАНСКРИПЦИИ (АБСОЛЮТНО БЕЗ СЖАТИЯ)" in src
     assert "Джоне Роджерсе" in src
     assert "2000 изгнанных пасторах" in src
     assert "inline-якоря ⏱" in src

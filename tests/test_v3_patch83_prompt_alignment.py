@@ -24,7 +24,7 @@ def test_qa_synopsis_prompt_is_transcript_like_not_summary():
         duration="1:00:00",
         timestamps_block="0:00 Первый вопрос\n10:00 Второй вопрос",
     )
-    assert "режим сжатой стенограммы" in rendered
+    assert "режим ПОЛНОЙ стенограммы" in rendered
     assert "Не превращай" in rendered and "summary" in rendered
     assert "inline-якорь ⏱ **M:SS**" in rendered
     assert "1–2 короткие дословные фразы автора" in rendered

@@ -669,7 +669,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                     if is_quota_error(e):
                         # ВАЖНО: При 429 переходим к следующему ключу!
                         # Цикл ключей здесь ВНУТРИ цикла попыток, поэтому нужен continue, а не break.
-                        # Флаг _all_keys_quota не трогаем (остается True). Если все ключи дадут 429, 
+                        # Флаг _all_keys_quota не трогаем (остается True). Если все ключи дадут 429,
                         # мы без лишних пауз перейдем к fallback-модели.
                         _client_err = e
                         continue
@@ -1081,7 +1081,7 @@ async def _run_expanded_pipeline(
         if not sections:
             logger.warning("%s: sections пуст после валидации -- fallback", label)
             return await fallback_fn() if fallback_fn else None
-            
+
         # Quality guard: проверка, не прислала ли Gemini пустой контент везде
         _all_empty = all(
             not ((s.get("content") or "").strip() or s.get("blocks"))
@@ -1090,8 +1090,7 @@ async def _run_expanded_pipeline(
         if _all_empty:
             logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
             return await fallback_fn() if fallback_fn else None
-            
-            
+
         # Quality guard: проверка, не прислала ли Gemini пустой контент везде
         _all_empty = all(
             not ((s.get("content") or "").strip() or s.get("blocks"))
@@ -1100,7 +1099,8 @@ async def _run_expanded_pipeline(
         if _all_empty:
             logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
             return await fallback_fn() if fallback_fn else None
-            
+
+
         # Quality guard: проверка, не прислала ли Gemini пустой контент везде
         _all_empty = all(
             not ((s.get("content") or "").strip() or s.get("blocks"))
