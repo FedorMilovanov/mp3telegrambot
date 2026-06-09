@@ -906,8 +906,13 @@ def _get_whisper_model(model_size: str | None = None):
                 except Exception:
                     pass
             from faster_whisper import WhisperModel as _WM
-            _whisper_device = os.getenv("WHISPER_DEVICE", "cpu").strip().lower()
-            _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"
+            _force_cpu = os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+            if _force_cpu:
+                _whisper_device = "cpu"
+                _whisper_compute = "int8"
+            else:
+                _whisper_device = os.getenv("WHISPER_DEVICE", "cpu").strip().lower()
+                _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"
             try:
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             except Exception as e:
@@ -916,7 +921,7 @@ def _get_whisper_model(model_size: str | None = None):
                 _whisper_compute = "int8"
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             _whisper_model_name = model_size
-            logger.info(f"Whisper model loaded: {model_size}")
+            logger.info(f"Whisper model loaded: {model_size} (device={_whisper_device}, compute={_whisper_compute})")
         return _whisper_model
 
 
