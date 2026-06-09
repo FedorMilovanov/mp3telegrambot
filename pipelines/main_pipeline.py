@@ -1524,6 +1524,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.warning(f"cleanup_files после ошибки: {_ce}")
         return False
     finally:
+        # Очищаем временную директорию LiveDub, если она создавалась
+        if "ld_work" in locals() and ld_work.exists():
+            import shutil
+            shutil.rmtree(ld_work, ignore_errors=True)
+            
         # Удаляем audio_part из Gemini Files API — ТОЛЬКО ЗДЕСЬ,
         # после того как все задачи (Synopsis, Shorts, Clips) завершены.
         if used_audio_part and hasattr(used_audio_part, 'name') and used_client:

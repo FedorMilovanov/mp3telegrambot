@@ -6,7 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from core.globals import GEMINI_CLIENTS, GEMINI_MODEL
+from core.globals import GEMINI_CLIENTS
+from core.database import GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,10 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
             
             if data and isinstance(data, dict):
                 for k, v in data.items():
-                    translated_segments[str(k)] = str(v)
+                    if isinstance(v, str) and v.strip():
+                        translated_segments[str(k)] = v.strip()
+                    elif isinstance(v, (int, float)):
+                        translated_segments[str(k)] = str(v)
                 if chunk:
                     last_id = chunk[-1][0]
                     prev_context = data.get(str(last_id), "")
@@ -171,7 +175,7 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
     
     yt_dlp = shutil.which("yt-dlp")
     cmd = [
-        yt_dlp, "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+        yt_dlp, "--format", "bestvideo+bestaudio/best",
         "--merge-output-format", "mp4",
         "--output", str(video_path), video_url
     ]
@@ -216,5 +220,17 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
     if output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
     
-    logger.warning(f"[EngSubtitles] Ошибка склейки субтитров. stderr: {proc.stderr[-300:] if proc.stderr else ''}")
+    logger.warning(f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. stderr: {proc.stderr[-300:] if proc.stderr else ''}")
+    
+    # Резервный fallback - без disposition и без mov_text если контейнер конфликтует
+    cmd_fallback = [
+        ffmpeg, "-i", str(video_path), "-i", str(srt_path),
+        "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=rus",
+        "-y", str(output_path)
+    ]
+    proc2 = await loop.run_in_executor(None, lambda: subprocess.run(cmd_fallback, capture_output=True, timeout=300))
+    if output_path.exists() and output_path.stat().st_size > 1000:
+        return output_path
+        
+    logger.error(f"[EngSubtitles] Полный отказ склейки. stderr: {proc2.stderr[-300:] if proc2.stderr else ''}")
     return video_path
