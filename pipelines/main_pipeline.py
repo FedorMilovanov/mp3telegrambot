@@ -5,7 +5,7 @@ Main Pipeline — process_single_video.
 """
 from services.ffmpeg import YTDLP_BASE_ARGS                   # FIX #23: нужен результат, не функция
 from core.globals import (
-    DOWNLOAD_DIR, THUMBS_DIR, HAS_GEMINI, HAS_PILLOW,
+    DOWNLOAD_DIR, THUMBS_DIR, HAS_GEMINI, HAS_PILLOW, DB_PATH,
     GEMINI_CLIENTS, TELEGRAPH_TOKEN,                  # FIX #11
     html_mod,                                          # FIX #11
 )

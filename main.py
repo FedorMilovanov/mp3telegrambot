@@ -193,8 +193,8 @@ async def run_bot_async():
     app.add_handler(CommandHandler("segments",   segments_command))
     app.add_handler(CommandHandler("cutseg",     cutseg_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
+    app.add_handler(CallbackQueryHandler(handle_callback))
 
     # V3-P1: Render/Railway присылают SIGTERM при redeploy/stop.
     # Переводим его в тот же graceful path, что и /stop. На Windows
