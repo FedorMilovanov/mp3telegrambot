@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -122,6 +123,67 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
     return max(files, key=lambda p: p.stat().st_mtime)
 
 
+def _add_russian_subtitles(video_path: Path) -> Path:
+    """Извлекает аудио, распознает русскую речь Whisper, встраивает SRT в видео."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return video_path
+
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        logger.warning("[LiveDub] faster-whisper не установлен — субтитры пропущены")
+        return video_path
+
+    output_path = video_path.with_suffix(".subs.mp4")
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        audio_wav = tmp / "audio.wav"
+        srt_path = tmp / "subs.srt"
+
+        # 1. Извлечь аудио
+        subprocess.run([ffmpeg, "-i", str(video_path), "-vn", "-acodec", "pcm_s16le",
+                       "-ar", "16000", "-ac", "1", "-y", str(audio_wav)],
+                      capture_output=True, timeout=60)
+        if not audio_wav.exists():
+            return video_path
+
+        # 2. Whisper на русском (small — быстро и достаточно точно)
+        model = WhisperModel("small", compute_type="int8", device="cpu")
+        segments, _ = model.transcribe(str(audio_wav), language="ru", beam_size=5)
+
+        # 3. Записать SRT
+        def _to_srt_time(seconds):
+            h = int(seconds // 3600)
+            m = int((seconds % 3600) // 60)
+            s = int(seconds % 60)
+            ms = int((seconds - int(seconds)) * 1000)
+            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, seg in enumerate(segments, 1):
+                f.write(f"{i}
+{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}
+{seg.text.strip()}
+
+")
+
+        # 4. Встроить SRT через ffmpeg
+        subprocess.run([ffmpeg, "-i", str(video_path), "-i", str(srt_path),
+                       "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=rus",
+                       "-y", str(output_path)],
+                      capture_output=True, timeout=60)
+
+        if output_path.exists() and output_path.stat().st_size > 1000:
+            output_path.replace(video_path)
+            logger.info(f"[LiveDub] Русские субтитры добавлены: {video_path}")
+        else:
+            logger.warning("[LiveDub] Не удалось встроить субтитры")
+
+    return video_path
+
+
 async def get_live_dub_audio(video_url: str, output_dir: Path) -> Path:
     """Скачивает только MP3-перевод (Живые голоса) через vot-cli-live."""
     vot = _check_vot_cli()
@@ -204,6 +266,9 @@ async def get_live_dub_video(
 
     if not downloaded_path or not downloaded_path.exists():
         raise RuntimeError(f"vot-cli-live не сохранил MP4. stdout: {stdout[:500]}")
+
+    # Добавить русские субтитры (Whisper на переведенном аудио)
+    _add_russian_subtitles(downloaded_path)
 
     logger.info(f"[LiveDub] Готово видео: {downloaded_path}")
     return downloaded_path
