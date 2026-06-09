@@ -165,27 +165,59 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         live_dub_task = None
         if user_mode == "eng":
             from services.yandex_live_dub import get_live_dub_video
+            from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
 
             async def _run_livedub_bg(video_url, workdir):
                 try:
-                    return await get_live_dub_video(
-                        video_url, workdir,
-                        original_volume=0.3,
-                        translation_volume=1.5,
-                        keep_original_audio=True,
+                    # Запускаем создание субтитров параллельно с скачиванием LiveDub
+                    subs_task = asyncio.create_task(create_gemini_subtitles(video_url, workdir))
+                    dub_task = asyncio.create_task(
+                        get_live_dub_video(
+                            video_url, workdir,
+                            original_volume=0.3,
+                            translation_volume=1.5,
+                            keep_original_audio=True,
+                        )
                     )
-                except RuntimeError as e:
-                    if "LIVEDUB_NOT_AVAILABLE" in str(e):
-                        logger.info("[LiveDub] Перевод недоступен для этого видео")
+                    
+                    srt_path = None
+                    try:
+                        srt_path = await subs_task
+                    except Exception as e:
+                        logger.warning(f"[EngSubtitles] Ошибка создания сабов: {e}")
+
+                    dub_path = None
+                    try:
+                        dub_path = await dub_task
+                    except RuntimeError as e:
+                        if "LIVEDUB_NOT_AVAILABLE" in str(e):
+                            logger.info("[LiveDub] Перевод недоступен для этого видео")
+                        else:
+                            logger.warning(f"[LiveDub] Ошибка: {e}")
+                    except Exception as e:
+                        logger.warning(f"[LiveDub] Неизвестная ошибка: {e}")
+
+                    if dub_path and dub_path.exists():
+                        # Яндекс отработал, вшиваем сабы
+                        if srt_path and srt_path.exists():
+                            final_video = await merge_subtitles(dub_path, srt_path, is_fallback=False)
+                            return final_video, False, True
+                        return dub_path, False, False
                     else:
-                        logger.warning(f"[LiveDub] Ошибка: {e}")
-                    return None
+                        # Яндекс упал, скачиваем оригинал и вшиваем сабы
+                        if srt_path and srt_path.exists():
+                            logger.info("[LiveDub] Перевод не удался, отправляем резерв с субтитрами")
+                            orig_video = await download_original_video(video_url, workdir)
+                            final_video = await merge_subtitles(orig_video, srt_path, is_fallback=True)
+                            return final_video, True, True
+                        return None, False, False
+
                 except Exception as e:
-                    logger.warning(f"[LiveDub] Ошибка: {e}")
-                    return None
+                    logger.warning(f"[LiveDub Background] Ошибка: {e}")
+                    return None, False, False
 
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work))
         # --- END LIVEDUB ---
@@ -501,16 +533,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # --- LIVEDUB: отправка результата ---
         if live_dub_task and context:
             try:
-                livedub_path = await asyncio.wait_for(live_dub_task, timeout=600)
-                if livedub_path and livedub_path.exists():
-                    with open(livedub_path, "rb") as f:
-                        await context.bot.send_video(
-                            chat_id=update.effective_chat.id,
-                            video=f,
-                            caption="🎬 Живые голоса Яндекса (автоперевод)",
-                            reply_to_message_id=update.message.message_id,
-                            supports_streaming=True,
-                        )
+                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
+                if livedub_result:
+                    livedub_path, is_fallback, has_subs = livedub_result
+                    if livedub_path and livedub_path.exists():
+                        if is_fallback:
+                            caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                        else:
+                            caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                        with open(livedub_path, "rb") as f:
+                            await context.bot.send_video(
+                                chat_id=update.effective_chat.id,
+                                video=f,
+                                caption=caption,
+                                reply_to_message_id=update.message.message_id,
+                                supports_streaming=True,
+                            )
             except asyncio.TimeoutError:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
@@ -1438,16 +1476,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # --- LIVEDUB: отправка результата ---
         if live_dub_task and context:
             try:
-                livedub_path = await asyncio.wait_for(live_dub_task, timeout=600)
-                if livedub_path and livedub_path.exists():
-                    with open(livedub_path, "rb") as f:
-                        await context.bot.send_video(
-                            chat_id=update.effective_chat.id,
-                            video=f,
-                            caption="🎬 Живые голоса Яндекса (автоперевод)",
-                            reply_to_message_id=update.message.message_id,
-                            supports_streaming=True,
-                        )
+                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
+                if livedub_result:
+                    livedub_path, is_fallback, has_subs = livedub_result
+                    if livedub_path and livedub_path.exists():
+                        if is_fallback:
+                            caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                        else:
+                            caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                        with open(livedub_path, "rb") as f:
+                            await context.bot.send_video(
+                                chat_id=update.effective_chat.id,
+                                video=f,
+                                caption=caption,
+                                reply_to_message_id=update.message.message_id,
+                                supports_streaming=True,
+                            )
             except asyncio.TimeoutError:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
