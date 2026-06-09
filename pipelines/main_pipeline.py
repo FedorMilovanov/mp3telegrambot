@@ -169,11 +169,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             import tempfile
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
+            
+            eng_subs_enabled = await asettings_get("eng_subtitles")
 
             async def _run_livedub_bg(video_url, workdir):
                 try:
                     # Запускаем создание субтитров параллельно с скачиванием LiveDub
-                    subs_task = asyncio.create_task(create_gemini_subtitles(video_url, workdir))
+                    subs_task = None
+                    if eng_subs_enabled:
+                        subs_task = asyncio.create_task(create_gemini_subtitles(video_url, workdir))
+                    
                     dub_task = asyncio.create_task(
                         get_live_dub_video(
                             video_url, workdir,
@@ -184,10 +189,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     )
                     
                     srt_path = None
-                    try:
-                        srt_path = await subs_task
-                    except Exception as e:
-                        logger.warning(f"[EngSubtitles] Ошибка создания сабов: {e}")
+                    if subs_task:
+                        try:
+                            srt_path = await subs_task
+                        except Exception as e:
+                            logger.warning(f"[EngSubtitles] Ошибка создания сабов: {e}")
 
                     dub_path = None
                     try:

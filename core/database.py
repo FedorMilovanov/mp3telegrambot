@@ -472,6 +472,7 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "reflection_application": True,   # «Размышление и применение» (пасторский guide)
     "caption_full_text":      True,   # Отправлять полный текст отдельным сообщением
     "generate_pdf":           False,  # Генерировать PDF (выключено по умолчанию)
+    "eng_subtitles":          True,   # Субтитры для ENG режима (Whisper+Gemini)
 }
 
 SETTINGS_LABELS: dict[str, str] = {
@@ -500,6 +501,7 @@ SETTINGS_LABELS: dict[str, str] = {
     "reflection_application": "🙏 Размышление и применение",
     "caption_full_text":      "📋 Полный текст отдельно",
     "generate_pdf":           "📄 Генерировать PDF",
+    "eng_subtitles":          "💬 Субтитры ENG",
 }
 
 # ─── Скорость Shorts (не bool, отдельная настройка) ──────────
@@ -758,4 +760,5 @@ SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
                     "__speed__"]),
     ("🎬 Клипы",    ["clips", "clips_snapshot"]),
     ("🧩 Сегменты", ["segments", "segments_render", "segments_subtitles", "segments_batch_render"]),
+    ("🇬🇧 ENG Режим", ["eng_subtitles"]),
 ]
