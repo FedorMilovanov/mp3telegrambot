@@ -876,7 +876,13 @@ def _get_whisper_model(model_size: str | None = None):
             from faster_whisper import WhisperModel as _WM
             _whisper_device = os.getenv("WHISPER_DEVICE", "cpu").strip().lower()
             _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"
-            _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
+            try:
+                _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
+            except Exception as e:
+                logger.warning(f"Failed to load Whisper on {_whisper_device} with {_whisper_compute}. Fallback to CPU/int8. Error: {e}")
+                _whisper_device = "cpu"
+                _whisper_compute = "int8"
+                _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             _whisper_model_name = model_size
             logger.info(f"Whisper model loaded: {model_size}")
         return _whisper_model
