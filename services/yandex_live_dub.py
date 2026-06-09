@@ -41,6 +41,13 @@ def _check_vot_cli() -> str:
     if path:
         return VOT_CLI
 
+    # Windows: explicit .cmd / .bat search (shutil.which may miss .cmd on some configs)
+    if sys.platform == "win32":
+        for ext in (".cmd", ".bat", ".exe"):
+            path = shutil.which(VOT_CLI + ext)
+            if path:
+                return path
+
     # Windows: npm global default path (Python may not have %APPDATA%\npm in PATH)
     if sys.platform == "win32":
         import os
