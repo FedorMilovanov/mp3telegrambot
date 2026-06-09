@@ -103,7 +103,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
     except ImportError:
         raise RuntimeError("Не удалось импортировать _get_whisper_model / _reset_whisper_model")
     
-    logger.info("[EngSubtitles] Запускаем Whisper (глобальная модель)...")
+    logger.info("[EngSubtitles] Запускаем Whisper...")
 
     def _get_audio_duration(path: Path) -> float:
         try:
@@ -121,17 +121,32 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
 
     audio_duration = _get_audio_duration(actual_audio)
 
-    _force_cpu = os.getenv("WHISPER_ENG_SUBTITLES_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+    # ENG subtitles: lighter model by default on CPU to keep latency reasonable.
+    # medium is ~3x faster than large-v3 on CPU with negligible quality loss for English.
+    _model_size = os.getenv("WHISPER_ENG_SUBTITLES_MODEL",
+                             os.getenv("WHISPER_MODEL", "large-v3"))
+    _force_cpu = (
+        os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+        or os.getenv("WHISPER_ENG_SUBTITLES_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+    )
+
+    # On CPU or when forced: use beam_size=1 for speed; quality is still fine for English.
+    # On GPU: keep beam_size=5 for best accuracy.
+    _beam_size = 1 if _force_cpu else 5
 
     def _transcribe_with_fallback():
         if _force_cpu:
-            logger.info("[EngSubtitles] Force CPU mode (WHISPER_ENG_SUBTITLES_FORCE_CPU=1). Using local CPU model.")
+            logger.info(
+                "[EngSubtitles] CPU mode (model=%s, beam_size=%d). "
+                "Set WHISPER_ENG_SUBTITLES_MODEL to adjust quality/speed.",
+                _model_size, _beam_size,
+            )
             from faster_whisper import WhisperModel
-            m = WhisperModel("large-v3", device="cpu", compute_type="int8")
+            m = WhisperModel(_model_size, device="cpu", compute_type="int8")
             segs_gen, _ = m.transcribe(
                 str(actual_audio),
                 language="en",
-                beam_size=5,
+                beam_size=_beam_size,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
@@ -145,13 +160,13 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
         except Exception:
             pass
 
-        model = _get_whisper_model()
+        model = _get_whisper_model(_model_size)
 
         def _gpu_run():
             segs_gen, _ = model.transcribe(
                 str(actual_audio),
                 language="en",
-                beam_size=5,
+                beam_size=_beam_size,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
@@ -166,14 +181,15 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
         except FutureTimeoutError:
             logger.warning(
                 "[EngSubtitles] GPU transcribe hung/timed out after %.0fs "
-                "(audio %.1fs). Resetting to CPU/int8.", timeout, audio_duration
+                "(audio %.1fs). Switching to CPU/int8 (model=%s, beam_size=1).",
+                timeout, audio_duration, _model_size,
             )
             _reset_whisper_model("cpu", "int8")
-            model = _get_whisper_model()
+            model = _get_whisper_model(_model_size)
             segs_gen, _ = model.transcribe(
                 str(actual_audio),
                 language="en",
-                beam_size=5,
+                beam_size=1,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
@@ -193,15 +209,15 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
                 raise
             logger.warning(
                 "[EngSubtitles] Whisper CUDA error during transcribe (%s: %s). "
-                "Resetting model to CPU/int8 and retrying once.",
-                type(e).__name__, e,
+                "Switching to CPU/int8 (model=%s, beam_size=1).",
+                type(e).__name__, e, _model_size,
             )
             _reset_whisper_model("cpu", "int8")
-            model = _get_whisper_model()
+            model = _get_whisper_model(_model_size)
             segs_gen, _ = model.transcribe(
                 str(actual_audio),
                 language="en",
-                beam_size=5,
+                beam_size=1,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
