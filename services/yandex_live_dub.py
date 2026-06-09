@@ -41,6 +41,16 @@ def _check_vot_cli() -> str:
     if path:
         return VOT_CLI
 
+    # Windows: npm global default path (Python may not have %APPDATA%\npm in PATH)
+    if sys.platform == "win32":
+        import os
+        _appdata = os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))
+        npm_global = Path(_appdata) / "npm"
+        for ext in (".cmd", ".bat", ".exe", ""):
+            candidate = npm_global / (VOT_CLI + ext)
+            if candidate.exists():
+                return str(candidate)
+
     # Windows fallback: npx
     npx = shutil.which("npx")
     if npx:
