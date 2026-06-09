@@ -907,12 +907,17 @@ def _get_whisper_model(model_size: str | None = None):
                     pass
             from faster_whisper import WhisperModel as _WM
             _force_cpu = os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+            _safe_mode = os.getenv("WHISPER_GPU_SAFE_MODE", "0").strip().lower() in ("1", "true", "yes", "on")
             if _force_cpu:
                 _whisper_device = "cpu"
                 _whisper_compute = "int8"
             else:
                 _whisper_device = os.getenv("WHISPER_DEVICE", "cpu").strip().lower()
-                _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"
+                if _safe_mode and _whisper_device == "cuda":
+                    # Safe mode: int8 on GPU reduces power/heat/vram stress vs float16
+                    _whisper_compute = "int8"
+                else:
+                    _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"
             try:
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             except Exception as e:

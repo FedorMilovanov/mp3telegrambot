@@ -129,17 +129,23 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
         os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
         or os.getenv("WHISPER_ENG_SUBTITLES_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
     )
+    _safe_mode = os.getenv("WHISPER_GPU_SAFE_MODE", "0").strip().lower() in ("1", "true", "yes", "on")
+    _max_gpu_seconds = float(os.getenv("WHISPER_GPU_MAX_SECONDS", "120"))
 
-    # On CPU or when forced: use beam_size=1 for speed; quality is still fine for English.
-    # On GPU: keep beam_size=5 for best accuracy.
-    _beam_size = 1 if _force_cpu else 5
+    # Safe-mode: long audio on CPU (short bursts are safer on a dying GPU)
+    _use_cpu = _force_cpu or (_safe_mode and audio_duration > _max_gpu_seconds)
+
+    # On CPU or safe mode: beam_size=1 for speed; quality is still fine for English.
+    # On GPU normal: beam_size=5 for best accuracy.
+    _beam_size = 1 if _use_cpu else 5
 
     def _transcribe_with_fallback():
-        if _force_cpu:
+        if _use_cpu:
+            _reason = "forced" if _force_cpu else f"safe-mode ({audio_duration:.0f}s > {_max_gpu_seconds:.0f}s limit)"
             logger.info(
-                "[EngSubtitles] CPU mode (model=%s, beam_size=%d). "
+                "[EngSubtitles] CPU mode (%s) — model=%s, beam_size=%d. "
                 "Set WHISPER_ENG_SUBTITLES_MODEL to adjust quality/speed.",
-                _model_size, _beam_size,
+                _reason, _model_size, _beam_size,
             )
             from faster_whisper import WhisperModel
             m = WhisperModel(_model_size, device="cpu", compute_type="int8")
@@ -152,6 +158,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
             )
             return list(segs_gen)
 
+        # GPU path (short audio only, or when safe mode is off)
         import torch
         try:
             if torch.cuda.is_available():
