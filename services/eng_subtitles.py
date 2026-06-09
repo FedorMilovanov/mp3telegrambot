@@ -6,18 +6,20 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from core.globals import GEMINI_CLIENTS
 from core.database import GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
+# ── Hard limits for English subtitle pipeline ───────────────────
+_MAX_SUBTITLE_AUDIO_SECONDS = 180  # 3 minutes: longer than Shorts, skip entirely
+
 async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     """Translates a chunk of segments with retries and JSON enforcement across multiple Gemini keys."""
     if not GEMINI_CLIENTS:
         return None
-        
+
     prompt_lines = [
         "You are an expert subtitle translator. Translate these English subtitle segments into Russian.",
         "Rules:",
@@ -29,14 +31,13 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     ]
     if prev_context:
         prompt_lines.append(f"\nFor context, the preceding translated segment was: \"{prev_context}\"")
-        
+
     prompt_lines.append("\nSegments to translate:")
     for sid, text in chunk_segs:
         prompt_lines.append(f"ID: {sid} | Text: {text}")
-        
+
     prompt = "\n".join(prompt_lines)
-    
-    # Retry across multiple clients if available
+
     for attempt in range(max(3, len(GEMINI_CLIENTS))):
         client = GEMINI_CLIENTS[attempt % len(GEMINI_CLIENTS)]
         try:
@@ -50,34 +51,51 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
                 )
             )
             text = response.text.strip()
-            # Убираем markdown обертку, которую иногда возвращает Gemini даже при response_mime_type="application/json"
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
-            
             data = json.loads(text)
             return data
         except Exception as e:
             logger.warning(f"[EngSubtitles] Chunk translation attempt {attempt+1} failed: {e}")
             await asyncio.sleep(2)
-            
+
     return None
 
-async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
+
+def _get_audio_duration(path: Path) -> float:
+    try:
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            result = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                capture_output=True, text=True, timeout=30
+            )
+            return float(result.stdout.strip())
+    except Exception:
+        pass
+    return 0.0
+
+
+async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
     """
-    Скачивает оригинальное аудио, прогоняет faster-whisper, 
-    умно батчит сегменты, переводит через Gemini (JSON), сохраняет в SRT.
+    Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
+    переводит через Gemini (JSON), сохраняет в SRT.
+
+    Returns:
+        Path к SRT-файлу, или None если аудио слишком длинное (>3 мин).
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    audio_path = workdir / "original_audio"  # let yt-dlp determine extension
+    audio_path = workdir / "original_audio"
     srt_path = workdir / "gemini_subs.srt"
 
-    # 1. Скачиваем аудио (быстро)
+    # 1. Скачиваем аудио
     yt_dlp = shutil.which("yt-dlp")
     if not yt_dlp:
         raise RuntimeError("yt-dlp not found")
-    
+
     cmd = [yt_dlp, "--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
-    logger.info(f"[EngSubtitles] Скачиваем аудио для транскрипции: {' '.join(cmd)}")
+    logger.info(f"[EngSubtitles] Скачиваем аудио: {' '.join(cmd)}")
 
     def _run_cmd(t):
         kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
@@ -87,157 +105,52 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
 
     loop = asyncio.get_running_loop()
     proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
-    
+
     actual_audio = None
     for file in workdir.glob("original_audio.*"):
         if file.suffix != ".srt":
             actual_audio = file
             break
-            
+
     if not actual_audio or not actual_audio.exists():
         raise RuntimeError(f"Не удалось скачать аудио. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
 
-    # 2. Whisper
-    try:
-        from services.shorts_video import _get_whisper_model, _reset_whisper_model
-    except ImportError:
-        raise RuntimeError("Не удалось импортировать _get_whisper_model / _reset_whisper_model")
-    
-    logger.info("[EngSubtitles] Запускаем Whisper...")
-
-    def _get_audio_duration(path: Path) -> float:
-        try:
-            ffprobe = shutil.which("ffprobe")
-            if ffprobe:
-                result = subprocess.run(
-                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
-                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                    capture_output=True, text=True, timeout=30
-                )
-                return float(result.stdout.strip())
-        except Exception:
-            pass
-        return 0.0
-
+    # 2. Длительность — если больше лимита, субтитры не делаем
     audio_duration = _get_audio_duration(actual_audio)
+    if audio_duration > _MAX_SUBTITLE_AUDIO_SECONDS:
+        logger.info(
+            "[EngSubtitles] Аудио слишком длинное (%.1f сек > %d сек) — субтитры пропущены.",
+            audio_duration, _MAX_SUBTITLE_AUDIO_SECONDS,
+        )
+        return None
 
-    # ENG subtitles: lighter model by default on CPU to keep latency reasonable.
-    # medium is ~3x faster than large-v3 on CPU with negligible quality loss for English.
-    _model_size = os.getenv("WHISPER_ENG_SUBTITLES_MODEL",
-                             os.getenv("WHISPER_MODEL", "large-v3"))
-    _force_cpu = (
-        os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
-        or os.getenv("WHISPER_ENG_SUBTITLES_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+    # 3. Whisper — CPU-only, large-v3, int8, beam_size=1
+    logger.info(
+        "[EngSubtitles] Whisper CPU: model=large-v3, int8, beam_size=1, audio=%.1fs",
+        audio_duration,
     )
-    _safe_mode = os.getenv("WHISPER_GPU_SAFE_MODE", "0").strip().lower() in ("1", "true", "yes", "on")
-    _max_gpu_seconds = float(os.getenv("WHISPER_GPU_MAX_SECONDS", "120"))
 
-    # Safe-mode: long audio on CPU (short bursts are safer on a dying GPU)
-    _use_cpu = _force_cpu or (_safe_mode and audio_duration > _max_gpu_seconds)
+    def _run_whisper():
+        from faster_whisper import WhisperModel
+        model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+        segs_gen, _ = model.transcribe(
+            str(actual_audio),
+            language="en",
+            beam_size=1,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+        )
+        return list(segs_gen)
 
-    # On CPU or safe mode: beam_size=1 for speed; quality is still fine for English.
-    # On GPU normal: beam_size=5 for best accuracy.
-    _beam_size = 1 if _use_cpu else 5
+    segments = await loop.run_in_executor(None, _run_whisper)
 
-    def _transcribe_with_fallback():
-        if _use_cpu:
-            _reason = "forced" if _force_cpu else f"safe-mode ({audio_duration:.0f}s > {_max_gpu_seconds:.0f}s limit)"
-            logger.info(
-                "[EngSubtitles] CPU mode (%s) — model=%s, beam_size=%d. "
-                "Set WHISPER_ENG_SUBTITLES_MODEL to adjust quality/speed.",
-                _reason, _model_size, _beam_size,
-            )
-            from faster_whisper import WhisperModel
-            m = WhisperModel(_model_size, device="cpu", compute_type="int8")
-            segs_gen, _ = m.transcribe(
-                str(actual_audio),
-                language="en",
-                beam_size=_beam_size,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-            )
-            return list(segs_gen)
-
-        # GPU path (short audio only, or when safe mode is off)
-        import torch
-        try:
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-        except Exception:
-            pass
-
-        model = _get_whisper_model(_model_size)
-
-        def _gpu_run():
-            segs_gen, _ = model.transcribe(
-                str(actual_audio),
-                language="en",
-                beam_size=_beam_size,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-            )
-            return list(segs_gen)
-
-        # Timeout heuristic: at least 3 min, at most 10 min, 2x audio duration
-        timeout = max(180, min(600, audio_duration * 2))
-        try:
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_gpu_run)
-                return future.result(timeout=timeout)
-        except FutureTimeoutError:
-            logger.warning(
-                "[EngSubtitles] GPU transcribe hung/timed out after %.0fs "
-                "(audio %.1fs). Switching to CPU/int8 (model=%s, beam_size=1).",
-                timeout, audio_duration, _model_size,
-            )
-            _reset_whisper_model("cpu", "int8")
-            model = _get_whisper_model(_model_size)
-            segs_gen, _ = model.transcribe(
-                str(actual_audio),
-                language="en",
-                beam_size=1,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-            )
-            return list(segs_gen)
-        except Exception as e:
-            err_msg = str(e).lower()
-            is_cuda_err = (
-                "cuda" in err_msg
-                or "out of memory" in err_msg
-                or "cublas" in err_msg
-                or "curand" in err_msg
-                or "device-side assert" in err_msg
-                or "illegal memory access" in err_msg
-                or "an illegal instruction" in err_msg
-            )
-            if not is_cuda_err:
-                raise
-            logger.warning(
-                "[EngSubtitles] Whisper CUDA error during transcribe (%s: %s). "
-                "Switching to CPU/int8 (model=%s, beam_size=1).",
-                type(e).__name__, e, _model_size,
-            )
-            _reset_whisper_model("cpu", "int8")
-            model = _get_whisper_model(_model_size)
-            segs_gen, _ = model.transcribe(
-                str(actual_audio),
-                language="en",
-                beam_size=1,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-            )
-            return list(segs_gen)
-
-    segments = await loop.run_in_executor(None, _transcribe_with_fallback)
-    
     if not segments:
-        raise RuntimeError("Whisper не нашел речь")
+        logger.warning("[EngSubtitles] Whisper не нашел речь.")
+        return None
 
-    # 3. Перевод Gemini батчами
+    # 4. Перевод Gemini батчами
     translated_segments = {}
-    
+
     if not GEMINI_CLIENTS:
         logger.warning("[EngSubtitles] Gemini API не настроен, оставляем английский.")
         translated_segments = {str(i): seg.text.strip() for i, seg in enumerate(segments, 1)}
@@ -245,7 +158,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
         logger.info("[EngSubtitles] Переводим субтитры через Gemini (chunked JSON)...")
         CHUNK_SIZE = 50
         chunks = []
-        
+
         current_chunk = []
         for i, seg in enumerate(segments, 1):
             current_chunk.append((i, seg.text.strip()))
@@ -254,12 +167,12 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
                 current_chunk = []
         if current_chunk:
             chunks.append(current_chunk)
-            
+
         prev_context = ""
         for idx, chunk in enumerate(chunks):
             logger.info(f"[EngSubtitles] Перевод чанка {idx+1}/{len(chunks)}...")
             data = await _translate_chunk_with_retry(chunk, prev_context)
-            
+
             if data and isinstance(data, dict):
                 for k, v in data.items():
                     if isinstance(v, str) and v.strip():
@@ -274,7 +187,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
                 for sid, text in chunk:
                     translated_segments[str(sid)] = text
 
-    # 4. Запись SRT
+    # 5. Запись SRT
     def _to_srt_time(seconds):
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
@@ -285,15 +198,14 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
     with open(srt_path, "w", encoding="utf-8") as f:
         for i, seg in enumerate(segments, 1):
             text = translated_segments.get(str(i), seg.text.strip())
-            # Убираем лишние переносы, чтобы субтитры не ломали кадр
             text = text.replace("\n", " ").strip()
-            
+
             f.write(
                 f"{i}\n"
                 f"{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n"
                 f"{text}\n\n"
             )
-            
+
     logger.info(f"[EngSubtitles] Субтитры созданы: {srt_path}")
     return srt_path
 
