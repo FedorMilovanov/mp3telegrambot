@@ -866,6 +866,26 @@ def get_subtitles_mode_settings() -> dict:
     }
 
 
+def _reset_whisper_model(device: str | None = None, compute_type: str | None = None):
+    """Forcefully resets the singleton so the next call creates a fresh model on the requested device."""
+    global _whisper_model, _whisper_model_name
+    with _whisper_lock:
+        if _whisper_model is not None:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+            except Exception:
+                pass
+            try:
+                del _whisper_model
+            except Exception:
+                pass
+            _whisper_model = None
+        _whisper_model_name = None
+
+
 def _get_whisper_model(model_size: str | None = None):
     """Возвращает singleton WhisperModel, создаёт при первом вызове или при смене модели."""
     global _whisper_model, _whisper_model_name
@@ -873,6 +893,18 @@ def _get_whisper_model(model_size: str | None = None):
         model_size = os.getenv("WHISPER_MODEL", "large-v3")
     with _whisper_lock:
         if _whisper_model is None or _whisper_model_name != model_size:
+            if _whisper_model is not None:
+                try:
+                    del _whisper_model
+                except Exception:
+                    pass
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                except Exception:
+                    pass
             from faster_whisper import WhisperModel as _WM
             _whisper_device = os.getenv("WHISPER_DEVICE", "cpu").strip().lower()
             _whisper_compute = "float16" if _whisper_device == "cuda" else "int8"

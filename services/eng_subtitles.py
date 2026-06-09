@@ -1,3 +1,4 @@
+import os
 import re
 import asyncio
 import json
@@ -76,9 +77,15 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
     
     cmd = [yt_dlp, "--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
     logger.info(f"[EngSubtitles] Скачиваем аудио для транскрипции: {' '.join(cmd)}")
-    
+
+    def _run_cmd(t):
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        return subprocess.run(cmd, timeout=t, **kwargs)
+
     loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: subprocess.run(cmd, capture_output=True, timeout=300))
+    proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
     
     actual_audio = None
     for file in workdir.glob("original_audio.*"):
@@ -91,17 +98,62 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
 
     # 2. Whisper
     try:
-        from services.shorts_video import _get_whisper_model
+        from services.shorts_video import _get_whisper_model, _reset_whisper_model
     except ImportError:
-        raise RuntimeError("Не удалось импортировать _get_whisper_model")
+        raise RuntimeError("Не удалось импортировать _get_whisper_model / _reset_whisper_model")
     
     logger.info("[EngSubtitles] Запускаем Whisper (глобальная модель)...")
-    def run_whisper():
-        model = _get_whisper_model()
-        segs_gen, _ = model.transcribe(str(actual_audio), language="en", beam_size=5)
-        return list(segs_gen)
 
-    segments = await loop.run_in_executor(None, run_whisper)
+    def _transcribe_with_fallback():
+        import torch
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except Exception:
+            pass
+
+        model = _get_whisper_model()
+        try:
+            segs_gen, info = model.transcribe(
+                str(actual_audio),
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            return list(segs_gen), info
+        except Exception as e:
+            err_msg = str(e).lower()
+            is_cuda_err = (
+                "cuda" in err_msg
+                or "out of memory" in err_msg
+                or "cublas" in err_msg
+                or "curand" in err_msg
+                or "device-side assert" in err_msg
+                or "illegal memory access" in err_msg
+                or "an illegal instruction" in err_msg
+            )
+            if not is_cuda_err:
+                raise
+            logger.warning(
+                "[EngSubtitles] Whisper CUDA error during transcribe (%s: %s). "
+                "Resetting model to CPU/int8 and retrying once.",
+                type(e).__name__,
+                e,
+            )
+            _reset_whisper_model("cpu", "int8")
+            model = _get_whisper_model()
+            segs_gen, info = model.transcribe(
+                str(actual_audio),
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            return list(segs_gen), info
+
+    segments, _ = await loop.run_in_executor(None, _transcribe_with_fallback)
     
     if not segments:
         raise RuntimeError("Whisper не нашел речь")
@@ -180,9 +232,15 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
         "--output", str(video_path), video_url
     ]
     logger.info("[EngSubtitles] Скачиваем резервное оригинальное видео...")
-    
+
+    def _run_cmd(t):
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        return subprocess.run(cmd, timeout=t, **kwargs)
+
     loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: subprocess.run(cmd, capture_output=True, timeout=900))
+    proc = await loop.run_in_executor(None, lambda: _run_cmd(900))
     
     actual_video = None
     for file in workdir.glob("original_video.*"):
@@ -214,8 +272,15 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
     ]
     
     logger.info(f"[EngSubtitles] Склейка субтитров: {' '.join(cmd)}")
+
+    def _run_cmd(t):
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        return subprocess.run(cmd, timeout=t, **kwargs)
+
     loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: subprocess.run(cmd, capture_output=True, timeout=300))
+    proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
     
     if output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
@@ -228,7 +293,14 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=rus",
         "-y", str(output_path)
     ]
-    proc2 = await loop.run_in_executor(None, lambda: subprocess.run(cmd_fallback, capture_output=True, timeout=300))
+
+    def _run_cmd_fallback(t):
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        return subprocess.run(cmd_fallback, timeout=t, **kwargs)
+
+    proc2 = await loop.run_in_executor(None, lambda: _run_cmd_fallback(300))
     if output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
         
