@@ -6,6 +6,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from core.globals import GEMINI_CLIENTS
 from core.database import GEMINI_MODEL
@@ -104,7 +105,38 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
     
     logger.info("[EngSubtitles] Запускаем Whisper (глобальная модель)...")
 
+    def _get_audio_duration(path: Path) -> float:
+        try:
+            ffprobe = shutil.which("ffprobe")
+            if ffprobe:
+                result = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    capture_output=True, text=True, timeout=30
+                )
+                return float(result.stdout.strip())
+        except Exception:
+            pass
+        return 0.0
+
+    audio_duration = _get_audio_duration(actual_audio)
+
+    _force_cpu = os.getenv("WHISPER_ENG_SUBTITLES_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+
     def _transcribe_with_fallback():
+        if _force_cpu:
+            logger.info("[EngSubtitles] Force CPU mode (WHISPER_ENG_SUBTITLES_FORCE_CPU=1). Using local CPU model.")
+            from faster_whisper import WhisperModel
+            m = WhisperModel("large-v3", device="cpu", compute_type="int8")
+            segs_gen, _ = m.transcribe(
+                str(actual_audio),
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            return list(segs_gen)
+
         import torch
         try:
             if torch.cuda.is_available():
@@ -114,15 +146,38 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
             pass
 
         model = _get_whisper_model()
-        try:
-            segs_gen, info = model.transcribe(
+
+        def _gpu_run():
+            segs_gen, _ = model.transcribe(
                 str(actual_audio),
                 language="en",
                 beam_size=5,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
-            return list(segs_gen), info
+            return list(segs_gen)
+
+        # Timeout heuristic: at least 3 min, at most 10 min, 2x audio duration
+        timeout = max(180, min(600, audio_duration * 2))
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_gpu_run)
+                return future.result(timeout=timeout)
+        except FutureTimeoutError:
+            logger.warning(
+                "[EngSubtitles] GPU transcribe hung/timed out after %.0fs "
+                "(audio %.1fs). Resetting to CPU/int8.", timeout, audio_duration
+            )
+            _reset_whisper_model("cpu", "int8")
+            model = _get_whisper_model()
+            segs_gen, _ = model.transcribe(
+                str(actual_audio),
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            return list(segs_gen)
         except Exception as e:
             err_msg = str(e).lower()
             is_cuda_err = (
@@ -139,21 +194,20 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
             logger.warning(
                 "[EngSubtitles] Whisper CUDA error during transcribe (%s: %s). "
                 "Resetting model to CPU/int8 and retrying once.",
-                type(e).__name__,
-                e,
+                type(e).__name__, e,
             )
             _reset_whisper_model("cpu", "int8")
             model = _get_whisper_model()
-            segs_gen, info = model.transcribe(
+            segs_gen, _ = model.transcribe(
                 str(actual_audio),
                 language="en",
                 beam_size=5,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )
-            return list(segs_gen), info
+            return list(segs_gen)
 
-    segments, _ = await loop.run_in_executor(None, _transcribe_with_fallback)
+    segments = await loop.run_in_executor(None, _transcribe_with_fallback)
     
     if not segments:
         raise RuntimeError("Whisper не нашел речь")
