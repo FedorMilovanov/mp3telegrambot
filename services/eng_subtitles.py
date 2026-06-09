@@ -91,13 +91,13 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path:
 
     # 2. Whisper
     try:
-        from faster_whisper import WhisperModel
+        from services.shorts_video import _get_whisper_model
     except ImportError:
-        raise RuntimeError("faster-whisper не установлен")
+        raise RuntimeError("Не удалось импортировать _get_whisper_model")
     
-    logger.info("[EngSubtitles] Запускаем Whisper...")
+    logger.info("[EngSubtitles] Запускаем Whisper (глобальная модель)...")
     def run_whisper():
-        model = WhisperModel("small", compute_type="int8", device="cpu")
+        model = _get_whisper_model()
         segs_gen, _ = model.transcribe(str(actual_audio), language="en", beam_size=5)
         return list(segs_gen)
 
