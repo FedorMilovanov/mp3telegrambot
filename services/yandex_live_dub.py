@@ -89,6 +89,13 @@ def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 
     if len(cmd_parts) == 1 and " " in cmd_parts[0] and not cmd_parts[0].startswith('"'):
         cmd_parts = cmd_parts[0].split()
 
+    # Windows: .cmd/.bat files need shell=True for subprocess.run
+    _use_shell = False
+    if sys.platform == "win32" and cmd_parts:
+        _cmd = cmd_parts[0].lower()
+        if _cmd.endswith(".cmd") or _cmd.endswith(".bat") or shutil.which(_cmd + ".cmd"):
+            _use_shell = True
+
     try:
         proc = subprocess.run(
             cmd_parts,
@@ -98,6 +105,7 @@ def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 
             errors="replace",
             cwd=cwd,
             timeout=timeout,
+            shell=_use_shell,
         )
     except FileNotFoundError as e:
         raise RuntimeError(f"Команда не найдена: {cmd_parts[0]}. {e}")
