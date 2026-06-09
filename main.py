@@ -183,7 +183,8 @@ async def run_bot_async():
     app.add_handler(CommandHandler("archive",    archive_command))
     app.add_handler(CommandHandler("archivefile", archivefile_command))
     app.add_handler(CommandHandler("segmentfile", segmentfile_command))
-    app.add_handler(CommandHandler("lastpages",  lastpages_command))`n    app.add_handler(CommandHandler("mode",       mode_command))
+    app.add_handler(CommandHandler("lastpages",  lastpages_command))
+    app.add_handler(CommandHandler("mode",       mode_command))
     app.add_handler(CommandHandler("search",     search_archive_command))
     app.add_handler(CommandHandler("author",     author_archive_command))
     app.add_handler(CommandHandler("scripture",  scripture_archive_command))
@@ -192,7 +193,8 @@ async def run_bot_async():
     app.add_handler(CommandHandler("segments",   segments_command))
     app.add_handler(CommandHandler("cutseg",     cutseg_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(handle_callback))`n    app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
 
     # V3-P1: Render/Railway присылают SIGTERM при redeploy/stop.
     # Переводим его в тот же graceful path, что и /stop. На Windows

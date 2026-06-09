@@ -65,6 +65,7 @@ import requests   # FIX #11
 import shutil     # FIX #11
 import subprocess # FIX #11
 import uuid
+import sqlite3  # LIVEDUB: direct DB read for user mode
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,51 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         logger.info(f"YouTube channel_name: '{channel_name}'")
         duration     = int(info_dict.get("duration") or 0)
         media_id     = info_dict.get("id", "media")
+
+        # --- LIVEDUB: проверяем режим пользователя ---
+        user_id = update.effective_user.id if (update.effective_user and update.effective_user.id) else None
+        user_mode = "rus"
+        if user_id:
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("PRAGMA busy_timeout=5000")
+                    row = conn.execute(
+                        "SELECT value FROM bot_settings WHERE key = ?",
+                        (f"user_mode_{user_id}",)
+                    ).fetchone()
+                if row and row[0] == "eng":
+                    user_mode = "eng"
+            except Exception:
+                pass
+
+        live_dub_task = None
+        if user_mode == "eng":
+            from services.yandex_live_dub import get_live_dub_video
+            import tempfile
+            ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
+            ld_work.mkdir(exist_ok=True)
+
+            async def _run_livedub_bg(video_url, workdir):
+                try:
+                    return await get_live_dub_video(
+                        video_url, workdir,
+                        original_volume=0.3,
+                        translation_volume=1.5,
+                        keep_original_audio=True,
+                    )
+                except RuntimeError as e:
+                    if "LIVEDUB_NOT_AVAILABLE" in str(e):
+                        logger.info("[LiveDub] Перевод недоступен для этого видео")
+                    else:
+                        logger.warning(f"[LiveDub] Ошибка: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"[LiveDub] Ошибка: {e}")
+                    return None
+
+            live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work))
+        # --- END LIVEDUB ---
+
         performer, title = parse_title(full_title, channel_name)
 
         # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
@@ -451,6 +497,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         except Exception:
                             pass
 
+
+        # --- LIVEDUB: отправка результата ---
+        if live_dub_task and context:
+            try:
+                livedub_path = await asyncio.wait_for(live_dub_task, timeout=600)
+                if livedub_path and livedub_path.exists():
+                    with open(livedub_path, "rb") as f:
+                        await context.bot.send_video(
+                            chat_id=update.effective_chat.id,
+                            video=f,
+                            caption="🎬 Живые голоса Яндекса (автоперевод)",
+                            reply_to_message_id=update.message.message_id,
+                            supports_streaming=True,
+                        )
+            except asyncio.TimeoutError:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="⏳ Перевод «Живые голоса» ещё генерируется. Попробуйте /dub <url>",
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.warning(f"[LiveDub] fail: {e}")
+        # --- END LIVEDUB ---
             cleanup_files(media_id)
             logger.info(f"Кэш hit: {media_id}")
             return True
@@ -1365,6 +1434,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         else:
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")
 
+
+        # --- LIVEDUB: отправка результата ---
+        if live_dub_task and context:
+            try:
+                livedub_path = await asyncio.wait_for(live_dub_task, timeout=600)
+                if livedub_path and livedub_path.exists():
+                    with open(livedub_path, "rb") as f:
+                        await context.bot.send_video(
+                            chat_id=update.effective_chat.id,
+                            video=f,
+                            caption="🎬 Живые голоса Яндекса (автоперевод)",
+                            reply_to_message_id=update.message.message_id,
+                            supports_streaming=True,
+                        )
+            except asyncio.TimeoutError:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="⏳ Перевод «Живые голоса» ещё генерируется. Попробуйте /dub <url>",
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.warning(f"[LiveDub] fail: {e}")
+        # --- END LIVEDUB ---
         cleanup_files(media_id)
 
         return True
