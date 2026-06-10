@@ -157,6 +157,17 @@ async def run_bot_async():
 
     # Кастомный request с увеличенными таймаутами — решает проблему
     # обрывов соединения в httpx 0.28+ (агрессивное закрытие idle-соединений)
+    # FIX: если в системе задан HTTP(S)_PROXY, httpx гонит через него даже
+    # запросы к 127.0.0.1 — прокси не достучится до localhost и всё виснет
+    # по таймауту (TimedOut на getMe). Исключаем localhost из прокси.
+    # ВАЖНО: делать ДО создания HTTPXRequest — httpx читает env при создании клиента.
+    if LOCAL_BOT_API_URL:
+        _no_proxy = os.environ.get("NO_PROXY", "")
+        if "127.0.0.1" not in _no_proxy:
+            os.environ["NO_PROXY"] = f"{_no_proxy},127.0.0.1,localhost".strip(",")
+            os.environ["no_proxy"] = os.environ["NO_PROXY"]
+            logger.info(f"🚫 NO_PROXY дополнен: {os.environ['NO_PROXY']}")
+
     t_request = HTTPXRequest(
         connection_pool_size=32,
         read_timeout=120.0,
