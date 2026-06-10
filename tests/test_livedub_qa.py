@@ -651,3 +651,27 @@ def test_global_error_handler_registered():
 def test_disk_check_covers_tempdir():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "disk_usage(_tf.gettempdir())" in src
+
+
+# ── Заход 16: ENG fail-fast и гарантированный ответ юзеру ────────
+
+def test_vot_cli_fail_fast_before_processing():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_check_vot_cli()" in src
+    assert "vot-cli-live не найден" in src
+    # Quick: стоп сразу; Full: деградация до RUS-анализа
+    assert 'user_mode = "rus"  # ENG Full деградирует' in src
+
+
+def test_eng_quick_never_silent():
+    """При сбое перевода ENG Quick юзер получает объяснение, а не тишину."""
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_delivered = await _send_livedub_result()" in src
+    assert "Перевод «Живые голоса» не получился" in src
+
+
+def test_send_helper_returns_delivery_status():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "async def _send_livedub_result() -> bool:" in src
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    assert "return True" in helper and "return False" in helper

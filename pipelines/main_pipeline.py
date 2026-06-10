@@ -186,9 +186,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         if _livedub_cached_file_id and user_mode in ("eng", "eng_fast"):
             logger.info(f"[LiveDub] кэш file_id найден — повторная отправка мгновенно ({media_id})")
         elif user_mode in ("eng", "eng_fast"):
-            from services.yandex_live_dub import get_live_dub_video
+            # FIX 2026-06-10 fail-fast: без vot-cli юзер раньше узнавал о
+            # проблеме через минуты (или никогда в Quick). Проверяем сразу.
+            from services.yandex_live_dub import get_live_dub_video, _check_vot_cli
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
+            try:
+                _check_vot_cli()
+            except RuntimeError as _vot_err:
+                logger.warning(f"[LiveDub] vot-cli недоступен: {_vot_err}")
+                if not silent_errors:
+                    try:
+                        await update.message.reply_text(
+                            "⚠️ Режим ENG: vot-cli-live не найден — перевод недоступен.\n"
+                            "Установите: npm install -g vot-cli-live\n"
+                            + ("Продолжаю обычный анализ без перевода." if user_mode == "eng" else "")
+                        )
+                    except Exception:
+                        pass
+                if user_mode == "eng_fast":
+                    cleanup_files(media_id)
+                    return False
+                user_mode = "rus"  # ENG Full деградирует до обычного анализа
+        if user_mode in ("eng", "eng_fast") and live_dub_task is None and not _livedub_cached_file_id:
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
             
@@ -286,11 +306,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work))
         # --- END LIVEDUB ---
 
-        async def _send_livedub_result():
+        async def _send_livedub_result() -> bool:
             """Отправляет готовый LIVEDUB-перевод пользователю.
 
-            Общий хелпер для обеих веток (кэш-hit и полная обработка) —
-            раньше блок был продублирован, правки вносились в 2 места.
+            Возвращает True, если пользователю что-то отправлено (видео или
+            внятное сообщение); False — если перевод тихо не состоялся.
+            Общий хелпер для обеих веток (кэш-hit и полная обработка).
             """
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
@@ -306,7 +327,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         reply_to_message_id=update.message.message_id,
                         supports_streaming=True,
                     )
-                    return
+                    return True
                 except Exception as _fid_err:
                     # file_id протух (смена бота/сервера). Чистим кэш, чтобы
                     # следующая отправка ссылки запустила полный цикл, и честно
@@ -325,18 +346,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         )
                     except Exception:
                         pass
-                    return
+                    return True  # юзер получил объяснение
             if not (live_dub_task and context):
-                return
+                return False
             try:
                 # 1800с: vot-cli теперь ретраит (Яндекс готовит длинный перевод
                 # минутами) — старый потолок 600с отменял задачу раньше ретраев
                 livedub_result = await asyncio.wait_for(live_dub_task, timeout=1800)
                 if not livedub_result:
-                    return
+                    return False
                 livedub_path, is_fallback, has_subs = livedub_result
                 if not (livedub_path and livedub_path.exists()):
-                    return
+                    return False
 
                 # ── Техническая проверка целостности (всегда, дёшево) ──
                 _tech_warnings: list[str] = []
@@ -360,7 +381,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
                         reply_to_message_id=update.message.message_id,
                     )
-                    return
+                    return True
                 if is_fallback:
                     caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                 else:
@@ -530,16 +551,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.info("[LiveDubQA] проверка не дала результата — отчёт не отправлен")
                     except Exception as _qa_err:
                         logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
+                return True
             except asyncio.TimeoutError:
                 # wait_for отменяет задачу при таймауте — перевод уже не придёт.
-                # Раньше сообщение предлагало несуществующую команду /dub.
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text="⏳ Перевод «Живые голоса» не успел за 30 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
                     reply_to_message_id=update.message.message_id,
                 )
+                return True
             except Exception as e:
                 logger.warning(f"[LiveDub] fail: {e}")
+                return False
 
         performer, title = parse_title(full_title, channel_name)
 
@@ -552,14 +575,26 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     )
                 except Exception:
                     pass
-            await _send_livedub_result()
+            _delivered = await _send_livedub_result()
             if status_msg:
                 try:
                     await status_msg.delete()
                 except Exception:
                     pass
+            if not _delivered:
+                # FIX 2026-06-10: раньше при сбое перевода ENG Quick юзер
+                # оставался ВООБЩЕ без ответа (статус удалён, видео нет).
+                try:
+                    await update.message.reply_text(
+                        "❌ Перевод «Живые голоса» не получился для этого видео.\n"
+                        "Возможные причины: перевод недоступен у Яндекса, vot-cli-live "
+                        "не установлен, или видео слишком длинное.\n"
+                        "Попробуйте режим 🇬🇧 ENG Full (/mode) — там будет хотя бы анализ."
+                    )
+                except Exception:
+                    pass
             cleanup_files(media_id)
-            logger.info(f"ENG Quick done: {media_id}")
+            logger.info(f"ENG Quick done: {media_id} delivered={_delivered}")
             return True
 
         # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
