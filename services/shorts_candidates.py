@@ -187,7 +187,6 @@ async def create_shorts_candidates(
             except Exception:
                 pass
 
-        loop = asyncio.get_running_loop()
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
         response = None
 

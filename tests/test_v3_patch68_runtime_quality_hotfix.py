@@ -115,7 +115,7 @@ def test_caption_shows_timestamp_coverage_and_trim_notice():
 
 
 def test_segment_export_marks_partial_status(tmp_path):
-    out = save_segment_plan_export(
+    save_segment_plan_export(
         video_id="segpartial",
         title="T",
         timestamps="0:00 Start\n10:00 Middle\n30:00 Last",

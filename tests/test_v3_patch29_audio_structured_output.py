@@ -52,7 +52,7 @@ def test_gemini_analyze_uses_schema_with_legacy_fallback():
 
 def test_gemini_analyze_generate_block_has_quota_overload_passthrough():
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
+    ast.parse(src)  # валидируем синтаксис; дерево само не нужно
     # Lightweight structural check: the fallback path must not swallow quota/503.
     assert "if is_quota_error(_schema_err) or is_overload_error(_schema_err):" in src
     assert "raise" in src[src.find("if is_quota_error(_schema_err)"):src.find("logger.warning", src.find("if is_quota_error(_schema_err)"))]

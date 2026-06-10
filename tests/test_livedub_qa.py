@@ -574,3 +574,41 @@ def test_pipeline_passes_existing_part_to_qa():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "existing_audio_part=_qa_part" in src
     assert "existing_client=_qa_client" in src
+
+
+# ── Заход 12: внешний код-ревью отчёт ────────────────────────────
+
+def test_bot_new_starts_with_docstring():
+    """Шебанг/докстринг до кода; HF_HUB env — после докстринга, до импортов."""
+    import ast
+    src = Path("bot_new.py").read_text(encoding="utf-8")
+    assert src.startswith("#!")
+    tree = ast.parse(src)
+    assert isinstance(tree.body[0], ast.Expr)  # докстринг — первый узел
+    assert src.index("HF_HUB_DISABLE_SYMLINKS_WARNING") < src.index("from main import")
+
+
+def test_no_dead_globals_guard():
+    src = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert '"_archive_parse_limit" in globals()' not in src
+
+
+def test_requirements_no_duplicate_waitress():
+    lines = [l.strip() for l in Path("requirements.txt").read_text(encoding="utf-8").splitlines()]
+    waitress = [l for l in lines if l.startswith("waitress")]
+    assert len(waitress) == 1, waitress
+
+
+def test_ruff_gate_extended():
+    src = Path("pyproject.toml").read_text(encoding="utf-8")
+    for code in ("F811", "B023", "E722", "F841"):
+        assert code in src
+
+
+def test_no_proxy_fix_is_not_legacy():
+    """Ревью-отчёт п.3 ОПРОВЕРГНУТ: httpx 0.28 НЕ исключает localhost из
+    прокси сам — без NO_PROXY pool для 127.0.0.1 это HTTPProxy (проверено
+    в этом репо: прод-лог 18:13 TimedOut + повторная проверка _pool).
+    Фикс обязан остаться."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert 'os.environ["NO_PROXY"]' in src

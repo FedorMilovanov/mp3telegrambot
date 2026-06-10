@@ -282,7 +282,9 @@ async def archivequality_command(update, context):
             f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
         )
         return
-    limit = _archive_parse_limit(context.args, 50) if "_archive_parse_limit" in globals() else 50
+    # _archive_parse_limit определена ниже в этом же модуле — на момент ВЫЗОВА
+    # хендлера имя уже разрешено; старый guard через globals() был мёртвым кодом.
+    limit = _archive_parse_limit(context.args, 50)
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, lambda: format_archive_quality_report(limit=limit))
     await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)

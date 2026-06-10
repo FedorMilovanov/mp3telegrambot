@@ -1,5 +1,3 @@
-import os
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 #!/usr/bin/env python3
 """
 bot_new.py — единственная правильная точка входа для MP3Bot.
@@ -56,6 +54,10 @@ bot_new.py — единственная правильная точка вход
     bot_new.py          — точка входа (этот файл)
 """
 
+import os
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"  # ДО импорта faster-whisper/huggingface
+
+
 # ── 1. Проверка версии Python ────────────────────────────────────────────────
 import sys
 
@@ -69,7 +71,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── 3. Ранняя валидация обязательных переменных окружения ─────────────────────
-import os
 
 _bot_token = os.getenv("BOT_TOKEN", "").strip()
 _gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
