@@ -675,3 +675,34 @@ def test_send_helper_returns_delivery_status():
     assert "async def _send_livedub_result() -> bool:" in src
     helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
     assert "return True" in helper and "return False" in helper
+
+
+# ── Заход 17: edited messages не ломают хендлеры ─────────────────
+
+def test_handlers_ignore_edited_messages():
+    """edited_message даёт update.message=None -> AttributeError в хендлерах;
+    редактирование старой ссылки не должно перезапускать обработку видео."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "filters.UpdateType.MESSAGE" in src
+    # MessageHandler с guard
+    assert "& filters.UpdateType.MESSAGE, handle_message" in src
+    # все CommandHandler с фильтром
+    import re
+    handlers = re.findall(r"app\.add_handler\(CommandHandler\([^)]+\)", src)
+    assert handlers, "no CommandHandlers found"
+    for h in handlers:
+        assert "_MSG_ONLY" in h, h
+
+
+def test_edited_message_filter_behavior():
+    """Живая проверка против установленного PTB."""
+    import datetime
+    from telegram.ext import filters as tg_filters
+    from telegram import Update, Message, Chat, User
+    f = tg_filters.TEXT & ~tg_filters.COMMAND & tg_filters.UpdateType.MESSAGE
+    msg = Message(message_id=1, date=datetime.datetime.now(),
+                  chat=Chat(id=1, type="private"),
+                  from_user=User(id=2, is_bot=False, first_name="x"),
+                  text="https://youtu.be/abc")
+    assert not f.check_update(Update(update_id=1, edited_message=msg))
+    assert f.check_update(Update(update_id=2, message=msg))
