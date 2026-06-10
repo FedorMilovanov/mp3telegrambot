@@ -461,3 +461,31 @@ def test_synopsis_source_rule_in_prompt():
 def test_help_mentions_mode_and_eng():
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "/mode" in src and "ENG Quick" in src
+
+
+# ── Заход 8: cover (Bot API 8.3) ─────────────────────────────────
+
+def test_livedub_cover_wired_with_fallback():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_v_cover" in src
+    assert "cover=_v_cover" in src
+    # graceful fallback: повтор без cover при старом Bot API сервере
+    assert "отправка без cover" in src
+
+
+def test_ytdlp_no_double_cookie_sources(tmp_path, monkeypatch):
+    """cookies.txt + yt-dlp.conf с --cookies-from-browser не смешиваются."""
+    import services.ffmpeg as ff
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
+    ck = tmp_path / "cookies.txt"
+    ck.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+    monkeypatch.setattr(ff, "COOKIES_FILE", ck)
+    args = ff._build_ytdlp_base_args()
+    joined = " ".join(args)
+    assert "--cookies " + str(ck) in joined or str(ck) in joined
+    assert "--config-location" not in joined  # конф с куками пропущен
+    # без cookies.txt конф снова подключается
+    monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+    args2 = " ".join(ff._build_ytdlp_base_args())
+    assert "--config-location" in args2

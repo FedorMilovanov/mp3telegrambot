@@ -26,15 +26,32 @@ def _build_ytdlp_base_args() -> list:
     # и ./yt-dlp.conf на сервере. Если локальный yt-dlp.conf существует — подключаем
     # его явно через --config-location, чтобы поведение было предсказуемым.
     args = [PYTHON_EXEC, "-m", "yt_dlp", "--no-config"]
-    if Path("yt-dlp.conf").exists():
-        args += ["--config-location", "yt-dlp.conf"]
-    args += ["--sleep-interval", "2", "--quiet"]
+    # AUDIT 2026-06-10: yt-dlp.conf пользователя может содержать
+    # --cookies-from-browser; вместе с нашим --cookies это двойная загрузка кук
+    # (на Windows при запущенном Firefox его cookie-БД ещё и заблокирована).
+    # Подключаем конф только если у нас НЕТ своего источника кук.
+    _conf_exists = Path("yt-dlp.conf").exists()
+    _conf_has_cookies = False
+    if _conf_exists:
+        try:
+            _conf_has_cookies = "--cookies" in Path("yt-dlp.conf").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
     if COOKIES_FILE.exists():
-        args += ["--cookies", str(COOKIES_FILE)]
-    elif shutil.which("firefox"):
-        args += ["--cookies-from-browser", "firefox"]
+        if _conf_exists and not _conf_has_cookies:
+            args += ["--config-location", "yt-dlp.conf"]
+        elif _conf_exists:
+            logger.info("yt-dlp.conf содержит cookie-опции — пропускаю конф, использую cookies.txt")
+        args += ["--sleep-interval", "2", "--quiet", "--cookies", str(COOKIES_FILE)]
     else:
-        logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
+        if _conf_exists:
+            args += ["--config-location", "yt-dlp.conf"]
+        args += ["--sleep-interval", "2", "--quiet"]
+        if not _conf_has_cookies:
+            if shutil.which("firefox"):
+                args += ["--cookies-from-browser", "firefox"]
+            else:
+                logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
     # JS runtime для решения YouTube n challenge
     # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
     # deno быстрее для YouTube. node — fallback при отсутствии deno.

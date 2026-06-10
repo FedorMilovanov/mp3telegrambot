@@ -372,7 +372,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         None, lambda: make_video_thumbnail(livedub_path))
                 except Exception as _vm_err:
                     logger.warning(f"[LiveDub] video meta: {_vm_err}")
-                _sent_msg = await context.bot.send_video(
+                # Bot API 8.3+: cover — настоящая обложка видео в чате.
+                # Используем YouTube-обложку (уже скачана основным пайплайном).
+                _v_cover = None
+                try:
+                    _cover_candidates = sorted(THUMBS_DIR.glob(f"{media_id}_thumb*"))
+                    if _cover_candidates and _cover_candidates[0].stat().st_size > 1024:
+                        _v_cover = _cover_candidates[0]
+                except Exception:
+                    pass
+                _send_kwargs = dict(
                     chat_id=update.effective_chat.id,
                     video=livedub_path,
                     caption=caption,
@@ -384,6 +393,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     supports_streaming=True,
                     write_timeout=600, read_timeout=600, connect_timeout=60,
                 )
+                try:
+                    if _v_cover is not None:
+                        _sent_msg = await context.bot.send_video(cover=_v_cover, **_send_kwargs)
+                    else:
+                        _sent_msg = await context.bot.send_video(**_send_kwargs)
+                except Exception as _cov_err:
+                    if _v_cover is None:
+                        raise
+                    # Старый Bot API сервер/прокси может не знать cover — повтор без него
+                    logger.info(f"[LiveDub] cover не принят ({str(_cov_err)[:100]}) — отправка без cover")
+                    _sent_msg = await context.bot.send_video(**_send_kwargs)
                 # Сохраняем file_id для мгновенной повторной отправки
                 if not is_fallback:
                     try:
