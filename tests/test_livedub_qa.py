@@ -1067,3 +1067,23 @@ def test_autostart_falls_back_to_user_dir_on_acl():
     assert "LOCALAPPDATA" in src
     assert "icacls" in src           # рецепт постоянного решения
     assert "LOCAL_BOT_API_DATA_DIR" in src  # cleanup переключается на новую папку
+
+
+# ── Заход 36: PowerShell-совместимая подсказка + env-доки ────────
+
+def test_acl_hint_is_shell_aware():
+    """icacls-подсказка с %USERNAME% падала в PowerShell 7 (user report):
+    OI парсился как команда. Теперь оба варианта: pwsh и cmd."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "${env:USERNAME}" in src   # PowerShell-форма
+    assert "%%USERNAME%%" in src      # cmd-форма (экранированный %)
+
+
+def test_all_env_knobs_documented():
+    env = Path(".env.example").read_text(encoding="utf-8")
+    for v in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "LOCAL_BOT_API_EXE",
+              "LOCAL_BOT_API_AUTOSTART", "LOCAL_BOT_API_DATA_DIR",
+              "MP3_LOUDNORM", "SPONSORBLOCK_REMOVE", "LIVEDUB_RNNOISE_MODEL",
+              "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
+              "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "MAX_FILE_SIZE_MB"):
+        assert v in env, f"{v} не задокументирован в .env.example"

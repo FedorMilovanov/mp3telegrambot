@@ -290,8 +290,10 @@ async def run_bot_async():
                     logger.warning(
                         "⚠️ Нет прав на %s (создан от админа). Перезапускаю сервер с "
                         "пользовательской папкой: %s\n"
-                        "   (либо один раз выполните от админа: icacls \"%s\" /grant %%USERNAME%%:(OI)(CI)F)",
-                        _data, _user_data, _data,
+                        "   Постоянное решение (один раз, от админа):\n"
+                        "   PowerShell: icacls \"%s\" /grant \"${env:USERNAME}:(OI)(CI)F\" /T\n"
+                        "   cmd.exe:    icacls \"%s\" /grant %%USERNAME%%:(OI)(CI)F /T",
+                        _data, _user_data, _data, _data,
                     )
                     cmd2 = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
                             "--local", f"--http-port={_port}", f"--dir={_user_data}",
