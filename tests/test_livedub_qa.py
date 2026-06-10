@@ -784,3 +784,35 @@ def test_ytdlp_concurrent_fragments():
     from services.ffmpeg import _build_ytdlp_base_args
     args = " ".join(_build_ytdlp_base_args())
     assert "--concurrent-fragments" in args
+
+
+# ── Заход 23: глючная GPU — принудительный CPU-энкодер ───────────
+
+def test_video_force_cpu_follows_whisper_signal(monkeypatch):
+    """WHISPER_FORCE_CPU=1 — сигнал 'GPU ненадёжна' для всего бота:
+    глючная GPU проходит 0.1с-пробу NVENC, но ломает реальный рендер."""
+    import services.ffmpeg as ff
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
+    monkeypatch.setenv("WHISPER_FORCE_CPU", "1")
+    monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
+    enc, _, _ = ff._get_video_encoder()
+    assert enc == "libx264"
+    # явный override: юзер починил GPU
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
+    monkeypatch.setenv("VIDEO_FORCE_CPU", "0")
+    # (проба может найти/не найти nvenc в CI — главное, что код не падает)
+    ff._get_video_encoder()
+
+
+def test_video_cpu_preset_knob(monkeypatch):
+    import services.ffmpeg as ff
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
+    monkeypatch.setenv("WHISPER_FORCE_CPU", "1")
+    monkeypatch.setenv("VIDEO_CPU_PRESET", "medium")
+    _, _, preset = ff._get_video_encoder()
+    assert preset == ["-preset", "medium"]
+    # мусорное значение -> дефолт
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
+    monkeypatch.setenv("VIDEO_CPU_PRESET", "garbage")
+    _, _, preset = ff._get_video_encoder()
+    assert preset == ["-preset", "veryfast"]
