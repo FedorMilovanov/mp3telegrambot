@@ -1050,7 +1050,8 @@ def test_autostart_diagnoses_dead_server():
     src = Path("main.py").read_text(encoding="utf-8")
     assert "botapi-server.log" in src
     assert "--verbosity=2" in src
-    assert "_proc.poll() is not None" in src
+    # round 35: liveness-проверка вынесена в _spawn() (poll внутри неё)
+    assert "_pr.poll() is None" in src
     assert "упал сразу" in src
     assert "for _grace in range(10)" in src
 
