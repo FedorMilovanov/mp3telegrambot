@@ -78,6 +78,7 @@ def _get_audio_duration(path: Path) -> float:
 
 
 async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
+    from services.shorts_video import _get_whisper_model
     """
     Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
     переводит через Gemini (JSON), сохраняет в SRT.
@@ -131,8 +132,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
     )
 
     def _run_whisper():
-        from faster_whisper import WhisperModel
-        model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+        model = _get_whisper_model()
         segs_gen, _ = model.transcribe(
             str(actual_audio),
             language="en",

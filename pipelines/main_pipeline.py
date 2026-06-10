@@ -46,6 +46,7 @@ from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
+from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
 from core.title_topic_audit import choose_safe_public_title
 from core.publication_status import build_publication_status, missing_to_json
@@ -71,6 +72,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
+    url = get_youtube_video_url(url)
     thumb_buffer = None
     _pp = progress_prefix  # short alias for progress calls
     used_audio_part = None  # инициализируем здесь — finally обращается к ним безусловно
