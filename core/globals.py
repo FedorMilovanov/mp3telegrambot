@@ -63,6 +63,7 @@ except ImportError:
 
 # ─── Настройки ───────────────────────────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "").strip()
+LOCAL_BOT_API_URL = os.getenv("LOCAL_BOT_API_URL", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 DOWNLOAD_DIR   = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)

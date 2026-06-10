@@ -7,7 +7,7 @@ main.py — run_bot_async, run_bot, main().
     тяжёлых зависимостей. Прямой запуск main.py это шаг пропускает.
 """
 from core.globals import (
-    BOT_TOKEN, flask_app, DB_PATH,
+    BOT_TOKEN, LOCAL_BOT_API_URL, flask_app, DB_PATH,
     GEMINI_CLIENTS, DAILY_LIMIT, COOLDOWN_SECONDS,
 )
 from core.database import (
@@ -165,7 +165,14 @@ async def run_bot_async():
         pool_timeout=120.0,
     )
 
-    app = Application.builder().token(BOT_TOKEN).request(t_request).build()
+    builder = Application.builder().token(BOT_TOKEN).request(t_request)
+    if LOCAL_BOT_API_URL:
+        logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
+        builder.base_url(f"{LOCAL_BOT_API_URL}/bot")
+        builder.base_file_url(f"{LOCAL_BOT_API_URL}/file/bot")
+        builder.local_mode(True)
+
+    app = builder.build()
     app.add_handler(CommandHandler("start",      start))
     app.add_handler(CommandHandler("help",       help_command))
     app.add_handler(CommandHandler("resetcache", reset_cache_command))
