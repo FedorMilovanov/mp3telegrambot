@@ -67,6 +67,9 @@ def get_mix_params() -> dict:
         "orig_volume": _env_float("LIVEDUB_ORIG_VOLUME", 0.45),
         "trans_volume": _env_float("LIVEDUB_TRANS_VOLUME", 1.3),
         "delay_ms": _env_int("LIVEDUB_DELAY_MS", 600),
+        # 1 = лёгкий voice-EQ (highpass 70 Гц на обеих дорожках: срезает
+        # гул зала/рокот ниже речи, голос не задевает). 0 = выключить.
+        "voice_eq": _env_int("LIVEDUB_VOICE_EQ", 1),
     }
 
 
@@ -101,6 +104,9 @@ def build_interval_volume_expr(intervals: list[tuple[float, float]],
 _TARGET_LUFS = -16.0
 
 
+_loudness_cache: dict = {}
+
+
 def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
     """Pass-1 loudnorm: возвращает integrated loudness (LUFS) дорожки.
 
@@ -111,6 +117,12 @@ def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
+    try:
+        cache_key = (str(path), Path(path).stat().st_mtime_ns)
+    except OSError:
+        cache_key = None
+    if cache_key is not None and cache_key in _loudness_cache:
+        return _loudness_cache[cache_key]
     kwargs: dict = {"capture_output": True, "text": True,
                     "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
@@ -126,6 +138,10 @@ def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
         if m:
             v = float(m.group(1))
             if -70.0 <= v <= 0.0:
+                if cache_key is not None:
+                    if len(_loudness_cache) > 64:
+                        _loudness_cache.clear()
+                    _loudness_cache[cache_key] = v
                 return v
     except Exception as e:
         logger.warning("[LiveDubMix] measure_loudness failed: %s", e)
@@ -165,7 +181,8 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
 def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
                      duck: bool = True,
                      ru_extra_expr: str = "", en_extra_expr: str = "",
-                     en_gain_db: float = 0.0, ru_gain_db: float = 0.0) -> str:
+                     en_gain_db: float = 0.0, ru_gain_db: float = 0.0,
+                     voice_eq: bool = True) -> str:
     """Собирает filter_complex для микса EN-оригинала и RU-перевода.
 
     ru_extra_expr / en_extra_expr — дополнительные volume-выражения
@@ -176,13 +193,14 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     Финальный alimiter защищает сумму от клиппинга (вместо дефолтного
     normalize амикса, который глушил бы всё на -6 дБ).
     """
-    ru_chain = f"[1:a]adelay={delay_ms}:all=1"
+    _eq = "highpass=f=70," if voice_eq else ""
+    ru_chain = f"[1:a]{_eq}adelay={delay_ms}:all=1"
     if abs(ru_gain_db) > 0.1:
         ru_chain += f",volume={ru_gain_db:.1f}dB"
     ru_chain += f",volume={trans_volume}"
     if ru_extra_expr:
         ru_chain += f",volume='{ru_extra_expr}':eval=frame"
-    en_chain = "[0:a]"
+    en_chain = f"[0:a]{_eq}"
     if abs(en_gain_db) > 0.1:
         en_chain += f"volume={en_gain_db:.1f}dB,"
     en_chain += f"volume={orig_volume}"
@@ -237,6 +255,7 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         p["orig_volume"], p["trans_volume"], p["delay_ms"],
         duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
         en_gain_db=en_gain, ru_gain_db=ru_gain,
+        voice_eq=bool(p["voice_eq"]),
     )
     args = [
         "-i", str(orig_video), "-i", str(ru_audio),
@@ -253,6 +272,7 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
             p["orig_volume"], p["trans_volume"], p["delay_ms"],
             duck=False, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
             en_gain_db=en_gain, ru_gain_db=ru_gain,
+            voice_eq=bool(p["voice_eq"]),
         )
         args[3] = fc2
         ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
@@ -344,6 +364,9 @@ _FIX_EN_BOOST = 2.2   # 0.45 * 2.2 ≈ 1.0 — оригинал в полный 
 
 def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[float, float]]:
     """major-проблемы QA → интервалы (start, end) для авто-правки."""
+    # Таймкоды QA приходят из SRT Яндекса (без задержки) или из дубляжа
+    # (с задержкой) — компенсируем сдвиг перевода в миксе, расширяя окно.
+    delay_s = get_mix_params()["delay_ms"] / 1000.0
     intervals: list[tuple[float, float]] = []
     for issue in issues or []:
         if str(issue.get("severity")) != "major":
@@ -351,7 +374,8 @@ def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[
         t = parse_mmss(str(issue.get("time") or ""))
         if t is None:
             continue
-        intervals.append((max(0.0, t - _FIX_PRE), t - _FIX_PRE + _FIX_LEN))
+        intervals.append((max(0.0, t - _FIX_PRE),
+                          t - _FIX_PRE + _FIX_LEN + delay_s))
         if len(intervals) >= max_fixes:
             break
     # слить пересекающиеся

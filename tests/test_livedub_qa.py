@@ -273,3 +273,35 @@ def test_download_original_video_reuses_existing():
 def test_qa_has_global_deadline():
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert "_qa_deadline" in src  # бюджет на все ключи, а не 420с × каждый
+
+
+# ── Заход 3: file://-отправка, voice-EQ, кэш LUFS, delay-aware fix ──
+
+def test_send_video_uses_path_not_handle():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "video=livedub_path" in src   # Path → file:// при local_mode
+    assert "video=fixed" in src
+    assert 'open(livedub_path, "rb")' not in src
+
+
+def test_voice_eq_toggle():
+    from services.livedub_mix import build_mix_filter
+    fc = build_mix_filter(0.45, 1.3, 600, duck=True, voice_eq=True)
+    assert "highpass=f=70" in fc
+    fc2 = build_mix_filter(0.45, 1.3, 600, duck=True, voice_eq=False)
+    assert "highpass" not in fc2
+
+
+def test_loudness_cache_exists():
+    from services import livedub_mix as lm
+    assert hasattr(lm, "_loudness_cache")
+
+
+def test_fix_intervals_account_for_delay(monkeypatch):
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
+    from services.livedub_mix import extract_fix_intervals
+    iv = extract_fix_intervals([{"time": "1:00", "severity": "major"}])
+    assert len(iv) == 1
+    a, b = iv[0]
+    # окно расширено на delay: 6.0 + 0.6 = 6.6с
+    assert (b - a) >= 6.5

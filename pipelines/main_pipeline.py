@@ -310,15 +310,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
-                with open(livedub_path, "rb") as f:
-                    await context.bot.send_video(
-                        chat_id=update.effective_chat.id,
-                        video=f,
-                        caption=caption,
-                        reply_to_message_id=update.message.message_id,
-                        supports_streaming=True,
-                        write_timeout=600, read_timeout=600, connect_timeout=60,
-                    )
+                # Path вместо file handle: с локальным Bot API (local_mode=True)
+                # PTB передаёт file:// URI — сервер читает файл с диска напрямую,
+                # без HTTP-загрузки сотен МБ (это причина TimedOut на больших файлах).
+                # В облачном режиме PTB сам откроет путь и зальёт как раньше.
+                await context.bot.send_video(
+                    chat_id=update.effective_chat.id,
+                    video=livedub_path,
+                    caption=caption,
+                    reply_to_message_id=update.message.message_id,
+                    supports_streaming=True,
+                    write_timeout=600, read_timeout=600, connect_timeout=60,
+                )
 
                 # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
                 if _livedub_qa_enabled and not is_fallback:
@@ -383,10 +386,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     if fixed and fixed.exists():
                                         _fx_size = fixed.stat().st_size / (1024 * 1024)
                                         if _fx_size <= MAX_FILE_SIZE_MB:
-                                            with open(fixed, "rb") as ff:
-                                                await context.bot.send_video(
+                                            await context.bot.send_video(
                                                     chat_id=update.effective_chat.id,
-                                                    video=ff,
+                                                    video=fixed,
                                                     caption=(
                                                         f"🩹 Исправленная версия: в {len(_qa_majors)} "
                                                         f"месте(ах) с искажением перевод приглушён, "
