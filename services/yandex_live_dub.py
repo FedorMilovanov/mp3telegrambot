@@ -124,19 +124,27 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
 
 
 async def get_live_dub_audio(video_url: str, output_dir: Path,
-                             timeout: int = 480, retries: int = 2) -> Path:
-    """Скачивает только MP3-перевод (Живые голоса) через vot-cli-live.
+                             timeout: int = 480, retries: int = 2,
+                             voice_style: str = "live") -> Path:
+    """Скачивает MP3-перевод через vot-cli-live.
 
     AUDIT 2026-06-10: Яндекс готовит перевод длинного видео МИНУТЫ
     (официальный блог: час видео == минуты обработки); vot-cli поллит
     ~5 минут и сдаётся, хотя сервер продолжает готовить перевод —
     повторный запрос обычно получает готовый кэш. Поэтому retries.
+
+    FIX 2026-06-11 (round 38, live chat): для части роликов (Shorts!)
+    сервер отдаёт live-голоса только новому протоколу Я.Браузера, а на
+    запрос vot-cli отвечает 'Translation not available' — хотя ОБЫЧНЫЕ
+    голоса доступны (скриншот юзера: браузер предлагает оба варианта,
+    'Обычные ~1 мин' и 'Живые'). Поэтому voice_style параметризован:
+    вызывающий код делает fallback live → tts, как сам Я.Браузер.
     """
     vot = _check_vot_cli()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [vot, "--output", str(output_dir), "--voice-style", "live", "--quiet", video_url]
+    cmd = [vot, "--output", str(output_dir), "--voice-style", voice_style, "--quiet", video_url]
     logger.info(f"[LiveDub] Запуск: {' '.join(cmd)}")
 
     loop = asyncio.get_running_loop()

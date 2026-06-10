@@ -335,9 +335,30 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
 
     try:
         ru_audio = await ru_task
-    except RuntimeError:
-        await _drain(orig_task)
-        raise  # LIVEDUB_NOT_AVAILABLE и пр. — наверх, там общий fallback
+    except RuntimeError as _live_err:
+        # FIX round 38: live-голоса для части роликов (Shorts) недоступны
+        # vot-протоколу, но ОБЫЧНЫЕ голоса есть (Я.Браузер показывает оба).
+        # Fallback live → tts, как делает сам браузер. LIVEDUB_TTS_FALLBACK=0
+        # отключает (пуристам только живые голоса).
+        if ("LIVEDUB_NOT_AVAILABLE" in str(_live_err)
+                and os.getenv("LIVEDUB_TTS_FALLBACK", "1").strip().lower()
+                    not in {"0", "false", "no", "off"}):
+            logger.info("[LiveDubMix] Живые голоса недоступны — пробую обычные (tts)")
+            try:
+                ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts")
+                logger.info("[LiveDubMix] Перевод получен обычными голосами (tts)")
+                # маркер для caption: перевод не «Живые голоса», а обычные
+                try:
+                    (workdir / ".voice_style_tts").write_text("1", encoding="utf-8")
+                except OSError:
+                    pass
+            except Exception as _tts_err:
+                logger.info("[LiveDubMix] tts тоже недоступен: %s", str(_tts_err)[:120])
+                await _drain(orig_task)
+                raise _live_err from None
+        else:
+            await _drain(orig_task)
+            raise  # LIVEDUB_NOT_AVAILABLE и пр. — наверх, там общий fallback
     except Exception as e:
         logger.warning("[LiveDubMix] не получил RU-дорожку: %s", e)
         await _drain(orig_task)

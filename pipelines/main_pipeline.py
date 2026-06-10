@@ -408,7 +408,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if is_fallback:
                     caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                 else:
-                    caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                    # round 38: если сработал tts-fallback — честный caption
+                    _tts_marker = False
+                    try:
+                        _tts_marker = ("ld_work" in locals() and (ld_work / ".voice_style_tts").exists())
+                    except OSError:
+                        pass
+                    _voice_label = "🎬 Перевод Яндекса (обычные голоса)" if _tts_marker else "🎬 Живые голоса Яндекса"
+                    caption = _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
                 # Path вместо file handle: с локальным Bot API (local_mode=True)

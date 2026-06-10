@@ -1113,3 +1113,20 @@ def test_cleanup_autodetects_both_standard_dirs(tmp_path, monkeypatch):
     monkeypatch.delenv("LOCAL_BOT_API_DATA_DIR", raising=False)
     assert cleanup_botapi_server_files(max_age_hours=24) == 1
     assert not old_f.exists()
+
+
+# ── Заход 38: tts-fallback для Shorts (live недоступны протоколу) ─
+
+def test_tts_fallback_when_live_unavailable():
+    """User report + скриншот: Я.Браузер переводит Shorts (предлагает
+    'Обычные ~1 мин' и 'Живые'), а vot-cli получает Translation not
+    available — live-голоса для части роликов есть только у нового
+    протокола браузера (issue #14, релиз-ноты VOT 1.9.5.1)."""
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert 'voice_style: str = "live"' in src   # параметризован
+    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert 'voice_style="tts"' in mix           # fallback live→tts
+    assert "LIVEDUB_TTS_FALLBACK" in mix        # выключатель для пуристов
+    assert ".voice_style_tts" in mix            # маркер для честного caption
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "обычные голоса" in pipe             # caption не врёт про Живые
