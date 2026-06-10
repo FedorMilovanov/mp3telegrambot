@@ -871,3 +871,33 @@ def test_sponsorblock_optin_validated(monkeypatch):
 def test_mp3_embeds_id3_metadata():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert src.count('"--embed-metadata", "--embed-thumbnail"') == 2  # обе ветки
+
+
+# ── Заход 28: ID3-главы из Gemini-таймкодов ──────────────────────
+
+def test_mp3_chapters_embed_and_validate(tmp_path):
+    import subprocess, shutil
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        import pytest
+        pytest.skip("no ffmpeg in CI")
+    mp3 = tmp_path / "a.mp3"
+    subprocess.run([ffmpeg, "-f", "lavfi", "-i", "sine=frequency=300:duration=30",
+                    "-c:a", "libmp3lame", "-y", str(mp3)], capture_output=True, timeout=60)
+    from services.mp3_chapters import embed_chapters
+    ts = [{"time": "0:00", "topic": "**Один**"}, {"time": "0:10", "topic": "Два"},
+          {"time": "trash", "topic": "x"}, {"time": "0:10", "topic": "дубль"}]
+    assert embed_chapters(mp3, ts, duration_sec=30)
+    from mutagen.id3 import ID3
+    tags = ID3(str(mp3))
+    chaps = tags.getall("CHAP")
+    assert len(chaps) == 2 and len(tags.getall("CTOC")) == 1
+    titles = {c.sub_frames.getall("TIT2")[0].text[0] for c in chaps}
+    assert "Один" in titles  # markdown очищен
+    # одна точка — не навигация
+    assert not embed_chapters(mp3, [{"time": "0:00", "topic": "x"}], 30)
+
+
+def test_mp3_chapters_wired_both_branches():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert src.count("embed_chapters") >= 4  # 2 импорта + 2 вызова

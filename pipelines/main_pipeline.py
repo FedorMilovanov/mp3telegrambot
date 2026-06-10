@@ -813,6 +813,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _cap_ts_str = ""
             _ts_in_cap = len([l for l in _cap_ts_str.split("\n") if l.strip()])
             logger.info(f"Кэш caption visible_len={visible_length(caption)} format={_c_fmt} ts_limit={_ts_limit} ts_in_cap={_ts_in_cap}")
+            try:
+                from services.mp3_chapters import embed_chapters
+                _ts_chap_c = (c_ai or {}).get("timestamps") or []
+                if isinstance(_ts_chap_c, list) and _ts_chap_c:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: embed_chapters(mp3_path, _ts_chap_c, duration))
+            except Exception as _chap_err_c:
+                logger.warning(f"MP3 chapters (кэш) skip: {_chap_err_c}")
             with open(mp3_path, "rb") as af:
                 _title_c     = (c_ai or {}).get("real_title") or title
                 _performer_c = (c_ai or {}).get("real_author") or performer
@@ -1659,6 +1667,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.info("Generated pages archive saved for %s; segments=%s", media_id, _segment_export.get("count"))
             except Exception as _archive_err:
                 logger.warning("Generated pages archive save failed for %s: %s", media_id, _archive_err)
+
+        # ID3-главы из Gemini-таймкодов: навигация по темам в подкаст-плеерах
+        try:
+            from services.mp3_chapters import embed_chapters
+            _ts_for_chap = (ai_data or {}).get("timestamps") or []
+            if isinstance(_ts_for_chap, list) and _ts_for_chap:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: embed_chapters(mp3_path, _ts_for_chap, duration))
+        except Exception as _chap_err:
+            logger.warning(f"MP3 chapters skip: {_chap_err}")
 
         with open(mp3_path, "rb") as audio_file:
             audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)
