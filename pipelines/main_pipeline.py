@@ -159,20 +159,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         "SELECT value FROM bot_settings WHERE key = ?",
                         (f"user_mode_{user_id}",)
                     ).fetchone()
-                if row and row[0] == "eng":
-                    user_mode = "eng"
+                if row and row[0] in ("eng", "eng_fast"):
+                    user_mode = row[0]
             except Exception:
                 pass
 
         live_dub_task = None
-        if user_mode == "eng":
+        _livedub_qa_enabled = False
+        if user_mode in ("eng", "eng_fast"):
             from services.yandex_live_dub import get_live_dub_video
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
             
-            eng_subs_enabled = await asettings_get("eng_subtitles")
+            # ENG Quick: только перевод — без субтитров и без QA (экономим CPU и квоту)
+            eng_subs_enabled = (user_mode == "eng") and await asettings_get("eng_subtitles")
+            _livedub_qa_enabled = (user_mode == "eng") and await asettings_get("livedub_qa")
 
             async def _run_livedub_bg(video_url, workdir):
                 try:
@@ -245,6 +248,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 livedub_path, is_fallback, has_subs = livedub_result
                 if not (livedub_path and livedub_path.exists()):
                     return
+
+                # ── Техническая проверка целостности (всегда, дёшево) ──
+                _tech_warnings: list[str] = []
+                if not is_fallback:
+                    try:
+                        from services.livedub_qa import technical_check
+                        _tech_warnings = await asyncio.get_running_loop().run_in_executor(
+                            None, lambda: technical_check(livedub_path, duration)
+                        )
+                        for _tw in _tech_warnings:
+                            logger.warning(f"[LiveDubQA] tech: {_tw}")
+                    except Exception as _tqe:
+                        logger.warning(f"[LiveDubQA] technical_check сбой: {_tqe}")
+
                 file_size = livedub_path.stat().st_size / (1024 * 1024)
                 if file_size > MAX_FILE_SIZE_MB:
                     logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
@@ -259,6 +276,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                 else:
                     caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                    if _tech_warnings:
+                        caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
                 with open(livedub_path, "rb") as f:
                     await context.bot.send_video(
                         chat_id=update.effective_chat.id,
@@ -268,6 +287,51 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         supports_streaming=True,
                         write_timeout=600, read_timeout=600, connect_timeout=60,
                     )
+
+                # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
+                if _livedub_qa_enabled and not is_fallback:
+                    try:
+                        from services.livedub_qa import run_translation_qa, format_qa_report
+                        _qa_status = await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text="🔍 Проверяю точность перевода (Gemini сравнивает дубляж с оригиналом)...",
+                            reply_to_message_id=update.message.message_id,
+                        )
+                        _orig_audio = None
+                        _mp3_candidate = DOWNLOAD_DIR / f"{media_id}.mp3"
+                        if _mp3_candidate.exists():
+                            _orig_audio = _mp3_candidate
+                        else:
+                            _mp3_64 = DOWNLOAD_DIR / f"{media_id}_64.mp3"
+                            if _mp3_64.exists():
+                                _orig_audio = _mp3_64
+                        _qa_ai_data = None
+                        try:
+                            _qa_cached = await adb_get(media_id)
+                            _qa_ai_data = (_qa_cached or {}).get("ai_data")
+                        except Exception:
+                            pass
+                        qa_result = await run_translation_qa(
+                            dub_video_path=livedub_path,
+                            original_audio_path=_orig_audio,
+                            ai_data=_qa_ai_data,
+                            duration=duration,
+                        )
+                        try:
+                            await _qa_status.delete()
+                        except Exception:
+                            pass
+                        if qa_result:
+                            await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=format_qa_report(qa_result),
+                                parse_mode="HTML",
+                                reply_to_message_id=update.message.message_id,
+                            )
+                        else:
+                            logger.info("[LiveDubQA] проверка не дала результата — отчёт не отправлен")
+                    except Exception as _qa_err:
+                        logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
             except asyncio.TimeoutError:
                 # wait_for отменяет задачу при таймауте — перевод уже не придёт.
                 # Раньше сообщение предлагало несуществующую команду /dub.
@@ -280,6 +344,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.warning(f"[LiveDub] fail: {e}")
 
         performer, title = parse_title(full_title, channel_name)
+
+        # ── ENG Quick: только перевод, весь анализ пропускаем ────────────
+        if user_mode == "eng_fast":
+            if status_msg:
+                try:
+                    await status_msg.edit_text(
+                        f"⚡ Режим ENG Quick: жду перевод «Живые голоса»...\n📝 {title}"
+                    )
+                except Exception:
+                    pass
+            await _send_livedub_result()
+            if status_msg:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+            cleanup_files(media_id)
+            logger.info(f"ENG Quick done: {media_id}")
+            return True
 
         # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
         cached = await adb_get(media_id)
