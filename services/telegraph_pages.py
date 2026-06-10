@@ -437,11 +437,11 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
                 "NA28":  "NA28 (греч. текст НЗ)",
                 "BHS":   "BHS (евр. текст ВЗ)",
             }
-            def _expand_source(sl: str) -> str:
+            def _expand_source(sl: str, _abbrevs=_DICT_ABBREVS) -> str:
                 """Расшифровывает аббревиатуры словарей в source_label."""
                 if not sl:
                     return sl
-                for abbr, full in _DICT_ABBREVS.items():
+                for abbr, full in _abbrevs.items():
                     sl = re.sub(r'\b' + abbr + r'\b', full, sl)
                 return sl
 

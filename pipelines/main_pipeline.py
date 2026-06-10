@@ -230,6 +230,55 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work))
         # --- END LIVEDUB ---
 
+        async def _send_livedub_result():
+            """Отправляет готовый LIVEDUB-перевод пользователю.
+
+            Общий хелпер для обеих веток (кэш-hit и полная обработка) —
+            раньше блок был продублирован, правки вносились в 2 места.
+            """
+            if not (live_dub_task and context):
+                return
+            try:
+                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
+                if not livedub_result:
+                    return
+                livedub_path, is_fallback, has_subs = livedub_result
+                if not (livedub_path and livedub_path.exists()):
+                    return
+                file_size = livedub_path.stat().st_size / (1024 * 1024)
+                if file_size > MAX_FILE_SIZE_MB:
+                    logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
+                    _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
+                        reply_to_message_id=update.message.message_id,
+                    )
+                    return
+                if is_fallback:
+                    caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                else:
+                    caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                with open(livedub_path, "rb") as f:
+                    await context.bot.send_video(
+                        chat_id=update.effective_chat.id,
+                        video=f,
+                        caption=caption,
+                        reply_to_message_id=update.message.message_id,
+                        supports_streaming=True,
+                        write_timeout=600, read_timeout=600, connect_timeout=60,
+                    )
+            except asyncio.TimeoutError:
+                # wait_for отменяет задачу при таймауте — перевод уже не придёт.
+                # Раньше сообщение предлагало несуществующую команду /dub.
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="⏳ Перевод «Живые голоса» не успел за 10 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.warning(f"[LiveDub] fail: {e}")
+
         performer, title = parse_title(full_title, channel_name)
 
         # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
@@ -538,45 +587,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             pass
 
 
-                # --- LIVEDUB: отправка результата ---
-        if live_dub_task and context:
-            try:
-                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
-                if livedub_result:
-                    livedub_path, is_fallback, has_subs = livedub_result
-                    if livedub_path and livedub_path.exists():
-                        file_size = livedub_path.stat().st_size / (1024 * 1024)
-                        if file_size > MAX_FILE_SIZE_MB:
-                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
-                             _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
-                             await context.bot.send_message(
-                                 chat_id=update.effective_chat.id,
-                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
-                                 reply_to_message_id=update.message.message_id,
-                             )
-                        else:
-                            if is_fallback:
-                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
-                            else:
-                                caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
-                            with open(livedub_path, "rb") as f:
-                                await context.bot.send_video(
-                                    chat_id=update.effective_chat.id,
-                                    video=f,
-                                    caption=caption,
-                                    reply_to_message_id=update.message.message_id,
-                                    supports_streaming=True,
-                                    write_timeout=600, read_timeout=600, connect_timeout=60
-                                )
-            except asyncio.TimeoutError:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="⏳ Перевод «Живые голоса» ещё генерируется. Попробуйте /dub <url>",
-                    reply_to_message_id=update.message.message_id,
-                )
-            except Exception as e:
-                logger.warning(f"[LiveDub] fail: {e}")
-        # --- END LIVEDUB ---
+            # --- LIVEDUB: отправка результата (общий хелпер) ---
+            # FIX: раньше cleanup/return были случайно вложены в
+            # `if live_dub_task and context:` — кэш-хит в RUS-режиме
+            # не делал return и видео обрабатывалось заново.
+            await _send_livedub_result()
             cleanup_files(media_id)
             logger.info(f"Кэш hit: {media_id}")
             return True
@@ -1492,45 +1507,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")
 
 
-                # --- LIVEDUB: отправка результата ---
-        if live_dub_task and context:
-            try:
-                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
-                if livedub_result:
-                    livedub_path, is_fallback, has_subs = livedub_result
-                    if livedub_path and livedub_path.exists():
-                        file_size = livedub_path.stat().st_size / (1024 * 1024)
-                        if file_size > MAX_FILE_SIZE_MB:
-                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
-                             _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
-                             await context.bot.send_message(
-                                 chat_id=update.effective_chat.id,
-                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
-                                 reply_to_message_id=update.message.message_id,
-                             )
-                        else:
-                            if is_fallback:
-                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
-                            else:
-                                caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
-                            with open(livedub_path, "rb") as f:
-                                await context.bot.send_video(
-                                    chat_id=update.effective_chat.id,
-                                    video=f,
-                                    caption=caption,
-                                    reply_to_message_id=update.message.message_id,
-                                    supports_streaming=True,
-                                    write_timeout=600, read_timeout=600, connect_timeout=60
-                                )
-            except asyncio.TimeoutError:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="⏳ Перевод «Живые голоса» ещё генерируется. Попробуйте /dub <url>",
-                    reply_to_message_id=update.message.message_id,
-                )
-            except Exception as e:
-                logger.warning(f"[LiveDub] fail: {e}")
-        # --- END LIVEDUB ---
+        # --- LIVEDUB: отправка результата (общий хелпер) ---
+        await _send_livedub_result()
         cleanup_files(media_id)
 
         return True

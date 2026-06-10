@@ -994,10 +994,10 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
         else:
             ctx = context_tail
 
-            def _repl(m: re.Match) -> str:
+            def _repl(m: re.Match, _ctx=ctx) -> str:
                 tc = m.group(1)
                 local_pre = m.string[max(0, m.start() - 50):m.start()]
-                pre = (ctx + local_pre)[-50:]
+                pre = (_ctx + local_pre)[-50:]
                 if _is_bible_ref_before(pre):
                     return tc
                 secs = _tc_to_seconds(tc)
