@@ -176,6 +176,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # ENG Quick: только перевод — без субтитров и без QA (экономим CPU и квоту)
             eng_subs_enabled = (user_mode == "eng") and await asettings_get("eng_subtitles")
             _livedub_qa_enabled = (user_mode == "eng") and await asettings_get("livedub_qa")
+            _livedub_pro_mix = await asettings_get("livedub_pro_mix")
+            _livedub_autofix = _livedub_qa_enabled and await asettings_get("livedub_autofix")
 
             async def _run_livedub_bg(video_url, workdir):
                 try:
@@ -184,15 +186,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     if eng_subs_enabled:
                         subs_task = asyncio.create_task(create_gemini_subtitles(video_url, workdir))
                     
-                    dub_task = asyncio.create_task(
-                        get_live_dub_video(
+                    async def _make_dub():
+                        """Pro-микс (свой ffmpeg: слышный оригинал, ducking,
+                        задержка перевода) с fallback на vot-cli --merge-video."""
+                        if _livedub_pro_mix:
+                            try:
+                                from services.livedub_mix import build_pro_dub
+                                pro = await build_pro_dub(video_url, workdir)
+                                if pro and pro.exists():
+                                    return pro
+                                logger.warning("[LiveDub] pro-микс не собрался — fallback на vot-merge")
+                            except RuntimeError:
+                                raise  # LIVEDUB_NOT_AVAILABLE — наверх
+                            except Exception as _pme:
+                                logger.warning(f"[LiveDub] pro-микс сбой ({_pme}) — fallback на vot-merge")
+                        return await get_live_dub_video(
                             video_url, workdir,
                             original_volume=0.3,
                             translation_volume=1.5,
                             keep_original_audio=True,
                         )
-                    )
-                    
+
+                    dub_task = asyncio.create_task(_make_dub())
+
                     srt_path = None
                     if subs_task:
                         try:
@@ -328,6 +344,34 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 parse_mode="HTML",
                                 reply_to_message_id=update.message.message_id,
                             )
+
+                            # ── Авто-правка: major-искажения глушим, оригинал поднимаем ──
+                            _qa_majors = [i for i in (qa_result.get("issues") or [])
+                                          if str(i.get("severity")) == "major"]
+                            if _livedub_autofix and _qa_majors and "ld_work" in locals():
+                                try:
+                                    from services.livedub_mix import apply_qa_audio_fixes
+                                    fixed = await apply_qa_audio_fixes(ld_work, qa_result.get("issues") or [])
+                                    if fixed and fixed.exists():
+                                        _fx_size = fixed.stat().st_size / (1024 * 1024)
+                                        if _fx_size <= MAX_FILE_SIZE_MB:
+                                            with open(fixed, "rb") as ff:
+                                                await context.bot.send_video(
+                                                    chat_id=update.effective_chat.id,
+                                                    video=ff,
+                                                    caption=(
+                                                        f"🩹 Исправленная версия: в {len(_qa_majors)} "
+                                                        f"месте(ах) с искажением перевод приглушён, "
+                                                        f"оригинал выведен в полный голос."
+                                                    ),
+                                                    reply_to_message_id=update.message.message_id,
+                                                    supports_streaming=True,
+                                                    write_timeout=600, read_timeout=600, connect_timeout=60,
+                                                )
+                                    else:
+                                        logger.info("[LiveDubQA] авто-правка не собралась (нет дорожек/интервалов)")
+                                except Exception as _fx_err:
+                                    logger.warning(f"[LiveDubQA] авто-правка сбой: {_fx_err}")
                         else:
                             logger.info("[LiveDubQA] проверка не дала результата — отчёт не отправлен")
                     except Exception as _qa_err:

@@ -474,6 +474,8 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "generate_pdf":           False,  # Генерировать PDF (выключено по умолчанию)
     "eng_subtitles":          True,   # Субтитры для ENG режима (Whisper+Gemini)
     "livedub_qa":             True,   # Смысловая проверка перевода через Gemini (ENG Full)
+    "livedub_pro_mix":        True,   # Собственный микс: слышный оригинал + ducking + задержка
+    "livedub_autofix":        True,   # Авто-правка по QA: глушить major-искажения перевода
 }
 
 SETTINGS_LABELS: dict[str, str] = {
@@ -504,6 +506,8 @@ SETTINGS_LABELS: dict[str, str] = {
     "generate_pdf":           "📄 Генерировать PDF",
     "eng_subtitles":          "💬 Субтитры ENG",
     "livedub_qa":             "🔍 Проверка перевода",
+    "livedub_pro_mix":        "🎚 Pro-микс звука",
+    "livedub_autofix":        "🩹 Авто-правка перевода",
 }
 
 # ─── Скорость Shorts (не bool, отдельная настройка) ──────────
@@ -770,5 +774,5 @@ SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
                     "__speed__"]),
     ("🎬 Клипы",    ["clips", "clips_snapshot"]),
     ("🧩 Сегменты", ["segments", "segments_render", "segments_subtitles", "segments_batch_render"]),
-    ("🇬🇧 ENG Режим", ["eng_subtitles", "livedub_qa"]),
+    ("🇬🇧 ENG Режим", ["eng_subtitles", "livedub_qa", "livedub_pro_mix", "livedub_autofix"]),
 ]

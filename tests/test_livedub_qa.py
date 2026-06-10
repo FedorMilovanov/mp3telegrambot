@@ -98,3 +98,71 @@ def test_pipeline_handles_eng_fast():
 def test_settings_key_registered():
     from core.database import SETTINGS_LABELS
     assert "livedub_qa" in SETTINGS_LABELS
+
+
+# ── Pro-микс и авто-правка ───────────────────────────────────────
+
+def test_parse_mmss():
+    from services.livedub_mix import parse_mmss
+    assert parse_mmss("14:32") == 872.0
+    assert parse_mmss("1:02:03") == 3723.0
+    assert parse_mmss("0:05") == 5.0
+    assert parse_mmss("garbage") is None
+    assert parse_mmss("") is None
+
+
+def test_interval_volume_expr():
+    from services.livedub_mix import build_interval_volume_expr
+    e = build_interval_volume_expr([(10.0, 16.0)], inside=0.15)
+    assert "between(t,10.00,16.00)" in e and "0.15" in e
+    assert build_interval_volume_expr([], inside=0.15) == "1.0"
+
+
+def test_extract_fix_intervals_majors_only_and_merge():
+    from services.livedub_mix import extract_fix_intervals
+    issues = [
+        {"time": "1:00", "severity": "major"},
+        {"time": "1:03", "severity": "major"},   # пересекается с первым -> merge
+        {"time": "5:00", "severity": "minor"},   # игнор
+        {"time": "bad",  "severity": "major"},   # мусорный таймкод -> игнор
+    ]
+    iv = extract_fix_intervals(issues)
+    assert len(iv) == 1
+    a, b = iv[0]
+    assert a <= 60.0 - 0.4 and b >= 63.0
+
+
+def test_build_mix_filter_contains_delay_duck_and_volumes():
+    from services.livedub_mix import build_mix_filter
+    fc = build_mix_filter(0.45, 1.3, 600, duck=True)
+    assert "adelay=600" in fc
+    assert "sidechaincompress" in fc
+    assert "volume=0.45" in fc and "volume=1.3" in fc
+    fc2 = build_mix_filter(0.45, 1.3, 600, duck=False)
+    assert "sidechaincompress" not in fc2 and "amix" in fc2
+
+
+def test_mix_params_env_defaults_and_clamping(monkeypatch):
+    from services import livedub_mix as lm
+    monkeypatch.delenv("LIVEDUB_ORIG_VOLUME", raising=False)
+    monkeypatch.delenv("LIVEDUB_DELAY_MS", raising=False)
+    p = lm.get_mix_params()
+    assert p["orig_volume"] == 0.45 and p["delay_ms"] == 600
+    monkeypatch.setenv("LIVEDUB_ORIG_VOLUME", "99")   # вне диапазона -> дефолт
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "-5")
+    p = lm.get_mix_params()
+    assert p["orig_volume"] == 0.45 and p["delay_ms"] == 600
+
+
+def test_pipeline_wires_pro_mix_and_autofix():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert 'asettings_get("livedub_pro_mix")' in src
+    assert 'asettings_get("livedub_autofix")' in src
+    assert "build_pro_dub" in src
+    assert "apply_qa_audio_fixes" in src
+
+
+def test_new_settings_registered():
+    from core.database import SETTINGS_LABELS
+    assert "livedub_pro_mix" in SETTINGS_LABELS
+    assert "livedub_autofix" in SETTINGS_LABELS
