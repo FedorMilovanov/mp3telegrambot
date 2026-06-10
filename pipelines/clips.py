@@ -157,18 +157,17 @@ async def process_and_send_clips(
                 # Path вместо handle: при local_mode PTB шлёт file:// —
                 # сервер читает с диска, без HTTP-передачи (большие клипы
                 # >100MB по HTTP ловили TimedOut; см. fix LIVEDUB)
-                if True:
-                    await update.message.reply_video(
-                        video=clip_path,
-                        caption=caption,
-                        duration=int(c["duration_seconds"]),
-                        thumbnail=thumb_buf,
-                        supports_streaming=True,
-                        parse_mode="HTML",
-                        write_timeout=300,   # длинные clips = больше времени на отправку
-                        read_timeout=300,
-                        connect_timeout=30,
-                    )
+                await update.message.reply_video(
+                    video=clip_path,
+                    caption=caption,
+                    duration=int(c["duration_seconds"]),
+                    thumbnail=thumb_buf,
+                    supports_streaming=True,
+                    parse_mode="HTML",
+                    write_timeout=300,   # длинные clips = больше времени на отправку
+                    read_timeout=300,
+                    connect_timeout=30,
+                )
                 sent += 1
                 logger.info(
                     f"Clips: отправлен {i}/{total} "

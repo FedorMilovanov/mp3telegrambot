@@ -32,6 +32,7 @@ from handlers.commands import (
     prompthealth_command, codehealth_command, archivequality_command, archivequalityfile_command, qualityrecords_command, promptrecommend_command, comparevariants_command, archivefile_command, segmentfile_command,
 )
 from handlers.callbacks import handle_callback, settings_command
+from handlers.commands import status_command  # round 32
 from handlers.mode_command import mode_command, handle_mode_callback
 
 import asyncio
@@ -218,6 +219,7 @@ async def run_bot_async():
     app.add_handler(CommandHandler("stop",       stop_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("pdf",        pdf_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("metrics",    metrics_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("status",     status_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("prompthealth", prompthealth_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("codehealth", codehealth_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("archivequality", archivequality_command, filters=_MSG_ONLY))
@@ -322,6 +324,7 @@ async def run_bot_async():
             try:
                 vip_commands = default_commands + [
                     BotCommand("settings",   "⚙️ Настройки бота"),
+                    BotCommand("status",     "🩺 Здоровье бота"),
                     BotCommand("archive",    "📚 Последние страницы"),
                     BotCommand("search",     "🔎 Поиск по архиву"),
                     BotCommand("segments",   "🧩 Сегменты видео"),

@@ -104,13 +104,13 @@ async def _run_montage_or_highlights_pipeline(
             caption = safe_trim_caption(caption, 1024)
 
         try:
-            if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
-                await update.message.reply_video(
-                    video=current_path, caption=caption, duration=int(total_dur),
-                    width=720, height=1280, thumbnail=thumb_buf,
-                    parse_mode="HTML",
-                    write_timeout=120, read_timeout=120, connect_timeout=30,
-                )
+            # Path: file:// при local_mode (см. fix LIVEDUB)
+            await update.message.reply_video(
+                video=current_path, caption=caption, duration=int(total_dur),
+                width=720, height=1280, thumbnail=thumb_buf,
+                parse_mode="HTML",
+                write_timeout=120, read_timeout=120, connect_timeout=30,
+            )
             return True
         except Exception as send_err:
             logger.warning(f"{prefix}: ошибка отправки: {send_err}")

@@ -367,20 +367,20 @@ async def process_and_send_shorts(
                     InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{short_id}"),
                     *_nosub_buttons,
                 ]])
-                if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
-                    await update.message.reply_video(
-                        video=current_path,
-                        caption=caption,
-                        duration=int(c["duration_seconds"]),
-                        width=720,
-                        height=1280,
-                        thumbnail=thumb_buf,
-                        parse_mode="HTML",
-                        reply_markup=trim_keyboard,
-                        write_timeout=120,
-                        read_timeout=120,
-                        connect_timeout=30,
-                    )
+                # Path: file:// при local_mode (см. fix LIVEDUB)
+                await update.message.reply_video(
+                    video=current_path,
+                    caption=caption,
+                    duration=int(c["duration_seconds"]),
+                    width=720,
+                    height=1280,
+                    thumbnail=thumb_buf,
+                    parse_mode="HTML",
+                    reply_markup=trim_keyboard,
+                    write_timeout=120,
+                    read_timeout=120,
+                    connect_timeout=30,
+                )
                 sent += 1
                 logger.info(
                     f"Shorts: отправлен {i}/{total} ({c['start']}–{c['end']}) '{c['title']}'"

@@ -239,6 +239,54 @@ async def reset_cache_command(update, context):
     await _do_resetcache_one(video_id, update)
 
 
+async def status_command(update, context):
+    """Здоровье бота одним сообщением: инструменты, диск, БД, режим (round 32)."""
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    import shutil as _sh
+    import tempfile as _tf
+    from core.globals import LOCAL_BOT_API_URL
+    lines = ["🩺 <b>Статус бота</b>", ""]
+    # Инструменты
+    tools = {
+        "ffmpeg": bool(_sh.which("ffmpeg")),
+        "ffprobe": bool(_sh.which("ffprobe")),
+        "deno/node": bool(_sh.which("deno") or _sh.which("node")),
+        "vot-cli-live": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
+        "mp3gain": bool(_sh.which("mp3gain") or _sh.which("mp3gain.exe")),
+    }
+    lines.append("🔧 " + " · ".join(f"{'✅' if ok else '❌'}{name}" for name, ok in tools.items()))
+    # Энкодер
+    try:
+        from services.ffmpeg import _get_video_encoder
+        _enc, _, _ = _get_video_encoder()
+        lines.append(f"🎬 Энкодер: {_enc}")
+    except Exception:
+        pass
+    # API-режим
+    lines.append(f"🌐 Bot API: {'локальный (' + LOCAL_BOT_API_URL + ')' if LOCAL_BOT_API_URL else 'облачный'}")
+    # Диск
+    try:
+        _free_dl = _sh.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
+        _free_tmp = _sh.disk_usage(_tf.gettempdir()).free / (1024 ** 3)
+        lines.append(f"💾 Диск: downloads {_free_dl:.1f} ГБ · temp {_free_tmp:.1f} ГБ")
+    except OSError:
+        pass
+    # БД и бэкап
+    try:
+        _db_kb = Path(DB_PATH).stat().st_size // 1024
+        _baks = sorted(Path(str(DB_PATH)).parent.glob(Path(str(DB_PATH)).name + ".bak.*"))
+        _bak_info = _baks[-1].name.split(".bak.")[-1] if _baks else "нет"
+        lines.append(f"🗄 БД: {_db_kb} КБ · бэкап: {_bak_info}")
+    except OSError:
+        pass
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
 async def metrics_command(update, context):
     """Показывает администратору сводку Gemini observability."""
     user_id = update.effective_user.id
@@ -997,17 +1045,17 @@ async def cutseg_command(update, context):
                     f"({seconds_to_timestamp(segment.duration)})\n"
                     f"<b>{html_mod.escape(segment.title[:220])}</b>"
                 )
-            if True:  # Path: file:// при local_mode
-                await update.message.reply_video(
-                    video=final_clip_path,
-                    caption=caption,
-                    duration=int(segment.duration),
-                    supports_streaming=True,
-                    parse_mode="HTML",
-                    write_timeout=300,
-                    read_timeout=300,
-                    connect_timeout=60,
-                )
+            # Path: file:// при local_mode
+            await update.message.reply_video(
+                video=final_clip_path,
+                caption=caption,
+                duration=int(segment.duration),
+                supports_streaming=True,
+                parse_mode="HTML",
+                write_timeout=300,
+                read_timeout=300,
+                connect_timeout=60,
+            )
             sent += 1
         await safe_edit_text(msg, f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
     except Exception as exc:

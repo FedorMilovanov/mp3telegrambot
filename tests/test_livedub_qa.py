@@ -985,3 +985,22 @@ def test_chat_actions_during_uploads():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert 'send_action("upload_voice")' in src
     assert 'action="upload_video"' in src
+
+
+# ── Заход 32: /status + чистка if True ───────────────────────────
+
+def test_no_if_true_hacks_left():
+    import re
+    for fname in ("pipelines/clips.py", "pipelines/montage.py", "pipelines/shorts.py",
+                  "handlers/callbacks.py", "handlers/commands.py"):
+        src = Path(fname).read_text(encoding="utf-8")
+        assert not re.search(r"^\s*if True:", src, re.M), fname
+
+
+def test_status_command_registered():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert 'CommandHandler("status"' in src
+    cmd = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "async def status_command" in cmd
+    for probe in ("ffmpeg", "vot-cli-live", "mp3gain", "Диск", "бэкап"):
+        assert probe in cmd

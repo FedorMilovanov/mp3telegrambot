@@ -329,17 +329,17 @@ async def handle_callback(update, context) -> None:
                     f"({seconds_to_timestamp(segment.duration)})\n"
                     f"<b>{_html.escape(segment.title[:220])}</b>"
                 )
-                if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
-                    await query.message.reply_video(
-                        video=final_clip_path,
-                        caption=caption,
-                        duration=int(segment.duration),
-                        supports_streaming=True,
-                        parse_mode="HTML",
-                        write_timeout=300,
-                        read_timeout=300,
-                        connect_timeout=60,
-                    )
+                # Path: file:// при local_mode (см. fix LIVEDUB)
+                await query.message.reply_video(
+                    video=final_clip_path,
+                    caption=caption,
+                    duration=int(segment.duration),
+                    supports_streaming=True,
+                    parse_mode="HTML",
+                    write_timeout=300,
+                    read_timeout=300,
+                    connect_timeout=60,
+                )
                 await safe_edit_text(msg, "✅ Сегмент отправлен.")
             finally:
                 try:
@@ -489,18 +489,18 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
-        if True:  # Path: file:// при local_mode
-            await query.message.reply_video(
-                video=nosub_path,
-                caption=f"🚫 Без субтитров\n\n{caption}",
-                duration=end_s - start_s,
-                width=720,
-                height=1280,
-                parse_mode="HTML",
-                write_timeout=120,
-                read_timeout=120,
-                connect_timeout=30,
-            )
+        # Path: file:// при local_mode
+        await query.message.reply_video(
+            video=nosub_path,
+            caption=f"🚫 Без субтитров\n\n{caption}",
+            duration=end_s - start_s,
+            width=720,
+            height=1280,
+            parse_mode="HTML",
+            write_timeout=120,
+            read_timeout=120,
+            connect_timeout=30,
+        )
         # AUDIT M9 (баг 9): сам nosub_path НЕ удаляем — он может ещё пригодиться
         # для повторных нажатий, его удалит cleanup_nosub_files по TTL.
     except Exception as nosub_err:
@@ -587,19 +587,19 @@ async def _handle_strim_retrim(
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
-        if True:  # Path: file:// при local_mode
-            await query.message.reply_video(
-                video=out_path,
-                caption=f"✂️ {label}\n\n{caption}",
-                duration=end_s - start_s,
-                width=720,
-                height=1280,
-                parse_mode="HTML",
-                reply_markup=new_trim_keyboard,
-                write_timeout=120,
-                read_timeout=120,
-                connect_timeout=30,
-            )
+        # Path: file:// при local_mode
+        await query.message.reply_video(
+            video=out_path,
+            caption=f"✂️ {label}\n\n{caption}",
+            duration=end_s - start_s,
+            width=720,
+            height=1280,
+            parse_mode="HTML",
+            reply_markup=new_trim_keyboard,
+            write_timeout=120,
+            read_timeout=120,
+            connect_timeout=30,
+        )
     except Exception as trim_err:
         logger.warning(f"strim retrim error: {trim_err}")
         try:
