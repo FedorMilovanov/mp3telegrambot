@@ -282,12 +282,21 @@ def cleanup_botapi_server_files(max_age_hours: int = 24) -> int:
     import time as _time
     data_dir = os.getenv("LOCAL_BOT_API_DATA_DIR", "").strip()
     if not data_dir:
-        # Автообнаружение: стандартный путь установки из наших же скриптов
-        # (install-telegram-bot-api.ps1) — чистим без ручной настройки .env
-        _default = Path("C:/ProgramData/TelegramBotAPI/data")
-        if os.name == "nt" and _default.exists():
-            data_dir = str(_default)
-        else:
+        # Автообнаружение (round 37: оба стандартных места). LOCALAPPDATA
+        # проверяется ПЕРВОЙ — туда сервер падает ACL-fallback'ом и именно
+        # она реально растёт; ProgramData может быть недоступна на запись.
+        # Без гейта на os.name: на Linux этих путей просто нет (exists()=False),
+        # а monkeypatch os.name в тестах ломает сам pathlib (WindowsPath).
+        _candidates = []
+        _lad = os.environ.get("LOCALAPPDATA", "")
+        if _lad:
+            _candidates.append(Path(_lad) / "TelegramBotAPI" / "data")
+        _candidates.append(Path("C:/ProgramData/TelegramBotAPI/data"))
+        for _cand in _candidates:
+            if _cand.exists():
+                data_dir = str(_cand)
+                break
+        if not data_dir:
             return 0
     root = Path(data_dir)
     if not root.exists():

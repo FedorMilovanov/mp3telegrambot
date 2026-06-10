@@ -300,8 +300,13 @@ async def run_bot_async():
                             f"--log={_user_log}", "--verbosity=2"]
                     ok2, _tail2 = _spawn(cmd2, _user_log)
                     if ok2:
-                        # чтобы cleanup чистил правильную папку
-                        os.environ.setdefault("LOCAL_BOT_API_DATA_DIR", str(_user_data))
+                        # FIX round 37: БЕЗУСЛОВНАЯ перезапись (was setdefault).
+                        # Если юзер прописал ProgramData-путь в .env (рекомендация
+                        # round 9), setdefault его не менял -> cleanup чистил
+                        # недоступную папку, а реальная (LOCALAPPDATA) росла
+                        # бесконечно — утечка диска в новом месте.
+                        os.environ["LOCAL_BOT_API_DATA_DIR"] = str(_user_data)
+                        logger.info("🧹 Чистка диска переключена на %s", _user_data)
                         return True
                     _tail = _tail2 or _tail
                 logger.error(

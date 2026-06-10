@@ -1087,3 +1087,29 @@ def test_all_env_knobs_documented():
               "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
               "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "MAX_FILE_SIZE_MB"):
         assert v in env, f"{v} не задокументирован в .env.example"
+
+
+# ── Заход 37: cleanup следует за реальной папкой сервера ─────────
+
+def test_acl_fallback_overrides_cleanup_dir():
+    """setdefault не перезаписывал .env-значение -> cleanup чистил
+    недоступную ProgramData, а реальная LOCALAPPDATA росла бесконечно."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert 'os.environ["LOCAL_BOT_API_DATA_DIR"] = str(_user_data)' in src
+    assert 'setdefault("LOCAL_BOT_API_DATA_DIR"' not in src
+
+
+def test_cleanup_autodetects_both_standard_dirs(tmp_path, monkeypatch):
+    import os as _os, time as _t
+    from core.utils import cleanup_botapi_server_files
+    # LOCALAPPDATA-кандидат работает без подмены os.name (гейт убран:
+    # monkeypatch os.name ломает pathlib — WindowsPath на posix)
+    lad = tmp_path / "lad"
+    target = lad / "TelegramBotAPI" / "data"
+    target.mkdir(parents=True)
+    old_f = target / "v.mp4"; old_f.write_bytes(b"x")
+    _os.utime(old_f, (_t.time() - 90000,) * 2)
+    monkeypatch.setenv("LOCALAPPDATA", str(lad))
+    monkeypatch.delenv("LOCAL_BOT_API_DATA_DIR", raising=False)
+    assert cleanup_botapi_server_files(max_age_hours=24) == 1
+    assert not old_f.exists()
