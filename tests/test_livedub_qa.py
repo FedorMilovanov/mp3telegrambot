@@ -830,3 +830,22 @@ def test_nvenc_quality_formula(monkeypatch):
     assert enc == "h264_nvenc"
     assert "-b:v" in q and "-spatial-aq" in q and "-rc-lookahead" in q
     assert p == ["-preset", "p5", "-tune", "hq"]
+
+
+# ── Заход 25: hardsub на NVENC + MP3-нормализация ────────────────
+
+def test_hardsub_uses_detected_encoder():
+    src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    fb = src[src.index("def _burn_subtitles"):src.index("async def merge_subtitles")]
+    assert "_get_video_encoder" in fb
+    assert '"libx264", "-preset", "veryfast"' not in fb  # хардкод убран
+
+
+def test_mp3_loudnorm_in_extract(monkeypatch):
+    import services.ffmpeg as ff
+    monkeypatch.delenv("MP3_LOUDNORM", raising=False)
+    args = " ".join(ff._build_ytdlp_base_args())
+    assert "ExtractAudio:-af loudnorm" in args
+    monkeypatch.setenv("MP3_LOUDNORM", "0")
+    args2 = " ".join(ff._build_ytdlp_base_args())
+    assert "loudnorm" not in args2

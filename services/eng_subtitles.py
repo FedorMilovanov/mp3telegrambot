@@ -271,10 +271,14 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Path
     # ffmpeg subtitles= требует экранирования спецсимволов пути
     srt_arg = str(srt_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
     style = "FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=20"
+    # NVENC если доступен (у пользователя рабочий ASIC) — прожиг быстрее
+    # и без нагрузки на CPU; качество формулы p5+hq уже выверено.
+    from services.ffmpeg import _get_video_encoder
+    _enc, _q, _pr = _get_video_encoder()
     cmd = [
         ffmpeg, "-i", str(video_path),
         "-vf", f"subtitles='{srt_arg}':force_style='{style}'",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+        "-c:v", _enc, *_q, *_pr,
         "-c:a", "copy",
         "-movflags", "+faststart",
         "-y", str(output_path),

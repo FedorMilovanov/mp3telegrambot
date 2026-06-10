@@ -76,6 +76,13 @@ def _build_ytdlp_base_args() -> list:
         _frags = 4
     if _frags > 1:
         args += ["--concurrent-fragments", str(_frags)]
+    # QUALITY 2026-06-10: нормализация громкости MP3 на этапе извлечения.
+    # Источники с YouTube гуляют от -25 до -10 LUFS — слушателю приходится
+    # крутить громкость между выпусками. loudnorm I=-16 (подкаст-стандарт)
+    # внутри того же перекодирования в mp3 = ноль лишних перекодирований.
+    # MP3_LOUDNORM=0 — отключить.
+    if os.getenv("MP3_LOUDNORM", "1").strip().lower() not in {"0", "false", "no", "off"}:
+        args += ["--postprocessor-args", "ExtractAudio:-af loudnorm=I=-16:TP=-1.5:LRA=11"]
     return args
 
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()
