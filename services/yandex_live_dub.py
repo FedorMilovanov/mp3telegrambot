@@ -123,8 +123,15 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
     return max(files, key=lambda p: p.stat().st_mtime)
 
 
-async def get_live_dub_audio(video_url: str, output_dir: Path) -> Path:
-    """Скачивает только MP3-перевод (Живые голоса) через vot-cli-live."""
+async def get_live_dub_audio(video_url: str, output_dir: Path,
+                             timeout: int = 480, retries: int = 2) -> Path:
+    """Скачивает только MP3-перевод (Живые голоса) через vot-cli-live.
+
+    AUDIT 2026-06-10: Яндекс готовит перевод длинного видео МИНУТЫ
+    (официальный блог: час видео == минуты обработки); vot-cli поллит
+    ~5 минут и сдаётся, хотя сервер продолжает готовить перевод —
+    повторный запрос обычно получает готовый кэш. Поэтому retries.
+    """
     vot = _check_vot_cli()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +140,19 @@ async def get_live_dub_audio(video_url: str, output_dir: Path) -> Path:
     logger.info(f"[LiveDub] Запуск: {' '.join(cmd)}")
 
     loop = asyncio.get_running_loop()
-    stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd))
+    stdout = stderr = ""
+    rc = 1
+    for _attempt in range(max(1, retries + 1)):
+        if _attempt:
+            logger.info(f"[LiveDub] Перевод ещё готовится у Яндекса — повтор {_attempt}/{retries} через 90с")
+            await asyncio.sleep(90)
+        stdout, stderr, rc = await loop.run_in_executor(
+            None, lambda: _run_subprocess(cmd, timeout=timeout)
+        )
+        if rc == 0:
+            break
+        if "Translation not available" in stderr or "Translation not available" in stdout:
+            raise RuntimeError("LIVEDUB_NOT_AVAILABLE")
 
     if rc != 0:
         if "Translation not available" in stderr or "Translation not available" in stdout:
@@ -185,11 +204,21 @@ async def get_live_dub_video(
 
     logger.info(f"[LiveDub] Merge-video: {' '.join(cmd)}")
     loop = asyncio.get_running_loop()
-    stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd))
-
-    if rc != 0:
+    stdout = stderr = ""
+    rc = 1
+    for _attempt in range(2):
+        if _attempt:
+            logger.info(f"[LiveDub] merge-video повтор {_attempt}/1 через 90с (перевод мог ещё готовиться)")
+            await asyncio.sleep(90)
+        stdout, stderr, rc = await loop.run_in_executor(
+            None, lambda: _run_subprocess(cmd, timeout=600)
+        )
+        if rc == 0:
+            break
         if "Translation not available" in stderr or "Translation not available" in stdout:
             raise RuntimeError("LIVEDUB_NOT_AVAILABLE")
+
+    if rc != 0:
         logger.error(f"[LiveDub] stderr: {stderr[-500:]}")
         raise RuntimeError(f"vot-cli-live (merge-video) failed: {rc}")
 

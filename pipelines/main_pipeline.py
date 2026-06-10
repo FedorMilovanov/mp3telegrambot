@@ -321,7 +321,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if not (live_dub_task and context):
                 return
             try:
-                livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
+                # 1800с: vot-cli теперь ретраит (Яндекс готовит длинный перевод
+                # минутами) — старый потолок 600с отменял задачу раньше ретраев
+                livedub_result = await asyncio.wait_for(live_dub_task, timeout=1800)
                 if not livedub_result:
                     return
                 livedub_path, is_fallback, has_subs = livedub_result
@@ -513,7 +515,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # Раньше сообщение предлагало несуществующую команду /dub.
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="⏳ Перевод «Живые голоса» не успел за 10 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
+                    text="⏳ Перевод «Живые голоса» не успел за 30 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
                     reply_to_message_id=update.message.message_id,
                 )
             except Exception as e:

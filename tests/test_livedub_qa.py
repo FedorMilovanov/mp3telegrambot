@@ -532,3 +532,24 @@ def test_periodic_maintenance_wires_new_cleanups():
 def test_upload_retry_honors_retry_after():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert src.count('getattr(upload_err, "retry_after", None)') == 2
+
+
+# ── Заход 10: vot-cli retries для длинных переводов ──────────────
+
+def test_vot_cli_retries_for_long_translations():
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    # audio: параметризованный таймаут + ретраи (Яндекс готовит перевод минутами)
+    assert "timeout: int = 480, retries: int = 2" in src
+    assert "Перевод ещё готовится у Яндекса" in src
+    # merge-video fallback: повтор после паузы
+    assert "merge-video повтор" in src
+    # NOT_AVAILABLE прерывает ретраи сразу (не ждём 90с впустую)
+    audio_fn = src[src.index("def get_live_dub_audio"):src.index("def get_live_dub_video")]
+    assert audio_fn.count("LIVEDUB_NOT_AVAILABLE") >= 2
+
+
+def test_pipeline_waitfor_covers_retry_budget():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "timeout=1800" in src           # wait_for поднят с 600
+    assert "не успел за 30 минут" in src   # сообщение синхронизировано
+    # бюджет: audio worst-case 480*3+180=1620 < 1800; merge 600*2+90=1290 < 1800
