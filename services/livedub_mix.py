@@ -97,6 +97,52 @@ def build_interval_volume_expr(intervals: list[tuple[float, float]],
     return f"if(gt({conds},0),{inside},{outside})"
 
 
+# Целевая громкость диалога (EBU R128 / стриминговый стандарт)
+_TARGET_LUFS = -16.0
+
+
+def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
+    """Pass-1 loudnorm: возвращает integrated loudness (LUFS) дорожки.
+
+    Используется для выравнивания дорожек ДО микса: громкость у Яндекса
+    плавает от ролика к ролику, и фиксированные коэффициенты иначе дают
+    разный баланс. None — если измерить не удалось.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    kwargs: dict = {"capture_output": True, "text": True,
+                    "encoding": "utf-8", "errors": "replace"}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-i", str(path), "-vn",
+             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+             "-f", "null", "-"],
+            timeout=timeout, **kwargs,
+        )
+        m = re.search(r'"input_i"\s*:\s*"(-?[\d.]+)"', proc.stderr or "")
+        if m:
+            v = float(m.group(1))
+            if -70.0 <= v <= 0.0:
+                return v
+    except Exception as e:
+        logger.warning("[LiveDubMix] measure_loudness failed: %s", e)
+    return None
+
+
+def loudness_gain_db(input_lufs: Optional[float], target: float = _TARGET_LUFS) -> float:
+    """Линейный gain (дБ) для приведения дорожки к target LUFS.
+
+    Линейный gain не качает динамику (в отличие от single-pass loudnorm).
+    Ограничен ±20 дБ от греха подальше.
+    """
+    if input_lufs is None:
+        return 0.0
+    return max(-20.0, min(20.0, target - input_lufs))
+
+
 def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -118,42 +164,79 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
 
 def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
                      duck: bool = True,
-                     ru_extra_expr: str = "", en_extra_expr: str = "") -> str:
+                     ru_extra_expr: str = "", en_extra_expr: str = "",
+                     en_gain_db: float = 0.0, ru_gain_db: float = 0.0) -> str:
     """Собирает filter_complex для микса EN-оригинала и RU-перевода.
 
     ru_extra_expr / en_extra_expr — дополнительные volume-выражения
     для точечной авто-правки по интервалам (QA-фиксы).
+    en_gain_db / ru_gain_db — линейные поправки громкости (из loudnorm
+    pass-1), выравнивают дорожки к -16 LUFS ДО применения коэффициентов:
+    у Яндекса громкость перевода плавает от ролика к ролику.
+    Финальный alimiter защищает сумму от клиппинга (вместо дефолтного
+    normalize амикса, который глушил бы всё на -6 дБ).
     """
-    ru_chain = f"[1:a]adelay={delay_ms}:all=1,volume={trans_volume}"
+    ru_chain = f"[1:a]adelay={delay_ms}:all=1"
+    if abs(ru_gain_db) > 0.1:
+        ru_chain += f",volume={ru_gain_db:.1f}dB"
+    ru_chain += f",volume={trans_volume}"
     if ru_extra_expr:
         ru_chain += f",volume='{ru_extra_expr}':eval=frame"
-    en_chain = f"[0:a]volume={orig_volume}"
+    en_chain = "[0:a]"
+    if abs(en_gain_db) > 0.1:
+        en_chain += f"volume={en_gain_db:.1f}dB,"
+    en_chain += f"volume={orig_volume}"
     if en_extra_expr:
         en_chain += f",volume='{en_extra_expr}':eval=frame"
 
+    # alimiter: прозрачная защита от клиппинга суммы двух дорожек
+    _limit = "alimiter=limit=0.95:attack=5:release=80"
+
     if duck:
+        # level_sc=1 — сигнал-детектор без ослабления; release длинный,
+        # чтобы оригинал «всплывал» плавно, как у живого звукорежиссёра.
         return (
             f"{ru_chain}[ru0];"
             f"[ru0]asplit=2[ru1][ru2];"
             f"{en_chain}[en0];"
             f"[en0][ru1]sidechaincompress="
-            f"threshold=0.06:ratio=6:attack=150:release=500[enduck];"
-            f"[enduck][ru2]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+            f"threshold=0.06:ratio=6:attack=120:release=700:level_sc=1[enduck];"
+            f"[enduck][ru2]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+            f"{_limit}[aout]"
         )
     return (
         f"{ru_chain}[ru0];"
         f"{en_chain}[en0];"
-        f"[en0][ru0]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+        f"[en0][ru0]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+        f"{_limit}[aout]"
     )
 
 
 async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
                      ru_extra_expr: str = "", en_extra_expr: str = "") -> Optional[Path]:
-    """Миксует оригинальное видео с дорожкой перевода. Видео не перекодируется."""
+    """Миксует оригинальное видео с дорожкой перевода. Видео не перекодируется.
+
+    Перед миксом обе дорожки измеряются (loudnorm pass-1) и приводятся
+    линейным gain к -16 LUFS — баланс EN/RU одинаков на любом ролике,
+    независимо от того, как Яндекс отдал громкость в этот раз.
+    """
     p = get_mix_params()
+    loop = asyncio.get_running_loop()
+    en_lufs, ru_lufs = await asyncio.gather(
+        loop.run_in_executor(None, lambda: measure_loudness(orig_video)),
+        loop.run_in_executor(None, lambda: measure_loudness(ru_audio)),
+    )
+    en_gain = loudness_gain_db(en_lufs)
+    ru_gain = loudness_gain_db(ru_lufs)
+    logger.info(
+        "[LiveDubMix] loudness: EN=%s LUFS (gain %+.1f dB), RU=%s LUFS (gain %+.1f dB)",
+        f"{en_lufs:.1f}" if en_lufs is not None else "?", en_gain,
+        f"{ru_lufs:.1f}" if ru_lufs is not None else "?", ru_gain,
+    )
     fc = build_mix_filter(
         p["orig_volume"], p["trans_volume"], p["delay_ms"],
         duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
+        en_gain_db=en_gain, ru_gain_db=ru_gain,
     )
     args = [
         "-i", str(orig_video), "-i", str(ru_audio),
@@ -163,13 +246,13 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         "-movflags", "+faststart",
         "-y", str(out_path),
     ]
-    loop = asyncio.get_running_loop()
     ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
     if not ok:
         logger.warning("[LiveDubMix] sidechain-микс не удался (%s) — пробую простой микс", err)
         fc2 = build_mix_filter(
             p["orig_volume"], p["trans_volume"], p["delay_ms"],
             duck=False, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
+            en_gain_db=en_gain, ru_gain_db=ru_gain,
         )
         args[3] = fc2
         ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))

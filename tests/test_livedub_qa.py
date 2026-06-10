@@ -166,3 +166,26 @@ def test_new_settings_registered():
     from core.database import SETTINGS_LABELS
     assert "livedub_pro_mix" in SETTINGS_LABELS
     assert "livedub_autofix" in SETTINGS_LABELS
+
+
+# ── Loudness-выравнивание (EBU R128) ─────────────────────────────
+
+def test_loudness_gain_db():
+    from services.livedub_mix import loudness_gain_db
+    assert loudness_gain_db(-16.0) == 0.0
+    assert loudness_gain_db(-26.0) == 10.0     # тихую дорожку поднимаем
+    assert loudness_gain_db(-6.0) == -10.0     # громкую опускаем
+    assert loudness_gain_db(None) == 0.0       # не измерилось — не трогаем
+    assert loudness_gain_db(-80.0) == 20.0     # кламп ±20 дБ
+
+
+def test_build_mix_filter_with_gains_and_limiter():
+    from services.livedub_mix import build_mix_filter
+    fc = build_mix_filter(0.45, 1.3, 600, duck=True, en_gain_db=4.2, ru_gain_db=-3.0)
+    assert "volume=4.2dB" in fc and "volume=-3.0dB" in fc
+    assert "alimiter" in fc
+    assert "level_sc=1" in fc
+    # нулевые поправки не засоряют граф
+    fc2 = build_mix_filter(0.45, 1.3, 600, duck=False)
+    assert "dB" not in fc2
+    assert "alimiter" in fc2
