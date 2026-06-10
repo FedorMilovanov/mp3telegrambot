@@ -788,20 +788,21 @@ def test_ytdlp_concurrent_fragments():
 
 # ── Заход 23: глючная GPU — принудительный CPU-энкодер ───────────
 
-def test_video_force_cpu_follows_whisper_signal(monkeypatch):
-    """WHISPER_FORCE_CPU=1 — сигнал 'GPU ненадёжна' для всего бота:
-    глючная GPU проходит 0.1с-пробу NVENC, но ломает реальный рендер."""
+def test_video_force_cpu_explicit_only(monkeypatch):
+    """NVENC — отдельный ASIC, не CUDA: WHISPER_FORCE_CPU его НЕ отключает
+    (уточнено пользователем: NVENC стабилен при глючном CUDA).
+    VIDEO_FORCE_CPU=1 — только явное отключение."""
     import services.ffmpeg as ff
+    # WHISPER_FORCE_CPU не влияет на видео-энкодер
     monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
     monkeypatch.setenv("WHISPER_FORCE_CPU", "1")
     monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
+    ff._get_video_encoder()  # автопроба (в CI nvenc нет -> libx264; не падает)
+    # явное принуждение работает
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
+    monkeypatch.setenv("VIDEO_FORCE_CPU", "1")
     enc, _, _ = ff._get_video_encoder()
     assert enc == "libx264"
-    # явный override: юзер починил GPU
-    monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
-    monkeypatch.setenv("VIDEO_FORCE_CPU", "0")
-    # (проба может найти/не найти nvenc в CI — главное, что код не падает)
-    ff._get_video_encoder()
 
 
 def test_video_cpu_preset_knob(monkeypatch):
@@ -816,3 +817,16 @@ def test_video_cpu_preset_knob(monkeypatch):
     monkeypatch.setenv("VIDEO_CPU_PRESET", "garbage")
     _, _, preset = ff._get_video_encoder()
     assert preset == ["-preset", "veryfast"]
+
+
+# ── Заход 24: NVENC возвращён + качество ─────────────────────────
+
+def test_nvenc_quality_formula(monkeypatch):
+    """NVENC: p5+tune hq+spatial-aq+lookahead+b:v 0 — VMAF-паритет с
+    libx264 medium. p4 без -b:v 0 давал нечестный CQ."""
+    import services.ffmpeg as ff
+    monkeypatch.setattr(ff, "_VIDEO_ENCODER", "h264_nvenc")
+    enc, q, p = ff._get_video_encoder()
+    assert enc == "h264_nvenc"
+    assert "-b:v" in q and "-spatial-aq" in q and "-rc-lookahead" in q
+    assert p == ["-preset", "p5", "-tune", "hq"]

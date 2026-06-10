@@ -97,19 +97,21 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     - -crf 23
     """
     global _VIDEO_ENCODER
-    # FIX 2026-06-10: глючная GPU может ПРОЙТИ 0.1с probe, но артефачить или
-    # падать на реальном 60-секундном рендере. У пользователя именно такой
-    # случай (Whisper уже переведён на CPU по этой причине — WHISPER_FORCE_CPU).
-    # VIDEO_FORCE_CPU=1 полностью отключает NVENC-пробу. Дефолт: 1, если
-    # WHISPER_FORCE_CPU=1 (сигнал «GPU ненадёжна» — один на весь бот).
-    _whisper_cpu = os.getenv("WHISPER_FORCE_CPU", "").strip() in {"1", "true", "yes", "on"}
-    _force_cpu = os.getenv("VIDEO_FORCE_CPU", "1" if _whisper_cpu else "0").strip() in {"1", "true", "yes", "on"}
+    # 2026-06-10 (уточнено пользователем): NVENC — отдельный аппаратный
+    # ASIC-блок на GPU, НЕ использует CUDA-ядра. Глюки CUDA (из-за которых
+    # Whisper на CPU) не затрагивают NVENC — он работает стабильно.
+    # Поэтому НЕ наследуем WHISPER_FORCE_CPU; автопроба NVENC по умолчанию.
+    # VIDEO_FORCE_CPU=1 — явное отключение, если NVENC тоже начнёт глючить.
+    _force_cpu = os.getenv("VIDEO_FORCE_CPU", "0").strip() in {"1", "true", "yes", "on"}
     if _force_cpu and _VIDEO_ENCODER is None:
         _VIDEO_ENCODER = "libx264"
         logger.info("Video encoder: libx264 (CPU, принудительно — GPU помечена ненадёжной)")
     if _VIDEO_ENCODER is not None:
         if _VIDEO_ENCODER == "h264_nvenc":
-            return "h264_nvenc", ["-rc", "vbr", "-cq", "23"], ["-preset", "p4"]
+            # QUALITY 2026-06-10: p5 + tune hq + spatial-aq + lookahead —
+            # VMAF-паритет с libx264 medium (video.SE #29659); -b:v 0
+            # обязателен для честного constant-quality режима.
+            return "h264_nvenc", ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"], ["-preset", "p5", "-tune", "hq"]
         _preset = os.getenv("VIDEO_CPU_PRESET", "veryfast").strip() or "veryfast"
         if _preset not in {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"}:
             _preset = "veryfast"
@@ -126,7 +128,8 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
             if result.returncode == 0:
                 _VIDEO_ENCODER = "h264_nvenc"
                 logger.info("Video encoder: h264_nvenc (NVIDIA GPU) ✅")
-                return "h264_nvenc", ["-rc", "vbr", "-cq", "23"], ["-preset", "p4"]
+                # QUALITY: см. комментарий выше (формула p5+hq+aq)
+                return "h264_nvenc", ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"], ["-preset", "p5", "-tune", "hq"]
         except Exception:
             pass
 
