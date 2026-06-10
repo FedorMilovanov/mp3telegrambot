@@ -926,3 +926,24 @@ def test_cache_mp3_resend_wiring():
     assert "adb_set_audio_file_id" in src
     # протухший file_id чистится
     assert "file_id протух" in src
+
+
+# ── Заход 30: file_id с первой отправки + faststart-аудит ────────
+
+def test_audio_file_id_saved_on_first_send():
+    """Зазор round 29 закрыт: file_id сохраняется уже при ПЕРВОЙ отправке
+    свежескачанного mp3 — повтор мгновенен сразу, а не со 2-го раза."""
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_sent_fresh_audio" in src
+    # оба пути сохранения: первая отправка + кэш-заливка
+    assert src.count("adb_set_audio_file_id(media_id") >= 2
+
+
+def test_all_video_renders_have_faststart():
+    """moov-атом в начале файла = мгновенный стриминг в Telegram."""
+    import re
+    for fname in ("services/shorts_video.py", "services/render_clips_montage.py"):
+        src = Path(fname).read_text(encoding="utf-8")
+        renders = len(re.findall(r'"-c:v"', src))
+        fasts = src.count("faststart")
+        assert fasts >= renders, f"{fname}: {renders} renders, {fasts} faststart"

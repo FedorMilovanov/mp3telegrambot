@@ -1713,12 +1713,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             for _attempt in range(3):
                 try:
                     audio_file.seek(0)
-                    await update.message.reply_audio(
+                    _sent_fresh_audio = await update.message.reply_audio(
                         audio=audio_file, title=audio_title, performer=audio_performer,
                         thumbnail=thumb_buffer, duration=duration, caption=caption,
                         parse_mode="HTML",
                         write_timeout=180, read_timeout=180, connect_timeout=60,
                     )
+                    # round 30: file_id сохраняем уже с ПЕРВОЙ отправки —
+                    # повторный запрос мгновенен сразу (закрыт зазор round 29)
+                    try:
+                        _ffid = getattr(getattr(_sent_fresh_audio, "audio", None), "file_id", "")
+                        if _ffid:
+                            from core.database import adb_set_audio_file_id
+                            await adb_set_audio_file_id(media_id, _ffid)
+                    except Exception:
+                        pass
                     break  # успех
                 except Exception as upload_err:
                     err_name = type(upload_err).__name__
