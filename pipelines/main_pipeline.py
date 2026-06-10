@@ -448,6 +448,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     write_timeout=600, read_timeout=600, connect_timeout=60,
                 )
                 try:
+                    await context.bot.send_chat_action(
+                        chat_id=update.effective_chat.id, action="upload_video")
+                except Exception:
+                    pass
+                try:
                     if _v_cover is not None:
                         _sent_msg = await context.bot.send_video(cover=_v_cover, **_send_kwargs)
                     else:
@@ -1706,6 +1711,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         except Exception as _chap_err:
             logger.warning(f"MP3 chapters skip: {_chap_err}")
 
+        try:
+            await update.message.chat.send_action("upload_voice")
+        except Exception:
+            pass
         with open(mp3_path, "rb") as audio_file:
             audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)
             audio_performer = normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author") or performer) or performer)

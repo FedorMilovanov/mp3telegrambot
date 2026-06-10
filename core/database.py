@@ -10,7 +10,8 @@ from core.globals import (
 )
 
 import asyncio
-import hashlib  # FIX #6: был не импортирован — нужен для get_prompt_fingerprint
+import hashlib
+from pathlib import Path  # round 31: db_backup  # FIX #6: был не импортирован — нужен для get_prompt_fingerprint
 import json
 import logging
 import os          # FIX #6: был не импортирован — нужен для os.getenv
@@ -302,6 +303,43 @@ async def adb_set_audio_file_id(video_id: str, file_id: str) -> None:
 async def adb_set_livedub_file_id(video_id: str, file_id: str) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db_set_livedub_file_id, video_id, file_id)
+
+
+def db_backup(max_keep: int = 7) -> str:
+    """Горячий бэкап БД нативным sqlite3 backup API (корректен при WAL).
+
+    Вся память бота — кэш анализов, настройки, file_id, rate-limits —
+    живёт в одном файле; до 2026-06-10 не бэкапился вовсе. Копии кладутся
+    рядом: bot.db.bak.YYYYMMDD (одна в сутки, хранится max_keep штук).
+    Возвращает путь созданной копии или '' (уже есть сегодняшняя/ошибка).
+    """
+    import time as _time
+    try:
+        day = _time.strftime("%Y%m%d")
+        dst = Path(str(DB_PATH) + f".bak.{day}")
+        if dst.exists():
+            return ""
+        src = sqlite3.connect(DB_PATH)
+        try:
+            dst_conn = sqlite3.connect(str(dst))
+            try:
+                src.backup(dst_conn)
+            finally:
+                dst_conn.close()
+        finally:
+            src.close()
+        # ротация
+        baks = sorted(Path(str(DB_PATH)).parent.glob(Path(str(DB_PATH)).name + ".bak.*"))
+        for old in baks[:-max_keep]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        logger.info("DB backup: %s (%d KB)", dst.name, dst.stat().st_size // 1024)
+        return str(dst)
+    except Exception as e:
+        logger.warning("DB backup failed: %s", e)
+        return ""
 
 
 def db_get(video_id: str) -> dict | None:

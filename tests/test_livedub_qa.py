@@ -947,3 +947,41 @@ def test_all_video_renders_have_faststart():
         renders = len(re.findall(r'"-c:v"', src))
         fasts = src.count("faststart")
         assert fasts >= renders, f"{fname}: {renders} renders, {fasts} faststart"
+
+
+# ── Заход 31: бэкап БД + chat actions ────────────────────────────
+
+def test_db_backup_creates_and_rotates(tmp_path, monkeypatch):
+    import core.database as db
+    import core.globals as g
+    test_db = tmp_path / "bot.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    monkeypatch.setattr(g, "DB_PATH", test_db)
+    db.db_init()
+    db.db_set_audio_file_id("v1", "fid")
+    out = db.db_backup()
+    assert out and Path(out).exists()
+    assert db.db_backup() == ""  # одна копия в сутки
+    import sqlite3
+    row = sqlite3.connect(out).execute(
+        "SELECT audio_file_id FROM video_cache WHERE video_id=?", ("v1",)).fetchone()
+    assert row and row[0] == "fid"  # копия валидна и полна
+    # ротация: старые копии удаляются
+    for d in ("20200101", "20200102", "20200103"):
+        (tmp_path / f"bot.db.bak.{d}").write_bytes(b"x")
+    db_today = Path(out)
+    db_today.unlink()
+    db.db_backup(max_keep=2)
+    baks = sorted(tmp_path.glob("bot.db.bak.*"))
+    assert len(baks) == 2, baks
+
+
+def test_backup_wired_into_maintenance():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "db_backup" in src
+
+
+def test_chat_actions_during_uploads():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert 'send_action("upload_voice")' in src
+    assert 'action="upload_video"' in src
