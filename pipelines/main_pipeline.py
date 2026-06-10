@@ -813,26 +813,54 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _cap_ts_str = ""
             _ts_in_cap = len([l for l in _cap_ts_str.split("\n") if l.strip()])
             logger.info(f"Кэш caption visible_len={visible_length(caption)} format={_c_fmt} ts_limit={_ts_limit} ts_in_cap={_ts_in_cap}")
-            try:
+            # FEATURE 2026-06-10: мгновенный resend mp3 по file_id (кэш-хит).
+            # Telegram: resend по file_id бесплатен и без лимитов размера.
+            _audio_fid = (cached or {}).get("audio_file_id") or ""
+            _fid_sent = False
+            if _audio_fid:
+                try:
+                    await update.message.reply_audio(
+                        audio=_audio_fid, caption=caption, parse_mode="HTML",
+                    )
+                    _fid_sent = True
+                    logger.info(f"Кэш mp3: отправлен по file_id ({media_id})")
+                except Exception as _fid_err:
+                    logger.warning(f"Кэш mp3 file_id протух: {_fid_err}")
+                    try:
+                        from core.database import adb_set_audio_file_id
+                        await adb_set_audio_file_id(media_id, "")
+                    except Exception:
+                        pass
+            if _fid_sent:
+                pass  # mp3 доставлен мгновенно — переходим к остальной отправке
+            else:
+              try:
                 from services.mp3_chapters import embed_chapters
                 _ts_chap_c = (c_ai or {}).get("timestamps") or []
                 if isinstance(_ts_chap_c, list) and _ts_chap_c:
                     await asyncio.get_running_loop().run_in_executor(
                         None, lambda: embed_chapters(mp3_path, _ts_chap_c, duration))
-            except Exception as _chap_err_c:
+              except Exception as _chap_err_c:
                 logger.warning(f"MP3 chapters (кэш) skip: {_chap_err_c}")
-            with open(mp3_path, "rb") as af:
+              with open(mp3_path, "rb") as af:
                 _title_c     = (c_ai or {}).get("real_title") or title
                 _performer_c = (c_ai or {}).get("real_author") or performer
                 for _attempt in range(3):
                     try:
                         af.seek(0)
-                        await update.message.reply_audio(
+                        _sent_audio_msg = await update.message.reply_audio(
                             audio=af, title=_title_c, performer=_performer_c,
                             thumbnail=thumb_buffer, duration=duration,
                             caption=caption, parse_mode="HTML",
                             write_timeout=180, read_timeout=180, connect_timeout=60,
                         )
+                        try:
+                            _new_fid = getattr(getattr(_sent_audio_msg, "audio", None), "file_id", "")
+                            if _new_fid:
+                                from core.database import adb_set_audio_file_id
+                                await adb_set_audio_file_id(media_id, _new_fid)
+                        except Exception:
+                            pass
                         break
                     except Exception as upload_err:
                         err_name = type(upload_err).__name__

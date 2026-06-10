@@ -139,6 +139,8 @@ def db_init():
             # LIVEDUB: telegram file_id готового перевода — повторная отправка
             # мгновенна (без второго прогона vot-cli и заливки сотен МБ)
             ("livedub_file_id",     "''"),
+            # MP3 file_id — мгновенный resend при кэш-хите (без заливки 50МБ)
+            ("audio_file_id",       "''"),
         ]:
             # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
             # быть поглощён блоком except sqlite3.OperationalError
@@ -262,22 +264,39 @@ def db_save(video_id: str, url: str, questions: list,
               publication_warning or ""))
         conn.commit()
 
-def db_set_livedub_file_id(video_id: str, file_id: str) -> None:
-    """Точечно сохраняет telegram file_id LIVEDUB-видео (повторная отправка
-    по file_id мгновенна — без второго прогона vot-cli и заливки сотен МБ).
-    Не трогает остальные поля кэша; создаёт строку, если её ещё нет."""
+_FILE_ID_COLUMNS = {"livedub_file_id", "audio_file_id"}
+
+
+def _db_set_file_id(video_id: str, column: str, file_id: str) -> None:
+    """Точечно сохраняет telegram file_id (resend мгновенный и бесплатный).
+    column валидируется по белому списку — никакого SQL-injection."""
+    if column not in _FILE_ID_COLUMNS:
+        raise ValueError(f"недопустимая колонка file_id: {column!r}")
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         cur = conn.execute(
-            "UPDATE video_cache SET livedub_file_id = ? WHERE video_id = ?",
+            f"UPDATE video_cache SET {column} = ? WHERE video_id = ?",
             (file_id or "", video_id),
         )
         if cur.rowcount == 0:
             conn.execute(
-                "INSERT OR IGNORE INTO video_cache (video_id, livedub_file_id) VALUES (?, ?)",
+                f"INSERT OR IGNORE INTO video_cache (video_id, {column}) VALUES (?, ?)",
                 (video_id, file_id or ""),
             )
         conn.commit()
+
+
+def db_set_livedub_file_id(video_id: str, file_id: str) -> None:
+    _db_set_file_id(video_id, "livedub_file_id", file_id)
+
+
+def db_set_audio_file_id(video_id: str, file_id: str) -> None:
+    _db_set_file_id(video_id, "audio_file_id", file_id)
+
+
+async def adb_set_audio_file_id(video_id: str, file_id: str) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, db_set_audio_file_id, video_id, file_id)
 
 
 async def adb_set_livedub_file_id(video_id: str, file_id: str) -> None:
@@ -292,7 +311,7 @@ def db_get(video_id: str) -> dict | None:
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
             "cache_version, prompt_version, model_name, updated_at, terms_tg_url, "
             "rutube_url, vk_url, study_tg_url, reflection_tg_url, "
-            "publication_status, publication_missing, publication_warning, livedub_file_id "
+            "publication_status, publication_missing, publication_warning, livedub_file_id, audio_file_id "
             "FROM video_cache WHERE video_id = ?", (video_id,)
         ).fetchone()
     if not row:
@@ -328,6 +347,7 @@ def db_get(video_id: str) -> dict | None:
         "publication_missing": row[16] or "[]",
         "publication_warning": row[17] or "",
         "livedub_file_id":     row[18] or "",
+        "audio_file_id":       row[19] or "",
     }
 
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────

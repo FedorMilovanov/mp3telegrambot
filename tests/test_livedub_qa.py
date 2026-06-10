@@ -901,3 +901,28 @@ def test_mp3_chapters_embed_and_validate(tmp_path):
 def test_mp3_chapters_wired_both_branches():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert src.count("embed_chapters") >= 4  # 2 импорта + 2 вызова
+
+
+# ── Заход 29: mp3 file_id resend при кэш-хите ────────────────────
+
+def test_audio_file_id_roundtrip(tmp_path, monkeypatch):
+    import core.database as db
+    import core.globals as g
+    test_db = tmp_path / "t.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    monkeypatch.setattr(g, "DB_PATH", test_db)
+    db.db_init()
+    db.db_set_audio_file_id("vidA", "CQAC_audio_fid")
+    assert db.db_get("vidA")["audio_file_id"] == "CQAC_audio_fid"
+    # generic-сеттер защищён whitelist'ом
+    import pytest
+    with pytest.raises(ValueError):
+        db._db_set_file_id("vidA", "evil_column; DROP TABLE", "x")
+
+
+def test_cache_mp3_resend_wiring():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert 'cached or {}).get("audio_file_id")' in src
+    assert "adb_set_audio_file_id" in src
+    # протухший file_id чистится
+    assert "file_id протух" in src
