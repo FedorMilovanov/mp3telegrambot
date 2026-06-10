@@ -71,6 +71,29 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+def _sponsorblock_args() -> list:
+    """SponsorBlock-вырезка для mp3 (opt-in, default OFF).
+
+    ВАЖНО: вырезка сегментов СДВИГАЕТ таймлайн mp3 относительно YouTube —
+    ссылки ⏱ в caption после вырезанного куска будут опережать видео на
+    длину выреза. Таймкоды конспекта при этом ТОЧНЫ для mp3 (Gemini
+    анализирует уже обрезанный файл). Для проповедей спонсор-вставки
+    редки; включать осознанно: SPONSORBLOCK_REMOVE=sponsor,selfpromo
+    Категории: sponsor, selfpromo, interaction, intro, outro, preview,
+    filler, music_offtopic. Пусто/не задано = выключено.
+    """
+    cats = os.getenv("SPONSORBLOCK_REMOVE", "").strip()
+    if not cats:
+        return []
+    _allowed = {"sponsor", "selfpromo", "interaction", "intro", "outro",
+                "preview", "filler", "music_offtopic", "all", "default"}
+    parts = [c.strip() for c in cats.split(",") if c.strip()]
+    if not all(c.lstrip("-") in _allowed for c in parts):
+        logger.warning("SPONSORBLOCK_REMOVE: недопустимые категории %r — игнорирую", cats)
+        return []
+    return ["--sponsorblock-remove", ",".join(parts)]
+
+
 async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
     url = get_youtube_video_url(url)
     thumb_buffer = None
@@ -662,8 +685,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             audio_quality = "64K" if duration > 3600 else "128K"
             mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
             if not mp3_path.exists():
-                dl_cmd = YTDLP_BASE_ARGS + [
+                dl_cmd = YTDLP_BASE_ARGS + _sponsorblock_args() + [
                     "--extract-audio", "--audio-format", "mp3", "--audio-quality", audio_quality,
+                    "--embed-metadata", "--embed-thumbnail",
                     "--no-playlist", "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"), url,
                 ]
                 await asyncio.get_running_loop().run_in_executor(
@@ -962,9 +986,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             logger.info(f"MP3 кэш: используем существующий файл {mp3_path.name}")
         else:
             _audio_quality_dl = "64K" if duration > 3600 else "128K"
-            audio_cmd = YTDLP_BASE_ARGS + [
+            audio_cmd = YTDLP_BASE_ARGS + _sponsorblock_args() + [
                 "--format", "bestaudio/best",
                 "--extract-audio", "--audio-format", "mp3", "--audio-quality", _audio_quality_dl,
+                "--embed-metadata", "--embed-thumbnail",
                 "--no-playlist",
                 "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"),
                 url,

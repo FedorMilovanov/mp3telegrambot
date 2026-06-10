@@ -854,3 +854,20 @@ def test_mp3_normalization_is_lossless_not_loudnorm(monkeypatch):
     # выключатель уважается
     monkeypatch.setenv("MP3_LOUDNORM", "0")
     assert ff.normalize_mp3_lossless(Path("/nonexistent.mp3")) is False
+
+
+# ── Заход 27: SponsorBlock opt-in + ID3-метаданные ───────────────
+
+def test_sponsorblock_optin_validated(monkeypatch):
+    import pipelines.main_pipeline as mp
+    monkeypatch.delenv("SPONSORBLOCK_REMOVE", raising=False)
+    assert mp._sponsorblock_args() == []                    # default OFF
+    monkeypatch.setenv("SPONSORBLOCK_REMOVE", "sponsor,selfpromo")
+    assert mp._sponsorblock_args() == ["--sponsorblock-remove", "sponsor,selfpromo"]
+    monkeypatch.setenv("SPONSORBLOCK_REMOVE", "sponsor,hack_category")
+    assert mp._sponsorblock_args() == []                    # мусор отвергнут
+
+
+def test_mp3_embeds_id3_metadata():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert src.count('"--embed-metadata", "--embed-thumbnail"') == 2  # обе ветки
