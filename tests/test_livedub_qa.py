@@ -724,3 +724,17 @@ def test_probe_meta_ffmpeg_fallback(tmp_path):
     # живой тест: в CI ffprobe может быть — проверяем структуру fallback-ветки
     fb = src[src.index("def probe_video_meta"):src.index("def make_video_thumbnail")]
     assert 'which("ffmpeg")' in fb
+
+
+# ── Заход 19: кликабельные таймкоды в QA-отчёте ──────────────────
+
+def test_qa_report_clickable_timestamps():
+    from services.livedub_qa import format_qa_report
+    qa = {"score": 88, "verdict": "v", "issues": [
+        {"time": "14:32", "heard": "x", "problem": "p", "should_be": "y", "severity": "major"},
+        {"time": "trash", "heard": "x", "problem": "p", "should_be": "y", "severity": "minor"},
+    ]}
+    out = format_qa_report(qa, video_url="https://www.youtube.com/watch?v=ID")
+    assert 't=872"><b>14:32</b></a>' in out          # ссылка на секунду
+    assert "<b>trash</b>" in out and "trash</a>" not in out  # мусор без ссылки
+    assert "<a href" not in format_qa_report(qa)      # без url — без ссылок

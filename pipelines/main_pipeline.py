@@ -506,9 +506,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         if qa_result:
                             await context.bot.send_message(
                                 chat_id=update.effective_chat.id,
-                                text=format_qa_report(qa_result),
+                                text=format_qa_report(qa_result, video_url=url),
                                 parse_mode="HTML",
                                 reply_to_message_id=update.message.message_id,
+                                disable_web_page_preview=True,
                             )
 
                             # ── Авто-правка: major-искажения глушим, оригинал поднимаем ──

@@ -440,8 +440,12 @@ async def run_translation_qa(
 #  3. Форматирование отчёта
 # ══════════════════════════════════════════════════════════════
 
-def format_qa_report(qa: dict) -> str:
-    """Собирает HTML-сообщение с результатом проверки перевода."""
+def format_qa_report(qa: dict, video_url: str = "") -> str:
+    """Собирает HTML-сообщение с результатом проверки перевода.
+
+    video_url: если задан — таймкоды проблем становятся кликабельными
+    ссылками на момент видео (youtu.be?t=N), юзер сразу прыгает к месту.
+    """
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
     issues = qa.get("issues") or []
@@ -460,12 +464,24 @@ def format_qa_report(qa: dict) -> str:
     majors = [i for i in issues if str(i.get("severity")) == "major"]
     minors = [i for i in issues if str(i.get("severity")) != "major"]
 
+    def _ts_link(t_raw: str) -> str:
+        t_esc = html_mod.escape(t_raw)
+        if not video_url:
+            return f"<b>{t_esc}</b>"
+        from services.livedub_mix import parse_mmss
+        secs = parse_mmss(t_raw)
+        if secs is None:
+            return f"<b>{t_esc}</b>"
+        sep = "&" if "?" in video_url else "?"
+        href = html_mod.escape(f"{video_url}{sep}t={int(secs)}", quote=True)
+        return f'<a href="{href}"><b>{t_esc}</b></a>'
+
     def _fmt(issue: dict, icon: str) -> str:
-        t = html_mod.escape(str(issue.get("time") or "—"))
+        t = _ts_link(str(issue.get("time") or "—"))
         heard = html_mod.escape(str(issue.get("heard") or "")[:120])
         should = html_mod.escape(str(issue.get("should_be") or "")[:120])
         problem = html_mod.escape(str(issue.get("problem") or "")[:160])
-        parts = [f"{icon} <b>{t}</b> — {problem}"]
+        parts = [f"{icon} {t} — {problem}"]
         if heard:
             parts.append(f"    Звучит: «{heard}»")
         if should:
