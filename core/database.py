@@ -5,7 +5,7 @@ Database layer — db_init, db_save, db_get, settings, rate_limit, cache.
 """
 from core.globals import (
     BOT_TOKEN, GEMINI_API_KEY, DOWNLOAD_DIR, THUMBS_DIR,
-    DB_PATH, HAS_GEMINI, HAS_PILLOW,
+    DB_PATH, HAS_GEMINI, HAS_PILLOW, LOCAL_BOT_API_URL,
     flask_app, _video_processing_locks, _video_locks_mutex, _get_video_lock,
 )
 
@@ -694,7 +694,15 @@ def get_channel_mapping(channel_name: str) -> dict | None:
         if map_words and map_words.issubset(key_words):
             return mapping
     return None
-MAX_FILE_SIZE_MB  = 50
+# ─── Лимит размера отправляемых файлов ──────────────────────────────────
+# Облачный Bot API (api.telegram.org): максимум 50 МБ на отправку.
+# Локальный Bot API сервер (LOCAL_BOT_API_URL задан): до 2000 МБ.
+# Можно переопределить вручную через MAX_FILE_SIZE_MB в .env.
+_default_max_mb = 2000 if LOCAL_BOT_API_URL else 50
+try:
+    MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "") or _default_max_mb)
+except ValueError:
+    MAX_FILE_SIZE_MB = _default_max_mb
 MAX_PLAYLIST_SIZE = 50
 # ─── Gemini модели (v10, 2026-05-21) ────────────────────────────────────
 # История: до v7 — 2.5-pro/1.5-pro (платные); v7-v8 — 3.1-pro (ПЛАТНАЯ, убрана)

@@ -546,20 +546,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     livedub_path, is_fallback, has_subs = livedub_result
                     if livedub_path and livedub_path.exists():
                         file_size = livedub_path.stat().st_size / (1024 * 1024)
-                        if file_size > 50:
-                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB")
+                        if file_size > MAX_FILE_SIZE_MB:
+                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
+                             _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
                              await context.bot.send_message(
                                  chat_id=update.effective_chat.id,
-                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Telegram разрешает ботам отправлять файлы только до 50 МБ.",
+                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
                                  reply_to_message_id=update.message.message_id,
                              )
                         else:
                             if is_fallback:
-                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.
-Отправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                             else:
-                                caption = "🎬 Живые голоса Яндекса" + ("
-💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                                caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                             with open(livedub_path, "rb") as f:
                                 await context.bot.send_video(
                                     chat_id=update.effective_chat.id,
@@ -662,7 +661,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if file_size_mb > MAX_FILE_SIZE_MB:
                 await update.message.reply_text(
                     f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
-                    f"Telegram принимает максимум 50 МБ. Попробуйте более короткое видео."
+                    f"Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ. Попробуйте более короткое видео."
                 )
                 cleanup_files(media_id)
                 return False
@@ -1501,20 +1500,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     livedub_path, is_fallback, has_subs = livedub_result
                     if livedub_path and livedub_path.exists():
                         file_size = livedub_path.stat().st_size / (1024 * 1024)
-                        if file_size > 50:
-                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB")
+                        if file_size > MAX_FILE_SIZE_MB:
+                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
+                             _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
                              await context.bot.send_message(
                                  chat_id=update.effective_chat.id,
-                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Telegram разрешает ботам отправлять файлы только до 50 МБ.",
+                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
                                  reply_to_message_id=update.message.message_id,
                              )
                         else:
                             if is_fallback:
-                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.
-Отправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                             else:
-                                caption = "🎬 Живые голоса Яндекса" + ("
-💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                                caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                             with open(livedub_path, "rb") as f:
                                 await context.bot.send_video(
                                     chat_id=update.effective_chat.id,
