@@ -1598,10 +1598,17 @@ def _final_telegraph_polish(nodes: list) -> list:
                 else:
                     node.pop("attrs", None)
             if "children" in node:
-                new_ch = [
-                    _polish_node(c) for c in node["children"]
-                    if not (isinstance(c, str) and not c.strip())
-                ]
+                # VISUAL FIX 2026-06-10: пробельная строка МЕЖДУ inline-нодами —
+                # значимый разделитель (b("Иоан 4:34:") + " " + i("«цитата»")).
+                # Раньше дропалась целиком → жирный текст слипался с курсивом.
+                _orig = node["children"]
+                new_ch = []
+                for _ci, c in enumerate(_orig):
+                    if isinstance(c, str) and not c.strip():
+                        if 0 < _ci < len(_orig) - 1:
+                            new_ch.append(" ")  # схлопываем до 1 пробела, но сохраняем
+                        continue
+                    new_ch.append(_polish_node(c))
                 node = dict(node)
                 node["children"] = [c for c in new_ch if c is not None and c != ""]
         return node
@@ -1621,7 +1628,44 @@ def _final_telegraph_polish(nodes: list) -> list:
             return False
         return not n.get("children")
 
+    # VISUAL FIX 2026-06-10 (RTL): telegra.ph отбрасывает attrs.dir, а если
+    # первый «сильный» символ абзаца — иврит/арабица, браузер рендерит всю
+    # строку справа-налево («.Божьего завета» с точкой в начале — скриншот
+    # study_p2). Универсальный якорь: LRM (\u200e) в самое начало абзаца.
+    _RTL_CHAR_RE = re.compile(r'[\u0590-\u05FF\u0600-\u06FF]')
+    _LTR_STRONG_RE = re.compile(r'[A-Za-zА-Яа-яЁё0-9]')
+
+    def _flat_text(n) -> str:
+        if isinstance(n, str):
+            return n
+        if isinstance(n, dict):
+            return ''.join(_flat_text(c) for c in n.get("children", []))
+        return ''
+
+    def _first_strong_is_rtl(n) -> bool:
+        for ch in _flat_text(n):
+            if _RTL_CHAR_RE.match(ch):
+                return True
+            if _LTR_STRONG_RE.match(ch):
+                return False
+        return False
+
+    def _anchor_ltr(n):
+        if (isinstance(n, dict)
+                and n.get("tag") in ("p", "li", "blockquote", "h3", "h4")
+                and _first_strong_is_rtl(n)):
+            ch = list(n.get("children", []))
+            if ch and isinstance(ch[0], str):
+                if not ch[0].startswith("\u200e"):
+                    ch[0] = "\u200e" + ch[0]
+            else:
+                ch.insert(0, "\u200e")
+            n = dict(n)
+            n["children"] = ch
+        return n
+
     result = [_polish_node(n) for n in nodes]
+    result = [_anchor_ltr(n) for n in result]
     return [n for n in result if n and not _is_empty_container(n)]
 
 
@@ -2131,13 +2175,31 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                     return re.sub(r'(\d+:\d+)\s*[-–—]\s*(\d+)', r'\1–\2', n)
                 return n
 
-            out = [_trim_node_edges(x) for x in ch]
+            out = []
+            for _xi, x in enumerate(ch):
+                trimmed = _trim_node_edges(x)
+                # VISUAL FIX 2026-06-10: если у b/i срезали хвостовой пробел,
+                # а следующий элемент — текст без ведущего пробела/пунктуации,
+                # возвращаем пробел наружу (иначе «1.Введение», «4:34:«цитата»).
+                if (isinstance(x, dict) and isinstance(trimmed, dict)
+                        and x.get('tag') in ('b', 'strong', 'i', 'em')):
+                    _old_cc = x.get('children', [])
+                    _had_trail = bool(_old_cc and isinstance(_old_cc[-1], str)
+                                      and _old_cc[-1] != _old_cc[-1].rstrip())
+                    if _had_trail and _xi + 1 < len(ch):
+                        _nxt = ch[_xi + 1]
+                        _nxt_txt = _nxt if isinstance(_nxt, str) else _flatten_text(_nxt)
+                        if _nxt_txt and not _nxt_txt[0] in ' .,;:!?)»':
+                            out.append(trimmed)
+                            out.append(' ')
+                            continue
+                out.append(trimmed)
             compact = []
             for item in out:
                 if isinstance(item, str) and compact:
                     prev = compact[-1]
                     prev_text = _flatten_text(prev) if isinstance(prev, dict) else str(prev)
-                    if prev_text.endswith(' ') and item.startswith(' '):
+                    if prev_text.endswith(' ') and item.startswith(' ') and item != ' ':
                         item = item.lstrip()
                 compact.append(item)
             return compact

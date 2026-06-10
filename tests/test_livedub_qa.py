@@ -350,3 +350,61 @@ def test_qa_skips_dub_audio_when_srt_available():
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert "_have_srt" in src
     assert "без извлечения дубляжа" in src
+
+
+# ── Визуальный аудит конспектов 2026-06-10 (Playwright) ──────────
+
+def _chain(nodes):
+    from converters.md_telegraph import _final_telegraph_polish, _postprocess_telegraph_nodes
+    from services.telegraph import _clean_telegraph_nodes
+    return _postprocess_telegraph_nodes(_clean_telegraph_nodes(_final_telegraph_polish(nodes)))
+
+
+def _flat(nodes):
+    out = []
+    for n in nodes:
+        if isinstance(n, str):
+            out.append(n)
+        elif isinstance(n, dict):
+            out.append(_flat(n.get("children", [])))
+    return "".join(x if isinstance(x, str) else x for x in out)
+
+
+def test_visual_toc_number_has_space():
+    """Баг: '1.Введение' — жирная цифра слипалась с заголовком."""
+    nodes = [{"tag": "p", "children": [
+        {"tag": "b", "children": ["1.\u00a0"]}, "Введение",
+        " — ⏱\u00a0", {"tag": "a", "attrs": {"href": "https://x"}, "children": ["0:00"]},
+    ]}]
+    ch = _chain(nodes)[0]["children"]
+    joined = "".join(c if isinstance(c, str) else "".join(c.get("children", [])) for c in ch)
+    assert "1. Введение" in joined or "1.\u00a0Введение" in joined, joined
+
+
+def test_visual_quote_separator_preserved():
+    """Баг: 'Иоан. 4:34:«цитата»' — пробел между b и i дропался polish-ем."""
+    nodes = [{"tag": "p", "children": [
+        "• ", {"tag": "b", "children": ["Иоан. 4:34:"]}, " ",
+        {"tag": "i", "children": ["«Моя пища»"]},
+    ]}]
+    ch = _chain(nodes)[0]["children"]
+    assert " " in ch, ch
+
+
+def test_visual_rtl_paragraph_anchored_ltr():
+    """Баг: строка с ивритом в начале рендерилась RTL на telegra.ph (dir=auto)."""
+    nodes = [{"tag": "p", "children": [
+        "• ", {"tag": "b", "children": ["ברית — Используется для разграничения"]},
+        ", налагаемого свыше.",
+    ]}]
+    ch = _chain(nodes)[0]["children"]
+    first = ch[0] if isinstance(ch[0], str) else ""
+    assert first.startswith("\u200e"), ch
+
+
+def test_visual_rtl_not_anchored_for_plain_russian():
+    """LRM не должен добавляться обычным русским абзацам."""
+    nodes = [{"tag": "p", "children": ["Обычный русский текст с διαθήκη внутри."]}]
+    ch = _chain(nodes)[0]["children"]
+    first = ch[0] if isinstance(ch[0], str) else ""
+    assert not first.startswith("\u200e"), ch

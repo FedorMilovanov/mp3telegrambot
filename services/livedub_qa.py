@@ -339,9 +339,9 @@ async def run_translation_qa(
             # без audio_timestamp, c нативным JSON-mime.
             from core.globals import make_audio_config
             cfg = make_audio_config(
-                max_output_tokens=16384,
+                max_output_tokens=49152,   # high-thinking может съесть до ~30K до ответа
                 model_name=model_name,
-                thinking_level="low",   # сравнение текстов — не нужен deep thinking
+                thinking_level="high",     # КАЧЕСТВО ПЕРВЫМ: глубокий разбор перевода
                 response_mime_type="application/json",
             )
             try:
@@ -358,9 +358,9 @@ async def run_translation_qa(
                     model=model_name,
                     contents=parts + [prompt],
                     config=make_audio_config(
-                        max_output_tokens=16384,
+                        max_output_tokens=49152,
                         model_name=model_name,
-                        thinking_level="low",
+                        thinking_level="high",
                     ),
                 )
             return resp
