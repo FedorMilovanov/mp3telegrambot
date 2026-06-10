@@ -209,21 +209,31 @@ def synopsis_density_score(sections: list[dict], duration_seconds: int | float =
 
 
 def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_seconds: int | float = 0) -> bool:
-    """Retry only for substantial long-material density problems."""
+    """Retry for substantial density problems.
+
+    QUALITY FIRST 2026-06-10: базовые проблемы плотности (мало секций /
+    мало текста) — повод для retry уже с 20 минут: live-прогон показал
+    23-мин лекцию с content_chars=2265 при минимуме 3500 (medium) — и
+    retry не срабатывал из-за старого порога 45 мин. Транскрипто-
+    специфичные сигналы (inline-якоря, абзацы, авторский голос)
+    по-прежнему требуют длинного материала (они и считаются с 30 мин).
+    """
     try:
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
         dur = 0
+    codes = {i.code for i in issues or []}
+    basic = {"synopsis_too_few_sections", "synopsis_too_few_chars"}
+    if dur >= 20 * 60 and codes & basic:
+        return True
     if dur < 45 * 60:
         return False
-    critical = {
-        "synopsis_too_few_sections",
-        "synopsis_too_few_chars",
+    critical = basic | {
         "synopsis_missing_inline_anchors",
         "synopsis_too_few_paragraphs",
         "synopsis_author_voice_low",
     }
-    return any(i.code in critical for i in issues or [])
+    return bool(codes & critical)
 
 
 _INLINE_TS_EXTRACT_RE = re.compile(r'[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}')

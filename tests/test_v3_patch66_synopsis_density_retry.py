@@ -12,7 +12,16 @@ from core.synopsis_quality import (
 def test_synopsis_density_retry_policy_only_for_long_thin_outputs():
     issues = audit_synopsis_density([{"title": "A", "time": "0:00", "content": "short"}], 3600)
     assert should_retry_synopsis_density(issues, 3600) is True
-    assert should_retry_synopsis_density(issues, 20 * 60) is False
+    # QUALITY FIRST 2026-06-10: базовые проблемы плотности (too_few_chars/
+    # sections) ретраятся уже с 20 мин — live-прогон: 23-мин лекция с
+    # content_chars=2265 < 3500 не ретраилась по старому порогу 45 мин.
+    assert should_retry_synopsis_density(issues, 23 * 60) is True
+    assert should_retry_synopsis_density(issues, 15 * 60) is False
+    # транскрипто-специфичные сигналы — по-прежнему только для длинных
+    from core.synopsis_quality import SynopsisQualityIssue
+    transcript_only = [SynopsisQualityIssue("synopsis_author_voice_low", "x")]
+    assert should_retry_synopsis_density(transcript_only, 30 * 60) is False
+    assert should_retry_synopsis_density(transcript_only, 50 * 60) is True
 
 
 def test_synopsis_density_score_prefers_fuller_output():

@@ -78,7 +78,7 @@ def _get_audio_duration(path: Path) -> float:
     return 0.0
 
 
-async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
+async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0) -> Path | None:
     from services.shorts_video import _get_whisper_model
     """
     Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
@@ -90,6 +90,16 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
     workdir.mkdir(parents=True, exist_ok=True)
     audio_path = workdir / "original_audio"
     srt_path = workdir / "gemini_subs.srt"
+
+    # 0. PERF FIX 2026-06-10 (live log): длительность известна из метаданных
+    # ДО скачивания — раньше бот скачивал ВСЁ аудио 23-мин ролика (~1.5 мин
+    # yt-dlp) и только потом отбрасывал его по лимиту 180с.
+    if known_duration and known_duration > _MAX_SUBTITLE_AUDIO_SECONDS:
+        logger.info(
+            "[EngSubtitles] Видео %dс > %dс (из метаданных) — субтитры пропущены без скачивания.",
+            known_duration, _MAX_SUBTITLE_AUDIO_SECONDS,
+        )
+        return None
 
     # 1. Скачиваем аудио
     cmd = YTDLP_BASE_ARGS + ["--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]

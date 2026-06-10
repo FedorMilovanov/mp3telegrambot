@@ -195,7 +195,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     # Запускаем создание субтитров параллельно с скачиванием LiveDub
                     subs_task = None
                     if eng_subs_enabled:
-                        subs_task = asyncio.create_task(create_gemini_subtitles(video_url, workdir))
+                        subs_task = asyncio.create_task(
+                            create_gemini_subtitles(video_url, workdir, known_duration=duration)
+                        )
                     
                     async def _make_dub():
                         """Pro-микс (свой ffmpeg: слышный оригинал, ducking,
@@ -285,10 +287,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
                 try:
+                    try:
+                        _cached_cap = f"🎬 Живые голоса Яндекса\n📝 {title}"
+                    except NameError:
+                        _cached_cap = "🎬 Живые голоса Яндекса"
                     await context.bot.send_video(
                         chat_id=update.effective_chat.id,
                         video=_livedub_cached_file_id,
-                        caption="🎬 Живые голоса Яндекса (из кэша)",
+                        caption=_cached_cap,
                         reply_to_message_id=update.message.message_id,
                         supports_streaming=True,
                     )

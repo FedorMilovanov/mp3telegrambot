@@ -440,3 +440,24 @@ def test_db_livedub_file_id_roundtrip(tmp_path, monkeypatch):
     # перезапись и очистка
     db.db_set_livedub_file_id("vid123", "")
     assert db.db_get("vid123")["livedub_file_id"] == ""
+
+
+# ── Заход 7: хирургическое закрытие недозакрытого ────────────────
+
+def test_eng_subtitles_skip_by_known_duration():
+    """Длинное видео отбрасывается ДО скачивания аудио (метаданные уже есть)."""
+    src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    assert "known_duration: int = 0" in src
+    assert "субтитры пропущены без скачивания" in src
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "known_duration=duration" in pipe
+
+
+def test_synopsis_source_rule_in_prompt():
+    src = Path("core/prompts.py").read_text(encoding="utf-8")
+    assert "во вводной секции source-блок не ставь" in src
+
+
+def test_help_mentions_mode_and_eng():
+    src = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "/mode" in src and "ENG Quick" in src
