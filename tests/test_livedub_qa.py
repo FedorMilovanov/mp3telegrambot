@@ -489,3 +489,46 @@ def test_ytdlp_no_double_cookie_sources(tmp_path, monkeypatch):
     monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
     args2 = " ".join(ff._build_ytdlp_base_args())
     assert "--config-location" in args2
+
+
+# ── Заход 9: обслуживание диска + flood control ──────────────────
+
+def test_cleanup_botapi_server_files(tmp_path, monkeypatch):
+    import os, time
+    from core.utils import cleanup_botapi_server_files
+    old = tmp_path / "video.mp4"; old.write_bytes(b"x" * 10)
+    os.utime(old, (time.time() - 90000,) * 2)
+    fresh = tmp_path / "fresh.mp4"; fresh.write_bytes(b"y")
+    binlog = tmp_path / "td.binlog"; binlog.write_bytes(b"z")
+    os.utime(binlog, (time.time() - 90000,) * 2)
+    monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(tmp_path))
+    n = cleanup_botapi_server_files(max_age_hours=24)
+    assert n == 1
+    assert not old.exists() and fresh.exists() and binlog.exists()
+    monkeypatch.delenv("LOCAL_BOT_API_DATA_DIR")
+    assert cleanup_botapi_server_files() == 0  # no-op без env
+
+
+def test_cleanup_stale_livedub_dirs(tmp_path, monkeypatch):
+    import os, time, tempfile
+    from core.utils import cleanup_stale_livedub_dirs
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    stale = tmp_path / "livedub_OLD1"; stale.mkdir()
+    f = stale / "v.mp4"; f.write_bytes(b"a")
+    os.utime(f, (time.time() - 30000,) * 2)
+    active = tmp_path / "livedub_NEW1"; active.mkdir()
+    (active / "v.mp4").write_bytes(b"b")
+    n = cleanup_stale_livedub_dirs(max_age_hours=6)
+    assert n == 1
+    assert not stale.exists() and active.exists()
+
+
+def test_periodic_maintenance_wires_new_cleanups():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "cleanup_botapi_server_files" in src
+    assert "cleanup_stale_livedub_dirs" in src
+
+
+def test_upload_retry_honors_retry_after():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert src.count('getattr(upload_err, "retry_after", None)') == 2

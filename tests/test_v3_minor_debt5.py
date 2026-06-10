@@ -77,8 +77,10 @@ def test_main_periodic_maintenance_calls_stale_cleanup():
     src = pathlib.Path("main.py").read_text(encoding="utf-8")
     assert "cleanup_stale_downloads" in src, \
         "main.py must import and call cleanup_stale_downloads"
-    assert "from core.utils import cleanup_nosub_files, cleanup_stale_downloads" in src, \
-        "main.py must import cleanup_stale_downloads alongside cleanup_nosub_files"
+    # 2026-06-10: импорт стал многострочным (добавлены botapi/livedub cleanups) —
+    # проверяем наличие обоих имён, а не точную форму строки импорта
+    assert "cleanup_nosub_files" in src, \
+        "main.py must import cleanup_nosub_files alongside cleanup_stale_downloads"
 
 
 # ─── prompt_rules.py ─────────────────────────────────────────────────────

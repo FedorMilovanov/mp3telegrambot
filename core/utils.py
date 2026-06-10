@@ -18,7 +18,9 @@ from core.database import (
 )
 
 import logging
+import os
 import re
+import shutil
 import sqlite3          # FIX #21: не было импорта
 import time             # FIX #21: не было импорта
 from datetime import date  # FIX #21: не было импорта
@@ -264,6 +266,73 @@ def cleanup_stale_downloads(max_age_hours: int = 3) -> int:
         logger.warning("cleanup_stale_downloads: ошибка обхода downloads/: %s", _e)
     if deleted:
         logger.info("cleanup_stale_downloads: удалено %d видеофайлов старше %dч", deleted, max_age_hours)
+    return deleted
+
+
+def cleanup_botapi_server_files(max_age_hours: int = 24) -> int:
+    """Чистит рабочую папку локального telegram-bot-api сервера.
+
+    AUDIT 2026-06-10: сервер копирует каждый file://-upload в свой
+    --dir (на проде C:/ProgramData/TelegramBotAPI/data) и НЕ удаляет
+    копии сам — диск растёт на сотни МБ с каждого LIVEDUB-видео.
+    Папка задаётся через LOCAL_BOT_API_DATA_DIR; без неё — no-op.
+    Удаляем только файлы старше max_age_hours (отправленные давно);
+    структуру папок и служебные файлы сервера не трогаем.
+    """
+    import time as _time
+    data_dir = os.getenv("LOCAL_BOT_API_DATA_DIR", "").strip()
+    if not data_dir:
+        return 0
+    root = Path(data_dir)
+    if not root.exists():
+        return 0
+    cutoff = _time.time() - max_age_hours * 3600
+    media_exts = {".mp4", ".mp3", ".m4a", ".mkv", ".webm", ".mov", ".jpg", ".jpeg", ".png", ".pdf", ".oga", ".ogg"}
+    deleted = 0
+    try:
+        for f in root.rglob("*"):
+            if not f.is_file() or f.suffix.lower() not in media_exts:
+                continue
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    deleted += 1
+            except OSError:
+                continue
+    except Exception as e:
+        logger.warning(f"cleanup_botapi_server_files error: {e}")
+    if deleted:
+        logger.info(f"cleanup_botapi_server_files: удалено {deleted} файлов из {data_dir}")
+    return deleted
+
+
+def cleanup_stale_livedub_dirs(max_age_hours: int = 6) -> int:
+    """Удаляет osiротевшие livedub_* папки из системного temp.
+
+    Штатно ld_work чистится в finally process_single_video, но при
+    жёстком падении процесса (kill, BSOD, Ctrl+C в неудачный момент)
+    папки с видео на сотни МБ остаются в %TEMP% навсегда.
+    """
+    import time as _time
+    import tempfile
+    cutoff = _time.time() - max_age_hours * 3600
+    deleted = 0
+    try:
+        tmp_root = Path(tempfile.gettempdir())
+        for d in tmp_root.glob("livedub_*"):
+            if not d.is_dir():
+                continue
+            try:
+                newest = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=d.stat().st_mtime)
+                if newest < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+                    deleted += 1
+            except OSError:
+                continue
+    except Exception as e:
+        logger.warning(f"cleanup_stale_livedub_dirs error: {e}")
+    if deleted:
+        logger.info(f"cleanup_stale_livedub_dirs: удалено {deleted} папок")
     return deleted
 
 

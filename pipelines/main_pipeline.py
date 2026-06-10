@@ -743,6 +743,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception as upload_err:
                         err_name = type(upload_err).__name__
                         err_str  = str(upload_err).lower()
+                        # PTB RetryAfter (flood control): ждём ровно сколько просит API
+                        _ra = getattr(upload_err, "retry_after", None)
+                        if _ra is not None and _attempt < 2:
+                            logger.warning(f"Flood control: ждём {_ra}с перед повтором")
+                            await asyncio.sleep(float(_ra) + 1.0)
+                            continue
                         _retryable_names = ("Timeout", "NetworkError", "TimedOut", "ReadError", "ConnectError")
                         _retryable_strs  = ("internal server error", "server error", "bad gateway", "gateway timeout")
                         _is_retryable = (
@@ -1579,6 +1585,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 except Exception as upload_err:
                     err_name = type(upload_err).__name__
                     err_str  = str(upload_err).lower()
+                    # PTB RetryAfter (flood control): ждём ровно сколько просит API
+                    _ra = getattr(upload_err, "retry_after", None)
+                    if _ra is not None and _attempt < 2:
+                        logger.warning(f"Flood control: ждём {_ra}с перед повтором")
+                        await asyncio.sleep(float(_ra) + 1.0)
+                        continue
                     _retryable_names = ("Timeout", "NetworkError", "TimedOut", "ReadError", "ConnectError")
                     _retryable_strs  = ("internal server error", "server error", "bad gateway", "gateway timeout")
                     _is_retryable = (

@@ -295,7 +295,10 @@ async def run_bot_async():
                 pass
 
         # AUDIT M9: фоновая периодическая чистка временных файлов и БД
-        from core.utils import cleanup_nosub_files, cleanup_stale_downloads
+        from core.utils import (
+            cleanup_nosub_files, cleanup_stale_downloads,
+            cleanup_botapi_server_files, cleanup_stale_livedub_dirs,
+        )
         from core.database import db_cleanup_old_records
         from core.globals import mark_bot_alive
 
@@ -307,6 +310,10 @@ async def run_bot_async():
                     await loop.run_in_executor(None, cleanup_nosub_files)
                     await loop.run_in_executor(None, cleanup_stale_downloads)
                     await loop.run_in_executor(None, db_cleanup_old_records)
+                    # AUDIT 2026-06-10: data-dir локального Bot API сервера и
+                    # осиротевшие livedub_* в %TEMP% росли бесконечно
+                    await loop.run_in_executor(None, cleanup_botapi_server_files)
+                    await loop.run_in_executor(None, cleanup_stale_livedub_dirs)
                     # Segment export files (JSON/MD) older than 90 days
                     try:
                         from core.generated_pages import cleanup_old_segment_files
