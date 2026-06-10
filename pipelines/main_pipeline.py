@@ -209,6 +209,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
                     dub_task = asyncio.create_task(_make_dub())
 
+                    # Субтитры перевода Яндекса — точный текст дубляжа для QA.
+                    # Качаются параллельно, сбой не критичен.
+                    dub_subs_task = None
+                    if _livedub_qa_enabled:
+                        from services.yandex_live_dub import get_translation_subtitles
+                        dub_subs_task = asyncio.create_task(
+                            get_translation_subtitles(video_url, workdir)
+                        )
+
                     srt_path = None
                     if subs_task:
                         try:
@@ -226,6 +235,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.warning(f"[LiveDub] Ошибка: {e}")
                     except Exception as e:
                         logger.warning(f"[LiveDub] Неизвестная ошибка: {e}")
+
+                    # Дожидаемся субтитров перевода (обычно готовы раньше дубляжа)
+                    if dub_subs_task:
+                        try:
+                            await asyncio.wait_for(dub_subs_task, timeout=60)
+                        except Exception as _dse:
+                            logger.info(f"[LiveDub] субтитры перевода не получены: {_dse}")
 
                     if dub_path and dub_path.exists():
                         # Яндекс отработал, вшиваем сабы
@@ -327,11 +343,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             _qa_ai_data = (_qa_cached or {}).get("ai_data")
                         except Exception:
                             pass
+                        _dub_srt = None
+                        try:
+                            if "ld_work" in locals() and ld_work.exists():
+                                _srt_candidates = sorted(
+                                    (f for f in ld_work.glob("*.srt")
+                                     if f.name != "gemini_subs.srt"),
+                                    key=lambda f: f.stat().st_mtime, reverse=True,
+                                )
+                                _dub_srt = _srt_candidates[0] if _srt_candidates else None
+                        except Exception:
+                            pass
                         qa_result = await run_translation_qa(
                             dub_video_path=livedub_path,
                             original_audio_path=_orig_audio,
                             ai_data=_qa_ai_data,
                             duration=duration,
+                            dub_srt_path=_dub_srt,
                         )
                         try:
                             await _qa_status.delete()

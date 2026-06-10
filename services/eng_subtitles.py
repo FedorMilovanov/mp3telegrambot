@@ -217,13 +217,16 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
     video_path = workdir / "original_video.mp4"
     
-    yt_dlp = shutil.which("yt-dlp")
-    cmd = [
-        yt_dlp, "--format", "bestvideo+bestaudio/best",
+    # FIX: используем YTDLP_BASE_ARGS (cookies, js-runtime, общие настройки) —
+    # без них YouTube часто отвечает 403 Forbidden (та же причина, что в cabbac8).
+    # Ограничиваем высоту 1080p: для дубляжа выше не нужно, а вес/время скачивания
+    # на длинных роликах падают в разы.
+    cmd = YTDLP_BASE_ARGS + [
+        "--format", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
         "--merge-output-format", "mp4",
         "--output", str(video_path), video_url
     ]
-    logger.info("[EngSubtitles] Скачиваем резервное оригинальное видео...")
+    logger.info("[EngSubtitles] Скачиваем оригинальное видео (<=1080p, base args)...")
 
     def _run_cmd(t):
         kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}

@@ -243,6 +243,41 @@ async def get_live_dub_info(video_url: str) -> dict:
     return data
 
 
+async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optional[Path]:
+    """Скачивает СУБТИТРЫ ПЕРЕВОДА (текст с таймкодами) через vot-cli-live.
+
+    Это точный текст того, что озвучивает Яндекс, с миллисекундными
+    таймкодами — идеальный вход для QA-проверки перевода: дешевле и
+    точнее, чем сравнение аудио-с-аудио.
+    Возвращает путь к SRT или None (не критично — QA умеет fallback).
+    """
+    vot = _check_vot_cli()
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    before = set(output_dir.glob("*.srt"))
+    cmd = [vot, "--subs-srt", "--reslang", "ru", "--output", str(output_dir), video_url]
+    logger.info(f"[LiveDub] Субтитры перевода: {' '.join(cmd)}")
+    loop = asyncio.get_running_loop()
+    try:
+        stdout, stderr, rc = await loop.run_in_executor(
+            None, lambda: _run_subprocess(cmd, timeout=180)
+        )
+    except Exception as e:
+        logger.warning(f"[LiveDub] subs fetch failed: {e}")
+        return None
+    if rc != 0:
+        logger.info(f"[LiveDub] субтитры перевода недоступны (rc={rc})")
+        return None
+    new_files = sorted(set(output_dir.glob("*.srt")) - before,
+                       key=lambda f: f.stat().st_mtime, reverse=True)
+    candidates = new_files or sorted(output_dir.glob("*.srt"),
+                                     key=lambda f: f.stat().st_mtime, reverse=True)
+    for f in candidates:
+        if f.stat().st_size > 50:
+            return f
+    return None
+
+
 async def is_live_available(video_url: str) -> Tuple[bool, Optional[str]]:
     """Проверяет, доступны ли для видео Живые голоса."""
     try:

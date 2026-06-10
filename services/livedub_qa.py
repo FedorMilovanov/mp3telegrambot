@@ -182,6 +182,36 @@ async def _upload_and_wait(client, path: Path, display_name: str):
     return uf
 
 
+def srt_to_timed_text(srt_path: Path, max_chars: int = 12000) -> str:
+    """SRT → компактный текст «[MM:SS] реплика» для передачи в Gemini.
+
+    Точный текст того, что озвучивает Яндекс, повышает точность QA:
+    модель цитирует реальные фразы перевода вместо распознавания на слух.
+    """
+    try:
+        raw = Path(srt_path).read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+    out: list[str] = []
+    for block in re.split(r"\n\s*\n", raw):
+        lines = [l.strip() for l in block.strip().splitlines() if l.strip()]
+        if len(lines) < 2:
+            continue
+        ts_idx = 1 if lines[0].isdigit() else 0
+        m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.]\d{3}\s*-->", lines[ts_idx]) if ts_idx < len(lines) else None
+        if not m:
+            continue
+        h, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        total_m = h * 60 + mm
+        text_lines = lines[ts_idx + 1:]
+        if not text_lines:
+            continue
+        out.append(f"[{total_m:02d}:{ss:02d}] " + " ".join(text_lines))
+        if sum(len(x) for x in out) > max_chars:
+            break
+    return "\n".join(out)
+
+
 def _parse_qa_json(text: str) -> Optional[dict]:
     """Достаёт JSON из ответа модели (терпимо к ```json-обёрткам)."""
     if not text:
@@ -208,6 +238,7 @@ async def run_translation_qa(
     ai_data: Optional[dict],
     duration: int,
     model_name: str = "",
+    dub_srt_path: Optional[Path] = None,
 ) -> Optional[dict]:
     """Смысловая проверка дубляжа через Gemini.
 
@@ -253,9 +284,22 @@ async def run_translation_qa(
                 "конспект оригинала как эталон смысла:\n" + "\n".join(ref_lines)
             )
 
+        dub_text_block = ""
+        if dub_srt_path and Path(dub_srt_path).exists():
+            timed = srt_to_timed_text(dub_srt_path)
+            if timed:
+                dub_text_block = (
+                    "\n\nТОЧНЫЙ ТЕКСТ русского дубляжа (официальные субтитры перевода "
+                    "Яндекса с таймкодами — цитируй поле heard ИЗ НЕГО, таймкоды бери отсюда):\n"
+                    + timed
+                )
+                logger.info("[LiveDubQA] использую текст перевода из SRT (%d строк)",
+                            timed.count("\n") + 1)
+
         prompt = _QA_PROMPT.format(
-            reference_block=reference_block or
-            "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). Сравнивай их напрямую."
+            reference_block=(reference_block or
+            "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). Сравнивай их напрямую.")
+            + dub_text_block
         )
 
         async def _attempt(client):

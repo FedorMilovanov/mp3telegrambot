@@ -189,3 +189,45 @@ def test_build_mix_filter_with_gains_and_limiter():
     fc2 = build_mix_filter(0.45, 1.3, 600, duck=False)
     assert "dB" not in fc2
     assert "alimiter" in fc2
+
+
+# ── SRT перевода как вход QA ─────────────────────────────────────
+
+def test_srt_to_timed_text(tmp_path):
+    from services.livedub_qa import srt_to_timed_text
+    srt = tmp_path / "x.srt"
+    srt.write_text(
+        "1\n00:00:05,000 --> 00:00:08,000\nПривет, мир\n\n"
+        "2\n00:14:32,500 --> 00:14:36,000\nОправдание делами\nи ещё строка\n\n",
+        encoding="utf-8",
+    )
+    out = srt_to_timed_text(srt)
+    assert "[00:05] Привет, мир" in out
+    assert "[14:32] Оправдание делами и ещё строка" in out
+
+
+def test_srt_to_timed_text_handles_garbage(tmp_path):
+    from services.livedub_qa import srt_to_timed_text
+    srt = tmp_path / "bad.srt"
+    srt.write_text("not srt at all\n\nstill not", encoding="utf-8")
+    assert srt_to_timed_text(srt) == ""
+    assert srt_to_timed_text(tmp_path / "missing.srt") == ""
+
+
+def test_srt_to_timed_text_caps_size(tmp_path):
+    from services.livedub_qa import srt_to_timed_text
+    blocks = []
+    for i in range(2000):
+        mm = i // 60
+        ss = i % 60
+        blocks.append(f"{i+1}\n00:{mm:02d}:{ss:02d},000 --> 00:{mm:02d}:{ss:02d},900\n{'слово ' * 20}\n")
+    srt = tmp_path / "big.srt"
+    srt.write_text("\n".join(blocks), encoding="utf-8")
+    out = srt_to_timed_text(srt, max_chars=12000)
+    assert len(out) < 13500  # cap + последний блок
+
+
+def test_pipeline_wires_dub_srt():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "get_translation_subtitles" in src
+    assert "dub_srt_path=_dub_srt" in src
