@@ -1038,3 +1038,18 @@ def test_bot_autostarts_local_server():
     assert "0x8 | 0x200 | 0x08000000" in src  # detached на Windows
     # автостарт пробуется ДО входа в цикл ожидания
     assert src.index("_autostart_tried = True") < src.index("Жду появления сервера")
+
+
+# ── Заход 34: диагностика автостарта сервера ─────────────────────
+
+def test_autostart_diagnoses_dead_server():
+    """02:18 live log: автостарт сработал, но сервер не поднялся, а ПРИЧИНУ
+    мы не видели (DEVNULL). Теперь: лог сервера в файл, проверка что процесс
+    жив через 2с, хвост лога при мгновенной смерти, grace до 20с (первый
+    старт создаёт binlog и коннектится к DC)."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "botapi-server.log" in src
+    assert "--verbosity=2" in src
+    assert "_proc.poll() is not None" in src
+    assert "упал сразу" in src
+    assert "for _grace in range(10)" in src

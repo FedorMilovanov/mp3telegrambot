@@ -242,8 +242,12 @@ async def run_bot_async():
                 _P(_data).mkdir(parents=True, exist_ok=True)
             except OSError:
                 pass
+            # FIX 2026-06-11b: лог сервера в файл (был DEVNULL — при падении
+            # сервера мы не видели ПРИЧИНУ: битые ключи, занятый порт, права).
+            _srv_log_path = _P(_data).parent / "botapi-server.log"
             cmd = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
-                   "--local", f"--http-port={_port}", f"--dir={_data}"]
+                   "--local", f"--http-port={_port}", f"--dir={_data}",
+                   f"--log={_srv_log_path}", "--verbosity=2"]
             kwargs: dict = {"stdout": _sp.DEVNULL, "stderr": _sp.DEVNULL}
             if os.name == "nt":
                 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -251,8 +255,23 @@ async def run_bot_async():
             else:
                 kwargs["start_new_session"] = True
             try:
-                _sp.Popen(cmd, **kwargs)
-                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s)...", _port)
+                _proc = _sp.Popen(cmd, **kwargs)
+                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s, лог: %s)...",
+                            _port, _srv_log_path)
+                import time as _t
+                _t.sleep(2)
+                if _proc.poll() is not None:
+                    # Процесс уже умер — показываем хвост его лога
+                    _tail = ""
+                    try:
+                        _tail = _srv_log_path.read_text(encoding="utf-8", errors="replace")[-600:]
+                    except OSError:
+                        pass
+                    logger.error(
+                        "❌ telegram-bot-api.exe упал сразу (rc=%s). Хвост лога сервера:\n%s",
+                        _proc.returncode, _tail or "(лог пуст — проверьте права на папку)",
+                    )
+                    return False
                 return True
             except Exception as _ase:
                 logger.warning("⚠️ Автостарт Bot API не удался: %s", _ase)
@@ -268,7 +287,15 @@ async def run_bot_async():
                 if not _autostart_tried:
                     _autostart_tried = True
                     if _try_autostart_botapi():
-                        await asyncio.sleep(3)  # серверу нужно пару секунд
+                        # Первый запуск сервера: создание binlog + коннект к
+                        # Telegram DC занимает 5-20с (дольше через VPN/TUN)
+                        for _grace in range(10):
+                            await asyncio.sleep(2)
+                            try:
+                                with socket.create_connection((_host, _port), timeout=2):
+                                    break
+                            except OSError:
+                                continue
                         continue
                 if not _wait_logged:
                     logger.error(
