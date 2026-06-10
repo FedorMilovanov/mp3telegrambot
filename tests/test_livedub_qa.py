@@ -841,11 +841,16 @@ def test_hardsub_uses_detected_encoder():
     assert '"libx264", "-preset", "veryfast"' not in fb  # хардкод убран
 
 
-def test_mp3_loudnorm_in_extract(monkeypatch):
+def test_mp3_normalization_is_lossless_not_loudnorm(monkeypatch):
+    """Round 26 исправляет round 25: single-pass loudnorm в энкоде КАЧАЛ
+    динамику речи (pumping). Теперь mp3gain (lossless, только заголовки
+    фреймов) ПОСЛЕ скачивания; нет mp3gain — файл не трогаем вовсе."""
     import services.ffmpeg as ff
-    monkeypatch.delenv("MP3_LOUDNORM", raising=False)
     args = " ".join(ff._build_ytdlp_base_args())
-    assert "ExtractAudio:-af loudnorm" in args
+    assert "loudnorm" not in args  # из энкода убран
+    assert hasattr(ff, "normalize_mp3_lossless")
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert src.count("normalize_mp3_lossless") >= 2  # обе ветки скачивания
+    # выключатель уважается
     monkeypatch.setenv("MP3_LOUDNORM", "0")
-    args2 = " ".join(ff._build_ytdlp_base_args())
-    assert "loudnorm" not in args2
+    assert ff.normalize_mp3_lossless(Path("/nonexistent.mp3")) is False

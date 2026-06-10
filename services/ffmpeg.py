@@ -76,16 +76,50 @@ def _build_ytdlp_base_args() -> list:
         _frags = 4
     if _frags > 1:
         args += ["--concurrent-fragments", str(_frags)]
-    # QUALITY 2026-06-10: нормализация громкости MP3 на этапе извлечения.
-    # Источники с YouTube гуляют от -25 до -10 LUFS — слушателю приходится
-    # крутить громкость между выпусками. loudnorm I=-16 (подкаст-стандарт)
-    # внутри того же перекодирования в mp3 = ноль лишних перекодирований.
-    # MP3_LOUDNORM=0 — отключить.
-    if os.getenv("MP3_LOUDNORM", "1").strip().lower() not in {"0", "false", "no", "off"}:
-        args += ["--postprocessor-args", "ExtractAudio:-af loudnorm=I=-16:TP=-1.5:LRA=11"]
     return args
 
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()
+
+def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
+    """Lossless-нормализация громкости MP3 через mp3gain (если установлен).
+
+    QUALITY 2026-06-10 (round 26, исправление round 25): single-pass
+    loudnorm — ДИНАМИЧЕСКАЯ нормализация, на речи с паузами «дышит»
+    (pumping) — наше же исследование (round 5): 'Single-pass pumps;
+    don't use it for VOD'. mp3gain меняет только поле global_gain в
+    заголовках MP3-фреймов: БЕЗ перекодирования, без потерь, обратимо.
+    target 92.0 dB ≈ 89 (стандарт ReplayGain) + 3 dB — комфортно для
+    речи в Telegram. Шаг точности mp3gain — 1.5 dB (достаточно).
+
+    Возвращает True если нормализация применена. Нет mp3gain — False
+    (файл не трогаем; честная деградация без ухудшения качества).
+    Отключение: MP3_LOUDNORM=0.
+    """
+    if os.getenv("MP3_LOUDNORM", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    mp3gain = shutil.which("mp3gain") or shutil.which("mp3gain.exe")
+    if not mp3gain:
+        return False
+    try:
+        kwargs: dict = {"capture_output": True, "text": True,
+                        "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        # /r: track gain, /d: смещение цели от 89 dB, /c: без вопросов про клиппинг,
+        # /t: писать тег APE с undo-информацией
+        offset = target_db - 89.0
+        proc = subprocess.run(
+            [mp3gain, "-r", "-c", "-d", f"{offset:.1f}", str(mp3_path)],
+            timeout=600, **kwargs,
+        )
+        if proc.returncode == 0:
+            logger.info("MP3 нормализован lossless (mp3gain, цель %.0f dB)", target_db)
+            return True
+        logger.warning("mp3gain rc=%s: %s", proc.returncode, (proc.stderr or "")[-200:])
+    except Exception as e:
+        logger.warning("mp3gain не сработал: %s", e)
+    return False
+
 
 def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     """

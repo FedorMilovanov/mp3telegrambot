@@ -668,6 +668,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ]
                 await asyncio.get_running_loop().run_in_executor(
                     None, lambda: subprocess.run(dl_cmd, capture_output=True, timeout=1800))
+                if mp3_path.exists():
+                    from services.ffmpeg import normalize_mp3_lossless
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: normalize_mp3_lossless(mp3_path))
             if not mp3_path.exists():
                 raise Exception("Не удалось скачать аудио")
             file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
@@ -970,6 +974,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
             if proc.returncode != 0:
                 raise Exception(proc.stderr[-500:] if proc.stderr else "yt-dlp error")
+            _mp3_after_dl = DOWNLOAD_DIR / f"{media_id}.mp3"
+            if _mp3_after_dl.exists():
+                from services.ffmpeg import normalize_mp3_lossless
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: normalize_mp3_lossless(_mp3_after_dl))
 
             mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
             if not mp3_path.exists():
