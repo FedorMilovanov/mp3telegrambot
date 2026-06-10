@@ -1,7 +1,8 @@
-import os
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+import os
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 """
 bot.py — совместимый launcher для MP3Bot.
 
@@ -42,7 +43,6 @@ bot.py — совместимый launcher для MP3Bot.
       См. converters/md_telegraph.py.
 """
 
-from __future__ import annotations
 
 
 

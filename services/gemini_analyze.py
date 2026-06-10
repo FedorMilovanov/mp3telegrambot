@@ -394,7 +394,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         # BUG-B09: единый retry через _gemini_call_with_retry
                         # Используем default-args чтобы зафиксировать текущие client/audio_part
                         # и избежать late-binding closure на переменные цикла.
-                        async def _do_generate(_c=client, _ap=audio_part):
+                        async def _do_generate(_c=client, _ap=audio_part, _current_model=_current_model):
                             _use_schema = _audio_structured_output_enabled()
                             if _use_schema:
                                 try:

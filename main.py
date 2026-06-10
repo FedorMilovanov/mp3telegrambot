@@ -260,6 +260,7 @@ async def run_bot_async():
         default_commands = [
             BotCommand("start", "▶️ Главная"),
             BotCommand("help",  "ℹ️ Справка"),
+            BotCommand("mode",  "🌐 Режим: RUS / ENG + живой перевод"),
         ]
         await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
 

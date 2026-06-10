@@ -934,8 +934,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     try:
                         loop = asyncio.get_running_loop()
                         path = page_url.replace("https://telegra.ph/", "")
-                        resp = await loop.run_in_executor(None, lambda: requests.get(
-                            f"https://api.telegra.ph/getPage/{path}?return_content=true",
+                        resp = await loop.run_in_executor(None, lambda _p=path: requests.get(
+                            f"https://api.telegra.ph/getPage/{_p}?return_content=true",
                             timeout=30,
                         ))
                         data = resp.json()
