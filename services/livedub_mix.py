@@ -70,6 +70,12 @@ def get_mix_params() -> dict:
         # 1 = лёгкий voice-EQ (highpass 70 Гц на обеих дорожках: срезает
         # гул зала/рокот ниже речи, голос не задевает). 0 = выключить.
         "voice_eq": _env_int("LIVEDUB_VOICE_EQ", 1),
+        # Путь к RNNoise-модели (.rnnn) — AI-шумодав ffmpeg arnndn для
+        # EN-оригинала (гул зала/проектора в записях проповедей).
+        # Модели: https://github.com/GregorR/rnnoise-models (cb.rnnn —
+        # лучший универсал). Пусто = выключено. RU-дорожку Яндекса не
+        # трогаем — она студийно чистая.
+        "rnnoise_model": os.getenv("LIVEDUB_RNNOISE_MODEL", "").strip(),
     }
 
 
@@ -182,7 +188,7 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
                      duck: bool = True,
                      ru_extra_expr: str = "", en_extra_expr: str = "",
                      en_gain_db: float = 0.0, ru_gain_db: float = 0.0,
-                     voice_eq: bool = True) -> str:
+                     voice_eq: bool = True, rnnoise_model: str = "") -> str:
     """Собирает filter_complex для микса EN-оригинала и RU-перевода.
 
     ru_extra_expr / en_extra_expr — дополнительные volume-выражения
@@ -194,13 +200,18 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     normalize амикса, который глушил бы всё на -6 дБ).
     """
     _eq = "highpass=f=70," if voice_eq else ""
+    # RNNoise только на EN (оригинал из зала); путь экранируем для ffmpeg
+    _dn = ""
+    if rnnoise_model and Path(rnnoise_model).exists():
+        _m = rnnoise_model.replace("\\", "/").replace(":", "\\:")
+        _dn = f"arnndn=m='{_m}',"
     ru_chain = f"[1:a]{_eq}adelay={delay_ms}:all=1"
     if abs(ru_gain_db) > 0.1:
         ru_chain += f",volume={ru_gain_db:.1f}dB"
     ru_chain += f",volume={trans_volume}"
     if ru_extra_expr:
         ru_chain += f",volume='{ru_extra_expr}':eval=frame"
-    en_chain = f"[0:a]{_eq}"
+    en_chain = f"[0:a]{_dn}{_eq}"
     if abs(en_gain_db) > 0.1:
         en_chain += f"volume={en_gain_db:.1f}dB,"
     en_chain += f"volume={orig_volume}"
@@ -256,6 +267,7 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
         en_gain_db=en_gain, ru_gain_db=ru_gain,
         voice_eq=bool(p["voice_eq"]),
+        rnnoise_model=p["rnnoise_model"],
     )
     args = [
         "-i", str(orig_video), "-i", str(ru_audio),
@@ -273,9 +285,20 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
             duck=False, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
             en_gain_db=en_gain, ru_gain_db=ru_gain,
             voice_eq=bool(p["voice_eq"]),
+            rnnoise_model=p["rnnoise_model"],
         )
         args[3] = fc2
         ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
+        if not ok and p["rnnoise_model"]:
+            logger.warning("[LiveDubMix] микс с RNNoise не удался (%s) — повтор без шумодава", err)
+            fc3 = build_mix_filter(
+                p["orig_volume"], p["trans_volume"], p["delay_ms"],
+                duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
+                en_gain_db=en_gain, ru_gain_db=ru_gain,
+                voice_eq=bool(p["voice_eq"]), rnnoise_model="",
+            )
+            args[3] = fc3
+            ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
         if not ok:
             logger.warning("[LiveDubMix] простой микс тоже не удался: %s", err)
             return None

@@ -752,3 +752,18 @@ def test_autofix_restores_burned_subtitles():
 def test_botapi_cleanup_autodetects_default_dir():
     src = Path("core/utils.py").read_text(encoding="utf-8")
     assert "C:/ProgramData/TelegramBotAPI/data" in src
+
+
+# ── Заход 21: RNNoise-опция ──────────────────────────────────────
+
+def test_rnnoise_optional_and_safe():
+    from services.livedub_mix import build_mix_filter
+    fc = build_mix_filter(0.45, 1.3, 600, rnnoise_model="")  # выключено
+    assert "arnndn" not in fc
+    fc2 = build_mix_filter(0.45, 1.3, 600, rnnoise_model="/nonexistent/m.rnnn")
+    assert "arnndn" not in fc2  # несуществующая модель -> тихо пропущена
+    src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "повтор без шумодава" in src  # fallback при битой модели/сборке
+    # RU-дорожка Яндекса шумодавом не трогается
+    ru_part = src[src.index('ru_chain = f"[1:a]'):src.index('en_chain')]
+    assert "_dn" not in ru_part
