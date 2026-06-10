@@ -59,6 +59,22 @@ async def run_bot_async():
         logger.info(f"🧹 Очищено per-video locks от предыдущего запуска: {_stale}")
 
     logger.info("🚀 Бот запускается...")
+    # AUDIT 2026-06-10: startup-диагностика внешних инструментов.
+    # Без ffprobe МОЛЧА деградируют: метаданные видео (превью/стриминг),
+    # LUFS-выравнивание pro-микса, тех-проверка перевода, длительность аудио.
+    import shutil as _sh
+    _tools = {
+        "ffmpeg": _sh.which("ffmpeg"),
+        "ffprobe": _sh.which("ffprobe"),
+        "yt-dlp (модуль)": True,  # ставится pip-ом вместе с ботом
+        "deno/node": bool(_sh.which("deno") or _sh.which("node")),
+        "vot-cli-live": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
+    }
+    for _tname, _tpath in _tools.items():
+        if _tpath:
+            logger.info(f"🔧 {_tname}: ✅")
+        else:
+            logger.warning(f"🔧 {_tname}: ❌ ОТСУТСТВУЕТ — часть функций молча деградирует")
     logger.info(f"🧠 AI ({GEMINI_MODEL}): {'✅' if GEMINI_CLIENTS else '❌'} (ключей: {len(GEMINI_CLIENTS)})")
 
     # AUDIT L6: обновлённые списки моделей по официальной странице

@@ -364,6 +364,26 @@ def probe_video_meta(path: Path) -> dict:
     ffprobe = shutil.which("ffprobe")
     meta = {"width": None, "height": None, "duration": None}
     if not ffprobe:
+        # Fallback: ffmpeg -i пишет метаданные в stderr (на Windows ffmpeg
+        # нередко установлен без ffprobe — метаданные молча терялись)
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            return meta
+        try:
+            kwargs: dict = {"capture_output": True, "text": True,
+                            "encoding": "utf-8", "errors": "replace"}
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            proc = subprocess.run([ffmpeg, "-i", str(path)], timeout=60, **kwargs)
+            err = proc.stderr or ""
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", err)
+            if m:
+                meta["duration"] = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+            m = re.search(r"Video:.*?\s(\d{2,5})x(\d{2,5})", err)
+            if m:
+                meta["width"], meta["height"] = int(m.group(1)), int(m.group(2))
+        except Exception as e:
+            logger.warning("[LiveDubMix] ffmpeg-fallback meta: %s", e)
         return meta
     try:
         import json as _json

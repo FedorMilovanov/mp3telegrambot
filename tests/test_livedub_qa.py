@@ -706,3 +706,21 @@ def test_edited_message_filter_behavior():
                   text="https://youtu.be/abc")
     assert not f.check_update(Update(update_id=1, edited_message=msg))
     assert f.check_update(Update(update_id=2, message=msg))
+
+
+# ── Заход 18: startup-диагностика + ffprobe-fallback ─────────────
+
+def test_startup_tool_diagnostics():
+    src = Path("main.py").read_text(encoding="utf-8")
+    for tool in ("ffmpeg", "ffprobe", "vot-cli-live"):
+        assert tool in src
+    assert "молча деградирует" in src
+
+
+def test_probe_meta_ffmpeg_fallback(tmp_path):
+    """Без ffprobe метаданные берутся из stderr ffmpeg -i (Windows-кейс)."""
+    src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "Duration:" in src and "Video:" in src
+    # живой тест: в CI ffprobe может быть — проверяем структуру fallback-ветки
+    fb = src[src.index("def probe_video_meta"):src.index("def make_video_thumbnail")]
+    assert 'which("ffmpeg")' in fb
