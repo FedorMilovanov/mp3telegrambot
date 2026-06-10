@@ -767,3 +767,20 @@ def test_rnnoise_optional_and_safe():
     # RU-дорожка Яндекса шумодавом не трогается
     ru_part = src[src.index('ru_chain = f"[1:a]'):src.index('en_chain')]
     assert "_dn" not in ru_part
+
+
+# ── Заход 22: hardsub + concurrent fragments ─────────────────────
+
+def test_subtitles_burned_for_telegram_visibility():
+    """Telegram-плеер не показывает mov_text — сабы прожигаются в кадр."""
+    src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    assert "_burn_subtitles" in src
+    assert "force_style" in src and "BorderStyle=3" in src
+    assert "LIVEDUB_HARDSUB" in src        # ручка отключения
+    assert "fallback на mov_text" in src   # graceful деградация
+
+
+def test_ytdlp_concurrent_fragments():
+    from services.ffmpeg import _build_ytdlp_base_args
+    args = " ".join(_build_ytdlp_base_args())
+    assert "--concurrent-fragments" in args

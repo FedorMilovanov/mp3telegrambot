@@ -5,6 +5,7 @@ FFmpeg & yt-dlp helpers — базовые аргументы, энкодер, s
 """
 import asyncio
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -65,6 +66,16 @@ def _build_ytdlp_base_args() -> list:
         args += ["--remote-components", "ejs:github"]
     else:
         logger.warning("⚠️ Node.js/Deno не найдены — js-runtimes отключён")
+    # PERF 2026-06-10: многопоточная загрузка фрагментов (DASH/HLS) —
+    # нативная опция yt-dlp, заметно быстрее на длинных видео.
+    # aria2c дал бы ещё больше, но это внешний процесс с краевыми
+    # случаями; -N 4 — безопасный консенсус. Отключение: YTDLP_FRAGMENTS=1
+    try:
+        _frags = max(1, min(int(os.getenv("YTDLP_FRAGMENTS", "4")), 16))
+    except ValueError:
+        _frags = 4
+    if _frags > 1:
+        args += ["--concurrent-fragments", str(_frags)]
     return args
 
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()

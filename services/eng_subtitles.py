@@ -264,12 +264,60 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
         
     return actual_video
 
+async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Path | None:
+    """Прожигает SRT в кадр. YouTube-стиль: белый текст на полупрозрачной
+    подложке (BorderStyle=3) — читается на любом фоне."""
+    output_path = video_path.with_suffix(".sub.mp4")
+    # ffmpeg subtitles= требует экранирования спецсимволов пути
+    srt_arg = str(srt_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    style = "FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=20"
+    cmd = [
+        ffmpeg, "-i", str(video_path),
+        "-vf", f"subtitles='{srt_arg}':force_style='{style}'",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        "-y", str(output_path),
+    ]
+    def _run(t):
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        return subprocess.run(cmd, timeout=t, **kwargs)
+    loop = asyncio.get_running_loop()
+    try:
+        proc = await loop.run_in_executor(None, lambda: _run(600))
+    except Exception as e:
+        logger.warning("[EngSubtitles] hardsub exception: %s", e)
+        return None
+    if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 10240:
+        logger.info("[EngSubtitles] Субтитры прожжены в кадр (hardsub)")
+        return output_path
+    logger.warning("[EngSubtitles] hardsub rc=%s: %s", proc.returncode,
+                   (proc.stderr or "")[-300:])
+    return None
+
+
 async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = False) -> Path:
-    """Вшивает SRT-субтитры в видео-файл с флагом по умолчанию."""
+    """Добавляет русские субтитры в видео.
+
+    FIX 2026-06-10: Telegram-плеер (iOS/Android/Desktop) НЕ отображает
+    встроенные mov_text-дорожки — софт-сабы были видны только при
+    скачивании файла во внешний плеер. Для коротких роликов (<3 мин,
+    только они и получают сабы) ПРОЖИГАЕМ субтитры в кадр (hardsub):
+    видны везде. Стиль — читабельный YouTube-подобный (полупрозрачная
+    подложка). Отключение прожига: LIVEDUB_HARDSUB=0 (вернётся mov_text).
+    """
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         logger.warning("[EngSubtitles] ffmpeg не найден")
         return video_path
+
+    if (os.getenv("LIVEDUB_HARDSUB", "1").strip().lower() not in {"0", "false", "no", "off"}):
+        burned = await _burn_subtitles(video_path, srt_path, ffmpeg)
+        if burned is not None:
+            return burned
+        logger.warning("[EngSubtitles] hardsub не удался — fallback на mov_text")
         
     output_path = video_path.with_suffix(".merged.mp4")
     
