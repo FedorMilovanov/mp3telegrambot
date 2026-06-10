@@ -254,25 +254,59 @@ async def run_bot_async():
                 kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
             else:
                 kwargs["start_new_session"] = True
-            try:
-                _proc = _sp.Popen(cmd, **kwargs)
-                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s, лог: %s)...",
-                            _port, _srv_log_path)
+            def _spawn(_cmd, _log_path):
+                _pr = _sp.Popen(_cmd, **kwargs)
                 import time as _t
                 _t.sleep(2)
-                if _proc.poll() is not None:
-                    # Процесс уже умер — показываем хвост его лога
-                    _tail = ""
+                if _pr.poll() is None:
+                    return True, ""
+                _tail = ""
+                try:
+                    _tail = _log_path.read_text(encoding="utf-8", errors="replace")[-600:]
+                except OSError:
+                    pass
+                return False, _tail
+
+            try:
+                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s, лог: %s)...",
+                            _port, _srv_log_path)
+                ok, _tail = _spawn(cmd, _srv_log_path)
+                if ok:
+                    return True
+                # FIX 2026-06-11c (live log 02:28): 'Access is denied' на
+                # binlog — data-dir в ProgramData создан АДМИНОМ (PowerShell
+                # run-as-admin / планировщик), а бот запускает сервер от
+                # обычного юзера. Fallback: user-writable %LOCALAPPDATA%.
+                # Сервер заново авторизует бота на чистом data-dir — это
+                # штатно (логин по токену при первом запросе).
+                if "Access is denied" in _tail or "can't be opened" in _tail:
+                    _user_data = _P(os.environ.get("LOCALAPPDATA",
+                                    str(_P.home() / "AppData" / "Local"))) / "TelegramBotAPI" / "data"
                     try:
-                        _tail = _srv_log_path.read_text(encoding="utf-8", errors="replace")[-600:]
+                        _user_data.mkdir(parents=True, exist_ok=True)
                     except OSError:
                         pass
-                    logger.error(
-                        "❌ telegram-bot-api.exe упал сразу (rc=%s). Хвост лога сервера:\n%s",
-                        _proc.returncode, _tail or "(лог пуст — проверьте права на папку)",
+                    _user_log = _user_data.parent / "botapi-server.log"
+                    logger.warning(
+                        "⚠️ Нет прав на %s (создан от админа). Перезапускаю сервер с "
+                        "пользовательской папкой: %s\n"
+                        "   (либо один раз выполните от админа: icacls \"%s\" /grant %%USERNAME%%:(OI)(CI)F)",
+                        _data, _user_data, _data,
                     )
-                    return False
-                return True
+                    cmd2 = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
+                            "--local", f"--http-port={_port}", f"--dir={_user_data}",
+                            f"--log={_user_log}", "--verbosity=2"]
+                    ok2, _tail2 = _spawn(cmd2, _user_log)
+                    if ok2:
+                        # чтобы cleanup чистил правильную папку
+                        os.environ.setdefault("LOCAL_BOT_API_DATA_DIR", str(_user_data))
+                        return True
+                    _tail = _tail2 or _tail
+                logger.error(
+                    "❌ telegram-bot-api.exe упал сразу. Хвост лога сервера:\n%s",
+                    _tail or "(лог пуст — проверьте права на папку)",
+                )
+                return False
             except Exception as _ase:
                 logger.warning("⚠️ Автостарт Bot API не удался: %s", _ase)
                 return False

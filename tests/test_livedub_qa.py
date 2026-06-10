@@ -1053,3 +1053,16 @@ def test_autostart_diagnoses_dead_server():
     assert "_proc.poll() is not None" in src
     assert "упал сразу" in src
     assert "for _grace in range(10)" in src
+
+
+# ── Заход 35: ACL-fallback для data-dir сервера ──────────────────
+
+def test_autostart_falls_back_to_user_dir_on_acl():
+    """02:28 live log: 'Access is denied' на tqueue.binlog — data-dir в
+    ProgramData принадлежит админу (создан run-as-admin), бот стартует
+    сервер от юзера. Fallback на %LOCALAPPDATA% + подсказка icacls."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert '"Access is denied" in _tail' in src
+    assert "LOCALAPPDATA" in src
+    assert "icacls" in src           # рецепт постоянного решения
+    assert "LOCAL_BOT_API_DATA_DIR" in src  # cleanup переключается на новую папку
