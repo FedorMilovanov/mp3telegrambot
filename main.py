@@ -176,7 +176,14 @@ async def run_bot_async():
         pool_timeout=120.0,
     )
 
-    builder = Application.builder().token(BOT_TOKEN).request(t_request)
+    # FIX 2026-06-10: по умолчанию PTB обрабатывает апдейты ПОСЛЕДОВАТЕЛЬНО —
+    # во время 10-20-минутной обработки видео бот не отвечал ни на /stop,
+    # ни на /mode, ни на /help (наблюдалось живьём при первом тесте /mode).
+    # concurrent_updates(8): команды отвечают мгновенно; гонки закрыты ранее:
+    # video-lock по media_id (_get_video_lock), atomic UPSERT в rate_limit,
+    # WAL+busy_timeout в SQLite.
+    builder = (Application.builder().token(BOT_TOKEN)
+               .request(t_request).concurrent_updates(8))
     if LOCAL_BOT_API_URL:
         logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
         builder.base_url(f"{LOCAL_BOT_API_URL}/bot")

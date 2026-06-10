@@ -626,3 +626,13 @@ def test_all_video_sends_use_path_not_handle():
         src = Path(fname).read_text(encoding="utf-8")
         # ни одного video=vf / video=f (file handle)
         assert not re.search(r"video=\s*v?f\b", src), fname
+
+
+# ── Заход 14: параллельная обработка апдейтов ────────────────────
+
+def test_concurrent_updates_enabled():
+    """Без concurrent_updates бот молчит на команды все 10-20 минут
+    обработки видео (включая /stop). Гонки закрыты: video-lock,
+    UPSERT rate_limit, SQLite WAL, threading.Lock у Whisper-синглтона."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert ".concurrent_updates(" in src
