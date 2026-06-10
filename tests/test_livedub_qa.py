@@ -738,3 +738,17 @@ def test_qa_report_clickable_timestamps():
     assert 't=872"><b>14:32</b></a>' in out          # ссылка на секунду
     assert "<b>trash</b>" in out and "trash</a>" not in out  # мусор без ссылки
     assert "<a href" not in format_qa_report(qa)      # без url — без ссылок
+
+
+# ── Заход 20: автофикс сохраняет сабы; auto data-dir ─────────────
+
+def test_autofix_restores_burned_subtitles():
+    src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    fb = src[src.index("def apply_qa_audio_fixes"):]
+    assert "gemini_subs.srt" in fb
+    assert "merge_subtitles" in fb
+
+
+def test_botapi_cleanup_autodetects_default_dir():
+    src = Path("core/utils.py").read_text(encoding="utf-8")
+    assert "C:/ProgramData/TelegramBotAPI/data" in src

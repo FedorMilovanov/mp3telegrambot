@@ -488,4 +488,17 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Pa
                               ru_extra_expr=ru_expr, en_extra_expr=en_expr)
     if result:
         logger.info("[LiveDubMix] авто-правка: %d интервал(ов) приглушено", len(intervals))
+        # FIX 2026-06-10: короткие ролики (<3 мин) шлются с ВШИТЫМИ
+        # русскими субтитрами (gemini_subs.srt); пересборка из чистых
+        # дорожек их теряла — фикс-версия выходила хуже оригинальной.
+        srt = Path(workdir) / "gemini_subs.srt"
+        if srt.exists() and srt.stat().st_size > 50:
+            try:
+                from services.eng_subtitles import merge_subtitles
+                with_subs = await merge_subtitles(result, srt, is_fallback=False)
+                if with_subs and Path(with_subs).exists():
+                    logger.info("[LiveDubMix] авто-правка: субтитры возвращены в фикс-версию")
+                    return Path(with_subs)
+            except Exception as _sub_err:
+                logger.warning("[LiveDubMix] авто-правка: не удалось вернуть сабы: %s", _sub_err)
     return result

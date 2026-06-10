@@ -282,7 +282,13 @@ def cleanup_botapi_server_files(max_age_hours: int = 24) -> int:
     import time as _time
     data_dir = os.getenv("LOCAL_BOT_API_DATA_DIR", "").strip()
     if not data_dir:
-        return 0
+        # Автообнаружение: стандартный путь установки из наших же скриптов
+        # (install-telegram-bot-api.ps1) — чистим без ручной настройки .env
+        _default = Path("C:/ProgramData/TelegramBotAPI/data")
+        if os.name == "nt" and _default.exists():
+            data_dir = str(_default)
+        else:
+            return 0
     root = Path(data_dir)
     if not root.exists():
         return 0
