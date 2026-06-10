@@ -126,8 +126,13 @@ repentance (покаяние), congregation (община), Scripture (Писа�
 
 {reference_block}
 
-Ответь СТРОГО в формате JSON без пояснений вокруг:
+ВАЖНО: если ты не уверен, что искажение реально есть — НЕ включай его.
+Ложная тревога хуже пропуска: пользователь получит «исправление» хорошего места.
+
+Ответь СТРОГО в формате JSON без пояснений вокруг.
+Поле reasoning заполняй ПЕРВЫМ — сначала рассуждение, потом оценка:
 {{
+  "reasoning": "<2-4 предложения: как ты сравнивал, что заметил в целом>",
   "score": <целое 0-100, общая точность перевода>,
   "verdict": "<одно предложение: общая оценка качества>",
   "issues": [
@@ -313,20 +318,45 @@ async def run_translation_qa(
             uf_dub = await _upload_and_wait(client, dub_audio, "qa_dub")
             uploaded.append(uf_dub)
             parts.append(uf_dub)
-            resp = await client.aio.models.generate_content(
-                model=model_name,
-                contents=parts + [prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
-                    max_output_tokens=4096,
-                ),
-            )
+            # Controlled generation: нативный JSON надёжнее парсинга текста;
+            # audio_timestamp повышает точность таймкодов (если SDK поддерживает).
+            _cfg_kwargs: dict = {
+                "temperature": 0.2,
+                "max_output_tokens": 4096,
+                "response_mime_type": "application/json",
+            }
+            try:
+                cfg = types.GenerateContentConfig(audio_timestamp=True, **_cfg_kwargs)
+            except (TypeError, ValueError):
+                cfg = types.GenerateContentConfig(**_cfg_kwargs)
+            try:
+                resp = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=parts + [prompt],
+                    config=cfg,
+                )
+            except Exception as _je:
+                # Некоторые модели/прокси не любят response_mime_type — повтор без него
+                logger.info("[LiveDubQA] JSON-mime недоступен (%s) — повтор в текстовом режиме",
+                            str(_je)[:120])
+                resp = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=parts + [prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=0.2, max_output_tokens=4096,
+                    ),
+                )
             return resp
 
         last_err = None
+        _qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
         for client in GEMINI_CLIENTS:
+            _left = _qa_deadline - asyncio.get_running_loop().time()
+            if _left < 45:
+                logger.warning("[LiveDubQA] общий бюджет времени исчерпан — стоп ротации ключей")
+                break
             try:
-                resp = await asyncio.wait_for(_attempt(client), timeout=_QA_TOTAL_TIMEOUT)
+                resp = await asyncio.wait_for(_attempt(client), timeout=_left)
                 result = _parse_qa_json(getattr(resp, "text", "") or "")
                 if result is not None and "issues" in result:
                     return result

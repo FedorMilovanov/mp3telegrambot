@@ -231,3 +231,45 @@ def test_pipeline_wires_dub_srt():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "get_translation_subtitles" in src
     assert "dub_srt_path=_dub_srt" in src
+
+
+# ── Заход 2: reasoning-first + JSON-mime ─────────────────────────
+
+def test_qa_prompt_has_reasoning_first_and_no_guess_rule():
+    from services.livedub_qa import _QA_PROMPT
+    assert "reasoning" in _QA_PROMPT
+    # порядок полей: reasoning раньше score (reasoning-first повышает точность)
+    assert _QA_PROMPT.index('"reasoning"') < _QA_PROMPT.index('"score"')
+    assert "НЕ включай" in _QA_PROMPT  # правило «не уверен — пропусти»
+
+
+def test_parse_qa_json_with_reasoning_field():
+    from services.livedub_qa import _parse_qa_json
+    data = _parse_qa_json(
+        '{"reasoning": "сравнил тексты", "score": 95, "verdict": "ok", "issues": []}'
+    )
+    assert data is not None and data["score"] == 95
+
+
+def test_format_qa_report_ignores_reasoning():
+    from services.livedub_qa import format_qa_report
+    text = format_qa_report({"reasoning": "internal", "score": 97,
+                             "verdict": "Точный.", "issues": []})
+    assert "internal" not in text  # reasoning — служебное, юзеру не показываем
+    assert "97" in text
+
+
+def test_qa_uses_native_json_mime():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert 'response_mime_type": "application/json"' in src or "response_mime_type" in src
+    assert "audio_timestamp" in src
+
+
+def test_download_original_video_reuses_existing():
+    src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    assert "Реюз" in src and 'glob("original_video.*")' in src
+
+
+def test_qa_has_global_deadline():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "_qa_deadline" in src  # бюджет на все ключи, а не 420с × каждый

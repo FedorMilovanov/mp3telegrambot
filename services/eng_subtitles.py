@@ -216,6 +216,13 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
     """Скачивает оригинальное видео в формате mp4."""
     workdir.mkdir(parents=True, exist_ok=True)
     video_path = workdir / "original_video.mp4"
+
+    # Реюз: pro-микс мог уже скачать оригинал в эту же папку
+    for existing in workdir.glob("original_video.*"):
+        if existing.is_file() and existing.stat().st_size > 100 * 1024:
+            logger.info(f"[EngSubtitles] Оригинал уже скачан: {existing.name} — реюз")
+            return existing
+
     
     # FIX: используем YTDLP_BASE_ARGS (cookies, js-runtime, общие настройки) —
     # без них YouTube часто отвечает 403 Forbidden (та же причина, что в cabbac8).

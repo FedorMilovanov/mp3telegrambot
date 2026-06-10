@@ -282,14 +282,22 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
 
     ru_audio: Optional[Path] = None
     orig_video: Optional[Path] = None
+    async def _drain(task):
+        """Гасим отменённую задачу, чтобы не было 'exception was never retrieved'."""
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
     try:
         ru_audio = await ru_task
     except RuntimeError:
-        orig_task.cancel()
+        await _drain(orig_task)
         raise  # LIVEDUB_NOT_AVAILABLE и пр. — наверх, там общий fallback
     except Exception as e:
         logger.warning("[LiveDubMix] не получил RU-дорожку: %s", e)
-        orig_task.cancel()
+        await _drain(orig_task)
         return None
     try:
         orig_video = await orig_task
