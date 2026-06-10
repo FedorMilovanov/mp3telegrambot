@@ -19,4 +19,6 @@ def test_segment_callback_cleans_subtitle_temp_file():
     block = src[src.find('if data.startswith("segcut:")'):src.find("# ── Short trim", src.find('if data.startswith("segcut:")'))]
     assert "sub_path.unlink" in block
     assert "clip_path.unlink" in block
-    assert "with open(final_clip_path" in block
+    # 2026-06-10: отправка переведена на Path (file:// при local_mode);
+    # проверяем что видео по-прежнему шлётся из final_clip_path
+    assert "video=final_clip_path" in block

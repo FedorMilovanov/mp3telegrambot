@@ -612,3 +612,17 @@ def test_no_proxy_fix_is_not_legacy():
     Фикс обязан остаться."""
     src = Path("main.py").read_text(encoding="utf-8")
     assert 'os.environ["NO_PROXY"]' in src
+
+
+# ── Заход 13: Path-отправка для всех видео ───────────────────────
+
+def test_all_video_sends_use_path_not_handle():
+    """Все reply_video/send_video шлют Path (file:// при local_mode):
+    HTTP-передача >100MB на локальный сервер ловит TimedOut (PTB #4528)."""
+    import re
+    for fname in ("pipelines/clips.py", "pipelines/montage.py", "pipelines/shorts.py",
+                  "handlers/callbacks.py", "handlers/commands.py",
+                  "pipelines/main_pipeline.py"):
+        src = Path(fname).read_text(encoding="utf-8")
+        # ни одного video=vf / video=f (file handle)
+        assert not re.search(r"video=\s*v?f\b", src), fname

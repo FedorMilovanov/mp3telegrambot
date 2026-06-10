@@ -997,9 +997,9 @@ async def cutseg_command(update, context):
                     f"({seconds_to_timestamp(segment.duration)})\n"
                     f"<b>{html_mod.escape(segment.title[:220])}</b>"
                 )
-            with open(final_clip_path, "rb") as vf:
+            if True:  # Path: file:// при local_mode
                 await update.message.reply_video(
-                    video=vf,
+                    video=final_clip_path,
                     caption=caption,
                     duration=int(segment.duration),
                     supports_streaming=True,

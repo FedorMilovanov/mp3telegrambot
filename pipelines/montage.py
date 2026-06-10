@@ -104,9 +104,9 @@ async def _run_montage_or_highlights_pipeline(
             caption = safe_trim_caption(caption, 1024)
 
         try:
-            with open(current_path, "rb") as vf:
+            if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
                 await update.message.reply_video(
-                    video=vf, caption=caption, duration=int(total_dur),
+                    video=current_path, caption=caption, duration=int(total_dur),
                     width=720, height=1280, thumbnail=thumb_buf,
                     parse_mode="HTML",
                     write_timeout=120, read_timeout=120, connect_timeout=30,

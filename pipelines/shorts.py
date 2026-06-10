@@ -367,9 +367,9 @@ async def process_and_send_shorts(
                     InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{short_id}"),
                     *_nosub_buttons,
                 ]])
-                with open(current_path, "rb") as vf:
+                if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
                     await update.message.reply_video(
-                        video=vf,
+                        video=current_path,
                         caption=caption,
                         duration=int(c["duration_seconds"]),
                         width=720,

@@ -154,11 +154,12 @@ async def process_and_send_clips(
                     f"Clips: отправляю {i}/{total} "
                     f"({clip_size_mb:.1f}MB, {c['duration_seconds']:.0f}s)"
                 )
-                with open(clip_path, "rb") as vf:
-                    # Получаем оригинальные размеры через ffprobe если возможно,
-                    # иначе не передаём — Telegram сам определит
+                # Path вместо handle: при local_mode PTB шлёт file:// —
+                # сервер читает с диска, без HTTP-передачи (большие клипы
+                # >100MB по HTTP ловили TimedOut; см. fix LIVEDUB)
+                if True:
                     await update.message.reply_video(
-                        video=vf,
+                        video=clip_path,
                         caption=caption,
                         duration=int(c["duration_seconds"]),
                         thumbnail=thumb_buf,

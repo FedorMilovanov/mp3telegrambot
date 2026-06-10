@@ -329,9 +329,9 @@ async def handle_callback(update, context) -> None:
                     f"({seconds_to_timestamp(segment.duration)})\n"
                     f"<b>{_html.escape(segment.title[:220])}</b>"
                 )
-                with open(final_clip_path, "rb") as vf:
+                if True:  # Path: file:// при local_mode (см. fix LIVEDUB)
                     await query.message.reply_video(
-                        video=vf,
+                        video=final_clip_path,
                         caption=caption,
                         duration=int(segment.duration),
                         supports_streaming=True,
@@ -489,9 +489,9 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
-        with open(nosub_path, "rb") as vf:
+        if True:  # Path: file:// при local_mode
             await query.message.reply_video(
-                video=vf,
+                video=nosub_path,
                 caption=f"🚫 Без субтитров\n\n{caption}",
                 duration=end_s - start_s,
                 width=720,
@@ -587,9 +587,9 @@ async def _handle_strim_retrim(
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
-        with open(out_path, "rb") as vf:
+        if True:  # Path: file:// при local_mode
             await query.message.reply_video(
-                video=vf,
+                video=out_path,
                 caption=f"✂️ {label}\n\n{caption}",
                 duration=end_s - start_s,
                 width=720,
