@@ -6,19 +6,21 @@ URL утилиты — YouTube URL helpers.
 import urllib.parse
 
 def get_youtube_video_url(url: str) -> str:
-    """Извлекает чистый URL с video ID."""
+    """Извлекает чистый стандартный URL с видео ID."""
     parsed = urllib.parse.urlparse(url)
+    video_id = None
     if "youtu.be" in parsed.netloc:
         video_id = parsed.path.strip("/").split("/")[0]
-        return f"https://youtu.be/{video_id}"
-    # /live/VIDEO_ID и /shorts/VIDEO_ID
-    for prefix in ("/live/", "/shorts/"):
-        if parsed.path.startswith(prefix):
-            video_id = parsed.path[len(prefix):].split("/")[0].split("?")[0]
-            if video_id:
-                return f"https://www.youtube.com/watch?v={video_id}"
-    params = urllib.parse.parse_qs(parsed.query)
-    video_id = params.get("v", [None])[0]
+    elif "youtube.com" in parsed.netloc or "youtube-nocookie.com" in parsed.netloc:
+        # /live/VIDEO_ID, /shorts/VIDEO_ID, /embed/VIDEO_ID
+        for prefix in ("/live/", "/shorts/", "/embed/", "/v/"):
+            if parsed.path.startswith(prefix):
+                video_id = parsed.path[len(prefix):].split("/")[0].split("?")[0]
+                break
+        if not video_id:
+            params = urllib.parse.parse_qs(parsed.query)
+            video_id = params.get("v", [None])[0]
+    
     if video_id:
         return f"https://www.youtube.com/watch?v={video_id}"
     return url
