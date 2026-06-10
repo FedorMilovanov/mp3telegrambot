@@ -133,6 +133,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # AUDIT: проверка свободного места на диске перед скачиванием
         try:
             _free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
+            # ENG-режимы пишут видео в %TEMP% (ld_work) — он может быть на
+            # другом диске; берём минимум из двух
+            try:
+                import tempfile as _tf
+                _free_tmp = shutil.disk_usage(_tf.gettempdir()).free / (1024 ** 3)
+                _free_gb = min(_free_gb, _free_tmp)
+            except OSError:
+                pass
             if _free_gb < 2.0:
                 msg = f"⚠️ Мало места на диске ({_free_gb:.1f} ГБ свободно). Освободите место и повторите."
                 if not silent_errors:

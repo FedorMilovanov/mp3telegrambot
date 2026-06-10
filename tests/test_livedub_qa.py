@@ -636,3 +636,18 @@ def test_concurrent_updates_enabled():
     UPSERT rate_limit, SQLite WAL, threading.Lock у Whisper-синглтона."""
     src = Path("main.py").read_text(encoding="utf-8")
     assert ".concurrent_updates(" in src
+
+
+# ── Заход 15: error handler + диск для temp ──────────────────────
+
+def test_global_error_handler_registered():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "add_error_handler" in src
+    assert "Внутренняя ошибка при обработке" in src
+    # сетевой шум не транслируется юзеру
+    assert "NetworkError" in src.split("add_error_handler")[0].split("_global_error_handler")[1]
+
+
+def test_disk_check_covers_tempdir():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "disk_usage(_tf.gettempdir())" in src

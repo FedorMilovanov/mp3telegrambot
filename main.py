@@ -221,6 +221,28 @@ async def run_bot_async():
     app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
+    # FIX 2026-06-10: глобальный error handler. Без него необработанное
+    # исключение в хендлере = тихая строка 'No error handlers are registered'
+    # в логе, пользователь остаётся без ответа и без объяснений.
+    async def _global_error_handler(update, context):
+        err = context.error
+        # NetworkError при поллинге — шум, не показываем юзеру
+        import telegram.error as _tg_err
+        logger.error("Unhandled handler error: %s: %s", type(err).__name__, err,
+                     exc_info=err)
+        if isinstance(err, (_tg_err.NetworkError, _tg_err.TimedOut)):
+            return
+        try:
+            if update is not None and getattr(update, "effective_chat", None):
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="⚠️ Внутренняя ошибка при обработке запроса. Подробности в логе бота.",
+                )
+        except Exception:
+            pass
+
+    app.add_error_handler(_global_error_handler)
+
     # V3-P1: Render/Railway присылают SIGTERM при redeploy/stop.
     # Переводим его в тот же graceful path, что и /stop. На Windows
     # add_signal_handler недоступен — используем signal.signal fallback.
