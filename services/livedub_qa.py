@@ -244,6 +244,8 @@ async def run_translation_qa(
     duration: int,
     model_name: str = "",
     dub_srt_path: Optional[Path] = None,
+    existing_audio_part=None,
+    existing_client=None,
 ) -> Optional[dict]:
     """Смысловая проверка дубляжа через Gemini.
 
@@ -322,7 +324,15 @@ async def run_translation_qa(
             nonlocal client_used
             client_used = client
             parts = []
-            if original_audio_path and Path(original_audio_path).exists():
+            # PERF 2026-06-10: оригинал уже залит в Gemini основным анализом
+            # (used_audio_part жив до finally) — реюзим вместо повторной
+            # заливки 20-50МБ mp3. Files API привязан к ключу: реюз только
+            # на том же клиенте; не добавляем в uploaded (удалит пайплайн).
+            if (existing_audio_part is not None and existing_client is client
+                    and "ACTIVE" in str(getattr(existing_audio_part, "state", ""))):
+                logger.info("[LiveDubQA] реюз audio_part основного анализа (без повторной заливки)")
+                parts.append(existing_audio_part)
+            elif original_audio_path and Path(original_audio_path).exists():
                 uf_orig = await _upload_and_wait(client, Path(original_audio_path), "qa_original")
                 uploaded.append(uf_orig)
                 parts.append(uf_orig)
@@ -367,7 +377,11 @@ async def run_translation_qa(
 
         last_err = None
         _qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
-        for client in GEMINI_CLIENTS:
+        _clients_order = list(GEMINI_CLIENTS)
+        if existing_client is not None and existing_client in _clients_order:
+            _clients_order.remove(existing_client)
+            _clients_order.insert(0, existing_client)
+        for client in _clients_order:
             _left = _qa_deadline - asyncio.get_running_loop().time()
             if _left < 45:
                 logger.warning("[LiveDubQA] общий бюджет времени исчерпан — стоп ротации ключей")

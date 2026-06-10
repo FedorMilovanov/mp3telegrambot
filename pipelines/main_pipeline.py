@@ -451,12 +451,24 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 _dub_srt = _srt_candidates[0] if _srt_candidates else None
                         except Exception:
                             pass
+                        # Реюз уже залитого в Gemini оригинала (если анализ его
+                        # заливал и part ещё жив — finally удаляет его позже)
+                        _qa_part = None
+                        _qa_client = None
+                        try:
+                            if used_audio_part is not None and hasattr(used_audio_part, "name"):
+                                _qa_part = used_audio_part
+                                _qa_client = used_client
+                        except NameError:
+                            pass
                         qa_result = await run_translation_qa(
                             dub_video_path=livedub_path,
                             original_audio_path=_orig_audio,
                             ai_data=_qa_ai_data,
                             duration=duration,
                             dub_srt_path=_dub_srt,
+                            existing_audio_part=_qa_part,
+                            existing_client=_qa_client,
                         )
                         try:
                             await _qa_status.delete()

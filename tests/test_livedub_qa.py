@@ -553,3 +553,24 @@ def test_pipeline_waitfor_covers_retry_budget():
     assert "timeout=1800" in src           # wait_for поднят с 600
     assert "не успел за 30 минут" in src   # сообщение синхронизировано
     # бюджет: audio worst-case 480*3+180=1620 < 1800; merge 600*2+90=1290 < 1800
+
+
+# ── Заход 11: реюз Gemini audio_part в QA ────────────────────────
+
+def test_qa_reuses_existing_audio_part():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "existing_audio_part=None" in src and "existing_client=None" in src
+    assert "реюз audio_part основного анализа" in src
+    # реюзнутый part НЕ попадает в uploaded (его удаляет пайплайн, не QA)
+    reuse_block = src[src.index("реюз audio_part"):src.index("elif original_audio_path")]
+    assert "uploaded.append" not in reuse_block
+    # клиент с готовым part идёт первым в ротации
+    assert "_clients_order.insert(0, existing_client)" in src
+    # state-guard терпим к enum/строке
+    assert 'in str(getattr(existing_audio_part, "state"' in src
+
+
+def test_pipeline_passes_existing_part_to_qa():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "existing_audio_part=_qa_part" in src
+    assert "existing_client=_qa_client" in src
