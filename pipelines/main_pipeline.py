@@ -166,7 +166,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         live_dub_task = None
         _livedub_qa_enabled = False
+        _livedub_cached_file_id = ""
         if user_mode in ("eng", "eng_fast"):
+            # FEATURE 2026-06-10: реюз file_id — если этот перевод уже отправлялся,
+            # Telegram отдаст его мгновенно, без vot-cli и заливки сотен МБ.
+            try:
+                _ld_cached = await adb_get(media_id)
+                _livedub_cached_file_id = (_ld_cached or {}).get("livedub_file_id") or ""
+            except Exception:
+                _livedub_cached_file_id = ""
+        if _livedub_cached_file_id and user_mode in ("eng", "eng_fast"):
+            logger.info(f"[LiveDub] кэш file_id найден — повторная отправка мгновенно ({media_id})")
+        elif user_mode in ("eng", "eng_fast"):
             from services.yandex_live_dub import get_live_dub_video
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
@@ -271,6 +282,36 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             Общий хелпер для обеих веток (кэш-hit и полная обработка) —
             раньше блок был продублирован, правки вносились в 2 места.
             """
+            # Мгновенная повторная отправка по кэшированному file_id
+            if _livedub_cached_file_id and context:
+                try:
+                    await context.bot.send_video(
+                        chat_id=update.effective_chat.id,
+                        video=_livedub_cached_file_id,
+                        caption="🎬 Живые голоса Яндекса (из кэша)",
+                        reply_to_message_id=update.message.message_id,
+                        supports_streaming=True,
+                    )
+                    return
+                except Exception as _fid_err:
+                    # file_id протух (смена бота/сервера). Чистим кэш, чтобы
+                    # следующая отправка ссылки запустила полный цикл, и честно
+                    # говорим пользователю (vot-cli в этом заходе не запускался).
+                    logger.warning(f"[LiveDub] file_id из кэша не сработал: {_fid_err}")
+                    try:
+                        from core.database import adb_set_livedub_file_id
+                        await adb_set_livedub_file_id(media_id, "")
+                    except Exception:
+                        pass
+                    try:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text="⚠️ Кэшированный перевод устарел. Отправьте ссылку ещё раз — перевод будет создан заново.",
+                            reply_to_message_id=update.message.message_id,
+                        )
+                    except Exception:
+                        pass
+                    return
             if not (live_dub_task and context):
                 return
             try:
@@ -325,7 +366,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         None, lambda: make_video_thumbnail(livedub_path))
                 except Exception as _vm_err:
                     logger.warning(f"[LiveDub] video meta: {_vm_err}")
-                await context.bot.send_video(
+                _sent_msg = await context.bot.send_video(
                     chat_id=update.effective_chat.id,
                     video=livedub_path,
                     caption=caption,
@@ -337,6 +378,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     supports_streaming=True,
                     write_timeout=600, read_timeout=600, connect_timeout=60,
                 )
+                # Сохраняем file_id для мгновенной повторной отправки
+                if not is_fallback:
+                    try:
+                        _fid = getattr(getattr(_sent_msg, "video", None), "file_id", "")
+                        if _fid:
+                            from core.database import adb_set_livedub_file_id
+                            await adb_set_livedub_file_id(media_id, _fid)
+                            logger.info(f"[LiveDub] file_id сохранён в кэш ({media_id})")
+                    except Exception as _fid_save_err:
+                        logger.warning(f"[LiveDub] не сохранил file_id: {_fid_save_err}")
 
                 # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
                 if _livedub_qa_enabled and not is_fallback:

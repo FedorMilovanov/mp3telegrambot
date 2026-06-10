@@ -1110,12 +1110,11 @@ async def _run_expanded_pipeline(
             logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
             return await fallback_fn() if fallback_fn else None
 
-        # АВТО-ВОССТАНОВЛЕНИЕ SCRIPTURE ROLE
-        for _sec in sections:
-            if isinstance(_sec, dict) and isinstance(_sec.get("blocks"), list):
-                for _block in _sec["blocks"]:
-                    if isinstance(_block, dict) and _block.get("type") == "scripture" and not _block.get("role_in_argument"):
-                        _block["role_in_argument"] = "Подтверждает основной тезис раздела."
+        # VISUAL FIX 2026-06-10: раньше сюда вставлялась болванка
+        # «Подтверждает основной тезис раздела.» — на live-странице Study она
+        # повторялась 3 раза подряд (видно в визуальном аудите). Карточка
+        # ref+quote без пояснения лучше, чем штампованная фраза; недостаток
+        # покрывается warning-ом content audit (scripture_role_missing).
 
         sections, outline, _content_audit = audit_expanded_sections(
             sections,
@@ -1537,12 +1536,11 @@ async def create_telegraph_study_reflection_combined(
             continue
         if not _combined_relevance_ok(sections, _ai, label=label):
             continue
-        # АВТО-ВОССТАНОВЛЕНИЕ SCRIPTURE ROLE
-        for _sec in sections:
-            if isinstance(_sec, dict) and isinstance(_sec.get("blocks"), list):
-                for _block in _sec["blocks"]:
-                    if isinstance(_block, dict) and _block.get("type") == "scripture" and not _block.get("role_in_argument"):
-                        _block["role_in_argument"] = "Подтверждает основной тезис раздела."
+        # VISUAL FIX 2026-06-10: раньше сюда вставлялась болванка
+        # «Подтверждает основной тезис раздела.» — на live-странице Study она
+        # повторялась 3 раза подряд (видно в визуальном аудите). Карточка
+        # ref+quote без пояснения лучше, чем штампованная фраза; недостаток
+        # покрывается warning-ом content audit (scripture_role_missing).
 
         sections, outline, issues = audit_expanded_sections(sections, outline if isinstance(outline, list) else [], label=label, expected_author=author_clean)
         if issues:

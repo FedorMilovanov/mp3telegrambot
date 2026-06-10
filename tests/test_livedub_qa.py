@@ -408,3 +408,35 @@ def test_visual_rtl_not_anchored_for_plain_russian():
     ch = _chain(nodes)[0]["children"]
     first = ch[0] if isinstance(ch[0], str) else ""
     assert not first.startswith("\u200e"), ch
+
+
+# ── Заход 6: file_id-кэш LIVEDUB + шаблонные фразы ───────────────
+
+def test_no_template_scripture_role_stub():
+    """Болванка 'Подтверждает основной тезис раздела.' больше не вставляется."""
+    src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert 'Подтверждает основной тезис раздела."' not in src
+
+
+def test_livedub_file_id_cache_wired():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_livedub_cached_file_id" in src
+    assert "adb_set_livedub_file_id" in src
+    # протухший file_id: чистим кэш и сообщаем, НЕ оставляем юзера молча
+    assert "Кэшированный перевод устарел" in src
+
+
+def test_db_livedub_file_id_roundtrip(tmp_path, monkeypatch):
+    import core.database as db
+    import core.globals as g
+    test_db = tmp_path / "t.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    monkeypatch.setattr(g, "DB_PATH", test_db)
+    db.db_init()
+    db.db_set_livedub_file_id("vid123", "BAAC_test_file_id")
+    row = db.db_get("vid123")
+    assert row is not None
+    assert row["livedub_file_id"] == "BAAC_test_file_id"
+    # перезапись и очистка
+    db.db_set_livedub_file_id("vid123", "")
+    assert db.db_get("vid123")["livedub_file_id"] == ""

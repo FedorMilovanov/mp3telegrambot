@@ -136,6 +136,9 @@ def db_init():
             ("publication_status",  "'unknown'"),
             ("publication_missing", "'[]'"),
             ("publication_warning", "''"),
+            # LIVEDUB: telegram file_id готового перевода — повторная отправка
+            # мгновенна (без второго прогона vot-cli и заливки сотен МБ)
+            ("livedub_file_id",     "''"),
         ]:
             # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
             # быть поглощён блоком except sqlite3.OperationalError
@@ -259,6 +262,29 @@ def db_save(video_id: str, url: str, questions: list,
               publication_warning or ""))
         conn.commit()
 
+def db_set_livedub_file_id(video_id: str, file_id: str) -> None:
+    """Точечно сохраняет telegram file_id LIVEDUB-видео (повторная отправка
+    по file_id мгновенна — без второго прогона vot-cli и заливки сотен МБ).
+    Не трогает остальные поля кэша; создаёт строку, если её ещё нет."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
+        cur = conn.execute(
+            "UPDATE video_cache SET livedub_file_id = ? WHERE video_id = ?",
+            (file_id or "", video_id),
+        )
+        if cur.rowcount == 0:
+            conn.execute(
+                "INSERT OR IGNORE INTO video_cache (video_id, livedub_file_id) VALUES (?, ?)",
+                (video_id, file_id or ""),
+            )
+        conn.commit()
+
+
+async def adb_set_livedub_file_id(video_id: str, file_id: str) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, db_set_livedub_file_id, video_id, file_id)
+
+
 def db_get(video_id: str) -> dict | None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA busy_timeout=5000")
@@ -266,7 +292,7 @@ def db_get(video_id: str) -> dict | None:
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
             "cache_version, prompt_version, model_name, updated_at, terms_tg_url, "
             "rutube_url, vk_url, study_tg_url, reflection_tg_url, "
-            "publication_status, publication_missing, publication_warning "
+            "publication_status, publication_missing, publication_warning, livedub_file_id "
             "FROM video_cache WHERE video_id = ?", (video_id,)
         ).fetchone()
     if not row:
@@ -301,6 +327,7 @@ def db_get(video_id: str) -> dict | None:
         "publication_status":  row[15] or "unknown",
         "publication_missing": row[16] or "[]",
         "publication_warning": row[17] or "",
+        "livedub_file_id":     row[18] or "",
     }
 
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────
