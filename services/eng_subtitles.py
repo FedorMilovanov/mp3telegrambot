@@ -9,6 +9,7 @@ from pathlib import Path
 
 from core.globals import GEMINI_CLIENTS
 from core.database import GEMINI_MODEL
+from services.ffmpeg import YTDLP_BASE_ARGS
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +92,20 @@ async def create_gemini_subtitles(video_url: str, workdir: Path) -> Path | None:
     srt_path = workdir / "gemini_subs.srt"
 
     # 1. Скачиваем аудио
-    yt_dlp = shutil.which("yt-dlp")
-    if not yt_dlp:
-        raise RuntimeError("yt-dlp not found")
-
-    cmd = [yt_dlp, "--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
+    cmd = YTDLP_BASE_ARGS + ["--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
     logger.info(f"[EngSubtitles] Скачиваем аудио: {' '.join(cmd)}")
 
     def _run_cmd(t):
         kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        # Check if cmd[0] is sys.executable or a standalone binary
+        _shell = False
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        return subprocess.run(cmd, timeout=t, **kwargs)
+            # If we use python -m yt_dlp, it's safer
+            if "yt-dlp" in cmd[0].lower() and not cmd[0].lower().endswith(".exe"):
+                 _shell = True
+        
+        return subprocess.run(cmd, timeout=t, shell=_shell, **kwargs)
 
     loop = asyncio.get_running_loop()
     proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
