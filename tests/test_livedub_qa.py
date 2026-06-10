@@ -328,3 +328,25 @@ def test_send_video_passes_metadata():
 def test_merge_subtitles_has_faststart():
     src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
     assert "+faststart" in src
+
+
+# ── Заход 5: прод-фиксы QA (лог 2026-06-10) ──────────────────────
+
+def test_qa_uses_make_audio_config_not_raw():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "make_audio_config" in src
+    # audio_timestamp больше не передаётся (Gemini API его отвергает на вызове)
+    assert "audio_timestamp=True" not in src
+    # старый бюджет 4096 (съедался thinking-токенами) выпилен
+    assert '"max_output_tokens": 4096' not in src
+
+
+def test_qa_logs_finish_reason_on_parse_failure():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "finish=%s" in src and "thoughts_token_count" in src
+
+
+def test_qa_skips_dub_audio_when_srt_available():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "_have_srt" in src
+    assert "без извлечения дубляжа" in src

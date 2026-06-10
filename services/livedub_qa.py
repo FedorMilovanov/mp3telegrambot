@@ -109,9 +109,9 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
 
 _QA_PROMPT = """Ты — профессиональный редактор русского дубляжа христианских проповедей и лекций.
 
-Тебе даны два аудиофайла:
-1. ОРИГИНАЛ — английская речь.
-2. ДУБЛЯЖ — русская озвучка этого же материала (машинный перевод Яндекса).
+Тебе дан ОРИГИНАЛ (английская речь, аудиофайл) и русский ДУБЛЯЖ этого
+материала (машинный перевод Яндекса) — как второй аудиофайл и/или как
+точный текст с таймкодами ниже.
 
 Твоя задача — найти места, где русский дубляж ИСКАЖАЕТ СМЫСЛ оригинала.
 
@@ -261,12 +261,18 @@ async def run_translation_qa(
     uploaded: list = []
     client_used = None
     try:
-        dub_audio = await asyncio.get_running_loop().run_in_executor(
-            None, lambda: _extract_audio_for_qa(dub_video_path, qa_audio)
-        )
-        if dub_audio is None:
-            logger.warning("[LiveDubQA] не удалось извлечь аудио дубляжа")
-            return None
+        _have_srt = bool(dub_srt_path and Path(dub_srt_path).exists())
+        dub_audio = None
+        if not _have_srt:
+            # Аудио дубляжа нужно только когда нет официального текста перевода
+            dub_audio = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: _extract_audio_for_qa(dub_video_path, qa_audio)
+            )
+            if dub_audio is None:
+                logger.warning("[LiveDubQA] не удалось извлечь аудио дубляжа")
+                return None
+        else:
+            logger.info("[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом (без извлечения дубляжа)")
 
         # Референс: если оригинального аудио нет — используем готовый анализ
         if original_audio_path and Path(original_audio_path).exists():
@@ -281,8 +287,13 @@ async def run_translation_qa(
                     ref_lines.extend(str(t) for t in ts[:40])
                 elif isinstance(ts, str):
                     ref_lines.append(ts[:4000])
-            if not ref_lines:
+            if not ref_lines and not _have_srt:
                 logger.info("[LiveDubQA] нет ни оригинала, ни анализа — проверка невозможна")
+                return None
+            if not ref_lines:
+                # Есть только SRT дубляжа без какого-либо эталона оригинала —
+                # сравнивать не с чем, нужен хотя бы дубляж-аудио против EN.
+                logger.info("[LiveDubQA] нет эталона оригинала — проверка пропущена")
                 return None
             reference_block = (
                 "Оригинальное аудио недоступно. Вместо него используй этот проверенный "
@@ -315,20 +326,24 @@ async def run_translation_qa(
                 uf_orig = await _upload_and_wait(client, Path(original_audio_path), "qa_original")
                 uploaded.append(uf_orig)
                 parts.append(uf_orig)
-            uf_dub = await _upload_and_wait(client, dub_audio, "qa_dub")
-            uploaded.append(uf_dub)
-            parts.append(uf_dub)
-            # Controlled generation: нативный JSON надёжнее парсинга текста;
-            # audio_timestamp повышает точность таймкодов (если SDK поддерживает).
-            _cfg_kwargs: dict = {
-                "temperature": 0.2,
-                "max_output_tokens": 4096,
-                "response_mime_type": "application/json",
-            }
-            try:
-                cfg = types.GenerateContentConfig(audio_timestamp=True, **_cfg_kwargs)
-            except (TypeError, ValueError):
-                cfg = types.GenerateContentConfig(**_cfg_kwargs)
+            if dub_audio is not None:
+                uf_dub = await _upload_and_wait(client, dub_audio, "qa_dub")
+                uploaded.append(uf_dub)
+                parts.append(uf_dub)
+            # PROD-FIX (лог 2026-06-10): свой конфиг наступил на 2 мины:
+            # 1) audio_timestamp не поддерживается Gemini API (ошибка на ВЫЗОВЕ,
+            #    не на конструкторе) — это уже задокументировано в make_audio_config;
+            # 2) max_output_tokens=4096 съедался thinking-токенами 3.x (в проде
+            #    thoughts=6-8K!) — JSON обрезался в ноль на ВСЕХ 4 ключах.
+            # Используем общий боевой make_audio_config: правильный thinking-бюджет,
+            # без audio_timestamp, c нативным JSON-mime.
+            from core.globals import make_audio_config
+            cfg = make_audio_config(
+                max_output_tokens=16384,
+                model_name=model_name,
+                thinking_level="low",   # сравнение текстов — не нужен deep thinking
+                response_mime_type="application/json",
+            )
             try:
                 resp = await client.aio.models.generate_content(
                     model=model_name,
@@ -336,14 +351,16 @@ async def run_translation_qa(
                     config=cfg,
                 )
             except Exception as _je:
-                # Некоторые модели/прокси не любят response_mime_type — повтор без него
+                # Fallback: тот же конфиг, но без JSON-mime (текст распарсим сами)
                 logger.info("[LiveDubQA] JSON-mime недоступен (%s) — повтор в текстовом режиме",
                             str(_je)[:120])
                 resp = await client.aio.models.generate_content(
                     model=model_name,
                     contents=parts + [prompt],
-                    config=types.GenerateContentConfig(
-                        temperature=0.2, max_output_tokens=4096,
+                    config=make_audio_config(
+                        max_output_tokens=16384,
+                        model_name=model_name,
+                        thinking_level="low",
                     ),
                 )
             return resp
@@ -357,9 +374,24 @@ async def run_translation_qa(
                 break
             try:
                 resp = await asyncio.wait_for(_attempt(client), timeout=_left)
-                result = _parse_qa_json(getattr(resp, "text", "") or "")
+                _raw_text = getattr(resp, "text", "") or ""
+                result = _parse_qa_json(_raw_text)
                 if result is not None and "issues" in result:
                     return result
+                # Диагностика вместо немого фейла (прод 2026-06-10)
+                try:
+                    _cand = (getattr(resp, "candidates", None) or [None])[0]
+                    _fr = getattr(_cand, "finish_reason", "?")
+                    _um = getattr(resp, "usage_metadata", None)
+                    logger.warning(
+                        "[LiveDubQA] не распарсился: finish=%s thoughts=%s out=%s text_head=%r",
+                        _fr,
+                        getattr(_um, "thoughts_token_count", "?"),
+                        getattr(_um, "candidates_token_count", "?"),
+                        _raw_text[:160],
+                    )
+                except Exception:
+                    pass
                 last_err = RuntimeError("ответ модели не распарсился в QA-JSON")
             except Exception as e:
                 last_err = e
