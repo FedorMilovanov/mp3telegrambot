@@ -207,15 +207,69 @@ async def run_bot_async():
         # перегружался каждый раз). Pre-flight TCP-проверка: ждём сервер с
         # понятным сообщением вместо стены трейсбеков.
         import socket
+        import subprocess as _sp
         from urllib.parse import urlparse
         _u = urlparse(LOCAL_BOT_API_URL)
         _host, _port = _u.hostname or "127.0.0.1", _u.port or 80
+
+        def _try_autostart_botapi() -> bool:
+            """FIX 2026-06-11: бот сам запускает telegram-bot-api.exe.
+
+            Start Bot.bat в репозитории не содержит автостарт сервера
+            (секреты нельзя коммитить в bat) — теперь ключи берутся из
+            .env: TELEGRAM_API_ID / TELEGRAM_API_HASH. Сервер стартует
+            detached: переживает рестарты бота. LOCAL_BOT_API_AUTOSTART=0
+            отключает."""
+            if os.getenv("LOCAL_BOT_API_AUTOSTART", "1").strip().lower() in {"0", "false", "no", "off"}:
+                return False
+            _api_id = os.getenv("TELEGRAM_API_ID", "").strip()
+            _api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
+            from pathlib import Path as _P
+            _exe = os.getenv("LOCAL_BOT_API_EXE",
+                             r"C:\Program Files\TelegramBotAPI\telegram-bot-api.exe")
+            if not (_api_id and _api_hash):
+                logger.warning(
+                    "⚠️ Автостарт Bot API: добавьте TELEGRAM_API_ID и TELEGRAM_API_HASH "
+                    "в .env (my.telegram.org) — тогда бот будет поднимать сервер сам."
+                )
+                return False
+            if not _P(_exe).exists():
+                logger.warning("⚠️ Автостарт Bot API: exe не найден: %s (LOCAL_BOT_API_EXE)", _exe)
+                return False
+            _data = os.getenv("LOCAL_BOT_API_DATA_DIR",
+                              r"C:\ProgramData\TelegramBotAPI\data")
+            try:
+                _P(_data).mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            cmd = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
+                   "--local", f"--http-port={_port}", f"--dir={_data}"]
+            kwargs: dict = {"stdout": _sp.DEVNULL, "stderr": _sp.DEVNULL}
+            if os.name == "nt":
+                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
+            else:
+                kwargs["start_new_session"] = True
+            try:
+                _sp.Popen(cmd, **kwargs)
+                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s)...", _port)
+                return True
+            except Exception as _ase:
+                logger.warning("⚠️ Автостарт Bot API не удался: %s", _ase)
+                return False
+
         _wait_logged = False
+        _autostart_tried = False
         for _pf_attempt in range(60):  # до ~5 минут ожидания
             try:
                 with socket.create_connection((_host, _port), timeout=2):
                     break
             except OSError:
+                if not _autostart_tried:
+                    _autostart_tried = True
+                    if _try_autostart_botapi():
+                        await asyncio.sleep(3)  # серверу нужно пару секунд
+                        continue
                 if not _wait_logged:
                     logger.error(
                         "❌ Локальный Bot API сервер НЕ ЗАПУЩЕН (%s:%s не отвечает).\n"

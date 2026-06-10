@@ -1024,3 +1024,17 @@ def test_network_errors_get_short_log_and_backoff():
     assert "ConnectError" in src
     # экспоненциальный backoff с потолком 60с
     assert "min(restart_delay * (2 **" in src
+
+
+# ── Заход 33b: бот сам поднимает Bot API сервер ──────────────────
+
+def test_bot_autostarts_local_server():
+    """Start Bot.bat в репо НЕ содержит автостарт (секреты не коммитятся в
+    bat) — теперь бот стартует telegram-bot-api.exe сам из .env-ключей."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "_try_autostart_botapi" in src
+    assert "TELEGRAM_API_ID" in src and "TELEGRAM_API_HASH" in src
+    assert "LOCAL_BOT_API_AUTOSTART" in src   # выключатель
+    assert "0x8 | 0x200 | 0x08000000" in src  # detached на Windows
+    # автостарт пробуется ДО входа в цикл ожидания
+    assert src.index("_autostart_tried = True") < src.index("Жду появления сервера")
