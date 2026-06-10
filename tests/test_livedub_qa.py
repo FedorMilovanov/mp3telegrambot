@@ -1004,3 +1004,23 @@ def test_status_command_registered():
     assert "async def status_command" in cmd
     for probe in ("ffmpeg", "vot-cli-live", "mp3gain", "Диск", "бэкап"):
         assert probe in cmd
+
+
+# ── Заход 33: pre-flight Bot API + сетевой backoff ───────────────
+
+def test_preflight_waits_for_local_server():
+    """Live log 2026-06-11 02:03: сервер не запущен -> бесконечный цикл
+    стен-трейсбеков каждые 5с. Теперь: TCP pre-flight с человеческим
+    сообщением и ожиданием до 5 минут."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "socket.create_connection" in src
+    assert "НЕ ЗАПУЩЕН" in src
+    assert "не поднялся за 5 минут" in src
+
+
+def test_network_errors_get_short_log_and_backoff():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "_net_fail_streak" in src
+    assert "ConnectError" in src
+    # экспоненциальный backoff с потолком 60с
+    assert "min(restart_delay * (2 **" in src

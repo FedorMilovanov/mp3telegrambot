@@ -202,6 +202,37 @@ async def run_bot_async():
     builder = (Application.builder().token(BOT_TOKEN)
                .request(t_request).concurrent_updates(8))
     if LOCAL_BOT_API_URL:
+        # FIX 2026-06-11 (live log 02:03): сервер не запущен -> ConnectError
+        # и бесконечный restart-цикл с полным трейсбеком каждые 5с (+ Whisper
+        # перегружался каждый раз). Pre-flight TCP-проверка: ждём сервер с
+        # понятным сообщением вместо стены трейсбеков.
+        import socket
+        from urllib.parse import urlparse
+        _u = urlparse(LOCAL_BOT_API_URL)
+        _host, _port = _u.hostname or "127.0.0.1", _u.port or 80
+        _wait_logged = False
+        for _pf_attempt in range(60):  # до ~5 минут ожидания
+            try:
+                with socket.create_connection((_host, _port), timeout=2):
+                    break
+            except OSError:
+                if not _wait_logged:
+                    logger.error(
+                        "❌ Локальный Bot API сервер НЕ ЗАПУЩЕН (%s:%s не отвечает).\n"
+                        "   Запустите telegram-bot-api.exe (Start Bot.bat делает это сам) или\n"
+                        "   проверьте: tasklist | findstr telegram-bot-api\n"
+                        "   Жду появления сервера (проверка каждые 5с, до 5 минут)...",
+                        _host, _port,
+                    )
+                    _wait_logged = True
+                await asyncio.sleep(5)
+        else:
+            raise RuntimeError(
+                f"Локальный Bot API сервер {_host}:{_port} не поднялся за 5 минут. "
+                "Запустите его и перезапустите бота."
+            )
+        if _wait_logged:
+            logger.info("✅ Локальный Bot API сервер появился — продолжаю запуск")
         logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
         builder.base_url(f"{LOCAL_BOT_API_URL}/bot")
         builder.base_file_url(f"{LOCAL_BOT_API_URL}/file/bot")
@@ -399,7 +430,8 @@ async def run_bot_async():
 
 
 def run_bot():
-    restart_delay = 5  # секунд между перезапусками
+    restart_delay = 5   # базовая задержка между перезапусками
+    _net_fail_streak = 0
     while True:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -408,17 +440,33 @@ def run_bot():
             if result == "stop_requested":
                 logger.info("🛑 Бот остановлен по /stop — без автоматического restart")
                 break
+            _net_fail_streak = 0
         except Exception as e:
-            # AUDIT L7: убран print() — logger.error и так пишет ошибку,
-            # а print не маскирует токены через _TokenMaskFilter.
-            logger.error(f"run_bot завершился с ошибкой: {e}", exc_info=True)
+            # FIX 2026-06-11: сетевые ошибки (сервер/сеть недоступны) — ОДНА
+            # понятная строка вместо 100-строчного трейсбека каждые 5 секунд;
+            # экспоненциальный backoff до 60с, чтобы не молотить лог и не
+            # перегружать Whisper-прелоад на каждом рестарте.
+            _emsg = str(e)
+            _is_net = ("ConnectError" in _emsg or "ConnectTimeout" in _emsg
+                       or "NetworkError" in type(e).__name__ or "TimedOut" in type(e).__name__)
+            if _is_net:
+                _net_fail_streak += 1
+                logger.error(
+                    "🔌 Сеть/Bot API недоступны (%s). Подряд: %d. "
+                    "Если это локальный сервер — проверьте telegram-bot-api.exe.",
+                    _emsg[:120], _net_fail_streak,
+                )
+            else:
+                _net_fail_streak = 0
+                logger.error(f"run_bot завершился с ошибкой: {e}", exc_info=True)
         finally:
             try:
                 loop.close()
             except Exception:
                 pass
-        logger.warning(f"🔄 Бот перезапускается через {restart_delay} сек...")
-        time.sleep(restart_delay)
+        _delay = min(restart_delay * (2 ** min(_net_fail_streak, 4)), 60) if _net_fail_streak else restart_delay
+        logger.warning(f"🔄 Бот перезапускается через {_delay} сек...")
+        time.sleep(_delay)
 
 
 def main():
