@@ -538,25 +538,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             pass
 
 
-        # --- LIVEDUB: отправка результата ---
+                # --- LIVEDUB: отправка результата ---
         if live_dub_task and context:
             try:
                 livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
                 if livedub_result:
                     livedub_path, is_fallback, has_subs = livedub_result
                     if livedub_path and livedub_path.exists():
-                        if is_fallback:
-                            caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                        file_size = livedub_path.stat().st_size / (1024 * 1024)
+                        if file_size > 50:
+                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB")
+                             await context.bot.send_message(
+                                 chat_id=update.effective_chat.id,
+                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Telegram разрешает ботам отправлять файлы только до 50 МБ.",
+                                 reply_to_message_id=update.message.message_id,
+                             )
                         else:
-                            caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
-                        with open(livedub_path, "rb") as f:
-                            await context.bot.send_video(
-                                chat_id=update.effective_chat.id,
-                                video=f,
-                                caption=caption,
-                                reply_to_message_id=update.message.message_id,
-                                supports_streaming=True,
-                            )
+                            if is_fallback:
+                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.
+Отправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                            else:
+                                caption = "🎬 Живые голоса Яндекса" + ("
+💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                            with open(livedub_path, "rb") as f:
+                                await context.bot.send_video(
+                                    chat_id=update.effective_chat.id,
+                                    video=f,
+                                    caption=caption,
+                                    reply_to_message_id=update.message.message_id,
+                                    supports_streaming=True,
+                                    write_timeout=600, read_timeout=600, connect_timeout=60
+                                )
             except asyncio.TimeoutError:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
@@ -1481,25 +1493,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")
 
 
-        # --- LIVEDUB: отправка результата ---
+                # --- LIVEDUB: отправка результата ---
         if live_dub_task and context:
             try:
                 livedub_result = await asyncio.wait_for(live_dub_task, timeout=600)
                 if livedub_result:
                     livedub_path, is_fallback, has_subs = livedub_result
                     if livedub_path and livedub_path.exists():
-                        if is_fallback:
-                            caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                        file_size = livedub_path.stat().st_size / (1024 * 1024)
+                        if file_size > 50:
+                             logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB")
+                             await context.bot.send_message(
+                                 chat_id=update.effective_chat.id,
+                                 text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Telegram разрешает ботам отправлять файлы только до 50 МБ.",
+                                 reply_to_message_id=update.message.message_id,
+                             )
                         else:
-                            caption = "🎬 Живые голоса Яндекса" + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
-                        with open(livedub_path, "rb") as f:
-                            await context.bot.send_video(
-                                chat_id=update.effective_chat.id,
-                                video=f,
-                                caption=caption,
-                                reply_to_message_id=update.message.message_id,
-                                supports_streaming=True,
-                            )
+                            if is_fallback:
+                                caption = "⚠️ Живой перевод Яндекса недоступен/сломался.
+Отправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                            else:
+                                caption = "🎬 Живые голоса Яндекса" + ("
+💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                            with open(livedub_path, "rb") as f:
+                                await context.bot.send_video(
+                                    chat_id=update.effective_chat.id,
+                                    video=f,
+                                    caption=caption,
+                                    reply_to_message_id=update.message.message_id,
+                                    supports_streaming=True,
+                                    write_timeout=600, read_timeout=600, connect_timeout=60
+                                )
             except asyncio.TimeoutError:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
