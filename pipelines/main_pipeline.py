@@ -314,10 +314,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # PTB передаёт file:// URI — сервер читает файл с диска напрямую,
                 # без HTTP-загрузки сотен МБ (это причина TimedOut на больших файлах).
                 # В облачном режиме PTB сам откроет путь и зальёт как раньше.
+                # width/height/duration/thumbnail: для видео >10 МБ Telegram сам
+                # их НЕ определяет — без них нет превью, длительности и стриминга.
+                _v_meta, _v_thumb = {}, None
+                try:
+                    from services.livedub_mix import probe_video_meta, make_video_thumbnail
+                    _v_meta = await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: probe_video_meta(livedub_path))
+                    _v_thumb = await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: make_video_thumbnail(livedub_path))
+                except Exception as _vm_err:
+                    logger.warning(f"[LiveDub] video meta: {_vm_err}")
                 await context.bot.send_video(
                     chat_id=update.effective_chat.id,
                     video=livedub_path,
                     caption=caption,
+                    width=_v_meta.get("width"),
+                    height=_v_meta.get("height"),
+                    duration=_v_meta.get("duration"),
+                    thumbnail=_v_thumb,
                     reply_to_message_id=update.message.message_id,
                     supports_streaming=True,
                     write_timeout=600, read_timeout=600, connect_timeout=60,
@@ -386,9 +401,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     if fixed and fixed.exists():
                                         _fx_size = fixed.stat().st_size / (1024 * 1024)
                                         if _fx_size <= MAX_FILE_SIZE_MB:
+                                            _fx_meta = {}
+                                            try:
+                                                from services.livedub_mix import probe_video_meta
+                                                _fx_meta = await asyncio.get_running_loop().run_in_executor(
+                                                    None, lambda: probe_video_meta(fixed))
+                                            except Exception:
+                                                pass
                                             await context.bot.send_video(
                                                     chat_id=update.effective_chat.id,
                                                     video=fixed,
+                                                    width=_fx_meta.get("width"),
+                                                    height=_fx_meta.get("height"),
+                                                    duration=_fx_meta.get("duration"),
                                                     caption=(
                                                         f"🩹 Исправленная версия: в {len(_qa_majors)} "
                                                         f"месте(ах) с искажением перевод приглушён, "

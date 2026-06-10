@@ -352,6 +352,63 @@ def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
     return orig, ru
 
 
+# ── Метаданные для Telegram-отправки ─────────────────────────────
+
+def probe_video_meta(path: Path) -> dict:
+    """width/height/duration для send_video.
+
+    Для больших видео (>10 МБ) Telegram НЕ анализирует файл сам:
+    без этих полей превью квадратное, длительность 0:00, стриминг
+    не работает до полного скачивания (SO #71844601).
+    """
+    ffprobe = shutil.which("ffprobe")
+    meta = {"width": None, "height": None, "duration": None}
+    if not ffprobe:
+        return meta
+    try:
+        import json as _json
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height:format=duration",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        data = _json.loads(proc.stdout or "{}")
+        streams = data.get("streams") or [{}]
+        meta["width"] = streams[0].get("width")
+        meta["height"] = streams[0].get("height")
+        dur = (data.get("format") or {}).get("duration")
+        if dur:
+            meta["duration"] = int(float(dur))
+    except Exception as e:
+        logger.warning("[LiveDubMix] probe_video_meta: %s", e)
+    return meta
+
+
+def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Optional[Path]:
+    """JPEG-превью <=320px для send_video (Telegram: max 320, max 200KB)."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    out = Path(video_path).with_suffix(".thumb.jpg")
+    try:
+        kwargs: dict = {"capture_output": True}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        proc = subprocess.run(
+            [ffmpeg, "-ss", str(at_sec), "-i", str(video_path),
+             "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "5",
+             "-y", str(out)],
+            timeout=60, **kwargs,
+        )
+        if proc.returncode == 0 and out.exists() and 0 < out.stat().st_size < 200 * 1024:
+            return out
+        out.unlink(missing_ok=True)
+    except Exception as e:
+        logger.warning("[LiveDubMix] thumbnail: %s", e)
+    return None
+
+
 # ── Авто-правка по результатам QA ────────────────────────────────
 
 # Окно правки вокруг таймкода проблемы

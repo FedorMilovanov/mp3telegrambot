@@ -270,6 +270,7 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         "-c:s", "mov_text", 
         "-metadata:s:s:0", "language=rus",
         "-disposition:s:0", "default",
+        "-movflags", "+faststart",
         "-y", str(output_path)
     ]
     

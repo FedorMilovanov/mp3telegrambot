@@ -305,3 +305,26 @@ def test_fix_intervals_account_for_delay(monkeypatch):
     a, b = iv[0]
     # окно расширено на delay: 6.0 + 0.6 = 6.6с
     assert (b - a) >= 6.5
+
+
+# ── Заход 4: метаданные видео для Telegram ───────────────────────
+
+def test_probe_and_thumbnail_helpers_exist():
+    from services.livedub_mix import probe_video_meta, make_video_thumbnail
+    meta = probe_video_meta(Path("/nonexistent/file.mp4"))
+    assert set(meta.keys()) == {"width", "height", "duration"}
+    assert make_video_thumbnail(Path("/nonexistent/file.mp4")) is None
+
+
+def test_send_video_passes_metadata():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert 'width=_v_meta.get("width")' in src
+    assert 'duration=_v_meta.get("duration")' in src
+    assert "thumbnail=_v_thumb" in src
+    # autofix-видео тоже с метаданными
+    assert 'width=_fx_meta.get("width")' in src
+
+
+def test_merge_subtitles_has_faststart():
+    src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    assert "+faststart" in src
