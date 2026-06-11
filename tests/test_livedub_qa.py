@@ -804,7 +804,7 @@ def test_edited_message_filter_behavior():
 
 def test_startup_tool_diagnostics():
     src = Path("main.py").read_text(encoding="utf-8")
-    for tool in ("ffmpeg", "ffprobe", "vot-cli-live"):
+    for tool in ("ffmpeg", "ffprobe", "VOT helper (@vot.js/node)", "vot-cli-live fallback"):
         assert tool in src
     assert "молча деградирует" in src
 
@@ -816,6 +816,15 @@ def test_probe_meta_ffmpeg_fallback(tmp_path):
     # живой тест: в CI ffprobe может быть — проверяем структуру fallback-ветки
     fb = src[src.index("def probe_video_meta"):src.index("def make_video_thumbnail")]
     assert 'which("ffmpeg")' in fb
+
+
+def test_vot_helper_and_vot_cli_fallback_are_distinct_in_diagnostics():
+    """@vot.js helper — основной путь; vot-cli-live теперь только fallback."""
+    main = Path("main.py").read_text(encoding="utf-8")
+    assert "VOT helper (@vot.js/node)" in main
+    assert "vot-cli-live fallback" in main
+    cmd = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "vot-helper" in cmd and "vot-cli-fallback" in cmd
 
 
 # ── Заход 19: кликабельные таймкоды в QA-отчёте ──────────────────
@@ -1094,7 +1103,7 @@ def test_status_command_registered():
     assert 'CommandHandler("status"' in src
     cmd = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "async def status_command" in cmd
-    for probe in ("ffmpeg", "vot-cli-live", "mp3gain", "Диск", "бэкап"):
+    for probe in ("ffmpeg", "vot-helper", "vot-cli-fallback", "mp3gain", "Диск", "бэкап"):
         assert probe in cmd
     assert "yt-js(Deno≥2.3/Node≥22)" in cmd
 

@@ -41,6 +41,7 @@ import os
 import signal
 import threading
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +70,14 @@ async def run_bot_async():
         _yt_js_ok = bool(_yt_js_runtimes())
     except Exception:
         _yt_js_ok = False
+    _vot_helper_ok = bool(_sh.which("node") and (Path("vot_helper") / "vot_live.mjs").exists())
     _tools = {
         "ffmpeg": _sh.which("ffmpeg"),
         "ffprobe": _sh.which("ffprobe"),
         "yt-dlp (модуль)": True,  # ставится pip-ом вместе с ботом
         "yt-dlp JS runtime (Deno>=2.3/Node>=22)": _yt_js_ok,
-        "vot-cli-live": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
+        "VOT helper (@vot.js/node)": _vot_helper_ok,
+        "vot-cli-live fallback": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
     }
     for _tname, _tpath in _tools.items():
         if _tpath:
