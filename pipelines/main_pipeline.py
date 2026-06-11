@@ -171,21 +171,43 @@ def _fallback_livedub_ru_title(full_title: str, parsed_title: str, parsed_perfor
     return title_ru.strip(), author_ru.strip()
 
 
-async def _translate_livedub_title_for_caption(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
-    """Return (Russian title, Russian author) for ENG Quick/LiveDub captions.
+async def _translate_livedub_title_for_caption(
+    full_title: str,
+    parsed_title: str,
+    parsed_performer: str,
+    channel_name: str,
+    analysis_title: str = "",
+    analysis_author: str = "",
+) -> tuple[str, str]:
+    """Return (Russian title, Russian author) for all ENG/LiveDub captions.
 
-    ENG Quick deliberately skips full audio analysis, but the user still needs a
-    meaningful caption instead of a bare «Живые голоса Яндекса». This is a tiny
-    text-only Gemini call; on any failure we fall back to deterministic cleanup.
+    Cost policy:
+      • ENG Full/cache-hit: use existing Gemini analysis fields real_title/real_author.
+      • ENG Quick: no extra Gemini by default; deterministic fallback from YouTube metadata.
+      • Extra Gemini title-only translation is opt-in: LIVEDUB_TITLE_TRANSLATE=1.
     """
-    cache_key = (str(full_title or ""), str(parsed_title or ""), str(channel_name or ""))
+    cache_key = (
+        str(full_title or ""), str(parsed_title or ""), str(channel_name or ""),
+        str(analysis_title or ""), str(analysis_author or ""),
+    )
     if cache_key in _LIVEDUB_TITLE_CACHE:
         return _LIVEDUB_TITLE_CACHE[cache_key]
 
     fallback_title, fallback_author = _fallback_livedub_ru_title(
         full_title, parsed_title, parsed_performer, channel_name
     )
-    if not GEMINI_CLIENTS or os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() in {"0", "false", "no", "off"}:
+
+    # Best path: use already-paid analysis result (ENG Full / cache-hit), no extra AI call.
+    analysis_title = title_case_fragment(normalize_title_text(analysis_title) or analysis_title).strip()
+    analysis_author = normalize_author_name(analysis_author).strip()
+    if analysis_title or analysis_author:
+        result = (analysis_title or fallback_title, analysis_author or fallback_author)
+        _LIVEDUB_TITLE_CACHE[cache_key] = result
+        return result
+
+    # ENG Quick default: no extra Gemini just for title. Explicit opt-in only.
+    if (not GEMINI_CLIENTS
+            or os.getenv("LIVEDUB_TITLE_TRANSLATE", "0").strip().lower() not in {"1", "true", "yes", "on", "always"}):
         _LIVEDUB_TITLE_CACHE[cache_key] = (fallback_title, fallback_author)
         return fallback_title, fallback_author
 
@@ -536,8 +558,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
             _livedub_title_line = ""
             try:
+                _ai_for_livedub_title = None
+                try:
+                    _ai_for_livedub_title = ai_data if isinstance(ai_data, dict) else None
+                except NameError:
+                    _ai_for_livedub_title = None
+                if _ai_for_livedub_title is None:
+                    try:
+                        _ai_for_livedub_title = c_ai if isinstance(c_ai, dict) else None
+                    except NameError:
+                        _ai_for_livedub_title = None
+                _analysis_title = (_ai_for_livedub_title or {}).get("real_title", "") if _ai_for_livedub_title else ""
+                _analysis_author = (_ai_for_livedub_title or {}).get("real_author", "") if _ai_for_livedub_title else ""
                 _title_ru, _author_ru = await _translate_livedub_title_for_caption(
-                    full_title, title, performer, channel_name
+                    full_title, title, performer, channel_name,
+                    analysis_title=_analysis_title,
+                    analysis_author=_analysis_author,
                 )
                 _livedub_title_line = _format_livedub_title_line(_title_ru, _author_ru)
             except Exception as _lte:

@@ -608,6 +608,7 @@ def test_livedub_caption_title_gemini_translation(monkeypatch):
 
     fake_client = SimpleNamespace(aio=SimpleNamespace(models=_FakeModels()))
     monkeypatch.setattr(mp, "GEMINI_CLIENTS", [fake_client])
+    monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "1")
     mp._LIVEDUB_TITLE_CACHE.clear()
     title, author = asyncio.run(mp._translate_livedub_title_for_caption(
         "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
@@ -618,6 +619,43 @@ def test_livedub_caption_title_gemini_translation(monkeypatch):
     assert title == "Почему вы диспенсационалист?"
     assert author == "Абнер Чау & Кости Хинн"
     assert mp._format_livedub_title_line(title, author) == "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"
+
+
+def test_livedub_caption_uses_existing_analysis_without_extra_gemini(monkeypatch):
+    import asyncio
+    import pipelines.main_pipeline as mp
+    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [])
+    mp._LIVEDUB_TITLE_CACHE.clear()
+    title, author = asyncio.run(mp._translate_livedub_title_for_caption(
+        "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
+        "Why Are You a Dispensationalist?",
+        "Abner Chou & Costi Hinn",
+        "BibleQ&A",
+        analysis_title="Почему вы диспенсационалист?",
+        analysis_author="Абнер Чау & Кости Хинн",
+    ))
+    assert title == "Почему вы диспенсационалист?"
+    assert author == "Абнер Чау & Кости Хинн"
+
+
+def test_livedub_title_translate_default_does_not_call_gemini(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    import pipelines.main_pipeline as mp
+
+    class _BadModels:
+        async def generate_content(self, **kwargs):
+            raise AssertionError("Gemini must not be called by default for title-only translation")
+
+    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [SimpleNamespace(aio=SimpleNamespace(models=_BadModels()))])
+    monkeypatch.delenv("LIVEDUB_TITLE_TRANSLATE", raising=False)
+    mp._LIVEDUB_TITLE_CACHE.clear()
+    title, author = asyncio.run(mp._translate_livedub_title_for_caption(
+        "All Your Deeds Will Be Exposed at the White Throne - Paul Washer",
+        "", "", "HeartCry Missionary Society",
+    ))
+    assert author == "Пол Вошер"
+    assert title.startswith("All Your Deeds")
 
 
 def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
@@ -1441,6 +1479,7 @@ def test_vot_token_is_documented_in_readme_help_and_status():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "YTDLP_COOKIES_FROM_BROWSER" in env
     assert "YANDEX_OAUTH_TOKEN" in env
+    assert "LIVEDUB_TITLE_TRANSLATE=0" in env
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
     assert "YANDEX_OAUTH_TOKEN" in commands
