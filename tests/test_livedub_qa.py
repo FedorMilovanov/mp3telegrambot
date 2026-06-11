@@ -1141,6 +1141,16 @@ def test_send_helper_returns_delivery_status():
     assert "return True" in helper and "return False" in helper
 
 
+def test_eng_full_livedub_failure_is_not_silent():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    bg = src[src.index("async def _run_livedub_bg"):src.index("live_dub_task = asyncio.create_task")]
+    assert "_notify_full_livedub_failure" in helper
+    assert "Живой перевод Яндекса не получился" in helper
+    assert "проверка точности перевода не запускались" in helper
+    assert ".not_available" in bg and ".livedub_failed" in bg
+
+
 # ── Заход 17: edited messages не ломают хендлеры ─────────────────
 
 def test_handlers_ignore_edited_messages():
@@ -1478,13 +1488,13 @@ def test_status_command_registered():
     for probe in ("ffmpeg", "vot-helper", "vot-cli-fallback", "mp3gain", "Диск", "бэкап"):
         assert probe in cmd
     assert "yt-js(Deno≥2.3/Node≥22)" in cmd
-    assert "LiveDub:" in cmd and "base-tail" in cmd and "vot-pad" in cmd and "cache=" in cmd
+    assert "LiveDub:" in cmd and "base-tail" in cmd and "vot-duration=floor" in cmd and "cache=" in cmd
 
 
 def test_startup_logs_livedub_mix_diagnostics():
     src = Path("main.py").read_text(encoding="utf-8")
     assert "LiveDub mix: delay=%dms base_tail=%dms" in src
-    assert "vot_pad=%ss" in src
+    assert "vot_duration=floor" in src
     assert "current_livedub_file_id_cache_fingerprint" in src
 
 
@@ -1604,8 +1614,7 @@ def test_all_env_knobs_documented():
               "MP3_LOUDNORM", "SPONSORBLOCK_REMOVE", "LIVEDUB_RNNOISE_MODEL",
               "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
               "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "LIVEDUB_TAIL_MARGIN_MS",
-              "LIVEDUB_TAIL_FREEZE_MAX_SEC", "LIVEDUB_VOT_DURATION_PAD_SEC",
-              "MAX_FILE_SIZE_MB"):
+              "LIVEDUB_TAIL_FREEZE_MAX_SEC", "MAX_FILE_SIZE_MB"):
         assert v in env, f"{v} не задокументирован в .env.example"
 
 
@@ -1737,20 +1746,20 @@ def test_vot_duration_and_token_alias_threaded_through():
     assert "_vot_request_duration" in yld
     assert 'cmd += ["--duration", str(request_duration)]' in yld
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
-    assert "build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0)" in mix
-    assert "get_live_dub_audio(video_url, workdir, duration=duration)" in mix
+    assert "build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0" in mix
+    assert "get_live_dub_audio(video_url, workdir, duration=duration" in mix
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "build_pro_dub(video_url, workdir, duration=duration)" in pipe
+    assert "build_pro_dub(video_url, workdir, duration=duration" in pipe
     assert "duration=duration," in pipe
 
 
-def test_vot_request_duration_ceils_and_guards_shorts(monkeypatch):
+def test_vot_request_duration_uses_floor_for_yandex_cache_key(monkeypatch):
     import services.yandex_live_dub as yld
-    monkeypatch.delenv("LIVEDUB_VOT_DURATION_PAD_SEC", raising=False)
-    assert yld._vot_request_duration(37.0) == 38
-    assert yld._vot_request_duration(37.2) == 39
-    monkeypatch.setenv("LIVEDUB_VOT_DURATION_PAD_SEC", "0")
-    assert yld._vot_request_duration(37.2) == 38
+    monkeypatch.setenv("LIVEDUB_VOT_DURATION_PAD_SEC", "9")  # legacy knob ignored on purpose
+    assert yld._vot_request_duration(37.0) == 37
+    assert yld._vot_request_duration(37.9) == 37
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert "лишний паддинг" in src and "cache-key" in src
 
 
 def test_vot_token_alias_functional(monkeypatch):

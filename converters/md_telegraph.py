@@ -772,7 +772,8 @@ def _structured_blocks_to_nodes_v2(
                 clean_quote = quote[1:-1] if quote.startswith('«') and quote.endswith('»') and len(quote) >= 2 else quote
                 chunks.append(f"> *«{clean_quote}»*")
         elif btype in {"source", "source_card", "bibliography"}:
-            author = _scrub_inline(str(raw.get("author") or "").strip())
+            author_raw = str(raw.get("author") or "").strip()
+            author = _scrub_inline(author_raw)
             title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or text or "").strip())
             # PATCH-FIX: use canonical SourceCard rendering for consistent
@@ -780,6 +781,7 @@ def _structured_blocks_to_nodes_v2(
             card = build_source_card(
                 author=author,
                 title_original=title_original,
+                original_author=author_raw,
                 fallback_ru_title="",
                 why_relevant=why,
             )
@@ -2048,7 +2050,11 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r",\s*\*", ", *", text)
         # Preserve paragraph boundaries from Gemini pseudo-separators; guard URLs (https://).
         text = re.sub(r"(?<!:)\s+/\s*/\s+", "\n\n", text)
-        text = normalize_common_typos(text)
+        # На уровне отдельных inline-фрагментов нельзя гонять source_map/person-name
+        # pass: строка внутри parenthetical может быть просто "John MacArthur",
+        # и тогда она ошибочно превращается в "Джон МакАртур". Source-card
+        # нормализуется выше на цельной строке; здесь оставляем только typos.
+        text = normalize_common_typos(text, source_map=False)
         text = scrub_third_person_phrases(text)
         return text
 
@@ -2341,8 +2347,10 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             from core.source_titles import _ensure_source_title_bold
             _source_norm = _ensure_source_title_bold(_source_norm)
             if _source_norm != _plain_before_source_norm:
-                from core.core_utils import _md_parse_inline as _parse_inline
-                children = _parse_inline(_source_norm)
+                # Keep canonical source-card markdown literal here. These nodes are
+                # later audited/flattened as text; parsing ** into <b> hides the
+                # markers and broke source-card regression checks.
+                children = [_source_norm]
 
         node['children'] = children
 

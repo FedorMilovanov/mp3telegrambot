@@ -41,7 +41,7 @@ def current_livedub_file_id_cache_version() -> str:
         "delay": os.getenv("LIVEDUB_DELAY_MS", "600").strip() or "600",
         "tail": os.getenv("LIVEDUB_TAIL_MARGIN_MS", "1000").strip() or "1000",
         "freeze": os.getenv("LIVEDUB_TAIL_FREEZE_MAX_SEC", "180").strip() or "180",
-        "votpad": os.getenv("LIVEDUB_VOT_DURATION_PAD_SEC", "1").strip() or "1",
+        "votdur": "floor",
         "eq": os.getenv("LIVEDUB_VOICE_EQ", "1").strip() or "1",
         "rnnoise": os.getenv("LIVEDUB_RNNOISE_MODEL", "").strip(),
     }

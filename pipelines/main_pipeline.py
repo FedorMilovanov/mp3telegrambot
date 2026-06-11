@@ -295,7 +295,9 @@ async def _translate_livedub_title_for_caption(
     )
 
     # Best path: use already-paid analysis result (ENG Full / cache-hit), no extra AI call.
-    analysis_title = title_case_fragment(normalize_title_text(analysis_title) or analysis_title).strip()
+    analysis_title = normalize_common_typos(
+        normalize_title_text(analysis_title) or str(analysis_title or "")
+    ).strip()
     analysis_author = normalize_author_name(analysis_author).strip()
     if analysis_title or analysis_author:
         result = (analysis_title or fallback_title, analysis_author or fallback_author)
@@ -658,10 +660,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 pass
                         elif "LIVEDUB_NOT_AVAILABLE" in str(e):
                             logger.info("[LiveDub] Перевод недоступен для этого видео")
+                            try:
+                                (workdir / ".not_available").write_text("1", encoding="utf-8")
+                            except OSError:
+                                pass
                         else:
                             logger.warning(f"[LiveDub] Ошибка: {e}")
+                            try:
+                                (workdir / ".livedub_failed").write_text(str(e)[:500], encoding="utf-8")
+                            except OSError:
+                                pass
                     except Exception as e:
                         logger.warning(f"[LiveDub] Неизвестная ошибка: {e}")
+                        try:
+                            (workdir / ".livedub_failed").write_text(str(e)[:500], encoding="utf-8")
+                        except OSError:
+                            pass
 
                     # Дожидаемся субтитров перевода (обычно готовы раньше дубляжа)
                     if dub_subs_task:
@@ -692,6 +706,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work, source_lang=source_lang))
         # --- END LIVEDUB ---
 
+        _livedub_failure_notice_sent = False
+
         async def _send_livedub_result() -> bool:
             """Отправляет готовый LIVEDUB-перевод пользователю.
 
@@ -699,10 +715,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             внятное сообщение); False — если перевод тихо не состоялся.
             Общий хелпер для обеих веток (кэш-hit и полная обработка).
             """
+            nonlocal _livedub_failure_notice_sent
             if not context:
                 return False
             if not (_livedub_cached_file_id or live_dub_task):
                 return False
+
+            async def _notify_full_livedub_failure(reason: str = "") -> bool:
+                """ENG Full не должен молча терять обещанный перевод+QA."""
+                nonlocal _livedub_failure_notice_sent
+                if user_mode != "eng" or _livedub_failure_notice_sent:
+                    return False
+                _livedub_failure_notice_sent = True
+                reason = str(reason or "").strip()
+                if not reason:
+                    reason = "Яндекс/VOT не отдал живой дубляж для этого ролика."
+                try:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=(
+                            "⚠️ <b>Живой перевод Яндекса не получился</b>\n"
+                            f"{html_mod.escape(reason)}\n\n"
+                            "Анализ/конспект я всё равно отправил, но видео с дубляжом "
+                            "и проверка точности перевода не запускались — проверять нечего."
+                        ),
+                        parse_mode="HTML",
+                        reply_to_message_id=update.message.message_id,
+                    )
+                    return True
+                except Exception as _ld_notice_err:
+                    logger.info("[LiveDub] failure notice not sent: %s", str(_ld_notice_err)[:160])
+                    return False
 
             _livedub_title_line = ""
             try:
@@ -790,10 +833,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # минутами) — старый потолок 600с отменял задачу раньше ретраев
                 livedub_result = await asyncio.wait_for(live_dub_task, timeout=1800)
                 if not livedub_result:
-                    return False
+                    return await _notify_full_livedub_failure()
                 livedub_path, is_fallback, has_subs = livedub_result
                 if not (livedub_path and livedub_path.exists()):
-                    return False
+                    _reason = ""
+                    try:
+                        if "ld_work" in locals() and (ld_work / ".auth_required").exists():
+                            _reason = "Яндекс потребовал авторизацию VOT_API_TOKEN/YANDEX_OAUTH_TOKEN."
+                        elif "ld_work" in locals() and (ld_work / ".not_available").exists():
+                            _reason = "Яндекс/VOT вернул Translation not available для этого видео."
+                        elif "ld_work" in locals() and (ld_work / ".livedub_failed").exists():
+                            _reason = "Внутренняя ошибка сборки LiveDub; подробности есть в логах."
+                    except OSError:
+                        pass
+                    return await _notify_full_livedub_failure(_reason)
 
                 _quick_qa_report_html = ""
                 # ── ENG Quick QA: лёгкая проверка коротких роликов до отправки ──
@@ -1401,8 +1454,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     _thumb_path_c = _thumb_candidates[0]
                 
                 _comment_c = f"Source: {url}"
-                if telegraph_url:
-                    _comment_c += f"\nSynopsis: {telegraph_url}"
+                if c_tg:
+                    _comment_c += f"\nSynopsis: {c_tg}"
                 
                 if isinstance(_ts_chap_c, list) and _ts_chap_c:
                     await asyncio.get_running_loop().run_in_executor(

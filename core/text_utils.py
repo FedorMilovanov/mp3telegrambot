@@ -168,9 +168,20 @@ def normalize_common_typos(text: str, *, source_map: bool = True) -> str:
         return text
     for src, dst in _COMMON_TYPO_REPLACEMENTS:
         text = text.replace(src, dst)
-    text = normalize_person_names(text)
     if source_map:
-        text = normalize_source_map_text(text)
+        # source-map normalizer сам сохранит оригинальные английские имена в
+        # скобках (John MacArthur), а затем безопасно нормализует отображаемого
+        # автора. При source_map=False не трогаем имена: это opt-out для audit.
+        mapped = normalize_source_map_text(text)
+        if mapped != text:
+            return mapped
+        # Уже каноническая markdown source-card строка («• **Title**, Автор
+        # (Original, English Author)»). Не прогоняем normalize_person_names,
+        # иначе verifier в скобках становится русским: (Strange Fire, Джон МакАртур).
+        if (re.match(r"^\s*[•\-]\s+\*\*", text)
+                and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", text)):
+            return text
+        return normalize_person_names(text)
     return text
 
 
@@ -435,9 +446,10 @@ def title_case_fragment(s: str) -> str:
     if not s:
         return s
         
-    # 2026-06-11: Для фрагментов и заголовков LiveDub используем агрессивный Title Case по просьбе пользователя
+    # Русский заголовок — sentence case, не English Title Case:
+    # «Вопросы и ответы», а не «Вопросы и Ответы».
     if _is_cyrillic_dominant(s):
-        return sentence_case_russian_title(s, aggressive_title_case=True)
+        return sentence_case_russian_title(s, aggressive_title_case=False)
 
     _LOWER_MID = {
         "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от",

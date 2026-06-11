@@ -99,11 +99,10 @@ async def run_bot_async():
         from services.livedub_mix import get_mix_params as _ld_mix_params
         from core.database import current_livedub_file_id_cache_fingerprint as _ld_fingerprint
         _ldp = _ld_mix_params()
-        _vot_pad = os.getenv("LIVEDUB_VOT_DURATION_PAD_SEC", "1").strip() or "1"
         logger.info(
-            "🎬 LiveDub mix: delay=%dms base_tail=%dms freeze<=%ss vot_pad=%ss cache_fp=%s",
+            "🎬 LiveDub mix: delay=%dms base_tail=%dms freeze<=%ss vot_duration=floor cache_fp=%s",
             _ldp.get("delay_ms", 0), _ldp.get("tail_pad_ms", 0),
-            _ldp.get("tail_freeze_max_sec", 0), _vot_pad, _ld_fingerprint(),
+            _ldp.get("tail_freeze_max_sec", 0), _ld_fingerprint(),
         )
     except Exception as _ld_diag_err:
         logger.info("🎬 LiveDub mix diagnostics unavailable: %s", str(_ld_diag_err)[:120])

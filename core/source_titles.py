@@ -297,12 +297,22 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     """
     if not line:
         return line
-    out = normalize_person_names(correct_known_ru_title(str(line or "")))
+    # ВАЖНО: не нормализуем имена ДО разбора source-card. Иначе
+    # parenthetical verifier `(John MacArthur, Strange Fire)` превращается в
+    # `(Джон МакАртур, Strange Fire)`, и мы теряем оригинального автора.
+    out = correct_known_ru_title(str(line or ""))
     # Only source-card-like lines need aggressive whitespace/dedupe normalization.
     # Plain inline nodes such as "• " must keep their spacing.
     looks_like_source = bool(re.search(r"[A-Za-z].*,|,\s*[A-Za-z][A-Za-z ]{2,}|\([^)]*[A-Za-z]{3,}[^)]*\)", out))
     if looks_like_source:
         out = dedupe_bilingual_authors(out)
+
+    # Уже отрендеренная canonical markdown source-card строка:
+    # • **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur).
+    # Не нормализуем person names внутри parenthetical verifier.
+    if (re.match(r"^\s*[•\-]\s+\*\*", out)
+            and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out)):
+        return out.rstrip() + ("" if re.search(r"[.!?]\s*$", out) else ".")
 
     dup = _DUPLICATE_PAREN_RE.match(out.strip())
     if dup:
@@ -344,5 +354,5 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
             return _format_canonical_source_card(bullet, author, en_author, title)
 
     if looks_like_source and out.strip().startswith(("•", "-")) and not re.search(r"[.!?]\s*$", out):
-        return out.rstrip() + "."
-    return out
+        return normalize_person_names(out.rstrip()) + "."
+    return normalize_person_names(out) if looks_like_source else out

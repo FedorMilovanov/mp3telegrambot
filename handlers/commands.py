@@ -281,13 +281,12 @@ async def status_command(update, context):
         from services.livedub_mix import get_mix_params as _ld_mix_params
         from core.database import current_livedub_file_id_cache_fingerprint as _ld_fingerprint
         _ldp = _ld_mix_params()
-        _vot_pad = os.getenv("LIVEDUB_VOT_DURATION_PAD_SEC", "1").strip() or "1"
         lines.append(
             "🎬 LiveDub: "
             f"delay={_ldp.get('delay_ms', 0)}мс · "
             f"base-tail={_ldp.get('tail_pad_ms', 0)}мс · "
             f"freeze≤{_ldp.get('tail_freeze_max_sec', 0)}с · "
-            f"vot-pad={_vot_pad}с · "
+            "vot-duration=floor · "
             f"cache={_ld_fingerprint()}"
         )
     except Exception:

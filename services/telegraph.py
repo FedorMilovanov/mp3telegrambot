@@ -38,7 +38,7 @@ from core.synopsis_quality import (
     should_retry_synopsis_density, synopsis_density_score,
 )
 from core.prompt_compactor import compact_prompt_for_generation
-from core.generated_pages import aget_related_materials
+from core.generated_pages import aget_related_materials, extract_scripture_refs
 from converters.md_telegraph import _build_related_materials_nodes
 
 import asyncio
