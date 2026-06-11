@@ -81,16 +81,17 @@ def test_format_report_caps_length():
 # ── /mode: три режима ────────────────────────────────────────────
 
 def test_three_modes_defined():
-    assert VALID_MODES == ("rus", "eng", "eng_fast")
+    assert VALID_MODES == ("rus", "eng", "eng_fast", "eng_fast_qa")
     for m in VALID_MODES:
         assert m in MODE_LABELS and m in MODE_DESCRIPTIONS
 
 
 def test_pipeline_handles_eng_fast():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert 'in ("eng", "eng_fast")' in src
-    assert 'user_mode == "eng_fast"' in src
-    # QA только в Full: сабы и проверка завязаны на user_mode == "eng"
+    assert 'in ("eng", "eng_fast", "eng_fast_qa")' in src
+    assert 'user_mode in ("eng_fast", "eng_fast_qa")' in src
+    assert 'user_mode == "eng_fast_qa"' in src
+    # Full QA remains full-mode; Quick QA is a separate lightweight path.
     assert '(user_mode == "eng") and await asettings_get("eng_subtitles")' in src
     assert '(user_mode == "eng") and await asettings_get("livedub_qa")' in src
 
@@ -98,6 +99,22 @@ def test_pipeline_handles_eng_fast():
 def test_settings_key_registered():
     from core.database import SETTINGS_LABELS
     assert "livedub_qa" in SETTINGS_LABELS
+
+
+def test_eng_fast_qa_mode_registered_and_wired():
+    mode = Path("handlers/mode_command.py").read_text(encoding="utf-8")
+    assert "eng_fast_qa" in mode
+    assert "⚡🔍 ENG Quick QA" in mode
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "LIVEDUB_QUICK_QA_MAX_DURATION" in pipe
+    assert "LIVEDUB_QUICK_QA_MODEL" in pipe
+    assert "LIVEDUB_QUICK_QA_THINKING" in pipe
+    assert "LiveDubQuickQA" in pipe
+    assert "apply_qa_audio_fixes" in pipe
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
+    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite" in env
+    assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env
 
 
 # ── Pro-микс и авто-правка ───────────────────────────────────────
@@ -782,7 +799,7 @@ def test_livedub_info_card_sent_for_cached_file_id_too():
 def test_livedub_info_card_wired_only_for_eng_quick():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "livedub_info_enabled" in src
-    assert 'user_mode == "eng_fast"' in src
+    assert 'user_mode in ("eng_fast", "eng_fast_qa")' in src
     assert "build_livedub_info_card" in src
     assert "format_livedub_info_message" in src
     assert "get_translation_subtitles(video_url, workdir)" in src
@@ -879,6 +896,12 @@ def test_livedub_qa_prompt_flags_parent_sexual_mistranslation_as_major():
     assert "fools commit sexual" in src
     assert "родителями" in src
     assert "severity=major" in src
+
+
+def test_run_translation_qa_accepts_thinking_level_for_quick_mode():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert 'thinking_level: str = "high"' in src
+    assert "thinking_level=thinking_level" in src
 
 
 # ── Заход 11: реюз Gemini audio_part в QA ────────────────────────

@@ -256,6 +256,7 @@ async def run_translation_qa(
     dub_srt_path: Optional[Path] = None,
     existing_audio_part=None,
     existing_client=None,
+    thinking_level: str = "high",
 ) -> Optional[dict]:
     """Смысловая проверка дубляжа через Gemini.
 
@@ -272,6 +273,7 @@ async def run_translation_qa(
     qa_audio = dub_video_path.parent / f"{dub_video_path.stem}_qa.mp3"
     uploaded: list = []
     client_used = None
+    _temp_original_audio: Path | None = None
     try:
         _have_srt = bool(dub_srt_path and Path(dub_srt_path).exists())
         dub_audio = None
@@ -343,7 +345,19 @@ async def run_translation_qa(
                 logger.info("[LiveDubQA] реюз audio_part основного анализа (без повторной заливки)")
                 parts.append(existing_audio_part)
             elif original_audio_path and Path(original_audio_path).exists():
-                uf_orig = await _upload_and_wait(client, Path(original_audio_path), "qa_original")
+                _orig_path = Path(original_audio_path)
+                _upload_orig = _orig_path
+                if _orig_path.suffix.lower() not in {".mp3", ".mpeg", ".mpga"}:
+                    _tmp = _orig_path.parent / f"{_orig_path.stem}_qa_original.mp3"
+                    _extracted = await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: _extract_audio_for_qa(_orig_path, _tmp)
+                    )
+                    if _extracted is None:
+                        logger.warning("[LiveDubQA] не удалось извлечь оригинальное аудио для QA")
+                        return None
+                    _temp_original_audio = Path(_extracted)
+                    _upload_orig = _temp_original_audio
+                uf_orig = await _upload_and_wait(client, _upload_orig, "qa_original")
                 uploaded.append(uf_orig)
                 parts.append(uf_orig)
             if dub_audio is not None:
@@ -361,7 +375,7 @@ async def run_translation_qa(
             cfg = make_audio_config(
                 max_output_tokens=49152,   # high-thinking может съесть до ~30K до ответа
                 model_name=model_name,
-                thinking_level="high",     # КАЧЕСТВО ПЕРВЫМ: глубокий разбор перевода
+                thinking_level=thinking_level,  # Full=high; Quick QA can use minimal/low
                 response_mime_type="application/json",
             )
             try:
@@ -444,6 +458,11 @@ async def run_translation_qa(
             qa_audio.unlink(missing_ok=True)
         except Exception:
             pass
+        if _temp_original_audio is not None:
+            try:
+                _temp_original_audio.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════

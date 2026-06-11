@@ -5,6 +5,7 @@
 rus      : 🇷🇺 Обычный режим — полный анализ (конспект, цитаты, Shorts...), без перевода.
 eng      : 🇬🇧 ENG Full — полный анализ + Живые голоса + смысловая проверка перевода (Gemini QA).
 eng_fast : ⚡ ENG Quick — ТОЛЬКО перевод Живые голоса, без анализа и без QA. Быстро и дёшево.
+eng_fast_qa : ⚡🔍 ENG Quick QA — быстрый перевод + лёгкая проверка коротких роликов.
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -12,18 +13,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("rus", "eng", "eng_fast")
+VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa")
 
 MODE_LABELS = {
     "rus":      "🇷🇺 Русский — полный анализ",
     "eng":      "🇬🇧 ENG Full — анализ + перевод + проверка",
     "eng_fast": "⚡ ENG Quick — только перевод",
+    "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + проверка",
 }
 
 MODE_DESCRIPTIONS = {
     "rus":      "Конспект, цитаты, вопросы, Shorts — как обычно. Перевода нет.",
     "eng":      "Всё то же + видео с «Живыми голосами» Яндекса + Gemini сверяет дубляж с оригиналом и присылает отчёт о точности.",
     "eng_fast": "Только переведённое видео, максимально быстро. Без конспектов, без проверки, без расхода квоты Gemini.",
+    "eng_fast_qa": "Переведённое видео без конспекта, но короткие ролики проверяются лёгкой Gemini-моделью; major-ошибки автоматически вырезаются.",
 }
 
 
@@ -39,6 +42,7 @@ async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(MODE_LABELS["rus"], callback_data="set_mode:rus")],
         [InlineKeyboardButton(MODE_LABELS["eng"], callback_data="set_mode:eng")],
         [InlineKeyboardButton(MODE_LABELS["eng_fast"], callback_data="set_mode:eng_fast")],
+        [InlineKeyboardButton(MODE_LABELS["eng_fast_qa"], callback_data="set_mode:eng_fast_qa")],
     ])
 
     lines = [f"<b>Текущий режим:</b> {current_label}", ""]

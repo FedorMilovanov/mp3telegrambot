@@ -413,7 +413,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         "SELECT value FROM bot_settings WHERE key = ?",
                         (f"user_mode_{user_id}",)
                     ).fetchone()
-                if row and row[0] in ("eng", "eng_fast"):
+                if row and row[0] in ("eng", "eng_fast", "eng_fast_qa"):
                     user_mode = row[0]
             except Exception:
                 pass
@@ -421,7 +421,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         live_dub_task = None
         _livedub_qa_enabled = False
         _livedub_cached_file_id = ""
-        if user_mode in ("eng", "eng_fast"):
+        if user_mode in ("eng", "eng_fast", "eng_fast_qa"):
             # FEATURE 2026-06-10: реюз file_id — если этот перевод уже отправлялся,
             # Telegram отдаст его мгновенно, без vot-cli и заливки сотен МБ.
             try:
@@ -429,9 +429,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_cached_file_id = (_ld_cached or {}).get("livedub_file_id") or ""
             except Exception:
                 _livedub_cached_file_id = ""
-        if _livedub_cached_file_id and user_mode in ("eng", "eng_fast"):
+        if _livedub_cached_file_id and user_mode in ("eng", "eng_fast", "eng_fast_qa"):
             logger.info(f"[LiveDub] кэш file_id найден — повторная отправка мгновенно ({media_id})")
-        elif user_mode in ("eng", "eng_fast"):
+        elif user_mode in ("eng", "eng_fast", "eng_fast_qa"):
             # FIX 2026-06-10 fail-fast: без vot-cli юзер раньше узнавал о
             # проблеме через минуты (или никогда в Quick). Проверяем сразу.
             from services.yandex_live_dub import get_live_dub_video, _check_vot_cli, _ensure_vot_helper
@@ -459,22 +459,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         )
                     except Exception:
                         pass
-                if user_mode == "eng_fast":
+                if user_mode in ("eng_fast", "eng_fast_qa"):
                     cleanup_files(media_id)
                     return False
                 user_mode = "rus"  # ENG Full деградирует до обычного анализа
-        if user_mode in ("eng", "eng_fast") and live_dub_task is None and not _livedub_cached_file_id:
+        if user_mode in ("eng", "eng_fast", "eng_fast_qa") and live_dub_task is None and not _livedub_cached_file_id:
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
             
             # ENG Quick: только перевод — без субтитров и без QA (экономим CPU и квоту)
             eng_subs_enabled = (user_mode == "eng") and await asettings_get("eng_subtitles")
             _livedub_qa_enabled = (user_mode == "eng") and await asettings_get("livedub_qa")
+            _livedub_quick_qa_enabled = (user_mode == "eng_fast_qa")
             _livedub_pro_mix = await asettings_get("livedub_pro_mix")
-            _livedub_autofix = _livedub_qa_enabled and await asettings_get("livedub_autofix")
+            _livedub_autofix = (_livedub_qa_enabled or _livedub_quick_qa_enabled) and await asettings_get("livedub_autofix")
             try:
                 from services.livedub_info import livedub_info_enabled
-                _livedub_info_enabled = (user_mode == "eng_fast") and livedub_info_enabled()
+                _livedub_info_enabled = (user_mode in ("eng_fast", "eng_fast_qa")) and livedub_info_enabled()
             except Exception:
                 _livedub_info_enabled = False
 
@@ -514,7 +515,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     # Субтитры перевода Яндекса — точный текст дубляжа для QA.
                     # Качаются параллельно, сбой не критичен.
                     dub_subs_task = None
-                    if _livedub_qa_enabled or _livedub_info_enabled:
+                    if _livedub_qa_enabled or _livedub_info_enabled or _livedub_quick_qa_enabled:
                         from services.yandex_live_dub import get_translation_subtitles
                         dub_subs_task = asyncio.create_task(
                             get_translation_subtitles(video_url, workdir)
@@ -679,6 +680,74 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if not (livedub_path and livedub_path.exists()):
                     return False
 
+                # ── ENG Quick QA: лёгкая проверка коротких роликов до отправки ──
+                if user_mode == "eng_fast_qa" and not is_fallback:
+                    try:
+                        _max_q = int(os.getenv("LIVEDUB_QUICK_QA_MAX_DURATION", "120") or "120")
+                    except ValueError:
+                        _max_q = 120
+                    if duration and duration <= _max_q:
+                        try:
+                            from services.livedub_qa import run_translation_qa, format_qa_report
+                            from services.livedub_info import get_light_model
+                            _quick_srt = None
+                            _orig_for_quick = None
+                            if "ld_work" in locals() and ld_work.exists():
+                                _srt_candidates = sorted(
+                                    (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
+                                    key=lambda f: f.stat().st_mtime, reverse=True,
+                                )
+                                _quick_srt = _srt_candidates[0] if _srt_candidates else None
+                                _orig_candidates = sorted(
+                                    ld_work.glob("original_video.*"),
+                                    key=lambda f: f.stat().st_mtime,
+                                    reverse=True,
+                                )
+                                _orig_for_quick = _orig_candidates[0] if _orig_candidates else None
+                            if _quick_srt and _orig_for_quick:
+                                _quick_qa = await run_translation_qa(
+                                    dub_video_path=livedub_path,
+                                    original_audio_path=_orig_for_quick,
+                                    ai_data=None,
+                                    duration=duration,
+                                    model_name=os.getenv("LIVEDUB_QUICK_QA_MODEL", "").strip() or get_light_model(),
+                                    dub_srt_path=_quick_srt,
+                                    thinking_level=os.getenv("LIVEDUB_QUICK_QA_THINKING", "minimal").strip() or "minimal",
+                                )
+                                _quick_majors = [i for i in ((_quick_qa or {}).get("issues") or [])
+                                                 if str(i.get("severity")) == "major"]
+                                if _quick_majors:
+                                    logger.warning(
+                                        "[LiveDubQuickQA] major issues=%d — пробую автофикс до отправки",
+                                        len(_quick_majors),
+                                    )
+                                    try:
+                                        from services.livedub_mix import apply_qa_audio_fixes
+                                        fixed = await apply_qa_audio_fixes(ld_work, (_quick_qa or {}).get("issues") or [])
+                                        if fixed and fixed.exists():
+                                            livedub_path = fixed
+                                            await context.bot.send_message(
+                                                chat_id=update.effective_chat.id,
+                                                text=("⚠️ Быстрая проверка нашла серьёзное искажение перевода. "
+                                                      "Отправляю версию, где проблемный русский фрагмент вырезан, "
+                                                      "а оригинал поднят."),
+                                                reply_to_message_id=update.message.message_id,
+                                            )
+                                    except Exception as _qfix_err:
+                                        logger.warning("[LiveDubQuickQA] автофикс не удался: %s", str(_qfix_err)[:160])
+                                if _quick_qa:
+                                    await context.bot.send_message(
+                                        chat_id=update.effective_chat.id,
+                                        text=format_qa_report(_quick_qa, video_url=url),
+                                        parse_mode="HTML",
+                                        reply_to_message_id=update.message.message_id,
+                                        disable_web_page_preview=True,
+                                    )
+                        except Exception as _quick_qa_err:
+                            logger.info("[LiveDubQuickQA] skip: %s", str(_quick_qa_err)[:160])
+                    else:
+                        logger.info("[LiveDubQuickQA] skipped: duration=%s > max=%s", duration, _max_q)
+
                 # ── Техническая проверка целостности (всегда, дёшево) ──
                 _tech_warnings: list[str] = []
                 if not is_fallback:
@@ -781,7 +850,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         logger.warning(f"[LiveDub] не сохранил file_id: {_fid_save_err}")
 
                 # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
-                if user_mode == "eng_fast" and not is_fallback:
+                if user_mode in ("eng_fast", "eng_fast_qa") and not is_fallback:
                     _info_srt = None
                     try:
                         if "ld_work" in locals() and ld_work.exists():
@@ -916,7 +985,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         performer, title = parse_title(full_title, channel_name)
 
         # ── ENG Quick: только перевод, весь анализ пропускаем ────────────
-        if user_mode == "eng_fast":
+        if user_mode in ("eng_fast", "eng_fast_qa"):
             if status_msg:
                 try:
                     await status_msg.edit_text(
