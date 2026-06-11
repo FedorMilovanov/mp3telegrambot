@@ -225,16 +225,47 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     logger.info(f"[EngSubtitles] Субтитры созданы: {srt_path}")
     return srt_path
 
+def _has_video_stream(path: Path) -> bool:
+    """True если файл реально содержит видеопоток.
+
+    yt-dlp иногда оставляет рядом `original_video.f140.m4a` (audio-only). Старый
+    reuse blindly хватал первый `original_video.*`, и LiveDub-mix падал на
+    `-map 0:v`: «Stream map '' matches no streams». Поэтому проверяем ffprobe.
+    """
+    path = Path(path)
+    if not path.exists() or path.stat().st_size <= 100 * 1024:
+        return False
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+    try:
+        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            timeout=60, **kwargs,
+        )
+        return proc.returncode == 0 and "video" in (proc.stdout or "").lower()
+    except Exception as e:
+        logger.debug("[EngSubtitles] ffprobe video-stream check failed for %s: %s", path, e)
+        return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+
+
 async def download_original_video(video_url: str, workdir: Path) -> Path:
     """Скачивает оригинальное видео в формате mp4."""
     workdir.mkdir(parents=True, exist_ok=True)
     video_path = workdir / "original_video.mp4"
 
-    # Реюз: pro-микс мог уже скачать оригинал в эту же папку
-    for existing in workdir.glob("original_video.*"):
-        if existing.is_file() and existing.stat().st_size > 100 * 1024:
+    # Реюз: pro-микс мог уже скачать оригинал в эту же папку. Но audio-only
+    # артефакты (original_video.f140.m4a) нельзя отдавать как видео.
+    for existing in sorted(workdir.glob("original_video.*")):
+        if existing.is_file() and _has_video_stream(existing):
             logger.info(f"[EngSubtitles] Оригинал уже скачан: {existing.name} — реюз")
             return existing
+        if existing.is_file() and existing.stat().st_size > 100 * 1024:
+            logger.info(f"[EngSubtitles] {existing.name} без видеопотока — не реюзаю для DUB")
 
     
     # FIX: используем YTDLP_BASE_ARGS (cookies, js-runtime, общие настройки) —
@@ -258,12 +289,15 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
     proc = await loop.run_in_executor(None, lambda: _run_cmd(900))
     
     actual_video = None
-    for file in workdir.glob("original_video.*"):
-        actual_video = file
-        break
+    for file in sorted(workdir.glob("original_video.*")):
+        if _has_video_stream(file):
+            actual_video = file
+            break
+        if file.is_file() and file.stat().st_size > 100 * 1024:
+            logger.info(f"[EngSubtitles] после yt-dlp {file.name} без видеопотока — пропускаю")
         
     if not actual_video or not actual_video.exists():
-        raise RuntimeError(f"Не удалось скачать оригинальное видео. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
+        raise RuntimeError(f"Не удалось скачать оригинальное видео с видеопотоком. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
         
     return actual_video
 

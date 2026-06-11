@@ -356,6 +356,19 @@ def test_qa_uses_native_json_mime():
 def test_download_original_video_reuses_existing():
     src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
     assert "Реюз" in src and 'glob("original_video.*")' in src
+    assert "без видеопотока" in src
+    assert "_has_video_stream" in src
+
+
+def test_has_video_stream_does_not_treat_audio_m4a_as_video(tmp_path, monkeypatch):
+    from services import eng_subtitles as es
+    audio = tmp_path / "original_video.f140.m4a"
+    audio.write_bytes(b"0" * (200 * 1024))
+    video = tmp_path / "original_video.mp4"
+    video.write_bytes(b"0" * (200 * 1024))
+    monkeypatch.setattr(es.shutil, "which", lambda _name: None)
+    assert es._has_video_stream(audio) is False
+    assert es._has_video_stream(video) is True
 
 
 def test_qa_has_global_deadline():
