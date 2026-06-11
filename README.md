@@ -112,6 +112,11 @@ VOT-запрос получает целую длительность из ме�
 что лишний padding может ломать попадание в cache-key Яндекса; хвост/договоривание
 защищаются уже на этапе нашего ffmpeg-микса.
 
+Для длинных Synopsis бот по умолчанию пытается скачать YouTube/auto captions и
+добавить timed transcript в prompt (`SYNOPSIS_YT_TRANSCRIPT=1`, лимит
+`SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS=120000`). Это нужно, чтобы конспект был не
+обзорной статьёй, а структурированной почти-дословной стенограммой.
+
 
 LiveDub captions: в `ENG Full` название берётся из уже готового Gemini-анализа
 (`real_title/real_author`), без отдельного запроса. В `ENG Quick` title переводится через лёгкую модель (`GEMINI_LIGHT_MODEL`),

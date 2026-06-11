@@ -568,6 +568,35 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             logger.info(
                 f"Synopsis: mode=normal format={_fmt} hermeneutic={_hm} duration={int(_duration)//60}min"
             )
+
+        # Дословность: если YouTube/auto captions доступны, добавляем timed
+        # transcript как текстовую опору. Аудио всё равно прикладывается, но
+        # transcript резко снижает риск «обзорной статьи» вместо стенограммы.
+        if not is_qa and url:
+            try:
+                from services.youtube_transcript import download_youtube_transcript_text
+                try:
+                    _tr_max = int(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "120000") or "120000")
+                except ValueError:
+                    _tr_max = 120000
+                _tr_text = await download_youtube_transcript_text(
+                    url, mp3_path.parent, max_chars=max(10000, min(_tr_max, 250000))
+                )
+                if _tr_text:
+                    prompt += (
+                        "\n\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+                        "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА / AUTO-CAPTIONS\n"
+                        "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+                        "Используй этот timed transcript как главный текстовый скелет речи. "
+                        "Переводи и структурируй его максимально дословно на русский, "
+                        "не превращай в summary. Сохраняй порядок фраз, примеры, имена, "
+                        "риторические вопросы и переходы. Аудиофайл используй для проверки "
+                        "интонации и спорных мест.\n\n"
+                        + _tr_text
+                    )
+            except Exception as _tr_err:
+                logger.info("[SynopsisTranscript] prompt attach failed: %s", str(_tr_err)[:160])
+
         _compacted_prompt = compact_prompt_for_generation(prompt)
         if _compacted_prompt.saved_chars:
             logger.info(

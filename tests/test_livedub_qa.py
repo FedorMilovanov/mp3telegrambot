@@ -1614,7 +1614,8 @@ def test_all_env_knobs_documented():
               "MP3_LOUDNORM", "SPONSORBLOCK_REMOVE", "LIVEDUB_RNNOISE_MODEL",
               "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
               "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "LIVEDUB_TAIL_MARGIN_MS",
-              "LIVEDUB_TAIL_FREEZE_MAX_SEC", "MAX_FILE_SIZE_MB"):
+              "LIVEDUB_TAIL_FREEZE_MAX_SEC", "SYNOPSIS_YT_TRANSCRIPT",
+              "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "MAX_FILE_SIZE_MB"):
         assert v in env, f"{v} не задокументирован в .env.example"
 
 
