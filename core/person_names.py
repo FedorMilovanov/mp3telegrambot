@@ -54,6 +54,11 @@ _PERSON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("Элизабет Эллиот", "Элизабет Эллиот"),
     ("Розария Баттерфилд", "Розария Баттерфилд"),
     ("Джеки Хилл Перри", "Джеки Хилл Перри"),
+    ("Ричард Филлипс", "Ричард Филлипс"),
+    ("Ричард Д. Филлипс", "Ричард Филлипс"),
+    ("Richard Phillips", "Ричард Филлипс"),
+    ("Джон Мюллер", "Георг Мюллер"),
+    ("George Mueller", "Георг Мюллер"),
 )
 
 
@@ -65,8 +70,13 @@ def normalize_person_names(text: str) -> str:
     out = str(text)
     changed = False
     for src, dst in _PERSON_REPLACEMENTS:
-        if src in out:
-            out = out.replace(src, dst)
+        # 2026-06-11: Делаем замену имен регистронезависимой.
+        # Если в тексте "джоэл бики", он должен стать "Джоэл Бики".
+        # Используем regex для точного совпадения границ слов.
+        pattern = rf"(?i)\b{re.escape(src)}\b"
+        new_out = re.sub(pattern, dst, out)
+        if new_out != out:
+            out = new_out
             changed = True
     # Initials spacing polish: "Р.Ч. Спроул" -> "Р. Ч. Спроул"
     out2 = re.sub(r"\b([А-ЯA-Z])\.\s*([А-ЯA-Z])\.\s*", lambda m: f"{m.group(1)}. {m.group(2)}. ", out)

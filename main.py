@@ -30,6 +30,7 @@ from handlers.commands import (
     search_archive_command, author_archive_command, scripture_archive_command,
     repairpage_command, repairrecent_command, segments_command, cutseg_command,
     prompthealth_command, codehealth_command, archivequality_command, archivequalityfile_command, qualityrecords_command, promptrecommend_command, comparevariants_command, archivefile_command, segmentfile_command,
+    disk_command,
 )
 from handlers.callbacks import handle_callback, settings_command
 from handlers.commands import status_command  # round 32
@@ -474,6 +475,7 @@ async def run_bot_async():
     app.add_handler(CommandHandler("repairrecent", repairrecent_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("segments",   segments_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("cutseg",     cutseg_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("disk",       disk_command, filters=_MSG_ONLY))
     # FIX 2026-06-10: filters.TEXT матчит И edited_message (update.message=None
     # -> AttributeError в handle_message). Реагируем только на новые сообщения:
     # редактирование старой ссылки не должно перезапускать обработку видео.
@@ -560,6 +562,7 @@ async def run_bot_async():
                 vip_commands = default_commands + [
                     BotCommand("settings",   "⚙️ Настройки бота"),
                     BotCommand("status",     "🩺 Здоровье бота"),
+                    BotCommand("disk",       "💾 Место на диске"),
                     BotCommand("archive",    "📚 Последние страницы"),
                     BotCommand("search",     "🔎 Поиск по архиву"),
                     BotCommand("segments",   "🧩 Сегменты видео"),

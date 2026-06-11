@@ -106,10 +106,20 @@ try {
   }
 
   log(`Аудио готово: ${result.url.slice(0, 80)}...`);
-  const resp = await fetch(result.url);
-  if (!resp.ok) {
+  let resp = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      resp = await fetch(result.url);
+      if (resp.ok) break;
+    } catch (e) {
+      log(`Скачивание попытка ${attempt} failed: ${e.message}`);
+    }
+    if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+  }
+
+  if (!resp || !resp.ok) {
     console.error("LIVEDUB_NOT_AVAILABLE");
-    log(`Скачивание аудио не удалось: HTTP ${resp.status}`);
+    log(`Скачивание аудио не удалось после 3 попыток: HTTP ${resp ? resp.status : 'ERR'}`);
     process.exit(4);
   }
   const buf = Buffer.from(await resp.arrayBuffer());

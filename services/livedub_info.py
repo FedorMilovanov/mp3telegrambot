@@ -262,7 +262,13 @@ def format_livedub_info_message(card: dict) -> str:
     terms = card.get("key_theological_terms") or []
     if terms:
         lines += ["", "🧠 <b>Богословские термины</b>"]
-        lines += ["# " + _h(x) for x in terms[:5]]
+        # 2026-06-11: Выводим термины в одну строку через пробел, как хэштеги.
+        # Убираем пробелы внутри терминов для корректности тегов.
+        tags = []
+        for t in terms[:6]:
+            tag_body = "".join(w.capitalize() for w in str(t).split())
+            tags.append(f"#{tag_body}")
+        lines.append(" ".join(tags))
 
     if scripture:
         lines += ["", "📖 <b>Упомянутые места Писания</b>"]

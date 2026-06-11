@@ -522,6 +522,31 @@ async def aquery_generated_pages(**kwargs) -> list[dict[str, Any]]:
     return await loop.run_in_executor(None, lambda: query_generated_pages(**kwargs))
 
 
+def get_related_materials(
+    *,
+    author: str = "",
+    scripture: str = "",
+    exclude_video_id: str = "",
+    limit: int = 5,
+    base_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch related materials from the archive for 'Read Next' blocks."""
+    records = query_generated_pages(limit=limit + 1, author=author, scripture=scripture, base_dir=base_dir)
+    out = []
+    for r in records:
+        if r.get("video_id") == exclude_video_id:
+            continue
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def aget_related_materials(**kwargs) -> list[dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: get_related_materials(**kwargs))
+
+
 def update_generated_page_repair_status(
     video_id: str,
     *,

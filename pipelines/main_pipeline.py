@@ -69,6 +69,7 @@ import subprocess # FIX #11
 import uuid
 import sqlite3  # LIVEDUB: direct DB read for user mode
 from pathlib import Path
+from typing import Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -1394,14 +1395,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
               try:
                 from services.mp3_chapters import embed_chapters
                 _ts_chap_c = (c_ai or {}).get("timestamps") or []
+                _thumb_path_c = None
+                _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
+                if _thumb_candidates:
+                    _thumb_path_c = _thumb_candidates[0]
+                
+                _comment_c = f"Source: {url}"
+                if telegraph_url:
+                    _comment_c += f"\nSynopsis: {telegraph_url}"
+                
                 if isinstance(_ts_chap_c, list) and _ts_chap_c:
                     await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: embed_chapters(mp3_path, _ts_chap_c, duration))
+                        None, lambda: embed_chapters(
+                            mp3_path, _ts_chap_c, duration,
+                            title=(c_ai or {}).get("real_title") or title,
+                            performer=(c_ai or {}).get("real_author") or performer,
+                            thumb_path=_thumb_path_c,
+                            comment=_comment_c
+                        ))
               except Exception as _chap_err_c:
                 logger.warning(f"MP3 chapters (кэш) skip: {_chap_err_c}")
               with open(mp3_path, "rb") as af:
-                _title_c     = (c_ai or {}).get("real_title") or title
-                _performer_c = (c_ai or {}).get("real_author") or performer
+                _title_c     = title_case_fragment((c_ai or {}).get("real_title") or title)
+                _performer_c = normalize_author_name((c_ai or {}).get("real_author") or performer)
                 for _attempt in range(3):
                     try:
                         af.seek(0)
@@ -1755,6 +1771,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ai_data, search_title, tg_author, yt_url=url, compact_fn=compact,
                 rutube_url=_pre_rutube, vk_url=_pre_vk,
                 synopsis_outline=synopsis_outline,
+                duration=duration,
+                video_id=media_id,
             )
 
         async def _reflection_application_pipeline():
@@ -1768,6 +1786,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 compact_fn=compact,
                 rutube_url=_pre_rutube, vk_url=_pre_vk,
                 synopsis_outline=synopsis_outline,
+                video_id=media_id,
             )
 
         async def _alt_links_result():
@@ -2257,9 +2276,28 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         try:
             from services.mp3_chapters import embed_chapters
             _ts_for_chap = (ai_data or {}).get("timestamps") or []
+            _thumb_path = None
+            _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
+            if _thumb_candidates:
+                _thumb_path = _thumb_candidates[0]
+            
+            _comment = f"Source: {url}"
+            if telegraph_url:
+                _comment += f"\nSynopsis: {telegraph_url}"
+            if study_analysis_tg:
+                _comment += f"\nStudy: {study_analysis_tg}"
+            if reflection_application_tg:
+                _comment += f"\nReflection: {reflection_application_tg}"
+
             if isinstance(_ts_for_chap, list) and _ts_for_chap:
                 await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: embed_chapters(mp3_path, _ts_for_chap, duration))
+                    None, lambda: embed_chapters(
+                        mp3_path, _ts_for_chap, duration,
+                        title=(ai_data or {}).get("real_title") or title,
+                        performer=(ai_data or {}).get("real_author") or performer,
+                        thumb_path=_thumb_path,
+                        comment=_comment
+                    ))
         except Exception as _chap_err:
             logger.warning(f"MP3 chapters skip: {_chap_err}")
 
@@ -2268,8 +2306,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         except Exception:
             pass
         with open(mp3_path, "rb") as audio_file:
-            audio_title     = normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title")  or title) or title)
-            audio_performer = normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author") or performer) or performer)
+            audio_title     = title_case_fragment((ai_data or {}).get("real_title") or title)
+            audio_performer = normalize_author_name((ai_data or {}).get("real_author") or performer)
             # Увеличенный таймаут для больших файлов + retry при сетевых ошибках
             for _attempt in range(3):
                 try:

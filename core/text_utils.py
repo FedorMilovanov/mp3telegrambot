@@ -62,6 +62,9 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("странный огонь", "чуждый огонь"),
     ("Вопросы и Ответы", "Вопросы и ответы"),
     ("Свидания, Брак и Семейная Жизнь", "Свидания, брак и семейная жизнь"),
+    ("Писание", "Писание"),
+    ("священное Писание", "Священное Писание"),
+    ("Библия", "Библия"),
     # Mixed Cyrillic/Greek letters in original-language terms.
     ("βασιлеία", "βασιλεία"),
     ("μορφύω", "μορφόω"),
@@ -346,6 +349,7 @@ _RU_TITLE_PRESERVE_WORDS = {
     "Библия", "Библии", "Библию", "Библией",
     "Евангелие", "Евангелия", "Псалом", "Псалма", "Исаия", "Исаии", "Матфея", "Марка", "Луки", "Иоанна", "Римлянам",
     "Оправдание", "Освящение", "Искупление", "Завет", "Благодать", "Праведность", "Покаяние",
+    "Провидение", "Предопределение", "Возрождение", "Богодухновенность", "Библеистика", "Экзегеза", "Герменевтика",
 }
 
 
@@ -355,13 +359,16 @@ def _is_cyrillic_dominant(text: str) -> bool:
     return cyr > 0 and cyr >= lat * 2
 
 
-def sentence_case_russian_title(s: str) -> str:
+def sentence_case_russian_title(s: str, aggressive_title_case: bool = False) -> str:
     """Russian-friendly title casing.
 
     English Title Case looks unnatural in Russian: «Вопросы и Ответы»,
     «Как Проповедовать Пламенно». This helper lowercases ordinary Russian words
     while preserving first word, biblical/divine names, acronyms, Latin titles,
     digits and internal-cap proper names like «МакАртур».
+
+    2026-06-11: aggressive_title_case=True (для заголовков) делает заглавной
+    каждую букву каждого значимого слова, как того хочет пользователь.
     """
     if not s or not _is_cyrillic_dominant(s):
         return s
@@ -379,11 +386,17 @@ def sentence_case_russian_title(s: str) -> str:
 
     out: list[str] = []
     force_cap_next = True
-    for raw in s.split():
+    
+    # Служебные слова, которые не капитализируем в середине даже при агрессивном Title Case
+    _LOWER_RU = {"и", "а", "но", "или", "да", "не", "ни", "же", "ли", "бы", "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от", "под", "над", "при", "про", "без", "для"}
+
+    words = s.split()
+    for idx, raw in enumerate(words):
         prefix, core, suffix = split_edges(raw)
         if not core:
             out.append(raw)
             continue
+        
         preserve = (
             core in _RU_TITLE_PRESERVE_WORDS
             or bool(re.search(r"[A-Za-z0-9]", core))
@@ -392,14 +405,23 @@ def sentence_case_russian_title(s: str) -> str:
             or bool(re.search(r"[а-яё][А-ЯЁ]", core))  # МакАртур
             or bool(re.search(r"-[А-ЯЁ]", core))       # Ллойд-Джонс
         )
+        
         if preserve:
             new_core = core
+        elif aggressive_title_case:
+            # Агрессивный режим: капитализируем всё, кроме коротких союзов/предлогов в середине
+            if idx == 0 or idx == len(words) - 1 or core.lower() not in _LOWER_RU:
+                new_core = cap_word(core.lower())
+            else:
+                new_core = core.lower()
         elif force_cap_next:
             new_core = cap_word(core.lower())
         else:
             new_core = core.lower()
+            
         out.append(prefix + new_core + suffix)
         force_cap_next = bool(re.search(r"[.!?]$", suffix))
+        
     result = " ".join(out)
     return normalize_person_names(result)
 
@@ -412,8 +434,10 @@ def title_case_fragment(s: str) -> str:
     """
     if not s:
         return s
+        
+    # 2026-06-11: Для фрагментов и заголовков LiveDub используем агрессивный Title Case по просьбе пользователя
     if _is_cyrillic_dominant(s):
-        return sentence_case_russian_title(s)
+        return sentence_case_russian_title(s, aggressive_title_case=True)
 
     _LOWER_MID = {
         "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от",

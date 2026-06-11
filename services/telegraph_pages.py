@@ -42,8 +42,11 @@ from core.adaptive_generation import get_adaptive_text_generation_params
 from core.prompt_compactor import compact_prompt_for_generation
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
+from core.generated_pages import aget_related_materials, extract_scripture_refs
+from converters.md_telegraph import _build_related_materials_nodes
 
 import asyncio
+from typing import Optional, List, Tuple
 import json
 from dataclasses import dataclass      # FIX telegraph_pages
 import logging
@@ -850,6 +853,8 @@ async def _publish_expanded_page(
     vk_url: str = "",
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: пробрасывается в _section_to_nodes_v2
+    ai_data: dict | None = None,     # FEATURE 2026-06-11: для блока «Читать также»
+    video_id: str = "",
 ) -> str | None:
     """Публикует article-like страницу по модели Конспекта (createPage + editPage).
     Использует рекурсивное дробление при CONTENT_TOO_BIG — аналогично Synopsis."""
@@ -956,6 +961,21 @@ async def _publish_expanded_page(
             # _build_nav_nodes_v2 already includes its own leading <hr> — do NOT add extra one
             final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
+        # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
+        if i == total - 1 and ai_data:
+            try:
+                _scripture_refs = extract_scripture_refs(ai_data)
+                _related = await aget_related_materials(
+                    author=author,
+                    scripture=(_scripture_refs[0] if _scripture_refs else ""),
+                    exclude_video_id=video_id,
+                    limit=3
+                )
+                if _related:
+                    final_nodes.extend(_build_related_materials_nodes(_related))
+            except Exception as _rel_err:
+                logger.debug("Related materials block skip: %s", _rel_err)
+
         # V3-P16: пауза перед editPage — Telegraph rate limit при >50 nodes.
         if i == 0:  # пауза только перед первым editPage
             await asyncio.sleep(2)
@@ -1025,6 +1045,8 @@ async def _run_expanded_pipeline(
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: пробрасывается в _publish_expanded_page
     thinking_level: str = "high",  # V3-P14: настраивается по типу задачи
+    ai_data: dict | None = None,     # FEATURE 2026-06-11: для блока «Читать также»
+    video_id: str = "",
 ) -> str | None:
     """Универсальный runner для article-like pages: Gemini -> парсинг -> публикация -> fallback."""
 
@@ -1182,6 +1204,8 @@ async def _run_expanded_pipeline(
             vk_url=vk_url,
             duration=duration,
             plain_scripture=plain_scripture,
+            ai_data=ai_data,
+            video_id=video_id,
         )
 
         if url:
@@ -1222,6 +1246,7 @@ async def create_telegraph_study_analysis(
     vk_url: str = "",
     synopsis_outline: list | None = None,
     duration: float = 0,
+    video_id: str = "", # FEATURE 2026-06-11
 ) -> str | None:
     """
     «Разбор материала» -- большая article-like страница.
@@ -1341,6 +1366,8 @@ async def create_telegraph_study_analysis(
         rutube_url=rutube_url,
         vk_url=vk_url,
         duration=int(effective_duration) if effective_duration else 0,
+        ai_data=_ai,
+        video_id=video_id,
     )
 
 
@@ -1652,6 +1679,7 @@ async def create_telegraph_reflection_application(
     rutube_url: str = "",
     vk_url: str = "",
     synopsis_outline: list | None = None,
+    video_id: str = "", # FEATURE 2026-06-11
 ) -> str | None:
     """
     «Размышление и применение» -- большая пасторская article-like страница.
@@ -1756,6 +1784,8 @@ async def create_telegraph_reflection_application(
         duration=int(duration) if duration else 0,
         plain_scripture=True,  # FIXED #127: REFLECTION требует plain text для Scripture refs в скобках
         thinking_level="medium",  # V3-P14: пастырский стиль не требует high reasoning
+        ai_data=_ai,
+        video_id=video_id,
     )
 
 

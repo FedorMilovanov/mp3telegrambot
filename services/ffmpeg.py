@@ -229,6 +229,11 @@ def _build_ytdlp_base_args() -> list:
         _frags = 4
     if _frags > 1:
         args += ["--concurrent-fragments", str(_frags)]
+        
+    # 2026-06-11: Предпочитаем m4a для аудио, чтобы избежать медленного перекодирования webm в mp3.
+    # Но оставляем 'bestaudio' как базу для стабильности.
+    args += ["--format-sort", "ext:mp4:m4a"]
+    
     return args
 
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()
@@ -291,20 +296,14 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     - -crf 23
     """
     global _VIDEO_ENCODER
-    # 2026-06-10 (уточнено пользователем): NVENC — отдельный аппаратный
-    # ASIC-блок на GPU, НЕ использует CUDA-ядра. Глюки CUDA (из-за которых
-    # Whisper на CPU) не затрагивают NVENC — он работает стабильно.
-    # Поэтому НЕ наследуем WHISPER_FORCE_CPU; автопроба NVENC по умолчанию.
-    # VIDEO_FORCE_CPU=1 — явное отключение, если NVENC тоже начнёт глючить.
+    # 2026-06-11: Добавляем поддержку AV1 (NVIDIA) для еще лучшего сжатия при высоком качестве.
+    # Telegram в 2026 полностью поддерживает AV1.
     _force_cpu = os.getenv("VIDEO_FORCE_CPU", "0").strip() in {"1", "true", "yes", "on"}
-    if _force_cpu and _VIDEO_ENCODER is None:
-        _VIDEO_ENCODER = "libx264"
-        logger.info("Video encoder: libx264 (CPU, принудительно — GPU помечена ненадёжной)")
+    
     if _VIDEO_ENCODER is not None:
+        if _VIDEO_ENCODER == "av1_nvenc":
+             return "av1_nvenc", ["-rc", "vbr", "-cq", "25", "-b:v", "0", "-spatial-aq", "1"], ["-preset", "p5"]
         if _VIDEO_ENCODER == "h264_nvenc":
-            # QUALITY 2026-06-10: p5 + tune hq + spatial-aq + lookahead —
-            # VMAF-паритет с libx264 medium (video.SE #29659); -b:v 0
-            # обязателен для честного constant-quality режима.
             return "h264_nvenc", ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"], ["-preset", "p5", "-tune", "hq"]
         _preset = os.getenv("VIDEO_CPU_PRESET", "veryfast").strip() or "veryfast"
         if _preset not in {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"}:
@@ -312,7 +311,22 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
         return "libx264", ["-crf", "23"], ["-preset", _preset]
 
     ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
+    if ffmpeg and not _force_cpu:
+        # Пробуем AV1 NVENC (Ada Lovelace+)
+        try:
+            result = subprocess.run(
+                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1",
+                 "-c:v", "av1_nvenc", "-f", "null", "-"],
+                capture_output=True, timeout=5,
+            )
+            if result.returncode == 0:
+                _VIDEO_ENCODER = "av1_nvenc"
+                logger.info("Video encoder: av1_nvenc (NVIDIA AV1) ✅")
+                return "av1_nvenc", ["-rc", "vbr", "-cq", "25", "-b:v", "0", "-spatial-aq", "1"], ["-preset", "p5"]
+        except Exception:
+            pass
+
+        # Пробуем H264 NVENC
         try:
             result = subprocess.run(
                 [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1",

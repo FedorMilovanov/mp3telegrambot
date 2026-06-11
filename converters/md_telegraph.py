@@ -1567,6 +1567,27 @@ def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list, leadi
     return nodes
 
 
+def _build_related_materials_nodes(records: list[dict[str, Any]]) -> list:
+    """Build 'Read Next' nodes for the bottom of the Telegraph page."""
+    if not records:
+        return []
+    nodes = [
+        {"tag": "hr"},
+        {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также по теме:"]}]}
+    ]
+    for r in records:
+        title = r.get("title") or "Без названия"
+        author = r.get("author") or "Автор не указан"
+        url = r.get("synopsis_url") or r.get("study_url") or r.get("reflection_url")
+        if not url:
+            continue
+        nodes.append({"tag": "p", "children": [
+            "• ",
+            {"tag": "a", "attrs": {"href": url}, "children": [f"{title} — {author}"]}
+        ]})
+    return nodes
+
+
 def _final_telegraph_polish(nodes: list) -> list:
     """A05: Финальный слой очистки перед отправкой в Telegraph API.
     Запускать ДО любого createPage/editPage.

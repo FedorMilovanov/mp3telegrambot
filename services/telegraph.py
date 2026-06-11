@@ -38,6 +38,8 @@ from core.synopsis_quality import (
     should_retry_synopsis_density, synopsis_density_score,
 )
 from core.prompt_compactor import compact_prompt_for_generation
+from core.generated_pages import aget_related_materials
+from converters.md_telegraph import _build_related_materials_nodes
 
 import asyncio
 import json      # FIX telegraph
@@ -1139,6 +1141,22 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                                                         page_title=part_title, duration=duration))
             if total > 1:
                 nodes_edit.extend(_build_nav_nodes_v2(i, total, parts_urls))
+                
+            # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
+            if i == total - 1:
+                try:
+                    _video_id = str(getattr(mp3_path, 'stem', ''))
+                    _scripture_refs = extract_scripture_refs(ai_data)
+                    _related = await aget_related_materials(
+                        author=author,
+                        scripture=(_scripture_refs[0] if _scripture_refs else ""),
+                        exclude_video_id=_video_id,
+                        limit=3
+                    )
+                    if _related:
+                        nodes_edit.extend(_build_related_materials_nodes(_related))
+                except Exception as _rel_err:
+                    logger.debug("Related materials block skip: %s", _rel_err)
 
             ok = False
             for retry_attempt in range(3):
