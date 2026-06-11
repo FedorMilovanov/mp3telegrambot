@@ -125,7 +125,12 @@ def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 
 # Я.Браузере, отдаёт live-MP3 мгновенно (серверный кэш) — поэтому
 # «Shorts раньше работали». vot_helper/vot_live.mjs шлёт
 # Authorization: OAuth <VOT_API_TOKEN>, как сам VOT после логина.
+# Также поддерживается алиас YANDEX_OAUTH_TOKEN.
 VOT_HELPER_DIR = Path(__file__).resolve().parent.parent / "vot_helper"
+
+
+def _vot_oauth_token_present() -> bool:
+    return bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
 
 
 def _find_node() -> Optional[str]:
@@ -167,7 +172,7 @@ def _ensure_vot_helper() -> Optional[list]:
 
 async def _get_audio_new_protocol(
     helper: list, video_url: str, output_dir: Path,
-    timeout: int, voice_style: str,
+    timeout: int, voice_style: str, duration: float = 0.0,
 ) -> Path:
     """Скачивает перевод через vot_helper (новый протокол, OAuth-токен)."""
     output_dir = Path(output_dir)
@@ -178,12 +183,15 @@ async def _get_audio_new_protocol(
         "--voice-style", voice_style,
         "--timeout", str(timeout),
     ]
-    if voice_style == "live" and not os.getenv("VOT_API_TOKEN"):
+    if duration and duration > 0:
+        cmd += ["--duration", str(int(duration))]
+    if voice_style == "live" and not _vot_oauth_token_present():
         logger.warning(
-            "[LiveDub] VOT_API_TOKEN не задан — живые голоса сработают только "
+            "[LiveDub] VOT_API_TOKEN/YANDEX_OAUTH_TOKEN не задан — живые голоса сработают только "
             "если перевод уже есть в кэше Яндекса. Инструкция в .env.example"
         )
-    logger.info(f"[LiveDub] Новый протокол: vot_live.mjs --voice-style {voice_style} {video_url}")
+    _dur_log = f" duration={int(duration)}s" if duration and duration > 0 else ""
+    logger.info(f"[LiveDub] Новый протокол: vot_live.mjs --voice-style {voice_style}{_dur_log} {video_url}")
     loop = asyncio.get_running_loop()
     stdout, stderr, rc = await loop.run_in_executor(
         None, lambda: _run_subprocess(cmd, timeout=timeout + 60)
@@ -217,7 +225,8 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
 
 async def get_live_dub_audio(video_url: str, output_dir: Path,
                              timeout: int = 480, retries: int = 2,
-                             voice_style: str = "live") -> Path:
+                             voice_style: str = "live",
+                             duration: float = 0.0) -> Path:
     """Скачивает MP3-перевод через vot-cli-live.
 
     AUDIT 2026-06-10: Яндекс готовит перевод длинного видео МИНУТЫ
@@ -237,7 +246,7 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
         try:
             return await _get_audio_new_protocol(
                 helper, video_url, output_dir,
-                timeout=max(timeout, 900), voice_style=voice_style,
+                timeout=max(timeout, 900), voice_style=voice_style, duration=duration,
             )
         except RuntimeError as e:
             msg = str(e)
@@ -299,6 +308,7 @@ async def get_live_dub_video(
     original_volume: float = 0.3,
     translation_volume: float = 1.5,
     keep_original_audio: bool = True,
+    duration: float = 0.0,
 ) -> Path:
     """Скачивает/собирает ВИДЕО с переводом строго «Живые голоса».
 
@@ -313,7 +323,7 @@ async def get_live_dub_video(
     # Сначала — новый протокол. Это закрывает случай, когда pro-mix выключен:
     # раньше этот путь всё равно падал в старый vot-cli --merge-video.
     try:
-        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live")
+        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live", duration=duration)
         from services.eng_subtitles import download_original_video
         from services.livedub_mix import mix_tracks
         orig_video = await download_original_video(video_url, output_dir)

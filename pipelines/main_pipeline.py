@@ -265,7 +265,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         if _livedub_pro_mix:
                             try:
                                 from services.livedub_mix import build_pro_dub
-                                pro = await build_pro_dub(video_url, workdir)
+                                pro = await build_pro_dub(video_url, workdir, duration=duration)
                                 if pro and pro.exists():
                                     return pro
                                 logger.warning("[LiveDub] pro-микс не собрался — fallback на vot-merge")
@@ -278,6 +278,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             original_volume=0.3,
                             translation_volume=1.5,
                             keep_original_audio=True,
+                            duration=duration,
                         )
 
                     dub_task = asyncio.create_task(_make_dub())
@@ -655,7 +656,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             "1) открой https://rust-server-531j.onrender.com/v1/auth/handle\n"
                             "2) войди в аккаунт Яндекса\n"
                             "3) скопируй access_token из адресной строки после редиректа\n"
-                            "4) VOT_API_TOKEN=<токен> в .env и перезапусти бота."
+                            "4) VOT_API_TOKEN=<токен> (или YANDEX_OAUTH_TOKEN=<токен>) в .env и перезапусти бота."
                         )
                     else:
                         await update.message.reply_text(

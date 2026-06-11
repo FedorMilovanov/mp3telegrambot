@@ -9,11 +9,12 @@
  * как делает сам VOT после логина в аккаунт Яндекса.
  *
  * Установка зависимостей (один раз):  cd vot_helper && npm install
- * Токен: переменная окружения VOT_API_TOKEN или --token.
+ * Токен: переменная окружения VOT_API_TOKEN / YANDEX_OAUTH_TOKEN или --token.
+ * Duration: --duration <seconds> важен для попадания в cache-key Яндекса.
  *
  * Использование:
  *   node vot_live.mjs --url <video_url> --output <dir> [--voice-style live|tts]
- *                     [--timeout 1800] [--token <oauth_token>]
+ *                     [--timeout 1800] [--duration seconds] [--token <oauth_token>]
  *
  * stdout (последняя строка) — абсолютный путь к скачанному MP3.
  * Маркеры ошибок на stderr:
@@ -34,17 +35,19 @@ const { values: args } = parseArgs({
     "voice-style": { type: "string", default: "live" },
     timeout: { type: "string", default: "1800" },
     token: { type: "string" },
+    duration: { type: "string" },
   },
 });
 
 if (!args.url || !args.output) {
-  console.error("usage: vot_live.mjs --url <url> --output <dir> [--voice-style live|tts] [--timeout sec] [--token t]");
+  console.error("usage: vot_live.mjs --url <url> --output <dir> [--voice-style live|tts] [--timeout sec] [--duration sec] [--token t]");
   process.exit(2);
 }
 
-const token = args.token || process.env.VOT_API_TOKEN || undefined;
+const token = args.token || process.env.VOT_API_TOKEN || process.env.YANDEX_OAUTH_TOKEN || undefined;
 const useLively = (args["voice-style"] || "live").toLowerCase() !== "tts";
 const timeoutSec = Math.max(60, parseInt(args.timeout, 10) || 1800);
+const knownDuration = args.duration ? Math.max(0, Number(args.duration) || 0) : 0;
 
 const client = new VOTClient({ apiToken: token });
 
@@ -54,6 +57,13 @@ function log(msg) {
 
 try {
   const videoData = await getVideoData(args.url);
+  if (knownDuration > 0) {
+    // Для YouTube @vot.js обычно возвращает duration=undefined и иначе
+    // подставляет defaultDuration (343s). Длительность входит в cache-key
+    // Яндекса, поэтому прокидываем точную длительность из yt-dlp Python-пайплайна.
+    videoData.duration = knownDuration;
+    log(`duration=${knownDuration}s передан в VOT cache-key`);
+  }
   const deadline = Date.now() + timeoutSec * 1000;
   let result = null;
 

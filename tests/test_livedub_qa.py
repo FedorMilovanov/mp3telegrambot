@@ -1194,6 +1194,9 @@ def test_new_protocol_helper_exists():
     assert helper.exists()
     src = helper.read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in src                  # токен из env
+    assert "YANDEX_OAUTH_TOKEN" in src             # альтернативное имя токена
+    assert "--duration" in src                     # точный cache-key Яндекса
+    assert "videoData.duration" in src             # duration прокидывается в @vot.js
     assert "useLivelyVoice" in src                 # новый протокол
     assert "LIVEDUB_AUTH_REQUIRED" in src          # маркер status=7
     assert "LIVEDUB_NOT_AVAILABLE" in src          # честный отказ
@@ -1222,9 +1225,11 @@ def test_auth_required_marker_and_user_hint():
     assert "LIVEDUB_AUTH_REQUIRED" in mix          # не маскируется TTS по умолчанию
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in pipe                 # подсказка юзеру
+    assert "YANDEX_OAUTH_TOKEN" in pipe            # alias тоже подсказан
     assert ".auth_required" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in env                  # задокументирован
+    assert "YANDEX_OAUTH_TOKEN" in env             # alias задокументирован
     assert "rust-server-531j.onrender.com" in env  # как получить
 
 
@@ -1249,6 +1254,35 @@ def test_pipeline_accepts_new_helper_without_global_vot_cli():
 
 
 
+def test_vot_duration_and_token_alias_threaded_through():
+    """Для YouTube @vot.js сам duration не знает и подставляет default 343s;
+    реальная длительность из yt-dlp должна попадать в VOT cache-key. Также
+    поддерживаем оба имени OAuth-токена."""
+    helper = Path("vot_helper/vot_live.mjs").read_text(encoding="utf-8")
+    assert "YANDEX_OAUTH_TOKEN" in helper
+    assert "knownDuration" in helper and "videoData.duration = knownDuration" in helper
+    yld = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert "duration: float = 0.0" in yld
+    assert 'cmd += ["--duration", str(int(duration))]' in yld
+    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0)" in mix
+    assert "get_live_dub_audio(video_url, workdir, duration=duration)" in mix
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "build_pro_dub(video_url, workdir, duration=duration)" in pipe
+    assert "duration=duration," in pipe
+
+
+def test_vot_token_alias_functional(monkeypatch):
+    import services.yandex_live_dub as yld
+    monkeypatch.delenv("VOT_API_TOKEN", raising=False)
+    monkeypatch.delenv("YANDEX_OAUTH_TOKEN", raising=False)
+    assert yld._vot_oauth_token_present() is False
+    monkeypatch.setenv("YANDEX_OAUTH_TOKEN", "tok")
+    assert yld._vot_oauth_token_present() is True
+    monkeypatch.setenv("VOT_API_TOKEN", "tok2")
+    assert yld._vot_oauth_token_present() is True
+
+
 def test_vot_token_startup_diagnostic():
     """Startup-диагностика 🔧 предупреждает об отсутствии VOT_API_TOKEN."""
     src = Path("main.py").read_text(encoding="utf-8")
@@ -1263,6 +1297,7 @@ def test_vot_token_is_documented_in_readme_help_and_status():
     assert "LIVEDUB_TTS_FALLBACK=0" in readme
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "YTDLP_COOKIES_FROM_BROWSER" in env
+    assert "YANDEX_OAUTH_TOKEN" in env
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
     assert "🔑 VOT_API_TOKEN" in commands
