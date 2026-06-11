@@ -21,6 +21,7 @@ import json       # FIX markdown
 import logging    # FIX markdown
 import re
 import requests   # FIX markdown
+from typing import Any, Optional, List, Tuple
 
 logger = logging.getLogger(__name__)  # FIX markdown
 
