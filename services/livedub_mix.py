@@ -343,18 +343,21 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     if tail_pad_ms > 0:
         en_chain += f",apad=pad_dur={tail_pad_ms / 1000.0:.3f}"
 
-    # alimiter: прозрачная защита от клиппинга суммы двух дорожек
-    _limit = "alimiter=limit=0.95:attack=5:release=80"
+    # alimiter: прозрачная защита от клиппинга суммы двух дорожек.
+    # 2026-06-11: используем чуть более агрессивные параметры alimiter для
+    # выравнивания пиков в громких проповедях.
+    _limit = "alimiter=limit=0.92:attack=7:release=100:level=disabled"
 
     if duck:
         # level_sc=1 — сигнал-детектор без ослабления; release длинный,
         # чтобы оригинал «всплывал» плавно, как у живого звукорежиссёра.
+        # Ratio=8 и attack=100 делают дакинг более уверенным.
         return (
             f"{ru_chain}[ru0];"
             f"[ru0]asplit=2[ru1][ru2];"
             f"{en_chain}[en0];"
             f"[en0][ru1]sidechaincompress="
-            f"threshold=0.06:ratio=6:attack=120:release=700:level_sc=1[enduck];"
+            f"threshold=0.04:ratio=8:attack=100:release=800:level_sc=1[enduck];"
             f"[enduck][ru2]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
             f"{_limit}[aout]"
         )

@@ -257,16 +257,8 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
                              lang: str = "") -> Path:
     """Скачивает MP3-перевод через vot-cli-live.
 
-    AUDIT 2026-06-10: Яндекс готовит перевод длинного видео МИНУТЫ
-    (официальный блог: час видео == минуты обработки); vot-cli поллит
-    ~5 минут и сдаётся, хотя сервер продолжает готовить перевод —
-    повторный запрос обычно получает готовый кэш. Поэтому retries.
-
-    FIX 2026-06-11 (round 39): найдена НАСТОЯЩАЯ причина — Яндекс с VOT
-    1.10 требует OAuth-токен для живых голосов (status=7
-    SESSION_REQUIRED). Новый протокол (vot_helper/vot_live.mjs +
-    VOT_API_TOKEN) идёт первым; старый vot-cli-live остаётся fallback'ом
-    на случай отсутствия node.
+    AUDIT 2026-06-11: Яндекс готовит перевод длинного видео МИНУТЫ.
+    OAuth-токен теперь обязателен для живых голосов.
     """
     # ── Путь 1: новый протокол (@vot.js/node, OAuth) ──
     helper = await asyncio.get_running_loop().run_in_executor(None, _ensure_vot_helper)

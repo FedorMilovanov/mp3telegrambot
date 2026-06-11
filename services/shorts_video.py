@@ -33,12 +33,20 @@ def _pick_video_file(media_id: str) -> Path | None:
     return None
 
 
-async def download_video_for_shorts(url: str, media_id: str) -> Path | None:
+async def download_video_for_shorts(url: str, media_id: str, workdir: Path = None) -> Path | None:
     """
     Скачивает видео в mp4 для вырезки Shorts.
     Использует bestvideo[height<=720]+bestaudio — оптимально для Shorts.
     Возвращает Path к mp4 или None при ошибке.
     """
+    # 2026-06-11: Пытаемся реюзить видео из workdir (temp), если оно там есть.
+    # Это экономит трафик и время, если пайплайн LiveDub уже скачал оригинал.
+    if workdir and workdir.exists():
+        for existing in workdir.glob("original_video.*"):
+             if existing.is_file() and existing.stat().st_size > 100 * 1024:
+                logger.info(f"Shorts reuse video from workdir: {existing.name}")
+                return existing
+
     existing = _pick_video_file(media_id)
     if existing:
         return existing
@@ -734,12 +742,13 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
                 seg_start = float(seg.get("start", 0))
                 seg_end   = float(seg.get("end", seg_start + 1))
                 words_split = text.split()
+                # 2026-06-11: Повышаем точность псевдо-слов при отсутствии word_timestamps
                 dur_per = (seg_end - seg_start) / max(len(words_split), 1)
                 for i, word in enumerate(words_split):
                     result.append({
                         "word":  word,
                         "start": seg_start + i * dur_per,
-                        "end":   seg_start + (i + 1) * dur_per,
+                        "end":   seg_start + (i + 0.9) * dur_per,
                     })
         return result
 

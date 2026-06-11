@@ -163,14 +163,19 @@ def _build_thinking_config(level: str = "high"):
     if not HAS_GEMINI or types is None:
         return None
     try:
-        return types.ThinkingConfig(thinking_level=level)
+        # 2026-06-11: В новых версиях API thinking_level может быть enum.
+        # Обеспечиваем совместимость с любыми вариантами.
+        return types.ThinkingConfig(thinking_level=level.upper())
     except (AttributeError, TypeError):
-        # SDK старый — пробуем deprecated thinking_budget
         try:
-            budget_map = {"minimal": 4096, "low": 8192, "medium": 16384, "high": 24576}
-            return types.ThinkingConfig(thinking_budget=budget_map.get(level, 24576))
+            return types.ThinkingConfig(thinking_level=level)
         except Exception:
-            return None
+            # SDK старый — пробуем deprecated thinking_budget
+            try:
+                budget_map = {"minimal": 4096, "low": 8192, "medium": 16384, "high": 24576}
+                return types.ThinkingConfig(thinking_budget=budget_map.get(level, 24576))
+            except Exception:
+                return None
 
 
 def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):

@@ -138,6 +138,10 @@ _KNOWN_CHANNEL_AUTHOR_RU: dict[str, str] = {
     "desiring god": "Джон Пайпер",
     "ligonier ministries": "Р. Ч. Спроул",
     "ligonier": "Р. Ч. Спроул",
+    "bible qa": "Джон МакАртур",
+    "mcarthur": "Джон МакАртур",
+    "tms": "The Master's Seminary",
+    "masters seminary": "The Master's Seminary",
 }
 
 
@@ -2418,6 +2422,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 existing_client=used_client,            # ← REUSE
                 rutube_url=rutube_url,
                 vk_url=vk_url,
+                workdir=ld_work if 'ld_work' in locals() else None,
             )
         else:
             logger.info(f"Shorts: skipped (feat={_feat_shorts}, ai_data={'yes' if ai_data else 'no'})")
