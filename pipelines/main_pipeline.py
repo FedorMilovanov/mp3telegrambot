@@ -529,6 +529,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             внятное сообщение); False — если перевод тихо не состоялся.
             Общий хелпер для обеих веток (кэш-hit и полная обработка).
             """
+            if not context:
+                return False
+            if not (_livedub_cached_file_id or live_dub_task):
+                return False
+
             _livedub_title_line = ""
             try:
                 _title_ru, _author_ru = await _translate_livedub_title_for_caption(
@@ -575,7 +580,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception:
                         pass
                     return True  # юзер получил объяснение
-            if not (live_dub_task and context):
+            if not live_dub_task:
                 return False
             try:
                 # 1800с: vot-cli теперь ретраит (Яндекс готовит длинный перевод

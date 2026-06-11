@@ -582,7 +582,7 @@ def test_startup_diagnostics_mention_supported_ytdlp_js_runtime():
     assert "nodejs>=22 или deno>=2.3" in req
 
 
-# ── LiveDub captions: translated title for Shorts/ENG Quick ──────
+# ── LiveDub captions: translated title for every DUB ────────────
 
 def test_livedub_caption_title_fallback_known_authors():
     from pipelines.main_pipeline import _fallback_livedub_ru_title, _format_livedub_title_line
@@ -629,6 +629,8 @@ def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
     helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
     assert helper.count('parse_mode="HTML"') >= 2
     assert "🎬 Живые голоса Яндекса" in helper
+    # title translation is only done if there is an actual DUB to send
+    assert "if not (_livedub_cached_file_id or live_dub_task):" in helper
 
 
 # ── Заход 9: обслуживание диска + flood control ──────────────────
