@@ -684,9 +684,25 @@ def test_livedub_info_card_module_contract(tmp_path):
         "hashtags": ["евангелие", "Paul Washer"],
     }, "Fallback")
     msg = format_livedub_info_message(card)
-    assert "Описание для Telegram" in msg
+    assert "Готовое описание к переводу" in msg
+    assert "Кратко для Telegram" in msg
     assert "Для YouTube" in msg
-    assert "#евангелие" in msg
+    assert "<pre>" in msg and "#евангелие" in msg
+
+
+def test_livedub_info_message_escapes_html():
+    from services.livedub_info import format_livedub_info_message
+    msg = format_livedub_info_message({
+        "telegram_description": "5 < 7 & важно",
+        "youtube_title": "A < B",
+        "youtube_description": "Use <tag> & quote",
+        "compact_subtitles": ["x < y"],
+        "hashtags": ["#ok"],
+    })
+    assert "5 &lt; 7 &amp; важно" in msg
+    assert "A &lt; B" in msg
+    assert "Use &lt;tag&gt; &amp; quote" in msg
+    assert "x &lt; y" in msg
 
 
 def test_livedub_info_card_wired_only_for_eng_quick():

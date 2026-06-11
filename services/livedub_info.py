@@ -7,6 +7,7 @@ Uses a cheap/light Gemini model by default: GEMINI_LIGHT_MODEL=gemini-3.1-flash-
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -138,26 +139,41 @@ async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = N
         return fallback
 
 
+def _h(text: Any) -> str:
+    return html.escape(str(text or ""), quote=False)
+
+
 def format_livedub_info_message(card: dict) -> str:
+    """Pretty, Telegram-safe HTML message with copy-ready publication text."""
     if not isinstance(card, dict):
         return ""
-    lines: list[str] = []
     tg = _safe_text(card.get("telegram_description"), 700)
     yt_title = _safe_text(card.get("youtube_title"), 100)
     yt_desc = _safe_text(card.get("youtube_description"), 1800)
     compact = card.get("compact_subtitles") or []
-    hashtags = card.get("hashtags") or []
+    hashtags = [str(h) for h in (card.get("hashtags") or [])[:8] if str(h).strip()]
+
+    lines: list[str] = ["✨ <b>Готовое описание к переводу</b>"]
     if tg:
-        lines += ["📝 <b>Описание для Telegram</b>", tg]
-    if compact:
-        lines += ["", "💬 <b>Компактные тезисы/субтитры</b>"]
-        lines += ["• " + _safe_text(x, 180) for x in compact[:8] if _safe_text(x, 180)]
+        lines += ["", "📝 <b>Кратко для Telegram</b>", f"<i>{_h(tg)}</i>"]
+
+    clean_compact = [_safe_text(x, 180) for x in compact[:8] if _safe_text(x, 180)]
+    if clean_compact:
+        lines += ["", "💬 <b>Компактные тезисы / субтитры</b>"]
+        lines += ["• " + _h(x) for x in clean_compact]
+
     if yt_title or yt_desc or hashtags:
+        yt_block_parts: list[str] = []
+        if yt_desc:
+            yt_block_parts.append(yt_desc)
+        if hashtags:
+            yt_block_parts.append(" ".join(hashtags))
+        yt_block = "\n\n".join(yt_block_parts).strip()
+
         lines += ["", "▶️ <b>Для YouTube</b>"]
         if yt_title:
-            lines.append("<b>Title:</b> " + yt_title)
-        if yt_desc:
-            lines.append("<b>Description:</b> " + yt_desc)
-        if hashtags:
-            lines.append(" ".join(str(h) for h in hashtags[:8]))
+            lines += ["<b>Название:</b>", f"<code>{_h(yt_title)}</code>"]
+        if yt_block:
+            lines += ["<b>Описание:</b>", f"<pre>{_h(yt_block)}</pre>"]
+
     return "\n".join(lines).strip()[:3900]
