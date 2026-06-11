@@ -674,8 +674,9 @@ def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
 # ── LiveDub lightweight info cards (Gemini light model) ──────────
 
 def test_livedub_info_card_module_contract(tmp_path):
-    from services.livedub_info import format_livedub_info_message, get_light_model, _normalize_card
+    from services.livedub_info import format_livedub_info_message, get_light_model, _normalize_card, livedub_info_response_schema
     assert get_light_model()
+    assert "telegram_description" in livedub_info_response_schema()["properties"]
     card = _normalize_card({
         "telegram_description": "Короткое описание.",
         "youtube_title": "Название - Автор",
@@ -687,7 +688,21 @@ def test_livedub_info_card_module_contract(tmp_path):
     assert "Готовое описание к переводу" in msg
     assert "Кратко для Telegram" in msg
     assert "Для YouTube" in msg
-    assert "<pre>" in msg and "#евангелие" in msg
+    assert "<pre>" in msg and "#Евангелие" in msg
+
+
+def test_livedub_info_normalizes_hashtags_and_title_case():
+    from services.livedub_info import _normalize_card
+    card = _normalize_card({
+        "telegram_description": " В этом видео  ",
+        "youtube_title": "почему вы диспенсационалист? - абнер чау",
+        "youtube_description": "Описание",
+        "compact_subtitles": [" Странный огонь , МакАртора . "],
+        "hashtags": ["реформированный баптист", "#Покаяние", "bad tag!!!"],
+    }, "Fallback")
+    assert card["youtube_title"].startswith("Почему")
+    assert "#РеформированныйБаптист" in card["hashtags"]
+    assert "#Покаяние" in card["hashtags"]
 
 
 def test_livedub_info_message_escapes_html():
@@ -717,6 +732,7 @@ def test_livedub_info_card_wired_only_for_eng_quick():
 def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-2.5-flash-lite" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme
