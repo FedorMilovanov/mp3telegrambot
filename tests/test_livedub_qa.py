@@ -154,21 +154,42 @@ def test_build_mix_filter_contains_delay_duck_and_volumes():
     fc = build_mix_filter(0.45, 1.3, 600, duck=True)
     assert "adelay=600" in fc
     assert "sidechaincompress" in fc
+    assert "duration=longest" in fc
     assert "volume=0.45" in fc and "volume=1.3" in fc
     fc2 = build_mix_filter(0.45, 1.3, 600, duck=False)
     assert "sidechaincompress" not in fc2 and "amix" in fc2
+
+
+def test_build_mix_filter_tail_guard_extends_last_phrase():
+    from services.livedub_mix import build_mix_filter, _extend_filter_with_video_tail
+    fc = build_mix_filter(0.45, 1.3, 600, duck=True, tail_pad_ms=1600)
+    assert "apad=pad_dur=1.600" in fc
+    assert "duration=longest" in fc
+    full_fc = _extend_filter_with_video_tail(fc, 1600)
+    assert "tpad=stop_mode=clone:stop_duration=1.600[vout]" in full_fc
+
+
+def test_tail_guard_accounts_for_longer_yandex_audio():
+    from services.livedub_mix import calculate_tail_pad_ms
+    assert calculate_tail_pad_ms(600, 1000, orig_duration=40.0, ru_duration=40.0) == 1600
+    # RU-аудио длиннее оригинала на 2.2с: хвост = 2.2 + 0.6 delay + 1.0 margin.
+    assert calculate_tail_pad_ms(600, 1000, orig_duration=40.0, ru_duration=42.2) == 3800
 
 
 def test_mix_params_env_defaults_and_clamping(monkeypatch):
     from services import livedub_mix as lm
     monkeypatch.delenv("LIVEDUB_ORIG_VOLUME", raising=False)
     monkeypatch.delenv("LIVEDUB_DELAY_MS", raising=False)
+    monkeypatch.delenv("LIVEDUB_TAIL_MARGIN_MS", raising=False)
     p = lm.get_mix_params()
     assert p["orig_volume"] == 0.45 and p["delay_ms"] == 600
+    assert p["tail_margin_ms"] == 1000 and p["tail_pad_ms"] == 1600
     monkeypatch.setenv("LIVEDUB_ORIG_VOLUME", "99")   # вне диапазона -> дефолт
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "-5")
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "250")
     p = lm.get_mix_params()
     assert p["orig_volume"] == 0.45 and p["delay_ms"] == 600
+    assert p["tail_pad_ms"] == 850
 
 
 def test_pipeline_wires_pro_mix_and_autofix():
@@ -194,6 +215,36 @@ def test_loudness_gain_db():
     assert loudness_gain_db(-6.0) == -10.0     # громкую опускаем
     assert loudness_gain_db(None) == 0.0       # не измерилось — не трогаем
     assert loudness_gain_db(-80.0) == 20.0     # кламп ±20 дБ
+
+
+def test_technical_check_allows_livedub_tail_guard(monkeypatch):
+    from services import livedub_qa as qa
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
+    monkeypatch.setattr(qa, "_ffprobe_json", lambda _p: {
+        "format": {"duration": "41.5"},
+        "streams": [{"codec_type": "video"}, {"codec_type": "audio"}],
+    })
+    assert qa.technical_check(Path("dub.mp4"), expected_duration=40) == []
+
+
+def test_technical_check_still_warns_when_video_is_shorter(monkeypatch):
+    from services import livedub_qa as qa
+    monkeypatch.setattr(qa, "_ffprobe_json", lambda _p: {
+        "format": {"duration": "35"},
+        "streams": [{"codec_type": "video"}, {"codec_type": "audio"}],
+    })
+    warnings = qa.technical_check(Path("dub.mp4"), expected_duration=40)
+    assert warnings and "короче оригинала" in warnings[0]
+
+
+def test_technical_check_does_not_noise_on_moderate_longer_tail(monkeypatch):
+    from services import livedub_qa as qa
+    monkeypatch.setattr(qa, "_ffprobe_json", lambda _p: {
+        "format": {"duration": "44"},
+        "streams": [{"codec_type": "video"}, {"codec_type": "audio"}],
+    })
+    assert qa.technical_check(Path("dub.mp4"), expected_duration=40) == []
 
 
 def test_build_mix_filter_with_gains_and_limiter():
@@ -439,6 +490,8 @@ def test_livedub_file_id_cache_wired():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "_livedub_cached_file_id" in src
     assert "adb_set_livedub_file_id" in src
+    assert "current_livedub_file_id_cache_version" in src
+    assert "кэш file_id устарел" in src
     # протухший file_id: чистим кэш и сообщаем, НЕ оставляем юзера молча
     assert "Кэшированный перевод устарел" in src
 
@@ -454,9 +507,22 @@ def test_db_livedub_file_id_roundtrip(tmp_path, monkeypatch):
     row = db.db_get("vid123")
     assert row is not None
     assert row["livedub_file_id"] == "BAAC_test_file_id"
+    assert row["livedub_file_id_version"] == db.current_livedub_file_id_cache_version()
     # перезапись и очистка
     db.db_set_livedub_file_id("vid123", "")
-    assert db.db_get("vid123")["livedub_file_id"] == ""
+    row2 = db.db_get("vid123")
+    assert row2["livedub_file_id"] == ""
+    assert row2["livedub_file_id_version"] == ""
+
+
+def test_livedub_file_id_version_changes_with_mix_knobs(monkeypatch):
+    import core.database as db
+    monkeypatch.delenv("LIVEDUB_TAIL_MARGIN_MS", raising=False)
+    v1 = db.current_livedub_file_id_cache_version()
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1500")
+    v2 = db.current_livedub_file_id_cache_version()
+    assert v1 != v2
+    assert "tail=1500" in v2
 
 
 # ── Заход 7: хирургическое закрытие недозакрытого ────────────────
@@ -1364,6 +1430,14 @@ def test_status_command_registered():
     for probe in ("ffmpeg", "vot-helper", "vot-cli-fallback", "mp3gain", "Диск", "бэкап"):
         assert probe in cmd
     assert "yt-js(Deno≥2.3/Node≥22)" in cmd
+    assert "LiveDub:" in cmd and "base-tail" in cmd and "vot-pad" in cmd and "cache=" in cmd
+
+
+def test_startup_logs_livedub_mix_diagnostics():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "LiveDub mix: delay=%dms base_tail=%dms" in src
+    assert "vot_pad=%ss" in src
+    assert "current_livedub_file_id_cache_fingerprint" in src
 
 
 def test_proxy_knobs_documented_for_no_tun_mode():
@@ -1481,7 +1555,9 @@ def test_all_env_knobs_documented():
               "LOCAL_BOT_API_AUTOSTART", "LOCAL_BOT_API_DATA_DIR",
               "MP3_LOUDNORM", "SPONSORBLOCK_REMOVE", "LIVEDUB_RNNOISE_MODEL",
               "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
-              "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "MAX_FILE_SIZE_MB"):
+              "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "LIVEDUB_TAIL_MARGIN_MS",
+              "LIVEDUB_TAIL_FREEZE_MAX_SEC", "LIVEDUB_VOT_DURATION_PAD_SEC",
+              "MAX_FILE_SIZE_MB"):
         assert v in env, f"{v} не задокументирован в .env.example"
 
 
@@ -1610,13 +1686,23 @@ def test_vot_duration_and_token_alias_threaded_through():
     assert "knownDuration" in helper and "videoData.duration = knownDuration" in helper
     yld = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
     assert "duration: float = 0.0" in yld
-    assert 'cmd += ["--duration", str(int(duration))]' in yld
+    assert "_vot_request_duration" in yld
+    assert 'cmd += ["--duration", str(request_duration)]' in yld
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert "build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0)" in mix
     assert "get_live_dub_audio(video_url, workdir, duration=duration)" in mix
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "build_pro_dub(video_url, workdir, duration=duration)" in pipe
     assert "duration=duration," in pipe
+
+
+def test_vot_request_duration_ceils_and_guards_shorts(monkeypatch):
+    import services.yandex_live_dub as yld
+    monkeypatch.delenv("LIVEDUB_VOT_DURATION_PAD_SEC", raising=False)
+    assert yld._vot_request_duration(37.0) == 38
+    assert yld._vot_request_duration(37.2) == 39
+    monkeypatch.setenv("LIVEDUB_VOT_DURATION_PAD_SEC", "0")
+    assert yld._vot_request_duration(37.2) == 38
 
 
 def test_vot_token_alias_functional(monkeypatch):

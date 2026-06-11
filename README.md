@@ -103,6 +103,15 @@ py -3.13 bot_new.py      # Windows
 Обычные TTS-голоса по умолчанию выключены: `LIVEDUB_TTS_FALLBACK=0`, чтобы ENG
 не подменял живой перевод неживым.
 
+Pro-микс специально держит конец ролика ещё `LIVEDUB_DELAY_MS +
+LIVEDUB_TAIL_MARGIN_MS` (по умолчанию 600 мс + 1000 мс), чтобы задержанный
+русский перевод в Shorts не обрывался на последнем слове. Для коротких роликов
+до `LIVEDUB_TAIL_FREEZE_MAX_SEC=180` последний кадр дозамораживается на этот
+хвост; можно отключить freeze-frame через `LIVEDUB_TAIL_FREEZE_MAX_SEC=0`.
+Отдельно VOT-запрос получает `ceil(duration) + LIVEDUB_VOT_DURATION_PAD_SEC`
+(по умолчанию +1 сек), чтобы Shorts с фактической длиной 37.x не отдавали
+live-MP3, обрезанную на последней фразе.
+
 
 LiveDub captions: в `ENG Full` название берётся из уже готового Gemini-анализа
 (`real_title/real_author`), без отдельного запроса. В `ENG Quick` title переводится через лёгкую модель (`GEMINI_LIGHT_MODEL`),

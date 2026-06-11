@@ -23,6 +23,7 @@ vot-cli-live делает всё сам:
 import asyncio
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -133,6 +134,27 @@ def _vot_oauth_token_present() -> bool:
     return bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
 
 
+def _env_int(name: str, default: int, min_value: int = 0, max_value: int = 60) -> int:
+    try:
+        v = int(os.getenv(name, "") or default)
+        return v if min_value <= v <= max_value else default
+    except ValueError:
+        return default
+
+
+def _vot_request_duration(duration: float) -> int:
+    """Длительность для VOT cache-key/request.
+
+    Передавать floor опасно для Shorts: YouTube/yt-dlp часто дают 37s для
+    ролика длиной 37.x, а VOT может обрезать последнюю фразу. Поэтому ceil +
+    небольшой настраиваемый guard. Это НЕ TTS fallback, а защита live-запроса.
+    """
+    if not duration or duration <= 0:
+        return 0
+    pad = _env_int("LIVEDUB_VOT_DURATION_PAD_SEC", 1, min_value=0, max_value=10)
+    return int(math.ceil(float(duration))) + pad
+
+
 def _find_node() -> Optional[str]:
     for name in ("node", "node.exe"):
         p = shutil.which(name)
@@ -183,14 +205,17 @@ async def _get_audio_new_protocol(
         "--voice-style", voice_style,
         "--timeout", str(timeout),
     ]
-    if duration and duration > 0:
-        cmd += ["--duration", str(int(duration))]
+    request_duration = _vot_request_duration(duration)
+    if request_duration > 0:
+        cmd += ["--duration", str(request_duration)]
     if voice_style == "live" and not _vot_oauth_token_present():
         logger.warning(
             "[LiveDub] VOT_API_TOKEN/YANDEX_OAUTH_TOKEN не задан — живые голоса сработают только "
             "если перевод уже есть в кэше Яндекса. Инструкция в .env.example"
         )
-    _dur_log = f" duration={int(duration)}s" if duration and duration > 0 else ""
+    _dur_log = f" duration={request_duration}s" if request_duration > 0 else ""
+    if request_duration and duration and request_duration != int(duration):
+        _dur_log += f" (source={duration:g}s)"
     logger.info(f"[LiveDub] Новый протокол: vot_live.mjs --voice-style {voice_style}{_dur_log} {video_url}")
     loop = asyncio.get_running_loop()
     stdout, stderr, rc = await loop.run_in_executor(

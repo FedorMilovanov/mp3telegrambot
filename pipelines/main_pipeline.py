@@ -13,6 +13,7 @@ from core.database import (
     adb_get, adb_save, asettings_get, asettings_get_all,
     is_cache_valid, db_init,
     GEMINI_MODEL, MAX_FILE_SIZE_MB, CACHE_VERSION,    # FIX #11
+    current_livedub_file_id_cache_version,
     get_prompt_fingerprint,                            # FIX #11
 )
 from core.utils import (
@@ -426,7 +427,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Telegram отдаст его мгновенно, без vot-cli и заливки сотен МБ.
             try:
                 _ld_cached = await adb_get(media_id)
-                _livedub_cached_file_id = (_ld_cached or {}).get("livedub_file_id") or ""
+                _ld_version = (_ld_cached or {}).get("livedub_file_id_version") or ""
+                _ld_expected_version = current_livedub_file_id_cache_version()
+                if _ld_version == _ld_expected_version:
+                    _livedub_cached_file_id = (_ld_cached or {}).get("livedub_file_id") or ""
+                elif (_ld_cached or {}).get("livedub_file_id"):
+                    logger.info(
+                        "[LiveDub] кэш file_id устарел (%s != %s) — пересобираю перевод",
+                        _ld_version or "legacy", _ld_expected_version,
+                    )
             except Exception:
                 _livedub_cached_file_id = ""
         if _livedub_cached_file_id and user_mode in ("eng", "eng_fast", "eng_fast_qa"):

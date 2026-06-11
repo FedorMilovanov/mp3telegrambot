@@ -84,11 +84,27 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
     except (TypeError, ValueError):
         dub_duration = 0.0
     if expected_duration > 0 and dub_duration > 0:
-        diff = abs(dub_duration - expected_duration) / expected_duration
-        if diff > _DURATION_TOLERANCE:
+        # LiveDub Pro-mix намеренно длиннее оригинала на delay + tail margin:
+        # иначе последняя русская фраза после нашего сдвига обрывается в Shorts.
+        # Это НЕ признак неполного перевода, поэтому положительную разницу в
+        # пределах tail guard не ругаем. Отрицательная разница по-прежнему опасна.
+        allowed_extra = 0.0
+        try:
+            from services.livedub_mix import get_mix_params
+            allowed_extra = (get_mix_params().get("tail_pad_ms") or 0) / 1000.0 + 0.75
+        except Exception:
+            allowed_extra = 0.0
+        delta = dub_duration - expected_duration
+        diff = abs(delta) / expected_duration
+        if delta < 0 and diff > _DURATION_TOLERANCE:
             warnings.append(
-                f"длительность перевода {dub_duration:.0f}с отличается от оригинала "
+                f"длительность перевода {dub_duration:.0f}с короче оригинала "
                 f"{expected_duration}с на {diff * 100:.0f}% — перевод может быть неполным"
+            )
+        elif delta > max(allowed_extra, 30.0, expected_duration * 0.25):
+            warnings.append(
+                f"длительность перевода {dub_duration:.0f}с сильно длиннее оригинала "
+                f"{expected_duration}с на {diff * 100:.0f}% — проверьте хвост/тайминги"
             )
 
     # 2. Аудиопоток

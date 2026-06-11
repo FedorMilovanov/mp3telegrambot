@@ -94,6 +94,18 @@ async def run_bot_async():
             "🔧 VOT_API_TOKEN/YANDEX_OAUTH_TOKEN: ❌ НЕ ЗАДАН — «Живые голоса» будут работать только "
             "для уже переведённых кем-то роликов. Инструкция в .env.example"
         )
+    try:
+        from services.livedub_mix import get_mix_params as _ld_mix_params
+        from core.database import current_livedub_file_id_cache_fingerprint as _ld_fingerprint
+        _ldp = _ld_mix_params()
+        _vot_pad = os.getenv("LIVEDUB_VOT_DURATION_PAD_SEC", "1").strip() or "1"
+        logger.info(
+            "🎬 LiveDub mix: delay=%dms base_tail=%dms freeze<=%ss vot_pad=%ss cache_fp=%s",
+            _ldp.get("delay_ms", 0), _ldp.get("tail_pad_ms", 0),
+            _ldp.get("tail_freeze_max_sec", 0), _vot_pad, _ld_fingerprint(),
+        )
+    except Exception as _ld_diag_err:
+        logger.info("🎬 LiveDub mix diagnostics unavailable: %s", str(_ld_diag_err)[:120])
     logger.info(f"🧠 AI ({GEMINI_MODEL}): {'✅' if GEMINI_CLIENTS else '❌'} (ключей: {len(GEMINI_CLIENTS)})")
 
     # AUDIT L6: обновлённые списки моделей по официальной странице

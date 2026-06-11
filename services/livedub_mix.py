@@ -16,16 +16,20 @@ LiveDub Pro Mix — профессиональный микс перевода �
      (как у живых синхронистов);
    • перевод сдвинут на LIVEDUB_DELAY_MS (дефолт 600 мс) — сначала
      слышно английскую фразу, потом догоняет перевод;
-   • видеопоток копируется без перекодирования (-c:v copy) — быстро
-     и без потери качества.
+   • конец микса специально продлён на задержку + LIVEDUB_TAIL_MARGIN_MS,
+     чтобы последняя русская фраза не обрывалась после сдвига;
+   • видеопоток обычно копируется без перекодирования (-c:v copy), а у
+     коротких роликов хвост может быть дозаморожен последним кадром.
 4. Чистые дорожки (en/ru) остаются в workdir — по ним возможна
    точечная авто-правка после QA (apply_qa_audio_fixes): в местах
    серьёзных искажений перевод приглушается, оригинал поднимается.
 
 Настройки (env, числа):
     LIVEDUB_ORIG_VOLUME  — базовая громкость оригинала (0.45)
-    LIVEDUB_TRANS_VOLUME — громкость перевода (1.3)
-    LIVEDUB_DELAY_MS     — задержка перевода в мс (600)
+    LIVEDUB_TRANS_VOLUME       — громкость перевода (1.3)
+    LIVEDUB_DELAY_MS           — задержка перевода в мс (600)
+    LIVEDUB_TAIL_MARGIN_MS     — запас в конце сверх задержки (1000)
+    LIVEDUB_TAIL_FREEZE_MAX_SEC — до какой длины freeze-frame хвост (180)
 Тумблеры (/settings → ENG Режим):
     livedub_pro_mix — использовать этот микс (вкл по умолчанию)
     livedub_autofix — авто-правка по результатам QA (вкл по умолчанию)
@@ -54,19 +58,34 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-def _env_int(name: str, default: int) -> int:
+def _env_int(name: str, default: int, max_value: int = 5000) -> int:
     try:
         v = int(os.getenv(name, "") or default)
-        return v if 0 <= v <= 5000 else default
+        return v if 0 <= v <= max_value else default
     except ValueError:
         return default
 
 
 def get_mix_params() -> dict:
+    delay_ms = _env_int("LIVEDUB_DELAY_MS", 600)
+    # ВАЖНО: RU-дорожка сдвигается adelay'ем. Без хвоста amix раньше
+    # завершался по длине оригинала и съедал последние слова перевода
+    # (типично в Shorts: «...вся Цер...»). Поэтому держим микс ещё
+    # delay + небольшой запас. LIVEDUB_TAIL_MARGIN_MS=0 оставит только
+    # компенсацию задержки; чтобы полностью убрать хвост — ставьте ещё и
+    # LIVEDUB_DELAY_MS=0.
+    tail_margin_ms = _env_int("LIVEDUB_TAIL_MARGIN_MS", 1000)
+    tail_pad_ms = delay_ms + tail_margin_ms
     return {
         "orig_volume": _env_float("LIVEDUB_ORIG_VOLUME", 0.45),
         "trans_volume": _env_float("LIVEDUB_TRANS_VOLUME", 1.3),
-        "delay_ms": _env_int("LIVEDUB_DELAY_MS", 600),
+        "delay_ms": delay_ms,
+        "tail_margin_ms": tail_margin_ms,
+        "tail_pad_ms": tail_pad_ms,
+        # Для коротких роликов можно физически продлить и видеоряд: последний
+        # кадр будет заморожен на хвост, чтобы Telegram/плеер точно не оборвал
+        # ролик раньше аудио. 0 = не замораживать (аудиохвост всё равно есть).
+        "tail_freeze_max_sec": _env_int("LIVEDUB_TAIL_FREEZE_MAX_SEC", 180, max_value=24 * 3600),
         # 1 = лёгкий voice-EQ (highpass 70 Гц на обеих дорожках: срезает
         # гул зала/рокот ниже речи, голос не задевает). 0 = выключить.
         "voice_eq": _env_int("LIVEDUB_VOICE_EQ", 1),
@@ -182,13 +201,65 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
         return False, str(e)[:300]
 
 
+def probe_media_duration(path: Path, timeout: int = 60) -> Optional[float]:
+    """Длительность медиафайла через ffprobe. None при любой проблеме."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=timeout,
+            encoding="utf-8", errors="replace",
+        )
+        if proc.returncode == 0:
+            dur = float((proc.stdout or "").strip() or "0")
+            if dur > 0:
+                return dur
+    except Exception as e:
+        logger.debug("[LiveDubMix] probe_media_duration failed: %s", e)
+    return None
+
+
+def _extend_filter_with_video_tail(audio_fc: str, tail_pad_ms: int) -> str:
+    """К audio filter_complex добавляет freeze-frame хвост видеоряда."""
+    if tail_pad_ms <= 0:
+        return audio_fc
+    return (
+        f"{audio_fc};"
+        f"[0:v]tpad=stop_mode=clone:stop_duration={tail_pad_ms / 1000.0:.3f}[vout]"
+    )
+
+
+def calculate_tail_pad_ms(delay_ms: int, tail_margin_ms: int,
+                          orig_duration: Optional[float],
+                          ru_duration: Optional[float]) -> int:
+    """Сколько хвоста реально нужно после сдвига RU-дорожки.
+
+    База = delay + margin. Но Яндекс иногда отдаёт RU-аудио чуть длиннее
+    оригинала: если просто добавить фиксированные 1.6с, последняя фраза всё
+    равно может оказаться за концом видеоряда. Поэтому считаем минимум как:
+        max(0, ru_duration + delay - orig_duration) + margin.
+    """
+    base = max(0, int(delay_ms) + int(tail_margin_ms))
+    if not (orig_duration and ru_duration and orig_duration > 0 and ru_duration > 0):
+        return base
+    delay_s = max(0.0, delay_ms / 1000.0)
+    margin_s = max(0.0, tail_margin_ms / 1000.0)
+    needed_s = max(0.0, ru_duration + delay_s - orig_duration) + margin_s
+    needed_ms = int(needed_s * 1000.0 + 0.999)
+    return max(base, needed_ms)
+
+
 # ── Основной микс ────────────────────────────────────────────────
 
 def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
                      duck: bool = True,
                      ru_extra_expr: str = "", en_extra_expr: str = "",
                      en_gain_db: float = 0.0, ru_gain_db: float = 0.0,
-                     voice_eq: bool = True, rnnoise_model: str = "") -> str:
+                     voice_eq: bool = True, rnnoise_model: str = "",
+                     tail_pad_ms: int = 0) -> str:
     """Собирает filter_complex для микса EN-оригинала и RU-перевода.
 
     ru_extra_expr / en_extra_expr — дополнительные volume-выражения
@@ -196,6 +267,9 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     en_gain_db / ru_gain_db — линейные поправки громкости (из loudnorm
     pass-1), выравнивают дорожки к -16 LUFS ДО применения коэффициентов:
     у Яндекса громкость перевода плавает от ролика к ролику.
+    tail_pad_ms — конечный запас микса: EN-ветка дополняется тишиной,
+    а amix работает до самой длинной дорожки. Это не даёт задержанному
+    RU-переводу обрубиться на последнем слове.
     Финальный alimiter защищает сумму от клиппинга (вместо дефолтного
     normalize амикса, который глушил бы всё на -6 дБ).
     """
@@ -217,6 +291,8 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     en_chain += f"volume={orig_volume}"
     if en_extra_expr:
         en_chain += f",volume='{en_extra_expr}':eval=frame"
+    if tail_pad_ms > 0:
+        en_chain += f",apad=pad_dur={tail_pad_ms / 1000.0:.3f}"
 
     # alimiter: прозрачная защита от клиппинга суммы двух дорожек
     _limit = "alimiter=limit=0.95:attack=5:release=80"
@@ -230,30 +306,36 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
             f"{en_chain}[en0];"
             f"[en0][ru1]sidechaincompress="
             f"threshold=0.06:ratio=6:attack=120:release=700:level_sc=1[enduck];"
-            f"[enduck][ru2]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+            f"[enduck][ru2]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
             f"{_limit}[aout]"
         )
     return (
         f"{ru_chain}[ru0];"
         f"{en_chain}[en0];"
-        f"[en0][ru0]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+        f"[en0][ru0]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
         f"{_limit}[aout]"
     )
 
 
 async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
                      ru_extra_expr: str = "", en_extra_expr: str = "") -> Optional[Path]:
-    """Миксует оригинальное видео с дорожкой перевода. Видео не перекодируется.
+    """Миксует оригинальное видео с дорожкой перевода.
 
     Перед миксом обе дорожки измеряются (loudnorm pass-1) и приводятся
     линейным gain к -16 LUFS — баланс EN/RU одинаков на любом ролике,
     независимо от того, как Яндекс отдал громкость в этот раз.
+
+    Финал микса продлевается на delay + LIVEDUB_TAIL_MARGIN_MS. Для коротких
+    роликов дополнительно замораживаем последний кадр, чтобы Telegram точно
+    не закончил видео раньше, чем прозвучит последняя русская фраза.
     """
     p = get_mix_params()
     loop = asyncio.get_running_loop()
-    en_lufs, ru_lufs = await asyncio.gather(
+    en_lufs, ru_lufs, orig_duration, ru_duration = await asyncio.gather(
         loop.run_in_executor(None, lambda: measure_loudness(orig_video)),
         loop.run_in_executor(None, lambda: measure_loudness(ru_audio)),
+        loop.run_in_executor(None, lambda: probe_media_duration(orig_video)),
+        loop.run_in_executor(None, lambda: probe_media_duration(ru_audio)),
     )
     en_gain = loudness_gain_db(en_lufs)
     ru_gain = loudness_gain_db(ru_lufs)
@@ -262,42 +344,90 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         f"{en_lufs:.1f}" if en_lufs is not None else "?", en_gain,
         f"{ru_lufs:.1f}" if ru_lufs is not None else "?", ru_gain,
     )
-    fc = build_mix_filter(
-        p["orig_volume"], p["trans_volume"], p["delay_ms"],
-        duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
-        en_gain_db=en_gain, ru_gain_db=ru_gain,
-        voice_eq=bool(p["voice_eq"]),
-        rnnoise_model=p["rnnoise_model"],
+
+    tail_pad_ms = calculate_tail_pad_ms(
+        int(p.get("delay_ms") or 0),
+        int(p.get("tail_margin_ms") or 0),
+        orig_duration,
+        ru_duration,
     )
-    args = [
-        "-i", str(orig_video), "-i", str(ru_audio),
-        "-filter_complex", fc,
-        "-map", "0:v", "-map", "[aout]",
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
-        "-movflags", "+faststart",
-        "-y", str(out_path),
-    ]
-    ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
-    if not ok:
-        logger.warning("[LiveDubMix] sidechain-микс не удался (%s) — пробую простой микс", err)
-        fc2 = build_mix_filter(
+    freeze_max = int(p.get("tail_freeze_max_sec") or 0)
+    freeze_tail = bool(
+        tail_pad_ms > 0
+        and freeze_max > 0
+        and orig_duration is not None
+        and orig_duration <= freeze_max
+    )
+
+    def _audio_filter(*, duck: bool, rnnoise_model: str, tail: bool = True) -> str:
+        return build_mix_filter(
             p["orig_volume"], p["trans_volume"], p["delay_ms"],
-            duck=False, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
+            duck=duck, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
             en_gain_db=en_gain, ru_gain_db=ru_gain,
             voice_eq=bool(p["voice_eq"]),
-            rnnoise_model=p["rnnoise_model"],
+            rnnoise_model=rnnoise_model,
+            tail_pad_ms=tail_pad_ms if tail else 0,
         )
-        args[3] = fc2
+
+    def _make_args(audio_fc: str, *, freeze_video: bool) -> list[str]:
+        fc = audio_fc
+        video_args: list[str]
+        if freeze_video:
+            try:
+                from services.ffmpeg import _get_video_encoder
+                _enc, _q, _pr = _get_video_encoder()
+                fc = _extend_filter_with_video_tail(audio_fc, tail_pad_ms)
+                video_args = ["-map", "[vout]", "-map", "[aout]",
+                              "-c:v", _enc, *_q, *_pr, "-pix_fmt", "yuv420p"]
+            except Exception as _enc_err:
+                logger.warning("[LiveDubMix] video-tail encoder unavailable: %s", _enc_err)
+                video_args = ["-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
+        else:
+            video_args = ["-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
+        args = [
+            "-i", str(orig_video), "-i", str(ru_audio),
+            "-filter_complex", fc,
+            *video_args,
+        ]
+        args += [
+            "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart",
+            "-y", str(out_path),
+        ]
+        return args
+
+    if tail_pad_ms > 0:
+        logger.info(
+            "[LiveDubMix] tail guard: audio +%.1fs%s (orig=%ss, ru=%ss)",
+            tail_pad_ms / 1000.0,
+            "; freeze last frame" if freeze_tail else "",
+            f"{orig_duration:.1f}" if orig_duration else "?",
+            f"{ru_duration:.1f}" if ru_duration else "?",
+        )
+
+    fc = _audio_filter(duck=True, rnnoise_model=p["rnnoise_model"])
+    args = _make_args(fc, freeze_video=freeze_tail)
+    ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
+    if not ok and freeze_tail:
+        logger.warning("[LiveDubMix] freeze-tail микс не удался (%s) — повтор без заморозки видео", err)
+        args = _make_args(fc, freeze_video=False)
+        ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
+    if not ok:
+        logger.warning("[LiveDubMix] sidechain-микс не удался (%s) — пробую простой микс", err)
+        fc2 = _audio_filter(duck=False, rnnoise_model=p["rnnoise_model"])
+        args = _make_args(fc2, freeze_video=False)
         ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
         if not ok and p["rnnoise_model"]:
             logger.warning("[LiveDubMix] микс с RNNoise не удался (%s) — повтор без шумодава", err)
-            fc3 = build_mix_filter(
-                p["orig_volume"], p["trans_volume"], p["delay_ms"],
-                duck=True, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
-                en_gain_db=en_gain, ru_gain_db=ru_gain,
-                voice_eq=bool(p["voice_eq"]), rnnoise_model="",
-            )
-            args[3] = fc3
+            fc3 = _audio_filter(duck=True, rnnoise_model="")
+            args = _make_args(fc3, freeze_video=False)
+            ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
+        if not ok and tail_pad_ms > 0:
+            # Старый ffmpeg теоретически может не принять apad=pad_dur/tpad.
+            # Лучше отдать видео без хвоста, чем сорвать LiveDub целиком.
+            logger.warning("[LiveDubMix] микс с tail guard не удался (%s) — аварийно без хвоста", err)
+            fc4 = _audio_filter(duck=True, rnnoise_model="", tail=False)
+            args = _make_args(fc4, freeze_video=False)
             ok, err = await loop.run_in_executor(None, lambda: _run_ffmpeg(args))
         if not ok:
             logger.warning("[LiveDubMix] простой микс тоже не удался: %s", err)
@@ -387,8 +517,8 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0) ->
     if result:
         p = get_mix_params()
         logger.info(
-            "[LiveDubMix] Pro-микс готов: orig=%.2f trans=%.2f delay=%dms duck=on",
-            p["orig_volume"], p["trans_volume"], p["delay_ms"],
+            "[LiveDubMix] Pro-микс готов: orig=%.2f trans=%.2f delay=%dms base_tail=%dms duck=on",
+            p["orig_volume"], p["trans_volume"], p["delay_ms"], p.get("tail_pad_ms", 0),
         )
     return result
 

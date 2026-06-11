@@ -21,6 +21,41 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Версия Telegram file_id для LiveDub. Важно отдельно от AI cache_version:
+# file_id может указывать на старый уже отправленный mp4. При изменении микса
+# (например, tail guard против обрывов Shorts) старый file_id надо игнорировать
+# и пересобрать видео, иначе пользователь будет получать прежний баг из кэша.
+LIVEDUB_FILE_ID_CACHE_VERSION = "tail_guard_v2"
+
+
+def current_livedub_file_id_cache_version() -> str:
+    """Версия LiveDub file_id с учётом knobs, меняющих готовый mp4.
+
+    Если пользователь подкрутил delay/tail/баланс громкости/RNNoise, старый
+    Telegram file_id больше не соответствует ожидаемому результату — надо
+    пересобрать, а не мгновенно отправлять старый вариант из кэша.
+    """
+    knobs = {
+        "orig": os.getenv("LIVEDUB_ORIG_VOLUME", "0.45").strip() or "0.45",
+        "ru": os.getenv("LIVEDUB_TRANS_VOLUME", "1.3").strip() or "1.3",
+        "delay": os.getenv("LIVEDUB_DELAY_MS", "600").strip() or "600",
+        "tail": os.getenv("LIVEDUB_TAIL_MARGIN_MS", "1000").strip() or "1000",
+        "freeze": os.getenv("LIVEDUB_TAIL_FREEZE_MAX_SEC", "180").strip() or "180",
+        "votpad": os.getenv("LIVEDUB_VOT_DURATION_PAD_SEC", "1").strip() or "1",
+        "eq": os.getenv("LIVEDUB_VOICE_EQ", "1").strip() or "1",
+        "rnnoise": os.getenv("LIVEDUB_RNNOISE_MODEL", "").strip(),
+    }
+    return LIVEDUB_FILE_ID_CACHE_VERSION + ":" + ";".join(
+        f"{k}={v}" for k, v in knobs.items()
+    )
+
+
+def current_livedub_file_id_cache_fingerprint() -> str:
+    """Короткий fingerprint версии LiveDub file_id для логов и /status."""
+    return hashlib.sha1(
+        current_livedub_file_id_cache_version().encode("utf-8")
+    ).hexdigest()[:10]
+
 # DB_PATH импортирован из globals — дублирующее определение убрано (FIX #19)
 
 def db_init():
@@ -138,10 +173,13 @@ def db_init():
             ("publication_missing", "'[]'"),
             ("publication_warning", "''"),
             # LIVEDUB: telegram file_id готового перевода — повторная отправка
-            # мгновенна (без второго прогона vot-cli и заливки сотен МБ)
-            ("livedub_file_id",     "''"),
+            # мгновенна (без второго прогона vot-cli и заливки сотен МБ).
+            # livedub_file_id_version защищает от ресенда старых mp4 после
+            # изменения микса/таймингов.
+            ("livedub_file_id",         "''"),
+            ("livedub_file_id_version", "''"),
             # MP3 file_id — мгновенный resend при кэш-хите (без заливки 50МБ)
-            ("audio_file_id",       "''"),
+            ("audio_file_id",           "''"),
         ]:
             # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
             # быть поглощён блоком except sqlite3.OperationalError
@@ -275,15 +313,29 @@ def _db_set_file_id(video_id: str, column: str, file_id: str) -> None:
         raise ValueError(f"недопустимая колонка file_id: {column!r}")
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA busy_timeout=5000")
-        cur = conn.execute(
-            f"UPDATE video_cache SET {column} = ? WHERE video_id = ?",
-            (file_id or "", video_id),
-        )
-        if cur.rowcount == 0:
-            conn.execute(
-                f"INSERT OR IGNORE INTO video_cache (video_id, {column}) VALUES (?, ?)",
-                (video_id, file_id or ""),
+        if column == "livedub_file_id":
+            version = current_livedub_file_id_cache_version() if file_id else ""
+            cur = conn.execute(
+                "UPDATE video_cache SET livedub_file_id = ?, livedub_file_id_version = ? "
+                "WHERE video_id = ?",
+                (file_id or "", version, video_id),
             )
+            if cur.rowcount == 0:
+                conn.execute(
+                    "INSERT OR IGNORE INTO video_cache "
+                    "(video_id, livedub_file_id, livedub_file_id_version) VALUES (?, ?, ?)",
+                    (video_id, file_id or "", version),
+                )
+        else:
+            cur = conn.execute(
+                f"UPDATE video_cache SET {column} = ? WHERE video_id = ?",
+                (file_id or "", video_id),
+            )
+            if cur.rowcount == 0:
+                conn.execute(
+                    f"INSERT OR IGNORE INTO video_cache (video_id, {column}) VALUES (?, ?)",
+                    (video_id, file_id or ""),
+                )
         conn.commit()
 
 
@@ -349,7 +401,8 @@ def db_get(video_id: str) -> dict | None:
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
             "cache_version, prompt_version, model_name, updated_at, terms_tg_url, "
             "rutube_url, vk_url, study_tg_url, reflection_tg_url, "
-            "publication_status, publication_missing, publication_warning, livedub_file_id, audio_file_id "
+            "publication_status, publication_missing, publication_warning, "
+            "livedub_file_id, livedub_file_id_version, audio_file_id "
             "FROM video_cache WHERE video_id = ?", (video_id,)
         ).fetchone()
     if not row:
@@ -385,7 +438,8 @@ def db_get(video_id: str) -> dict | None:
         "publication_missing": row[16] or "[]",
         "publication_warning": row[17] or "",
         "livedub_file_id":     row[18] or "",
-        "audio_file_id":       row[19] or "",
+        "livedub_file_id_version": row[19] or "",
+        "audio_file_id":       row[20] or "",
     }
 
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────
