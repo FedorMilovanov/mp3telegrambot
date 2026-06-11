@@ -211,18 +211,27 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         elif user_mode in ("eng", "eng_fast"):
             # FIX 2026-06-10 fail-fast: без vot-cli юзер раньше узнавал о
             # проблеме через минуты (или никогда в Quick). Проверяем сразу.
-            from services.yandex_live_dub import get_live_dub_video, _check_vot_cli
+            from services.yandex_live_dub import get_live_dub_video, _check_vot_cli, _ensure_vot_helper
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
             try:
-                _check_vot_cli()
+                # Новый протокол (node + vot_helper) теперь основной. Старый
+                # vot-cli-live больше не обязателен, если helper доступен.
+                _helper_ok = False
+                try:
+                    _helper_ok = bool(await asyncio.get_running_loop().run_in_executor(None, _ensure_vot_helper))
+                except Exception as _helper_err:
+                    logger.warning(f"[LiveDub] helper нового протокола недоступен: {_helper_err}")
+                if not _helper_ok:
+                    _check_vot_cli()
             except RuntimeError as _vot_err:
-                logger.warning(f"[LiveDub] vot-cli недоступен: {_vot_err}")
+                logger.warning(f"[LiveDub] нет клиента VOT: {_vot_err}")
                 if not silent_errors:
                     try:
                         await update.message.reply_text(
-                            "⚠️ Режим ENG: vot-cli-live не найден — перевод недоступен.\n"
-                            "Установите: npm install -g vot-cli-live\n"
+                            "⚠️ Режим ENG: нет клиента для Яндекс LiveDub.\n"
+                            "Установите Node.js (helper поставит @vot.js/node сам) "
+                            "или старый резерв: npm install -g vot-cli-live\n"
                             + ("Продолжаю обычный анализ без перевода." if user_mode == "eng" else "")
                         )
                     except Exception:
@@ -298,6 +307,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 "[LiveDub] Яндекс требует OAuth-токен для живых голосов "
                                 "(нет/протух VOT_API_TOKEN в .env — см. .env.example)"
                             )
+                            try:
+                                (workdir / ".auth_required").write_text("1", encoding="utf-8")
+                            except OSError:
+                                pass
                         elif "LIVEDUB_NOT_AVAILABLE" in str(e):
                             logger.info("[LiveDub] Перевод недоступен для этого видео")
                         else:

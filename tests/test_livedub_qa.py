@@ -655,10 +655,11 @@ def test_disk_check_covers_tempdir():
 
 # ── Заход 16: ENG fail-fast и гарантированный ответ юзеру ────────
 
-def test_vot_cli_fail_fast_before_processing():
+def test_vot_client_fail_fast_before_processing():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_ensure_vot_helper" in src
     assert "_check_vot_cli()" in src
-    assert "vot-cli-live не найден" in src
+    assert "нет клиента для Яндекс LiveDub" in src
     # Quick: стоп сразу; Full: деградация до RUS-анализа
     assert 'user_mode = "rus"  # ENG Full деградирует' in src
 
@@ -1115,21 +1116,22 @@ def test_cleanup_autodetects_both_standard_dirs(tmp_path, monkeypatch):
     assert not old_f.exists()
 
 
-# ── Заход 38: tts-fallback для Shorts (live недоступны протоколу) ─
+# ── Заход 38/39: строго live; TTS — только явный opt-in ─
 
-def test_tts_fallback_when_live_unavailable():
-    """User report + скриншот: Я.Браузер переводит Shorts (предлагает
-    'Обычные ~1 мин' и 'Живые'), а vot-cli получает Translation not
-    available — live-голоса для части роликов есть только у нового
-    протокола браузера (issue #14, релиз-ноты VOT 1.9.5.1)."""
+def test_live_mode_does_not_tts_fallback_by_default():
+    """Пользователь требует только «Живые голоса». Поэтому обычный TTS
+    не должен включаться по умолчанию и маскировать настоящую проблему
+    SESSION_REQUIRED / VOT_API_TOKEN."""
     src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
     assert 'voice_style: str = "live"' in src   # параметризован
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
-    assert 'voice_style="tts"' in mix           # fallback live→tts
-    assert "LIVEDUB_TTS_FALLBACK" in mix        # выключатель для пуристов
-    assert ".voice_style_tts" in mix            # маркер для честного caption
+    assert 'voice_style="tts"' in mix           # аварийный opt-in оставлен
+    assert 'os.getenv("LIVEDUB_TTS_FALLBACK", "0")' in mix  # default OFF
+    assert "режим ENG — это ТОЛЬКО «Живые голоса»" in mix
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "LIVEDUB_TTS_FALLBACK=0" in env
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "обычные голоса" in pipe             # caption не врёт про Живые
+    assert "обычные голоса" in pipe             # caption честен, если opt-in включат
 
 
 # ── Заход 39: НАСТОЯЩАЯ причина отказов — OAuth для живых голосов ─
@@ -1169,13 +1171,34 @@ def test_auth_required_marker_and_user_hint():
     а не общую отписку «перевод недоступен»."""
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert ".auth_required" in mix                 # маркер в workdir
-    assert "LIVEDUB_AUTH_REQUIRED" in mix          # участвует в tts-fallback
+    assert "LIVEDUB_AUTH_REQUIRED" in mix          # не маскируется TTS по умолчанию
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in pipe                 # подсказка юзеру
     assert ".auth_required" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in env                  # задокументирован
     assert "rust-server-531j.onrender.com" in env  # как получить
+
+
+def test_merge_video_uses_new_protocol_before_old_vot_merge():
+    """Если pro-mix выключен, get_live_dub_video всё равно должен идти через
+    новый протокол/OAuth, а не сразу через старый vot-cli --merge-video."""
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    body = src.split("async def get_live_dub_video", 1)[1]
+    assert "get_live_dub_audio(video_url" in body
+    assert "download_original_video" in body
+    assert "mix_tracks" in body
+    assert body.index("get_live_dub_audio(video_url") < body.index("_check_vot_cli()")
+
+
+def test_pipeline_accepts_new_helper_without_global_vot_cli():
+    """Fail-fast не должен требовать vot-cli-live, если доступен node helper
+    нового протокола."""
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_ensure_vot_helper" in src
+    assert "старый резерв: npm install -g vot-cli-live" in src
+    assert src.index("_ensure_vot_helper") < src.index("_check_vot_cli()")
+
 
 
 def test_vot_token_startup_diagnostic():

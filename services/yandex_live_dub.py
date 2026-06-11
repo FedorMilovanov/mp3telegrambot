@@ -225,13 +225,6 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     ~5 минут и сдаётся, хотя сервер продолжает готовить перевод —
     повторный запрос обычно получает готовый кэш. Поэтому retries.
 
-    FIX 2026-06-11 (round 38, live chat): для части роликов (Shorts!)
-    сервер отдаёт live-голоса только новому протоколу Я.Браузера, а на
-    запрос vot-cli отвечает 'Translation not available' — хотя ОБЫЧНЫЕ
-    голоса доступны (скриншот юзера: браузер предлагает оба варианта,
-    'Обычные ~1 мин' и 'Живые'). Поэтому voice_style параметризован:
-    вызывающий код делает fallback live → tts, как сам Я.Браузер.
-
     FIX 2026-06-11 (round 39): найдена НАСТОЯЩАЯ причина — Яндекс с VOT
     1.10 требует OAuth-токен для живых голосов (status=7
     SESSION_REQUIRED). Новый протокол (vot_helper/vot_live.mjs +
@@ -307,10 +300,37 @@ async def get_live_dub_video(
     translation_volume: float = 1.5,
     keep_original_audio: bool = True,
 ) -> Path:
-    """Скачивает ВИДЕО с встроенным переводом (Живые голоса) через vot-cli-live."""
-    vot = _check_vot_cli()
+    """Скачивает/собирает ВИДЕО с переводом строго «Живые голоса».
+
+    Новый путь: сначала получаем live-MP3 через новый протокол/OAuth, потом
+    сами миксуем с оригинальным видео. Старый vot-cli --merge-video остаётся
+    только аварийным fallback'ом, потому что он ходит по старому протоколу и
+    на части роликов ложно отвечает Translation not available.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Сначала — новый протокол. Это закрывает случай, когда pro-mix выключен:
+    # раньше этот путь всё равно падал в старый vot-cli --merge-video.
+    try:
+        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live")
+        from services.eng_subtitles import download_original_video
+        from services.livedub_mix import mix_tracks
+        orig_video = await download_original_video(video_url, output_dir)
+        out_path = output_dir / "live_dub_merged.mp4"
+        mixed = await mix_tracks(orig_video, ru_audio, out_path)
+        if mixed and mixed.exists():
+            logger.info(f"[LiveDub] Готово видео (новый протокол + локальный микс): {mixed}")
+            return mixed
+        logger.warning("[LiveDub] локальный микс нового протокола не удался — пробую старый vot-cli merge")
+    except RuntimeError as e:
+        if "LIVEDUB_AUTH_REQUIRED" in str(e) or "LIVEDUB_NOT_AVAILABLE" in str(e):
+            raise
+        logger.warning(f"[LiveDub] новый merge-путь сбоит ({str(e)[:120]}) — пробую старый vot-cli merge")
+    except Exception as e:
+        logger.warning(f"[LiveDub] новый merge-путь сбоит ({str(e)[:120]}) — пробую старый vot-cli merge")
+
+    vot = _check_vot_cli()
 
     cmd = [
         vot, "--output", str(output_dir), "--voice-style", "live",

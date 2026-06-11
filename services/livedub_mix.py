@@ -336,10 +336,6 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
     try:
         ru_audio = await ru_task
     except RuntimeError as _live_err:
-        # FIX round 38: live-голоса для части роликов (Shorts) недоступны
-        # vot-протоколу, но ОБЫЧНЫЕ голоса есть (Я.Браузер показывает оба).
-        # Fallback live → tts, как делает сам браузер. LIVEDUB_TTS_FALLBACK=0
-        # отключает (пуристам только живые голоса).
         # ROUND 39: настоящая причина отказов — Яндекс требует OAuth-токен
         # для живых голосов (SESSION_REQUIRED). Маркер .auth_required
         # позволяет пайплайну подсказать юзеру про VOT_API_TOKEN.
@@ -348,11 +344,19 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
                 (workdir / ".auth_required").write_text("1", encoding="utf-8")
             except OSError:
                 pass
+
+        # Принципиально: режим ENG — это ТОЛЬКО «Живые голоса».
+        # Обычные TTS-голоса больше НЕ включаются по умолчанию: иначе бот
+        # врёт пользователю и маскирует настоящую проблему авторизации.
+        # Если когда-нибудь понадобится аварийный резерв — только явный opt-in.
+        tts_fallback_enabled = (
+            os.getenv("LIVEDUB_TTS_FALLBACK", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
         if (("LIVEDUB_NOT_AVAILABLE" in str(_live_err)
                 or "LIVEDUB_AUTH_REQUIRED" in str(_live_err))
-                and os.getenv("LIVEDUB_TTS_FALLBACK", "1").strip().lower()
-                    not in {"0", "false", "no", "off"}):
-            logger.info("[LiveDubMix] Живые голоса недоступны — пробую обычные (tts)")
+                and tts_fallback_enabled):
+            logger.info("[LiveDubMix] Живые голоса недоступны — LIVEDUB_TTS_FALLBACK=1, пробую обычные (tts)")
             try:
                 ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts")
                 logger.info("[LiveDubMix] Перевод получен обычными голосами (tts)")
@@ -367,7 +371,7 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
                 raise _live_err from None
         else:
             await _drain(orig_task)
-            raise  # LIVEDUB_NOT_AVAILABLE и пр. — наверх, там общий fallback
+            raise  # LIVEDUB_AUTH_REQUIRED/LIVEDUB_NOT_AVAILABLE — наверх
     except Exception as e:
         logger.warning("[LiveDubMix] не получил RU-дорожку: %s", e)
         await _drain(orig_task)
