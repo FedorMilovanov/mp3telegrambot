@@ -24,6 +24,9 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Kevin DeYoung": "Кевин ДеЯнг",
     "Sinclair Ferguson": "Синклер Фергюсон",
     "John Owen": "Джон Оуэн",
+    "John Bunyan": "Джон Баньян",
+    "John G. Paton": "Джон Патон",
+    "John Gibson Paton": "Джон Патон",
     "John Calvin": "Жан Кальвин",
     "Charles Spurgeon": "Чарльз Сперджен",
     "Andrew Fuller": "Эндрю Фуллер",
@@ -59,6 +62,7 @@ OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("R. C. Sproul", "The Holiness of God"): "Святость Бога",
     ("John Owen", "The Death of Death in the Death of Christ"): "Смерть смерти в смерти Христа",
     ("John Owen", "Of the Mortification of Sin in Believers"): "Об умерщвлении греха в верующих",
+    ("John Bunyan", "The Pilgrim's Progress"): "Путешествие Пилигрима",
     ("Andrew Fuller", "The Gospel Worthy of All Acceptation"): "Евангелие, достойное всякого принятия",
     ("John Calvin", "Commentary on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Commentaries on Isaiah"): "Комментарии на Исаию",
@@ -149,6 +153,21 @@ _EN_AUTHOR_WITH_TITLE_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
     r"(?P<en_author>[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z .’'\-]{2,100}),\s+"
     r"(?P<title>[A-Za-z][^\n]{2,220})$"
+)
+
+_SOURCE_AUTHOR_WHY_TITLE_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<author>[A-Z][A-Za-z .’'\-]{2,100})\.\s*[—-]\s*"
+    r"(?P<why>[^\n]{20,260}?),\s*"
+    r"(?P<title>[A-Z][A-Za-z0-9 .:;’'\-]{3,220})\.?$"
+)
+
+_SOURCE_TITLE_AUTHOR_DUP_WHY_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<title>[A-Z][A-Za-z0-9 .:;’'\-]{3,220}?),\s*"
+    r"(?P<author>[A-Z][A-Za-z .’'\-]{2,100}),\s*"
+    r"(?P=author)\.?\s*[—-]\s*"
+    r"(?P<why>[^\n]{20,400})\.?$"
 )
 
 _DUPLICATE_PAREN_RE = re.compile(
@@ -313,6 +332,24 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     if (re.match(r"^\s*[•\-]\s+\*\*", out)
             and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out)):
         return out.rstrip() + ("" if re.search(r"[.!?]\s*$", out) else ".")
+
+    weird_author = _SOURCE_AUTHOR_WHY_TITLE_RE.match(out.strip())
+    if weird_author:
+        bullet = weird_author.group("bullet") or ""
+        author = weird_author.group("author").strip()
+        title = weird_author.group("title").strip().rstrip(".")
+        why = weird_author.group("why").strip().rstrip(".")
+        card = _format_canonical_source_card(bullet, canonical_author_name(author), author, title)
+        return f"{card} — {why}."
+
+    weird_dup = _SOURCE_TITLE_AUTHOR_DUP_WHY_RE.match(out.strip())
+    if weird_dup:
+        bullet = weird_dup.group("bullet") or ""
+        author = weird_dup.group("author").strip()
+        title = weird_dup.group("title").strip().rstrip(".")
+        why = weird_dup.group("why").strip().rstrip(".")
+        card = _format_canonical_source_card(bullet, canonical_author_name(author), author, title)
+        return f"{card} — {why}."
 
     dup = _DUPLICATE_PAREN_RE.match(out.strip())
     if dup:

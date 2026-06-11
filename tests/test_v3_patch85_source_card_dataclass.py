@@ -39,6 +39,22 @@ def test_normalize_source_card_line_uses_typed_renderer():
     )
 
 
+def test_source_card_normalizes_weird_model_source_shapes():
+    assert normalize_source_card_line(
+        "• John Bunyan. — Книга использовалась отцом автора для воскресных семейных вечеров, The Pilgrim's Progress."
+    ) == (
+        "• **Путешествие Пилигрима**, Джон Баньян (The Pilgrim's Progress, John Bunyan). — "
+        "Книга использовалась отцом автора для воскресных семейных вечеров."
+    )
+    assert normalize_source_card_line(
+        "• Missionary to the New Hebrides: An Autobiography, John G. Paton, John G. Paton. — "
+        "Свидетельство миссионера Патона о верности его отца в молитве показывает непреходящую силу семейного поклонения."
+    ) == (
+        "• **Missionary to the New Hebrides: An Autobiography**, Джон Патон (John G. Paton). — "
+        "Свидетельство миссионера Патона о верности его отца в молитве показывает непреходящую силу семейного поклонения."
+    )
+
+
 def test_structured_source_block_renders_same_title_first_policy():
     section = {
         "title": "Sources",

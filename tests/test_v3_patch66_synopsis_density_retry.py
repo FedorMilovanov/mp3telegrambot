@@ -38,3 +38,5 @@ def test_telegraph_wires_nonfatal_density_retry():
     assert "density retry accepted" in src
     assert "density retry failed non-fatally" in src
     assert "SynopsisDensityRetry" in src
+    assert "ЖЁСТКИЙ МИНИМУМ" in src
+    assert "_syn_profile.min_total_chars" in src

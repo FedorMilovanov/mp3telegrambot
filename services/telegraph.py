@@ -920,12 +920,21 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             and existing_client is not None
         ):
             try:
+                _min_section_chars = 700
+                try:
+                    _min_section_chars = max(650, int(str(_syn_profile.section_len).split("-", 1)[0]))
+                except Exception:
+                    pass
                 _density_retry_prompt = (
                     prompt
-                    + "\n\nТвой предыдущий Synopsis был слишком сжатым для длительности материала. "
+                    + "\n\nТвой предыдущий Synopsis был СЛИШКОМ СЖАТЫМ для длительности материала. "
+                    + "Это не косметическая просьба, а обязательная правка качества.\n"
+                    + f"ЖЁСТКИЙ МИНИМУМ: суммарно не меньше {_syn_profile.min_total_chars} знаков живого content; "
+                    + f"каждый обычный section — не меньше {_min_section_chars} знаков и 4–8 абзацев.\n"
                     + "Сделай более полный 99.9%-дословный конспект-сжатую стенограмму: больше sections, "
-                    + "4–8 абзацев в section, больше дословных авторских фраз, имён, дат, историй, риторических вопросов, "
-                    + "inline-якоря ⏱ внутри content, покрытие до финальной части, без обзорной статьи. "
+                    + "больше дословных авторских фраз, имён, дат, историй, риторических вопросов, "
+                    + "inline-якоря ⏱ внутри content, покрытие до финальной части, без обзорной статьи.\n"
+                    + "Если не хватает места, лучше меньше декоративных blocks, но длиннее content каждой секции.\n"
                     + f"Проблемы качества: {format_synopsis_quality_issues(_syn_quality_issues)}"
                 )
                 _retry_resp = await _generate_synopsis_content(
