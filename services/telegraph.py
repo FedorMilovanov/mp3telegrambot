@@ -467,7 +467,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
 
 async def create_telegraph_synopsis(mp3_path, title, performer, duration, url="",
                                      existing_audio_part=None, existing_client=None,
-                                     ai_data=None, rutube_url="", vk_url=""):
+                                     ai_data=None, rutube_url="", vk_url="",
+                                     source_lang: str = ""):
     """
     v2.1 — Format-aware конспект в Telegraph.
 
@@ -574,11 +575,24 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if _synopsis_verbatim_prompt_enabled()
                 else SYNOPSIS_PROMPT_V2
             )
+            _verbatim_context = ""
+            if _ts_anchor:
+                _verbatim_context = (
+                    "\n\n--- ОПОРНЫЕ ТАЙМКОДЫ ДЛЯ ПОКРЫТИЯ (не summary) ---\n"
+                    + _ts_anchor
+                    + "\nИспользуй их только как карту покрытия начала/середины/финала. "
+                    + "Не превращай эти короткие тезисы в готовый конспект; пиши по transcript/audio.\n"
+                    + "--- КОНЕЦ КАРТЫ ---"
+                )
+            _syn_format_note = (
+                SYNOPSIS_REASONING_FIRST_NOTE + "\n" + _format_note
+                + (_verbatim_context if _syn_prompt_template is SYNOPSIS_VERBATIM_PROMPT else _primary_context)
+            )
             prompt = _syn_prompt_template.format(
                 title=prompt_title,
                 duration=duration_str,
                 hermeneutic_method=_hm,
-                format_note=SYNOPSIS_REASONING_FIRST_NOTE + "\n" + _format_note + _primary_context,
+                format_note=_syn_format_note,
                 syn_sections=_syn_sections,
                 syn_section_len=_syn_section_len,
                 syn_total=_syn_total,
@@ -605,6 +619,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _tr_text = await download_youtube_transcript_text(
                     url,
                     _tr_workdir,
+                    lang=source_lang or "en",
                     max_chars=max(10000, min(_tr_max, 250000)),
                     expected_duration=_duration,
                 )

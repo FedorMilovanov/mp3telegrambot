@@ -1750,6 +1750,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         ai_data=ai_data,
                         rutube_url=_pre_rutube,
                         vk_url=_pre_vk,
+                        source_lang=source_lang,
                     )
                 else:
                     telegraph_url    = None

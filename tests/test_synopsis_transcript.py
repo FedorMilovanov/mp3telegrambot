@@ -35,7 +35,11 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "_synopsis_verbatim_prompt_enabled" in src
     assert "SYNOPSIS_VERBATIM_PROMPT" in src
     assert "prompt=%s" in src
+    assert "ОПОРНЫЕ ТАЙМКОДЫ ДЛЯ ПОКРЫТИЯ (не summary)" in src
+    assert "пиши по transcript/audio" in src
     assert "download_youtube_transcript_text" in src
+    assert "source_lang: str = \"\"" in src
+    assert "lang=source_lang or \"en\"" in src
     assert "expected_duration=_duration" in src
     assert "synopsis_transcript_" in src
     assert "--write-subs" in ytt and "--write-auto-subs" in ytt
@@ -47,6 +51,11 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "use_schema=not _transcript_attached" in src
     assert "density retry uses transcript-only text path" in src
     assert "use_schema=False" in src  # density retry should not be schema-compressed
+
+
+def test_pipeline_passes_youtube_language_to_synopsis_transcript():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "source_lang=source_lang" in src
 
 
 def test_transcript_env_documented():
