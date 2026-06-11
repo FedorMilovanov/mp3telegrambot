@@ -20,6 +20,7 @@ from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_common_typos,
     normalize_hashtag, normalize_title_text, title_case_fragment,
 )
+from converters.md_telegraph import safe_trim_caption
 from services.livedub_qa import srt_to_timed_text
 
 logger = logging.getLogger(__name__)
@@ -215,4 +216,4 @@ def format_livedub_info_message(card: dict) -> str:
         if yt_block:
             lines += ["<b>Описание:</b>", f"<pre>{_h(yt_block)}</pre>"]
 
-    return "\n".join(lines).strip()[:3900]
+    return safe_trim_caption("\n".join(lines).strip(), 3900)

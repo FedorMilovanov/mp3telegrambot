@@ -720,6 +720,12 @@ def test_livedub_info_message_escapes_html():
     assert "x &lt; y" in msg
 
 
+def test_livedub_info_message_uses_safe_html_trim():
+    src = Path("services/livedub_info.py").read_text(encoding="utf-8")
+    assert "safe_trim_caption" in src
+    assert "[:3900]" not in src
+
+
 def test_livedub_info_card_wired_only_for_eng_quick():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "livedub_info_enabled" in src
