@@ -116,9 +116,11 @@ VOT-запрос получает целую длительность из ме�
 добавить timed transcript в prompt (`SYNOPSIS_YT_TRANSCRIPT=1`, лимит
 `SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS=120000`). Это нужно, чтобы конспект был не
 обзорной статьёй, а структурированной почти-дословной стенограммой. Сам Synopsis
-по умолчанию работает без Gemini `response_schema` (`SYNOPSIS_STRUCTURED=0`),
-потому что старый schema-free режим лучше держал дословность; schema можно
-включить обратно, если важнее строгая JSON-форма, чем плотность.
+по умолчанию использует чистый verbatim-prompt (`SYNOPSIS_VERBATIM_PROMPT=1`) без
+Study/Reflection/source-card шума и работает без Gemini `response_schema`
+(`SYNOPSIS_STRUCTURED=0`), потому что старый schema-free режим лучше держал
+дословность; schema можно включить обратно, если важнее строгая JSON-форма, чем
+плотность.
 
 
 LiveDub captions: в `ENG Full` название берётся из уже готового Gemini-анализа

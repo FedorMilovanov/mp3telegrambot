@@ -26,7 +26,7 @@ from core.globals import (
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
-from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA  # FIX telegraph
+from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
@@ -74,6 +74,11 @@ def _synopsis_structured_output_enabled() -> bool:
     по умолчанию работает в legacy JSON mode; включение: SYNOPSIS_STRUCTURED=1.
     """
     return (os.getenv("SYNOPSIS_STRUCTURED", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _synopsis_verbatim_prompt_enabled() -> bool:
+    """Default ON: clean prompt for structured verbatim transcript Synopsis."""
+    return (os.getenv("SYNOPSIS_VERBATIM_PROMPT", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _demote_paragraph_bold(line: str) -> str:
@@ -562,7 +567,12 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     + "НЕ ПРОТИВОРЕЧЬ этим данным. Достраивай конспект, не переизобретай.\n"
                     + "--- КОНЕЦ КОНТЕКСТА ---"
                 )
-            prompt = SYNOPSIS_PROMPT_V2.format(
+            _syn_prompt_template = (
+                SYNOPSIS_VERBATIM_PROMPT
+                if _synopsis_verbatim_prompt_enabled()
+                else SYNOPSIS_PROMPT_V2
+            )
+            prompt = _syn_prompt_template.format(
                 title=prompt_title,
                 duration=duration_str,
                 hermeneutic_method=_hm,
@@ -572,7 +582,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 syn_total=_syn_total,
             )
             logger.info(
-                f"Synopsis: mode=normal format={_fmt} hermeneutic={_hm} duration={int(_duration)//60}min"
+                "Synopsis: mode=normal format=%s hermeneutic=%s duration=%dmin prompt=%s",
+                _fmt, _hm, int(_duration) // 60,
+                "verbatim" if _syn_prompt_template is SYNOPSIS_VERBATIM_PROMPT else "v2",
             )
 
         _transcript_attached = False
