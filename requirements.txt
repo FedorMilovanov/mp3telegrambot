@@ -4,7 +4,7 @@
 #   Noto Sans — шрифт для субтитров Shorts (fonts.google.com/noto)
 
 # ── Telegram Bot ──────────────────────────────────────────────────────────────
-python-telegram-bot>=22.5,<23.0
+python-telegram-bot[socks]>=22.5,<23.0
 # FIXED #40: обновлено с >=21.5,<22.0; PTB 22.5+ содержит критический фикс бесконечного retry в run_polling и поддержку Bot API 9.x
 
 # ── YouTube downloader ────────────────────────────────────────────────────────

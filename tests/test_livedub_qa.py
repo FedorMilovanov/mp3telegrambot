@@ -1108,6 +1108,42 @@ def test_status_command_registered():
     assert "yt-js(Deno≥2.3/Node≥22)" in cmd
 
 
+def test_proxy_knobs_documented_for_no_tun_mode():
+    env = Path(".env.example").read_text(encoding="utf-8")
+    for key in (
+        "TELEGRAM_PROXY_URL",
+        "LOCAL_BOT_API_PROXY_URL",
+        "LOCAL_BOT_API_TDLIB_PROXY_TYPE",
+        "LOCAL_BOT_API_PROXY_SERVER",
+        "LOCAL_BOT_API_PROXY_PORT",
+    ):
+        assert key in env
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "Работа без TUN/VPN" in readme
+    req = Path("requirements.txt").read_text(encoding="utf-8")
+    assert "python-telegram-bot[socks]" in req
+
+
+def test_proxy_wiring_for_cloud_and_local_bot_api():
+    src = Path("main.py").read_text(encoding="utf-8")
+    # Cloud Bot API: HTTPXRequest gets proxy only when LOCAL_BOT_API_URL is empty.
+    assert "TELEGRAM_PROXY_URL" in src
+    assert '_request_kwargs["proxy"] = _telegram_proxy_url' in src
+    assert "not LOCAL_BOT_API_URL" in src
+    # Local Bot API: separate telegram-bot-api.exe process gets TDLib proxy args.
+    for flag in ("--proxy-server=", "--proxy-port=", "--tdlib-proxy-type=", "--proxy-login=", "--proxy-password=", "--proxy-secret="):
+        assert flag in src
+    assert "LOCAL_BOT_API_PROXY_URL" in src
+    assert "*_botapi_proxy_args" in src
+
+
+def test_status_reports_proxy_layers():
+    cmd = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "TELEGRAM_PROXY_URL" in cmd
+    assert "LOCAL_BOT_API_PROXY_URL" in cmd
+    assert "Proxy: PTB" in cmd and "local Bot API TDLib" in cmd
+
+
 # ── Заход 33: pre-flight Bot API + сетевой backoff ───────────────
 
 def test_preflight_waits_for_local_server():

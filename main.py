@@ -203,13 +203,26 @@ async def run_bot_async():
             os.environ["no_proxy"] = os.environ["NO_PROXY"]
             logger.info(f"🚫 NO_PROXY дополнен: {os.environ['NO_PROXY']}")
 
-    t_request = HTTPXRequest(
+    _telegram_proxy_url = os.getenv("TELEGRAM_PROXY_URL", "").strip()
+    _request_kwargs = dict(
         connection_pool_size=32,
         read_timeout=120.0,
         write_timeout=120.0,
         connect_timeout=120.0,
         pool_timeout=120.0,
     )
+    if _telegram_proxy_url and not LOCAL_BOT_API_URL:
+        # Cloud Bot API mode: PTB/httpx ходит к api.telegram.org через proxy.
+        # Для socks5/socks5h нужен extra python-telegram-bot[socks].
+        _request_kwargs["proxy"] = _telegram_proxy_url
+        logger.info("🌐 Telegram Bot API: использую TELEGRAM_PROXY_URL для Bot API/getUpdates")
+    elif _telegram_proxy_url and LOCAL_BOT_API_URL:
+        logger.info(
+            "🌐 TELEGRAM_PROXY_URL задан, но LOCAL_BOT_API_URL указывает на localhost — "
+            "Python-бот ходит в локальный сервер напрямую; proxy для самого сервера задавайте LOCAL_BOT_API_PROXY_URL"
+        )
+    t_request = HTTPXRequest(**_request_kwargs)
+    get_updates_request = HTTPXRequest(**_request_kwargs)
 
     # FIX 2026-06-10: по умолчанию PTB обрабатывает апдейты ПОСЛЕДОВАТЕЛЬНО —
     # во время 10-20-минутной обработки видео бот не отвечал ни на /stop,
@@ -218,7 +231,7 @@ async def run_bot_async():
     # video-lock по media_id (_get_video_lock), atomic UPSERT в rate_limit,
     # WAL+busy_timeout в SQLite.
     builder = (Application.builder().token(BOT_TOKEN)
-               .request(t_request).concurrent_updates(8))
+               .request(t_request).get_updates_request(get_updates_request).concurrent_updates(8))
     if LOCAL_BOT_API_URL:
         # FIX 2026-06-11 (live log 02:03): сервер не запущен -> ConnectError
         # и бесконечный restart-цикл с полным трейсбеком каждые 5с (+ Whisper
@@ -263,9 +276,48 @@ async def run_bot_async():
             # FIX 2026-06-11b: лог сервера в файл (был DEVNULL — при падении
             # сервера мы не видели ПРИЧИНУ: битые ключи, занятый порт, права).
             _srv_log_path = _P(_data).parent / "botapi-server.log"
+
+            def _tdlib_proxy_args() -> list[str]:
+                """Proxy для исходящих соединений telegram-bot-api.exe → Telegram DC.
+
+                Нужен, когда VPN работает не в TUN-режиме, а только как локальный
+                HTTP/SOCKS proxy. TELEGRAM_PROXY_URL влияет на Python/PTB, но НЕ
+                на отдельный процесс telegram-bot-api.exe.
+                """
+                from urllib.parse import urlparse, unquote
+                proxy_url = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+                ptype = os.getenv("LOCAL_BOT_API_TDLIB_PROXY_TYPE", "").strip().lower()
+                server = os.getenv("LOCAL_BOT_API_PROXY_SERVER", "").strip()
+                port = os.getenv("LOCAL_BOT_API_PROXY_PORT", "").strip()
+                login = os.getenv("LOCAL_BOT_API_PROXY_LOGIN", "").strip()
+                password = os.getenv("LOCAL_BOT_API_PROXY_PASSWORD", "").strip()
+                secret = os.getenv("LOCAL_BOT_API_PROXY_SECRET", "").strip()
+                if proxy_url:
+                    u = urlparse(proxy_url)
+                    ptype = (u.scheme or ptype).lower().replace("socks5h", "socks5")
+                    server = u.hostname or server
+                    port = str(u.port or port)
+                    login = unquote(u.username or login or "")
+                    password = unquote(u.password or password or "")
+                if not (ptype and server and port):
+                    return []
+                if ptype not in {"socks5", "http", "mtproto"}:
+                    logger.warning("⚠️ LOCAL_BOT_API proxy type %r не поддержан; нужен socks5/http/mtproto", ptype)
+                    return []
+                out = [f"--proxy-server={server}", f"--proxy-port={port}", f"--tdlib-proxy-type={ptype}"]
+                if login:
+                    out.append(f"--proxy-login={login}")
+                if password:
+                    out.append(f"--proxy-password={password}")
+                if secret:
+                    out.append(f"--proxy-secret={secret}")
+                logger.info("🌐 telegram-bot-api.exe: TDLib proxy включён (%s://%s:%s)", ptype, server, port)
+                return out
+
+            _botapi_proxy_args = _tdlib_proxy_args()
             cmd = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
                    "--local", f"--http-port={_port}", f"--dir={_data}",
-                   f"--log={_srv_log_path}", "--verbosity=2"]
+                   f"--log={_srv_log_path}", "--verbosity=2", *_botapi_proxy_args]
             kwargs: dict = {"stdout": _sp.DEVNULL, "stderr": _sp.DEVNULL}
             if os.name == "nt":
                 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -315,7 +367,7 @@ async def run_bot_async():
                     )
                     cmd2 = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
                             "--local", f"--http-port={_port}", f"--dir={_user_data}",
-                            f"--log={_user_log}", "--verbosity=2"]
+                            f"--log={_user_log}", "--verbosity=2", *_botapi_proxy_args]
                     ok2, _tail2 = _spawn(cmd2, _user_log)
                     if ok2:
                         # FIX round 37: БЕЗУСЛОВНАЯ перезапись (was setdefault).

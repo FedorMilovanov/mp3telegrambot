@@ -78,6 +78,19 @@ py -3.13 bot_new.py      # Windows
 
 Или дважды кликните `Start Bot.bat` на Windows.
 
+
+### Работа без TUN/VPN
+
+Бот может работать без TUN-режима, но proxy надо задавать в правильном слое:
+
+- без `LOCAL_BOT_API_URL`: задайте `TELEGRAM_PROXY_URL` — Python/PTB будет ходить
+  к облачному Bot API через proxy;
+- с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`, а сам
+  `telegram-bot-api.exe` должен подключаться к Telegram DC через
+  `LOCAL_BOT_API_PROXY_URL` или `LOCAL_BOT_API_TDLIB_PROXY_*`.
+
+Примеры есть в `.env.example`.
+
 ### ENG / «Живые голоса» Яндекса
 
 Для режимов `ENG Full` и `ENG Quick` нужен `VOT_API_TOKEN` в `.env`

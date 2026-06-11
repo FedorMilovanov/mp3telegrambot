@@ -278,7 +278,11 @@ async def status_command(update, context):
     except Exception:
         pass
     # API-режим
+    _tg_proxy = bool(os.getenv("TELEGRAM_PROXY_URL", "").strip())
+    _local_proxy = bool((os.getenv("LOCAL_BOT_API_PROXY_URL", "")
+                         or os.getenv("LOCAL_BOT_API_PROXY_SERVER", "")).strip())
     lines.append(f"🌐 Bot API: {'локальный (' + LOCAL_BOT_API_URL + ')' if LOCAL_BOT_API_URL else 'облачный'}")
+    lines.append(f"🧭 Proxy: PTB={'✅' if _tg_proxy else '❌'} · local Bot API TDLib={'✅' if _local_proxy else '❌'}")
     # Диск
     try:
         _free_dl = _sh.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
