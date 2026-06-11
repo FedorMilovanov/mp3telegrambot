@@ -601,7 +601,7 @@ def test_livedub_caption_title_light_translation(monkeypatch):
     import asyncio
     import pipelines.main_pipeline as mp
 
-    async def fake_card(title_line, dub_srt_path=None, *, force=False):
+    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
         assert force is True
         return {"youtube_title": "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"}
 
@@ -662,7 +662,7 @@ def test_livedub_title_default_uses_light_info_pipeline(monkeypatch):
     import asyncio
     import pipelines.main_pipeline as mp
 
-    async def fake_card(title_line, dub_srt_path=None, *, force=False):
+    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
         assert force is True
         return {"youtube_title": "Все ваши дела будут вскрыты у Белого престола - Пол Вошер"}
 
@@ -704,12 +704,27 @@ def test_livedub_info_card_module_contract(tmp_path):
         "youtube_description": "Описание YouTube.",
         "compact_subtitles": ["Тезис 1", "Тезис 2"],
         "hashtags": ["евангелие", "Paul Washer"],
-    }, "Fallback")
+    }, "Fallback", source_url="https://youtu.be/original")
     msg = format_livedub_info_message(card)
     assert "Готовое описание к переводу" in msg
     assert "Кратко для Telegram" in msg
     assert "Для YouTube" in msg
     assert "<pre>" in msg and "#Евангелие" in msg
+    assert "Оригинал на YouTube" in msg and "https://youtu.be/original" in msg
+
+
+def test_livedub_info_youtube_description_contains_original_link():
+    from services.livedub_info import format_livedub_info_message, _normalize_card
+    card = _normalize_card({
+        "telegram_description": "Описание",
+        "youtube_title": "Название",
+        "youtube_description": "Описание для YouTube",
+        "compact_subtitles": [],
+        "hashtags": ["евангелие"],
+    }, "Fallback", source_url="https://www.youtube.com/watch?v=abc123")
+    msg = format_livedub_info_message(card)
+    assert "Оригинал: https://www.youtube.com/watch?v=abc123" in msg
+    assert "Оригинал на YouTube" in msg
 
 
 def test_livedub_info_normalizes_hashtags_and_title_case():

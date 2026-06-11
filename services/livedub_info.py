@@ -78,7 +78,7 @@ def _safe_text(value: Any, limit: int = 1500) -> str:
     return text[:limit]
 
 
-def _fallback_card(title_line: str) -> dict:
+def _fallback_card(title_line: str, source_url: str = "") -> dict:
     title = _safe_text(title_line, 180) or "Переведённое видео"
     return {
         "telegram_description": title,
@@ -86,12 +86,13 @@ def _fallback_card(title_line: str) -> dict:
         "youtube_description": title,
         "compact_subtitles": [],
         "hashtags": [],
+        "source_url": _safe_text(source_url, 500),
         "source": "metadata_fallback",
     }
 
 
-def _normalize_card(data: dict, fallback_title: str) -> dict:
-    fb = _fallback_card(fallback_title)
+def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> dict:
+    fb = _fallback_card(fallback_title, source_url)
     if not isinstance(data, dict):
         return fb
     hashtags = data.get("hashtags") or []
@@ -106,6 +107,7 @@ def _normalize_card(data: dict, fallback_title: str) -> dict:
         "youtube_description": _safe_text(data.get("youtube_description") or fb["youtube_description"], 1200),
         "compact_subtitles": [_safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)],
         "hashtags": [],
+        "source_url": _safe_text(source_url or fb.get("source_url"), 500),
         "source": "gemini_light",
     }
     for tag in hashtags[:8]:
@@ -115,14 +117,14 @@ def _normalize_card(data: dict, fallback_title: str) -> dict:
     return out
 
 
-async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = None, *, force: bool = False) -> dict | None:
+async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = None, *, source_url: str = "", force: bool = False) -> dict | None:
     """Build a small reusable description pack for a translated LiveDub video.
 
     Returns a dict or None. Never raises.
     """
     if not (force or livedub_info_enabled()):
         return None
-    fallback = _fallback_card(title_line)
+    fallback = _fallback_card(title_line, source_url)
     timed_text = ""
     try:
         if dub_srt_path and Path(dub_srt_path).exists():
@@ -139,6 +141,7 @@ async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = N
 Используй ТОЛЬКО данные ниже. Не выдумывай факты, имена, даты и цитаты.
 
 Название/автор: {title_line}
+Оригинал YouTube: {source_url}
 Текст перевода с таймкодами (может быть пустым):
 {timed_text[:7000]}
 
@@ -196,10 +199,13 @@ def format_livedub_info_message(card: dict) -> str:
     yt_desc = _safe_text(card.get("youtube_description"), 1800)
     compact = card.get("compact_subtitles") or []
     hashtags = [str(h) for h in (card.get("hashtags") or [])[:8] if str(h).strip()]
+    source_url = _safe_text(card.get("source_url"), 500)
 
     lines: list[str] = ["✨ <b>Готовое описание к переводу</b>"]
     if tg:
         lines += ["", "📝 <b>Кратко для Telegram</b>", f"<i>{_h(tg)}</i>"]
+    if source_url:
+        lines += [f"🔗 <a href=\"{html.escape(source_url, quote=True)}\">Оригинал на YouTube</a>"]
 
     clean_compact = [_safe_text(x, 180) for x in compact[:8] if _safe_text(x, 180)]
     if clean_compact:
@@ -210,6 +216,8 @@ def format_livedub_info_message(card: dict) -> str:
         yt_block_parts: list[str] = []
         if yt_desc:
             yt_block_parts.append(yt_desc)
+        if source_url:
+            yt_block_parts.append(f"Оригинал: {source_url}")
         if hashtags:
             yt_block_parts.append(" ".join(hashtags))
         yt_block = "\n\n".join(yt_block_parts).strip()

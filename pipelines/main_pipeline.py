@@ -213,7 +213,7 @@ async def _translate_livedub_title_for_caption(
         try:
             from services.livedub_info import build_livedub_info_card
             base_line = _format_livedub_title_line(fallback_title, fallback_author)
-            card = await build_livedub_info_card(base_line, None, force=True)
+            card = await build_livedub_info_card(base_line, None, source_url="", force=True)
             yt_title_raw = normalize_title_text((card or {}).get("youtube_title") or "")
             yt_title = (
                 normalize_common_typos(yt_title_raw).strip()
@@ -618,7 +618,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     return
                 try:
                     from services.livedub_info import build_livedub_info_card, format_livedub_info_message
-                    _info_card = await build_livedub_info_card(_livedub_title_line, dub_srt_path)
+                    _info_card = await build_livedub_info_card(_livedub_title_line, dub_srt_path, source_url=url)
                     _info_msg = format_livedub_info_message(_info_card or {})
                     if _info_msg:
                         await context.bot.send_message(
