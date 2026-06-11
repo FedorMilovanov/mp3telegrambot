@@ -16,10 +16,9 @@ def test_vtt_to_timed_text_parses_and_dedupes_cues():
 00:00:06.000 --> 00:00:08.000
 Start with Scripture and prayer.
 """
-    out = vtt_to_timed_text(raw)
-    assert "[0:01] We need family worship." in out
+    out = vtt_to_timed_text(raw, chunk_seconds=25)
+    assert "[0:01] We need family worship. Start with Scripture and prayer." in out
     assert out.count("We need family worship") == 1
-    assert "[0:06] Start with Scripture and prayer." in out
 
 
 def test_synopsis_wires_youtube_transcript_into_prompt():
@@ -28,6 +27,9 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА" in src
     assert "главный текстовый скелет речи" in src
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in src
+    assert "transcript-backed mode" in src
+    assert "use_schema=not _transcript_attached" in src
+    assert "use_schema=False" in src  # density retry should not be schema-compressed
 
 
 def test_transcript_env_documented():

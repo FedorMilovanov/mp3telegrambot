@@ -24,7 +24,8 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "response_schema=expanded_page_response_schema()" in src
     assert "Synopsis structured output failed" in src
     assert "retry legacy JSON config" in src
-    assert "return await _generate_synopsis_content(client, GEMINI_MODEL" in src
+    assert "return await _generate_synopsis_content(" in src
+    assert "client, GEMINI_MODEL" in src
     assert "gemini-2.5-flash-lite" in src
 
 

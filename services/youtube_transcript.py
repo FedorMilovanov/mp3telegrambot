@@ -55,36 +55,59 @@ def _clean_caption_text(line: str) -> str:
     return line
 
 
-def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000) -> str:
+def _word_key(word: str) -> str:
+    return re.sub(r"[^\w']+", "", word.lower(), flags=re.UNICODE)
+
+
+def _append_caption_delta(
+    chunk_words: list[str],
+    cue_text: str,
+    *,
+    context_words: list[str] | None = None,
+) -> None:
+    """Append only the non-repeated suffix of a rolling auto-caption cue."""
+    cue_words = [w for w in cue_text.split() if _word_key(w)]
+    if not cue_words:
+        return
+    base_words = chunk_words if chunk_words else (context_words or [])
+    base_keys = [_word_key(w) for w in base_words]
+    cue_keys = [_word_key(w) for w in cue_words]
+    joined_base = " ".join(base_keys)
+    joined_cue = " ".join(cue_keys)
+    if joined_cue and joined_cue in joined_base:
+        return
+    max_olap = min(len(base_keys), len(cue_keys), 24)
+    overlap = 0
+    for n in range(max_olap, 0, -1):
+        if base_keys[-n:] == cue_keys[:n]:
+            overlap = n
+            break
+    chunk_words.extend(cue_words[overlap:])
+
+
+def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000, chunk_seconds: int = 25) -> str:
     """Parse WebVTT/SRV-like captions into compact [M:SS] text lines.
 
-    Keeps timestamps but dedupes repeated auto-caption fragments. This is not a
-    subtitle renderer; it is context for Gemini's Synopsis prompt.
+    YouTube auto-captions are often *rolling captions*: each cue repeats part of
+    the previous cue. A naive cue-per-line dump becomes unreadable and wastes
+    prompt budget. We merge cues into ~25s chunks and append only the new suffix.
     """
     if not raw:
         return ""
     lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    out: list[str] = []
+    cues: list[tuple[int, str]] = []
     current_ts: int | None = None
     buf: list[str] = []
-    seen_recent: list[str] = []
 
-    def flush() -> None:
+    def flush_cue() -> None:
         nonlocal buf, current_ts
         if current_ts is None or not buf:
             buf = []
             return
         text = _clean_caption_text(" ".join(buf))
         buf = []
-        if not text:
-            return
-        norm = re.sub(r"\W+", "", text.lower())
-        if not norm or norm in seen_recent:
-            return
-        seen_recent.append(norm)
-        if len(seen_recent) > 12:
-            del seen_recent[:-12]
-        out.append(f"[{_fmt_mmss(current_ts)}] {text}")
+        if text:
+            cues.append((current_ts, text))
 
     for raw_line in lines:
         line = raw_line.strip()
@@ -92,23 +115,50 @@ def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000) -> str:
             continue
         tm = _VTT_TIME_RE.search(line)
         if tm:
-            flush()
+            flush_cue()
             current_ts = _sec_from_match(tm)
-            # Some srv/vtt generators put text after timing settings on same cue;
-            # normal WebVTT doesn't. We ignore timing metadata safely.
             continue
-        if current_ts is None:
-            continue
-        if re.fullmatch(r"\d+", line):
+        if current_ts is None or re.fullmatch(r"\d+", line):
             continue
         clean = _clean_caption_text(line)
         if clean:
             buf.append(clean)
-        if sum(len(x) for x in out) > max_chars:
+    flush_cue()
+
+    out: list[str] = []
+    chunk_start: int | None = None
+    chunk_words: list[str] = []
+    carry_words: list[str] = []
+
+    def flush_chunk() -> None:
+        nonlocal chunk_start, chunk_words, carry_words
+        if chunk_start is None or not chunk_words:
+            chunk_words = []
+            return
+        text = _DUP_SPACE_RE.sub(" ", " ".join(chunk_words)).strip()
+        if text:
+            out.append(f"[{_fmt_mmss(chunk_start)}] {text}")
+        carry_words = chunk_words[-24:]
+        chunk_words = []
+        chunk_start = None
+
+    for ts, cue_text in cues:
+        if chunk_start is None:
+            chunk_start = ts
+        if chunk_words and ts - chunk_start >= chunk_seconds:
+            flush_chunk()
+            chunk_start = ts
+        _append_caption_delta(chunk_words, cue_text, context_words=carry_words)
+        if sum(len(x) for x in out) + len(chunk_words) * 7 > max_chars:
             break
-    flush()
+    flush_chunk()
     text = "\n".join(out)
-    return text[:max_chars].rstrip()
+    if len(text) > max_chars:
+        clipped = text[:max_chars]
+        if "\n" in clipped:
+            clipped = clipped.rsplit("\n", 1)[0]
+        return clipped.rstrip()
+    return text.rstrip()
 
 
 async def download_youtube_transcript_text(

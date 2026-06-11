@@ -569,6 +569,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 f"Synopsis: mode=normal format={_fmt} hermeneutic={_hm} duration={int(_duration)//60}min"
             )
 
+        _transcript_attached = False
         # Дословность: если YouTube/auto captions доступны, добавляем timed
         # transcript как текстовую опору. Аудио всё равно прикладывается, но
         # transcript резко снижает риск «обзорной статьи» вместо стенограммы.
@@ -583,6 +584,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     url, mp3_path.parent, max_chars=max(10000, min(_tr_max, 250000))
                 )
                 if _tr_text:
+                    _transcript_attached = True
                     prompt += (
                         "\n\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
                         "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА / AUTO-CAPTIONS\n"
@@ -597,6 +599,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             except Exception as _tr_err:
                 logger.info("[SynopsisTranscript] prompt attach failed: %s", str(_tr_err)[:160])
 
+        if _transcript_attached:
+            logger.info("Synopsis: transcript-backed mode — structured response_schema disabled for verbatim density")
+
         _compacted_prompt = compact_prompt_for_generation(prompt)
         if _compacted_prompt.saved_chars:
             logger.info(
@@ -609,9 +614,22 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         loop   = asyncio.get_running_loop()
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
 
-        async def _generate_synopsis_content(client, model_name: str, contents, max_tokens: int = 32000):
-            """Generate synopsis JSON with structured-output first, legacy fallback second."""
-            if _synopsis_structured_output_enabled():
+        async def _generate_synopsis_content(
+            client,
+            model_name: str,
+            contents,
+            max_tokens: int = 32000,
+            *,
+            use_schema: bool = True,
+        ):
+            """Generate synopsis JSON.
+
+            For transcript-backed verbatim Synopsis we prefer legacy JSON mode:
+            response_schema is excellent for shape, but in long transcripts it can
+            bias Gemini toward terse object fields. The prompt/audit still enforce
+            JSON and density.
+            """
+            if use_schema and _synopsis_structured_output_enabled():
                 try:
                     return await client.aio.models.generate_content(
                         model=model_name,
@@ -643,7 +661,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 raise RuntimeError("_synopsis_with_client: upload_fn вернул None")
             if getattr(audio, "state", None) == "FAILED":
                 raise RuntimeError("_synopsis_with_client: файл в состоянии FAILED")
-            return await _generate_synopsis_content(client, GEMINI_MODEL, [audio, prompt_text], max_tokens=_syn_max_tokens)
+            return await _generate_synopsis_content(
+                client, GEMINI_MODEL, [audio, prompt_text],
+                max_tokens=_syn_max_tokens,
+                use_schema=not _transcript_attached,
+            )
 
         def _extract_response_text(resp) -> str:
             if resp is None:
@@ -671,7 +693,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if existing_audio_part is not None and existing_client is not None:
             try:
                 response = await _generate_synopsis_content(
-                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt], max_tokens=_syn_max_tokens
+                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt],
+                    max_tokens=_syn_max_tokens,
+                    use_schema=not _transcript_attached,
                 )
             except Exception as e:
                 logger.warning(f"Synopsis v2 existing_audio_part failed: {e}, re-uploading...")
@@ -711,7 +735,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
-                            client, "gemini-2.5-flash-lite", [audio, prompt], max_tokens=_syn_max_tokens
+                            client, "gemini-2.5-flash-lite", [audio, prompt],
+                            max_tokens=_syn_max_tokens,
+                            use_schema=not _transcript_attached,
                         )
                     response = await gemini_generate(GEMINI_CLIENTS, _call_fallback, model_name=GEMINI_MODEL)
                     logger.info("Synopsis: fallback модель успешна")
@@ -792,7 +818,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if existing_audio_part is not None and existing_client is not None:
                     try:
                         retry_response = await _generate_synopsis_content(
-                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt], max_tokens=_syn_max_tokens
+                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt],
+                            max_tokens=_syn_max_tokens,
+                            use_schema=not _transcript_attached,
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
@@ -844,7 +872,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         if existing_audio_part is not None and existing_client is not None:
                             try:
                                 simple_response = await _generate_synopsis_content(
-                                    existing_client, GEMINI_MODEL, [existing_audio_part, simple_prompt], max_tokens=32000
+                                    existing_client, GEMINI_MODEL, [existing_audio_part, simple_prompt],
+                                    max_tokens=32000,
+                                    use_schema=True,
                                 )
                             except Exception:
                                 simple_response = None
@@ -971,6 +1001,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     GEMINI_MODEL,
                     [existing_audio_part, _density_retry_prompt],
                     max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
+                    use_schema=False,
                 )
                 _retry_text = _extract_response_text(_retry_resp)
                 _retry_parsed = _try_parse_synopsis_json(_retry_text)
