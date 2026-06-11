@@ -720,6 +720,15 @@ def test_livedub_info_message_escapes_html():
     assert "x &lt; y" in msg
 
 
+def test_livedub_light_model_default_fallbacks_include_preview_and_stable_lite(monkeypatch):
+    from services.livedub_info import get_light_model_fallbacks
+    monkeypatch.delenv("GEMINI_LIGHT_FALLBACK_MODELS", raising=False)
+    monkeypatch.delenv("GEMINI_LIGHT_MODEL", raising=False)
+    fallbacks = get_light_model_fallbacks()
+    assert "gemini-3.1-flash-lite-preview" in fallbacks
+    assert "gemini-2.5-flash-lite" in fallbacks
+
+
 def test_livedub_info_message_uses_safe_html_trim():
     src = Path("services/livedub_info.py").read_text(encoding="utf-8")
     assert "safe_trim_caption" in src
@@ -738,7 +747,7 @@ def test_livedub_info_card_wired_only_for_eng_quick():
 def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
-    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-2.5-flash-lite" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme

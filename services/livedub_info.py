@@ -37,7 +37,7 @@ def get_light_model() -> str:
 
 
 def get_light_model_fallbacks() -> list[str]:
-    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-2.5-flash-lite").strip()
+    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite").strip()
     out: list[str] = []
     for item in raw.split(","):
         model = item.strip()
