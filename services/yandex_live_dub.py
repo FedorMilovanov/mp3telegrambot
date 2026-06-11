@@ -145,14 +145,13 @@ def _env_int(name: str, default: int, min_value: int = 0, max_value: int = 60) -
 def _vot_request_duration(duration: float) -> int:
     """Длительность для VOT cache-key/request.
 
-    Передавать floor опасно для Shorts: YouTube/yt-dlp часто дают 37s для
-    ролика длиной 37.x, а VOT может обрезать последнюю фразу. Поэтому ceil +
-    небольшой настраиваемый guard. Это НЕ TTS fallback, а защита live-запроса.
+    Для Shorts/LiveDub важно попадать в кэш Яндекса. Эксперименты показали,
+    что лишний паддинг в запросе может приводить к LIVEDUB_NOT_AVAILABLE.
+    Используем целое число секунд (floor), как это делает оригинальный VOT.
     """
     if not duration or duration <= 0:
         return 0
-    pad = _env_int("LIVEDUB_VOT_DURATION_PAD_SEC", 1, min_value=0, max_value=10)
-    return int(math.ceil(float(duration))) + pad
+    return int(float(duration))
 
 
 def _find_node() -> Optional[str]:
@@ -195,6 +194,7 @@ def _ensure_vot_helper() -> Optional[list]:
 async def _get_audio_new_protocol(
     helper: list, video_url: str, output_dir: Path,
     timeout: int, voice_style: str, duration: float = 0.0,
+    lang: str = "",
 ) -> Path:
     """Скачивает перевод через vot_helper (новый протокол, OAuth-токен)."""
     output_dir = Path(output_dir)
@@ -205,6 +205,8 @@ async def _get_audio_new_protocol(
         "--voice-style", voice_style,
         "--timeout", str(timeout),
     ]
+    if lang:
+        cmd += ["--lang", lang]
     request_duration = _vot_request_duration(duration)
     if request_duration > 0:
         cmd += ["--duration", str(request_duration)]
@@ -251,7 +253,8 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
 async def get_live_dub_audio(video_url: str, output_dir: Path,
                              timeout: int = 480, retries: int = 2,
                              voice_style: str = "live",
-                             duration: float = 0.0) -> Path:
+                             duration: float = 0.0,
+                             lang: str = "") -> Path:
     """Скачивает MP3-перевод через vot-cli-live.
 
     AUDIT 2026-06-10: Яндекс готовит перевод длинного видео МИНУТЫ
@@ -272,6 +275,7 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
             return await _get_audio_new_protocol(
                 helper, video_url, output_dir,
                 timeout=max(timeout, 900), voice_style=voice_style, duration=duration,
+                lang=lang,
             )
         except RuntimeError as e:
             msg = str(e)
@@ -286,7 +290,10 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [vot, "--output", str(output_dir), "--voice-style", voice_style, "--quiet", video_url]
+    cmd = [vot, "--output", str(output_dir), "--voice-style", voice_style, "--quiet"]
+    if lang:
+        cmd += ["--lang", lang]
+    cmd.append(video_url)
     logger.info(f"[LiveDub] Запуск: {' '.join(cmd)}")
 
     loop = asyncio.get_running_loop()

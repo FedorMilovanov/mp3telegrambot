@@ -36,6 +36,20 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Edward J. Young": "Эдвард Янг",
     "Abner Chou": "Абнер Чау",
     "Charles Ryrie": "Чарльз Райри",
+    "John Piper": "Джон Пайпер",
+    "Alistair Begg": "Алистер Бегг",
+    "Steven Lawson": "Стивен Лоусон",
+    "Sinclair Ferguson": "Синклер Фергюсон",
+    "Derek Prince": "Дерек Принс",
+    "Tim Keller": "Тим Келлер",
+    "David Platt": "Дэвид Платт",
+    "Francis Chan": "Фрэнсис Чан",
+    "Matt Chandler": "Мэтт Чендлер",
+    "Elisabeth Elliot": "Элизабет Эллиот",
+    "Rosaria Butterfield": "Розария Баттерфилд",
+    "Jackie Hill Perry": "Джеки Хилл Перри",
+    "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
+    "George Müller": "Георг Мюллер",
 }
 
 OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {

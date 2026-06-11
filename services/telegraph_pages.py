@@ -429,10 +429,11 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             _DICT_ABBREVS = {
                 "HALOT": "HALOT (евр. словарь ВЗ)",
                 "BDAG":  "BDAG (греч. словарь НЗ)",
-                "BDB":   "BDB (евр. словарь)",
+                "BDB":   "BDB (евр. словарь ВЗ)",
                 "TWOT":  "TWOT (богосл. словарь ВЗ)",
                 "TDNT":  "TDNT (богосл. словарь НЗ)",
                 "NIDNTT": "NIDNTT (богосл. словарь НЗ)",
+                "NIDOTTE": "NIDOTTE (богосл. словарь ВЗ)",
                 "LXX":   "LXX (Септуагинта)",
                 "NA28":  "NA28 (греч. текст НЗ)",
                 "BHS":   "BHS (евр. текст ВЗ)",

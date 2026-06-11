@@ -475,6 +475,27 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
 
 
 
+async def probe_video_language(video_url: str) -> Optional[str]:
+    """Определяет язык видео через yt-dlp metadata."""
+    try:
+        cmd = YTDLP_BASE_ARGS + ["--dump-json", video_url]
+        loop = asyncio.get_running_loop()
+        proc = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        )
+        if proc.returncode == 0:
+            data = json.loads(proc.stdout)
+            lang = data.get("language")
+            if lang:
+                # yt-dlp часто возвращает 'en', 'ru', 'de'
+                return str(lang).lower()
+    except Exception:
+        pass
+    return None
+
+
+import json
 # AUDIT L3: алиас _ytdlp_base_args = _build_ytdlp_base_args был ловушкой —
 # выглядел как список аргументов, на деле был ссылкой на функцию.
 # Используйте YTDLP_BASE_ARGS (готовый список).

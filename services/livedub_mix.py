@@ -486,7 +486,7 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
     return None
 
 
-async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0) -> Optional[Path]:
+async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, lang: str = "") -> Optional[Path]:
     """Полный pro-цикл: чистый RU-перевод + оригинал → собственный микс.
 
     Возвращает путь к готовому видео или None (вызывающий код сделает
@@ -499,7 +499,7 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0) ->
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 
-    ru_task = asyncio.create_task(get_live_dub_audio(video_url, workdir, duration=duration))
+    ru_task = asyncio.create_task(get_live_dub_audio(video_url, workdir, duration=duration, lang=lang))
     orig_task = asyncio.create_task(download_original_video(video_url, workdir))
 
     ru_audio: Optional[Path] = None

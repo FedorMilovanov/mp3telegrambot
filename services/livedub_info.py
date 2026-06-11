@@ -59,8 +59,20 @@ def livedub_info_response_schema() -> dict:
             "youtube_description": {"type": "string"},
             "compact_subtitles": {"type": "array", "items": {"type": "string"}},
             "hashtags": {"type": "array", "items": {"type": "string"}},
+            "key_theological_terms": {"type": "array", "items": {"type": "string"}},
+            "scripture_references": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "ref": {"type": "string"},
+                        "text_ru": {"type": "string"}
+                    },
+                    "required": ["ref", "text_ru"]
+                }
+            }
         },
-        "required": ["telegram_description", "youtube_title", "youtube_description", "compact_subtitles", "hashtags"],
+        "required": ["telegram_description", "youtube_title", "youtube_description", "compact_subtitles", "hashtags", "key_theological_terms", "scripture_references"],
     }
 
 
@@ -101,12 +113,21 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
     compact = data.get("compact_subtitles") or []
     if not isinstance(compact, list):
         compact = []
+    scripture = data.get("scripture_references") or []
+    if not isinstance(scripture, list):
+        scripture = []
+    terms = data.get("key_theological_terms") or []
+    if not isinstance(terms, list):
+        terms = []
+        
     out = {
         "telegram_description": _safe_text(data.get("telegram_description") or fb["telegram_description"], 520),
         "youtube_title": title_case_fragment(_safe_text(data.get("youtube_title") or fb["youtube_title"], 100)),
         "youtube_description": _safe_text(data.get("youtube_description") or fb["youtube_description"], 1200),
         "compact_subtitles": [_safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)],
         "hashtags": [],
+        "key_theological_terms": [_safe_text(x, 60) for x in terms[:5] if _safe_text(x, 60)],
+        "scripture_references": scripture[:5],
         "source_url": _safe_text(source_url or fb.get("source_url"), 500),
         "source": "gemini_light",
     }
@@ -114,6 +135,17 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         norm = normalize_hashtag(str(tag or ""))
         if norm and norm not in out["hashtags"]:
             out["hashtags"].append(norm)
+            
+    # Добавляем хэштег автора, если он есть в заголовке
+    if fallback_title:
+        from core.text_utils import normalize_author_name
+        # Пытаемся вытащить автора из "Название - Автор"
+        if " - " in fallback_title:
+            author_part = fallback_title.split(" - ", 1)[1]
+            author_tag = normalize_hashtag(author_part)
+            if author_tag and author_tag not in out["hashtags"]:
+                out["hashtags"].insert(0, author_tag)
+                
     return out
 
 
@@ -138,12 +170,14 @@ async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = N
 
     prompt = f"""
 Ты готовишь короткие текстовые материалы для русскоязычной публикации переведённого видео.
+Ты — эксперт в реформатском богословии и библеистике.
 Используй ТОЛЬКО данные ниже. Не выдумывай факты, имена, даты и цитаты.
 Пиши по-русски. YouTube title тоже переведи на русский; английскими оставляй только
 общеупотребимые термины/имена, если без них нельзя. Если исходник author-first
 («R.C. Sproul: True ...»), верни порядок строго «Название - Автор».
 Известные имена: R.C. Sproul=Р. Ч. Спроул, John MacArthur=Джон МакАртур,
 Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кости Хинн.
+В блоке key_theological_terms используй точные русские теологические эквиваленты.
 
 Название/автор: {title_line}
 Оригинал YouTube: {source_url}
@@ -156,7 +190,14 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
   "youtube_title": "короткий YouTube title до 100 символов, формат Название - Автор если автор есть",
   "youtube_description": "2-4 предложения для YouTube: тема, главный тезис, польза зрителю; без выдуманных фактов",
   "compact_subtitles": ["4-6 коротких тезисов/субтитров по смыслу, до 100-120 символов"],
-  "hashtags": ["до 6 русских/английских хэштегов без пробелов"]
+  "hashtags": ["до 6 русских/английских хэштегов без пробелов"],
+  "key_theological_terms": ["3-5 ключевых богословских терминов из видео на русском"],
+  "scripture_references": [
+    {{
+      "ref": "ссылка на Писание (например, Иоанна 3:16)",
+      "text_ru": "текст стиха на РУССКОМ языке (Синодальный перевод)"
+    }}
+  ]
 }}
 """.strip()
     try:
@@ -205,6 +246,7 @@ def format_livedub_info_message(card: dict) -> str:
     compact = card.get("compact_subtitles") or []
     hashtags = [str(h) for h in (card.get("hashtags") or [])[:8] if str(h).strip()]
     source_url = _safe_text(card.get("source_url"), 500)
+    scripture = card.get("scripture_references") or []
 
     lines: list[str] = ["✨ <b>Готовое описание к переводу</b>"]
     if tg:
@@ -216,6 +258,21 @@ def format_livedub_info_message(card: dict) -> str:
     if clean_compact:
         lines += ["", "💬 <b>Компактные тезисы / субтитры</b>"]
         lines += ["• " + _h(x) for x in clean_compact]
+
+    terms = card.get("key_theological_terms") or []
+    if terms:
+        lines += ["", "🧠 <b>Богословские термины</b>"]
+        lines += ["# " + _h(x) for x in terms[:5]]
+
+    if scripture:
+        lines += ["", "📖 <b>Упомянутые места Писания</b>"]
+        for s in scripture[:5]:
+            ref = _h(s.get("ref", ""))
+            txt = _h(s.get("text_ru", ""))
+            if ref and txt:
+                lines.append(f"<b>{ref}</b>: {txt}")
+            elif ref:
+                lines.append(f"<b>{ref}</b>")
 
     if yt_title or yt_desc or hashtags:
         yt_block_parts: list[str] = []

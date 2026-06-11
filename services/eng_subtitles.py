@@ -78,7 +78,7 @@ def _get_audio_duration(path: Path) -> float:
     return 0.0
 
 
-async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0) -> Path | None:
+async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0, lang: str = "") -> Path | None:
     from services.shorts_video import _get_whisper_model
     """
     Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
@@ -140,19 +140,21 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
 
     # 3. Whisper — CPU-only, large-v3, int8, beam_size=1
     logger.info(
-        "[EngSubtitles] Whisper CPU: model=large-v3, int8, beam_size=1, audio=%.1fs",
-        audio_duration,
+        "[EngSubtitles] Whisper CPU: model=large-v3, int8, beam_size=1, audio=%.1fs, lang=%s",
+        audio_duration, lang or "auto",
     )
 
     def _run_whisper():
         model = _get_whisper_model()
-        segs_gen, _ = model.transcribe(
-            str(actual_audio),
-            language="en",
-            beam_size=1,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
-        )
+        # Если язык известен (en, ru, de...) — форсируем, чтобы Whisper не ошибся
+        # на акцентах. yt-dlp даёт ISO-коды, Whisper их понимает.
+        transcribe_args = {
+            "language": lang if lang else "en",
+            "beam_size": 1,
+            "vad_filter": True,
+            "vad_parameters": {"min_silence_duration_ms": 500},
+        }
+        segs_gen, _ = model.transcribe(str(actual_audio), **transcribe_args)
         return list(segs_gen)
 
     segments = await loop.run_in_executor(None, _run_whisper)

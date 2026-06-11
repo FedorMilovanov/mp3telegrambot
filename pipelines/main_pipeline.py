@@ -86,6 +86,40 @@ _KNOWN_AUTHOR_RU: dict[str, str] = {
     "Costi Hinn": "Кости Хинн",
     "R.C. Sproul": "Р. Ч. Спроул",
     "R. C. Sproul": "Р. Ч. Спроул",
+    "Charles Spurgeon": "Чарльз Сперджен",
+    "Spurgeon": "Чарльз Сперджен",
+    "George Müller": "Георг Мюллер",
+    "George Muller": "Георг Мюллер",
+    "Voddie Baucham": "Водди Бокам",
+    "John Piper": "Джон Пайпер",
+    "Piper": "Джон Пайпер",
+    "Alistair Begg": "Алистер Бегг",
+    "Begg": "Алистер Бегг",
+    "Steven Lawson": "Стивен Лоусон",
+    "Steve Lawson": "Стивен Лоусон",
+    "Sinclair Ferguson": "Синклер Фергюсон",
+    "Derek Prince": "Дерек Принс",
+    "Tim Keller": "Тим Келлер",
+    "Timothy Keller": "Тим Келлер",
+    "Martyn Lloyd-Jones": "Мартин Лойд-Джонс",
+    "Lloyd-Jones": "Мартин Лойд-Джонс",
+    "David Platt": "Дэвид Платт",
+    "Francis Chan": "Фрэнсис Чан",
+    "Matt Chandler": "Мэтт Чендлер",
+    "Elisabeth Elliot": "Элизабет Эллиот",
+    "Rosaria Butterfield": "Розария Баттерфилд",
+    "Jackie Hill Perry": "Джеки Хилл Перри",
+    "Алексей Коломийцев": "Алексей Коломийцев",
+    "Евгений Бахмутский": "Евгений Бахмутский",
+    "Николай Скопич": "Николай Скопич",
+    "Виктор Рягузов": "Виктор Рягузов",
+    "Юрий Сипко": "Юрий Сипко",
+    "Владислав Трескин": "Владислав Трескин",
+    "Алексей Прокопенко": "Алексей Прокопенко",
+    "Владимир Дубинский": "Владимир Дубинский",
+    "Алексей Смирнов": "Алексей Смирнов",
+    "Тимур Расулов": "Тимур Расулов",
+    "Ярл Пейсти": "Ярл Пейсти",
 }
 
 _KNOWN_CHANNEL_AUTHOR_RU: dict[str, str] = {
@@ -93,6 +127,17 @@ _KNOWN_CHANNEL_AUTHOR_RU: dict[str, str] = {
     "gty": "Джон МакАртур",
     "heartcry missionary society": "Пол Вошер",
     "heartcry": "Пол Вошер",
+    "i'll be honest": "I'll Be Honest",
+    "bibleq&a": "BibleQ&A",
+    "слово благодати": "Алексей Коломийцев",
+    "islovo": "Алексей Коломийцев",
+    "русская библейская церковь": "Евгений Бахмутский",
+    "рбц": "Евгений Бахмутский",
+    "covenant baptist theological seminary": "CBTS",
+    "cbts": "CBTS",
+    "desiring god": "Джон Пайпер",
+    "ligonier ministries": "Р. Ч. Спроул",
+    "ligonier": "Р. Ч. Спроул",
 }
 
 
@@ -182,7 +227,11 @@ def _split_title_author_line(line: str) -> tuple[str, str]:
 
 def _title_part_has_cyrillic(line: str) -> bool:
     title_part, _author = _split_title_author_line(line)
-    return bool(re.search(r"[А-Яа-яЁё]", title_part or line))
+    # 2026-06-11: Титл считается «русским», только если в самой части НАЗВАНИЯ
+    # есть кириллица. Если кириллица только в имени автора (которое мы
+    # подставляем из базы), а название всё ещё английское — нужно переводить.
+    target = title_part if title_part else line
+    return bool(re.search(r"[А-Яа-яЁё]", target))
 
 
 def _split_livedub_title_author(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
@@ -279,13 +328,14 @@ async def _translate_livedub_title_for_caption(
         return fallback_title, fallback_author
 
     prompt = (
-        "Переведи метаданные YouTube-видео для краткой Telegram-подписи на русском.\n"
+        "Переведи название и автора христианского видео на РУССКИЙ язык для публикации в Telegram.\n"
         "Верни СТРОГО JSON: {\"title_ru\":\"...\",\"author_ru\":\"...\"}.\n"
-        "Правила:\n"
-        "- title_ru: естественное русское название, без #shorts, без слова Shorts, без кавычек;\n"
+        "ПРАВИЛА:\n"
+        "- title_ru: ОБЯЗАТЕЛЬНО на русском языке; естественное название, без #shorts, без слова Shorts, без кавычек;\n"
         "- author_ru: имя автора/спикера на русском, если оно явно есть в названии/канале "
         "или общеизвестно по каналу; иначе пустая строка;\n"
         "- не добавляй отсебятину, не меняй богословский смысл;\n"
+        "- ПЕРЕВОДИ ВСЁ на русский, не оставляй английских слов в названии;\n"
         "- известные имена: John MacArthur=Джон МакАртур, Paul Washer=Пол Вошер, "
         "Abner Chou=Абнер Чау, Costi Hinn=Кости Хинн, R.C. Sproul=Р. Ч. Спроул;\n"
         "- Grace to You обычно означает Джон МакАртур; HeartCry часто означает Пол Вошер, "
@@ -448,7 +498,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         full_title   = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
-        logger.info(f"YouTube channel_name: '{channel_name}'")
+        source_lang  = str(info_dict.get("language") or "").lower()
+        logger.info(f"YouTube channel_name: '{channel_name}' (lang: {source_lang})")
         duration     = int(info_dict.get("duration") or 0)
         media_id     = info_dict.get("id", "media")
 
@@ -537,13 +588,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             except Exception:
                 _livedub_info_enabled = False
 
-            async def _run_livedub_bg(video_url, workdir):
+            async def _run_livedub_bg(video_url, workdir, source_lang=""):
                 try:
                     # Запускаем создание субтитров параллельно с скачиванием LiveDub
                     subs_task = None
                     if eng_subs_enabled:
                         subs_task = asyncio.create_task(
-                            create_gemini_subtitles(video_url, workdir, known_duration=duration)
+                            create_gemini_subtitles(video_url, workdir, known_duration=duration, lang=source_lang)
                         )
                     
                     async def _make_dub():
@@ -552,7 +603,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         if _livedub_pro_mix:
                             try:
                                 from services.livedub_mix import build_pro_dub
-                                pro = await build_pro_dub(video_url, workdir, duration=duration)
+                                pro = await build_pro_dub(video_url, workdir, duration=duration, lang=source_lang)
                                 if pro and pro.exists():
                                     return pro
                                 logger.warning("[LiveDub] pro-микс не собрался — fallback на vot-merge")
@@ -560,6 +611,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                 raise  # LIVEDUB_NOT_AVAILABLE — наверх
                             except Exception as _pme:
                                 logger.warning(f"[LiveDub] pro-микс сбой ({_pme}) — fallback на vot-merge")
+                        from services.yandex_live_dub import get_live_dub_video
                         return await get_live_dub_video(
                             video_url, workdir,
                             original_volume=0.3,
@@ -632,7 +684,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     logger.warning(f"[LiveDub Background] Ошибка: {e}")
                     return None, False, False
 
-            live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work))
+            live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work, source_lang=source_lang))
         # --- END LIVEDUB ---
 
         async def _send_livedub_result() -> bool:
@@ -917,6 +969,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # — готовый перевод, а не сначала диагностическая простыня.
                 if _quick_qa_report_html:
                     try:
+                        # 2026-06-11: При использовании Local Bot API (local_mode=True)
+                        # send_video возвращает управление мгновенно. Чтобы отчёт
+                        # гарантированно был в чате ПОСЛЕ видео (как и задумано),
+                        # даём Telegram время «продышаться».
+                        await asyncio.sleep(1.5)
                         await context.bot.send_message(
                             chat_id=update.effective_chat.id,
                             text=_quick_qa_report_html,
