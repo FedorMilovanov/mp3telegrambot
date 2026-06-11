@@ -205,9 +205,31 @@ async def _translate_livedub_title_for_caption(
         _LIVEDUB_TITLE_CACHE[cache_key] = result
         return result
 
-    # ENG Quick default: no extra Gemini just for title. Explicit opt-in only.
+    # ENG Quick/default title translation: use the lightweight info pipeline,
+    # not the heavy audio-analysis model directly. This keeps the DUB caption
+    # Russian while still preferring cheap/free Flash-Lite models.
+    if (GEMINI_CLIENTS
+            and os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() in {"1", "true", "yes", "on", "always"}):
+        try:
+            from services.livedub_info import build_livedub_info_card
+            base_line = _format_livedub_title_line(fallback_title, fallback_author)
+            card = await build_livedub_info_card(base_line, None, force=True)
+            yt_title_raw = normalize_title_text((card or {}).get("youtube_title") or "")
+            yt_title = (
+                normalize_common_typos(yt_title_raw).strip()
+                if re.search(r"\s[-–—]\s", yt_title_raw)
+                else title_case_fragment(yt_title_raw)
+            )
+            if yt_title:
+                result = (yt_title, "")
+                _LIVEDUB_TITLE_CACHE[cache_key] = result
+                return result
+        except Exception as _light_title_err:
+            logger.info("[LiveDubTitle] light title translation failed: %s", str(_light_title_err)[:120])
+
+    # If lightweight title translation is disabled/unavailable, deterministic metadata fallback.
     if (not GEMINI_CLIENTS
-            or os.getenv("LIVEDUB_TITLE_TRANSLATE", "0").strip().lower() not in {"1", "true", "yes", "on", "always"}):
+            or os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() not in {"1", "true", "yes", "on", "always"}):
         _LIVEDUB_TITLE_CACHE[cache_key] = (fallback_title, fallback_author)
         return fallback_title, fallback_author
 
@@ -261,8 +283,13 @@ async def _translate_livedub_title_for_caption(
 
 
 def _format_livedub_title_line(title_ru: str, author_ru: str) -> str:
-    title_ru = title_case_fragment(normalize_title_text(title_ru) or title_ru).strip()
+    raw_title = normalize_title_text(title_ru) or str(title_ru or "").strip()
     author_ru = normalize_author_name(author_ru).strip()
+    # If the light model already returned a complete "Название - Автор" line,
+    # don't sentence-case the whole string: it can lowercase the author surname.
+    if raw_title and not author_ru and re.search(r"\s[-–—]\s", raw_title):
+        return normalize_common_typos(raw_title).strip()
+    title_ru = title_case_fragment(raw_title).strip()
     if title_ru and author_ru and author_ru.lower() not in title_ru.lower():
         return f"{title_ru} - {author_ru}"
     return title_ru or author_ru or "Переведённое видео"

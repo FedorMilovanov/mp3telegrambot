@@ -597,18 +597,18 @@ def test_livedub_caption_title_fallback_known_authors():
     assert author2 == "Джон МакАртур"
 
 
-def test_livedub_caption_title_gemini_translation(monkeypatch):
+def test_livedub_caption_title_light_translation(monkeypatch):
     import asyncio
-    from types import SimpleNamespace
     import pipelines.main_pipeline as mp
 
-    class _FakeModels:
-        async def generate_content(self, **kwargs):
-            return SimpleNamespace(text='{"title_ru":"Почему вы диспенсационалист?","author_ru":"Абнер Чау & Кости Хинн"}')
+    async def fake_card(title_line, dub_srt_path=None, *, force=False):
+        assert force is True
+        return {"youtube_title": "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"}
 
-    fake_client = SimpleNamespace(aio=SimpleNamespace(models=_FakeModels()))
-    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [fake_client])
+    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [object()])
     monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "1")
+    import services.livedub_info as li
+    monkeypatch.setattr(li, "build_livedub_info_card", fake_card)
     mp._LIVEDUB_TITLE_CACHE.clear()
     title, author = asyncio.run(mp._translate_livedub_title_for_caption(
         "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
@@ -616,8 +616,8 @@ def test_livedub_caption_title_gemini_translation(monkeypatch):
         "Abner Chou & Costi Hinn",
         "BibleQ&A",
     ))
-    assert title == "Почему вы диспенсационалист?"
-    assert author == "Абнер Чау & Кости Хинн"
+    assert title == "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"
+    assert author == ""
     assert mp._format_livedub_title_line(title, author) == "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"
 
 
@@ -638,17 +638,17 @@ def test_livedub_caption_uses_existing_analysis_without_extra_gemini(monkeypatch
     assert author == "Абнер Чау & Кости Хинн"
 
 
-def test_livedub_title_translate_default_does_not_call_gemini(monkeypatch):
+def test_livedub_title_translate_can_be_disabled_for_metadata_only(monkeypatch):
     import asyncio
     from types import SimpleNamespace
     import pipelines.main_pipeline as mp
 
     class _BadModels:
         async def generate_content(self, **kwargs):
-            raise AssertionError("Gemini must not be called by default for title-only translation")
+            raise AssertionError("Gemini must not be called when LIVEDUB_TITLE_TRANSLATE=0")
 
     monkeypatch.setattr(mp, "GEMINI_CLIENTS", [SimpleNamespace(aio=SimpleNamespace(models=_BadModels()))])
-    monkeypatch.delenv("LIVEDUB_TITLE_TRANSLATE", raising=False)
+    monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "0")
     mp._LIVEDUB_TITLE_CACHE.clear()
     title, author = asyncio.run(mp._translate_livedub_title_for_caption(
         "All Your Deeds Will Be Exposed at the White Throne - Paul Washer",
@@ -656,6 +656,27 @@ def test_livedub_title_translate_default_does_not_call_gemini(monkeypatch):
     ))
     assert author == "Пол Вошер"
     assert title.startswith("All Your Deeds")
+
+
+def test_livedub_title_default_uses_light_info_pipeline(monkeypatch):
+    import asyncio
+    import pipelines.main_pipeline as mp
+
+    async def fake_card(title_line, dub_srt_path=None, *, force=False):
+        assert force is True
+        return {"youtube_title": "Все ваши дела будут вскрыты у Белого престола - Пол Вошер"}
+
+    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [object()])
+    monkeypatch.delenv("LIVEDUB_TITLE_TRANSLATE", raising=False)
+    import services.livedub_info as li
+    monkeypatch.setattr(li, "build_livedub_info_card", fake_card)
+    mp._LIVEDUB_TITLE_CACHE.clear()
+    title, author = asyncio.run(mp._translate_livedub_title_for_caption(
+        "All Your Deeds Will Be Exposed at the White Throne - Paul Washer",
+        "", "", "HeartCry Missionary Society",
+    ))
+    assert title == "Все ваши дела будут вскрыты у Белого престола - Пол Вошер"
+    assert author == ""
 
 
 def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
@@ -748,6 +769,7 @@ def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
     assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite" in env
+    assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme
@@ -1561,7 +1583,7 @@ def test_vot_token_is_documented_in_readme_help_and_status():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "YTDLP_COOKIES_FROM_BROWSER" in env
     assert "YANDEX_OAUTH_TOKEN" in env
-    assert "LIVEDUB_TITLE_TRANSLATE=0" in env
+    assert "LIVEDUB_TITLE_TRANSLATE=1" in env
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
     assert "YANDEX_OAUTH_TOKEN" in commands

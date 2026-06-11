@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from core.globals import GEMINI_CLIENTS, make_text_config_smart
+from core.database import GEMINI_MODEL
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_common_typos,
     normalize_hashtag, normalize_title_text, title_case_fragment,
@@ -43,6 +44,9 @@ def get_light_model_fallbacks() -> list[str]:
         model = item.strip()
         if model and model not in out and model != get_light_model():
             out.append(model)
+    if os.getenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}:
+        if GEMINI_MODEL and GEMINI_MODEL not in out and GEMINI_MODEL != get_light_model():
+            out.append(GEMINI_MODEL)
     return out
 
 
@@ -111,12 +115,12 @@ def _normalize_card(data: dict, fallback_title: str) -> dict:
     return out
 
 
-async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = None) -> dict | None:
+async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = None, *, force: bool = False) -> dict | None:
     """Build a small reusable description pack for a translated LiveDub video.
 
     Returns a dict or None. Never raises.
     """
-    if not livedub_info_enabled():
+    if not (force or livedub_info_enabled()):
         return None
     fallback = _fallback_card(title_line)
     timed_text = ""
