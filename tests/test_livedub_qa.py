@@ -1615,7 +1615,8 @@ def test_all_env_knobs_documented():
               "VIDEO_CPU_PRESET", "YTDLP_FRAGMENTS", "LIVEDUB_HARDSUB",
               "LIVEDUB_ORIG_VOLUME", "LIVEDUB_DELAY_MS", "LIVEDUB_TAIL_MARGIN_MS",
               "LIVEDUB_TAIL_FREEZE_MAX_SEC", "SYNOPSIS_YT_TRANSCRIPT",
-              "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "MAX_FILE_SIZE_MB"):
+              "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE",
+              "SYNOPSIS_VERBATIM_PROMPT", "MAX_FILE_SIZE_MB"):
         assert v in env, f"{v} не задокументирован в .env.example"
 
 

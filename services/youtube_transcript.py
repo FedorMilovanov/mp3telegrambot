@@ -47,6 +47,15 @@ def _fmt_mmss(seconds: int) -> str:
     return f"{mm}:{ss:02d}"
 
 
+def timed_text_last_second(timed_text: str) -> int:
+    """Last [M:SS]/[H:MM:SS] timestamp in cleaned transcript."""
+    last = 0
+    for m in re.finditer(r"\[(?:(\d+):)?(\d{1,2}):(\d{2})\]", str(timed_text or "")):
+        h = int(m.group(1) or 0)
+        last = max(last, h * 3600 + int(m.group(2)) * 60 + int(m.group(3)))
+    return last
+
+
 def _clean_caption_text(line: str) -> str:
     line = html.unescape(str(line or ""))
     line = _TAG_RE.sub(" ", line)
@@ -167,10 +176,13 @@ async def download_youtube_transcript_text(
     *,
     lang: str = "en",
     max_chars: int = 120_000,
+    expected_duration: float = 0.0,
 ) -> str:
     """Download YouTube manual/auto captions via yt-dlp and return timed text.
 
-    Returns empty string on any failure. Never raises into the main pipeline.
+    Manual captions are attempted first. Auto captions are a fallback because
+    they often contain rolling duplicates and ASR mistakes. Returns empty string
+    on any failure; never raises into the main pipeline.
     """
     if not _env_enabled("SYNOPSIS_YT_TRANSCRIPT", True):
         return ""
@@ -183,40 +195,76 @@ async def download_youtube_transcript_text(
         from services.ffmpeg import YTDLP_BASE_ARGS
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
-        stem = workdir / "yt_transcript"
+        for old in workdir.glob("yt_transcript*.vtt"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        stem = workdir / "yt_transcript_%(id)s"
         lang_root = (lang or "en").split("-", 1)[0].lower()
         sub_langs = os.getenv("SYNOPSIS_YT_TRANSCRIPT_LANGS", "").strip()
         if not sub_langs:
             sub_langs = f"{lang_root}.*,en.*,en"
-        cmd = [
-            *YTDLP_BASE_ARGS,
-            "--skip-download",
-            "--write-subs",
-            "--write-auto-subs",
-            "--sub-langs", sub_langs,
-            "--sub-format", "vtt/best",
-            "--output", str(stem) + ".%(ext)s",
-            video_url,
-        ]
-        logger.info("[SynopsisTranscript] yt-dlp subtitles: langs=%s", sub_langs)
 
-        def _run():
+        def _cmd(*, auto: bool) -> list[str]:
+            return [
+                *YTDLP_BASE_ARGS,
+                "--skip-download",
+                "--write-auto-subs" if auto else "--write-subs",
+                "--sub-langs", sub_langs,
+                "--sub-format", "vtt/best",
+                "--output", str(stem) + ".%(ext)s",
+                video_url,
+            ]
+
+        def _run(cmd: list[str]):
             kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             return subprocess.run(cmd, timeout=240, **kwargs)
 
-        proc = await asyncio.get_running_loop().run_in_executor(None, _run)
-        candidates = sorted(workdir.glob("yt_transcript*.vtt"), key=lambda p: p.stat().st_size, reverse=True)
+        loop = asyncio.get_running_loop()
+        last_proc = None
+        candidates: list[Path] = []
+        source_kind = "manual"
+        for auto in (False, True):
+            for old in workdir.glob("yt_transcript*.vtt"):
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+            source_kind = "auto" if auto else "manual"
+            logger.info("[SynopsisTranscript] yt-dlp %s subtitles: langs=%s", source_kind, sub_langs)
+            last_proc = await loop.run_in_executor(None, lambda a=auto: _run(_cmd(auto=a)))
+            candidates = sorted(workdir.glob("yt_transcript*.vtt"), key=lambda p: p.stat().st_size, reverse=True)
+            if candidates:
+                break
+
         if not candidates:
-            logger.info("[SynopsisTranscript] subtitles unavailable rc=%s: %s", proc.returncode, (proc.stderr or "")[-240:])
+            logger.info(
+                "[SynopsisTranscript] subtitles unavailable rc=%s: %s",
+                getattr(last_proc, "returncode", "?"), (getattr(last_proc, "stderr", "") or "")[-240:],
+            )
             return ""
         raw = candidates[0].read_text(encoding="utf-8", errors="replace")
         timed = vtt_to_timed_text(raw, max_chars=max_chars)
+        if timed and expected_duration and expected_duration >= 600:
+            try:
+                min_cov = float(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70")
+            except ValueError:
+                min_cov = 0.70
+            last_ts = timed_text_last_second(timed)
+            coverage = last_ts / max(1.0, float(expected_duration))
+            if coverage < max(0.1, min(min_cov, 0.98)):
+                logger.info(
+                    "[SynopsisTranscript] rejected: coverage %.0f%% < %.0f%% (last=%ss duration=%ss)",
+                    coverage * 100, min_cov * 100, last_ts, int(expected_duration),
+                )
+                return ""
         if timed:
             logger.info(
-                "[SynopsisTranscript] transcript ready: %s lines, %s chars (%s)",
-                timed.count("\n") + 1, len(timed), candidates[0].name,
+                "[SynopsisTranscript] transcript ready: %s lines, %s chars (%s, %s)",
+                timed.count("\n") + 1, len(timed), candidates[0].name, source_kind,
             )
         return timed
     except Exception as e:

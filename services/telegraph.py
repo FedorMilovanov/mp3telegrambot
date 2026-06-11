@@ -46,6 +46,8 @@ import json      # FIX telegraph
 import logging
 import os
 import re
+import tempfile
+from pathlib import Path
 import requests
 
 # types — из google.genai
@@ -599,8 +601,12 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     _tr_max = int(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "120000") or "120000")
                 except ValueError:
                     _tr_max = 120000
+                _tr_workdir = Path(tempfile.gettempdir()) / f"synopsis_transcript_{getattr(mp3_path, 'stem', 'audio')}"
                 _tr_text = await download_youtube_transcript_text(
-                    url, mp3_path.parent, max_chars=max(10000, min(_tr_max, 250000))
+                    url,
+                    _tr_workdir,
+                    max_chars=max(10000, min(_tr_max, 250000)),
+                    expected_duration=_duration,
                 )
                 if _tr_text:
                     _transcript_attached = True

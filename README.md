@@ -114,7 +114,8 @@ VOT-запрос получает целую длительность из ме�
 
 Для длинных Synopsis бот по умолчанию пытается скачать YouTube/auto captions и
 добавить timed transcript в prompt (`SYNOPSIS_YT_TRANSCRIPT=1`, лимит
-`SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS=120000`). Это нужно, чтобы конспект был не
+`SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS=120000`, частичные captions ниже
+`SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE=0.70` отбрасываются). Это нужно, чтобы конспект был не
 обзорной статьёй, а структурированной почти-дословной стенограммой. Сам Synopsis
 по умолчанию использует чистый verbatim-prompt (`SYNOPSIS_VERBATIM_PROMPT=1`) без
 Study/Reflection/source-card шума и работает без Gemini `response_schema`

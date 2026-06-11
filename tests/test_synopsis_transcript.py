@@ -1,7 +1,7 @@
 """Regression tests for YouTube transcript-backed Synopsis."""
 from pathlib import Path
 
-from services.youtube_transcript import vtt_to_timed_text
+from services.youtube_transcript import timed_text_last_second, vtt_to_timed_text
 
 
 def test_vtt_to_timed_text_parses_and_dedupes_cues():
@@ -21,8 +21,13 @@ Start with Scripture and prayer.
     assert out.count("We need family worship") == 1
 
 
+def test_timed_text_last_second_for_coverage_gate():
+    assert timed_text_last_second("[0:07] a\n[1:02:03] b") == 3723
+
+
 def test_synopsis_wires_youtube_transcript_into_prompt():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
+    ytt = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
     prompts = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "SYNOPSIS_VERBATIM_PROMPT" in prompts
     assert "Не summary. Не статья. Не анализ. Не пересказ." in prompts
@@ -31,6 +36,10 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "SYNOPSIS_VERBATIM_PROMPT" in src
     assert "prompt=%s" in src
     assert "download_youtube_transcript_text" in src
+    assert "expected_duration=_duration" in src
+    assert "synopsis_transcript_" in src
+    assert "--write-subs" in ytt and "--write-auto-subs" in ytt
+    assert "SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE" in ytt
     assert "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА" in src
     assert "главный текстовый скелет речи" in src
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in src
@@ -44,6 +53,7 @@ def test_transcript_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "SYNOPSIS_YT_TRANSCRIPT=1" in env
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in env
+    assert "SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE" in env
     assert "SYNOPSIS_VERBATIM_PROMPT=1" in env
     assert "SYNOPSIS_STRUCTURED=0" in env
     readme = Path("README.md").read_text(encoding="utf-8")
