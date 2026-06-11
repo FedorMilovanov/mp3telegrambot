@@ -66,8 +66,14 @@ def _synopsis_density_retry_enabled() -> bool:
     return (os.getenv("SYNOPSIS_DENSITY_RETRY", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 def _synopsis_structured_output_enabled() -> bool:
-    """Opt-out flag for Synopsis structured {outline, sections}."""
-    return (os.getenv("SYNOPSIS_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+    """Opt-in flag for Synopsis structured {outline, sections}.
+
+    История репо показала: старый schema-free Synopsis чаще давал плотную
+    «стенограмму со структурой». response_schema полезна для JSON-формы, но
+    на длинных дословных конспектах может сжимать content. Поэтому Synopsis
+    по умолчанию работает в legacy JSON mode; включение: SYNOPSIS_STRUCTURED=1.
+    """
+    return (os.getenv("SYNOPSIS_STRUCTURED", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _demote_paragraph_bold(line: str) -> str:

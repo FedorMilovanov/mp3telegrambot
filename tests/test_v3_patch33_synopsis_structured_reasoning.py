@@ -20,6 +20,7 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "from core.candidate_schema import expanded_page_response_schema" in src
     assert "def _synopsis_structured_output_enabled" in src
     assert "SYNOPSIS_STRUCTURED" in src
+    assert 'os.getenv("SYNOPSIS_STRUCTURED", "0")' in src
     assert "response_mime_type=\"application/json\"" in src
     assert "response_schema=expanded_page_response_schema()" in src
     assert "Synopsis structured output failed" in src

@@ -37,6 +37,8 @@ def test_transcript_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "SYNOPSIS_YT_TRANSCRIPT=1" in env
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in env
+    assert "SYNOPSIS_STRUCTURED=0" in env
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "timed transcript" in readme
     assert "структурированной почти-дословной стенограммой" in readme
+    assert "SYNOPSIS_STRUCTURED=0" in readme
