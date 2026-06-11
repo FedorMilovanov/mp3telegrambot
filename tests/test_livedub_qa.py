@@ -1205,3 +1205,14 @@ def test_vot_token_startup_diagnostic():
     """Startup-диагностика 🔧 предупреждает об отсутствии VOT_API_TOKEN."""
     src = Path("main.py").read_text(encoding="utf-8")
     assert 'os.getenv("VOT_API_TOKEN")' in src
+
+
+def test_vot_token_is_documented_in_readme_help_and_status():
+    """VOT_API_TOKEN должен быть виден не только в .env.example, но и в
+    пользовательской документации/админ-статусе."""
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "VOT_API_TOKEN" in readme
+    assert "LIVEDUB_TTS_FALLBACK=0" in readme
+    commands = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
+    assert "🔑 VOT_API_TOKEN" in commands

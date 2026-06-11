@@ -57,6 +57,8 @@ mp3bot/
 BOT_TOKEN=ваш_телеграм_токен
 GEMINI_API_KEY=ваш_ключ_gemini
 TELEGRAPH_TOKEN=ваш_telegraph_токен
+# Для ENG-режимов с Яндекс «Живыми голосами»:
+# VOT_API_TOKEN=y0_AgA...  # OAuth-токен Яндекса, см. .env.example
 ```
 
 2. Установите зависимости:
@@ -74,6 +76,18 @@ py -3.13 bot_new.py      # Windows
 ```
 
 Или дважды кликните `Start Bot.bat` на Windows.
+
+### ENG / «Живые голоса» Яндекса
+
+Для режимов `ENG Full` и `ENG Quick` нужен `VOT_API_TOKEN` в `.env`.
+Это OAuth access token аккаунта Яндекса для VOT API. Без него «Живые голоса»
+работают только для роликов, которые уже есть в серверном кэше Яндекса; новые
+ролики могут отвечать `SESSION_REQUIRED` / `Translation not available`.
+
+Короткая инструкция получения токена и пример строки `.env` есть в `.env.example`.
+Обычные TTS-голоса по умолчанию выключены: `LIVEDUB_TTS_FALLBACK=0`, чтобы ENG
+не подменял живой перевод неживым.
+
 
 ## Исправленные баги (относительно рефакторинга)
 
