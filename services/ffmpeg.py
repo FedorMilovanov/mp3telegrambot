@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,89 @@ _VIDEO_ENCODER: str | None = None
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_ytdlp_conf_tokens(conf_text: str) -> list[str]:
+    try:
+        return shlex.split(conf_text, comments=True, posix=True)
+    except ValueError:
+        # Битый конфиг лучше не интерпретировать частично: пусть yt-dlp сам
+        # выдаст ошибку, если пользователь явно этого хочет.
+        return []
+
+
+def _has_ytdlp_cookie_options(tokens: list[str]) -> bool:
+    return any(
+        tok in {"--cookies", "--cookies-from-browser"}
+        or tok.startswith("--cookies=")
+        or tok.startswith("--cookies-from-browser=")
+        for tok in tokens
+    )
+
+
+def _extract_cookies_from_browser_specs(conf_text: str) -> list[str]:
+    """Достаёт значения --cookies-from-browser из yt-dlp.conf.
+
+    Поддерживает оба синтаксиса: `--cookies-from-browser firefox` и
+    `--cookies-from-browser=firefox:Profile`.
+    """
+    tokens = _parse_ytdlp_conf_tokens(conf_text)
+    specs: list[str] = []
+    for idx, tok in enumerate(tokens):
+        if tok == "--cookies-from-browser" and idx + 1 < len(tokens):
+            specs.append(tokens[idx + 1])
+        elif tok.startswith("--cookies-from-browser="):
+            specs.append(tok.split("=", 1)[1])
+    return [s for s in specs if s]
+
+
+def _firefox_cookie_source_available(spec: str = "firefox") -> bool:
+    """Есть ли локальный Firefox cookie-store для yt-dlp.
+
+    Важно: наличие firefox.exe/бинаря НЕ означает наличие профиля. На
+    headless-сервере репозиторный `yt-dlp.conf` с `--cookies-from-browser
+    firefox` иначе валит все скачивания ошибкой "could not find firefox
+    cookies database". Если указан абсолютный путь профиля — проверяем его.
+    """
+    profile = ""
+    if ":" in spec:
+        # yt-dlp: BROWSER[:PROFILE][::KEYRING]
+        profile = spec.split(":", 1)[1].split(":", 1)[0].strip()
+    if profile:
+        pp = Path(profile).expanduser()
+        if pp.is_absolute():
+            if (pp / "cookies.sqlite").exists() or pp.exists():
+                return True
+            return False
+
+    home = Path.home()
+    candidates = [
+        home / ".mozilla" / "firefox",
+        home / ".config" / "mozilla" / "firefox",
+        home / ".var" / "app" / "org.mozilla.firefox" / ".mozilla" / "firefox",
+        home / "snap" / "firefox" / "common" / ".mozilla" / "firefox",
+        home / "Library" / "Application Support" / "Firefox" / "Profiles",
+    ]
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        candidates.append(Path(appdata) / "Mozilla" / "Firefox" / "Profiles")
+    for root in candidates:
+        try:
+            if root.exists() and any(root.rglob("cookies.sqlite")):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _cookies_from_browser_source_available(spec: str) -> bool:
+    browser = (spec.split(":", 1)[0] or "").strip().lower()
+    if browser in {"firefox", "firefox-container"}:
+        return _firefox_cookie_source_available(spec)
+    # Для Chrome/Edge/Yandex/прочих профили и keyring зависят от платформы;
+    # не угадываем агрессивно, чтобы не ломать явно настроенный прод.
+    return True
+
+
 def _build_ytdlp_base_args() -> list:
     # FIXED #34: явный --no-config предотвращает авточтение ~/.config/yt-dlp/config
     # и ./yt-dlp.conf на сервере. Если локальный yt-dlp.conf существует — подключаем
@@ -33,26 +117,51 @@ def _build_ytdlp_base_args() -> list:
     # Подключаем конф только если у нас НЕТ своего источника кук.
     _conf_exists = Path("yt-dlp.conf").exists()
     _conf_has_cookies = False
+    _conf_cookie_browser_specs: list[str] = []
+    _conf_cookie_sources_ok = True
     if _conf_exists:
         try:
-            _conf_has_cookies = "--cookies" in Path("yt-dlp.conf").read_text(encoding="utf-8", errors="replace")
+            _conf_text = Path("yt-dlp.conf").read_text(encoding="utf-8", errors="replace")
+            _conf_tokens = _parse_ytdlp_conf_tokens(_conf_text)
+            _conf_has_cookies = _has_ytdlp_cookie_options(_conf_tokens)
+            _conf_cookie_browser_specs = _extract_cookies_from_browser_specs(_conf_text)
+            _conf_cookie_sources_ok = all(
+                _cookies_from_browser_source_available(spec)
+                for spec in _conf_cookie_browser_specs
+            )
         except OSError:
             pass
+    _use_conf = _conf_exists
+    if _conf_exists and _conf_cookie_browser_specs and not _conf_cookie_sources_ok:
+        # Репозиторный yt-dlp.conf часто содержит `--cookies-from-browser firefox`.
+        # На машине без Firefox-профиля yt-dlp падает до скачивания; безопаснее
+        # пропустить cookie-конфиг и продолжить без cookies / с cookies.txt.
+        _use_conf = False
+        logger.warning(
+            "yt-dlp.conf просит --cookies-from-browser, но профиль cookies не найден — "
+            "пропускаю конфиг; положите cookies.txt или настройте YTDLP_COOKIES_FROM_BROWSER"
+        )
     if COOKIES_FILE.exists():
-        if _conf_exists and not _conf_has_cookies:
+        if _use_conf and not _conf_has_cookies:
             args += ["--config-location", "yt-dlp.conf"]
-        elif _conf_exists:
+        elif _conf_exists and _conf_has_cookies:
             logger.info("yt-dlp.conf содержит cookie-опции — пропускаю конф, использую cookies.txt")
         args += ["--sleep-interval", "2", "--quiet", "--cookies", str(COOKIES_FILE)]
     else:
-        if _conf_exists:
+        if _use_conf:
             args += ["--config-location", "yt-dlp.conf"]
         args += ["--sleep-interval", "2", "--quiet"]
-        if not _conf_has_cookies:
-            if shutil.which("firefox"):
-                args += ["--cookies-from-browser", "firefox"]
+        # Явная ручка лучше автоугадывания: YTDLP_COOKIES_FROM_BROWSER=firefox[:profile]
+        _env_browser = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "").strip()
+        if _env_browser and (not _conf_has_cookies or not _use_conf):
+            if _cookies_from_browser_source_available(_env_browser):
+                args += ["--cookies-from-browser", _env_browser]
             else:
-                logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
+                logger.warning("⚠️ YTDLP_COOKIES_FROM_BROWSER=%s задан, но профиль cookies не найден", _env_browser)
+        elif not _conf_has_cookies and _firefox_cookie_source_available("firefox"):
+            args += ["--cookies-from-browser", "firefox"]
+        elif not _conf_has_cookies or not _use_conf:
+            logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
     # JS runtime для решения YouTube n challenge
     # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
     # deno быстрее для YouTube. node — fallback при отсутствии deno.

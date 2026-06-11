@@ -477,6 +477,12 @@ def test_ytdlp_no_double_cookie_sources(tmp_path, monkeypatch):
     """cookies.txt + yt-dlp.conf с --cookies-from-browser не смешиваются."""
     import services.ffmpeg as ff
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Создаём реальный Firefox cookie-store: только тогда конф с browser-cookies
+    # безопасно подключать без cookies.txt.
+    prof = tmp_path / ".mozilla" / "firefox" / "abc.default-release"
+    prof.mkdir(parents=True)
+    (prof / "cookies.sqlite").write_bytes(b"sqlite")
     (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
     ck = tmp_path / "cookies.txt"
     ck.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
@@ -485,10 +491,52 @@ def test_ytdlp_no_double_cookie_sources(tmp_path, monkeypatch):
     joined = " ".join(args)
     assert "--cookies " + str(ck) in joined or str(ck) in joined
     assert "--config-location" not in joined  # конф с куками пропущен
-    # без cookies.txt конф снова подключается
+    # без cookies.txt конф снова подключается, потому что профиль существует
     monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
     args2 = " ".join(ff._build_ytdlp_base_args())
     assert "--config-location" in args2
+
+
+def test_ytdlp_cookie_comments_do_not_disable_config(tmp_path, monkeypatch):
+    import services.ffmpeg as ff
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+    (tmp_path / "yt-dlp.conf").write_text(
+        "# --cookies-from-browser firefox\n--no-playlist\n", encoding="utf-8"
+    )
+    joined = " ".join(ff._build_ytdlp_base_args())
+    assert "--config-location" in joined
+
+
+def test_ytdlp_skips_dead_browser_cookie_config(tmp_path, monkeypatch):
+    """Репозиторный yt-dlp.conf не должен валить headless-хост без Firefox-профиля."""
+    import services.ffmpeg as ff
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.delenv("YTDLP_COOKIES_FROM_BROWSER", raising=False)
+    (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
+    monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+    joined = " ".join(ff._build_ytdlp_base_args())
+    assert "--config-location" not in joined
+    assert "--cookies-from-browser firefox" not in joined
+
+
+def test_ytdlp_env_browser_cookie_source_can_override_dead_config(tmp_path, monkeypatch):
+    import services.ffmpeg as ff
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    dead_home = tmp_path / "dead_home"
+    monkeypatch.setenv("APPDATA", str(dead_home))
+    good_prof = tmp_path / "profiles" / "ff"
+    good_prof.mkdir(parents=True)
+    (good_prof / "cookies.sqlite").write_bytes(b"sqlite")
+    (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
+    monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+    monkeypatch.setenv("YTDLP_COOKIES_FROM_BROWSER", f"firefox:{good_prof}")
+    joined = " ".join(ff._build_ytdlp_base_args())
+    assert "--config-location" not in joined
+    assert "--cookies-from-browser" in joined and str(good_prof) in joined
 
 
 # ── Заход 9: обслуживание диска + flood control ──────────────────
@@ -1213,6 +1261,8 @@ def test_vot_token_is_documented_in_readme_help_and_status():
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in readme
     assert "LIVEDUB_TTS_FALLBACK=0" in readme
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "YTDLP_COOKIES_FROM_BROWSER" in env
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
     assert "🔑 VOT_API_TOKEN" in commands
