@@ -539,6 +539,49 @@ def test_ytdlp_env_browser_cookie_source_can_override_dead_config(tmp_path, monk
     assert "--cookies-from-browser" in joined and str(good_prof) in joined
 
 
+def test_ytdlp_js_runtime_version_filter(monkeypatch, tmp_path):
+    """yt-dlp 2026.06.09 требует Deno>=2.3 / Node>=22 для JS runtime."""
+    import subprocess
+    import services.ffmpeg as ff
+
+    def fake_run(cmd, **kwargs):
+        exe = str(cmd[0])
+        if "node20" in exe:
+            return subprocess.CompletedProcess(cmd, 0, stdout="v20.20.2", stderr="")
+        if "node22" in exe:
+            return subprocess.CompletedProcess(cmd, 0, stdout="v22.1.0", stderr="")
+        if "deno_old" in exe:
+            return subprocess.CompletedProcess(cmd, 0, stdout="deno 2.2.9", stderr="")
+        if "deno_new" in exe:
+            return subprocess.CompletedProcess(cmd, 0, stdout="deno 2.3.0", stderr="")
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(ff.subprocess, "run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+
+    monkeypatch.setattr(ff.shutil, "which", lambda name: {"node": "/bin/node20"}.get(name))
+    assert ff._supported_js_runtimes() == []
+    assert "--js-runtimes" not in " ".join(ff._build_ytdlp_base_args())
+
+    monkeypatch.setattr(ff.shutil, "which", lambda name: {"node": "/bin/node22"}.get(name))
+    assert ff._supported_js_runtimes() == ["node"]
+    assert "--js-runtimes node" in " ".join(ff._build_ytdlp_base_args())
+
+    monkeypatch.setattr(ff.shutil, "which", lambda name: {"deno": "/bin/deno_new", "node": "/bin/node22"}.get(name))
+    assert ff._supported_js_runtimes() == ["deno", "node"]
+
+    monkeypatch.setattr(ff.shutil, "which", lambda name: {"deno": "/bin/deno_old"}.get(name))
+    assert ff._supported_js_runtimes() == []
+
+
+def test_startup_diagnostics_mention_supported_ytdlp_js_runtime():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "yt-dlp JS runtime (Deno>=2.3/Node>=22)" in src
+    req = Path("requirements.txt").read_text(encoding="utf-8")
+    assert "nodejs>=22 или deno>=2.3" in req
+
+
 # ── Заход 9: обслуживание диска + flood control ──────────────────
 
 def test_cleanup_botapi_server_files(tmp_path, monkeypatch):
@@ -1053,6 +1096,7 @@ def test_status_command_registered():
     assert "async def status_command" in cmd
     for probe in ("ffmpeg", "vot-cli-live", "mp3gain", "Диск", "бэкап"):
         assert probe in cmd
+    assert "yt-js(Deno≥2.3/Node≥22)" in cmd
 
 
 # ── Заход 33: pre-flight Bot API + сетевой backoff ───────────────

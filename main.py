@@ -64,11 +64,16 @@ async def run_bot_async():
     # Без ffprobe МОЛЧА деградируют: метаданные видео (превью/стриминг),
     # LUFS-выравнивание pro-микса, тех-проверка перевода, длительность аудио.
     import shutil as _sh
+    try:
+        from services.ffmpeg import _supported_js_runtimes as _yt_js_runtimes
+        _yt_js_ok = bool(_yt_js_runtimes())
+    except Exception:
+        _yt_js_ok = False
     _tools = {
         "ffmpeg": _sh.which("ffmpeg"),
         "ffprobe": _sh.which("ffprobe"),
         "yt-dlp (модуль)": True,  # ставится pip-ом вместе с ботом
-        "deno/node": bool(_sh.which("deno") or _sh.which("node")),
+        "yt-dlp JS runtime (Deno>=2.3/Node>=22)": _yt_js_ok,
         "vot-cli-live": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
     }
     for _tname, _tpath in _tools.items():

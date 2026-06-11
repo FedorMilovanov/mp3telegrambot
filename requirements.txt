@@ -1,6 +1,6 @@
 # Системные зависимости (не pip, установить отдельно):
 #   ffmpeg  — для пересжатия аудио в 64kbps
-#   nodejs  — для yt-dlp js-runtimes (ускоряет обход защиты YouTube)
+#   nodejs>=22 или deno>=2.3 — для yt-dlp js-runtimes (обход YouTube n/SABR challenge)
 #   Noto Sans — шрифт для субтитров Shorts (fonts.google.com/noto)
 
 # ── Telegram Bot ──────────────────────────────────────────────────────────────

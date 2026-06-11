@@ -106,6 +106,50 @@ def _cookies_from_browser_source_available(spec: str) -> bool:
     return True
 
 
+
+
+def _version_tuple_from_text(text: str) -> tuple[int, ...]:
+    m = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", text or "")
+    if not m:
+        return ()
+    return tuple(int(x) for x in m.groups("0"))
+
+
+def _probe_js_runtime_version(exe: str, args: list[str]) -> tuple[int, ...]:
+    try:
+        proc = subprocess.run(
+            [exe, *args], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=5,
+        )
+    except Exception:
+        return ()
+    return _version_tuple_from_text((proc.stdout or "") + "\n" + (proc.stderr or ""))
+
+
+def _supported_js_runtimes() -> list[str]:
+    """yt-dlp 2026.06.09 поднял минимальные версии JS-runtime.
+
+    Если передать неподдерживаемый runtime через --js-runtimes, yt-dlp может
+    считать, что JS-runtime задан, но затем не сможет выполнить YouTube n/SABR
+    JS. Поэтому фильтруем не только по наличию бинаря, но и по версии.
+    """
+    runtimes: list[str] = []
+    deno = shutil.which("deno")
+    if deno:
+        vt = _probe_js_runtime_version(deno, ["--version"])
+        if vt >= (2, 3, 0):
+            runtimes.append("deno")
+        else:
+            logger.warning("⚠️ Deno найден, но версия %s < 2.3.0 — не передаю в yt-dlp --js-runtimes", vt or "unknown")
+    node = shutil.which("node")
+    if node:
+        vt = _probe_js_runtime_version(node, ["--version"])
+        if vt >= (22, 0, 0):
+            runtimes.append("node")
+        else:
+            logger.warning("⚠️ Node.js найден, но версия %s < 22.0.0 — не передаю в yt-dlp --js-runtimes", vt or "unknown")
+    return runtimes
+
 def _build_ytdlp_base_args() -> list:
     # FIXED #34: явный --no-config предотвращает авточтение ~/.config/yt-dlp/config
     # и ./yt-dlp.conf на сервере. Если локальный yt-dlp.conf существует — подключаем
@@ -165,11 +209,7 @@ def _build_ytdlp_base_args() -> list:
     # JS runtime для решения YouTube n challenge
     # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
     # deno быстрее для YouTube. node — fallback при отсутствии deno.
-    js_runtimes = []
-    if shutil.which("deno"):
-        js_runtimes.append("deno")
-    if shutil.which("node"):
-        js_runtimes.append("node")
+    js_runtimes = _supported_js_runtimes()
     if js_runtimes:
         args += ["--js-runtimes", ",".join(js_runtimes)]
         args += ["--remote-components", "ejs:github"]

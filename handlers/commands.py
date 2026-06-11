@@ -253,10 +253,15 @@ async def status_command(update, context):
     from core.globals import LOCAL_BOT_API_URL
     lines = ["🩺 <b>Статус бота</b>", ""]
     # Инструменты
+    try:
+        from services.ffmpeg import _supported_js_runtimes as _yt_js_runtimes
+        _yt_js_ok = bool(_yt_js_runtimes())
+    except Exception:
+        _yt_js_ok = False
     tools = {
         "ffmpeg": bool(_sh.which("ffmpeg")),
         "ffprobe": bool(_sh.which("ffprobe")),
-        "deno/node": bool(_sh.which("deno") or _sh.which("node")),
+        "yt-js(Deno≥2.3/Node≥22)": _yt_js_ok,
         "vot-cli-live": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
         "mp3gain": bool(_sh.which("mp3gain") or _sh.which("mp3gain.exe")),
     }
