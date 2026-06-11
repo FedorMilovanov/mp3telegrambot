@@ -176,6 +176,25 @@ def test_tail_guard_accounts_for_longer_yandex_audio():
     assert calculate_tail_pad_ms(600, 1000, orig_duration=40.0, ru_duration=42.2) == 3800
 
 
+def test_livedub_safe_video_filename_and_prepare_path(tmp_path):
+    from services.livedub_mix import safe_livedub_video_filename, prepare_livedub_send_path
+    name = safe_livedub_video_filename('Один грех отправляет в ад: почему? - Пол Вошер / HeartCry')
+    assert name == "Один грех отправляет в ад почему - Пол Вошер HeartCry.mp4"
+    src = tmp_path / "pro_dub.mp4"
+    src.write_bytes(b"video")
+    out = prepare_livedub_send_path(src, "Один грех отправляет в ад - Пол Вошер")
+    assert out.name == "Один грех отправляет в ад - Пол Вошер.mp4"
+    assert out.exists() and not src.exists()
+
+
+def test_pipeline_prepares_human_livedub_filename_before_send():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    assert "prepare_livedub_send_path" in helper
+    assert "десятки одинаковых pro_dub.mp4" in helper
+    assert helper.index("prepare_livedub_send_path") < helper.index("probe_video_meta")
+
+
 def test_mix_params_env_defaults_and_clamping(monkeypatch):
     from services import livedub_mix as lm
     monkeypatch.delenv("LIVEDUB_ORIG_VOLUME", raising=False)

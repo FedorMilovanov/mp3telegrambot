@@ -757,6 +757,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     else:
                         logger.info("[LiveDubQuickQA] skipped: duration=%s > max=%s", duration, _max_q)
 
+                # Telegram/локальный Bot API берёт basename файла. Без этого
+                # пользователь скачивает десятки одинаковых pro_dub.mp4.
+                try:
+                    from services.livedub_mix import prepare_livedub_send_path
+                    livedub_path = prepare_livedub_send_path(
+                        livedub_path, _livedub_title_line, fallback=media_id,
+                    )
+                except Exception as _name_err:
+                    logger.info("[LiveDub] filename prepare skip: %s", str(_name_err)[:120])
+
                 # ── Техническая проверка целостности (всегда, дёшево) ──
                 _tech_warnings: list[str] = []
                 if not is_fallback:
@@ -943,9 +953,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                           if str(i.get("severity")) == "major"]
                             if _livedub_autofix and _qa_majors and "ld_work" in locals():
                                 try:
-                                    from services.livedub_mix import apply_qa_audio_fixes
+                                    from services.livedub_mix import apply_qa_audio_fixes, prepare_livedub_send_path
                                     fixed = await apply_qa_audio_fixes(ld_work, qa_result.get("issues") or [])
                                     if fixed and fixed.exists():
+                                        fixed = prepare_livedub_send_path(
+                                            fixed,
+                                            f"{_livedub_title_line} - исправленная версия",
+                                            fallback=f"{media_id}_fixed",
+                                        )
                                         _fx_size = fixed.stat().st_size / (1024 * 1024)
                                         if _fx_size <= MAX_FILE_SIZE_MB:
                                             _fx_meta = {}

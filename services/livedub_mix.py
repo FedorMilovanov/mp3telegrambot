@@ -252,6 +252,55 @@ def calculate_tail_pad_ms(delay_ms: int, tail_margin_ms: int,
     return max(base, needed_ms)
 
 
+_FORBIDDEN_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_RESERVED_WINDOWS_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def safe_livedub_video_filename(title_line: str, fallback: str = "livedub") -> str:
+    """Человеческое имя mp4 для Telegram/downloads: «Название - Автор.mp4».
+
+    Telegram берёт basename локального файла. Если отправлять workdir/pro_dub.mp4,
+    пользователь получает десятки одинаковых downloads/pro_dub.mp4. Здесь чистим
+    Windows-запрещённые символы и режем длину, но сохраняем русский текст.
+    """
+    text = re.sub(r"<[^>]+>", " ", str(title_line or ""))
+    text = text.replace("—", " - ").replace("–", " - ")
+    text = _FORBIDDEN_FILENAME_CHARS_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip(" ._-")
+    if not text:
+        text = _FORBIDDEN_FILENAME_CHARS_RE.sub(" ", str(fallback or "livedub"))
+        text = re.sub(r"\s+", " ", text).strip(" ._-") or "livedub"
+    if text.upper() in _RESERVED_WINDOWS_NAMES:
+        text = f"{text}_video"
+    if len(text) > 140:
+        text = text[:140].rstrip(" ._-")
+    return f"{text}.mp4"
+
+
+def prepare_livedub_send_path(video_path: Path, title_line: str,
+                              fallback: str = "livedub") -> Path:
+    """Переименовывает готовый mp4 перед Telegram-отправкой в понятное имя."""
+    src = Path(video_path)
+    if not src.exists():
+        return src
+    target = src.with_name(safe_livedub_video_filename(title_line, fallback=fallback))
+    if src.resolve() == target.resolve():
+        return src
+    try:
+        if target.exists():
+            target.unlink()
+        src.replace(target)
+        logger.info("[LiveDubMix] send filename: %s", target.name)
+        return target
+    except Exception as e:
+        logger.warning("[LiveDubMix] не удалось переименовать видео для отправки: %s", e)
+        return src
+
+
 # ── Основной микс ────────────────────────────────────────────────
 
 def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,

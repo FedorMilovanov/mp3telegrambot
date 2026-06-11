@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # file_id может указывать на старый уже отправленный mp4. При изменении микса
 # (например, tail guard против обрывов Shorts) старый file_id надо игнорировать
 # и пересобрать видео, иначе пользователь будет получать прежний баг из кэша.
-LIVEDUB_FILE_ID_CACHE_VERSION = "tail_guard_v2"
+LIVEDUB_FILE_ID_CACHE_VERSION = "tail_guard_named_v1"
 
 
 def current_livedub_file_id_cache_version() -> str:
