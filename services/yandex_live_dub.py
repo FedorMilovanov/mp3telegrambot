@@ -11,7 +11,7 @@ Windows/Linux-совместимая версия с fallback'ами.
 vot-cli-live делает всё сам:
   - запрашивает перевод на серверы Яндекса
   - ждёт готовности (polling до 5 мин)
-  - скачивает MP3 с живыми голосами
+  - скачивает MP3 with живыми голосами
   - умеет склеивать с видео (--merge-video)
 
 Режимы:
@@ -20,6 +20,8 @@ vot-cli-live делает всё сам:
   --output      → куда сохранить
   --voice-style=live → явно "Живые голоса" (не стандартный TTS)
 """
+from __future__ import annotations
+
 import asyncio
 import json
 import logging

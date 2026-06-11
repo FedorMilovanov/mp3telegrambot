@@ -3,6 +3,8 @@
 Shorts / Video processing — субтитры, рендер, постеры.
 Извлечено из bot.py строки 9164–10707.
 """
+from __future__ import annotations
+
 from core.globals import (
     DOWNLOAD_DIR, THUMBS_DIR, HAS_PILLOW,
     html_mod,                     # FIX shorts_video
@@ -19,10 +21,11 @@ import shutil
 import subprocess
 import threading  # FIX shorts_video
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-def _pick_video_file(media_id: str) -> Path | None:
+def _pick_video_file(media_id: str) -> Optional[Path]:
     """Возвращает первый найденный видеофайл с предпочтительным расширением."""
     preferred_exts = [".mp4", ".mkv", ".webm", ".mov"]
     files = [p for p in DOWNLOAD_DIR.glob(f"{media_id}_video.*") if p.is_file()]
@@ -33,7 +36,7 @@ def _pick_video_file(media_id: str) -> Path | None:
     return None
 
 
-async def download_video_for_shorts(url: str, media_id: str, workdir: Path = None) -> Path | None:
+async def download_video_for_shorts(url: str, media_id: str, workdir: Optional[Path] = None) -> Optional[Path]:
     """
     Скачивает видео в mp4 для вырезки Shorts.
     Использует bestvideo[height<=720]+bestaudio — оптимально для Shorts.
@@ -485,7 +488,7 @@ def _normalize_word_timings(words: list[dict]) -> list[dict]:
     if not words:
         return words
     result = []
-    MIN_DUR = 0.08  # 80ms минимум на слово
+    MIN_DUR = 0.08  # 80ms минимум на word
     for i, w in enumerate(words):
         start = float(w.get("start", 0))
         end   = float(w.get("end", start + MIN_DUR))

@@ -6,6 +6,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 from core.globals import GEMINI_CLIENTS
 from core.database import GEMINI_MODEL
@@ -78,7 +79,7 @@ def _get_audio_duration(path: Path) -> float:
     return 0.0
 
 
-async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0, lang: str = "") -> Path | None:
+async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0, lang: str = "") -> Optional[Path]:
     from services.shorts_video import _get_whisper_model
     """
     Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
@@ -266,7 +267,7 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
         
     return actual_video
 
-async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Path | None:
+async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Optional[Path]:
     """Прожигает SRT в кадр. YouTube-стиль: белый текст на полупрозрачной
     подложке (BorderStyle=3) — читается на любом фоне."""
     output_path = video_path.with_suffix(".sub.mp4")

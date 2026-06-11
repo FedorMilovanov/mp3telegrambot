@@ -3,6 +3,8 @@
 Shorts Pipeline — process_and_send_shorts.
 Извлечено из bot.py строки 11549–11920.
 """
+from __future__ import annotations
+
 from core.globals import (
     DOWNLOAD_DIR, HAS_GEMINI,
     InlineKeyboardButton, InlineKeyboardMarkup,  # FIX shorts
@@ -33,6 +35,7 @@ import time
 import uuid
 from io import BytesIO    # FIX shorts
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,7 @@ async def process_and_send_shorts(
     existing_client=None,
     rutube_url: str = "",
     vk_url: str = "",
-    workdir: Path = None,  # 2026-06-11: пробрасываем временную папку для реюза видео
+    workdir: Optional[Path] = None,  # 2026-06-11: пробрасываем временную папку для реюза видео
 ) -> None:
     """
     Полный shorts-пайплайн v2:

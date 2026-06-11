@@ -3,7 +3,10 @@
 FFmpeg & yt-dlp helpers — базовые аргументы, энкодер, silence/black detection.
 Извлечено из bot.py строки 751–780, 9235–9404.
 """
+from __future__ import annotations
+
 import asyncio
+import json
 import logging
 import os
 import re
@@ -12,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional, List, Tuple
 
 
 # FIX #3: определяем здесь — ffmpeg.py не импортирует utils.py (избегаем кругового импорта)
@@ -156,7 +160,7 @@ def _build_ytdlp_base_args() -> list:
     # его явно через --config-location, чтобы поведение было предсказуемым.
     args = [PYTHON_EXEC, "-m", "yt_dlp", "--no-config"]
     # AUDIT 2026-06-10: yt-dlp.conf пользователя может содержать
-    # --cookies-from-browser; вместе с нашим --cookies это двойная загрузка кук
+    # --cookies-from-browser; вместе sheep с нашим --cookies это двойная загрузка кук
     # (на Windows при запущенном Firefox его cookie-БД ещё и заблокирована).
     # Подключаем конф только если у нас НЕТ своего источника кук.
     _conf_exists = Path("yt-dlp.conf").exists()
@@ -495,7 +499,6 @@ async def probe_video_language(video_url: str) -> Optional[str]:
     return None
 
 
-import json
 # AUDIT L3: алиас _ytdlp_base_args = _build_ytdlp_base_args был ловушкой —
 # выглядел как список аргументов, на деле был ссылкой на функцию.
 # Используйте YTDLP_BASE_ARGS (готовый список).
