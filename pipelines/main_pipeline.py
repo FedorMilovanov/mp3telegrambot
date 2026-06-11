@@ -115,12 +115,22 @@ def _replace_known_author_names(text: str) -> str:
 
 def _known_author_from_text(*parts: str) -> str:
     combined = " | ".join(str(p or "") for p in parts)
+    combined_low = combined.lower()
     for en, ru in _KNOWN_AUTHOR_RU.items():
-        if re.search(rf"(?i)\b{re.escape(en)}\b", combined):
+        # Для имён с точками (R.C. Sproul) \b вокруг точки ненадёжен.
+        if en.lower() in combined_low or re.search(rf"(?i)\b{re.escape(en)}\b", combined):
             return ru
     low = combined.lower()
     for channel, ru in _KNOWN_CHANNEL_AUTHOR_RU.items():
         if channel in low:
+            return ru
+    return ""
+
+
+def _known_ru_author_from_text(text: str) -> str:
+    low = str(text or "").lower()
+    for ru in set(_KNOWN_AUTHOR_RU.values()) | set(_KNOWN_CHANNEL_AUTHOR_RU.values()):
+        if ru.lower() in low:
             return ru
     return ""
 
@@ -141,17 +151,49 @@ def _looks_like_author_list(text: str) -> bool:
     return caps >= max(2, len(meaningful) - 1)
 
 
+def _split_title_author_line(line: str) -> tuple[str, str]:
+    """Нормализует одну строку в порядок «Название - Автор».
+
+    YouTube часто даёт author-first: «R.C. Sproul: True ...» или
+    «Р. Ч. Спроул - True ...». Для DUB-caption/download filename нам нужен
+    стабильный порядок title-first.
+    """
+    line = _clean_livedub_meta_text(line)
+    if not line:
+        return "", ""
+    for sep in (": ", " - ", " — ", " – ", " | ", " // "):
+        if sep not in line:
+            continue
+        left, right = [x.strip() for x in line.split(sep, 1)]
+        if not (left and right):
+            continue
+        left_known = _known_author_from_text(left) or _known_ru_author_from_text(left)
+        right_known = _known_author_from_text(right) or _known_ru_author_from_text(right)
+        if left_known:
+            return right, _replace_known_author_names(left) or left_known
+        if right_known:
+            return left, (_replace_known_author_names(right) if _looks_like_author_list(right) else right_known)
+        if _looks_like_author_list(left) and not _looks_like_author_list(right):
+            return right, _replace_known_author_names(left)
+        if _looks_like_author_list(right):
+            return left, _replace_known_author_names(right)
+    return line, ""
+
+
+def _title_part_has_cyrillic(line: str) -> bool:
+    title_part, _author = _split_title_author_line(line)
+    return bool(re.search(r"[А-Яа-яЁё]", title_part or line))
+
+
 def _split_livedub_title_author(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
     full_title = _clean_livedub_meta_text(full_title)
     parsed_title = _clean_livedub_meta_text(parsed_title)
     parsed_performer = _clean_livedub_meta_text(parsed_performer)
     channel_name = _clean_livedub_meta_text(channel_name)
 
-    for sep in (" — ", " - ", " | ", " – ", " // "):
-        if sep in full_title:
-            left, right = [x.strip() for x in full_title.rsplit(sep, 1)]
-            if left and right and _looks_like_author_list(right):
-                return left, right
+    title_from_line, author_from_line = _split_title_author_line(full_title)
+    if author_from_line:
+        return title_from_line, author_from_line
 
     author = _known_author_from_text(full_title, parsed_performer, channel_name)
     if not author and parsed_performer and not _looks_like_author_list(parsed_title):
@@ -215,16 +257,18 @@ async def _translate_livedub_title_for_caption(
             from services.livedub_info import build_livedub_info_card
             base_line = _format_livedub_title_line(fallback_title, fallback_author)
             card = await build_livedub_info_card(base_line, None, source_url="", force=True)
-            yt_title_raw = normalize_title_text((card or {}).get("youtube_title") or "")
-            yt_title = (
-                normalize_common_typos(yt_title_raw).strip()
-                if re.search(r"\s[-–—]\s", yt_title_raw)
-                else title_case_fragment(yt_title_raw)
-            )
+            yt_title = _clean_livedub_meta_text((card or {}).get("youtube_title") or "")
             if yt_title:
-                result = (yt_title, "")
-                _LIVEDUB_TITLE_CACHE[cache_key] = result
-                return result
+                yt_title_norm, yt_author_norm = _split_title_author_line(yt_title)
+                yt_line = (
+                    f"{yt_title_norm.strip()} - {yt_author_norm.strip()}"
+                    if yt_author_norm else yt_title_norm.strip()
+                )
+                if _title_part_has_cyrillic(yt_line):
+                    result = (yt_line, "")
+                    _LIVEDUB_TITLE_CACHE[cache_key] = result
+                    return result
+                logger.info("[LiveDubTitle] light title is not Russian enough — trying main title prompt")
         except Exception as _light_title_err:
             logger.info("[LiveDubTitle] light title translation failed: %s", str(_light_title_err)[:120])
 
@@ -243,7 +287,7 @@ async def _translate_livedub_title_for_caption(
         "или общеизвестно по каналу; иначе пустая строка;\n"
         "- не добавляй отсебятину, не меняй богословский смысл;\n"
         "- известные имена: John MacArthur=Джон МакАртур, Paul Washer=Пол Вошер, "
-        "Abner Chou=Абнер Чау, Costi Hinn=Кости Хинн;\n"
+        "Abner Chou=Абнер Чау, Costi Hinn=Кости Хинн, R.C. Sproul=Р. Ч. Спроул;\n"
         "- Grace to You обычно означает Джон МакАртур; HeartCry часто означает Пол Вошер, "
         "но если в title указан другой спикер — выбери его.\n\n"
         f"title: {full_title}\n"
@@ -286,9 +330,14 @@ async def _translate_livedub_title_for_caption(
 def _format_livedub_title_line(title_ru: str, author_ru: str) -> str:
     raw_title = normalize_title_text(title_ru) or str(title_ru or "").strip()
     author_ru = normalize_author_name(author_ru).strip()
-    # If the light model already returned a complete "Название - Автор" line,
-    # don't sentence-case the whole string: it can lowercase the author surname.
-    if raw_title and not author_ru and re.search(r"\s[-–—]\s", raw_title):
+    # If the light model already returned a complete line, normalize order:
+    # author-first («Р. Ч. Спроул - True...») -> title-first.
+    if raw_title and not author_ru and re.search(r"\s[-–—]\s|:\s", raw_title):
+        split_title, split_author = _split_title_author_line(raw_title)
+        if split_author:
+            # Уже готовая строка от light-model: не sentence-case'им весь title,
+            # чтобы не портить собственные имена/богословские термины.
+            return f"{split_title.strip()} - {split_author}".strip(" -")
         return normalize_common_typos(raw_title).strip()
     title_ru = title_case_fragment(raw_title).strip()
     if title_ru and author_ru and author_ru.lower() not in title_ru.lower():
@@ -624,7 +673,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
 
             async def _send_livedub_info_card_once(dub_srt_path=None) -> None:
-                if user_mode != "eng_fast":
+                if user_mode not in ("eng_fast", "eng_fast_qa"):
                     return
                 try:
                     from services.livedub_info import build_livedub_info_card, format_livedub_info_message
@@ -689,6 +738,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if not (livedub_path and livedub_path.exists()):
                     return False
 
+                _quick_qa_report_html = ""
                 # ── ENG Quick QA: лёгкая проверка коротких роликов до отправки ──
                 if user_mode == "eng_fast_qa" and not is_fallback:
                     try:
@@ -745,13 +795,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     except Exception as _qfix_err:
                                         logger.warning("[LiveDubQuickQA] автофикс не удался: %s", str(_qfix_err)[:160])
                                 if _quick_qa:
-                                    await context.bot.send_message(
-                                        chat_id=update.effective_chat.id,
-                                        text=format_qa_report(_quick_qa, video_url=url),
-                                        parse_mode="HTML",
-                                        reply_to_message_id=update.message.message_id,
-                                        disable_web_page_preview=True,
-                                    )
+                                    _quick_qa_report_html = format_qa_report(_quick_qa, video_url=url)
                         except Exception as _quick_qa_err:
                             logger.info("[LiveDubQuickQA] skip: %s", str(_quick_qa_err)[:160])
                     else:
@@ -867,6 +911,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.info(f"[LiveDub] file_id сохранён в кэш ({media_id})")
                     except Exception as _fid_save_err:
                         logger.warning(f"[LiveDub] не сохранил file_id: {_fid_save_err}")
+
+                # В Quick QA проверка нужна ДО отправки (чтобы успеть авто-вырезать
+                # major), но отчёт показываем ПОСЛЕ видео: главный результат режима
+                # — готовый перевод, а не сначала диагностическая простыня.
+                if _quick_qa_report_html:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=_quick_qa_report_html,
+                            parse_mode="HTML",
+                            reply_to_message_id=update.message.message_id,
+                            disable_web_page_preview=True,
+                        )
+                    except Exception as _qrep_err:
+                        logger.info("[LiveDubQuickQA] report send failed: %s", str(_qrep_err)[:160])
 
                 # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
                 if user_mode in ("eng_fast", "eng_fast_qa") and not is_fallback:

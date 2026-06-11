@@ -328,6 +328,7 @@ def test_qa_prompt_has_reasoning_first_and_no_guess_rule():
     # порядок полей: reasoning раньше score (reasoning-first повышает точность)
     assert _QA_PROMPT.index('"reasoning"') < _QA_PROMPT.index('"score"')
     assert "НЕ включай" in _QA_PROMPT  # правило «не уверен — пропусти»
+    assert "ВСЕ текстовые поля JSON НА РУССКОМ ЯЗЫКЕ" in _QA_PROMPT
 
 
 def test_parse_qa_json_with_reasoning_field():
@@ -781,6 +782,18 @@ def test_livedub_title_default_uses_light_info_pipeline(monkeypatch):
     assert author == ""
 
 
+def test_livedub_title_author_first_is_reordered():
+    import pipelines.main_pipeline as mp
+    title, author = mp._split_livedub_title_author(
+        "R.C. Sproul: True Seeker-Sensitive Churches", "", "", "BibleQ&A"
+    )
+    assert title == "True Seeker-Sensitive Churches"
+    assert author == "Р. Ч. Спроул"
+    assert mp._format_livedub_title_line("Р. Ч. Спроул - True Seeker-Sensitive Churches", "") == (
+        "True Seeker-Sensitive Churches - Р. Ч. Спроул"
+    )
+
+
 def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "_translate_livedub_title_for_caption" in src
@@ -827,6 +840,13 @@ def test_livedub_info_youtube_description_contains_original_link():
     msg = format_livedub_info_message(card)
     assert "Оригинал: https://www.youtube.com/watch?v=abc123" in msg
     assert "Оригинал на YouTube" in msg
+
+
+def test_livedub_info_prompt_requires_russian_title_order():
+    src = Path("services/livedub_info.py").read_text(encoding="utf-8")
+    assert "YouTube title тоже переведи на русский" in src
+    assert "Название - Автор" in src
+    assert "R.C. Sproul=Р. Ч. Спроул" in src
 
 
 def test_livedub_info_normalizes_hashtags_and_title_case():
@@ -881,10 +901,19 @@ def test_livedub_info_card_sent_for_cached_file_id_too():
     assert "async def _send_livedub_info_card_once" in helper
 
 
-def test_livedub_info_card_wired_only_for_eng_quick():
+def test_quick_qa_report_sent_after_video_not_before():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    assert "_quick_qa_report_html = format_qa_report" in helper
+    assert "главный результат режима" in helper
+    assert helper.index("_sent_msg = await context.bot.send_video") < helper.index("if _quick_qa_report_html:")
+
+
+def test_livedub_info_card_wired_for_eng_quick_and_quick_qa():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "livedub_info_enabled" in src
     assert 'user_mode in ("eng_fast", "eng_fast_qa")' in src
+    assert 'user_mode not in ("eng_fast", "eng_fast_qa")' in src
     assert "build_livedub_info_card" in src
     assert "format_livedub_info_message" in src
     assert "get_translation_subtitles(video_url, workdir)" in src
