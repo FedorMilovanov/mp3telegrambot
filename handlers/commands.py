@@ -148,7 +148,7 @@ async def help_command(update, context):
         f"🇬🇧 ENG-режимы (для англоязычных видео):\n"
         f"• ENG Full — анализ + видео с «Живыми голосами» Яндекса + проверка точности перевода\n"
         f"• ENG Quick — только переведённое видео, максимально быстро\n"
-        f"🔑 Для стабильных «Живых голосов» нужен VOT_API_TOKEN в .env"
+        f"🔑 Для стабильных «Живых голосов» нужен VOT_API_TOKEN (или YANDEX_OAUTH_TOKEN) в .env"
     )
 
 
@@ -261,7 +261,8 @@ async def status_command(update, context):
         "mp3gain": bool(_sh.which("mp3gain") or _sh.which("mp3gain.exe")),
     }
     lines.append("🔧 " + " · ".join(f"{'✅' if ok else '❌'}{name}" for name, ok in tools.items()))
-    lines.append(f"🔑 VOT_API_TOKEN: {'✅' if os.getenv('VOT_API_TOKEN') else '❌'}")
+    _vot_oauth_ok = bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
+    lines.append(f"🔑 VOT_API_TOKEN/YANDEX_OAUTH_TOKEN: {'✅' if _vot_oauth_ok else '❌'}")
     # Энкодер
     try:
         from services.ffmpeg import _get_video_encoder

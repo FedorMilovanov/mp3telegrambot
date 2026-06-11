@@ -1284,9 +1284,12 @@ def test_vot_token_alias_functional(monkeypatch):
 
 
 def test_vot_token_startup_diagnostic():
-    """Startup-диагностика 🔧 предупреждает об отсутствии VOT_API_TOKEN."""
+    """Startup-диагностика 🔧 предупреждает об отсутствии VOT_API_TOKEN/YANDEX_OAUTH_TOKEN."""
     src = Path("main.py").read_text(encoding="utf-8")
-    assert 'os.getenv("VOT_API_TOKEN")' in src
+    assert 'os.getenv("VOT_API_TOKEN"' in src
+    assert "YANDEX_OAUTH_TOKEN" in src
+    helper = Path("vot_helper/vot_live.mjs").read_text(encoding="utf-8")
+    assert "VOT_API_TOKEN/YANDEX_OAUTH_TOKEN не задан" in helper
 
 
 def test_vot_token_is_documented_in_readme_help_and_status():
@@ -1300,7 +1303,8 @@ def test_vot_token_is_documented_in_readme_help_and_status():
     assert "YANDEX_OAUTH_TOKEN" in env
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Для стабильных «Живых голосов» нужен VOT_API_TOKEN" in commands
-    assert "🔑 VOT_API_TOKEN" in commands
+    assert "YANDEX_OAUTH_TOKEN" in commands
+    assert "🔑 VOT_API_TOKEN/YANDEX_OAUTH_TOKEN" in commands
 
 
 def test_env_example_gemini_model_is_not_truncated():

@@ -78,7 +78,7 @@ try {
       const data = e?.data ?? {};
       if (data.status === 7 || /auth required/i.test(e?.message ?? "")) {
         console.error("LIVEDUB_AUTH_REQUIRED");
-        log(`Яндекс требует авторизацию для живых голосов. ${token ? "Токен отклонён (протух?)." : "VOT_API_TOKEN не задан."}`);
+        log(`Яндекс требует авторизацию для живых голосов. ${token ? "Токен отклонён (протух?)." : "VOT_API_TOKEN/YANDEX_OAUTH_TOKEN не задан."}`);
         process.exit(3);
       }
       if (data.status === 0 || /couldn't translate/i.test(e?.message ?? "")) {

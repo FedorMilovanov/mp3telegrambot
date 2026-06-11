@@ -80,8 +80,8 @@ py -3.13 bot_new.py      # Windows
 
 ### ENG / «Живые голоса» Яндекса
 
-Для режимов `ENG Full` и `ENG Quick` нужен `VOT_API_TOKEN` в `.env`.
-Альтернативное имя `YANDEX_OAUTH_TOKEN` тоже поддерживается.
+Для режимов `ENG Full` и `ENG Quick` нужен `VOT_API_TOKEN` в `.env`
+(или альтернативное имя `YANDEX_OAUTH_TOKEN`).
 Это OAuth access token аккаунта Яндекса для VOT API. Без него «Живые голоса»
 работают только для роликов, которые уже есть в серверном кэше Яндекса; новые
 ролики могут отвечать `SESSION_REQUIRED` / `Translation not available`.
