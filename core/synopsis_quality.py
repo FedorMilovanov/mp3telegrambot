@@ -32,7 +32,12 @@ def get_synopsis_density_profile(duration_seconds: int | float = 0) -> SynopsisD
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
         dur = 0
-    if dur and dur <= 20 * 60:
+    if dur <= 0:
+        # Unknown duration must not be treated as very_long. Metadata extraction
+        # can fail independently of content length; use a conservative profile
+        # and avoid false density retries demanding 12+ sections / 12k chars.
+        return SynopsisDensityProfile("unknown", "4-7", "350-1000", "2500", 32000, 4, 1800)
+    if dur <= 20 * 60:
         return SynopsisDensityProfile("short", "3-5", "250-800", "1800", 24000, 3, 1200)
     if dur and dur <= 50 * 60:
         return SynopsisDensityProfile("medium", "6-10", "600-1400", "4500", 40000, 6, 3500)

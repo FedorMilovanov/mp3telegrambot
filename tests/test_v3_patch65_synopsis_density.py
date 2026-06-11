@@ -47,3 +47,10 @@ def test_telegraph_wires_synopsis_density_profile_and_audit():
     assert "_syn_max_tokens" in src
     assert "audit_synopsis_density(sections, _duration)" in src
     assert "density/coverage audit" in src
+
+
+def test_synopsis_density_unknown_duration_is_not_very_long():
+    unknown = get_synopsis_density_profile(0)
+    assert unknown.name == "unknown"
+    assert unknown.min_sections < get_synopsis_density_profile(7200).min_sections
+    assert unknown.min_total_chars < get_synopsis_density_profile(7200).min_total_chars
