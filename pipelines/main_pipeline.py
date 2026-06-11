@@ -21,7 +21,7 @@ from core.utils import (
 )
 from core.text_utils import (
     _scrub_inline, normalize_author_name, normalize_title_text,
-    normalize_common_typos, _has_dirty_meta,                                   # FIX #11
+    normalize_common_typos, _has_dirty_meta, title_case_fragment,              # FIX #11
 )
 from converters.md_telegraph import (
     visible_length, safe_trim_caption,                 # FIX #11
@@ -70,6 +70,180 @@ import sqlite3  # LIVEDUB: direct DB read for user mode
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+# ── LiveDub caption title helpers ─────────────────────────────────
+
+_LIVEDUB_TITLE_CACHE: dict[tuple[str, str, str], tuple[str, str]] = {}
+
+_KNOWN_AUTHOR_RU: dict[str, str] = {
+    "John MacArthur": "Джон МакАртур",
+    "MacArthur": "Джон МакАртур",
+    "Paul Washer": "Пол Вошер",
+    "Washer": "Пол Вошер",
+    "Abner Chou": "Абнер Чау",
+    "Costi Hinn": "Кости Хинн",
+    "R.C. Sproul": "Р. Ч. Спроул",
+    "R. C. Sproul": "Р. Ч. Спроул",
+}
+
+_KNOWN_CHANNEL_AUTHOR_RU: dict[str, str] = {
+    "grace to you": "Джон МакАртур",
+    "gty": "Джон МакАртур",
+    "heartcry missionary society": "Пол Вошер",
+    "heartcry": "Пол Вошер",
+}
+
+
+def _clean_livedub_meta_text(text: str) -> str:
+    text = str(text or "")
+    text = re.sub(r"(?i)#\s*(shorts?|ytshorts|youtube|sermon|preaching)\b", "", text)
+    text = re.sub(r"(?i)\b(shorts?|youtube shorts?)\b", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" -—–|:;\t\n\r")
+    return text.strip()
+
+
+def _replace_known_author_names(text: str) -> str:
+    out = str(text or "")
+    for en, ru in _KNOWN_AUTHOR_RU.items():
+        out = re.sub(rf"(?i)\b{re.escape(en)}\b", ru, out)
+    out = re.sub(r"\s+(?:and|&)\s+", " & ", out, flags=re.IGNORECASE)
+    out = re.sub(r"\s{2,}", " ", out).strip(" -—–|,;")
+    return normalize_author_name(out)
+
+
+def _known_author_from_text(*parts: str) -> str:
+    combined = " | ".join(str(p or "") for p in parts)
+    for en, ru in _KNOWN_AUTHOR_RU.items():
+        if re.search(rf"(?i)\b{re.escape(en)}\b", combined):
+            return ru
+    low = combined.lower()
+    for channel, ru in _KNOWN_CHANNEL_AUTHOR_RU.items():
+        if channel in low:
+            return ru
+    return ""
+
+
+def _looks_like_author_list(text: str) -> bool:
+    text = str(text or "").strip()
+    if not text or len(text) > 80:
+        return False
+    if _known_author_from_text(text):
+        return True
+    if re.search(r"[?!:]{1}", text):
+        return False
+    words = [w for w in re.split(r"\s+|\s*&\s*|\s+and\s+", text) if w]
+    if not (2 <= len(words) <= 8):
+        return False
+    meaningful = [w.strip(".,;:()[]{}") for w in words if w.strip(".,;:()[]{}")]
+    caps = sum(1 for w in meaningful if re.match(r"^[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё.'-]+$", w))
+    return caps >= max(2, len(meaningful) - 1)
+
+
+def _split_livedub_title_author(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
+    full_title = _clean_livedub_meta_text(full_title)
+    parsed_title = _clean_livedub_meta_text(parsed_title)
+    parsed_performer = _clean_livedub_meta_text(parsed_performer)
+    channel_name = _clean_livedub_meta_text(channel_name)
+
+    for sep in (" — ", " - ", " | ", " – ", " // "):
+        if sep in full_title:
+            left, right = [x.strip() for x in full_title.rsplit(sep, 1)]
+            if left and right and _looks_like_author_list(right):
+                return left, right
+
+    author = _known_author_from_text(full_title, parsed_performer, channel_name)
+    if not author and parsed_performer and not _looks_like_author_list(parsed_title):
+        author = parsed_performer
+
+    title = parsed_title or full_title
+    if _looks_like_author_list(title) and full_title:
+        title = full_title
+    return title, author
+
+
+def _fallback_livedub_ru_title(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
+    raw_title, raw_author = _split_livedub_title_author(full_title, parsed_title, parsed_performer, channel_name)
+    title_ru = title_case_fragment(normalize_title_text(_replace_known_author_names(raw_title)) or raw_title)
+    author_ru = _replace_known_author_names(raw_author) or _known_author_from_text(full_title, parsed_performer, channel_name)
+    if author_ru and author_ru.lower() in {"grace to you", "heartcry", "heartcry missionary society"}:
+        author_ru = _known_author_from_text(author_ru) or author_ru
+    return title_ru.strip(), author_ru.strip()
+
+
+async def _translate_livedub_title_for_caption(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
+    """Return (Russian title, Russian author) for ENG Quick/LiveDub captions.
+
+    ENG Quick deliberately skips full audio analysis, but the user still needs a
+    meaningful caption instead of a bare «Живые голоса Яндекса». This is a tiny
+    text-only Gemini call; on any failure we fall back to deterministic cleanup.
+    """
+    cache_key = (str(full_title or ""), str(parsed_title or ""), str(channel_name or ""))
+    if cache_key in _LIVEDUB_TITLE_CACHE:
+        return _LIVEDUB_TITLE_CACHE[cache_key]
+
+    fallback_title, fallback_author = _fallback_livedub_ru_title(
+        full_title, parsed_title, parsed_performer, channel_name
+    )
+    if not GEMINI_CLIENTS or os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() in {"0", "false", "no", "off"}:
+        _LIVEDUB_TITLE_CACHE[cache_key] = (fallback_title, fallback_author)
+        return fallback_title, fallback_author
+
+    prompt = (
+        "Переведи метаданные YouTube-видео для краткой Telegram-подписи на русском.\n"
+        "Верни СТРОГО JSON: {\"title_ru\":\"...\",\"author_ru\":\"...\"}.\n"
+        "Правила:\n"
+        "- title_ru: естественное русское название, без #shorts, без слова Shorts, без кавычек;\n"
+        "- author_ru: имя автора/спикера на русском, если оно явно есть в названии/канале "
+        "или общеизвестно по каналу; иначе пустая строка;\n"
+        "- не добавляй отсебятину, не меняй богословский смысл;\n"
+        "- известные имена: John MacArthur=Джон МакАртур, Paul Washer=Пол Вошер, "
+        "Abner Chou=Абнер Чау, Costi Hinn=Кости Хинн;\n"
+        "- Grace to You обычно означает Джон МакАртур; HeartCry часто означает Пол Вошер, "
+        "но если в title указан другой спикер — выбери его.\n\n"
+        f"title: {full_title}\n"
+        f"parsed_title: {parsed_title}\n"
+        f"parsed_performer: {parsed_performer}\n"
+        f"channel: {channel_name}\n"
+    )
+    try:
+        from core.globals import make_text_config_smart
+        cfg = make_text_config_smart(
+            temperature=0.1,
+            max_output_tokens=512,
+            thinking_level="minimal",
+            response_mime_type="application/json",
+        )
+        resp = await GEMINI_CLIENTS[0].aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=cfg,
+        )
+        raw = (getattr(resp, "text", "") or "").strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        data = json.loads(raw)
+        title_ru = title_case_fragment(normalize_title_text(str(data.get("title_ru") or "")))
+        author_ru = _replace_known_author_names(str(data.get("author_ru") or ""))
+        if not title_ru:
+            title_ru = fallback_title
+        if not author_ru:
+            author_ru = fallback_author
+        result = (title_ru[:180].strip(), author_ru[:80].strip())
+    except Exception as e:
+        logger.info("[LiveDubTitle] fallback title translation: %s", str(e)[:120])
+        result = (fallback_title, fallback_author)
+
+    _LIVEDUB_TITLE_CACHE[cache_key] = result
+    return result
+
+
+def _format_livedub_title_line(title_ru: str, author_ru: str) -> str:
+    title_ru = title_case_fragment(normalize_title_text(title_ru) or title_ru).strip()
+    author_ru = normalize_author_name(author_ru).strip()
+    if title_ru and author_ru and author_ru.lower() not in title_ru.lower():
+        return f"{title_ru} - {author_ru}"
+    return title_ru or author_ru or "Переведённое видео"
 
 def _sponsorblock_args() -> list:
     """SponsorBlock-вырезка для mp3 (opt-in, default OFF).
@@ -355,17 +529,29 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             внятное сообщение); False — если перевод тихо не состоялся.
             Общий хелпер для обеих веток (кэш-hit и полная обработка).
             """
+            _livedub_title_line = ""
+            try:
+                _title_ru, _author_ru = await _translate_livedub_title_for_caption(
+                    full_title, title, performer, channel_name
+                )
+                _livedub_title_line = _format_livedub_title_line(_title_ru, _author_ru)
+            except Exception as _lte:
+                logger.info("[LiveDubTitle] caption title unavailable: %s", str(_lte)[:120])
+                _livedub_title_line = title_case_fragment(normalize_title_text(title) or title or "")
+            _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
+
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
                 try:
-                    try:
-                        _cached_cap = f"🎬 Живые голоса Яндекса\n📝 {title}"
-                    except NameError:
-                        _cached_cap = "🎬 Живые голоса Яндекса"
+                    _cached_cap = (
+                        f"<b>{_livedub_title_html}</b>\n🎬 Живые голоса Яндекса"
+                        if _livedub_title_html else "🎬 Живые голоса Яндекса"
+                    )
                     await context.bot.send_video(
                         chat_id=update.effective_chat.id,
                         video=_livedub_cached_file_id,
                         caption=_cached_cap,
+                        parse_mode="HTML",
                         reply_to_message_id=update.message.message_id,
                         supports_streaming=True,
                     )
@@ -424,8 +610,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         reply_to_message_id=update.message.message_id,
                     )
                     return True
+                _title_prefix = f"<b>{_livedub_title_html}</b>\n" if _livedub_title_html else ""
                 if is_fallback:
-                    caption = "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                    caption = _title_prefix + "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
                 else:
                     # round 38: если сработал tts-fallback — честный caption
                     _tts_marker = False
@@ -434,7 +621,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except OSError:
                         pass
                     _voice_label = "🎬 Перевод Яндекса (обычные голоса)" if _tts_marker else "🎬 Живые голоса Яндекса"
-                    caption = _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                    caption = _title_prefix + _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
                 # Path вместо file handle: с локальным Bot API (local_mode=True)
@@ -465,6 +652,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     chat_id=update.effective_chat.id,
                     video=livedub_path,
                     caption=caption,
+                    parse_mode="HTML",
                     width=_v_meta.get("width"),
                     height=_v_meta.get("height"),
                     duration=_v_meta.get("duration"),

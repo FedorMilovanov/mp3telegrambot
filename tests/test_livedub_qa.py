@@ -582,6 +582,55 @@ def test_startup_diagnostics_mention_supported_ytdlp_js_runtime():
     assert "nodejs>=22 или deno>=2.3" in req
 
 
+# ── LiveDub captions: translated title for Shorts/ENG Quick ──────
+
+def test_livedub_caption_title_fallback_known_authors():
+    from pipelines.main_pipeline import _fallback_livedub_ru_title, _format_livedub_title_line
+    title, author = _fallback_livedub_ru_title(
+        "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
+        "", "", "BibleQ&A",
+    )
+    assert title == "Why Are You a Dispensationalist?"
+    assert author == "Абнер Чау & Кости Хинн"
+    assert _format_livedub_title_line(title, author).endswith(" - Абнер Чау & Кости Хинн")
+    title2, author2 = _fallback_livedub_ru_title("Angels: God's Invisible Army - Part 1", "", "", "Grace to You")
+    assert author2 == "Джон МакАртур"
+
+
+def test_livedub_caption_title_gemini_translation(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    import pipelines.main_pipeline as mp
+
+    class _FakeModels:
+        async def generate_content(self, **kwargs):
+            return SimpleNamespace(text='{"title_ru":"Почему вы диспенсационалист?","author_ru":"Абнер Чау & Кости Хинн"}')
+
+    fake_client = SimpleNamespace(aio=SimpleNamespace(models=_FakeModels()))
+    monkeypatch.setattr(mp, "GEMINI_CLIENTS", [fake_client])
+    mp._LIVEDUB_TITLE_CACHE.clear()
+    title, author = asyncio.run(mp._translate_livedub_title_for_caption(
+        "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
+        "Why Are You a Dispensationalist?",
+        "Abner Chou & Costi Hinn",
+        "BibleQ&A",
+    ))
+    assert title == "Почему вы диспенсационалист?"
+    assert author == "Абнер Чау & Кости Хинн"
+    assert mp._format_livedub_title_line(title, author) == "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"
+
+
+def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "_translate_livedub_title_for_caption" in src
+    assert "_livedub_title_html" in src
+    assert "<b>{_livedub_title_html}</b>" in src
+    # и свежая отправка, и file_id-кэш используют HTML caption
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    assert helper.count('parse_mode="HTML"') >= 2
+    assert "🎬 Живые голоса Яндекса" in helper
+
+
 # ── Заход 9: обслуживание диска + flood control ──────────────────
 
 def test_cleanup_botapi_server_files(tmp_path, monkeypatch):
