@@ -862,6 +862,25 @@ def test_pipeline_waitfor_covers_retry_budget():
     # бюджет: audio worst-case 480*3+180=1620 < 1800; merge 600*2+90=1290 < 1800
 
 
+def test_livedub_autofix_mutes_major_errors_by_default(monkeypatch):
+    import services.livedub_mix as lm
+    monkeypatch.delenv("LIVEDUB_AUTOFIX_RU_VOLUME", raising=False)
+    assert lm._FIX_RU_GAIN == 0.0
+    src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "LIVEDUB_AUTOFIX_RU_VOLUME" in src
+    assert "полностью вырезается" in src
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "русский дубляж вырезан" in pipe
+
+
+def test_livedub_qa_prompt_flags_parent_sexual_mistranslation_as_major():
+    src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
+    assert "fools bring grief to their parents" in src
+    assert "fools commit sexual" in src
+    assert "родителями" in src
+    assert "severity=major" in src
+
+
 # ── Заход 11: реюз Gemini audio_part в QA ────────────────────────
 
 def test_qa_reuses_existing_audio_part():

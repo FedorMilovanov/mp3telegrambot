@@ -885,7 +885,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                                     duration=_fx_meta.get("duration"),
                                                     caption=(
                                                         f"🩹 Исправленная версия: в {len(_qa_majors)} "
-                                                        f"месте(ах) с искажением перевод приглушён, "
+                                                        f"месте(ах) с искажением русский дубляж вырезан, "
                                                         f"оригинал выведен в полный голос."
                                                     ),
                                                     reply_to_message_id=update.message.message_id,

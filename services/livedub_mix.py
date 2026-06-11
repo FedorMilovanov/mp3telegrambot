@@ -491,9 +491,11 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Optional[Path
 # Окно правки вокруг таймкода проблемы
 _FIX_PRE = 0.5    # начать чуть раньше
 _FIX_LEN = 6.0    # длительность окна
-# Насколько глушим перевод и поднимаем оригинал внутри окна
-_FIX_RU_GAIN = 0.15
-_FIX_EN_BOOST = 2.2   # 0.45 * 2.2 ≈ 1.0 — оригинал в полный голос
+# Насколько глушим перевод и поднимаем оригинал внутри окна.
+# Роковые major-ошибки (пример: склейка "родители" + sexual immorality)
+# нужно именно вырезать из RU-дубляжа, а не оставлять слышимыми на 15%.
+_FIX_RU_GAIN = _env_float("LIVEDUB_AUTOFIX_RU_VOLUME", 0.0)
+_FIX_EN_BOOST = _env_float("LIVEDUB_AUTOFIX_EN_BOOST", 2.2)   # 0.45 * 2.2 ≈ 1.0
 
 
 def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[float, float]]:
@@ -525,7 +527,7 @@ def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[
 
 async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Path]:
     """Пересобирает микс с точечными правками: в местах major-искажений
-    перевод приглушается, оригинал выводится в полный голос.
+    RU-дубляж по умолчанию полностью вырезается, оригинал выводится в полный голос.
 
     Видео не перекодируется (-c:v copy) — операция занимает секунды.
     Возвращает путь к исправленному видео или None.
