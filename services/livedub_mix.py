@@ -340,7 +340,16 @@ async def build_pro_dub(video_url: str, workdir: Path) -> Optional[Path]:
         # vot-протоколу, но ОБЫЧНЫЕ голоса есть (Я.Браузер показывает оба).
         # Fallback live → tts, как делает сам браузер. LIVEDUB_TTS_FALLBACK=0
         # отключает (пуристам только живые голоса).
-        if ("LIVEDUB_NOT_AVAILABLE" in str(_live_err)
+        # ROUND 39: настоящая причина отказов — Яндекс требует OAuth-токен
+        # для живых голосов (SESSION_REQUIRED). Маркер .auth_required
+        # позволяет пайплайну подсказать юзеру про VOT_API_TOKEN.
+        if "LIVEDUB_AUTH_REQUIRED" in str(_live_err):
+            try:
+                (workdir / ".auth_required").write_text("1", encoding="utf-8")
+            except OSError:
+                pass
+        if (("LIVEDUB_NOT_AVAILABLE" in str(_live_err)
+                or "LIVEDUB_AUTH_REQUIRED" in str(_live_err))
                 and os.getenv("LIVEDUB_TTS_FALLBACK", "1").strip().lower()
                     not in {"0", "false", "no", "off"}):
             logger.info("[LiveDubMix] Живые голоса недоступны — пробую обычные (tts)")

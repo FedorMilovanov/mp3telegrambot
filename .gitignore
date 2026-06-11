@@ -70,3 +70,6 @@ logs/
 
 # Runtime log file
 bot.log
+
+# =============== Node (vot_helper) ===============
+node_modules/

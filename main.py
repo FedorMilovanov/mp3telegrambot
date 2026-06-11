@@ -76,6 +76,15 @@ async def run_bot_async():
             logger.info(f"🔧 {_tname}: ✅")
         else:
             logger.warning(f"🔧 {_tname}: ❌ ОТСУТСТВУЕТ — часть функций молча деградирует")
+    # ROUND 39: живые голоса Яндекса требуют OAuth-токен (SESSION_REQUIRED
+    # с VOT 1.10). Без него live-перевод работает только из серверного кэша.
+    if os.getenv("VOT_API_TOKEN"):
+        logger.info("🔧 VOT_API_TOKEN: ✅ (живые голоса авторизованы)")
+    else:
+        logger.warning(
+            "🔧 VOT_API_TOKEN: ❌ НЕ ЗАДАН — «Живые голоса» будут работать только "
+            "для уже переведённых кем-то роликов. Инструкция в .env.example"
+        )
     logger.info(f"🧠 AI ({GEMINI_MODEL}): {'✅' if GEMINI_CLIENTS else '❌'} (ключей: {len(GEMINI_CLIENTS)})")
 
     # AUDIT L6: обновлённые списки моделей по официальной странице

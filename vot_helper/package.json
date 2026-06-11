@@ -1,0 +1,9 @@
+{
+  "name": "mp3telegrambot-vot-helper",
+  "private": true,
+  "type": "module",
+  "description": "Direct Yandex VOT client (new protocol) for Live Voices with OAuth token support",
+  "dependencies": {
+    "@vot.js/node": "^2.4.12"
+  }
+}

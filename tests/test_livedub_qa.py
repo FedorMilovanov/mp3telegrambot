@@ -1130,3 +1130,55 @@ def test_tts_fallback_when_live_unavailable():
     assert ".voice_style_tts" in mix            # маркер для честного caption
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "обычные голоса" in pipe             # caption не врёт про Живые
+
+
+# ── Заход 39: НАСТОЯЩАЯ причина отказов — OAuth для живых голосов ─
+
+def test_new_protocol_helper_exists():
+    """Живой тест @vot.js/node ДОКАЗАЛ: на те же ролики Яндекс отвечает
+    status=7 SESSION_REQUIRED (нужен OAuth-токен, как в VOT 1.10), а не
+    'перевод недоступен'. Ролик из кэша (уже переведён юзером в
+    Я.Браузере) отдаёт live-MP3 мгновенно — поэтому «Shorts раньше
+    работали». Новый протокол: vot_helper/vot_live.mjs."""
+    helper = Path("vot_helper/vot_live.mjs")
+    assert helper.exists()
+    src = helper.read_text(encoding="utf-8")
+    assert "VOT_API_TOKEN" in src                  # токен из env
+    assert "useLivelyVoice" in src                 # новый протокол
+    assert "LIVEDUB_AUTH_REQUIRED" in src          # маркер status=7
+    assert "LIVEDUB_NOT_AVAILABLE" in src          # честный отказ
+    pkg = Path("vot_helper/package.json")
+    assert pkg.exists() and "@vot.js/node" in pkg.read_text(encoding="utf-8")
+
+
+def test_new_protocol_first_in_get_live_dub_audio():
+    """get_live_dub_audio должен пробовать новый протокол ПЕРВЫМ,
+    со старым vot-cli-live как fallback (нет node — нет паники)."""
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert "_ensure_vot_helper" in src
+    assert "_get_audio_new_protocol" in src
+    # новый протокол вызывается до _check_vot_cli в get_live_dub_audio
+    body = src.split("async def get_live_dub_audio", 1)[1]
+    assert body.index("_ensure_vot_helper") < body.index("_check_vot_cli()")
+    # AUTH_REQUIRED пробрасывается наверх (не маскируется под сбой)
+    assert "LIVEDUB_AUTH_REQUIRED" in body
+
+
+def test_auth_required_marker_and_user_hint():
+    """При SESSION_REQUIRED юзер получает инструкцию про VOT_API_TOKEN,
+    а не общую отписку «перевод недоступен»."""
+    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert ".auth_required" in mix                 # маркер в workdir
+    assert "LIVEDUB_AUTH_REQUIRED" in mix          # участвует в tts-fallback
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "VOT_API_TOKEN" in pipe                 # подсказка юзеру
+    assert ".auth_required" in pipe
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "VOT_API_TOKEN" in env                  # задокументирован
+    assert "rust-server-531j.onrender.com" in env  # как получить
+
+
+def test_vot_token_startup_diagnostic():
+    """Startup-диагностика 🔧 предупреждает об отсутствии VOT_API_TOKEN."""
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert 'os.getenv("VOT_API_TOKEN")' in src

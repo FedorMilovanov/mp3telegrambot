@@ -293,7 +293,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     try:
                         dub_path = await dub_task
                     except RuntimeError as e:
-                        if "LIVEDUB_NOT_AVAILABLE" in str(e):
+                        if "LIVEDUB_AUTH_REQUIRED" in str(e):
+                            logger.warning(
+                                "[LiveDub] Яндекс требует OAuth-токен для живых голосов "
+                                "(нет/протух VOT_API_TOKEN в .env — см. .env.example)"
+                            )
+                        elif "LIVEDUB_NOT_AVAILABLE" in str(e):
                             logger.info("[LiveDub] Перевод недоступен для этого видео")
                         else:
                             logger.warning(f"[LiveDub] Ошибка: {e}")
@@ -620,13 +625,32 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if not _delivered:
                 # FIX 2026-06-10: раньше при сбое перевода ENG Quick юзер
                 # оставался ВООБЩЕ без ответа (статус удалён, видео нет).
+                # ROUND 39: если отказ из-за отсутствия OAuth-токена — говорим
+                # прямо, как починить (это и была причина «Translation not
+                # available» на Shorts и новых видео).
+                _auth_required = False
                 try:
-                    await update.message.reply_text(
-                        "❌ Перевод «Живые голоса» не получился для этого видео.\n"
-                        "Возможные причины: перевод недоступен у Яндекса, vot-cli-live "
-                        "не установлен, или видео слишком длинное.\n"
-                        "Попробуйте режим 🇬🇧 ENG Full (/mode) — там будет хотя бы анализ."
-                    )
+                    _auth_required = ("ld_work" in locals()
+                                      and (ld_work / ".auth_required").exists())
+                except OSError:
+                    pass
+                try:
+                    if _auth_required:
+                        await update.message.reply_text(
+                            "❌ Яндекс теперь требует авторизацию для «Живых голосов».\n"
+                            "🔑 Добавь VOT_API_TOKEN в .env (инструкция в .env.example):\n"
+                            "1) открой https://rust-server-531j.onrender.com/v1/auth/handle\n"
+                            "2) войди в аккаунт Яндекса\n"
+                            "3) скопируй access_token из адресной строки после редиректа\n"
+                            "4) VOT_API_TOKEN=<токен> в .env и перезапусти бота."
+                        )
+                    else:
+                        await update.message.reply_text(
+                            "❌ Перевод «Живые голоса» не получился для этого видео.\n"
+                            "Возможные причины: перевод недоступен у Яндекса, vot-cli-live "
+                            "не установлен, или видео слишком длинное.\n"
+                            "Попробуйте режим 🇬🇧 ENG Full (/mode) — там будет хотя бы анализ."
+                        )
                 except Exception:
                     pass
             cleanup_files(media_id)
