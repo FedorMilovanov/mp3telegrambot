@@ -201,14 +201,18 @@ async def _get_audio_new_protocol(
     """Скачивает перевод через vot_helper (новый протокол, OAuth-токен)."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 2026-06-11: Нормализуем код языка (en-us -> en), т.к. Яндекс предпочитает ISO 639-1.
+    _clean_lang = lang.split('-')[0].lower() if lang else ""
+    
     cmd = helper + [
         "--url", video_url,
         "--output", str(output_dir),
         "--voice-style", voice_style,
         "--timeout", str(timeout),
     ]
-    if lang:
-        cmd += ["--lang", lang]
+    if _clean_lang:
+        cmd += ["--lang", _clean_lang]
     request_duration = _vot_request_duration(duration)
     if request_duration > 0:
         cmd += ["--duration", str(request_duration)]
@@ -284,9 +288,10 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    _clean_lang = lang.split('-')[0].lower() if lang else ""
     cmd = [vot, "--output", str(output_dir), "--voice-style", voice_style, "--quiet"]
-    if lang:
-        cmd += ["--lang", lang]
+    if _clean_lang:
+        cmd += ["--lang", _clean_lang]
     cmd.append(video_url)
     logger.info(f"[LiveDub] Запуск: {' '.join(cmd)}")
 

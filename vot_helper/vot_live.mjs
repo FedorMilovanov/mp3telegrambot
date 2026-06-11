@@ -36,6 +36,7 @@ const { values: args } = parseArgs({
     timeout: { type: "string", default: "1800" },
     token: { type: "string" },
     duration: { type: "string" },
+    lang: { type: "string" },
   },
 });
 
@@ -48,6 +49,7 @@ const token = args.token || process.env.VOT_API_TOKEN || process.env.YANDEX_OAUT
 const useLively = (args["voice-style"] || "live").toLowerCase() !== "tts";
 const timeoutSec = Math.max(60, parseInt(args.timeout, 10) || 1800);
 const knownDuration = args.duration ? Math.max(0, Number(args.duration) || 0) : 0;
+const sourceLang = args.lang ? args.lang.trim().toLowerCase() : "";
 
 const client = new VOTClient({ apiToken: token });
 
@@ -63,6 +65,12 @@ try {
     // Яндекса, поэтому прокидываем точную длительность из yt-dlp Python-пайплайна.
     videoData.duration = knownDuration;
     log(`duration=${knownDuration}s передан в VOT cache-key`);
+  }
+  if (sourceLang) {
+    // 2026-06-11: Форсируем язык исходного видео. Помогает Яндексу, если в ролике
+    // сложный акцент или много фоновой музыки.
+    videoData.language = sourceLang;
+    log(`language=${sourceLang} форсирован для запроса`);
   }
   const deadline = Date.now() + timeoutSec * 1000;
   let result = null;
