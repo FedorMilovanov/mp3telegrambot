@@ -756,6 +756,14 @@ def test_livedub_info_message_uses_safe_html_trim():
     assert "[:3900]" not in src
 
 
+def test_livedub_info_card_sent_for_cached_file_id_too():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
+    cached_block = helper[helper.index("if _livedub_cached_file_id and context:"):helper.index("except Exception as _fid_err")]
+    assert "await _send_livedub_info_card_once(None)" in cached_block
+    assert "async def _send_livedub_info_card_once" in helper
+
+
 def test_livedub_info_card_wired_only_for_eng_quick():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "livedub_info_enabled" in src

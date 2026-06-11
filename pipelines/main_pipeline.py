@@ -613,6 +613,24 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_title_line = title_case_fragment(normalize_title_text(title) or title or "")
             _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
 
+            async def _send_livedub_info_card_once(dub_srt_path=None) -> None:
+                if user_mode != "eng_fast":
+                    return
+                try:
+                    from services.livedub_info import build_livedub_info_card, format_livedub_info_message
+                    _info_card = await build_livedub_info_card(_livedub_title_line, dub_srt_path)
+                    _info_msg = format_livedub_info_message(_info_card or {})
+                    if _info_msg:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=_info_msg,
+                            parse_mode="HTML",
+                            reply_to_message_id=update.message.message_id,
+                            disable_web_page_preview=True,
+                        )
+                except Exception as _info_err:
+                    logger.info("[LiveDubInfo] skip: %s", str(_info_err)[:160])
+
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
                 try:
@@ -628,6 +646,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         reply_to_message_id=update.message.message_id,
                         supports_streaming=True,
                     )
+                    await _send_livedub_info_card_once(None)
                     return True
                 except Exception as _fid_err:
                     # file_id протух (смена бота/сервера). Чистим кэш, чтобы
@@ -763,30 +782,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
                 # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
                 if user_mode == "eng_fast" and not is_fallback:
+                    _info_srt = None
                     try:
-                        from services.livedub_info import build_livedub_info_card, format_livedub_info_message
-                        _info_srt = None
-                        try:
-                            if "ld_work" in locals() and ld_work.exists():
-                                _srt_candidates = sorted(
-                                    (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
-                                    key=lambda f: f.stat().st_mtime, reverse=True,
-                                )
-                                _info_srt = _srt_candidates[0] if _srt_candidates else None
-                        except Exception:
-                            pass
-                        _info_card = await build_livedub_info_card(_livedub_title_line, _info_srt)
-                        _info_msg = format_livedub_info_message(_info_card or {})
-                        if _info_msg:
-                            await context.bot.send_message(
-                                chat_id=update.effective_chat.id,
-                                text=_info_msg,
-                                parse_mode="HTML",
-                                reply_to_message_id=update.message.message_id,
-                                disable_web_page_preview=True,
+                        if "ld_work" in locals() and ld_work.exists():
+                            _srt_candidates = sorted(
+                                (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
+                                key=lambda f: f.stat().st_mtime, reverse=True,
                             )
-                    except Exception as _info_err:
-                        logger.info("[LiveDubInfo] skip: %s", str(_info_err)[:160])
+                            _info_srt = _srt_candidates[0] if _srt_candidates else None
+                    except Exception:
+                        pass
+                    await _send_livedub_info_card_once(_info_srt)
 
                 # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
                 if _livedub_qa_enabled and not is_fallback:
