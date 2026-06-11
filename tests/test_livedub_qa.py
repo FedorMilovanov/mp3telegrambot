@@ -671,6 +671,41 @@ def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
     assert "if not (_livedub_cached_file_id or live_dub_task):" in helper
 
 
+# ── LiveDub lightweight info cards (Gemini light model) ──────────
+
+def test_livedub_info_card_module_contract(tmp_path):
+    from services.livedub_info import format_livedub_info_message, get_light_model, _normalize_card
+    assert get_light_model()
+    card = _normalize_card({
+        "telegram_description": "Короткое описание.",
+        "youtube_title": "Название - Автор",
+        "youtube_description": "Описание YouTube.",
+        "compact_subtitles": ["Тезис 1", "Тезис 2"],
+        "hashtags": ["евангелие", "Paul Washer"],
+    }, "Fallback")
+    msg = format_livedub_info_message(card)
+    assert "Описание для Telegram" in msg
+    assert "Для YouTube" in msg
+    assert "#евангелие" in msg
+
+
+def test_livedub_info_card_wired_only_for_eng_quick():
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "livedub_info_enabled" in src
+    assert 'user_mode == "eng_fast"' in src
+    assert "build_livedub_info_card" in src
+    assert "format_livedub_info_message" in src
+    assert "get_translation_subtitles(video_url, workdir)" in src
+
+
+def test_livedub_light_model_env_documented():
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
+    assert "LIVEDUB_INFO_CARD=1" in env
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme
+
+
 # ── Заход 9: обслуживание диска + flood control ──────────────────
 
 def test_cleanup_botapi_server_files(tmp_path, monkeypatch):

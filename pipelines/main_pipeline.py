@@ -445,6 +445,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _livedub_qa_enabled = (user_mode == "eng") and await asettings_get("livedub_qa")
             _livedub_pro_mix = await asettings_get("livedub_pro_mix")
             _livedub_autofix = _livedub_qa_enabled and await asettings_get("livedub_autofix")
+            try:
+                from services.livedub_info import livedub_info_enabled
+                _livedub_info_enabled = (user_mode == "eng_fast") and livedub_info_enabled()
+            except Exception:
+                _livedub_info_enabled = False
 
             async def _run_livedub_bg(video_url, workdir):
                 try:
@@ -482,7 +487,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     # Субтитры перевода Яндекса — точный текст дубляжа для QA.
                     # Качаются параллельно, сбой не критичен.
                     dub_subs_task = None
-                    if _livedub_qa_enabled:
+                    if _livedub_qa_enabled or _livedub_info_enabled:
                         from services.yandex_live_dub import get_translation_subtitles
                         dub_subs_task = asyncio.create_task(
                             get_translation_subtitles(video_url, workdir)
@@ -728,6 +733,33 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.info(f"[LiveDub] file_id сохранён в кэш ({media_id})")
                     except Exception as _fid_save_err:
                         logger.warning(f"[LiveDub] не сохранил file_id: {_fid_save_err}")
+
+                # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
+                if user_mode == "eng_fast" and not is_fallback:
+                    try:
+                        from services.livedub_info import build_livedub_info_card, format_livedub_info_message
+                        _info_srt = None
+                        try:
+                            if "ld_work" in locals() and ld_work.exists():
+                                _srt_candidates = sorted(
+                                    (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
+                                    key=lambda f: f.stat().st_mtime, reverse=True,
+                                )
+                                _info_srt = _srt_candidates[0] if _srt_candidates else None
+                        except Exception:
+                            pass
+                        _info_card = await build_livedub_info_card(_livedub_title_line, _info_srt)
+                        _info_msg = format_livedub_info_message(_info_card or {})
+                        if _info_msg:
+                            await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=_info_msg,
+                                parse_mode="HTML",
+                                reply_to_message_id=update.message.message_id,
+                                disable_web_page_preview=True,
+                            )
+                    except Exception as _info_err:
+                        logger.info("[LiveDubInfo] skip: %s", str(_info_err)[:160])
 
                 # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
                 if _livedub_qa_enabled and not is_fallback:
