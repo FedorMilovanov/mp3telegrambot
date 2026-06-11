@@ -29,6 +29,7 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in src
     assert "transcript-backed mode" in src
     assert "use_schema=not _transcript_attached" in src
+    assert "density retry uses transcript-only text path" in src
     assert "use_schema=False" in src  # density retry should not be schema-compressed
 
 

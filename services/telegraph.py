@@ -570,6 +570,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             )
 
         _transcript_attached = False
+        _transcript_text = ""
         # Дословность: если YouTube/auto captions доступны, добавляем timed
         # transcript как текстовую опору. Аудио всё равно прикладывается, но
         # transcript резко снижает риск «обзорной статьи» вместо стенограммы.
@@ -585,6 +586,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 )
                 if _tr_text:
                     _transcript_attached = True
+                    _transcript_text = _tr_text
                     prompt += (
                         "\n\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
                         "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА / AUTO-CAPTIONS\n"
@@ -975,8 +977,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             _syn_quality_issues
             and _synopsis_density_retry_enabled()
             and should_retry_synopsis_density(_syn_quality_issues, _duration)
-            and existing_audio_part is not None
-            and existing_client is not None
+            and (
+                (existing_audio_part is not None and existing_client is not None)
+                or _transcript_attached
+            )
         ):
             try:
                 _min_section_chars = 700
@@ -996,13 +1000,27 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     + "Если не хватает места, лучше меньше декоративных blocks, но длиннее content каждой секции.\n"
                     + f"Проблемы качества: {format_synopsis_quality_issues(_syn_quality_issues)}"
                 )
-                _retry_resp = await _generate_synopsis_content(
-                    existing_client,
-                    GEMINI_MODEL,
-                    [existing_audio_part, _density_retry_prompt],
-                    max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
-                    use_schema=False,
-                )
+                if _transcript_attached:
+                    logger.info("Synopsis v2: density retry uses transcript-only text path")
+                    async def _call_density_retry_text(client):
+                        return await _generate_synopsis_content(
+                            client,
+                            GEMINI_MODEL,
+                            _density_retry_prompt,
+                            max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
+                            use_schema=False,
+                        )
+                    _retry_resp = await gemini_generate(
+                        GEMINI_CLIENTS, _call_density_retry_text, model_name=GEMINI_MODEL
+                    )
+                else:
+                    _retry_resp = await _generate_synopsis_content(
+                        existing_client,
+                        GEMINI_MODEL,
+                        [existing_audio_part, _density_retry_prompt],
+                        max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
+                        use_schema=False,
+                    )
                 _retry_text = _extract_response_text(_retry_resp)
                 _retry_parsed = _try_parse_synopsis_json(_retry_text)
                 if _retry_parsed is not None:
