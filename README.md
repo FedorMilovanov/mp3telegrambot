@@ -87,6 +87,8 @@ py -3.13 bot_new.py      # Windows
   к облачному Bot API через proxy. Для v2rayN mixed-port обычно подходит
   `socks5h://127.0.0.1:10808`; если не установлен `socksio`, бот попробует
   HTTP fallback на тот же mixed-port (`TELEGRAM_PROXY_HTTP_FALLBACK=1`);
+- `yt-dlp` запускается отдельным процессом, поэтому без TUN ему тоже нужен proxy:
+  `YTDLP_PROXY_URL=http://127.0.0.1:10808` или fallback от `TELEGRAM_PROXY_URL`.
 - с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`. Официальный
   `telegram-bot-api.exe` не поддерживает SOCKS/MTProto TDLib proxy-флаги вида
   `--proxy-server/--tdlib-proxy-type`; такие аргументы валят сервер на старте.

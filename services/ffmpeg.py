@@ -16,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, List, Tuple
+from urllib.parse import urlparse
 
 
 # FIX #3: определяем здесь — ffmpeg.py не импортирует utils.py (избегаем кругового импорта)
@@ -154,6 +155,31 @@ def _supported_js_runtimes() -> list[str]:
             logger.warning("⚠️ Node.js найден, но версия %s < 22.0.0 — не передаю в yt-dlp --js-runtimes", vt or "unknown")
     return runtimes
 
+def _proxy_for_ytdlp() -> str:
+    """Proxy URL for yt-dlp.
+
+    yt-dlp is a separate process; PTB's TELEGRAM_PROXY_URL does not affect it.
+    In no-TUN setups (v2rayN mixed port), YouTube metadata can hang forever
+    without --proxy. Prefer explicit YTDLP_PROXY_URL, otherwise reuse Telegram
+    proxy knobs. For v2rayN mixed ports convert SOCKS to HTTP by default: yt-dlp
+    works well with HTTP proxy and avoids extra PySocks/environment surprises.
+    """
+    raw = (
+        os.getenv("YTDLP_PROXY_URL", "").strip()
+        or os.getenv("TELEGRAM_PROXY_URL", "").strip()
+        or os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+    )
+    if not raw:
+        return ""
+    u = urlparse(raw)
+    scheme = (u.scheme or "").lower()
+    if scheme.startswith("socks") and os.getenv("YTDLP_PROXY_FORCE_SOCKS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        http_url = "http://" + raw.split("://", 1)[1]
+        logger.info("🌐 yt-dlp: SOCKS proxy заменён на HTTP mixed proxy: %s", http_url)
+        return http_url
+    return raw
+
+
 def _build_ytdlp_base_args() -> list:
     # FIXED #34: явный --no-config предотвращает авточтение ~/.config/yt-dlp/config
     # и ./yt-dlp.conf на сервере. Если локальный yt-dlp.conf существует — подключаем
@@ -210,6 +236,10 @@ def _build_ytdlp_base_args() -> list:
             args += ["--cookies-from-browser", "firefox"]
         elif not _conf_has_cookies or not _use_conf:
             logger.warning("⚠️ Нет cookies — YouTube может блокировать запросы")
+    _proxy = _proxy_for_ytdlp()
+    if _proxy:
+        args += ["--proxy", _proxy]
+
     # JS runtime для решения YouTube n challenge
     # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
     # deno быстрее для YouTube. node — fallback при отсутствии deno.

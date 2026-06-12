@@ -440,9 +440,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         info_cmd = YTDLP_BASE_ARGS + [
             "--dump-json", "--no-playlist", url,
         ]
-        info_proc = await asyncio.get_running_loop().run_in_executor(
-            None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, timeout=60)
-        )
+        try:
+            _info_timeout = max(60, min(int(os.getenv("YTDLP_INFO_TIMEOUT", "180") or "180"), 900))
+        except ValueError:
+            _info_timeout = 180
+        try:
+            info_proc = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, timeout=_info_timeout)
+            )
+        except subprocess.TimeoutExpired as _ytdlp_timeout:
+            logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
+            raise Exception(
+                "yt-dlp не успел получить метаданные YouTube за "
+                f"{_info_timeout}с. Проверь proxy для yt-dlp: YTDLP_PROXY_URL "
+                "или TELEGRAM_PROXY_URL (для v2rayN mixed обычно http://127.0.0.1:10808)."
+            ) from None
         if info_proc.returncode != 0:
             raise Exception(info_proc.stderr[-500:] if info_proc.stderr else "yt-dlp info error")
         info_dict = None
