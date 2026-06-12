@@ -867,13 +867,38 @@ if _AUDIO_ANALYSIS_MODE not in {"deep", "balanced", "fast"}:
 
 
 def _hash_prompts_source() -> str:
-    """AUDIT L10: SHA от исходника core/prompts.py — любое изменение промта
-    автоматически инвалидирует кэш. Без необходимости вручную бампить
-    PROMPT_SCHEMA_VERSION."""
+    r"""SHA generation/render contract for cache invalidation.
+
+    Старое имя историческое: это не только prompts.py. Telegraph-страницы
+    зависят ещё от renderer/postprocess/audit helpers. Иначе баги вроде
+    видимых ``\*\*`` или некликабельных timestamp'ов исправлены в коде, но
+    кэш продолжает отдавать старые Telegraph URL без регенерации.
+    """
     try:
         from pathlib import Path as _P
-        src_path = _P(__file__).parent / "prompts.py"
-        return hashlib.sha256(src_path.read_bytes()).hexdigest()[:8]
+        root = _P(__file__).resolve().parent.parent
+        rels = [
+            "core/prompts.py",
+            "core/reasoning_guidance.py",
+            "core/prompt_rules.py",
+            "core/synopsis_quality.py",
+            "core/content_audit.py",
+            "core/text_utils.py",
+            "core/core_utils.py",
+            "core/source_titles.py",
+            "converters/md_telegraph.py",
+            "services/telegraph.py",
+            "services/telegraph_pages.py",
+            "services/youtube_transcript.py",
+        ]
+        h = hashlib.sha256()
+        for rel in rels:
+            p = root / rel
+            h.update(rel.encode("utf-8") + b"\0")
+            if p.exists():
+                h.update(p.read_bytes())
+            h.update(b"\0")
+        return h.hexdigest()[:8]
     except Exception:
         return "no-hash"
 
