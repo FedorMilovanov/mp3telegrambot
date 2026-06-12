@@ -216,6 +216,11 @@ async def run_bot_async():
             logger.info(f"🚫 NO_PROXY дополнен: {os.environ['NO_PROXY']}")
 
     _telegram_proxy_url = os.getenv("TELEGRAM_PROXY_URL", "").strip()
+    _local_botapi_proxy_url_for_fallback = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+    _cloud_fallback_proxy_url = _telegram_proxy_url
+    if (not _cloud_fallback_proxy_url
+            and _local_botapi_proxy_url_for_fallback.lower().startswith(("socks5://", "socks5h://", "http://", "https://"))):
+        _cloud_fallback_proxy_url = _local_botapi_proxy_url_for_fallback.replace("socks5://", "socks5h://", 1)
     _request_kwargs = dict(
         connection_pool_size=32,
         read_timeout=120.0,
@@ -245,6 +250,7 @@ async def run_bot_async():
     builder = (Application.builder().token(BOT_TOKEN)
                .request(t_request).get_updates_request(get_updates_request).concurrent_updates(8))
     if LOCAL_BOT_API_URL:
+        _using_local_bot_api = True
         # FIX 2026-06-11 (live log 02:03): сервер не запущен -> ConnectError
         # и бесконечный restart-цикл с полным трейсбеком каждые 5с (+ Whisper
         # перегружался каждый раз). Pre-flight TCP-проверка: ждём сервер с
@@ -540,15 +546,33 @@ async def run_bot_async():
                 logger.warning("⚠️ Local Bot API порт открыт, но getMe пока не отвечает: %s", _getme_last)
             await asyncio.sleep(5)
         if not _getme_ok:
-            raise RuntimeError(
-                "Локальный Bot API порт открыт, но /getMe не работает за 60 секунд: "
-                f"{_getme_last}. Проверьте botapi-server.log, TUN/VPN или отключите LOCAL_BOT_API_URL."
-            )
+            _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
+            if _fallback_enabled and _cloud_fallback_proxy_url:
+                logger.warning(
+                    "☁️ Локальный Bot API порт открыт, но /getMe не работает (%s). "
+                    "Авто-fallback: перехожу на облачный Bot API через proxy=%s. "
+                    "Большие DUB/MP3 могут упереться в облачные лимиты Telegram; для 2GB нужен TUN/VPN + local Bot API.",
+                    _getme_last, _cloud_fallback_proxy_url,
+                )
+                _request_kwargs["proxy"] = _cloud_fallback_proxy_url
+                t_request = HTTPXRequest(**_request_kwargs)
+                get_updates_request = HTTPXRequest(**_request_kwargs)
+                builder = (Application.builder().token(BOT_TOKEN)
+                           .request(t_request).get_updates_request(get_updates_request).concurrent_updates(8))
+                _using_local_bot_api = False
+            else:
+                raise RuntimeError(
+                    "Локальный Bot API порт открыт, но /getMe не работает за 60 секунд: "
+                    f"{_getme_last}. Проверьте botapi-server.log, TUN/VPN или отключите LOCAL_BOT_API_URL. "
+                    "Для no-TUN задайте TELEGRAM_PROXY_URL=socks5h://127.0.0.1:1080 "
+                    "и оставьте LOCAL_BOT_API_CLOUD_FALLBACK=1."
+                )
 
-        logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
-        builder.base_url(f"{LOCAL_BOT_API_URL}/bot")
-        builder.base_file_url(f"{LOCAL_BOT_API_URL}/file/bot")
-        builder.local_mode(True)
+        if _using_local_bot_api:
+            logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
+            builder.base_url(f"{LOCAL_BOT_API_URL}/bot")
+            builder.base_file_url(f"{LOCAL_BOT_API_URL}/file/bot")
+            builder.local_mode(True)
 
     app = builder.build()
     # FIX 2026-06-10: edited-команды (юзер отредактировал «/modе» → «/mode»)

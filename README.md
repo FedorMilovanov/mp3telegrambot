@@ -91,6 +91,10 @@ py -3.13 bot_new.py      # Windows
   Для no-TUN используйте облачный Bot API + `TELEGRAM_PROXY_URL`, либо включайте
   TUN/VPN для локального сервера. `LOCAL_BOT_API_PROXY_URL=http://...` может быть
   передан как официальный `--proxy=<url>` только для HTTP proxy/webhook-сценариев.
+  Если local Bot API порт открыт, но `/getMe` не работает, бот по умолчанию
+  fallback'нется на облачный Bot API через `TELEGRAM_PROXY_URL` или SOCKS из
+  `LOCAL_BOT_API_PROXY_URL` (`LOCAL_BOT_API_CLOUD_FALLBACK=1`), но тогда действуют
+  облачные лимиты Telegram на размер файлов.
 
 Примеры есть в `.env.example`.
 

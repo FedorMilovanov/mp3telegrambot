@@ -1525,6 +1525,7 @@ def test_proxy_knobs_documented_for_no_tun_mode():
         "LOCAL_BOT_API_TDLIB_PROXY_TYPE",
         "LOCAL_BOT_API_PROXY_SERVER",
         "LOCAL_BOT_API_PROXY_PORT",
+        "LOCAL_BOT_API_CLOUD_FALLBACK",
     ):
         assert key in env
     readme = Path("README.md").read_text(encoding="utf-8")
@@ -1546,6 +1547,9 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     assert "*_botapi_proxy_args" in src
     assert "--proxy-server" in src  # mentioned only in warning/comment
     assert "не поддерживает SOCKS/MTProto" in src
+    assert "LOCAL_BOT_API_CLOUD_FALLBACK" in src
+    assert "Авто-fallback: перехожу на облачный Bot API" in src
+    assert "socks5h://" in src
 
 
 def test_status_reports_proxy_layers():
@@ -1568,6 +1572,7 @@ def test_preflight_waits_for_local_server():
     assert "/getMe" in src
     assert "getMe OK" in src
     assert "порт открыт, но /getMe не работает" in src
+    assert "LOCAL_BOT_API_CLOUD_FALLBACK" in src
 
 
 def test_network_errors_get_short_log_and_backoff():
