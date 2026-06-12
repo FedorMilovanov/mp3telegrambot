@@ -1565,6 +1565,9 @@ def test_preflight_waits_for_local_server():
     assert "socket.create_connection" in src
     assert "НЕ ЗАПУЩЕН" in src
     assert "не поднялся за 5 минут" in src
+    assert "/getMe" in src
+    assert "getMe OK" in src
+    assert "порт открыт, но /getMe не работает" in src
 
 
 def test_network_errors_get_short_log_and_backoff():
@@ -1607,6 +1610,14 @@ def test_autostart_diagnoses_dead_server():
     assert "_pr.poll() is None" in src
     assert "упал сразу" in src
     assert "for _grace in range(10)" in src
+
+
+def test_polling_started_log_is_after_start_polling():
+    src = Path("main.py").read_text(encoding="utf-8")
+    assert "📡 Запускаю polling getUpdates" in src
+    assert "✅ Polling запущен — бот слушает сообщения" in src
+    assert src.index("start_polling(") < src.index("✅ Polling запущен")
+    assert "logger.info(\"✅ Бот запущен!\")" not in src
 
 
 # ── Заход 35: ACL-fallback для data-dir сервера ──────────────────

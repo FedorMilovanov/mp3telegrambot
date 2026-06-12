@@ -254,6 +254,16 @@ async def run_bot_async():
         from urllib.parse import urlparse
         _u = urlparse(LOCAL_BOT_API_URL)
         _host, _port = _u.hostname or "127.0.0.1", _u.port or 80
+        _local_proxy_url_pre = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+        _local_proxy_type_pre = os.getenv("LOCAL_BOT_API_TDLIB_PROXY_TYPE", "").strip().lower()
+        if (_local_proxy_url_pre.lower().startswith(("socks", "mtproto"))
+                or _local_proxy_type_pre in {"socks5", "socks5h", "mtproto"}):
+            logger.warning(
+                "⚠️ LOCAL_BOT_API_URL включён, но SOCKS/MTProto proxy для официального "
+                "telegram-bot-api.exe через CLI не поддерживается. Если нет TUN/VPN, "
+                "локальный сервер может подняться, но не получать updates. Для no-TUN "
+                "используйте облачный Bot API + TELEGRAM_PROXY_URL=socks5h://..."
+            )
 
         def _try_autostart_botapi() -> bool:
             """FIX 2026-06-11: бот сам запускает telegram-bot-api.exe.
@@ -485,6 +495,56 @@ async def run_bot_async():
             )
         if _wait_logged:
             logger.info("✅ Локальный Bot API сервер появился — продолжаю запуск")
+
+        def _probe_local_botapi_getme() -> tuple[bool, str]:
+            """Проверяет не только TCP-порт, но и живой Bot API route.
+
+            TCP 127.0.0.1:8081 может отвечать, даже если сервер не авторизовал
+            бота/не ходит в Telegram DC. getMe даёт более честную диагностику.
+            """
+            import json as _json
+            import urllib.error as _urlerr
+            import urllib.request as _urlreq
+            try:
+                _base = LOCAL_BOT_API_URL.rstrip("/")
+                _url = f"{_base}/bot{BOT_TOKEN}/getMe"
+                with _urlreq.urlopen(_url, timeout=10) as _resp:
+                    _raw = _resp.read(64 * 1024).decode("utf-8", "replace")
+                try:
+                    _data = _json.loads(_raw)
+                except Exception:
+                    return False, f"getMe вернул не JSON: {_raw[:200]}"
+                if _data.get("ok") is True:
+                    _uname = ((_data.get("result") or {}).get("username") or "?")
+                    return True, f"@{_uname}"
+                return False, str(_data)[:300]
+            except _urlerr.HTTPError as e:
+                try:
+                    _body = e.read().decode("utf-8", "replace")[:300]
+                except Exception:
+                    _body = ""
+                return False, f"HTTP {e.code}: {_body}"
+            except Exception as e:
+                return False, f"{type(e).__name__}: {str(e)[:240]}"
+
+        _getme_ok = False
+        _getme_last = ""
+        for _gm_attempt in range(12):  # до ~60с после появления TCP-порта
+            _getme_ok, _getme_last = await asyncio.get_running_loop().run_in_executor(
+                None, _probe_local_botapi_getme
+            )
+            if _getme_ok:
+                logger.info("✅ Локальный Bot API getMe OK: %s", _getme_last)
+                break
+            if _gm_attempt == 0:
+                logger.warning("⚠️ Local Bot API порт открыт, но getMe пока не отвечает: %s", _getme_last)
+            await asyncio.sleep(5)
+        if not _getme_ok:
+            raise RuntimeError(
+                "Локальный Bot API порт открыт, но /getMe не работает за 60 секунд: "
+                f"{_getme_last}. Проверьте botapi-server.log, TUN/VPN или отключите LOCAL_BOT_API_URL."
+            )
+
         logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
         builder.base_url(f"{LOCAL_BOT_API_URL}/bot")
         builder.base_file_url(f"{LOCAL_BOT_API_URL}/file/bot")
@@ -574,8 +634,6 @@ async def run_bot_async():
             except (ValueError, RuntimeError):
                 logger.debug("signal handler не установлен для %s", _sig)
 
-    logger.info("✅ Бот запущен!")
-
     async def _stop_started_application() -> None:
         """Останавливает polling/application перед выходом из async context."""
         try:
@@ -592,7 +650,14 @@ async def run_bot_async():
     async with app:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True, read_timeout=120, pool_timeout=120)
+        logger.info("📡 Запускаю polling getUpdates...")
+        await app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            read_timeout=120,
+            pool_timeout=120,
+        )
+        logger.info("✅ Polling запущен — бот слушает сообщения")
 
         # Регистрируем команды — появится кнопка «Menu» слева от поля ввода
         from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
