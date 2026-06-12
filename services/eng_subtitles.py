@@ -235,21 +235,11 @@ def _has_video_stream(path: Path) -> bool:
     path = Path(path)
     if not path.exists() or path.stat().st_size <= 100 * 1024:
         return False
-    ffprobe = shutil.which("ffprobe")
-    if not ffprobe:
-        return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
     try:
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        proc = subprocess.run(
-            [ffprobe, "-v", "error", "-select_streams", "v:0",
-             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            timeout=60, **kwargs,
-        )
-        return proc.returncode == 0 and "video" in (proc.stdout or "").lower()
+        from services.livedub_mix import has_video_stream
+        return has_video_stream(path)
     except Exception as e:
-        logger.debug("[EngSubtitles] ffprobe video-stream check failed for %s: %s", path, e)
+        logger.debug("[EngSubtitles] video-stream check failed for %s: %s", path, e)
         return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
 
 

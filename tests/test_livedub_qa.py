@@ -361,14 +361,20 @@ def test_download_original_video_reuses_existing():
 
 
 def test_has_video_stream_does_not_treat_audio_m4a_as_video(tmp_path, monkeypatch):
-    from services import eng_subtitles as es
+    from services import livedub_mix as lm
     audio = tmp_path / "original_video.f140.m4a"
     audio.write_bytes(b"0" * (200 * 1024))
     video = tmp_path / "original_video.mp4"
     video.write_bytes(b"0" * (200 * 1024))
-    monkeypatch.setattr(es.shutil, "which", lambda _name: None)
-    assert es._has_video_stream(audio) is False
-    assert es._has_video_stream(video) is True
+    monkeypatch.setattr(lm.shutil, "which", lambda _name: None)
+    assert lm.has_video_stream(audio) is False
+    assert lm.has_video_stream(video) is True
+
+
+def test_livedub_mix_guards_audio_only_original():
+    src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "входной оригинал не содержит видеопотока" in src
+    assert "return None" in src[src.index("if not has_video_stream(orig_video)"):]
 
 
 def test_qa_has_global_deadline():

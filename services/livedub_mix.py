@@ -232,6 +232,35 @@ def _extend_filter_with_video_tail(audio_fc: str, tail_pad_ms: int) -> str:
     )
 
 
+def has_video_stream(path: Path) -> bool:
+    """True если входной файл реально содержит video stream.
+
+    Защита от `original_video.f140.m4a`: расширение начинается с
+    original_video.*, но внутри только audio. Без проверки ffmpeg падает на
+    `-map 0:v` и тратит время на бесполезные fallback'и.
+    """
+    path = Path(path)
+    if not path.exists() or path.stat().st_size <= 100 * 1024:
+        return False
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+    try:
+        kwargs: dict = {"capture_output": True, "text": True,
+                        "encoding": "utf-8", "errors": "replace"}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            timeout=60, **kwargs,
+        )
+        return proc.returncode == 0 and "video" in (proc.stdout or "").lower()
+    except Exception as e:
+        logger.debug("[LiveDubMix] video-stream check failed for %s: %s", path, e)
+        return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+
+
 def calculate_tail_pad_ms(delay_ms: int, tail_margin_ms: int,
                           orig_duration: Optional[float],
                           ru_duration: Optional[float]) -> int:
@@ -381,6 +410,13 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
     роликов дополнительно замораживаем последний кадр, чтобы Telegram точно
     не закончил видео раньше, чем прозвучит последняя русская фраза.
     """
+    if not has_video_stream(orig_video):
+        logger.warning(
+            "[LiveDubMix] входной оригинал не содержит видеопотока: %s — локальный DUB-микс невозможен",
+            Path(orig_video).name,
+        )
+        return None
+
     p = get_mix_params()
     loop = asyncio.get_running_loop()
     en_lufs, ru_lufs, orig_duration, ru_duration = await asyncio.gather(
