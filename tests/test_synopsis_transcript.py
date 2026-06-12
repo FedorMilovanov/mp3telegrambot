@@ -101,6 +101,7 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     prompts = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "SYNOPSIS_VERBATIM_PROMPT" in prompts
     assert "Не summary. Не статья. Не анализ. Не пересказ." in prompts
+    assert "Каждый абзац content начинай с таймкода" in prompts
     assert "Не используй source cards" in prompts
     assert "_synopsis_verbatim_prompt_enabled" in src
     assert "SYNOPSIS_VERBATIM_PROMPT" in src
@@ -126,6 +127,12 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
 def test_pipeline_passes_youtube_language_to_synopsis_transcript():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "source_lang=source_lang" in src
+
+
+def test_transcript_language_globs_are_deduped_in_source():
+    src = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
+    assert "prefs = [f\"{lang_root}.*\", lang_root, \"en.*\", \"en\"]" in src
+    assert "seen: set[str]" in src
 
 
 def test_transcript_env_documented():

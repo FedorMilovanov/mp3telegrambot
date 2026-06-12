@@ -204,7 +204,11 @@ async def download_youtube_transcript_text(
         lang_root = (lang or "en").split("-", 1)[0].lower()
         sub_langs = os.getenv("SYNOPSIS_YT_TRANSCRIPT_LANGS", "").strip()
         if not sub_langs:
-            sub_langs = f"{lang_root}.*,en.*,en"
+            # yt-dlp accepts comma-separated globs. Keep order but avoid noisy
+            # duplicates like en.*,en.*,en in logs/requests.
+            prefs = [f"{lang_root}.*", lang_root, "en.*", "en"]
+            seen: set[str] = set()
+            sub_langs = ",".join(x for x in prefs if not (x in seen or seen.add(x)))
 
         def _cmd(*, auto: bool) -> list[str]:
             return [
