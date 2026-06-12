@@ -108,8 +108,21 @@ def normalize_structured_block(raw: Any) -> dict[str, Any] | None:
         return block
 
     if btype == "lexicon":
-        if not _clean(block.get("role_in_argument")) and _clean(block.get("text")):
-            block["role_in_argument"] = block.get("text")
+        text = _clean(block.get("text"))
+        if not _clean(block.get("lemma")) and text:
+            # Parse common model shape: **σάββατον** (*sabbaton*, греч.) — роль...
+            import re as _re
+            m = _re.match(r"^\*\*([^*]{1,80})\*\*\s*(?:\([^)]*\))?\s*[—-]\s*(.+)$", text)
+            if m:
+                block["lemma"] = m.group(1).strip()
+                if not _clean(block.get("role_in_argument")):
+                    block["role_in_argument"] = m.group(2).strip()
+            else:
+                first = text.split("—", 1)[0].strip(" *")
+                if first and len(first) <= 80:
+                    block["lemma"] = first
+        if not _clean(block.get("role_in_argument")) and text:
+            block["role_in_argument"] = text
         return block
 
     if btype == "bullet" and original_type in {"theological_line", "historical_line"}:
@@ -126,6 +139,13 @@ def normalize_structured_block(raw: Any) -> dict[str, Any] | None:
     if btype == "source":
         if not _clean(block.get("title_original")) and _clean(block.get("title")):
             block["title_original"] = block.get("title")
+        if not _clean(block.get("author")):
+            title = _clean(block.get("title_original") or block.get("title"))
+            low = title.lower()
+            if "directory for family worship" in low:
+                block["author"] = "Вестминстерская ассамблея"
+            elif "1689" in low and "исповед" in low:
+                block["author"] = "Лондонские баптисты"
         return block
 
     if btype == "scripture":

@@ -235,6 +235,10 @@ def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") 
 
     def repl(m: re.Match) -> str:
         name = re.sub(r"\s+", " ", m.group("name")).strip()
+        # Не калечим цитаты/пересказ Писания вида «Я, Господь,...».
+        # Это может быть легитимная библейская формула, а не hallucinated author.
+        if name.lower() in {"господь", "бог", "христос", "иисус", "яхве"}:
+            return m.group(0)
         if name.lower() in expected_norm or expected_norm in name.lower():
             return m.group(0)
         issues.append(ContentAuditIssue(

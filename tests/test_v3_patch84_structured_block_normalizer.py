@@ -35,6 +35,25 @@ def test_normalize_scripture_text_extracts_ref_quote_and_role():
     assert "стандарт достаточности" in block["role_in_argument"]
 
 
+def test_normalize_lexicon_text_extracts_lemma_and_role():
+    block = normalize_structured_block({
+        "type": "lexicon",
+        "text": "**σάββατον** (*sabbaton*, греч.) — суббота как тень, завершённая во Христе.",
+    })
+    assert block["type"] == "lexicon"
+    assert block["lemma"] == "σάββατον"
+    assert "суббота как тень" in block["role_in_argument"]
+
+
+def test_normalize_known_source_without_author():
+    block = normalize_structured_block({
+        "type": "source",
+        "title_original": "Directory for Family Worship",
+        "why_relevant": "Исторический документ о семейном поклонении.",
+    })
+    assert block["author"] == "Вестминстерская ассамблея"
+
+
 def test_normalize_theological_line_to_renderable_bullet():
     block = normalize_structured_block({
         "type": "theological_line",

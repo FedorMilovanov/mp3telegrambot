@@ -357,7 +357,7 @@ _PRESERVE_CASE: frozenset = frozenset({
 
 _RU_TITLE_PRESERVE_WORDS = {
     "Бог", "Бога", "Богу", "Богом", "Боге", "Слово", "Слова", "Слову", "Божий", "Божья", "Божье", "Божьего", "Божьей",
-    "Господь", "Господа", "Господу", "Христос", "Христа", "Христу", "Иисус", "Иисуса", "Иисусу",
+    "Господь", "Господа", "Господу", "Господень", "Господня", "Господню", "Господнем", "Христос", "Христа", "Христу", "Иисус", "Иисуса", "Иисусу",
     "Дух", "Духа", "Духу", "Святой", "Святого", "Троица", "Троицы",
     "Писание", "Писания", "Писанию", "Писанием", "Писании",
     "Библия", "Библии", "Библию", "Библией",
@@ -400,6 +400,7 @@ def sentence_case_russian_title(s: str, aggressive_title_case: bool = False) -> 
 
     out: list[str] = []
     force_cap_next = True
+    _PRESERVE_CANONICAL = {w.lower(): w for w in _RU_TITLE_PRESERVE_WORDS}
     
     # Служебные слова, которые не капитализируем в середине даже при агрессивном Title Case
     _LOWER_RU = {"и", "а", "но", "или", "да", "не", "ни", "же", "ли", "бы", "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от", "под", "над", "при", "про", "без", "для"}
@@ -411,8 +412,10 @@ def sentence_case_russian_title(s: str, aggressive_title_case: bool = False) -> 
             out.append(raw)
             continue
         
+        preserve_key = core.lower()
         preserve = (
             core in _RU_TITLE_PRESERVE_WORDS
+            or preserve_key in _PRESERVE_CANONICAL
             or bool(re.search(r"[A-Za-z0-9]", core))
             or re.fullmatch(r"[А-ЯA-Z]", core)
             or (len(core) > 1 and core.isupper())
@@ -421,7 +424,7 @@ def sentence_case_russian_title(s: str, aggressive_title_case: bool = False) -> 
         )
         
         if preserve:
-            new_core = core
+            new_core = _PRESERVE_CANONICAL.get(preserve_key, core)
         elif aggressive_title_case:
             # Агрессивный режим: капитализируем всё, кроме коротких союзов/предлогов в середине
             if idx == 0 or idx == len(words) - 1 or core.lower() not in _LOWER_RU:
