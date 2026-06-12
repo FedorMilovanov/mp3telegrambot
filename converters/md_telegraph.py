@@ -13,7 +13,7 @@ from core.source_titles import build_source_card, render_source_card
 from core.url_utils import get_youtube_timestamp_url
 from core.page_audit import audit_telegraph_page, format_audit_issues
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
-from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead  # FIX: circular imports
+from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers  # FIX: circular imports
 from core.globals import TELEGRAPH_TOKEN        # FIX markdown
 
 import asyncio    # FIX markdown
@@ -886,10 +886,8 @@ def _section_to_nodes_v2(
     content = _strip_meta_lines(content)
     # Gemini иногда возвращает literal escaped markdown: \*\*жирный\*\*.
     # Дальше весь renderer ожидает обычные **, иначе Telegraph показывает сырьё.
-    content = (content.replace(r"\*\*\*", "***")
-                      .replace(r"\*\*", "**")
-                      .replace(r"\*", "*")
-                      .replace(r"\_", "_"))
+    content = unescape_markdown_markers(content)
+    content = re.sub(r"(?m)^(\s*[•\-]\s*)\*\*\s*[•\-]\s*", r"\1**", content)
     content = normalize_misbolded_bullet_lead(content)
 
     # ------------------------------------------------------------------

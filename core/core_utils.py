@@ -146,6 +146,17 @@ def _fix_inline_spacing(nodes: list) -> list:
             result.append(node)
     return result
 
+def unescape_markdown_markers(text: str) -> str:
+    r"""Unescape Gemini-literal markdown markers.
+
+    Models sometimes return `\*\*bold\*\*` or even `\\*\\*bold\\*\\*`.
+    Telegraph then shows raw asterisks. We only unescape formatting markers,
+    not arbitrary backslash sequences.
+    """
+    text = str(text or "")
+    return re.sub(r"\\+(\*{1,3}|_)", r"\1", text)
+
+
 def _md_parse_inline_inner(text: str) -> list:
     """Парсит только *курсив* и _курсив_ внутри уже жирного блока."""
     if re.search(r'[\u0590-\u05FF\u0600-\u06FF]', text):
@@ -241,14 +252,7 @@ def _md_parse_inline(text: str) -> list:
 
     Поддерживает вложенный курсив внутри жирного: **текст *курсив* текст**
     """
-    # Gemini иногда экранирует Markdown как \*\*...\*\*. Telegraph тогда
-    # показывает сырые ** в тексте. Возвращаем только форматные маркеры,
-    # не трогая произвольные backslash-последовательности.
-    text = (str(text or "")
-            .replace(r"\*\*\*", "***")
-            .replace(r"\*\*", "**")
-            .replace(r"\*", "*")
-            .replace(r"\_", "_"))
+    text = unescape_markdown_markers(text)
     text = _fix_unclosed_bold(text)
     nodes = []
     # Быстрая защита от malformed markdown с избыточными * — предотвращает ReDoS

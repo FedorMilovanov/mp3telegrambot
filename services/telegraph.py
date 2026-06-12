@@ -17,7 +17,7 @@ from converters.md_telegraph import (
     _extract_partial_sections,# FIX telegraph
 )
 # _fix_rtl_in_text и _md_parse_inline перенесены в core_utils (разрыв цикла markdown ↔ caption/telegraph)
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead  # FIX: circular imports + AUDIT-FIX BUG 1
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers  # FIX: circular imports + AUDIT-FIX BUG 1
 from core.globals import (
     TELEGRAPH_TOKEN, GEMINI_CLIENTS,
     gemini_generate,          # FIX telegraph,
@@ -141,11 +141,9 @@ def _md_to_telegraph_nodes(md: str) -> list:
         s = line.strip()
         # Gemini sometimes escapes Markdown markers (`\*\*bold\*\*`) or emits
         # list items as `.**Text**` / `•.**Text**`. Normalize before parsing.
-        s = (s.replace(r"\*\*\*", "***")
-               .replace(r"\*\*", "**")
-               .replace(r"\*", "*")
-               .replace(r"\_", "_"))
+        s = unescape_markdown_markers(s)
         s = re.sub(r"^(?:[.•]\s*)+\*\*", "• **", s)
+        s = re.sub(r"^(\s*[•\-]\s*)\*\*\s*[•\-]\s*", r"\1**", s)
         s = normalize_misbolded_bullet_lead(s)
         if not s:
             prev_was_empty = True

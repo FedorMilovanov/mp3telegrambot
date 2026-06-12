@@ -75,8 +75,9 @@ def test_escaped_markdown_markers_are_not_rendered_raw():
     nodes = _md_to_telegraph_nodes(r"• \*\*Семейное поклонение\*\* — практика")
     assert "**" not in _flat(nodes)
     assert any(isinstance(c, dict) and c.get("tag") == "b" for n in nodes for c in n.get("children", []))
-    sec_nodes = _section_to_nodes_v2({"title": "T", "content": r"• \*\*Directory for Family Worship\*\* — источник"})
+    sec_nodes = _section_to_nodes_v2({"title": "T", "content": r"• \\*\\*Directory for Family Worship\\*\\* — источник"})
     assert "**" not in _flat(sec_nodes)
+    assert "\\" not in _flat(sec_nodes)
 
 
 def test_misbolded_bullet_lead_keeps_only_term_bold():
