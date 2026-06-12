@@ -884,6 +884,12 @@ def _section_to_nodes_v2(
 
     content = (section.get("content") or "").strip()
     content = _strip_meta_lines(content)
+    # Gemini иногда возвращает literal escaped markdown: \*\*жирный\*\*.
+    # Дальше весь renderer ожидает обычные **, иначе Telegraph показывает сырьё.
+    content = (content.replace(r"\*\*\*", "***")
+                      .replace(r"\*\*", "**")
+                      .replace(r"\*", "*")
+                      .replace(r"\_", "_"))
 
     # ------------------------------------------------------------------
     # 1. БАЗОВАЯ НОРМАЛИЗАЦИЯ ТЕКСТА

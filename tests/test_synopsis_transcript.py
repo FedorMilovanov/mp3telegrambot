@@ -69,6 +69,16 @@ def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
     assert "**" not in flat
 
 
+def test_escaped_markdown_markers_are_not_rendered_raw():
+    from converters.md_telegraph import _section_to_nodes_v2
+    from services.telegraph import _md_to_telegraph_nodes
+    nodes = _md_to_telegraph_nodes(r"• \*\*Семейное поклонение\*\* — практика")
+    assert "**" not in _flat(nodes)
+    assert any(isinstance(c, dict) and c.get("tag") == "b" for n in nodes for c in n.get("children", []))
+    sec_nodes = _section_to_nodes_v2({"title": "T", "content": r"• \*\*Directory for Family Worship\*\* — источник"})
+    assert "**" not in _flat(sec_nodes)
+
+
 def test_synopsis_wires_youtube_transcript_into_prompt():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     ytt = Path("services/youtube_transcript.py").read_text(encoding="utf-8")

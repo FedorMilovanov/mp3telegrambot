@@ -212,6 +212,14 @@ def _md_parse_inline(text: str) -> list:
 
     Поддерживает вложенный курсив внутри жирного: **текст *курсив* текст**
     """
+    # Gemini иногда экранирует Markdown как \*\*...\*\*. Telegraph тогда
+    # показывает сырые ** в тексте. Возвращаем только форматные маркеры,
+    # не трогая произвольные backslash-последовательности.
+    text = (str(text or "")
+            .replace(r"\*\*\*", "***")
+            .replace(r"\*\*", "**")
+            .replace(r"\*", "*")
+            .replace(r"\_", "_"))
     text = _fix_unclosed_bold(text)
     nodes = []
     # Быстрая защита от malformed markdown с избыточными * — предотвращает ReDoS

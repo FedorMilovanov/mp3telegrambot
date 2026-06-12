@@ -139,8 +139,12 @@ def _md_to_telegraph_nodes(md: str) -> list:
     prev_was_empty = False
     for line in md.split("\n"):
         s = line.strip()
-        # Gemini sometimes emits list items as `.**Text**` / `•.**Text**`.
-        # Without this, Telegraph shows raw markdown (`.**...`) instead of a bullet.
+        # Gemini sometimes escapes Markdown markers (`\*\*bold\*\*`) or emits
+        # list items as `.**Text**` / `•.**Text**`. Normalize before parsing.
+        s = (s.replace(r"\*\*\*", "***")
+               .replace(r"\*\*", "**")
+               .replace(r"\*", "*")
+               .replace(r"\_", "_"))
         s = re.sub(r"^(?:[.•]\s*)+\*\*", "• **", s)
         if not s:
             prev_was_empty = True
