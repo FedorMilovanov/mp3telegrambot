@@ -1539,18 +1539,20 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     assert "TELEGRAM_PROXY_URL" in src
     assert '_request_kwargs["proxy"] = _telegram_proxy_url' in src
     assert "not LOCAL_BOT_API_URL" in src
-    # Local Bot API: separate telegram-bot-api.exe process gets TDLib proxy args.
-    for flag in ("--proxy-server=", "--proxy-port=", "--tdlib-proxy-type=", "--proxy-login=", "--proxy-password=", "--proxy-secret="):
-        assert flag in src
+    # Local Bot API: official telegram-bot-api.exe supports --proxy=<HTTP URL>,
+    # but NOT old bogus TDLib flags; those caused immediate startup crashes.
+    assert "--proxy=" in src
     assert "LOCAL_BOT_API_PROXY_URL" in src
     assert "*_botapi_proxy_args" in src
+    assert "--proxy-server" in src  # mentioned only in warning/comment
+    assert "не поддерживает SOCKS/MTProto" in src
 
 
 def test_status_reports_proxy_layers():
     cmd = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "TELEGRAM_PROXY_URL" in cmd
     assert "LOCAL_BOT_API_PROXY_URL" in cmd
-    assert "Proxy: PTB" in cmd and "local Bot API TDLib" in cmd
+    assert "Proxy: PTB" in cmd and "local Bot API HTTP" in cmd
 
 
 # ── Заход 33: pre-flight Bot API + сетевой backoff ───────────────
@@ -1597,6 +1599,10 @@ def test_autostart_diagnoses_dead_server():
     src = Path("main.py").read_text(encoding="utf-8")
     assert "botapi-server.log" in src
     assert "--verbosity=2" in src
+    assert "mp3bot autostart" in src
+    assert "stderr=_sp.STDOUT" in src
+    assert "stdout=_lf" in src
+    assert '"--api-hash=***"' in src
     # round 35: liveness-проверка вынесена в _spawn() (poll внутри неё)
     assert "_pr.poll() is None" in src
     assert "упал сразу" in src

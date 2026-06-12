@@ -85,9 +85,12 @@ py -3.13 bot_new.py      # Windows
 
 - без `LOCAL_BOT_API_URL`: задайте `TELEGRAM_PROXY_URL` — Python/PTB будет ходить
   к облачному Bot API через proxy;
-- с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`, а сам
-  `telegram-bot-api.exe` должен подключаться к Telegram DC через
-  `LOCAL_BOT_API_PROXY_URL` или `LOCAL_BOT_API_TDLIB_PROXY_*`.
+- с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`. Официальный
+  `telegram-bot-api.exe` не поддерживает SOCKS/MTProto TDLib proxy-флаги вида
+  `--proxy-server/--tdlib-proxy-type`; такие аргументы валят сервер на старте.
+  Для no-TUN используйте облачный Bot API + `TELEGRAM_PROXY_URL`, либо включайте
+  TUN/VPN для локального сервера. `LOCAL_BOT_API_PROXY_URL=http://...` может быть
+  передан как официальный `--proxy=<url>` только для HTTP proxy/webhook-сценариев.
 
 Примеры есть в `.env.example`.
 

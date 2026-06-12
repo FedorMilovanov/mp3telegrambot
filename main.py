@@ -289,12 +289,19 @@ async def run_bot_async():
             # сервера мы не видели ПРИЧИНУ: битые ключи, занятый порт, права).
             _srv_log_path = _P(_data).parent / "botapi-server.log"
 
-            def _tdlib_proxy_args() -> list[str]:
-                """Proxy для исходящих соединений telegram-bot-api.exe → Telegram DC.
+            def _botapi_proxy_args() -> list[str]:
+                """Proxy-аргументы, которые реально поддерживает telegram-bot-api.exe.
 
-                Нужен, когда VPN работает не в TUN-режиме, а только как локальный
-                HTTP/SOCKS proxy. TELEGRAM_PROXY_URL влияет на Python/PTB, но НЕ
-                на отдельный процесс telegram-bot-api.exe.
+                ВАЖНО 2026-06-12: официальный tdlib/telegram-bot-api НЕ имеет
+                аргументов --proxy-server/--proxy-port/--tdlib-proxy-type.
+                Их передача валит процесс на старте с Unknown option, что и
+                выглядело как «сервер упал сразу» после ребута Windows.
+
+                Официальный аргумент только --proxy=<HTTP URL> (для webhook HTTP
+                proxy; см. telegram-bot-api --help). SOCKS/MTProto для TDLib DC
+                официальным бинарём не прокидываются. Для SOCKS без TUN лучше:
+                • облачный Bot API + TELEGRAM_PROXY_URL=socks5h://...
+                • или VPN/TUN для локального telegram-bot-api.exe.
                 """
                 from urllib.parse import urlparse, unquote
                 proxy_url = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
@@ -303,48 +310,89 @@ async def run_bot_async():
                 port = os.getenv("LOCAL_BOT_API_PROXY_PORT", "").strip()
                 login = os.getenv("LOCAL_BOT_API_PROXY_LOGIN", "").strip()
                 password = os.getenv("LOCAL_BOT_API_PROXY_PASSWORD", "").strip()
-                secret = os.getenv("LOCAL_BOT_API_PROXY_SECRET", "").strip()
                 if proxy_url:
                     u = urlparse(proxy_url)
-                    ptype = (u.scheme or ptype).lower().replace("socks5h", "socks5")
-                    server = u.hostname or server
-                    port = str(u.port or port)
-                    login = unquote(u.username or login or "")
-                    password = unquote(u.password or password or "")
-                if not (ptype and server and port):
+                    scheme = (u.scheme or "").lower().replace("socks5h", "socks5")
+                    if scheme in {"http", "https"}:
+                        logger.info("🌐 telegram-bot-api.exe: --proxy включён (%s)", proxy_url)
+                        return [f"--proxy={proxy_url}"]
+                    logger.warning(
+                        "⚠️ LOCAL_BOT_API_PROXY_URL=%s: официальный telegram-bot-api.exe "
+                        "не поддерживает SOCKS/MTProto CLI для TDLib. Не передаю "
+                        "старые --proxy-server/--tdlib-proxy-type, чтобы сервер не падал. "
+                        "Используйте TUN/VPN или облачный Bot API + TELEGRAM_PROXY_URL.",
+                        proxy_url,
+                    )
                     return []
-                if ptype not in {"socks5", "http", "mtproto"}:
-                    logger.warning("⚠️ LOCAL_BOT_API proxy type %r не поддержан; нужен socks5/http/mtproto", ptype)
-                    return []
-                out = [f"--proxy-server={server}", f"--proxy-port={port}", f"--tdlib-proxy-type={ptype}"]
-                if login:
-                    out.append(f"--proxy-login={login}")
-                if password:
-                    out.append(f"--proxy-password={password}")
-                if secret:
-                    out.append(f"--proxy-secret={secret}")
-                logger.info("🌐 telegram-bot-api.exe: TDLib proxy включён (%s://%s:%s)", ptype, server, port)
-                return out
+                if ptype:
+                    ptype = ptype.replace("socks5h", "socks5")
+                if ptype in {"http", "https"} and server and port:
+                    auth = ""
+                    if login:
+                        auth = unquote(login)
+                        if password:
+                            auth += ":" + unquote(password)
+                        auth += "@"
+                    url = f"{ptype}://{auth}{server}:{port}"
+                    logger.info("🌐 telegram-bot-api.exe: --proxy включён (%s://%s:%s)", ptype, server, port)
+                    return [f"--proxy={url}"]
+                if ptype or server or port:
+                    logger.warning(
+                        "⚠️ LOCAL_BOT_API_TDLIB_PROXY_* задан, но официальный telegram-bot-api.exe "
+                        "не поддерживает эти TDLib proxy flags. Аргументы не передаю."
+                    )
+                return []
 
-            _botapi_proxy_args = _tdlib_proxy_args()
+            _botapi_proxy_args = _botapi_proxy_args()
             cmd = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
                    "--local", f"--http-port={_port}", f"--dir={_data}",
                    f"--log={_srv_log_path}", "--verbosity=2", *_botapi_proxy_args]
-            kwargs: dict = {"stdout": _sp.DEVNULL, "stderr": _sp.DEVNULL}
+            kwargs: dict = {}
             if os.name == "nt":
                 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
                 kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
             else:
                 kwargs["start_new_session"] = True
+
             def _spawn(_cmd, _log_path):
-                _pr = _sp.Popen(_cmd, **kwargs)
+                """Start server and capture *startup* stderr/stdout into log.
+
+                OptionParser errors happen before --log is initialized; DEVNULL
+                hid the real cause. We append a launch marker and redirect stdio
+                so the tail is from this attempt, not stale Stats.cpp lines.
+                """
                 import time as _t
+                try:
+                    _log_path.parent.mkdir(parents=True, exist_ok=True)
+                    _safe_cmd = []
+                    for part in _cmd:
+                        if str(part).startswith("--api-hash="):
+                            _safe_cmd.append("--api-hash=***")
+                        elif "proxy-password" in str(part):
+                            _safe_cmd.append("--proxy-password=***")
+                        else:
+                            _safe_cmd.append(str(part))
+                    with _log_path.open("a", encoding="utf-8", errors="replace") as _lf_txt:
+                        _lf_txt.write("\n\n===== mp3bot autostart %s =====\n%s\n" % (
+                            _t.strftime("%Y-%m-%d %H:%M:%S"), " ".join(_safe_cmd)
+                        ))
+                    _lf = _log_path.open("ab")
+                except OSError:
+                    _lf = _sp.DEVNULL
+                try:
+                    _pr = _sp.Popen(_cmd, stdout=_lf, stderr=_sp.STDOUT, **kwargs)
+                finally:
+                    try:
+                        if _lf is not _sp.DEVNULL:
+                            _lf.close()
+                    except Exception:
+                        pass
                 _t.sleep(2)
                 if _pr.poll() is None:
                     return True, ""
                 _tail = ""
                 try:
-                    _tail = _log_path.read_text(encoding="utf-8", errors="replace")[-600:]
+                    _tail = _log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
                 except OSError:
                     pass
                 return False, _tail
