@@ -4,6 +4,29 @@ from pathlib import Path
 from services.youtube_transcript import timed_text_last_second, vtt_to_timed_text
 
 
+def _flat(node):
+    if isinstance(node, str):
+        return node
+    if isinstance(node, dict):
+        return "".join(_flat(c) for c in node.get("children", []))
+    if isinstance(node, list):
+        return "".join(_flat(c) for c in node)
+    return ""
+
+
+def _find_links(node):
+    found = []
+    if isinstance(node, dict):
+        if node.get("tag") == "a":
+            found.append(node)
+        for child in node.get("children", []):
+            found.extend(_find_links(child))
+    elif isinstance(node, list):
+        for child in node:
+            found.extend(_find_links(child))
+    return found
+
+
 def test_vtt_to_timed_text_parses_and_dedupes_cues():
     raw = """WEBVTT
 
@@ -23,6 +46,27 @@ Start with Scripture and prayer.
 
 def test_timed_text_last_second_for_coverage_gate():
     assert timed_text_last_second("[0:07] a\n[1:02:03] b") == 3723
+
+
+def test_verbatim_synopsis_bare_timestamps_become_youtube_links():
+    from converters.md_telegraph import _section_to_nodes_v2
+    nodes = _section_to_nodes_v2(
+        {"title": "Стенограмма", "time": "0:00", "content": "0:07 Мы откроем книгу.\n\n2:41 Мир сегодня..."},
+        yt_url="https://www.youtube.com/watch?v=abc123",
+        duration=3600,
+    )
+    links = _find_links(nodes)
+    hrefs = [l.get("attrs", {}).get("href", "") for l in links]
+    assert any("t=7" in h for h in hrefs)
+    assert any("t=161" in h for h in hrefs)
+
+
+def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
+    from services.telegraph import _md_to_telegraph_nodes
+    nodes = _md_to_telegraph_nodes(".**От сухого интеллектуализма к заветной нежности.** Текст")
+    flat = _flat(nodes)
+    assert flat.startswith("• От сухого интеллектуализма")
+    assert "**" not in flat
 
 
 def test_synopsis_wires_youtube_transcript_into_prompt():

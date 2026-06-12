@@ -473,6 +473,21 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
                                     i += 1
                                 continue
 
+            # ── Случай 2в: bare timestamp в начале стенограммы ───────────────────
+            # Verbatim Synopsis генерирует строки вида `0:07 Мы откроем...`.
+            # Это должен быть кликабельный YouTube-якорь, а не просто текст.
+            if allow_plain_bold_fallback and isinstance(child, str):
+                _bare = re.match(r"^(\s*)(\d{1,2}:\d{2}(?::\d{2})?)(\s+)(.+)$", child, re.S)
+                if _bare:
+                    lnk = _make_ts_link("", _bare.group(2))
+                    if lnk is not None:
+                        if _bare.group(1):
+                            new_children.append(_bare.group(1))
+                        new_children.append(lnk)
+                        new_children.append(_bare.group(3) + _bare.group(4))
+                        i += 1
+                        continue
+
             # ── Случай 3: fallback — plain bold timestamp без маркера ─────────────
             if allow_plain_bold_fallback:
                 plain_ts = _is_plain_bold_timestamp(child)
