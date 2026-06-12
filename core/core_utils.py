@@ -164,6 +164,35 @@ def _md_parse_inline_inner(text: str) -> list:
     return nodes if nodes else [text]
 
 
+def normalize_misbolded_bullet_lead(text: str) -> str:
+    """Fix Gemini bullets where bold accidentally spans title + explanation.
+
+    Examples:
+      • **שָׁנַן — Показывает важность интенсивного**, глубокого...
+      • **Directory for Family Worship. — Исторический документ**, содержащий...
+
+    Desired:
+      • **שָׁנַן** — Показывает важность интенсивного, глубокого...
+      • **Directory for Family Worship** — Исторический документ, содержащий...
+    """
+    if not text or "**" not in text:
+        return text
+
+    def repl(m: re.Match) -> str:
+        bullet = m.group("bullet")
+        title = m.group("title").strip().rstrip(".")
+        desc = m.group("desc").strip()
+        return f"{bullet}**{title}** — {desc}"
+
+    return re.sub(
+        r"(?m)^(?P<bullet>\s*[•\-]\s*)\*\*"
+        r"(?P<title>[^*\n—–-]{2,120}?)\s*[—–-]\s*"
+        r"(?P<desc>[^*\n]{8,240}?)\*\*",
+        repl,
+        text,
+    )
+
+
 def _polish_timestamps_in_text(text: str) -> str:
     """FINAL-POLISH FIX 2-4: фиксы реальных багов Gemini в inline-таймкодах.
 

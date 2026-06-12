@@ -79,6 +79,21 @@ def test_escaped_markdown_markers_are_not_rendered_raw():
     assert "**" not in _flat(sec_nodes)
 
 
+def test_misbolded_bullet_lead_keeps_only_term_bold():
+    from converters.md_telegraph import _section_to_nodes_v2
+    from services.telegraph import _md_to_telegraph_nodes
+    raw = "• **שָׁנַן — Показывает важность интенсивного**, глубокого запечатления."
+    nodes = _md_to_telegraph_nodes(raw)
+    flat = _flat(nodes).replace("\u200e", "").replace("  ", " ")
+    assert flat == "• שָׁנַן — Показывает важность интенсивного, глубокого запечатления."
+    p = nodes[0]
+    b = next(c for c in p["children"] if isinstance(c, dict) and c.get("tag") == "b")
+    assert _flat(b).replace("\u200e", "") == "שָׁנַן"
+    src = "• **Directory for Family Worship. — Исторический документ**, содержащий указания."
+    sec_nodes = _section_to_nodes_v2({"title": "T", "content": src})
+    assert "Directory for Family Worship — Исторический документ" in _flat(sec_nodes)
+
+
 def test_synopsis_wires_youtube_transcript_into_prompt():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     ytt = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
