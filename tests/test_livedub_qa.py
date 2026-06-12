@@ -1630,6 +1630,10 @@ def test_polling_started_log_is_after_start_polling():
     assert "📡 Запускаю polling getUpdates" in src
     assert "✅ Polling запущен — бот слушает сообщения" in src
     assert src.index("start_polling(") < src.index("✅ Polling запущен")
+    polling_block = src[src.index("start_polling("):src.index("logger.info(\"✅ Polling запущен")]
+    assert "read_timeout=" not in polling_block and "pool_timeout=" not in polling_block
+    assert "PTB 22.8" in src
+    assert "await _stop_started_application()" in src
     assert "logger.info(\"✅ Бот запущен!\")" not in src
 
 

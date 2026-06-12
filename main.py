@@ -723,12 +723,18 @@ async def run_bot_async():
         await app.initialize()
         await app.start()
         logger.info("📡 Запускаю polling getUpdates...")
-        await app.updater.start_polling(
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-            read_timeout=120,
-            pool_timeout=120,
-        )
+        try:
+            # PTB 22.8: Updater.start_polling no longer accepts read_timeout /
+            # pool_timeout kwargs; timeouts are configured on HTTPXRequest above.
+            await app.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+            )
+        except Exception:
+            # If polling fails after app.start(), __aexit__ can't shutdown a
+            # still-running Application. Stop explicitly, then re-raise.
+            await _stop_started_application()
+            raise
         logger.info("✅ Polling запущен — бот слушает сообщения")
 
         # Регистрируем команды — появится кнопка «Menu» слева от поля ввода
