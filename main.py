@@ -217,10 +217,44 @@ async def run_bot_async():
 
     _telegram_proxy_url = os.getenv("TELEGRAM_PROXY_URL", "").strip()
     _local_botapi_proxy_url_for_fallback = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
-    _cloud_fallback_proxy_url = _telegram_proxy_url
+
+    def _proxy_url_for_httpx(raw_url: str) -> str:
+        """Return proxy URL safe for PTB/httpx.
+
+        SOCKS requires optional dependency socksio (installed by
+        python-telegram-bot[socks]). On a machine where requirements weren't
+        refreshed, v2rayN usually exposes a mixed HTTP+SOCKS port; use HTTP on
+        the same host/port as an automatic fallback instead of crashing startup.
+        """
+        raw_url = str(raw_url or "").strip()
+        if not raw_url:
+            return ""
+        from urllib.parse import urlparse
+        u = urlparse(raw_url)
+        scheme = (u.scheme or "").lower()
+        if scheme.startswith("socks"):
+            try:
+                import socksio  # noqa: F401
+                return raw_url
+            except ImportError:
+                if os.getenv("TELEGRAM_PROXY_HTTP_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}:
+                    http_url = "http://" + raw_url.split("://", 1)[1]
+                    logger.warning(
+                        "⚠️ SOCKS proxy задан (%s), но пакет socksio не установлен. "
+                        "Пробую HTTP fallback на тот же mixed proxy: %s. "
+                        "Для настоящего SOCKS выполните: pip install -r requirements.txt",
+                        raw_url, http_url,
+                    )
+                    return http_url
+                return raw_url
+        return raw_url
+
+    _cloud_fallback_proxy_url = _proxy_url_for_httpx(_telegram_proxy_url)
     if (not _cloud_fallback_proxy_url
             and _local_botapi_proxy_url_for_fallback.lower().startswith(("socks5://", "socks5h://", "http://", "https://"))):
-        _cloud_fallback_proxy_url = _local_botapi_proxy_url_for_fallback.replace("socks5://", "socks5h://", 1)
+        _cloud_fallback_proxy_url = _proxy_url_for_httpx(
+            _local_botapi_proxy_url_for_fallback.replace("socks5://", "socks5h://", 1)
+        )
     _request_kwargs = dict(
         connection_pool_size=32,
         read_timeout=120.0,
@@ -230,9 +264,8 @@ async def run_bot_async():
     )
     if _telegram_proxy_url and not LOCAL_BOT_API_URL:
         # Cloud Bot API mode: PTB/httpx ходит к api.telegram.org через proxy.
-        # Для socks5/socks5h нужен extra python-telegram-bot[socks].
-        _request_kwargs["proxy"] = _telegram_proxy_url
-        logger.info("🌐 Telegram Bot API: использую TELEGRAM_PROXY_URL для Bot API/getUpdates")
+        _request_kwargs["proxy"] = _cloud_fallback_proxy_url or _telegram_proxy_url
+        logger.info("🌐 Telegram Bot API: использую proxy для Bot API/getUpdates: %s", _request_kwargs["proxy"])
     elif _telegram_proxy_url and LOCAL_BOT_API_URL:
         logger.info(
             "🌐 TELEGRAM_PROXY_URL задан вместе с LOCAL_BOT_API_URL: сначала проверю локальный сервер, "

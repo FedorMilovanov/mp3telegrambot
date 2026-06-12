@@ -84,7 +84,9 @@ py -3.13 bot_new.py      # Windows
 Бот может работать без TUN-режима, но proxy надо задавать в правильном слое:
 
 - без `LOCAL_BOT_API_URL`: задайте `TELEGRAM_PROXY_URL` — Python/PTB будет ходить
-  к облачному Bot API через proxy;
+  к облачному Bot API через proxy. Для v2rayN mixed-port обычно подходит
+  `socks5h://127.0.0.1:10808`; если не установлен `socksio`, бот попробует
+  HTTP fallback на тот же mixed-port (`TELEGRAM_PROXY_HTTP_FALLBACK=1`);
 - с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`. Официальный
   `telegram-bot-api.exe` не поддерживает SOCKS/MTProto TDLib proxy-флаги вида
   `--proxy-server/--tdlib-proxy-type`; такие аргументы валят сервер на старте.

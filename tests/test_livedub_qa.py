@@ -1526,6 +1526,7 @@ def test_proxy_knobs_documented_for_no_tun_mode():
         "LOCAL_BOT_API_PROXY_SERVER",
         "LOCAL_BOT_API_PROXY_PORT",
         "LOCAL_BOT_API_CLOUD_FALLBACK",
+        "TELEGRAM_PROXY_HTTP_FALLBACK",
     ):
         assert key in env
     readme = Path("README.md").read_text(encoding="utf-8")
@@ -1538,7 +1539,7 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     src = Path("main.py").read_text(encoding="utf-8")
     # Cloud Bot API: HTTPXRequest gets proxy only when LOCAL_BOT_API_URL is empty.
     assert "TELEGRAM_PROXY_URL" in src
-    assert '_request_kwargs["proxy"] = _telegram_proxy_url' in src
+    assert '_request_kwargs["proxy"] = _cloud_fallback_proxy_url or _telegram_proxy_url' in src
     assert "not LOCAL_BOT_API_URL" in src
     # Local Bot API: official telegram-bot-api.exe supports --proxy=<HTTP URL>,
     # but NOT old bogus TDLib flags; those caused immediate startup crashes.
@@ -1551,6 +1552,9 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     assert "Авто-fallback: перехожу на облачный Bot API" in src
     assert "no-TUN fast path" in src
     assert "socks5h://" in src
+    assert "TELEGRAM_PROXY_HTTP_FALLBACK" in src
+    assert "пакет socksio не установлен" in src
+    assert "http://" in src
 
 
 def test_status_reports_proxy_layers():
