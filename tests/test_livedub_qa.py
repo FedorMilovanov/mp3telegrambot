@@ -1554,6 +1554,8 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     assert "socks5h://" in src
     assert "TELEGRAM_PROXY_HTTP_FALLBACK" in src
     assert "пакет socksio не установлен" in src
+    assert "socks5h → socks5" in src
+    assert "KeyError(b'socks5h')" in src
     assert "http://" in src
 
 

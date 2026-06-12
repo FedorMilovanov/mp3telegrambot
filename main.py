@@ -233,9 +233,17 @@ async def run_bot_async():
         u = urlparse(raw_url)
         scheme = (u.scheme or "").lower()
         if scheme.startswith("socks"):
+            # httpx/socksio in some installed combinations rejects socks5h with
+            # KeyError(b'socks5h'). For SOCKS5, passing a domain name still lets
+            # the proxy resolve it; normalize the URL to the supported scheme.
+            if scheme == "socks5h":
+                safe_url = "socks5://" + raw_url.split("://", 1)[1]
+                logger.info("🌐 Нормализую proxy scheme для httpx: socks5h → socks5 (%s)", safe_url)
+            else:
+                safe_url = raw_url
             try:
                 import socksio  # noqa: F401
-                return raw_url
+                return safe_url
             except ImportError:
                 if os.getenv("TELEGRAM_PROXY_HTTP_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}:
                     http_url = "http://" + raw_url.split("://", 1)[1]
@@ -246,7 +254,7 @@ async def run_bot_async():
                         raw_url, http_url,
                     )
                     return http_url
-                return raw_url
+                return safe_url
         return raw_url
 
     _cloud_fallback_proxy_url = _proxy_url_for_httpx(_telegram_proxy_url)
