@@ -1549,6 +1549,7 @@ def test_proxy_wiring_for_cloud_and_local_bot_api():
     assert "не поддерживает SOCKS/MTProto" in src
     assert "LOCAL_BOT_API_CLOUD_FALLBACK" in src
     assert "Авто-fallback: перехожу на облачный Bot API" in src
+    assert "no-TUN fast path" in src
     assert "socks5h://" in src
 
 
@@ -1573,6 +1574,7 @@ def test_preflight_waits_for_local_server():
     assert "getMe OK" in src
     assert "порт открыт, но /getMe не работает" in src
     assert "LOCAL_BOT_API_CLOUD_FALLBACK" in src
+    assert "не жду 60с локальный /getMe" in src
 
 
 def test_network_errors_get_short_log_and_backoff():

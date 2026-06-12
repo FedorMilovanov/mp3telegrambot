@@ -235,8 +235,8 @@ async def run_bot_async():
         logger.info("🌐 Telegram Bot API: использую TELEGRAM_PROXY_URL для Bot API/getUpdates")
     elif _telegram_proxy_url and LOCAL_BOT_API_URL:
         logger.info(
-            "🌐 TELEGRAM_PROXY_URL задан, но LOCAL_BOT_API_URL указывает на localhost — "
-            "Python-бот ходит в локальный сервер напрямую; proxy для самого сервера задавайте LOCAL_BOT_API_PROXY_URL"
+            "🌐 TELEGRAM_PROXY_URL задан вместе с LOCAL_BOT_API_URL: сначала проверю локальный сервер, "
+            "а если /getMe зависнет — быстро fallback'нусь на облачный Bot API через этот proxy"
         )
     t_request = HTTPXRequest(**_request_kwargs)
     get_updates_request = HTTPXRequest(**_request_kwargs)
@@ -535,6 +535,8 @@ async def run_bot_async():
 
         _getme_ok = False
         _getme_last = ""
+        _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
+        _fast_cloud_fallback = bool(_fallback_enabled and _cloud_fallback_proxy_url)
         for _gm_attempt in range(12):  # до ~60с после появления TCP-порта
             _getme_ok, _getme_last = await asyncio.get_running_loop().run_in_executor(
                 None, _probe_local_botapi_getme
@@ -544,9 +546,14 @@ async def run_bot_async():
                 break
             if _gm_attempt == 0:
                 logger.warning("⚠️ Local Bot API порт открыт, но getMe пока не отвечает: %s", _getme_last)
+                if _fast_cloud_fallback:
+                    logger.warning(
+                        "☁️ no-TUN fast path: proxy для облачного Bot API задан, "
+                        "не жду 60с локальный /getMe — переключаюсь на cloud fallback"
+                    )
+                    break
             await asyncio.sleep(5)
         if not _getme_ok:
-            _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
             if _fallback_enabled and _cloud_fallback_proxy_url:
                 logger.warning(
                     "☁️ Локальный Bot API порт открыт, но /getMe не работает (%s). "
