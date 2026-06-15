@@ -34,4 +34,5 @@ def test_auto_proxy_excludes_russian_services():
     assert "rutube.ru" in src, "NO_PROXY must include rutube.ru"
     assert "api.vk.com" in src, "NO_PROXY must include api.vk.com"
     assert "telegra.ph" in src, "NO_PROXY must include telegra.ph"
+    assert "api.telegram.org" in src, "NO_PROXY must include api.telegram.org"
     assert "_proxy_was_auto" in src, "must track whether proxy was auto-set"

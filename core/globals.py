@@ -136,6 +136,7 @@ if _proxy_url:
         _no_proxy = os.environ.get("NO_PROXY", "")
         _auto_no_proxy = (
             "rutube.ru,api.vk.com,vk.com,api.telegra.ph,telegra.ph,"
+            "api.telegram.org,"
             "127.0.0.1,localhost"
         )
         for _host in _auto_no_proxy.split(","):
