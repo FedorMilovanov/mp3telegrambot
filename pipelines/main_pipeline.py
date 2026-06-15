@@ -1333,11 +1333,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         None, lambda: subprocess.run(
                             [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
                             capture_output=True, timeout=300))
-                    if mp3_64_path.exists():
+                    # FIX: verify re-encoded file is not empty/corrupt
+                    if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:
                         mp3_path.unlink(missing_ok=True)
                         mp3_path = mp3_64_path
                         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
                         bitrate = "64"
+                    elif mp3_64_path.exists():
+                        mp3_64_path.unlink(missing_ok=True)
                 if file_size_mb > MAX_FILE_SIZE_MB:
                     await update.message.reply_text(f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия.")
                     cleanup_files(media_id)
@@ -1700,10 +1703,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         capture_output=True, timeout=300
                     )
                 )
-                if mp3_64_path.exists():
+                # FIX: verify re-encoded file is not empty/corrupt before
+                # deleting the good original. ffmpeg can create 0-byte output
+                # on disk errors or corrupt input.
+                if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:
                     mp3_path.unlink(missing_ok=True)
                     mp3_path = mp3_64_path
                     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+                elif mp3_64_path.exists():
+                    mp3_64_path.unlink(missing_ok=True)  # remove corrupt output
             if file_size_mb > MAX_FILE_SIZE_MB:
                 await update.message.reply_text(
                     f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
