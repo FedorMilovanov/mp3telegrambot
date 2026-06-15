@@ -53,6 +53,7 @@ async def process_and_send_shorts(
     rutube_url: str = "",
     vk_url: str = "",
     workdir: Optional[Path] = None,  # 2026-06-11: пробрасываем временную папку для реюза видео
+    livedub_video_path: Optional[Path] = None,  # ENG: path to translated video for shorts
 ) -> None:
     """
     Полный shorts-пайплайн v2:
@@ -96,7 +97,12 @@ async def process_and_send_shorts(
         logger.info(f"Shorts: найдено {len(candidates)} кандидатов, скачиваю видео...")
 
         # ── Шаг 2: скачать видео ─────────────────────────────
-        video_path = await download_video_for_shorts(url, media_id, workdir=workdir)
+        # ENG mode: prefer the translated (LiveDub) video for shorts
+        if livedub_video_path and livedub_video_path.exists():
+            video_path = livedub_video_path
+            logger.info(f"Shorts: using LiveDub video: {video_path.name}")
+        else:
+            video_path = await download_video_for_shorts(url, media_id, workdir=workdir)
         if not video_path:
             logger.warning("Shorts: не удалось скачать видео")
             await update.message.reply_text("✂️ Не удалось скачать видео для Shorts.")

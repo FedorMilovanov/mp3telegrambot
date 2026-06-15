@@ -2552,6 +2552,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _feat_shorts = await asettings_get("shorts")
         if ai_data and _feat_shorts:
             logger.info("Shorts: feature enabled, starting pipeline")
+            # ENG mode: use translated video for Shorts if LiveDub succeeded
+            _shorts_livedub_path = None
+            if (user_mode in ("eng", "eng_fast", "eng_fast_qa")
+                    and "livedub_path" in locals()
+                    and livedub_path and Path(livedub_path).exists()):
+                _shorts_livedub_path = Path(livedub_path)
+                logger.info("Shorts: using TRANSLATED video (LiveDub) for ENG shorts")
             await process_and_send_shorts(
                 url=url,
                 media_id=media_id,
@@ -2566,6 +2573,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 rutube_url=rutube_url,
                 vk_url=vk_url,
                 workdir=ld_work if 'ld_work' in locals() else None,
+                livedub_video_path=_shorts_livedub_path,
             )
         else:
             logger.info(f"Shorts: skipped (feat={_feat_shorts}, ai_data={'yes' if ai_data else 'no'})")
@@ -2587,6 +2595,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 existing_client=used_client,            # ← REUSE
                 rutube_url=rutube_url,
                 vk_url=vk_url,
+                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
             )
         else:
             logger.info(f"Clips: skipped (feat={_feat_clips}, ai_data={'yes' if ai_data else 'no'})")

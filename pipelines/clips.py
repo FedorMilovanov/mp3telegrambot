@@ -38,6 +38,7 @@ async def process_and_send_clips(
     existing_client=None,
     rutube_url: str = "",
     vk_url: str = "",
+    livedub_video_path=None,  # ENG: path to translated video
 ) -> None:
     """
     Полный clips-пайплайн:
@@ -72,7 +73,13 @@ async def process_and_send_clips(
         logger.info(f"Clips: найдено {len(candidates)} кандидатов, скачиваю видео...")
 
         # ── Шаг 2: скачать видео (тот же хелпер что у Shorts) ──
-        video_path = await download_video_for_shorts(url, media_id)
+        # ENG mode: prefer translated (LiveDub) video
+        from pathlib import Path as _Path
+        if livedub_video_path and _Path(livedub_video_path).exists():
+            video_path = _Path(livedub_video_path)
+            logger.info(f"Clips: using LiveDub video: {video_path.name}")
+        else:
+            video_path = await download_video_for_shorts(url, media_id)
         if not video_path:
             logger.warning("Clips: не удалось скачать видео")
             await update.message.reply_text("🎬 Не удалось скачать видео для Clips.")
