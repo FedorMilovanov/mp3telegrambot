@@ -90,12 +90,37 @@ GEMINI_API_KEY_4 = os.getenv("GEMINI_API_KEY_4", "").strip()
 TELEGRAPH_TOKEN = os.getenv("TELEGRAPH_TOKEN", "").strip()
 
 # Прокси для Gemini — httpx читает из os.environ напрямую.
+# FIX: если HTTPS_PROXY не задан явно, подхватываем TELEGRAM_PROXY_URL как
+# fallback. Без этого в no-TUN режиме (v2rayN mixed port) Gemini API
+# получает запросы с российского IP → 400 FAILED_PRECONDITION
+# "User location is not supported for the API use."
+# v2rayN mixed port принимает и SOCKS5, и HTTP на одном порту —
+# конвертируем socks5h→http, чтобы httpx не требовал socksio.
 _proxy_url = (
     os.environ.get("HTTPS_PROXY") or
     os.environ.get("https_proxy") or
     os.environ.get("HTTP_PROXY") or
     os.environ.get("http_proxy")
 )
+if not _proxy_url:
+    _fallback_proxy = (
+        os.getenv("GEMINI_PROXY_URL", "").strip()
+        or os.getenv("TELEGRAM_PROXY_URL", "").strip()
+        or os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+    )
+    if _fallback_proxy:
+        from urllib.parse import urlparse as _urlparse
+        _u = _urlparse(_fallback_proxy)
+        if (_u.scheme or "").lower().startswith("socks"):
+            # v2rayN mixed port: HTTP на том же порту работает без socksio
+            _proxy_url = "http://" + _fallback_proxy.split("://", 1)[1]
+            logger.info(
+                "🌐 Gemini proxy: SOCKS → HTTP fallback: %s (из %s)",
+                _proxy_url, _fallback_proxy,
+            )
+        else:
+            _proxy_url = _fallback_proxy
+            logger.info("🌐 Gemini proxy: %s", _proxy_url)
 if _proxy_url:
     os.environ["HTTPS_PROXY"] = _proxy_url
     os.environ["https_proxy"] = _proxy_url
