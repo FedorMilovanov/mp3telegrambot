@@ -103,6 +103,7 @@ _proxy_url = (
     os.environ.get("http_proxy")
 )
 _gemini_proxy_log: str = ""  # logger ещё не создан; сохраняем сообщение для main.py
+_proxy_was_auto = False  # True если мы САМИ выставили HTTPS_PROXY (а не пользователь)
 if not _proxy_url:
     _fallback_proxy = (
         os.getenv("GEMINI_PROXY_URL", "").strip()
@@ -121,11 +122,27 @@ if not _proxy_url:
         else:
             _proxy_url = _fallback_proxy
             _gemini_proxy_log = f"🌐 Gemini proxy: {_proxy_url}"
+        _proxy_was_auto = True
 if _proxy_url:
     os.environ["HTTPS_PROXY"] = _proxy_url
     os.environ["https_proxy"] = _proxy_url
     os.environ["HTTP_PROXY"]  = _proxy_url
     os.environ["http_proxy"]  = _proxy_url
+    # FIX: если прокси подхвачен автоматически (из TELEGRAM_PROXY_URL), исключаем
+    # российские/доступные из РФ сервисы из прокси. Без этого requests.get к
+    # RuTube, VK, Telegraph молча идёт через прокси → медленнее или ломается.
+    # Если пользователь САМ задал HTTPS_PROXY, он знает что делает — не трогаем.
+    if _proxy_was_auto:
+        _no_proxy = os.environ.get("NO_PROXY", "")
+        _auto_no_proxy = (
+            "rutube.ru,api.vk.com,vk.com,api.telegra.ph,telegra.ph,"
+            "127.0.0.1,localhost"
+        )
+        for _host in _auto_no_proxy.split(","):
+            if _host not in _no_proxy:
+                _no_proxy = f"{_no_proxy},{_host}" if _no_proxy else _host
+        os.environ["NO_PROXY"] = _no_proxy
+        os.environ["no_proxy"] = _no_proxy
 
 # FIX #1: инициализируем None ДО создания клиентов
 gemini_client   = None

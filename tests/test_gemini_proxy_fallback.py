@@ -25,3 +25,13 @@ def test_env_example_documents_gemini_proxy():
     assert "GEMINI_PROXY_URL" in env, (
         ".env.example must document GEMINI_PROXY_URL"
     )
+
+
+def test_auto_proxy_excludes_russian_services():
+    """When HTTPS_PROXY is auto-set from TELEGRAM_PROXY_URL, Russian services
+    must be added to NO_PROXY so requests.get to RuTube/VK/Telegraph goes direct."""
+    src = Path("core/globals.py").read_text(encoding="utf-8")
+    assert "rutube.ru" in src, "NO_PROXY must include rutube.ru"
+    assert "api.vk.com" in src, "NO_PROXY must include api.vk.com"
+    assert "telegra.ph" in src, "NO_PROXY must include telegra.ph"
+    assert "_proxy_was_auto" in src, "must track whether proxy was auto-set"
