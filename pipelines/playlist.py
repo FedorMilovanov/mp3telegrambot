@@ -23,7 +23,7 @@ from core.database import (
     areserve_rate_limit,
     WHITELIST_IDS,
 )
-from services.ffmpeg import COOKIES_FILE
+from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp
 from pipelines.main_pipeline import process_single_video
 from core.progress import safe_edit_text
 from core.utils import mask_api_key as _mask
@@ -69,6 +69,11 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             playlist_opts["cookiefile"] = str(COOKIES_FILE)
         elif shutil.which("firefox"):
             playlist_opts["cookiesfrombrowser"] = ("firefox",)
+        # FIX: передаём proxy в yt-dlp Python API — без этого в no-TUN режиме
+        # playlist metadata fetch идёт напрямую и получает ConnectionResetError.
+        _proxy = _proxy_for_ytdlp()
+        if _proxy:
+            playlist_opts["proxy"] = _proxy
         loop = asyncio.get_running_loop()
         info = await loop.run_in_executor(
             None,
