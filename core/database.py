@@ -611,6 +611,7 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "reflection_application": True,   # «Размышление и применение» (пасторский guide)
     "caption_full_text":      True,   # Отправлять полный текст отдельным сообщением
     "generate_pdf":           False,  # Генерировать PDF (выключено по умолчанию)
+    "generate_quiz":          False,  # Quiz по видео (Telegram native polls)
     "eng_subtitles":          True,   # Субтитры для ENG режима (Whisper+Gemini)
     "livedub_qa":             True,   # Смысловая проверка перевода через Gemini (ENG Full)
     "livedub_pro_mix":        True,   # Собственный микс: слышный оригинал + ducking + задержка
@@ -643,6 +644,7 @@ SETTINGS_LABELS: dict[str, str] = {
     "reflection_application": "🙏 Размышление и применение",
     "caption_full_text":      "📋 Полный текст отдельно",
     "generate_pdf":           "📄 Генерировать PDF",
+    "generate_quiz":          "🧠 Quiz по видео",
     "eng_subtitles":          "💬 Субтитры ENG",
     "livedub_qa":             "🔍 Проверка перевода",
     "livedub_pro_mix":        "🎚 Pro-микс звука",
@@ -927,7 +929,7 @@ db_cleanup_old_records()
 # AUDIT M19: SETTINGS_GROUPS переехал сюда из services/search.py —
 # конфигурация UI должна жить рядом с SETTINGS_DEFAULTS/SETTINGS_LABELS.
 SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
-    ("📋 Конспект", ["synopsis", "caption_full_text", "generate_pdf"]),
+    ("📋 Конспект", ["synopsis", "caption_full_text", "generate_pdf", "generate_quiz"]),
     ("📖 Разборы",  ["study_analysis", "reflection_application"]),
     ("📊 Компактные", ["analytics", "questions", "terms"]),
     ("✂️ Шортс",   ["shorts", "shorts_audio_normalize", "shorts_subtitles",

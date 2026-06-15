@@ -2517,6 +2517,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception:
                         pass
 
+        # ── Quiz (после PDF, перед Shorts) ───────────────
+        _feat_quiz = await asettings_get("generate_quiz")
+        if _feat_quiz and ai_data:
+            try:
+                from services.quiz_generator import generate_quiz, send_quiz_polls
+                logger.info("Quiz: generating questions")
+                quiz_questions = await generate_quiz(
+                    ai_data=ai_data,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    existing_audio_part=used_audio_part,
+                    existing_client=used_client,
+                )
+                if quiz_questions:
+                    # Send header message
+                    _quiz_title = (ai_data or {}).get("real_title") or title or ""
+                    await update.message.reply_text(
+                        f"🧠 <b>Quiz: {html_mod.escape(_quiz_title[:80])}</b>\n"
+                        f"Проверь понимание материала — {len(quiz_questions)} вопросов:",
+                        parse_mode="HTML",
+                    )
+                    sent = await send_quiz_polls(quiz_questions, update, context, title=_quiz_title)
+                    logger.info(f"Quiz: sent {sent}/{len(quiz_questions)} polls")
+                else:
+                    logger.info("Quiz: no questions generated (Gemini returned None)")
+            except Exception as _quiz_err:
+                logger.warning(f"Quiz generation failed: {_quiz_err}")
+        else:
+            logger.info(f"Quiz: skipped (feat={_feat_quiz}, ai_data={'yes' if ai_data else 'no'})")
+
         # ── Shorts (после основного результата) ─────────
         _feat_shorts = await asettings_get("shorts")
         if ai_data and _feat_shorts:
