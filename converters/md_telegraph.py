@@ -45,8 +45,10 @@ _HEADING_BOLD_STRIP_RE = re.compile(r'^\*\*(?!\*)(.*?)(?<!\*)\*\*$')
 
 # FIXED #117: паттерны вынесены на уровень модуля — ранее компилировались
 # при каждом вызове _ensure_trailing_period (сотни раз за прогон).
+# FIX ReDoS: replaced \s*...\s*$ with non-overlapping pattern.
+# Old pattern caused 9+ second hang on whitespace-only strings.
 _ENSURE_TS_INLINE_RE = re.compile(
-    r'(\s*[⏱📌]?\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2})\s*$'
+    r'[⏱📌]\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}\s*$'
 )
 
 
