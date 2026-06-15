@@ -2366,10 +2366,15 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         if _plain_before_source_norm.startswith(('•', '-')):
             from core.source_titles import _ensure_source_title_bold
             _source_norm = _ensure_source_title_bold(_source_norm)
-            if _source_norm != _plain_before_source_norm:
-                # Keep canonical source-card markdown literal here. These nodes are
-                # later audited/flattened as text; parsing ** into <b> hides the
-                # markers and broke source-card regression checks.
+            # FIX: Only replace children with flat text if the node has NO
+            # existing <b>/<strong>/<em> tags that would be destroyed.
+            # The old code flattened ALL bullets, losing bold/italic formatting
+            # that _section_to_nodes_v2 had already correctly built from blocks.
+            _has_inline_tags = any(
+                isinstance(c, dict) and c.get('tag') in ('b', 'strong', 'em', 'i', 'a')
+                for c in children
+            )
+            if _source_norm != _plain_before_source_norm and not _has_inline_tags:
                 children = [_source_norm]
 
         node['children'] = children

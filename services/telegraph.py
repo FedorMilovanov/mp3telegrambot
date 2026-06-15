@@ -107,9 +107,11 @@ def _demote_paragraph_bold(line: str) -> str:
     if total_len == 0:
         return line
     bold_ratio = bold_len / total_len
-    # FIX 2026-05-25: source cards — check BEFORE min-length (source cards can be <80 chars)
-    if bold_ratio > 0.5 and line.lstrip().startswith('• **') and ',' in line:
-        return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)
+    # FIX: bullet definition items like "• **Term — definition**, explanation"
+    # have high bold_ratio but this is intentional formatting, not a "bold paragraph".
+    # Don't demote if the line starts with a bullet marker + bold.
+    if line.lstrip().startswith(('• **', '- **')):
+        return line
     # FIX 2026-05-24: короткие строки (<80 символов) —
     # осознанные акценты, не трогаем.
     MIN_LINE_LEN = 80
