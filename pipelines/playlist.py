@@ -14,7 +14,6 @@ AUDIT FIX L12: PLAYLIST_DELAY_SEC конфигурируется через .env
 import asyncio
 import logging
 import os
-import shutil
 import yt_dlp
 
 from core.globals import GEMINI_CLIENTS, _get_video_lock, _release_video_lock
