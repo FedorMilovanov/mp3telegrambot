@@ -42,6 +42,7 @@ VIDEO_REGEX = re.compile(
     r"|youtu\.be/[\w\-]{11}"
     r"|youtube-nocookie\.com/embed/[\w\-]{11}"
     r"|vkvideo\.ru/video[\-\w]+"
+    r"|vkvideo\.ru/@[\w.]+\?z=video[\-\w]+"
     r"|vk\.com/video[\-\w]+"
     r"|rutube\.ru/video/[\w\-]+"
     r")",
