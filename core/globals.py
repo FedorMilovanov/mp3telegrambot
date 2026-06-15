@@ -102,6 +102,7 @@ _proxy_url = (
     os.environ.get("HTTP_PROXY") or
     os.environ.get("http_proxy")
 )
+_gemini_proxy_log: str = ""  # logger ещё не создан; сохраняем сообщение для main.py
 if not _proxy_url:
     _fallback_proxy = (
         os.getenv("GEMINI_PROXY_URL", "").strip()
@@ -114,13 +115,12 @@ if not _proxy_url:
         if (_u.scheme or "").lower().startswith("socks"):
             # v2rayN mixed port: HTTP на том же порту работает без socksio
             _proxy_url = "http://" + _fallback_proxy.split("://", 1)[1]
-            logger.info(
-                "🌐 Gemini proxy: SOCKS → HTTP fallback: %s (из %s)",
-                _proxy_url, _fallback_proxy,
+            _gemini_proxy_log = (
+                f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} (из {_fallback_proxy})"
             )
         else:
             _proxy_url = _fallback_proxy
-            logger.info("🌐 Gemini proxy: %s", _proxy_url)
+            _gemini_proxy_log = f"🌐 Gemini proxy: {_proxy_url}"
 if _proxy_url:
     os.environ["HTTPS_PROXY"] = _proxy_url
     os.environ["https_proxy"] = _proxy_url

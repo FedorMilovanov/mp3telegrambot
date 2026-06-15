@@ -9,6 +9,7 @@ main.py — run_bot_async, run_bot, main().
 from core.globals import (
     BOT_TOKEN, LOCAL_BOT_API_URL, flask_app, DB_PATH,
     GEMINI_CLIENTS, DAILY_LIMIT, COOLDOWN_SECONDS,
+    _gemini_proxy_log,
 )
 from core.database import (
     db_init, asettings_get,
@@ -107,6 +108,8 @@ async def run_bot_async():
     except Exception as _ld_diag_err:
         logger.info("🎬 LiveDub mix diagnostics unavailable: %s", str(_ld_diag_err)[:120])
     logger.info(f"🧠 AI ({GEMINI_MODEL}): {'✅' if GEMINI_CLIENTS else '❌'} (ключей: {len(GEMINI_CLIENTS)})")
+    if _gemini_proxy_log:
+        logger.info(_gemini_proxy_log)
 
     # AUDIT L6: обновлённые списки моделей по официальной странице
     # https://ai.google.dev/gemini-api/docs/deprecations (на 2026-05-20)
