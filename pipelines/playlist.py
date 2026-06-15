@@ -23,7 +23,7 @@ from core.database import (
     areserve_rate_limit,
     WHITELIST_IDS,
 )
-from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp
+from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp, _firefox_cookie_source_available
 from pipelines.main_pipeline import process_single_video
 from core.progress import safe_edit_text
 from core.utils import mask_api_key as _mask
@@ -67,7 +67,10 @@ async def handle_playlist(url, update, context, user_id: int = 0):
         }
         if COOKIES_FILE.exists():
             playlist_opts["cookiefile"] = str(COOKIES_FILE)
-        elif shutil.which("firefox"):
+        elif _firefox_cookie_source_available("firefox"):
+            # FIX: проверяем наличие Firefox-профиля, а не только бинаря.
+            # shutil.which("firefox") находит exe, но без профиля yt-dlp
+            # падает с "could not find firefox cookies database".
             playlist_opts["cookiesfrombrowser"] = ("firefox",)
         # FIX: передаём proxy в yt-dlp Python API — без этого в no-TUN режиме
         # playlist metadata fetch идёт напрямую и получает ConnectionResetError.
