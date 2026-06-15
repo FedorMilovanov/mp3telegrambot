@@ -76,8 +76,14 @@ def _normalize_prompt_text(value: str, fallback: str, max_len: int = 220) -> str
 
 _INJECTION_RE = re.compile(
     r"(?i)("
-    r"ignore\s+(?:all\s+)?(?:previous|above|earlier)\s+instructions?|"
-    r"disregard\s+(?:all\s+)?(?:previous|above|earlier)\s+instructions?|"
+    r"ignore\s+(?:all\s+)?(?:previous|above|earlier|prior|preceding)\s+instructions?|"
+    r"disregard\s+(?:all\s+)?(?:previous|above|earlier|prior|preceding)\s+instructions?|"
+    r"forget\s+(?:all\s+)?(?:previous|above|earlier|everything)\b|"
+    r"override\s+(?:your\s+)?instructions?|"
+    r"do\s+not\s+follow\s+(?:the\s+)?(?:system|previous|above)\s+(?:prompt|instructions?)|"
+    r"you\s+are\s+now\s+a\s+(?:different|new)|"
+    r"new\s+instructions?\s+(?:below|follow|here)|"
+    r"act\s+as\s+if\s+you\s+have\s+no\s+restrictions|"
     r"игнорируй\s+(?:все\s+)?(?:предыдущие|вышестоящие|прошлые)\s+инструкции|"
     r"забудь\s+(?:все\s+)?(?:предыдущие|вышестоящие|прошлые)\s+инструкции|"
     r"системн(?:ый|ые)\s+промпт|сообщени[ея]\s+разработчика|"
