@@ -69,3 +69,29 @@ AUDIO_ANALYSIS_FALLBACK_MODE=strict
 Use `AUDIO_ANALYSIS_FALLBACK_MODE=lite` only when degraded emergency output is acceptable.
 
 If many 429s appear, pause batch processing until quota resets or use paid/quota-raised projects. Continuing a large playlist under 429 pressure produces partial archives and wastes retry time.
+
+## 2026-06-16 — Playwright/DOM audit layer added
+
+Added deterministic published-page audit tooling:
+
+```bash
+python tools/audit_telegraph_pages.py --limit 20
+python tools/audit_telegraph_pages.py --requests-only --limit 20
+python tools/audit_telegraph_pages.py --url https://telegra.ph/...
+```
+
+The tool prefers Playwright/Chromium when installed and falls back to `requests` on machines without browser binaries. It writes:
+
+- `docs/telegraph_dom_audit.json` — machine-readable audit result;
+- appended section in this history file.
+
+Current checks catch visible production artifacts before they are missed by manual review:
+
+- third-person wrappers (`Лектор показывает...`, `Автор объясняет...`);
+- raw markdown/glue artifacts (`**`, `-* *`, `/ /`);
+- suspicious source cards with invented Russian titles before original titles;
+- empty paragraphs;
+- broken-looking links;
+- long Telegraph pages without visible navigation markers.
+
+Also tightened the deterministic third-person scrubber for Reflection/Study prose: `Лектор показывает, как ...` now becomes direct prose instead of surviving as a warning on the published page.

@@ -141,6 +141,14 @@ _THIRD_PERSON_WHEN_RE = re.compile(
     re.IGNORECASE,
 )
 
+_THIRD_PERSON_HOW_RE = re.compile(
+    r"(^|[.!?…]\s+)(?:(?:Джон\s+)?МакАртур|автор|проповедник|спикер|лектор)\s+"
+    r"(?:подробно\s+|последовательно\s+|прямо\s+|настойчиво\s+)?"
+    r"(?:подч[её]ркивает|показывает|объясняет|отмечает|говорит|указывает|считает|вскрывает|разворачивает|обращается|проводит|настаивает|связывает|разбирает)"
+    r"[^.?!…]{0,180}?,\s*как\s+([а-яёa-z])",
+    re.IGNORECASE,
+)
+
 
 def scrub_third_person_phrases(text: str) -> str:
     """Remove common third-person analytic wrappers from generated prose.
@@ -156,6 +164,7 @@ def scrub_third_person_phrases(text: str) -> str:
         return m.group(1) + m.group(2).upper()
 
     text = _THIRD_PERSON_PREFIX_RE.sub(repl_that, text)
+    text = _THIRD_PERSON_HOW_RE.sub(repl_that, text)
     text = _THIRD_PERSON_WHEN_RE.sub(lambda m: m.group(1) + "Речь идёт о ", text)
     return text
 

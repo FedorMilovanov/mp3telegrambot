@@ -81,3 +81,10 @@ def test_content_audit_wires_expected_author_and_translation_warning():
     assert "first_person_author_fixed" in src
     assert "mismatched first-person author" in src
     assert "translation_semantic_warning" in src or "evil" in src
+
+
+def test_third_person_scrubber_removes_how_wrapper_from_reflection():
+    text = "Лектор показывает, как легко подменить подлинную верность внешними атрибутами."
+    out = scrub_third_person_phrases(text)
+    assert "Лектор показывает" not in out
+    assert "Легко подменить подлинную верность" in out
