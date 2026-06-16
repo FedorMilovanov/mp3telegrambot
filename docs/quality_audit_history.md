@@ -437,3 +437,15 @@ Removed remaining Study prompt phrases that could leak editorial/channel framing
 - `нерв позиции канала`
 
 Replaced them with neutral internal-instruction wording (`внутренняя редакционная рамка`, `внутренняя инструкция`, `богословский guardrail`). Prompt-health leaky literal list was expanded to guard against reintroducing these phrases.
+
+## 2026-06-16 — Lexicon/source prompt wrapper cleanup
+
+Manual prompt pass removed remaining Study lexicon/source guidance that encouraged author-action wrappers:
+
+- `Используй имя проповедника...`
+- `Вошер разворачивает...`
+- `Эдвардс настаивает...`
+- `МакАртур цитирует...`
+- `X полезна здесь потому, что показывает...`
+
+Replacement guidance now asks for direct descriptions of the sermon moment and the term/source function without starting from the author's name. This should reduce third-person wrappers in lexicon/source blocks before content-audit retry or deterministic repair need to intervene.

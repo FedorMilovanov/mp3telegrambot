@@ -75,3 +75,17 @@ def test_study_prompt_removes_literal_channel_position_leaks():
     assert "позиция канала" not in STUDY_ANALYSIS_PROMPT.lower()
     assert "КОНФЕССИОНАЛЬНАЯ РАМКА КАНАЛА" not in STUDY_ANALYSIS_PROMPT
     assert "ВНУТРЕННЯЯ КОНФЕССИОНАЛЬНАЯ РАМКА" in STUDY_ANALYSIS_PROMPT
+
+
+def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers():
+    bad = [
+        "Вошер разворачивает",
+        "Эдвардс настаивает",
+        "Используй имя проповедника",
+        "имя проповедника или описание момента",
+        "МакАртур цитирует",
+    ]
+    for phrase in bad:
+        assert phrase not in STUDY_ANALYSIS_PROMPT
+    assert "без конструкции «автор + глагол действия»" in STUDY_ANALYSIS_PROMPT
+    assert "В ключевой сцене это понятие становится диагнозом" in STUDY_ANALYSIS_PROMPT
