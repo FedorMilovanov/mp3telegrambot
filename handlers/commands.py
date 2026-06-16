@@ -49,7 +49,7 @@ from services.shorts_video import (
     HAS_FASTER_WHISPER, burn_subtitles_into_short, download_video_for_shorts,
     transcribe_short_clip,
 )
-from services.render_clips_montage import render_clip
+# render_clip moved to services.segment_render
 from pipelines.playlist import handle_playlist
 from core.progress import safe_edit_text
 
@@ -990,90 +990,31 @@ async def cutseg_command(update, context):
         await update.message.reply_text("⏳ Для этого видео уже идёт рендер сегмента. Дождитесь окончания или выберите позже.")
         return
     msg = await update.message.reply_text(f"🎬 Готовлю видео и рендерю сегменты: {', '.join(map(str, indexes))}")
-    video_path = None
-    clip_paths: list[Path] = []
-    sub_paths: list[Path] = []
     sent = 0
+    ai_data = (cache or {}).get("ai_data") or {}
     try:
-        video_path = await download_video_for_shorts(source_url, video_id)
-        if not video_path:
-            await msg.edit_text("❌ Не удалось скачать видео для сегмента.")
-            return
+        from services.segment_render import render_and_send_segment
         for idx in indexes:
             segment = get_segment_by_index(segments, idx)
             if not segment:
                 continue
-            clip_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
-            clip_paths.append(clip_path)
-            await safe_edit_text(msg,
-                f"🎬 Рендерю {segment.index}/{len(segments)}: {html_mod.escape(segment.title[:120])}\n"
-                f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
+            ok = await render_and_send_segment(
+                reply_target=update.message,
+                status_msg=msg,
+                video_id=video_id,
+                source_url=source_url,
+                segment=segment,
+                title=title,
+                total_segments=len(segments),
+                ai_data=ai_data,
             )
-            ok = await render_clip(video_path, clip_path, segment.start, segment.end)
-            if not ok or not clip_path.exists():
-                await update.message.reply_text(f"❌ Не удалось вырезать сегмент {segment.index}.")
-                continue
-            final_clip_path = clip_path
-            if await asettings_get("segments_subtitles"):
-                if not HAS_FASTER_WHISPER:
-                    logger.warning("Segments subtitles: faster-whisper не установлен, отправляю без субтитров")
-                else:
-                    sub_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
-                    sub_paths.append(sub_path)
-                    try:
-                        sub_segments = await transcribe_short_clip(clip_path, ai_data=(cache or {}).get("ai_data") or {})
-                        if sub_segments:
-                            sub_ok = await burn_subtitles_into_short(clip_path, sub_path, sub_segments)
-                            if sub_ok and sub_path.exists():
-                                final_clip_path = sub_path
-                        else:
-                            logger.warning("Segments subtitles: пустая транскрипция для segment %s", segment.index)
-                    except Exception as _seg_sub_err:
-                        logger.warning("Segments subtitles failed for %s: %s", segment.index, _seg_sub_err)
-            size_mb = final_clip_path.stat().st_size / (1024 * 1024)
-            if size_mb > MAX_FILE_SIZE_MB:
-                await update.message.reply_text(f"❌ Сегмент {segment.index} слишком большой: {size_mb:.0f}MB.")
-                continue
-            caption = (
-                f"🎬 <b>{html_mod.escape(title)}</b>\n"
-                f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
-                f"({seconds_to_timestamp(segment.duration)})\n"
-                f"<b>{html_mod.escape(segment.title)}</b>"
-            )
-            if len(caption) > 1024:
-                caption = (
-                    f"🎬 <b>{html_mod.escape(title[:120])}</b>\n"
-                    f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
-                    f"({seconds_to_timestamp(segment.duration)})\n"
-                    f"<b>{html_mod.escape(segment.title[:220])}</b>"
-                )
-            # Path: file:// при local_mode
-            await update.message.reply_video(
-                video=final_clip_path,
-                caption=caption,
-                duration=int(segment.duration),
-                supports_streaming=True,
-                parse_mode="HTML",
-                write_timeout=300,
-                read_timeout=300,
-                connect_timeout=60,
-            )
-            sent += 1
+            if ok:
+                sent += 1
         await safe_edit_text(msg, f"✅ Отправлено сегментов: {sent}/{len(indexes)}.")
     except Exception as exc:
         logger.warning("cutseg failed: %s", exc, exc_info=True)
         await safe_edit_text(msg, f"❌ Ошибка нарезки: {_mask(str(exc))[:180]}")
     finally:
-        for clip_path in clip_paths:
-            try:
-                clip_path.unlink(missing_ok=True)
-            except Exception:
-                pass
-        for sub_path in sub_paths:
-            try:
-                sub_path.unlink(missing_ok=True)
-            except Exception:
-                pass
         await release_render_lock(_render_token)
 
 

@@ -81,15 +81,22 @@ def build_segments_from_timestamps(
     duration: int | float = 0,
     *,
     format_name: str = "",
-    end_padding: int = 8,
+    end_padding: int = 2,
     min_segment: int = 45,
-    max_segment: int = 18 * 60,
+    max_segment: int = 35 * 60,
 ) -> list[PlannedSegment]:
     """Build selectable segments from timestamp boundaries.
 
-    Segment end = next timestamp - small padding, or video duration for the last
-    segment. Long topic chunks are split conservatively only by duration cap? No:
-    we keep semantic timestamp boundaries and merely skip/mark too-short chunks.
+    Each segment spans from one timestamp to the next (minus a tiny padding).
+    The actual cut point is refined by _find_silence_end in render_clip,
+    so end_padding is kept minimal (2s) — just enough to avoid clipping
+    the first syllable of the next section.
+
+    Args:
+        end_padding: seconds before next timestamp to end (default 2;
+                     render_clip's silence detection refines the exact cut)
+        min_segment: drop segments shorter than this (20s for Q&A, 30s for topic)
+        max_segment: hard cap per segment (35 min — fits ~200 MB at 720p)
     """
     try:
         total = int(duration or 0)
@@ -98,7 +105,10 @@ def build_segments_from_timestamps(
     points = parse_timestamp_lines(timestamps)
     if not points:
         return []
-    kind = "qa" if (format_name or "").lower() == "qa" else "topic"
+    is_qa = (format_name or "").lower() == "qa"
+    kind = "qa" if is_qa else "topic"
+    # Q&A answers can be short (30s); topic sections usually need ≥30s
+    effective_min = min(min_segment, 20) if is_qa else min(min_segment, 30)
     segments: list[PlannedSegment] = []
     for idx, (start, title) in enumerate(points, 1):
         is_last = idx >= len(points)
@@ -107,10 +117,10 @@ def build_segments_from_timestamps(
         if total:
             end = min(end, total)
         if end <= start:
-            end = next_start if next_start > start else start + min_segment
+            end = next_start if next_start > start else start + effective_min
             if total:
                 end = min(end, total)
-        if end - start < min_segment:
+        if end - start < effective_min:
             continue
         if end - start > max_segment:
             end = start + max_segment

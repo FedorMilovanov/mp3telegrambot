@@ -259,16 +259,12 @@ async def handle_callback(update, context) -> None:
             await query.answer("🎞 Рендер сегментов выключен.", show_alert=True)
             return
         await query.answer(f"🎬 Рендерю сегмент {idx}...")
+        _render_token = None
         try:
-            from core.database import MAX_FILE_SIZE_MB
             from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
             from core.segment_planner import get_segment_by_index, seconds_to_timestamp
             from handlers.commands import _resolve_segment_source, _segments_from_cache
-            from services.render_clips_montage import render_clip
-            from services.shorts_video import (
-                HAS_FASTER_WHISPER, burn_subtitles_into_short,
-                download_video_for_shorts, transcribe_short_clip,
-            )
+            from services.segment_render import render_and_send_segment
             import html as _html
 
             _vid, cache, archive_record = await _resolve_segment_source(video_id)
@@ -292,75 +288,31 @@ async def handle_callback(update, context) -> None:
                 f"🎬 Рендерю сегмент {segment.index}: {_html.escape(segment.title[:120])}\n"
                 f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
             )
-            video_path = await download_video_for_shorts(source_url, _vid)
-            if not video_path:
-                await safe_edit_text(msg, "❌ Не удалось скачать видео для сегмента.")
-                await release_render_lock(_render_token)
-                return
-            clip_path = DOWNLOAD_DIR / f"{_vid}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
-            sub_path = DOWNLOAD_DIR / f"{_vid}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
-            try:
-                ok = await render_clip(video_path, clip_path, segment.start, segment.end)
-                if not ok or not clip_path.exists():
-                    await msg.edit_text("❌ Не удалось вырезать сегмент.")
-                    return
-                final_clip_path = clip_path
-                if await asettings_get("segments_subtitles"):
-                    if not HAS_FASTER_WHISPER:
-                        logger.warning("Segment callback subtitles: faster-whisper не установлен, отправляю без субтитров")
-                    else:
-                        try:
-                            sub_segments = await transcribe_short_clip(clip_path, ai_data=(cache or {}).get("ai_data") or {})
-                            if sub_segments:
-                                sub_ok = await burn_subtitles_into_short(clip_path, sub_path, sub_segments)
-                                if sub_ok and sub_path.exists():
-                                    final_clip_path = sub_path
-                            else:
-                                logger.warning("Segment callback subtitles: пустая транскрипция для segment %s", segment.index)
-                        except Exception as _seg_sub_err:
-                            logger.warning("Segment callback subtitles failed for %s: %s", segment.index, _seg_sub_err)
-                size_mb = final_clip_path.stat().st_size / (1024 * 1024)
-                if size_mb > MAX_FILE_SIZE_MB:
-                    await safe_edit_text(msg, f"❌ Сегмент слишком большой: {size_mb:.0f}MB.")
-                    return
-                caption = (
-                    f"🎬 <b>{_html.escape(title[:120])}</b>\n"
-                    f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
-                    f"({seconds_to_timestamp(segment.duration)})\n"
-                    f"<b>{_html.escape(segment.title[:220])}</b>"
-                )
-                # Path: file:// при local_mode (см. fix LIVEDUB)
-                await query.message.reply_video(
-                    video=final_clip_path,
-                    caption=caption,
-                    duration=int(segment.duration),
-                    supports_streaming=True,
-                    parse_mode="HTML",
-                    write_timeout=300,
-                    read_timeout=300,
-                    connect_timeout=60,
-                )
-                await safe_edit_text(msg, "✅ Сегмент отправлен.")
-            finally:
-                try:
-                    clip_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                try:
-                    sub_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                await release_render_lock(_render_token)
+            ai_data = (cache or {}).get("ai_data") or {}
+            ok = await render_and_send_segment(
+                reply_target=query.message,
+                status_msg=msg,
+                video_id=_vid,
+                source_url=source_url,
+                segment=segment,
+                title=title,
+                total_segments=len(segments),
+                ai_data=ai_data,
+            )
+            await safe_edit_text(msg, "✅ Сегмент отправлен." if ok else "❌ Не удалось отправить сегмент.")
         except Exception as exc:
-            try:
-                await release_render_lock(_render_token)
-            except Exception:
-                pass
             logger.warning("segcut callback failed: %s", exc, exc_info=True)
             try:
                 await query.message.reply_text(f"❌ Ошибка сегмента: {_mask(str(exc))[:160]}")
             except Exception:
                 pass
+        finally:
+            if _render_token is not None:
+                try:
+                    from core.render_locks import release_render_lock
+                    await release_render_lock(_render_token)
+                except Exception:
+                    pass
         return
 
     # ── Short trim (подрезка начала/конца) ──────────────────────

@@ -30,7 +30,7 @@ def test_segment_planner_accepts_raw_gemini_timestamp_list_and_formats_text():
     assert parse_timestamp_lines(raw) == [(0, "Вступление"), (210, "Главный тезис")]
     segments = build_segments_from_timestamps(raw, duration=600, format_name="sermon")
     text = format_segments_text(segments, title="T")
-    assert "1. 0:00–3:22" in text
+    assert "1. 0:00–3:28" in text
     assert "Тема: Вступление" in text
     assert seconds_to_timestamp(3661) == "1:01:01"
 
@@ -46,8 +46,8 @@ def test_segment_inline_callback_is_wired():
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     assert 'data.startswith("segcut:")' in callbacks
     assert "_resolve_segment_source" in callbacks
-    assert "render_clip" in callbacks
-    assert "reply_video" in callbacks
+    assert "render_and_send_segment" in callbacks
+    assert "release_render_lock" in callbacks
 
 
 def test_segments_and_cutseg_commands_are_registered():
@@ -56,13 +56,13 @@ def test_segments_and_cutseg_commands_are_registered():
     assert "async def segments_command" in commands
     assert "async def cutseg_command" in commands
     assert "build_segments_from_timestamps" in commands
-    assert "render_clip" in commands
-    assert "download_video_for_shorts" in commands
+    assert "render_and_send_segment" in commands
     assert "parse_segment_selection" in commands
     assert "segments_batch_render" in commands
     assert "segcut:{video_id}:{segment.index}" in commands
     assert 'CommandHandler("segments"' in main
     assert 'CommandHandler("cutseg"' in main
+    assert 'CommandHandler("cut"' in main
 
 
 def test_segment_plan_export_writes_files(tmp_path):

@@ -64,9 +64,12 @@ async def render_clip(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Корректируем точку конца до ближайшей паузы
-        adjusted_end = await _find_silence_end(source_video_path, float(end_seconds), search_window=6.0)
-        if abs(adjusted_end - end_seconds) > 0.1:
+        # Корректируем точку конца до ближайшей паузы (8s window for better snap)
+        adjusted_end = await _find_silence_end(source_video_path, float(end_seconds), search_window=8.0)
+        # Guard: silence snap must not shrink clip below 10s or beyond +12s
+        min_end = start_seconds + max(10, int((end_seconds - start_seconds) * 0.5))
+        max_end = end_seconds + 12
+        if min_end < adjusted_end <= max_end and abs(adjusted_end - end_seconds) > 0.1:
             logger.info(f"Clip end adjusted: {end_seconds}s → {adjusted_end:.1f}s (silence snap)")
             end_seconds = int(round(adjusted_end))
         clip_duration = end_seconds - start_seconds
