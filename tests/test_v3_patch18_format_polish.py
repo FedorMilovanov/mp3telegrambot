@@ -81,7 +81,7 @@ def test_audio_prompt_main_topic_bans_pompous_author_labels():
     src = open("core/prompts.py", encoding="utf-8").read()
     assert "ПРАВИЛО УПОМИНАНИЯ АВТОРОВ В main_topic" in src
     assert "богословские гиганты" in src
-    assert "Джон МакАртур анализирует" in src
+    assert "имя/роль автора + анализирует/показывает" in src
     assert "Панель обсуждает" in src
 
 

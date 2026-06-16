@@ -415,3 +415,14 @@ Prompt health now detects exact literal phrases that previously leaked into gene
 - `Лоусон показывает`
 
 `/prompthealth` now reports a `leaks=` counter per prompt. Current main prompts are covered by a regression test requiring zero known leaky literals. This prevents future prompt edits from reintroducing the same literal bad examples we just removed.
+
+## 2026-06-16 — Prompt leaky-literal sweep expanded
+
+Extended prompt-health leaky literal guard and removed additional prompt phrases that can be copied by Gemini despite being negative examples:
+
+- `Джон МакАртур анализирует`
+- `проповедник показывает`
+- `Чередуй полное имя`
+- invented-source examples such as `Спасение младенцев`, `Младенцы во славе`, `Странный огонь`
+
+The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaky literals across main prompts and the deep audio prompt sample.
