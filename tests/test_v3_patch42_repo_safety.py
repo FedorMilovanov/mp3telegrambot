@@ -37,3 +37,19 @@ def test_no_known_bad_html_slice_or_nested_segment_code_regression():
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     cutseg_block = src[src.find("async def cutseg_command"):]
     assert "render_and_send_segment" in cutseg_block
+
+
+def test_no_runtime_databases_or_local_git_identity_are_tracked():
+    import subprocess
+
+    tracked = subprocess.check_output(["git", "ls-files"], text=True, encoding="utf-8").splitlines()
+    forbidden_suffixes = (".db", ".sqlite", ".sqlite3")
+    forbidden_names = {".gitconfig", ".git-credentials", "bot.log"}
+    offenders = []
+    for path in tracked:
+        name = Path(path).name
+        if name in forbidden_names:
+            offenders.append(path)
+        if name.startswith("bot_cache.db.bak") or path.endswith(forbidden_suffixes):
+            offenders.append(path)
+    assert offenders == []
