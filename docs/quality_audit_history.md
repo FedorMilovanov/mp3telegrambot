@@ -382,3 +382,15 @@ The retry prompt sends:
 Gemini must return repaired `{outline, sections}`. The retry is accepted only if audit warning count does not increase. It uses the configured primary model only (`allow_model_fallback=False`) to avoid low-quality fallback rewrites.
 
 This is the generator-quality counterpart to postprocess repair: the model is asked to fix the actual weak section before Telegraph publication.
+
+## 2026-06-16 — Manual prompt pass: source/guardrail wording
+
+Manual pass over the Study prompt removed wording that could teach the model the very defects repair/audit later catches:
+
+- removed explicit third-person positive examples from Study prompt;
+- removed `ПОЗИЦИЯ КАНАЛА` heading wording from the public prompt body, replacing it with internal guardrail language;
+- replaced `В работе X автор Y...` / `Y в «X»...` source guidance with source-card relevance wording that does not train author-action wrappers;
+- corrected source-card examples to title-first with original title when the Russian title is not registry-confirmed;
+- fixed the `Safe in the Arms of God` example to title-first.
+
+This reduces prompt-induced leaks and source-card hallucinations before deterministic repair has to intervene.

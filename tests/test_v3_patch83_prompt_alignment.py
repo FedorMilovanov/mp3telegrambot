@@ -52,3 +52,13 @@ def test_study_prompt_does_not_teach_third_person_wrappers():
 def test_study_prompt_forbids_unregistered_russian_source_titles():
     assert "если не знаешь устойчивого признанного русского названия" in STUDY_ANALYSIS_PROMPT.lower() or "registry" in STUDY_ANALYSIS_PROMPT
     assert "**Of the Mortification of Sin**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
+
+
+def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns():
+    assert "ПОЗИЦИЯ КАНАЛА" not in STUDY_ANALYSIS_PROMPT
+    assert "В работе X автор Y" not in STUDY_ANALYSIS_PROMPT
+    assert "Y в «X»" not in STUDY_ANALYSIS_PROMPT
+    assert "Русский Автор, *«Русское название»*" not in STUDY_ANALYSIS_PROMPT
+    assert "Правильно:   - Джон МакАртур, *Safe in the Arms of God*" not in STUDY_ANALYSIS_PROMPT
+    assert "**Safe in the Arms of God**, Джон МакАртур (John MacArthur)" in STUDY_ANALYSIS_PROMPT
+    assert "не публиковать как позицию канала" in STUDY_ANALYSIS_PROMPT
