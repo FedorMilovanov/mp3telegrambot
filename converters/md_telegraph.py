@@ -1785,38 +1785,49 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
     _audit = audit_telegraph_page(title, nodes, page_type="edit")
     if _audit:
         logger.warning("Telegraph editPage audit for %s: %s", page_url, format_audit_issues(_audit))
-    try:
-        path = page_url.replace("https://telegra.ph/", "")
-        resp = await loop.run_in_executor(None, lambda: requests.post(
-            f"https://api.telegra.ph/editPage/{path}",
-            json={
-                "access_token": token,
-                "title": title,
-                "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
-                "author_url": (author_url or "")[:512],  # AUDIT M21
-                "content": nodes,
-                "return_content": False,
-            },
-            timeout=30,  # BP-16: увеличен с 15 до 30s — Study Analysis 60+ nodes
-        ))
-        data = resp.json()
-        ok = bool(data.get("ok"))
-        if ok:
-            # #105: инвалидируем запись LRU-кеша pdf_generator — после editPage
-            # старый [draft]-контент не должен отдаваться при следующей генерации PDF.
-            try:
-                from services.pdf_generator import invalidate_telegraph_url
-                invalidate_telegraph_url(page_url)
-            except Exception:
-                pass
-        else:
-            # Логируем что именно вернул Telegraph API — помогает диагностировать failures
+    path = page_url.replace("https://telegra.ph/", "")
+    for _edit_attempt in range(3):
+        try:
+            resp = await loop.run_in_executor(None, lambda: requests.post(
+                f"https://api.telegra.ph/editPage/{path}",
+                json={
+                    "access_token": token,
+                    "title": title,
+                    "author_name": (author or "")[:128],
+                    "author_url": (author_url or "")[:512],
+                    "content": nodes,
+                    "return_content": False,
+                },
+                timeout=30,
+            ))
+            data = resp.json()
+            ok = bool(data.get("ok"))
+            if ok:
+                try:
+                    from services.pdf_generator import invalidate_telegraph_url
+                    invalidate_telegraph_url(page_url)
+                except Exception:
+                    pass
+                return True
             err_msg = data.get("error", "unknown error")
-            logger.debug("_edit_telegraph_page: API returned ok=False, error=%r, url=%s", err_msg, page_url)
-        return ok
-    except Exception as e:
-        logger.warning(f"Telegraph editPage: {e}")
-        return False
+            flood_m = re.match(r"FLOOD_WAIT_(\d+)", err_msg)
+            if flood_m:
+                wait_sec = min(int(flood_m.group(1)), 30)
+                logger.warning(
+                    "Telegraph editPage: FLOOD_WAIT_%ds (attempt %d/3) — sleeping...",
+                    wait_sec, _edit_attempt + 1,
+                )
+                await asyncio.sleep(wait_sec)
+                continue
+            logger.debug("_edit_telegraph_page: API error=%r, url=%s", err_msg, page_url)
+            return False
+        except Exception as e:
+            logger.warning("Telegraph editPage (attempt %d/3): %s", _edit_attempt + 1, e)
+            if _edit_attempt < 2:
+                await asyncio.sleep(3)
+                continue
+            return False
+    return False
 
 
 # ─── Synopsis v2.0: helper для Gemini ────────────────────────
