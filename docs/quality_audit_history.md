@@ -461,3 +461,14 @@ Manual prompt pass removed additional literal meta-formulas from prompts and sha
 - `автор показывает`
 
 These are now described as pattern classes (`канцелярские вводные`, `мета-формулы про материал/раздел`) instead of being repeated as exact phrases Gemini may copy. Prompt-health leaky literal detection was expanded accordingly and current prompts report zero known leaks.
+
+## 2026-06-16 — Lexicon prompt false-precision literal cleanup
+
+Manual prompt pass removed exact false-precision examples that could be copied into generated lexicon/source blocks:
+
+- `TDNT, том 3, с. 456`
+- `BDAG, с.456`
+- `BDAG даёт дословно`
+- bad Russian case examples after `согласно`
+
+The prompt now describes the error as a pattern: do not invent dictionary volumes/pages; use cautious lexical wording unless absolutely certain; after `согласно` use dative case. Prompt-health leaky literal detection was expanded to prevent these exact bad examples from returning to live prompts.
