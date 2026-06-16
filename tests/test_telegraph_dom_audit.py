@@ -54,3 +54,10 @@ def test_audit_tool_supports_url_file_argument():
     src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
     assert "--url-file" in src
     assert "extract_telegraph_urls(args.url_file)" in src
+
+
+def test_repair_tool_reports_failed_edit_and_supports_fail_on_unresolved():
+    src = Path("tools/repair_telegraph_pages.py").read_text(encoding="utf-8")
+    assert "editPage_failed_or_no_telegraph_token" in src
+    assert "--fail-on-unresolved" in src
+    assert "args.fail_on_unresolved" in src

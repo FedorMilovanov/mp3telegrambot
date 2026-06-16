@@ -255,3 +255,17 @@ Typical loop on the runtime machine:
 python tools/repair_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md --apply
 python tools/audit_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md --requests-only
 ```
+
+## 2026-06-16 — Repair tool hardening
+
+Hardened repair tooling for runtime use:
+
+- generated machine reports `docs/telegraph_dom_audit.json` and `docs/telegraph_repair_run.json` are now ignored by git; durable history stays in Markdown;
+- `tools/repair_telegraph_pages.py --apply` now reports `ok=false` if `editPage` fails or `TELEGRAPH_TOKEN` is missing, instead of looking like a successful dry-run;
+- added `--fail-on-unresolved` for CI/manual verification after a repair pass.
+
+Confirmed dry-run on the 8 known technical pages still reaches:
+
+```text
+pages=8 changed=8 unresolved_after=0 errors=0 applied=0 mode=dry-run
+```

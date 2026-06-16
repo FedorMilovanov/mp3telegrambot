@@ -82,6 +82,19 @@ async def _repair_one(url: str, *, apply: bool) -> dict[str, Any]:
         if apply and changed:
             loop = asyncio.get_running_loop()
             edit_ok = await _edit_telegraph_page(url, title, author, fixed_nodes, loop)
+            if not edit_ok:
+                return {
+                    "url": url,
+                    "ok": False,
+                    "changed": changed,
+                    "applied": False,
+                    "title": title,
+                    "error": "editPage_failed_or_no_telegraph_token",
+                    "before_issues": [i.__dict__ for i in before_issues],
+                    "after_issues": [i.__dict__ for i in after_issues],
+                    "before_summary": format_audit_issues(before_issues, limit=6),
+                    "after_summary": format_audit_issues(after_issues, limit=6),
+                }
         return {
             "url": url,
             "ok": True,
@@ -156,6 +169,7 @@ def main() -> int:
     ap.add_argument("--json-out", type=Path, default=Path("docs/telegraph_repair_run.json"))
     ap.add_argument("--history", type=Path, default=Path("docs/quality_audit_history.md"))
     ap.add_argument("--no-history", action="store_true")
+    ap.add_argument("--fail-on-unresolved", action="store_true", help="Exit non-zero if after_issues remain after repair")
     args = ap.parse_args()
 
     urls = _load_urls(args)
@@ -171,7 +185,11 @@ def main() -> int:
         source = str(args.url_file or args.archive or "--url")
         _append_history(args.history, summary, source=source)
         print(f"history={args.history}")
-    return 0 if not any(not r.get("ok") for r in results) else 1
+    if any(not r.get("ok") for r in results):
+        return 1
+    if args.fail_on_unresolved and any(r.get("after_issues") for r in results):
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
