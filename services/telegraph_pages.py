@@ -689,8 +689,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             # ГЛАВНЫЙ ФИКС: все ключи дали 429 — модель исчерпана,
             # ретраить бесполезно, идём к следующей модели сразу
             if _all_keys_quota:
+                mark_model_exhausted(model_name, _client_err)
                 logger.warning(
-                    "_gemini_text_request[%s]: квота 429 на всех ключах — следующая модель",
+                    "_gemini_text_request[%s]: квота 429 на всех ключах — помечаю модель exhausted и иду дальше",
                     model_name,
                 )
                 last_err = _client_err

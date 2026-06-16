@@ -386,8 +386,11 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
             logger.info(f"RuTube best_match (листинг, уверенный score={listing_score:.2f}): {listing_result}")
             return listing_result
 
-        # Слабое совпадение — не возвращаем мусор
-        _MIN_RETURN_SCORE = 0.50
+        # Слабое совпадение — не возвращаем мусор. Для коротких роликов
+        # длительность почти не различает кандидатов, поэтому нужен более
+        # строгий textual score; иначе 2-минутные служебные ролики матчились
+        # на чужие короткие RuTube-видео со score≈0.51.
+        _MIN_RETURN_SCORE = 0.75 if duration and duration < 300 else 0.50
         if listing_result and listing_score >= _MIN_RETURN_SCORE:
             logger.info(f"RuTube: возвращаем листинговый (score={listing_score:.2f}): {listing_result}")
             return listing_result

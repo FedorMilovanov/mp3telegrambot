@@ -1824,6 +1824,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _ts_cap_limit = get_caption_timestamp_limit(_mat_format)
 
         _terms_total = sum(len(_terms_data.get(k, [])) for k in ("concepts", "scripture", "translations", "lexicon_notes"))
+        _has_ai_analysis = bool(ai_data and (
+            (ai_data or {}).get("real_title")
+            or (ai_data or {}).get("main_topic")
+            or (ai_data or {}).get("timestamps")
+            or _terms_total
+            or _questions
+        ))
+        if not _has_ai_analysis:
+            logger.warning(
+                "AI analysis is missing/invalid for %s — skipping AI-derived Telegraph pages to avoid hallucinated partial publications",
+                media_id,
+            )
+            _feat_analytics = False
+            _feat_questions = False
+            _feat_terms = False
+            _feat_study_analysis = False
+            _feat_reflection_application = False
         _is_qa = (_mat_format == "qa")
         logger.info(
             f"format={_mat_format} is_qa={_is_qa} ts_total={_ts_total} ts_cap={_ts_cap_limit} "

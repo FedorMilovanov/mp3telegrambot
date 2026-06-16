@@ -52,6 +52,34 @@ def _audio_structured_output_enabled() -> bool:
     return (os.getenv("AUDIO_ANALYSIS_STRUCTURED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
+
+
+def _audio_fallback_models(primary_model: str) -> list[str]:
+    """Quality-first model list for audio analysis.
+
+    Deep audio analysis is the root artifact for every downstream page. In live
+    runs, lite-model fallbacks under quota pressure produced MAX_TOKENS and
+    shallow/incorrect metadata, after which the pipeline published misleading
+    Study/Reflection pages. Default is therefore strict: use the configured
+    primary model (normally gemini-3.5-flash) only. Operators may explicitly
+    opt into emergency lite fallbacks with AUDIO_ANALYSIS_FALLBACK_MODE=lite.
+    """
+    primary = str(primary_model or "").strip()
+    mode = (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict").strip().lower()
+    if mode in {"lite", "all", "legacy"}:
+        candidates = [primary, "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"]
+    else:
+        candidates = [primary]
+    out: list[str] = []
+    seen: set[str] = set()
+    for model in candidates:
+        model = str(model or "").strip()
+        if model and model not in seen:
+            seen.add(model)
+            out.append(model)
+    return out
+
+
 def _audio_structured_timeout() -> float:
     """Shorter timeout for schema attempt; legacy retry keeps full timeout."""
     try:
@@ -278,18 +306,12 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     # AUDIT FIX MULTI-MODEL: fallback по качеству (для редких но мощных запросов)
     # Юзкейс: 1-5 видео/день, главное — качество анализа
     _user_model = GEMINI_MODEL
-    _fallback_models = [
-        _user_model,                # из .env, рекомендуется gemini-3.5-flash
-        "gemini-2.5-flash-lite",    # 5 RPM / 20 RPD — свежая модель
-        "gemini-3.1-flash-lite",    # 15 RPM / 500 RPD — последний шанс
-    ]
-    _seen = set()
-    _models_to_try = []
-    for _m in _fallback_models:
-        if _m and _m not in _seen:
-            _seen.add(_m)
-            _models_to_try.append(_m)
-    logger.info(f"Gemini multi-model fallback (приоритет качества): {_models_to_try}")
+    _models_to_try = _audio_fallback_models(_user_model)
+    logger.info(
+        "Gemini audio models (quality-first; AUDIO_ANALYSIS_FALLBACK_MODE=%s): %s",
+        (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict"),
+        _models_to_try,
+    )
 
     used_client = None
     used_audio_part = None
@@ -459,6 +481,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                 continue  # следующая попытка на ЭТОМ же ключе
                             break  # все попытки на ключе исчерпаны — следующий клиент
                         raise  # неизвестная ошибка — пробрасываем
+
+            if response is None and last_err is not None and is_quota_error(last_err):
+                mark_model_exhausted(_current_model, last_err)
+                logger.warning(
+                    "Gemini audio model %s exhausted by quota across keys — skipping it for a while",
+                    _current_model,
+                )
 
             # AUDIT FIX 503-RETRY: если все ключи упали с 503, ждём 60s и второй круг
             if response is None and last_err is not None and (not is_quota_error(last_err)) and is_overload_error(last_err):
