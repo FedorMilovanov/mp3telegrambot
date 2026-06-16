@@ -51,3 +51,10 @@ def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
     assert "TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH" in src
     assert "repair_telegraph_page_url" in src
     assert "Auto Telegraph repair after publish" in src
+
+
+def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
+    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "aupdate_generated_page_repair_status" in src
+    assert "_auto_repair_results" in src
+    assert "changed_pages=sum(1 for _r in _auto_repair_results" in src

@@ -53,7 +53,7 @@ from core.progress import set_progress
 from core.title_topic_audit import choose_safe_public_title
 from core.publication_status import build_publication_status, missing_to_json
 from core.generated_pages import (
-    asave_generated_page_record, asave_segment_plan_export,
+    asave_generated_page_record, asave_segment_plan_export, aupdate_generated_page_repair_status,
     build_generated_page_record, collect_quality_warnings, extract_scripture_refs,
     timestamp_coverage_archive_fields,
 )
@@ -2457,6 +2457,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     prompt_variant=os.getenv("PROMPT_EXPERIMENT_TAG", ""),
                 )
                 await asave_generated_page_record(_archive_record)
+                if _auto_repair_results:
+                    await aupdate_generated_page_repair_status(
+                        media_id,
+                        changed_pages=sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False)),
+                        errors=[getattr(_r, "error", "") for _r in _auto_repair_results if getattr(_r, "error", "")],
+                    )
                 _segment_export = await asave_segment_plan_export(
                     video_id=media_id,
                     title=_archive_record.get("title", ""),

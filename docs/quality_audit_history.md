@@ -312,3 +312,14 @@ Aligned Study prompt with deterministic repair policy:
 - prompt examples now prefer the original title unless the Russian title is known/registered.
 
 This is the prompt-level counterpart to the deterministic repair rules: Gemini is now instructed to avoid the same source-card and third-person patterns that audit/repair catches later.
+
+## 2026-06-16 — Auto-repair status persisted to archive
+
+Post-publish auto-repair is now recorded in the durable generated-pages archive. After saving a generated page record, the pipeline updates repair metadata using the auto-repair results:
+
+- `last_repaired_at`
+- `repair_count`
+- `last_repair_changed_pages`
+- `last_repair_errors`
+
+This makes automatic repair visible in archive Markdown/SQLite, not only in runtime logs.
