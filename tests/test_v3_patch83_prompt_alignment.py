@@ -15,7 +15,7 @@ def test_study_prompt_source_cards_match_title_first_renderer_policy():
 def test_study_prompt_private_guidance_never_publish_channel_position():
     assert "PRIVATE GUIDANCE — НЕ ДЛЯ ПУБЛИКАЦИИ" in STUDY_ANALYSIS_PROMPT
     assert "Никогда не пересказывай её в публичном тексте" in STUDY_ANALYSIS_PROMPT
-    assert "не к каналу" in STUDY_ANALYSIS_PROMPT
+    assert "не к внутренней инструкции" in STUDY_ANALYSIS_PROMPT
 
 
 def test_qa_synopsis_prompt_is_transcript_like_not_summary():

@@ -77,7 +77,7 @@ def test_combined_function_exists_but_docstring_says_quality_first_opt_in():
 
 def test_prompts_ban_channel_position_and_bare_key_texts():
     src = Path("core/prompts.py").read_text(encoding="utf-8")
-    assert "Никогда не упоминай «позицию канала»" in src
+    assert "Никогда не публикуй внутреннюю редакционную рамку" in src
     assert "нельзя давать голую подборку стихов" in src
     assert "не ограничивайся словарным значением" in src
 

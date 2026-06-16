@@ -426,3 +426,14 @@ Extended prompt-health leaky literal guard and removed additional prompt phrases
 - invented-source examples such as `Спасение младенцев`, `Младенцы во славе`, `Странный огонь`
 
 The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaky literals across main prompts and the deep audio prompt sample.
+
+## 2026-06-16 — Channel-position literal cleanup completed
+
+Removed remaining Study prompt phrases that could leak editorial/channel framing into public pages:
+
+- `позицию канала`
+- `наш канал`
+- `редакции/каналу`
+- `нерв позиции канала`
+
+Replaced them with neutral internal-instruction wording (`внутренняя редакционная рамка`, `внутренняя инструкция`, `богословский guardrail`). Prompt-health leaky literal list was expanded to guard against reintroducing these phrases.
