@@ -131,6 +131,7 @@ async def process_and_send_montage(
     existing_audio_part=None, existing_client=None,
     rutube_url: str = "", vk_url: str = "",
     prefetched_candidates: list[dict] | None = None,
+    livedub_video_path=None,  # ENG: path to translated video
 ) -> None:
     video_path, owned_video = None, False
     try:
@@ -142,7 +143,13 @@ async def process_and_send_montage(
             except Exception:
                 pass
             return
-        video_path = await download_video_for_shorts(url, media_id)
+        # ENG mode: prefer translated video
+        from pathlib import Path as _P
+        if livedub_video_path and _P(livedub_video_path).exists():
+            video_path = _P(livedub_video_path)
+            logger.info(f"Montage: using LiveDub video: {video_path.name}")
+        else:
+            video_path = await download_video_for_shorts(url, media_id)
         if not video_path:
             logger.warning("Montage: не удалось скачать видео")
             return
@@ -186,6 +193,7 @@ async def process_and_send_highlights(
     existing_audio_part=None, existing_client=None,
     rutube_url: str = "", vk_url: str = "",
     prefetched_candidates: list[dict] | None = None,
+    livedub_video_path=None,  # ENG: path to translated video
 ) -> None:
     video_path, owned_video = None, False
     try:
@@ -197,7 +205,13 @@ async def process_and_send_highlights(
             except Exception:
                 pass
             return
-        video_path = await download_video_for_shorts(url, media_id)
+        # ENG mode: prefer translated video
+        from pathlib import Path as _P
+        if livedub_video_path and _P(livedub_video_path).exists():
+            video_path = _P(livedub_video_path)
+            logger.info(f"Highlights: using LiveDub video: {video_path.name}")
+        else:
+            video_path = await download_video_for_shorts(url, media_id)
         if not video_path:
             logger.warning("Highlights: не удалось скачать видео")
             return

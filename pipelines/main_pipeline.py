@@ -2622,6 +2622,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ai_data=ai_data, update=update,
                 rutube_url=rutube_url, vk_url=vk_url,
                 prefetched_candidates=_prefetched_extras.get("montage_candidates", []),
+                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
             )
         else:
             logger.info(f"Montage: skipped (feat={_feat_montage})")
@@ -2634,6 +2635,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ai_data=ai_data, update=update,
                 rutube_url=rutube_url, vk_url=vk_url,
                 prefetched_candidates=_prefetched_extras.get("highlights_candidates", []),
+                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
             )
         else:
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")
