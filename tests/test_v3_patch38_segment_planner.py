@@ -60,7 +60,7 @@ def test_segments_and_cutseg_commands_are_registered():
     assert "download_video_for_shorts" in commands
     assert "parse_segment_selection" in commands
     assert "segments_batch_render" in commands
-    assert "segcut:{video_id}:{s.index}" in commands
+    assert "segcut:{video_id}:{segment.index}" in commands
     assert 'CommandHandler("segments"' in main
     assert 'CommandHandler("cutseg"' in main
 
@@ -80,6 +80,6 @@ def test_segment_plan_export_writes_files(tmp_path):
     assert out["count"] == "2"
     md = Path(out["md"]).read_text(encoding="utf-8")
     js = Path(out["json"]).read_text(encoding="utf-8")
-    assert "/cutseg seg-export 1" in md
+    assert "/cut seg-export 1" in md
     assert "Вопрос 1" in md
     assert '"video_id": "seg-export"' in js

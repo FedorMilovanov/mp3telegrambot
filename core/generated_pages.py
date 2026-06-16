@@ -661,8 +661,8 @@ def save_segment_plan_export(
     md.append("")
     md.append("Render examples:")
     md.append(f"- `/segments {video_id}`")
-    md.append(f"- `/cutseg {video_id} 1`")
-    md.append(f"- `/cutseg {video_id} 1,3,5`")
+    md.append(f"- `/cut {video_id} 1`")
+    md.append(f"- `/cut {video_id} 1,3,5`")
     md_path.write_text("\n".join(md).strip() + "\n", encoding="utf-8")
     return {"json": str(json_path), "md": str(md_path), "count": str(len(segments))}
 

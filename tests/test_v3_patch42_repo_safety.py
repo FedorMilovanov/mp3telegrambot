@@ -8,7 +8,7 @@ from core.reasoning_guidance import build_reasoning_first_block
 
 def test_segments_command_uses_safe_pre_without_nested_code_tags():
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
-    assert "Вырезать: /cutseg {video_id} N" in src
+    assert "Нажмите кнопку или: /cut {video_id} N" in src
     assert "&lt;code&gt;" not in src[src.find("async def segments_command"):src.find("async def cutseg_command")]
     assert "segment.title[:220]" in src
     assert "caption=caption[:1024]" not in src

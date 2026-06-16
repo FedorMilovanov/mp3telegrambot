@@ -603,9 +603,9 @@ SETTINGS_DEFAULTS: dict[str, bool] = {
     "clips":                  False,  # Длинные clips (5–15 мин) из Q&A / лекций
     "clips_snapshot":         True,   # Poster/snapshot для каждого clip
     "segments":               False,  # Selectable timestamp-based Q&A/theme cuts
-    "segments_render":        True,   # Allow /cutseg rendering from timestamp segments
-    "segments_subtitles":     True,   # Burn subtitles into /cutseg rendered segments
-    "segments_batch_render":  False,  # Allow /cutseg VIDEO_ID 1,3,5 / all
+    "segments_render":        True,   # Allow /cut rendering from timestamp segments
+    "segments_subtitles":     True,   # Burn subtitles into /cut rendered segments
+    "segments_batch_render":  False,  # Allow /cut VIDEO_ID 1,3,5 / all
     # ── Новая продуктовая модель: две сильных article-like страницы ──────────
     "study_analysis":         True,   # «Разбор материала» (аналитика+термины+богословие)
     "reflection_application": True,   # «Размышление и применение» (пасторский guide)

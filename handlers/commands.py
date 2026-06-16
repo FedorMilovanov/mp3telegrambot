@@ -840,22 +840,28 @@ def _segments_from_cache(cache: dict | None, archive_record: dict | None = None)
     return segments, title, duration, fmt, status
 
 
-def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, per_page: int = 12) -> InlineKeyboardMarkup | None:
-    """Build paginated inline keyboard for segment rendering."""
+def _short_title(title: str, max_len: int = 28) -> str:
+    """Truncate segment title to fit inline button (max ~30 chars visible)."""
+    t = title.strip()
+    if len(t) <= max_len:
+        return t
+    return t[:max_len - 1].rstrip() + "…"
+
+
+def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, per_page: int = 8) -> InlineKeyboardMarkup | None:
+    """Build paginated inline keyboard for segment rendering.
+
+    Each button shows segment number + short topic title on its own row.
+    """
     if not segments:
         return None
     total_pages = max(1, (len(segments) + per_page - 1) // per_page)
     page = max(0, min(int(page or 0), total_pages - 1))
     visible = segments[page * per_page:page * per_page + per_page]
     buttons = []
-    row = []
     for segment in visible:
-        row.append(InlineKeyboardButton(f"🎬 {segment.index}", callback_data=f"segcut:{video_id}:{segment.index}"))
-        if len(row) == 4:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
+        label = f"🎬 {segment.index}. {_short_title(segment.title)}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"segcut:{video_id}:{segment.index}")])
     if total_pages > 1:
         nav = []
         if page > 0:
@@ -867,12 +873,12 @@ def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, pe
     return InlineKeyboardMarkup(buttons) if buttons else None
 
 
-def _format_segments_page_text(video_id: str, title: str, fmt: str, segments: list, *, page: int = 0, per_page: int = 12) -> str:
+def _format_segments_page_text(video_id: str, title: str, fmt: str, segments: list, *, page: int = 0, per_page: int = 8) -> str:
     total_pages = max(1, (len(segments) + per_page - 1) // per_page) if segments else 1
     page = max(0, min(int(page or 0), total_pages - 1))
     visible = segments[page * per_page:page * per_page + per_page]
     text = format_segments_text(visible, title=f"Сегменты: {title} ({fmt or 'format?'}) · стр. {page + 1}/{total_pages}")
-    text += f"\n\nВырезать: /cutseg {video_id} N"
+    text += f"\n\nНажмите кнопку или: /cut {video_id} N"
     if total_pages > 1:
         text += "\nЛистайте кнопками ⬅️/➡️."
     return text
@@ -896,20 +902,11 @@ async def segments_command(update, context):
     text = format_segments_text(segments, title=f"Сегменты: {title} ({fmt or 'format?'})")
     if seg_status == "partial":
         text = "⚠️ Сегменты построены по неполной сетке таймкодов.\n\n" + text
-    text += f"\n\nВырезать: /cutseg {video_id} N"
+    text += f"\n\nНажмите кнопку или: /cut {video_id} N"
     safe = html_mod.escape(text)
     if len(safe) > 3900:
         safe = safe[:3850] + "\n…обрезано"
-    buttons = []
-    row = []
-    for s in segments[:12]:
-        row.append(InlineKeyboardButton(f"🎬 {s.index}", callback_data=f"segcut:{video_id}:{s.index}"))
-        if len(row) == 4:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    markup = InlineKeyboardMarkup(buttons) if buttons else None
+    markup = _build_segments_keyboard(video_id, segments)
     await update.message.reply_text(
         f"<pre>{safe}</pre>",
         parse_mode="HTML",
@@ -918,164 +915,60 @@ async def segments_command(update, context):
     )
 
 
-async def customcut_command(update, context):
-    """Cut video by text phrases: /cut VIDEO_ID "from phrase" "to phrase" [shorts|wide]"""
-    user_id = update.effective_user.id
-    if ADMIN_IDS and user_id not in ADMIN_IDS:
-        await update.message.reply_text(
-            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
-        )
-        return
-
-    args = context.args or []
-    if len(args) < 1:
-        await update.message.reply_text(
-            "✂️ <b>Вырезка по словам</b>\n\n"
-            "Использование:\n"
-            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\"</code>\n"
-            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\" shorts</code>\n"
-            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\" wide</code>\n\n"
-            "Пример:\n"
-            "<code>/cut lpsGi_7wvUg \"рождение свыше\" \"Царствия Божия\"</code>\n\n"
-            "• <b>shorts</b> — вертикальный формат 9:16 с субтитрами\n"
-            "• <b>wide</b> — оригинальный 16:9 (по умолчанию)\n"
-            "• Фразы ищутся через Whisper-транскрипцию",
-            parse_mode="HTML",
-        )
-        return
-
-    # Parse: VIDEO_ID "phrase1" "phrase2" [shorts|wide]
-    raw_text = update.message.text or ""
-    # Extract quoted phrases
-    quotes = re.findall(r'"([^"]+)"', raw_text)
-    if len(quotes) < 2:
-        # Try «» quotes
-        quotes = re.findall(r'[«"]([^»"]+)[»"]', raw_text)
-    if len(quotes) < 2:
-        await update.message.reply_text(
-            '⚠️ Укажите две фразы в кавычках:\n'
-            '<code>/cut VIDEO_ID "от фразы" "до фразы"</code>',
-            parse_mode="HTML",
-        )
-        return
-
-    video_id = re.sub(r'[^A-Za-z0-9_-]', '', args[0].strip())
-    if not video_id or len(video_id) > 20:
-        await update.message.reply_text("⚠️ Неверный video_id.")
-        return
-    start_phrase = quotes[0].strip()
-    end_phrase = quotes[1].strip()
-
-    # Mode: last arg if "shorts" or "wide"
-    mode = "wide"
-    last_word = raw_text.strip().split()[-1].lower()
-    if last_word in ("shorts", "short", "вертикальный", "9:16"):
-        mode = "shorts"
-    elif last_word in ("wide", "горизонтальный", "16:9"):
-        mode = "wide"
-
-    mode_label = "9:16 Shorts" if mode == "shorts" else "16:9 Wide"
-    msg = await update.message.reply_text(
-        f"✂️ Ищу фразы в видео...\n"
-        f"От: «{start_phrase[:50]}»\n"
-        f"До: «{end_phrase[:50]}»\n"
-        f"Формат: {mode_label}\n\n"
-        f"⏳ Ищу субтитры YouTube... (если нет — Whisper, это 5-15 мин)"
-    )
-
-    try:
-        from services.shorts_video import download_video_for_shorts
-        from services.custom_cut import custom_cut_video
-
-        # Download video
-        _yt_url = f"https://www.youtube.com/watch?v={video_id}"
-        video_path = await download_video_for_shorts(_yt_url, video_id)
-        if not video_path:
-            await msg.edit_text("❌ Не удалось скачать видео.")
-            return
-
-        # Cut
-        import uuid
-        output_path = DOWNLOAD_DIR / f"{video_id}_cut_{uuid.uuid4().hex[:8]}.mp4"
-        result = await custom_cut_video(
-            video_path=video_path,
-            start_phrase=start_phrase,
-            end_phrase=end_phrase,
-            output_path=output_path,
-            mode=mode,
-            video_url=_yt_url,
-        )
-
-        if not result or not result.exists():
-            await msg.edit_text(
-                "❌ Не удалось найти фразы в видео.\n\n"
-                "Попробуйте:\n"
-                "• Другие слова (Whisper может транскрибировать иначе)\n"
-                "• Более короткие фразы (2-4 слова)\n"
-                "• Убедитесь что фразы идут в правильном порядке"
-            )
-            return
-
-        size_mb = result.stat().st_size / (1024 * 1024)
-        if size_mb > 50:
-            await msg.edit_text(f"❌ Файл слишком большой: {size_mb:.1f} МБ (лимит 50 МБ)")
-            result.unlink(missing_ok=True)
-            return
-
-        await msg.edit_text(f"✂️ Готово! Отправляю ({size_mb:.1f} МБ)...")
-
-        caption = (
-            f"✂️ <b>Custom Cut</b>\n"
-            f"От: «{start_phrase[:40]}»\n"
-            f"До: «{end_phrase[:40]}»\n"
-            f"Формат: {mode_label}"
-        )
-        await update.message.reply_video(
-            video=result,
-            caption=caption,
-            parse_mode="HTML",
-            supports_streaming=True,
-            write_timeout=300,
-            read_timeout=300,
-            connect_timeout=60,
-        )
-        await msg.delete()
-
-    except Exception as e:
-        logger.warning("customcut failed: %s", e, exc_info=True)
-        try:
-            await msg.edit_text(f"❌ Ошибка: {_mask(str(e))[:200]}")
-        except Exception:
-            pass
-    finally:
-        try:
-            if 'output_path' in locals():
-                output_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
 async def cutseg_command(update, context):
-    """Render and send deterministic segment(s) by timestamp boundary."""
+    """Render and send deterministic segment(s) by timestamp boundary.
+
+    Usage:
+        /cut              — show segments for last video
+        /cut VIDEO_ID     — show segments for video
+        /cut VIDEO_ID 3   — render segment 3
+        /cut VIDEO_ID 1,3 — render segments 1 and 3
+        /cut last 2       — render segment 2 of last video
+    Also registered as /cutseg (alias).
+    """
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
         await update.message.reply_text(f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML")
         return
-    if len(context.args or []) < 2:
-        await update.message.reply_text(
-            "🎬 Использование: <code>/cutseg VIDEO_ID N</code>, "
-            "<code>/cutseg VIDEO_ID 1,3,5</code> или <code>/cutseg last N</code>",
-            parse_mode="HTML",
-        )
-        return
     if not await asettings_get("segments"):
         await update.message.reply_text("🧩 Сегменты выключены в настройках. Включите: /settings → 🧩 Сегменты")
         return
+    args = context.args or []
+    # No args → show segments for last video
+    # 1 arg → show segments for that video (or "last")
+    # 2+ args → render segment(s)
+    target = args[0].strip() if args else "last"
+    selection = args[1].strip() if len(args) >= 2 else None
+
+    if selection is None:
+        # Show segment list (like /segments)
+        video_id, cache, archive_record = await _resolve_segment_source(target)
+        if not cache:
+            await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data. Используйте video_id или `last`.")
+            return
+        segments, title, _duration, fmt, seg_status = _segments_from_cache(cache, archive_record)
+        if not segments:
+            await update.message.reply_text("⚠️ Сегменты не найдены: нужны таймкоды из AI-анализа.")
+            return
+        text = format_segments_text(segments, title=f"Сегменты: {title} ({fmt or 'format?'})")
+        if seg_status == "partial":
+            text = "⚠️ Сегменты построены по неполной сетке таймкодов.\n\n" + text
+        text += f"\n\nНажмите кнопку или: /cut {video_id} N"
+        safe = html_mod.escape(text)
+        if len(safe) > 3900:
+            safe = safe[:3850] + "\n…обрезано"
+        markup = _build_segments_keyboard(video_id, segments)
+        await update.message.reply_text(
+            f"<pre>{safe}</pre>", parse_mode="HTML",
+            disable_web_page_preview=True, reply_markup=markup,
+        )
+        return
+
     if not await asettings_get("segments_render"):
         await update.message.reply_text("🎞 Рендер сегментов выключен в настройках. Включите: /settings → 🧩 Сегменты")
         return
-    target = context.args[0].strip()
-    selection = context.args[1].strip()
     video_id, cache, archive_record = await _resolve_segment_source(target)
     if not cache:
         await update.message.reply_text("⚠️ Нужна запись в video_cache с ai_data для нарезки.")

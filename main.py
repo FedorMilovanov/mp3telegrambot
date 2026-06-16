@@ -30,7 +30,6 @@ from handlers.commands import (
     stop_command, metrics_command, archive_command, lastpages_command,
     search_archive_command, author_archive_command, scripture_archive_command,
     repairpage_command, repairrecent_command, segments_command, cutseg_command,
-    customcut_command,
     prompthealth_command, codehealth_command, archivequality_command, archivequalityfile_command, qualityrecords_command, promptrecommend_command, comparevariants_command, archivefile_command, segmentfile_command,
     disk_command,
 )
@@ -658,7 +657,7 @@ async def run_bot_async():
     app.add_handler(CommandHandler("repairrecent", repairrecent_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("segments",   segments_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("cutseg",     cutseg_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("cut",        customcut_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("cut",        cutseg_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("disk",       disk_command, filters=_MSG_ONLY))
     # FIX 2026-06-10: filters.TEXT матчит И edited_message (update.message=None
     # -> AttributeError в handle_message). Реагируем только на новые сообщения:
@@ -762,7 +761,7 @@ async def run_bot_async():
                     BotCommand("search",     "🔎 Поиск по архиву"),
                     BotCommand("segments",   "🧩 Сегменты видео"),
                     BotCommand("cutseg",     "🎬 Вырезать сегмент"),
-                    BotCommand("cut",        "✂️ Вырезка по словам"),
+                    BotCommand("cut",        "✂️ Вырезать сегмент"),
                     BotCommand("repairpage", "🛠 Ремонт Telegraph"),
                     BotCommand("archivefile", "📁 Файл архива"),
                     BotCommand("segmentfile", "🧩 Файл сегментов"),
