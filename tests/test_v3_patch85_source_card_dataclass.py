@@ -106,3 +106,34 @@ def test_source_card_registry_covers_common_reformed_source_pack_authors():
     assert normalize_source_card_line("• Louis Berkhof, Systematic Theology") == (
         "• **Systematic Theology**, Луис Беркхоф (Louis Berkhof)."
     )
+
+
+def test_source_pack_author_surnames_have_registry_aliases():
+    import re
+    from core.source_packs import _PACKS
+    from core.source_titles import AUTHOR_CANONICAL
+
+    ignored = {
+        "MacArthur Study Bible", "1689 London Baptist Confession", "Westminster Confession of Faith",
+    }
+    missing = set()
+    for items in _PACKS.values():
+        for item in items:
+            if "—" not in item:
+                continue
+            head = item.split("—", 1)[0].strip()
+            if head in ignored or re.search(r"\d", head):
+                continue
+            for author in [p.strip() for p in head.split(" and ")]:
+                if author and re.search(r"[A-Za-z]", author) and author not in AUTHOR_CANONICAL:
+                    missing.add(author)
+    assert missing == set()
+
+
+def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical():
+    assert normalize_source_card_line("• Owen, Mortification of Sin") == (
+        "• **Mortification of Sin**, Джон Оуэн (John Owen)."
+    )
+    assert normalize_source_card_line("• Warfield, Inspiration and Authority of the Bible") == (
+        "• **Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
+    )

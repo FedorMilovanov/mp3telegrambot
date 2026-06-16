@@ -485,3 +485,14 @@ Added known official Russian titles for several high-frequency works:
 - `The Doctrine of Repentance` → `Учение о покаянии`
 
 This reduces English-author leakage in source cards while preserving original titles when Russian titles are not registry-confirmed.
+
+## 2026-06-16 — Source-pack surname aliases covered
+
+Added deterministic surname aliases for authors that appear in `core/source_packs.py` with short labels (for example `Owen — ...`, `Warfield — ...`, `Dever — ...`). Source-card rendering now converts those pack labels to Russian display names while keeping full original author names in parenthetical verifiers.
+
+Examples:
+
+- `Owen, Mortification of Sin` → `**Mortification of Sin**, Джон Оуэн (John Owen)`
+- `Warfield, Inspiration and Authority of the Bible` → `**Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)`
+
+Added a regression test that scans `core/source_packs.py` and fails if an English source-pack author label lacks a source-card registry alias.
