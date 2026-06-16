@@ -66,15 +66,6 @@ def _url(value: Any) -> str:
     return text
 
 
-def _pick_title(row: sqlite3.Row, ai: dict[str, Any]) -> str:
-    return _safe_str(
-        ai.get("real_title")
-        or ai.get("title")
-        or row.get("title") if hasattr(row, "get") else "",
-        180,
-    ) or "Без названия"
-
-
 def _row_get(row: sqlite3.Row, key: str, default: Any = "") -> Any:
     try:
         return row[key]
@@ -99,14 +90,17 @@ def extract_records(db_path: Path) -> list[dict[str, Any]]:
     for row in rows:
         ai = _load_ai(_row_get(row, "ai_data"))
         links: dict[str, str] = {}
+        seen_urls: set[str] = set()
         for col in PUBLIC_URL_COLUMNS:
             if col not in row.keys():
                 continue
             url = _url(_row_get(row, col))
-            if url:
-                # Deduplicate same Telegraph URL under legacy aliases.
+            if url and url not in seen_urls:
+                # Deduplicate same Telegraph URL under legacy aliases
+                # (e.g. reflection_tg_url == questions_tg_url in older cache rows).
                 label = LINK_LABELS.get(col, col)
                 links.setdefault(label, url)
+                seen_urls.add(url)
         if not links:
             continue
         video_id = _safe_str(_row_get(row, "video_id"), 80)
