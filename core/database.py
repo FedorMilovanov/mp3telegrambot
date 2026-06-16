@@ -22,7 +22,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def _db_conn() -> sqlite3.Connection:
+def _db_conn(db_path=None) -> sqlite3.Connection:
     """Create a DB connection with WAL mode and busy_timeout.
 
     Every sqlite3.connect() in the project MUST use this helper to avoid
@@ -30,7 +30,8 @@ def _db_conn() -> sqlite3.Connection:
     Without busy_timeout, a concurrent writer will immediately raise
     OperationalError instead of waiting.
     """
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    path = DB_PATH if db_path is None else db_path
+    conn = sqlite3.connect(path, timeout=10)
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
     return conn

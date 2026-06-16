@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from core.database import _db_conn
+
 
 ARCHIVE_DIR = Path(os.getenv("GENERATED_PAGES_DIR", "data/generated_pages"))
 ARCHIVE_DB = "generated_pages.sqlite"
@@ -399,8 +401,7 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
     if not record.get("video_id"):
         # Stable fallback key for non-YouTube/manual inputs.
         record["video_id"] = _slug(record.get("source_url") or record.get("title") or str(now), 120)
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _db_conn(db_path) as conn:
         _ensure_schema(conn)
         conn.execute(
             """
@@ -479,8 +480,7 @@ def query_generated_pages(
     if not db_path.exists():
         return []
     limit = max(1, min(int(limit or 10), 50))
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _db_conn(db_path) as conn:
         _ensure_schema(conn)
         candidates = _load_recent(conn, limit=500)
 
@@ -564,8 +564,7 @@ def update_generated_page_repair_status(
         return
     now = _now_ts()
     err_text = "; ".join(str(e)[:180] for e in (errors or []) if str(e).strip())[:1000]
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _db_conn(db_path) as conn:
         _ensure_schema(conn)
         conn.execute(
             """
@@ -598,8 +597,7 @@ def get_generated_page_record(video_id: str, base_dir: Path | None = None) -> di
     db_path = base / ARCHIVE_DB
     if not db_path.exists():
         return None
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _db_conn(db_path) as conn:
         _ensure_schema(conn)
         rows = _load_recent(conn, limit=500)
     for row in rows:

@@ -1819,7 +1819,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
                 )
                 await asyncio.sleep(wait_sec)
                 continue
-            logger.debug("_edit_telegraph_page: API error=%r, url=%s", err_msg, page_url)
+            logger.warning("_edit_telegraph_page: API returned ok=False, error=%r, url=%s", err_msg, page_url)
             return False
         except Exception as e:
             logger.warning("Telegraph editPage (attempt %d/3): %s", _edit_attempt + 1, e)

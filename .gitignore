@@ -14,15 +14,17 @@ __pycache__/
 # =============== Project ===============
 downloads/
 bot_cache.db
+bot_cache.db.bak.*
 *.db
+*.sqlite
+*.sqlite3
 bot.zip
 cookies.txt
 *.log
 
 # =============== OS ===============
 .DS_Store
-Thumbs.db# === ДОБАВИТЬ В .gitignore ===
-# (этот файл не для коммита, это инструкция)
+Thumbs.db
 
 # SQLite WAL/SHM — никогда не коммитим
 bot_cache.db-shm

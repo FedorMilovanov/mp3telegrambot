@@ -734,6 +734,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # --- END LIVEDUB ---
 
         _livedub_failure_notice_sent = False
+        _livedub_result_sent = False
+        _livedub_video_for_downstream = None
 
         async def _send_livedub_result() -> bool:
             """Отправляет готовый LIVEDUB-перевод пользователю.
@@ -742,7 +744,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             внятное сообщение); False — если перевод тихо не состоялся.
             Общий хелпер для обеих веток (кэш-hit и полная обработка).
             """
-            nonlocal _livedub_failure_notice_sent
+            nonlocal _livedub_failure_notice_sent, _livedub_result_sent, _livedub_video_for_downstream
+            if _livedub_result_sent:
+                return True
             if not context:
                 return False
             if not (_livedub_cached_file_id or live_dub_task):
@@ -750,7 +754,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
             async def _notify_full_livedub_failure(reason: str = "") -> bool:
                 """ENG Full не должен молча терять обещанный перевод+QA."""
-                nonlocal _livedub_failure_notice_sent
+                nonlocal _livedub_failure_notice_sent, _livedub_result_sent
                 if user_mode != "eng" or _livedub_failure_notice_sent:
                     return False
                 _livedub_failure_notice_sent = True
@@ -769,6 +773,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         parse_mode="HTML",
                         reply_to_message_id=update.message.message_id,
                     )
+                    _livedub_result_sent = True
                     return True
                 except Exception as _ld_notice_err:
                     logger.info("[LiveDub] failure notice not sent: %s", str(_ld_notice_err)[:160])
@@ -833,6 +838,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         supports_streaming=True,
                     )
                     await _send_livedub_info_card_once(None)
+                    _livedub_result_sent = True
                     return True
                 except Exception as _fid_err:
                     # file_id протух (смена бота/сервера). Чистим кэш, чтобы
@@ -852,6 +858,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         )
                     except Exception:
                         pass
+                    _livedub_result_sent = True
                     return True  # юзер получил объяснение
             if not live_dub_task:
                 return False
@@ -948,6 +955,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 except Exception as _name_err:
                     logger.info("[LiveDub] filename prepare skip: %s", str(_name_err)[:120])
 
+                if not is_fallback and livedub_path and livedub_path.exists():
+                    _livedub_video_for_downstream = Path(livedub_path)
+
                 # ── Техническая проверка целостности (всегда, дёшево) ──
                 _tech_warnings: list[str] = []
                 if not is_fallback:
@@ -970,6 +980,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
                         reply_to_message_id=update.message.message_id,
                     )
+                    _livedub_result_sent = True
                     return True
                 _title_prefix = f"<b>{_livedub_title_html}</b>\n" if _livedub_title_html else ""
                 if is_fallback:
@@ -1194,6 +1205,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.info("[LiveDubQA] проверка не дала результата — отчёт не отправлен")
                     except Exception as _qa_err:
                         logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
+                _livedub_result_sent = True
                 return True
             except asyncio.TimeoutError:
                 # wait_for отменяет задачу при таймауте — перевод уже не придёт.
@@ -1202,6 +1214,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     text="⏳ Перевод «Живые голоса» не успел за 30 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
                     reply_to_message_id=update.message.message_id,
                 )
+                _livedub_result_sent = True
                 return True
             except Exception as e:
                 logger.warning(f"[LiveDub] fail: {e}")
@@ -2565,15 +2578,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # ── Shorts (после основного результата) ─────────
         _feat_shorts = await asettings_get("shorts")
-        # ENG mode: use translated video for Shorts/Clips/Montage if LiveDub succeeded
+        # ENG mode: use translated video for Shorts/Clips/Montage if LiveDub succeeded.
+        # The LiveDub path is produced inside _send_livedub_result(); wait for it
+        # before rendering clips so downstream videos do not silently fall back
+        # to the English original.
         _shorts_livedub_path = None
+        if user_mode in ("eng", "eng_fast", "eng_fast_qa"):
+            if _livedub_video_for_downstream is None and live_dub_task and context:
+                logger.info("Shorts/Clips/Montage: waiting for LiveDub video for ENG downstream renders")
+                await _send_livedub_result()
+            if _livedub_video_for_downstream and Path(_livedub_video_for_downstream).exists():
+                _shorts_livedub_path = Path(_livedub_video_for_downstream)
+                logger.info("Shorts/Clips/Montage: using TRANSLATED video (LiveDub) for ENG renders")
         if ai_data and _feat_shorts:
             logger.info("Shorts: feature enabled, starting pipeline")
-            if (user_mode in ("eng", "eng_fast", "eng_fast_qa")
-                    and "livedub_path" in locals()
-                    and livedub_path and Path(livedub_path).exists()):
-                _shorts_livedub_path = Path(livedub_path)
-                logger.info("Shorts: using TRANSLATED video (LiveDub) for ENG shorts")
             await process_and_send_shorts(
                 url=url,
                 media_id=media_id,

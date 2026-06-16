@@ -181,7 +181,7 @@ def log_gemini_run(
     )
 
     try:
-        with _db_conn() as conn:
+        with _db_conn(DB_PATH) as conn:
             db_key = str(DB_PATH)
             if db_key not in _TABLE_ENSURED_DB_PATHS:
                 _ensure_gemini_runs_table(conn)
@@ -258,7 +258,7 @@ def fetch_recent_gemini_runs(limit: int = 10) -> list[dict[str, Any]]:
     """Return recent Gemini run rows as dictionaries for admin readouts."""
     limit = max(1, min(_safe_int(limit, 10), 50))
     try:
-        with _db_conn() as conn:
+        with _db_conn(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             _ensure_gemini_runs_table(conn)
             rows = conn.execute(
@@ -302,7 +302,7 @@ def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
         "recent_errors": [],
     }
     try:
-        with _db_conn() as conn:
+        with _db_conn(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             _ensure_gemini_runs_table(conn)
             totals = conn.execute(

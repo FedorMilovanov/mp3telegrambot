@@ -300,7 +300,7 @@ async def handle_callback(update, context) -> None:
                 total_segments=len(segments),
                 ai_data=ai_data,
             )
-            await safe_edit_text(msg, "✅ Сегмент отправлен." if ok else "❌ Не удалось отправить сегмент.")
+            await safe_edit_text(msg, "✅ Сегмент отправлен." if ok else "❌ Не удалось скачать видео или отправить сегмент.")
         except Exception as exc:
             logger.warning("segcut callback failed: %s", exc, exc_info=True)
             try:
