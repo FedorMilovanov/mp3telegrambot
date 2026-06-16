@@ -362,3 +362,23 @@ The standalone CLI tools now match pipeline behavior for multi-part Telegraph pa
 - both tools support `--no-expand-chains` for one-page debugging.
 
 Verified on `Vernost-v-uchenichestve--Mark-Dever-06-16`: a single first-part URL expands to 5 Telegraph pages in repair dry-run.
+
+## 2026-06-16 — Gemini content-audit retry for expanded pages
+
+Added a real Gemini-level repair pass before Study/Reflection publication, not just deterministic cleanup.
+
+When section-level content audit finds unresolved warnings (thin scripture role, missing source relevance, third-person wrappers, thin application/lexicon), the expanded-page runner now performs one targeted retry:
+
+```env
+EXPANDED_CONTENT_AUDIT_RETRY=1
+```
+
+The retry prompt sends:
+
+- exact audit issues;
+- original task context;
+- current `{outline, sections}` JSON.
+
+Gemini must return repaired `{outline, sections}`. The retry is accepted only if audit warning count does not increase. It uses the configured primary model only (`allow_model_fallback=False`) to avoid low-quality fallback rewrites.
+
+This is the generator-quality counterpart to postprocess repair: the model is asked to fix the actual weak section before Telegraph publication.

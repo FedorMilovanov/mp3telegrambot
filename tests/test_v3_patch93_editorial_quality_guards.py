@@ -83,3 +83,12 @@ def test_content_audit_block_locations_are_well_formed():
     _, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     assert any(".blocks[0]" in i.location for i in issues)
     assert not any(i.location.endswith("[0") for i in issues)
+
+
+def test_expanded_pipeline_has_gemini_content_audit_retry_before_publish():
+    src = __import__("pathlib").Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert "EXPANDED_CONTENT_AUDIT_RETRY" in src
+    assert "_retry_expanded_sections_for_content_audit" in src
+    assert "content audit retry requested" in src
+    assert "allow_model_fallback=False" in src
+    assert "content audit after retry" in src

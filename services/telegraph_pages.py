@@ -1031,6 +1031,91 @@ async def _publish_expanded_page(
     return parts_urls[0]
 
 
+def _content_audit_retry_enabled() -> bool:
+    return (os.getenv("EXPANDED_CONTENT_AUDIT_RETRY", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _audit_warning_count(issues) -> int:
+    try:
+        return sum(1 for i in issues or [] if has_content_audit_warnings([i]))
+    except Exception:
+        return len(issues or [])
+
+
+async def _retry_expanded_sections_for_content_audit(
+    *,
+    label: str,
+    original_prompt: str,
+    outline: list,
+    sections: list,
+    issues: list,
+    max_tokens: int,
+    thinking_level: str,
+    response_schema,
+    expected_author: str,
+) -> tuple[list, list, list] | None:
+    """One Gemini repair pass for unresolved content-audit warnings.
+
+    This is not a regex cleanup. It asks the primary quality model to repair the
+    concrete JSON sections that failed audit (scripture role, source relevance,
+    third-person wrapper, thin application/lexicon) before publication.
+    """
+    if not _content_audit_retry_enabled() or not issues or not has_content_audit_warnings(issues):
+        return None
+    issue_summary = format_content_audit_issues(issues, limit=10)
+    payload = json.dumps({"outline": outline or [], "sections": sections or []}, ensure_ascii=False)
+    if len(payload) > 75_000:
+        payload = payload[:75_000]
+    repair_prompt = (
+        "Ты получил JSON для Telegraph-страницы, но deterministic content-audit нашёл проблемы. "
+        "Исправь ТОЛЬКО перечисленные проблемы и верни валидный JSON {outline, sections}. "
+        "Не сокращай страницу, не удаляй сильные мысли, не добавляй новых источников вне уже разрешённого контекста. "
+        "Если scripture/source/application/lexicon блок тонкий — дополни его grounded объяснением из исходного задания. "
+        "Убери third-person wrappers: пиши тезис напрямую, без 'автор показывает'. "
+        "Сохрани порядок sections и таймкоды. Верни только JSON.\n\n"
+        f"CONTENT_AUDIT_ISSUES:\n{issue_summary}\n\n"
+        "ORIGINAL_TASK_CONTEXT:\n" + original_prompt[:24000] + "\n\n"
+        "CURRENT_JSON:\n" + payload
+    )
+    logger.warning("%s: content audit retry requested: %s", label, issue_summary[:400])
+    raw = await _gemini_text_request(
+        repair_prompt,
+        temperature=0.25,
+        max_tokens=min(max(max_tokens * 2, 16000), 65000),
+        task=f"telegraph_{label.lower()}_content_audit_retry",
+        thinking_level=thinking_level,
+        response_mime_type=("application/json" if response_schema else None),
+        response_schema=response_schema,
+        allow_model_fallback=False,
+    )
+    if not raw:
+        logger.warning("%s: content audit retry returned empty response", label)
+        return None
+    parsed = _parse_expanded_json(raw)
+    if parsed is None:
+        logger.warning("%s: content audit retry returned broken JSON", label)
+        return None
+    retry_outline, retry_sections = parsed
+    retry_sections = [s for s in retry_sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
+    if not retry_sections:
+        logger.warning("%s: content audit retry returned empty sections", label)
+        return None
+    retry_sections, retry_outline, retry_issues = audit_expanded_sections(
+        retry_sections, retry_outline if isinstance(retry_outline, list) else [], label=label, expected_author=expected_author
+    )
+    if _audit_warning_count(retry_issues) <= _audit_warning_count(issues):
+        logger.info(
+            "%s: content audit retry accepted warnings %d -> %d",
+            label, _audit_warning_count(issues), _audit_warning_count(retry_issues),
+        )
+        return retry_sections, retry_outline, retry_issues
+    logger.warning(
+        "%s: content audit retry rejected: warnings would increase %d -> %d",
+        label, _audit_warning_count(issues), _audit_warning_count(retry_issues),
+    )
+    return None
+
+
 async def _run_expanded_pipeline(
     label: str,
     prompt: str,
@@ -1136,6 +1221,26 @@ async def _run_expanded_pipeline(
                 label,
                 format_content_audit_issues(_content_audit),
             )
+        _retry_result = await _retry_expanded_sections_for_content_audit(
+            label=label,
+            original_prompt=prompt,
+            outline=outline if isinstance(outline, list) else [],
+            sections=sections,
+            issues=_content_audit,
+            max_tokens=_adaptive.max_tokens,
+            thinking_level=thinking_level,
+            response_schema=_structured_schema,
+            expected_author=author,
+        )
+        if _retry_result is not None:
+            sections, outline, _content_audit = _retry_result
+            if _content_audit and _audit_mode != "off":
+                _log_audit = logger.warning if has_content_audit_warnings(_content_audit) else logger.info
+                _log_audit(
+                    "%s: content audit after retry: %s",
+                    label,
+                    format_content_audit_issues(_content_audit),
+                )
         if _content_audit and should_abort_for_content_audit(_content_audit):
             logger.warning("%s: content audit strict abort -- fallback", label)
             return await fallback_fn() if fallback_fn else None
