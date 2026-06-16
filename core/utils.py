@@ -209,6 +209,10 @@ def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
 
 
 def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
+    # Sanitize media_id — defence in depth against glob injection
+    media_id = re.sub(r'[*?\[\]/\\]', '_', str(media_id or ''))
+    if not media_id:
+        return
     for f in DOWNLOAD_DIR.glob(f"{media_id}*"):
         if not f.is_file():
             continue

@@ -612,11 +612,18 @@ async def find_alternative_links(title: str, channel_name: str, duration: int,
         logger.info(f"Канал '{channel_name}' не в CHANNEL_MAP — поиск RuTube/VK пропущен")
         return {"rutube": None, "vk": None}
     logger.info(f"Ищем альт-ссылки: title='{title}', channel='{channel_name}', duration={duration}")
-    rutube_url, vk_url = await asyncio.gather(
-        asyncio.create_task(search_rutube(title, channel_name, duration, fallback_title=fallback_title)),
-        asyncio.create_task(search_vk_video(title, channel_name, duration, ai_data=ai_data)),
-        return_exceptions=True,
-    )
+    try:
+        rutube_url, vk_url = await asyncio.wait_for(
+            asyncio.gather(
+                search_rutube(title, channel_name, duration, fallback_title=fallback_title),
+                search_vk_video(title, channel_name, duration, ai_data=ai_data),
+                return_exceptions=True,
+            ),
+            timeout=120,  # 2 min hard cap on alt-link search
+        )
+    except asyncio.TimeoutError:
+        logger.warning("find_alternative_links: общий timeout 120s — RuTube/VK поиск слишком долгий")
+        return {"rutube": None, "vk": None}
     if isinstance(rutube_url, Exception): logger.warning(f"RuTube: {rutube_url}", exc_info=rutube_url); rutube_url = None
     if isinstance(vk_url,    Exception): logger.warning(f"VK: {vk_url}",          exc_info=vk_url);    vk_url    = None
     logger.info(f"Альт-ссылки: rutube={rutube_url}, vk={vk_url}")

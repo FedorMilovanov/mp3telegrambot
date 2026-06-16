@@ -143,7 +143,10 @@ async def render_short_clip(
 
         # Корректируем точку конца до ближайшей паузы (±2–3 сек от Gemini-оценки)
         adjusted_end = await _find_silence_end(source_video_path, float(end_seconds))
-        if abs(adjusted_end - end_seconds) > 0.1:
+        # Guard: silence snap must not shrink short below 10s or extend beyond +10s
+        min_end = start_seconds + max(10, int((end_seconds - start_seconds) * 0.5))
+        max_end = end_seconds + 10
+        if min_end < adjusted_end <= max_end and abs(adjusted_end - end_seconds) > 0.1:
             logger.info(f"Short end adjusted: {end_seconds}s → {adjusted_end:.1f}s (silence snap)")
             end_seconds = int(round(adjusted_end))
         clip_duration = end_seconds - start_seconds

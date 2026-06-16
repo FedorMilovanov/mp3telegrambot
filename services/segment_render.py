@@ -53,8 +53,10 @@ async def render_and_send_segment(
     Returns:
         True if segment was sent successfully.
     """
-    clip_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
-    sub_path = DOWNLOAD_DIR / f"{video_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
+    # Sanitize video_id to prevent path traversal (defense in depth)
+    safe_id = video_id.replace("/", "_").replace("\\", "_").replace("..", "_")
+    clip_path = DOWNLOAD_DIR / f"{safe_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
+    sub_path = DOWNLOAD_DIR / f"{safe_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
 
     try:
         # Progress update
