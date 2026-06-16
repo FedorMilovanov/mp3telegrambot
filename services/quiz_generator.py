@@ -107,9 +107,10 @@ def _parse_quiz_json(raw: str) -> list[dict] | None:
             correct = 0
         if correct < 0 or correct >= len(opts):
             correct = 0
-        # Telegram limits
-        if len(q) > 300:
-            q = q[:297] + "..."
+        # Telegram limits: question max 300 chars INCLUDING any prefix
+        # send_quiz_polls adds "❓ N/M: " prefix (~10 chars)
+        if len(q) > 255:
+            q = q[:252] + "..."
         opts = [o[:100] for o in opts]  # Telegram: max 100 chars per option
         if len(explanation) > 200:
             explanation = explanation[:197] + "..."
@@ -249,9 +250,13 @@ async def send_quiz_polls(
     sent = 0
     for i, q in enumerate(questions):
         try:
+            # Telegram quiz question limit: 300 chars total
+            _q_text = f"❓ {i+1}/{len(questions)}: {q['question']}"
+            if len(_q_text) > 300:
+                _q_text = _q_text[:297] + "..."
             await context.bot.send_poll(
                 chat_id=update.effective_chat.id,
-                question=f"❓ {i+1}/{len(questions)}: {q['question']}",
+                question=_q_text,
                 options=q["options"],
                 type="quiz",
                 correct_option_id=q["correct"],
@@ -272,7 +277,7 @@ async def send_quiz_polls(
                 try:
                     await context.bot.send_poll(
                         chat_id=update.effective_chat.id,
-                        question=f"❓ {i+1}/{len(questions)}: {q['question']}",
+                        question=_q_text,
                         options=q["options"],
                         type="quiz",
                         correct_option_id=q["correct"],

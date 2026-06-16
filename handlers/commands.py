@@ -959,7 +959,10 @@ async def customcut_command(update, context):
         )
         return
 
-    video_id = args[0].strip()
+    video_id = re.sub(r'[^A-Za-z0-9_-]', '', args[0].strip())
+    if not video_id or len(video_id) > 20:
+        await update.message.reply_text("⚠️ Неверный video_id.")
+        return
     start_phrase = quotes[0].strip()
     end_phrase = quotes[1].strip()
 

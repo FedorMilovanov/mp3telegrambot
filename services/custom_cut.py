@@ -45,7 +45,8 @@ def find_phrase_timestamp(
 ) -> Optional[float]:
     """Find a phrase in word-level Whisper output and return its timestamp.
     
-    Uses sliding window matching with fuzzy tolerance.
+    Strategy: first try exact substring match across the full word sequence,
+    then fall back to fuzzy (best overlap) match.
     
     Args:
         words: list of {"word": str, "start": float, "end": float}
@@ -71,65 +72,56 @@ def find_phrase_timestamp(
         filtered = list(enumerate(words))
     
     window_size = len(target_words)
+    
+    # === PASS 1: Exact substring match ===
+    # Use a tight sliding window (exactly target_words length, no tolerance)
+    # to avoid matching across phrase boundaries
+    for start_pos in range(len(filtered)):
+        window_end = min(start_pos + window_size, len(filtered))
+        window_texts = []
+        for j in range(start_pos, window_end):
+            _, wj = filtered[j]
+            word_norm = _normalize_for_search(wj.get("word", ""))
+            if word_norm:
+                window_texts.append(word_norm)
+        window_joined = " ".join(window_texts)
+        if target in window_joined:
+            if position == "start":
+                _, match_w = filtered[start_pos]
+                return match_w.get("start", 0.0)
+            else:
+                _, match_w = filtered[min(window_end - 1, len(filtered) - 1)]
+                return match_w.get("end", 0.0)
+    
+    # === PASS 2: Fuzzy match (best overlap score) ===
     best_score = 0.0
-    best_idx = None
+    best_start = None
+    best_end = None
     
     for start_pos in range(len(filtered)):
-        # Build window of words
-        window_end = min(start_pos + window_size + 2, len(filtered))  # +2 tolerance
+        window_end = min(start_pos + window_size + 2, len(filtered))
         window_words = []
         for j in range(start_pos, window_end):
-            idx, w = filtered[j]
+            _, w = filtered[j]
             window_words.append(_normalize_for_search(w.get("word", "")))
         
-        # Try matching target_words against window
         window_text = " ".join(window_words)
         
-        # Exact substring match
-        if target in window_text:
-            _, w = filtered[start_pos]
-            # Find the exact position within the window
-            accumulated = ""
-            match_start_j = start_pos
-            for j in range(start_pos, window_end):
-                _, wj = filtered[j]
-                word_norm = _normalize_for_search(wj.get("word", ""))
-                if not accumulated:
-                    accumulated = word_norm
-                else:
-                    accumulated += " " + word_norm
-                if target in accumulated and best_idx is None:
-                    match_start_j = start_pos
-                    match_end_j = j
-                    
-                    if position == "start":
-                        _, match_w = filtered[match_start_j]
-                        return match_w.get("start", 0.0)
-                    else:
-                        _, match_w = filtered[match_end_j]
-                        return match_w.get("end", 0.0)
+        matches = sum(1 for tw in target_words if tw in window_text)
+        score = matches / len(target_words)
         
-        # Fuzzy: count matching words
-        matches = 0
-        for tw in target_words:
-            if tw in window_text:
-                matches += 1
-        
-        score = matches / len(target_words) if target_words else 0
-        if score > best_score and score >= 0.7:
+        if score > best_score and score >= 0.6:
             best_score = score
-            best_idx = start_pos
+            best_start = start_pos
+            best_end = min(start_pos + window_size - 1, len(filtered) - 1)
     
-    # Return best fuzzy match
-    if best_idx is not None:
-        _, w = filtered[best_idx]
+    if best_start is not None:
         if position == "start":
+            _, w = filtered[best_start]
             return w.get("start", 0.0)
         else:
-            # Estimate end: start + window
-            end_idx = min(best_idx + window_size - 1, len(filtered) - 1)
-            _, we = filtered[end_idx]
-            return we.get("end", 0.0)
+            _, w = filtered[best_end]
+            return w.get("end", 0.0)
     
     return None
 
@@ -168,7 +160,11 @@ async def transcribe_full_video(
         logger.info("[CustomCut] Transcribing full video (%s)...", video_path.name)
         
         def _run():
-            model = _get_whisper_model()
+            # Use medium model for speed: full video transcription with large-v3
+            # takes 10-20 min on CPU. Medium is ~3x faster with acceptable accuracy
+            # for phrase-finding (we need positions, not perfect text).
+            _cut_model = os.getenv("CUSTOM_CUT_WHISPER_MODEL", "medium").strip() or "medium"
+            model = _get_whisper_model(_cut_model)
             segs, info = model.transcribe(
                 str(wav_path),
                 language=language,
