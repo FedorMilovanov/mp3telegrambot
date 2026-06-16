@@ -23,7 +23,7 @@ def test_qa_has_verified_context():
 def test_qa_has_third_person_check():
     from core.prompts import SYNOPSIS_PROMPT_QA
     # QA final checklist must warn about 3rd person
-    assert "МакАртур объясняет" in SYNOPSIS_PROMPT_QA
+    assert "фамилия/роль автора" in SYNOPSIS_PROMPT_QA or "автор/проповедник/спикер" in SYNOPSIS_PROMPT_QA
 
 
 def test_qa_no_raw_shared_placeholders():
@@ -62,7 +62,7 @@ def test_synopsis_v2_final_checklist_has_third_person():
     # After final checklist header, must have third-person check
     fin_pos = SYNOPSIS_PROMPT_V2.rfind("ФИНАЛЬНАЯ ПРОВЕРКА")
     fin_block = SYNOPSIS_PROMPT_V2[fin_pos:] if fin_pos != -1 else ""
-    assert "МакАртур" in fin_block, \
+    assert "имя/роль автора" in fin_block or "фамилия автора" in fin_block, \
         "V2 final checklist must warn about 3rd person writing"
 
 

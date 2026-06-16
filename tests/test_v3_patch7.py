@@ -39,7 +39,7 @@ def test_scrub_does_not_remove_normal_russian():
 def test_third_person_ban_exists():
     from core.prompt_rules import THIRD_PERSON_BAN
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in THIRD_PERSON_BAN
-    assert "МакАртур показывает" in THIRD_PERSON_BAN  # negative example
+    assert "фамилия автора + показывает" in THIRD_PERSON_BAN  # negative pattern
     assert "Монергизм исключает синергизм" in THIRD_PERSON_BAN  # positive example
 
 

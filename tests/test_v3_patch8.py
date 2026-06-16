@@ -21,7 +21,7 @@ def test_audio_prompt_has_style_note():
 def test_audio_prompt_has_bad_example():
     from core.prompts import build_audio_analysis_prompt
     p = build_audio_analysis_prompt("Test", "Chan", "50:00", 3000)
-    assert "МакАртур показывает" in p
+    assert "фамилия автора + показывает" in p
 
 def test_all_prompts_no_shared_placeholders():
     from core.prompts import (SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA,

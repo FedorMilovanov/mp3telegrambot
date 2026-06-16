@@ -394,3 +394,13 @@ Manual pass over the Study prompt removed wording that could teach the model the
 - fixed the `Safe in the Arms of God` example to title-first.
 
 This reduces prompt-induced leaks and source-card hallucinations before deterministic repair has to intervene.
+
+## 2026-06-16 — Literal bad-pattern prompt cleanup
+
+Manual prompt pass removed literal repeated bad examples from the prompt text itself:
+
+- replaced explicit third-person bad phrases (`МакАртур показывает`, `автор подчеркивает`, etc.) with pattern-level descriptions;
+- removed remaining literal `позиция канала` wording from Study prompt;
+- kept positive direct-style examples.
+
+This reduces the chance that Gemini copies a forbidden phrase from the prompt while still preserving the instruction's intent.

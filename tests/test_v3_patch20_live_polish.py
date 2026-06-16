@@ -63,7 +63,7 @@ def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels
     tail = prompt[prompt.find("ФИНАЛЬНАЯ САМОПРОВЕРКА"):]
     assert "analysis_summary" in tail
     assert "argument_arc" in tail
-    assert "Джон МакАртур разрушает" in tail
+    assert "имя/роль автора" in tail
     assert "богословские гиганты" in tail
 
 

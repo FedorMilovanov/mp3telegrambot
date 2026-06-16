@@ -61,4 +61,17 @@ def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns():
     assert "Русский Автор, *«Русское название»*" not in STUDY_ANALYSIS_PROMPT
     assert "Правильно:   - Джон МакАртур, *Safe in the Arms of God*" not in STUDY_ANALYSIS_PROMPT
     assert "**Safe in the Arms of God**, Джон МакАртур (John MacArthur)" in STUDY_ANALYSIS_PROMPT
-    assert "не публиковать как позицию канала" in STUDY_ANALYSIS_PROMPT
+    assert "не публиковать как редакционную позицию" in STUDY_ANALYSIS_PROMPT
+
+
+def test_prompts_do_not_repeat_literal_third_person_bad_examples():
+    from core.prompt_rules import THIRD_PERSON_BAN
+    assert "МакАртур показывает" not in THIRD_PERSON_BAN
+    assert "автор подчеркивает" not in THIRD_PERSON_BAN
+    assert "фамилия автора + показывает" in THIRD_PERSON_BAN
+
+
+def test_study_prompt_removes_literal_channel_position_leaks():
+    assert "позиция канала" not in STUDY_ANALYSIS_PROMPT.lower()
+    assert "КОНФЕССИОНАЛЬНАЯ РАМКА КАНАЛА" not in STUDY_ANALYSIS_PROMPT
+    assert "ВНУТРЕННЯЯ КОНФЕССИОНАЛЬНАЯ РАМКА" in STUDY_ANALYSIS_PROMPT
