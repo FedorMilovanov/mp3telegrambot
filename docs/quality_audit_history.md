@@ -334,3 +334,9 @@ Changed behavior:
 postprocess changed nodes -> editPage
 postprocess made no changes -> ok=True, changed=False, no editPage call
 ```
+
+## 2026-06-16 — Auto-repair unresolved audits recorded
+
+Auto-repair now records unresolved page-audit summaries as repair metadata, not only hard edit errors. If deterministic postprocess cannot fully clean a just-published page, the pipeline logs the unresolved audit and stores it in the generated-pages archive repair fields.
+
+This keeps the normal behavior (pages remain available) while making recurring unfixable defects visible in archive/history for the next generator/prompt repair pass.

@@ -2234,6 +2234,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             logger.info("Auto Telegraph repair after publish: changed %s", _r_url)
                         elif not _r_res.ok:
                             logger.warning("Auto Telegraph repair after publish failed: %s error=%s", _r_url, _r_res.error)
+                        if getattr(_r_res, "audit_summary", ""):
+                            logger.warning(
+                                "Auto Telegraph repair after publish unresolved audit for %s: %s",
+                                _r_url, str(_r_res.audit_summary)[:300],
+                            )
                         await asyncio.sleep(0.5)
                     _changed_count = sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False))
                     if _auto_repair_results:
@@ -2461,7 +2466,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     await aupdate_generated_page_repair_status(
                         media_id,
                         changed_pages=sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False)),
-                        errors=[getattr(_r, "error", "") for _r in _auto_repair_results if getattr(_r, "error", "")],
+                        errors=[
+                            x for _r in _auto_repair_results
+                            for x in (getattr(_r, "error", ""), getattr(_r, "audit_summary", ""))
+                            if str(x or "").strip()
+                        ],
                     )
                 _segment_export = await asave_segment_plan_export(
                     video_id=media_id,

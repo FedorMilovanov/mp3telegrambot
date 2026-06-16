@@ -58,3 +58,10 @@ def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
     assert "aupdate_generated_page_repair_status" in src
     assert "_auto_repair_results" in src
     assert "changed_pages=sum(1 for _r in _auto_repair_results" in src
+
+
+def test_pipeline_persists_auto_repair_unresolved_audit_summaries():
+    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "unresolved audit" in src
+    assert "audit_summary" in src
+    assert "for x in (getattr(_r, \"error\", \"\"), getattr(_r, \"audit_summary\", \"\"))" in src
