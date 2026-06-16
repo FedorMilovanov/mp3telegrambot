@@ -2211,6 +2211,39 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             nav_tasks = [_add_nav_to_page(u, label) for label, u in _nav_filled]
             await asyncio.gather(*nav_tasks, return_exceptions=True)
 
+
+        # Deterministic post-publish safety repair. This is not a manual
+        # operator step and does not call Gemini: after createPage/editPage
+        # navigation, fetch the just-created Telegraph pages once, run the
+        # current postprocess/audit repair, and edit them if deterministic
+        # cleanup changes nodes. Keeps technical pages readable while audit
+        # history still records bug classes for generator fixes.
+        _auto_repair_results = []
+        if (os.getenv("TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
+            _repair_urls = []
+            for _u in (telegraph_url, study_analysis_tg, reflection_application_tg, quotes_tg, questions_tg, terms_tg):
+                if _u and _u not in _repair_urls:
+                    _repair_urls.append(_u)
+            if _repair_urls:
+                try:
+                    from services.telegraph_repair import repair_telegraph_page_url
+                    for _r_url in _repair_urls:
+                        _r_res = await repair_telegraph_page_url(_r_url)
+                        _auto_repair_results.append(_r_res)
+                        if _r_res.ok and _r_res.changed:
+                            logger.info("Auto Telegraph repair after publish: changed %s", _r_url)
+                        elif not _r_res.ok:
+                            logger.warning("Auto Telegraph repair after publish failed: %s error=%s", _r_url, _r_res.error)
+                        await asyncio.sleep(0.5)
+                    _changed_count = sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False))
+                    if _auto_repair_results:
+                        logger.info(
+                            "Auto Telegraph repair after publish: pages=%d changed=%d",
+                            len(_auto_repair_results), _changed_count,
+                        )
+                except Exception as _auto_rep_err:
+                    logger.warning("Auto Telegraph repair after publish crashed non-fatally: %s", str(_auto_rep_err)[:180])
+
         # Новые страницы имеют приоритет над legacy compact в caption
         _q_link     = study_analysis_tg         or quotes_tg    or ""
         _ref_link   = reflection_application_tg or questions_tg or ""

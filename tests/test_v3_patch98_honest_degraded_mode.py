@@ -44,3 +44,10 @@ def test_pipeline_honest_degraded_mode_is_wired():
     assert "DEGRADED_TRANSCRIPT_TIMESTAMPS" in src
     assert "if not ai_data:\n                return {\"rutube\": None, \"vk\": None}" in src
     assert "expect_synopsis=bool(ai_data)" in src
+
+
+def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
+    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH" in src
+    assert "repair_telegraph_page_url" in src
+    assert "Auto Telegraph repair after publish" in src

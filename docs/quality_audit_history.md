@@ -287,3 +287,17 @@ python tools/repair_telegraph_pages.py \
 ```
 
 The audit step now writes a Markdown list containing only pages with issues and annotates each URL with issue codes in an HTML comment.
+
+## 2026-06-16 — Automatic post-publish Telegraph repair
+
+Clarification implemented: repair is now part of the program flow, not only an operator CLI step.
+
+After Telegraph pages are created and navigation links are edited, the main pipeline now runs one deterministic post-publish repair pass by default:
+
+```env
+TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH=1
+```
+
+It fetches the just-created Telegraph URLs, runs current postprocess/audit repair, and calls `editPage` if deterministic cleanup changed nodes. It does not call Gemini and it is non-fatal: failures are logged, not hidden.
+
+Manual CLI/Telegram repair commands remain useful for old technical pages or historical batches, but new pages get the automatic safety pass immediately after publication.
