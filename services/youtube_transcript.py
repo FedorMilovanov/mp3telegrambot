@@ -170,6 +170,34 @@ def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000, chunk_seconds: int 
     return text.rstrip()
 
 
+def timed_text_to_caption_timestamps(timed_text: str, *, max_lines: int = 40, max_topic_chars: int = 110) -> str:
+    """Convert transcript ``[M:SS] text`` chunks into caption timestamp lines.
+
+    This is a degraded-mode helper used when Gemini 3.5 analysis is unavailable.
+    It is deliberately non-interpretive: no summaries, no theological claims —
+    only grounded transcript snippets so the user still gets MP3 navigation.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in str(timed_text or "").splitlines():
+        m = re.match(r"\[(?P<t>(?:\d+:)?\d{1,2}:\d{2})\]\s*(?P<text>.+)", raw.strip())
+        if not m:
+            continue
+        ts = m.group("t")
+        if ts in seen:
+            continue
+        text = _clean_caption_text(m.group("text"))
+        if not text:
+            continue
+        if len(text) > max_topic_chars:
+            text = text[: max_topic_chars - 1].rstrip(" ,.;:—-") + "…"
+        out.append(f"{ts} {text}")
+        seen.add(ts)
+        if len(out) >= max_lines:
+            break
+    return "\n".join(out)
+
+
 async def download_youtube_transcript_text(
     video_url: str,
     workdir: Path,

@@ -95,3 +95,18 @@ Current checks catch visible production artifacts before they are missed by manu
 - long Telegraph pages without visible navigation markers.
 
 Also tightened the deterministic third-person scrubber for Reflection/Study prose: `Лектор показывает, как ...` now becomes direct prose instead of surviving as a warning on the published page.
+
+## 2026-06-16 — Honest degraded mode for Gemini 3.5 failures
+
+Policy decision: if primary Gemini 3.5 audio analysis is unavailable, do **not** publish synthetic Study/Reflection/Questions pages from weak fallback data.
+
+Implemented behavior:
+
+- default audio analysis remains `AUDIO_ANALYSIS_FALLBACK_MODE=strict`;
+- when `gemini-3.5-flash` fails/quota-exhausts and root `ai_data` is missing, the pipeline enters honest degraded mode;
+- AI-derived pages are skipped: no Synopsis, StudyAnalysis, Reflection, Terms, Questions, Quiz, Shorts/Clips/Montage candidates;
+- the bot still sends the MP3;
+- if YouTube captions are available, the caption includes grounded transcript timestamps only, marked as “from YouTube subtitles without AI summarization”;
+- alternative RuTube/VK matching is skipped in degraded mode to avoid weak false-positive links from fallback titles.
+
+This matches the quality rule: better no conspect than a shallow or hallucinated one.

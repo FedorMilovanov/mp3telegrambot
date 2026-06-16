@@ -57,9 +57,17 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
     if real_author:
         parts.append(f"<b>👤 {html_mod.escape(real_author)}</b>")
 
+    if ai_data and ai_data.get("_ai_unavailable_warning"):
+        parts.append("")
+        parts.append("⚠️ " + html_mod.escape(str(ai_data.get("_ai_unavailable_warning"))))
+
     if ai_data and ai_data.get("_partial_publication_warning"):
         parts.append("")
         parts.append("⚠️ " + html_mod.escape(str(ai_data.get("_partial_publication_warning"))))
+
+    if ai_data and ai_data.get("_timestamps_source") == "youtube_transcript":
+        parts.append("")
+        parts.append("⏱ Таймкоды взяты из субтитров YouTube без AI-обобщения.")
 
     # PATCH-FIX: surface lite-model fallback warning in caption
     if ai_data and ai_data.get("_gemini_was_fallback"):

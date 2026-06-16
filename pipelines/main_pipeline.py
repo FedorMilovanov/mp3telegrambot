@@ -1755,6 +1755,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         telegraph_url    = None
         used_audio_part  = None
         used_client      = None
+        _degraded_caption_data = None
         _early_alt  = None  # alt-links ищем до конспекта если ai_data есть
         _pre_rutube = ""    # инициализируем здесь — closure-функции ниже всегда могут обращаться к ним
         _pre_vk     = ""    # даже если ai_data = None (Gemini недоступен или упал)
@@ -1803,6 +1804,49 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 else:
                     telegraph_url    = None
                     synopsis_outline = None
+            else:
+                logger.warning(
+                    "Gemini 3.5 analysis unavailable for %s — honest degraded mode: MP3 only, no AI pages/questions",
+                    media_id,
+                )
+                _degraded_caption_data = {
+                    "real_title": title,
+                    "real_author": performer,
+                    "format": "other",
+                    "_ai_unavailable_warning": (
+                        "Gemini 3.5 сейчас недоступен или исчерпана квота. "
+                        "Отправляю MP3 без AI-конспектов, разбора и вопросов."
+                    ),
+                }
+                if (os.getenv("DEGRADED_TRANSCRIPT_TIMESTAMPS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
+                    _transcript_dir = DOWNLOAD_DIR / f"{media_id}_degraded_transcript"
+                    try:
+                        from services.youtube_transcript import download_youtube_transcript_text, timed_text_to_caption_timestamps
+                        _timed_text = await download_youtube_transcript_text(
+                            url, _transcript_dir,
+                            lang=source_lang or "ru",
+                            max_chars=12000,
+                            expected_duration=duration,
+                        )
+                        _caption_ts = timed_text_to_caption_timestamps(_timed_text, max_lines=40)
+                        if _caption_ts:
+                            _degraded_caption_data = {
+                                **_degraded_caption_data,
+                                "timestamps": _caption_ts,
+                                "_timestamps_source": "youtube_transcript",
+                            }
+                            logger.info(
+                                "Degraded mode: added %d transcript timestamp lines for %s",
+                                len([l for l in _caption_ts.split("\n") if l.strip()]),
+                                media_id,
+                            )
+                    except Exception as _dt_err:
+                        logger.info("Degraded transcript timestamps unavailable for %s: %s", media_id, str(_dt_err)[:160])
+                    finally:
+                        try:
+                            shutil.rmtree(_transcript_dir, ignore_errors=True)
+                        except Exception:
+                            pass
             # НЕ удаляем audio_part здесь — он нужен для Shorts и Clips.
             # Удаление происходит в блоке finally ниже.
 
@@ -1819,8 +1863,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _feat_terms                  = _all_settings.get("terms", True)
         _feat_study_analysis         = _all_settings.get("study_analysis", True)
         _feat_reflection_application = _all_settings.get("reflection_application", True)
-        _mat_format   = (ai_data or {}).get("format", "other")
-        _ts_total     = len([l for l in ((ai_data or {}).get("timestamps") or "").split("\n") if l.strip()])
+        _caption_source_data = ai_data or _degraded_caption_data
+        _mat_format   = (_caption_source_data or {}).get("format", "other")
+        _ts_total     = len([l for l in ((_caption_source_data or {}).get("timestamps") or "").split("\n") if l.strip()])
         _ts_cap_limit = get_caption_timestamp_limit(_mat_format)
 
         _terms_total = sum(len(_terms_data.get(k, [])) for k in ("concepts", "scripture", "translations", "lexicon_notes"))
@@ -1912,6 +1957,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Если alt-links уже нашли до публикации конспекта — не ищем повторно
             if _early_alt is not None and isinstance(_early_alt, dict):
                 return _early_alt
+            if not ai_data:
+                return {"rutube": None, "vk": None}
             return await find_alternative_links(
                 search_title, channel_name, duration,
                 ai_data=ai_data, fallback_title=full_title
@@ -2188,11 +2235,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             synopsis_url=telegraph_url or "",
             study_url=study_analysis_tg or "",
             reflection_url=reflection_application_tg or "",
-            expect_synopsis=True,
-            expect_study=bool(_feat_study_analysis),
-            expect_reflection=bool(_feat_reflection_application),
+            expect_synopsis=bool(ai_data),
+            expect_study=bool(ai_data and _feat_study_analysis),
+            expect_reflection=bool(ai_data and _feat_reflection_application),
         )
-        _ai_caption_base = ai_data
+        _ai_caption_base = ai_data or _degraded_caption_data
         if _ai_caption_base and _ts_total > 0:
             _cap_limit_preview = get_caption_timestamp_limit(_mat_format)
             if _ts_total > _cap_limit_preview:
