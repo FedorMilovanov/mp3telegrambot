@@ -126,3 +126,23 @@ The old source normalizer misread these as `author, title` and could render the 
 - `• **Preaching and Preachers**, Мартин Ллойд-Джонс (Martyn Lloyd-Jones).`
 
 Policy: if a Russian source title is not in the official registry, do not trust it; show the original title instead. Known official Russian titles (for example `Strange Fire` → `Чуждый огонь`) still render in Russian.
+
+## 2026-06-16 — Strict surgical content-audit mode
+
+Added configurable strict publication aborts for manual high-quality review sessions:
+
+```env
+CONTENT_AUDIT_MODE=strict
+CONTENT_AUDIT_STRICT_CODES=all
+```
+
+or a surgical subset:
+
+```env
+CONTENT_AUDIT_MODE=strict
+CONTENT_AUDIT_STRICT_CODES=third_person_warning,source_relevance_missing_warning,scripture_role_missing_warning
+```
+
+Default behavior is unchanged: only historically critical issues abort in strict mode. With `CONTENT_AUDIT_STRICT_CODES=all`, unresolved warnings such as thin scripture/source/application blocks stop publication instead of being merely logged.
+
+Also cleaned duplicate empty-section guards in `telegraph_pages.py` and fixed malformed audit locations from `blocks[0` to `blocks[0]`, making logs easier to trace back to exact JSON blocks.

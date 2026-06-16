@@ -91,3 +91,17 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "_pub_status = build_publication_status(" in pipe
     assert "publication_status=_pub_status.status" in pipe
     assert "publication_missing=missing_to_json(_pub_status.missing)" in pipe
+
+
+def test_content_audit_strict_codes_all_aborts_on_warning(monkeypatch):
+    monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
+    monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "all")
+    issues = [ContentAuditIssue("scripture_role_missing_warning", "x", "thin scripture")]
+    assert should_abort_for_content_audit(issues) is True
+
+
+def test_content_audit_strict_codes_specific_aborts_on_selected_warning(monkeypatch):
+    monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
+    monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "third_person_warning")
+    assert should_abort_for_content_audit([ContentAuditIssue("third_person_warning", "x", "wrapper")]) is True
+    assert should_abort_for_content_audit([ContentAuditIssue("source_relevance_missing_warning", "x", "thin")]) is False

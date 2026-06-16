@@ -311,9 +311,6 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
             after=_short(text),
         ))
 
-    # Skip third-person scrubbing for analytical pages (Study/Reflection)
-    # where "МакАртур показывает" is the intended analytical style.
-    _is_analytical = any(k in (label or "").lower() for k in ("study", "reflection", "досье"))
     third_before = text
     # ГЛУБОКИЙ ФИКС: Всегда чистим текст от "МакАртур подчеркивает", даже на Study/Reflection.
     text = scrub_third_person_phrases(text)
@@ -434,7 +431,7 @@ def audit_expanded_sections(
                 if not isinstance(raw_block, dict):
                     continue
                 block = normalize_structured_block(raw_block) or dict(raw_block)
-                block_loc = f"{base_loc}.blocks[{bidx}"
+                block_loc = f"{base_loc}.blocks[{bidx}]"
                 issues.extend(_validate_block_required_fields(block, location=block_loc))
                 issues.extend(_audit_structured_block_semantics(
                     block,
@@ -522,6 +519,23 @@ _CRITICAL_CONTENT_CODES = {
 }
 
 
+def _strict_content_codes() -> set[str]:
+    """Return issue codes that should abort publication in strict mode.
+
+    CONTENT_AUDIT_STRICT_CODES defaults to the historically critical set. Set it
+    to ``all`` for surgical manual review sessions where unresolved warnings
+    (third-person wrappers, thin scripture/source/application blocks) should stop
+    publication instead of merely logging a warning.
+    """
+    raw = (os.getenv("CONTENT_AUDIT_STRICT_CODES", "") or "").strip()
+    if not raw:
+        return set(_CRITICAL_CONTENT_CODES)
+    if raw.lower() in {"all", "warnings", "warning"}:
+        return set(_WARNING_CODES) | set(_CRITICAL_CONTENT_CODES)
+    codes = {x.strip() for x in re.split(r"[,;\s]+", raw) if x.strip()}
+    return codes | set(_CRITICAL_CONTENT_CODES)
+
+
 def get_content_audit_mode() -> str:
     """Return CONTENT_AUDIT_MODE: off | warn | strict. Default: warn."""
     mode = (os.getenv("CONTENT_AUDIT_MODE", "warn") or "warn").strip().lower()
@@ -532,4 +546,5 @@ def should_abort_for_content_audit(issues: list[ContentAuditIssue]) -> bool:
     """True only in strict mode and only for critical issue classes."""
     if get_content_audit_mode() != "strict":
         return False
-    return any(i.code in _CRITICAL_CONTENT_CODES for i in issues or [])
+    strict_codes = _strict_content_codes()
+    return any(i.code in strict_codes for i in issues or [])

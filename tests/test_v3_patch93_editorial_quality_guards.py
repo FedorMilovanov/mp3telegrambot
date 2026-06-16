@@ -76,3 +76,10 @@ def test_synopsis_density_warns_on_low_voice_and_short_paragraphs():
     assert "synopsis_too_few_paragraphs" in codes
     assert "synopsis_author_voice_low" in codes
     assert should_retry_synopsis_density(issues, 3600) is True
+
+
+def test_content_audit_block_locations_are_well_formed():
+    sections = [{"title": "Ключевые тексты", "content": "", "blocks": [{"type": "scripture", "ref": "2 Тим. 3:16"}]}]
+    _, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
+    assert any(".blocks[0]" in i.location for i in issues)
+    assert not any(i.location.endswith("[0") for i in issues)
