@@ -2393,8 +2393,28 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 isinstance(c, dict) and c.get('tag') in ('b', 'strong', 'em', 'i', 'a')
                 for c in children
             )
-            if _source_norm != _plain_before_source_norm and not _has_inline_tags:
-                children = [_source_norm]
+            _has_links = any(isinstance(c, dict) and c.get('tag') == 'a' for c in children)
+            _has_parenthetical_original = bool(re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", _plain_before_source_norm))
+            if _source_norm != _plain_before_source_norm and (not _has_inline_tags or (_has_parenthetical_original and not _has_links)):
+                # For repair of already-published pages, source cards may contain
+                # existing <strong> around the invented Russian title. In that
+                # exact source-card shape it is safer to flatten and re-parse the
+                # canonical markdown than to preserve stale inline tags.
+                children = _md_parse_inline(_source_norm)
+
+        # Existing Telegraph pages may already contain raw Markdown markers in
+        # plain text nodes (e.g. "• **term**"), because old renderers saved them
+        # as text. Repair/postprocess must parse those markers into Telegraph
+        # inline nodes instead of only normalizing the string.
+        _plain_for_md_parse = _flatten_text({'children': children})
+        _has_inline_tags_after = any(
+            isinstance(c, dict) and c.get('tag') in ('b', 'strong', 'em', 'i', 'a', 'code')
+            for c in children
+        )
+        if (not _has_inline_tags_after
+                and ('**' in _plain_for_md_parse or re.search(r'(?<!\*)\*[^*\n]{2,160}\*(?!\*)', _plain_for_md_parse))):
+            children = _md_parse_inline(_plain_for_md_parse)
+            children = _trim_inline_spacing(children)
 
         node['children'] = children
 

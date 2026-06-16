@@ -83,7 +83,9 @@ def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
     assert "Джон МакАртур подчеркивает" not in flat
     assert "Верность важна" in flat
     assert "Странный огонь" not in flat
-    assert "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)" in flat
+    assert "Чуждый огонь, Джон МакАртур (Strange Fire, John MacArthur)" in flat
+    source_card = next(n for n in out if "Чуждый огонь" in _flat(n))
+    assert any(isinstance(c, dict) and c.get("tag") in ("b", "strong") for c in source_card.get("children", []))
     assert "Грег Гилберт, Greg Gilbert" not in flat
     assert "Кевин ДеЯнг и Грег Гилберт" in flat
 

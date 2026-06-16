@@ -68,6 +68,8 @@ def test_telegraph_postprocess_uses_source_title_registry():
     ]
     out = _postprocess_telegraph_nodes(nodes)
     flat = "\n".join(_flat(n) for n in out)
-    assert "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)" in flat
+    assert "Смерть смерти в смерти Христа, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)" in flat
     assert "Странный огонь" not in flat
-    assert "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)" in flat
+    assert "Чуждый огонь, Джон МакАртур (Strange Fire, John MacArthur)" in flat
+    assert any(isinstance(c, dict) and c.get("tag") in ("b", "strong") for c in out[0].get("children", []))
+    assert any(isinstance(c, dict) and c.get("tag") in ("b", "strong") for c in out[1].get("children", []))

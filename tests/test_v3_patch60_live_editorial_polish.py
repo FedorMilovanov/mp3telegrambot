@@ -49,7 +49,8 @@ def test_telegraph_spacing_polish_fixes_glued_source_text():
     assert "работе Faith" in flat
     assert "Alone. Глубокий" in flat
     assert "труде «Учение»" in flat
-    assert "Сперджен, *" in flat
+    assert "Сперджен," in flat
+    assert "*" not in flat
 
 
 def test_title_topic_audit_flags_low_overlap_and_parser_records_warning():

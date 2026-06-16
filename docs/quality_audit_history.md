@@ -210,3 +210,14 @@ PAGE_AUDIT_MODE=warn
 ```
 
 Then run DOM/repair audits over published links and fix generator bugs when a repeated class appears.
+
+## 2026-06-16 — Repair path now fixes existing raw Markdown/source-card pages
+
+Clarified workflow: pages remain available for reading and review; audit findings drive generator/repair fixes. The repair/postprocess path now handles already-published Telegraph nodes that contain raw Markdown markers in plain text, e.g. `• **Реформатское богословие**`, and re-parses them into proper Telegraph `<strong>` nodes.
+
+Also strengthened source-card repair for existing pages where the invented Russian title is already wrapped in `<strong>`:
+
+- before: `• Умерщвление греха, Джон Оуэн (Of the Mortification of Sin, John Owen)`
+- after repair nodes: `• **Of the Mortification of Sin**, Джон Оуэн (John Owen)`
+
+Confirmed locally via Telegraph `getPage` + current postprocess: the problematic sample pages change and page-audit warnings disappear. Actual `editPage` repair requires `TELEGRAPH_TOKEN` at runtime; the sandbox currently has no Telegraph token, so code is ready but remote pages were not edited from here.
