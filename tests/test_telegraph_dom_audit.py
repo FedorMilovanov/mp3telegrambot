@@ -35,3 +35,16 @@ def test_audit_tool_documents_playwright_usage():
     src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
     assert "playwright.async_api" in src
     assert "requests fallback" in src or "requests" in src
+
+
+def test_dom_audit_ignores_telegraph_chrome_anchor_without_href():
+    issues = audit_telegraph_html("<html><body><a>Telegraph</a><p>Чистый текст.</p></body></html>")
+    assert "bad_links" not in {i.code for i in issues}
+
+
+def test_dom_audit_catches_author_surname_third_person_but_not_missing_href():
+    html = "<html><body><a>Telegraph chrome</a><p>Данкан подчеркивает этот смысловой пласт.</p></body></html>"
+    issues = audit_telegraph_html(html)
+    codes = {i.code for i in issues}
+    assert "third_person_wrapper" in codes
+    assert "bad_links" not in codes

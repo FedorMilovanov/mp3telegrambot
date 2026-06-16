@@ -88,3 +88,10 @@ def test_third_person_scrubber_removes_how_wrapper_from_reflection():
     out = scrub_third_person_phrases(text)
     assert "Лектор показывает" not in out
     assert "Легко подменить подлинную верность" in out
+
+
+def test_third_person_scrubber_handles_author_surnames_from_live_pages():
+    text = "Данкан подчеркивает этот смысловой пласт, что поклонение должно быть в духе и истине."
+    out = scrub_third_person_phrases(text)
+    assert "Данкан подчеркивает" not in out
+    assert "Поклонение должно быть" in out

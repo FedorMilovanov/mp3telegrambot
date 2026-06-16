@@ -166,3 +166,20 @@ PAGE_AUDIT_STRICT_CODES=source_map_original_title,third_person,mixed_greek_cyril
 `PAGE_AUDIT_MODE` overrides `CONTENT_AUDIT_MODE`; if unset, it inherits `CONTENT_AUDIT_MODE`. Default remains warn-only.
 
 This gives a second gate after section-level content audit: even if a formatting/source-card problem survives into final Telegraph nodes, createPage/editPage can abort instead of publishing a visually or bibliographically unsafe page.
+
+## 2026-06-16 — Live Telegraph link audit pass
+
+Ran requests-based DOM audit over 33 Telegraph links from the provided runtime log.
+
+After fixing a false positive from Telegraph's own chrome anchor without `href`, remaining findings were:
+
+- `markdown_artifact`: 4 pages — visible raw `**...**` fragments inside prose/list text;
+- `third_person_wrapper`: 2 pages — visible wrappers like `Лектор показывает...` / `Данкан подчеркивает...`;
+- `source_map_original_title`: 2 pages — source cards still containing unverified Russian titles before original titles.
+
+Follow-up fixes:
+
+- DOM audit no longer treats Telegraph chrome anchors without `href` as bad links;
+- third-person scrubber/page/DOM audit now recognizes common speaker surnames, not only generic `автор/лектор/проповедник` and `МакАртур`;
+- official registry now preserves Calvin's `Institutes of the Christian Religion` as `Наставление в христианской вере`;
+- existing already-published pages still need repair/re-publish if we want to rewrite their Telegraph content; the code changes prevent the same classes from passing silently in future strict runs.

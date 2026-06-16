@@ -78,3 +78,9 @@ def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru
     assert normalize_source_card_line(
         "• Пламенная проповедь, Мартин Ллойд-Джонс (Preaching and Preachers, Martyn Ллойд-Джонс)."
     ) == "• **Preaching and Preachers**, Мартин Ллойд-Джонс (Martyn Lloyd-Jones)."
+
+
+def test_source_card_known_calvin_institutes_keeps_official_ru_title():
+    assert normalize_source_card_line(
+        "• Наставление в христианской вере, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
+    ) == "• **Наставление в христианской вере**, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."

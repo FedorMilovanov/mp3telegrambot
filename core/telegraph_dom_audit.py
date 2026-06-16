@@ -43,7 +43,7 @@ def _text_from_html(html: str) -> tuple[str, list[str], list[str]]:
     soup = BeautifulSoup(html or "", "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    hrefs = [str(a.get("href") or "") for a in soup.find_all("a")]
+    hrefs = [str(a.get("href") or "") for a in soup.find_all("a") if a.has_attr("href")]
     paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
     text = soup.get_text("\n", strip=True)
     return text, hrefs, paragraphs
@@ -51,7 +51,7 @@ def _text_from_html(html: str) -> tuple[str, list[str], list[str]]:
 
 _THIRD_PERSON_PATTERNS = (
     re.compile(r"\b(?:лектор|проповедник|спикер|автор)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b", re.I),
-    re.compile(r"\b(?:МакАртур|Молер|Девер|Данкан|Лоусон|Бики|Пеннингтон)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b", re.I),
+    re.compile(r"\b(?:МакАртур|Молер|Девер|Данкан|Лоусон|Бики|Пеннингтон|Бокам|Коломийцев|Риккарди)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b", re.I),
 )
 _MARKDOWN_ARTIFACT_RE = re.compile(r"(?:\*\*|__|\*\s+\*|\s/\s/\s|-\*\s+\*)")
 _SOURCE_INVENTED_RU_TITLE_RE = re.compile(

@@ -69,6 +69,7 @@ OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("Andrew Fuller", "The Gospel Worthy of All Acceptation"): "Евангелие, достойное всякого принятия",
     ("John Calvin", "Commentary on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Commentaries on Isaiah"): "Комментарии на Исаию",
+    ("John Calvin", "Institutes of the Christian Religion"): "Наставление в христианской вере",
 }
 
 RU_TITLE_CORRECTIONS: dict[str, str] = {
