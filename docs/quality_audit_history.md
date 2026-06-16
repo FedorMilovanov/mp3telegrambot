@@ -352,3 +352,13 @@ stored first-page URL -> fetch content -> find ➡ Дальше links -> repair 
 ```
 
 The repair remains deterministic and Gemini-free.
+
+## 2026-06-16 — CLI audit/repair expands multi-part chains by default
+
+The standalone CLI tools now match pipeline behavior for multi-part Telegraph pages:
+
+- `tools/repair_telegraph_pages.py` follows `➡ Дальше` chains by default before repairing;
+- `tools/audit_telegraph_pages.py` also expands chains by default before DOM audit;
+- both tools support `--no-expand-chains` for one-page debugging.
+
+Verified on `Vernost-v-uchenichestve--Mark-Dever-06-16`: a single first-part URL expands to 5 Telegraph pages in repair dry-run.

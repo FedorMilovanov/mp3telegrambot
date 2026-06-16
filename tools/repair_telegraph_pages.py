@@ -27,7 +27,7 @@ import requests
 
 from converters.md_telegraph import _edit_telegraph_page, _postprocess_telegraph_nodes
 from core.page_audit import audit_telegraph_page, format_audit_issues
-from services.telegraph_repair import telegraph_path_from_url
+from services.telegraph_repair import expand_telegraph_page_chain, telegraph_path_from_url
 from tools.audit_telegraph_pages import extract_telegraph_urls
 
 
@@ -116,9 +116,21 @@ async def _repair_one(url: str, *, apply: bool) -> dict[str, Any]:
         }
 
 
-async def run(urls: list[str], *, apply: bool, pause: float = 1.0) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
+async def _expand_input_urls(urls: list[str], *, expand_chains: bool = True) -> list[str]:
+    if not expand_chains:
+        return urls
+    expanded: list[str] = []
     for url in urls:
+        chain = await expand_telegraph_page_chain(url)
+        for item in (chain or [url]):
+            if item not in expanded:
+                expanded.append(item)
+    return expanded
+
+
+async def run(urls: list[str], *, apply: bool, pause: float = 1.0, expand_chains: bool = True) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for url in await _expand_input_urls(urls, expand_chains=expand_chains):
         out.append(await _repair_one(url, apply=apply))
         if apply and pause > 0:
             await asyncio.sleep(pause)
@@ -165,6 +177,7 @@ def main() -> int:
     ap.add_argument("--archive", type=Path, default=None, help="Archive markdown to extract Telegraph URLs from")
     ap.add_argument("--limit", type=int, default=1000)
     ap.add_argument("--apply", action="store_true", help="Actually call editPage. Requires TELEGRAPH_TOKEN.")
+    ap.add_argument("--no-expand-chains", action="store_true", help="Do not follow Telegraph ➡ Дальше multipart links")
     ap.add_argument("--pause", type=float, default=1.0, help="Pause between editPage calls in apply mode")
     ap.add_argument("--json-out", type=Path, default=Path("docs/telegraph_repair_run.json"))
     ap.add_argument("--history", type=Path, default=Path("docs/quality_audit_history.md"))
@@ -175,7 +188,7 @@ def main() -> int:
     urls = _load_urls(args)
     if not urls:
         raise SystemExit("No Telegraph URLs found. Pass --url, --url-file, or --archive.")
-    results = asyncio.run(run(urls, apply=args.apply, pause=args.pause))
+    results = asyncio.run(run(urls, apply=args.apply, pause=args.pause, expand_chains=not args.no_expand_chains))
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary = _summary(results, apply=args.apply)

@@ -53,6 +53,72 @@ def write_repair_targets(path: Path, results: list[tuple[str, list[TelegraphDomI
 TELEGRAPH_URL_RE = re.compile(r"https://telegra\.ph/[^\s)\]]+")
 
 
+def telegraph_path_from_url(url: str) -> str:
+    m = re.match(r"^https?://telegra\.ph/(?P<path>[^\s?#]+)", str(url or "").strip(), re.I)
+    return m.group("path") if m else ""
+
+
+def _extract_next_part_urls_from_nodes(nodes: object, *, base: str = "https://telegra.ph") -> list[str]:
+    out: list[str] = []
+
+    def walk(node: object) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("tag") == "a":
+            text = str(node.get("children", ""))
+            href = str((node.get("attrs") or {}).get("href") or "").strip()
+            if href and "➡" in text:
+                if href.startswith("/"):
+                    href = base.rstrip("/") + href
+                if telegraph_path_from_url(href) and href not in out:
+                    out.append(href)
+        for child in node.get("children", []) or []:
+            walk(child)
+
+    for item in nodes or []:
+        walk(item)
+    return out
+
+
+def expand_telegraph_url_chain_sync(url: str, *, max_pages: int = 12, timeout: int = 30) -> list[str]:
+    start = str(url or "").strip()
+    if not telegraph_path_from_url(start):
+        return []
+    seen: set[str] = set()
+    queue = [start]
+    out: list[str] = []
+    while queue and len(out) < max(1, min(int(max_pages or 12), 50)):
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        out.append(current)
+        try:
+            path = telegraph_path_from_url(current)
+            resp = requests.get(f"https://api.telegra.ph/getPage/{path}?return_content=true", timeout=timeout)
+            data = resp.json()
+            if not data.get("ok"):
+                continue
+            for nxt in _extract_next_part_urls_from_nodes((data.get("result") or {}).get("content") or []):
+                if nxt not in seen and nxt not in queue:
+                    queue.append(nxt)
+        except Exception:
+            continue
+    return out
+
+
+def expand_input_urls(urls: list[str], *, expand_chains: bool = True, timeout: int = 30) -> list[str]:
+    if not expand_chains:
+        return urls
+    out: list[str] = []
+    for url in urls:
+        chain = expand_telegraph_url_chain_sync(url, timeout=timeout)
+        for item in (chain or [url]):
+            if item not in out:
+                out.append(item)
+    return out
+
+
 def extract_telegraph_urls(markdown_path: Path) -> list[str]:
     if not markdown_path.exists():
         return []
@@ -157,6 +223,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=50)
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--requests-only", action="store_true", help="Disable Playwright even if installed")
+    ap.add_argument("--no-expand-chains", action="store_true", help="Do not follow Telegraph ➡ Дальше multipart links")
     ap.add_argument("--sample-html", type=Path, default=None, help="Audit one local HTML file without network")
     ap.add_argument("--repair-targets-out", type=Path, default=None, help="Write Markdown URL list for pages with issues")
     ap.add_argument("--no-history", action="store_true")
@@ -177,6 +244,7 @@ def main() -> int:
             urls = extract_telegraph_urls(args.archive)
         if args.limit:
             urls = urls[: max(1, args.limit)]
+        urls = expand_input_urls(urls, expand_chains=not args.no_expand_chains, timeout=args.timeout)
         results, fetcher = asyncio.run(run_audit(
             urls,
             prefer_playwright=not args.requests_only,

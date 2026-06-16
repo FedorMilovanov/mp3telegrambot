@@ -77,3 +77,21 @@ def test_audit_tool_can_write_repair_targets(tmp_path):
     assert "https://telegra.ph/bad" in text
     assert "third_person_wrapper" in text
     assert "https://telegra.ph/good" not in text
+
+
+def test_audit_tool_extracts_next_part_urls_from_nodes():
+    from tools.audit_telegraph_pages import _extract_next_part_urls_from_nodes
+
+    nodes = [{"tag": "p", "children": [
+        {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
+    ]}]
+    assert _extract_next_part_urls_from_nodes(nodes) == ["https://telegra.ph/Part-2"]
+
+
+def test_audit_and_repair_tools_expand_multipart_chains_by_default():
+    audit_src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
+    repair_src = Path("tools/repair_telegraph_pages.py").read_text(encoding="utf-8")
+    assert "expand_input_urls(urls, expand_chains=not args.no_expand_chains" in audit_src
+    assert "--no-expand-chains" in audit_src
+    assert "expand_telegraph_page_chain" in repair_src
+    assert "expand_chains=not args.no_expand_chains" in repair_src
