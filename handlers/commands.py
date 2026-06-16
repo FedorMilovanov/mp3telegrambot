@@ -980,7 +980,7 @@ async def customcut_command(update, context):
         f"От: «{start_phrase[:50]}»\n"
         f"До: «{end_phrase[:50]}»\n"
         f"Формат: {mode_label}\n\n"
-        f"⏳ Транскрибирую аудио через Whisper (может занять 1-3 мин)..."
+        f"⏳ Ищу субтитры YouTube... (если нет — Whisper, это 5-15 мин)"
     )
 
     try:
@@ -988,9 +988,8 @@ async def customcut_command(update, context):
         from services.custom_cut import custom_cut_video
 
         # Download video
-        video_path = await download_video_for_shorts(
-            f"https://www.youtube.com/watch?v={video_id}", video_id
-        )
+        _yt_url = f"https://www.youtube.com/watch?v={video_id}"
+        video_path = await download_video_for_shorts(_yt_url, video_id)
         if not video_path:
             await msg.edit_text("❌ Не удалось скачать видео.")
             return
@@ -1004,6 +1003,7 @@ async def customcut_command(update, context):
             end_phrase=end_phrase,
             output_path=output_path,
             mode=mode,
+            video_url=_yt_url,
         )
 
         if not result or not result.exists():

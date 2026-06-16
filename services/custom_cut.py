@@ -129,11 +129,57 @@ def find_phrase_timestamp(
 async def transcribe_full_video(
     video_path: Path,
     language: str = "ru",
+    video_url: str = "",
 ) -> list[dict]:
-    """Transcribe full video with word-level timestamps using Whisper.
+    """Get word-level timestamps for phrase search.
+    
+    Strategy:
+    1. Try YouTube captions first (instant, no CPU cost)
+    2. Fall back to Whisper with medium model (slow but works offline)
     
     Returns flat list of {"word": str, "start": float, "end": float}.
     """
+    # === FAST PATH: YouTube transcript ===
+    if video_url:
+        try:
+            from services.youtube_transcript import download_youtube_transcript_text
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                timed = await download_youtube_transcript_text(
+                    video_url, Path(tmpdir),
+                    lang=language, max_chars=500_000,
+                )
+                if timed:
+                    # Parse timed text "[M:SS] word word word\n" into word list
+                    words = []
+                    for line in timed.split("\n"):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        m = re.match(r'\[(\d+):(\d{2})\]\s*(.*)', line)
+                        if not m:
+                            continue
+                        ts = int(m.group(1)) * 60 + int(m.group(2))
+                        text = m.group(3).strip()
+                        if not text:
+                            continue
+                        line_words = text.split()
+                        # Distribute words evenly across the ~25s chunk
+                        chunk_duration = 25.0  # default chunk_seconds
+                        word_duration = chunk_duration / max(len(line_words), 1)
+                        for j, w in enumerate(line_words):
+                            words.append({
+                                "word": w,
+                                "start": round(ts + j * word_duration, 2),
+                                "end": round(ts + (j + 1) * word_duration, 2),
+                            })
+                    if words:
+                        logger.info("[CustomCut] YouTube transcript: %d words (instant)", len(words))
+                        return words
+        except Exception as e:
+            logger.info("[CustomCut] YouTube transcript unavailable: %s", str(e)[:80])
+    
+    # === SLOW PATH: Whisper ===
     from services.shorts_video import _get_whisper_model, HAS_FASTER_WHISPER
     
     if not HAS_FASTER_WHISPER:
@@ -202,6 +248,7 @@ async def custom_cut_video(
     mode: str = "wide",  # "wide" (16:9) or "shorts" (9:16)
     language: str = "ru",
     burn_subtitles: bool = True,
+    video_url: str = "",
 ) -> Optional[Path]:
     """Cut a video segment between two phrases.
     
@@ -213,12 +260,13 @@ async def custom_cut_video(
         mode: "wide" keeps original aspect, "shorts" crops to 9:16
         language: language for Whisper
         burn_subtitles: if True, burn subtitles into the clip
+        video_url: YouTube URL for fast transcript lookup
     
     Returns:
         Path to output file, or None on failure
     """
-    # 1. Transcribe
-    words = await transcribe_full_video(video_path, language=language)
+    # 1. Transcribe (fast: YouTube captions, slow: Whisper fallback)
+    words = await transcribe_full_video(video_path, language=language, video_url=video_url)
     if not words:
         return None
     
