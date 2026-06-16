@@ -301,3 +301,14 @@ TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH=1
 It fetches the just-created Telegraph URLs, runs current postprocess/audit repair, and calls `editPage` if deterministic cleanup changed nodes. It does not call Gemini and it is non-fatal: failures are logged, not hidden.
 
 Manual CLI/Telegram repair commands remain useful for old technical pages or historical batches, but new pages get the automatic safety pass immediately after publication.
+
+## 2026-06-16 — Prompt/source policy alignment
+
+Aligned Study prompt with deterministic repair policy:
+
+- removed prompt examples that taught third-person wrappers like `Лоусон показывает...`;
+- Study prompt now says to formulate the theological point directly, without describing author actions;
+- unregistered Russian source titles are no longer presented as the positive example for Owen's `Of the Mortification of Sin`;
+- prompt examples now prefer the original title unless the Russian title is known/registered.
+
+This is the prompt-level counterpart to the deterministic repair rules: Gemini is now instructed to avoid the same source-card and third-person patterns that audit/repair catches later.

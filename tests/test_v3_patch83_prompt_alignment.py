@@ -6,7 +6,7 @@ from core.prompts import SYNOPSIS_PROMPT_QA, STUDY_ANALYSIS_PROMPT
 
 def test_study_prompt_source_cards_match_title_first_renderer_policy():
     assert "title-first" in STUDY_ANALYSIS_PROMPT
-    assert "**Умерщвление греха**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
+    assert "**Of the Mortification of Sin**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
     assert "**Safe in the Arms of God**, Джон МакАртур" in STUDY_ANALYSIS_PROMPT
     assert "автор и название — ОБЫЧНЫМ текстом" not in STUDY_ANALYSIS_PROMPT
     assert "НЕ жирным" not in STUDY_ANALYSIS_PROMPT.split("Карта источников", 1)[-1][:500]
@@ -41,3 +41,14 @@ def test_content_audit_removes_editorial_position_leak_variants():
     assert "рамка канала" not in text
     assert "Основной тезис" in text
     assert any(i.code == "prompt_context_leak_fixed" for i in issues)
+
+
+def test_study_prompt_does_not_teach_third_person_wrappers():
+    assert "Лоусон показывает" not in STUDY_ANALYSIS_PROMPT
+    assert "Бузениц доказывает" not in STUDY_ANALYSIS_PROMPT
+    assert "без описания действий автора" in STUDY_ANALYSIS_PROMPT
+
+
+def test_study_prompt_forbids_unregistered_russian_source_titles():
+    assert "если не знаешь устойчивого признанного русского названия" in STUDY_ANALYSIS_PROMPT.lower() or "registry" in STUDY_ANALYSIS_PROMPT
+    assert "**Of the Mortification of Sin**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
