@@ -7,7 +7,7 @@ negative bans as the bot evolves.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Iterable
 
@@ -24,6 +24,35 @@ _POSITIVE_MARKERS = (
     "разрешён", "разрешено", "positive", "reasoning",
 )
 
+_LEAKY_LITERAL_PATTERNS = (
+    "позиция канала",
+    "КОНФЕССИОНАЛЬНАЯ РАМКА КАНАЛА",
+    "В работе X автор Y",
+    "Y в «X»",
+    "Русский Автор, *«Русское название»*",
+    "Правильно:   - Джон МакАртур, *Safe in the Arms of God*",
+    "Лоусон показывает",
+    "Бузениц доказывает",
+)
+
+
+def find_leaky_prompt_literals(text: str) -> list[str]:
+    """Return literal prompt phrases known to leak into generated pages.
+
+    This is intentionally narrow: these are not general banned concepts, but
+    exact strings that should not appear in live prompts because models may copy
+    them despite surrounding negative wording.
+    """
+    src = str(text or "")
+    low = src.lower()
+    found: list[str] = []
+    for pattern in _LEAKY_LITERAL_PATTERNS:
+        haystack = low if pattern.islower() else src
+        needle = pattern if not pattern.islower() else pattern.lower()
+        if needle in haystack and pattern not in found:
+            found.append(pattern)
+    return found
+
 
 @dataclass(frozen=True)
 class PromptHealthItem:
@@ -35,6 +64,7 @@ class PromptHealthItem:
     compacted_chars: int = 0
     compaction_saved_chars: int = 0
     compaction_removed_lines: int = 0
+    leaky_literals: list[str] = field(default_factory=list)
 
     @property
     def negative_to_positive_ratio(self) -> float:
@@ -57,6 +87,7 @@ def analyze_prompt_text(name: str, text: str) -> PromptHealthItem:
         compacted_chars=compacted.compacted_chars,
         compaction_saved_chars=compacted.saved_chars,
         compaction_removed_lines=compacted.removed_lines,
+        leaky_literals=find_leaky_prompt_literals(text),
     )
 
 
@@ -84,7 +115,7 @@ def format_prompt_health_report() -> str:
     lines = ["🧪 <b>Prompt health</b>", "", f"Total chars: <code>{total_chars}</code>", ""]
     for item in items:
         ratio = item.negative_to_positive_ratio
-        warn = " ⚠️" if ratio > 2.5 or item.final_check_blocks > 2 else ""
+        warn = " ⚠️" if ratio > 2.5 or item.final_check_blocks > 2 or item.leaky_literals else ""
         lines.append(
             f"<b>{item.name}</b>{warn}\n"
             f"chars=<code>{item.chars}</code> "
@@ -93,8 +124,11 @@ def format_prompt_health_report() -> str:
             f"ratio=<code>{ratio:.2f}</code> "
             f"final_checks=<code>{item.final_check_blocks}</code> "
             f"compact=<code>{item.compacted_chars}</code> "
-            f"saved=<code>{item.compaction_saved_chars}</code>"
+            f"saved=<code>{item.compaction_saved_chars}</code> "
+            f"leaks=<code>{len(item.leaky_literals)}</code>"
         )
+        if item.leaky_literals:
+            lines.append("leaky_literals: <code>" + ", ".join(item.leaky_literals[:5]) + "</code>")
     lines.append("")
-    lines.append("Цель: постепенно снижать ratio и дубли финальных проверок, не удаляя production guardrails без тестов.")
+    lines.append("Цель: постепенно снижать ratio, дубли финальных проверок и leaky_literals, не удаляя production guardrails без тестов.")
     return "\n".join(lines)

@@ -42,3 +42,25 @@ def test_prompthealth_command_is_registered():
     assert "async def prompthealth_command" in commands
     assert "format_prompt_health_report" in commands
     assert 'CommandHandler("prompthealth"' in main
+
+
+def test_prompt_health_detects_leaky_literal_patterns():
+    from core.prompt_health import find_leaky_prompt_literals
+
+    text = "PRIVATE: позиция канала. Формат: В работе X автор Y утверждает. Лоусон показывает."
+    leaks = find_leaky_prompt_literals(text)
+    assert "позиция канала" in leaks
+    assert "В работе X автор Y" in leaks
+    assert "Лоусон показывает" in leaks
+
+
+def test_prompt_health_current_prompts_have_no_known_leaky_literals():
+    items = collect_prompt_health()
+    offenders = {i.name: i.leaky_literals for i in items if i.leaky_literals}
+    assert offenders == {}
+
+
+def test_prompt_health_report_includes_leak_counter():
+    report = format_prompt_health_report()
+    assert "leaks=" in report
+    assert "leaky_literals:" not in report

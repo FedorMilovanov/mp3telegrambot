@@ -404,3 +404,14 @@ Manual prompt pass removed literal repeated bad examples from the prompt text it
 - kept positive direct-style examples.
 
 This reduces the chance that Gemini copies a forbidden phrase from the prompt while still preserving the instruction's intent.
+
+## 2026-06-16 — Prompt health now tracks leaky literals
+
+Prompt health now detects exact literal phrases that previously leaked into generated pages or taught bad patterns, such as:
+
+- `позиция канала`
+- `В работе X автор Y`
+- `Русский Автор, *«Русское название»*`
+- `Лоусон показывает`
+
+`/prompthealth` now reports a `leaks=` counter per prompt. Current main prompts are covered by a regression test requiring zero known leaky literals. This prevents future prompt edits from reintroducing the same literal bad examples we just removed.
