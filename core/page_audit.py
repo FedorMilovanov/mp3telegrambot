@@ -167,9 +167,19 @@ def _strict_page_codes() -> set[str]:
     return codes | set(_PAGE_CRITICAL_CODES)
 
 
+def page_audit_block_publication_enabled() -> bool:
+    """Explicit opt-in for blocking Telegraph create/edit on page-audit findings."""
+    raw = (os.getenv("PAGE_AUDIT_BLOCK_PUBLICATION", "0") or "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    # A single global override for rare CI/manual release gates.
+    raw_global = (os.getenv("AUDIT_BLOCK_PUBLICATION", "0") or "0").strip().lower()
+    return raw_global in {"1", "true", "yes", "on"}
+
+
 def should_abort_for_page_audit(issues: list[PageAuditIssue]) -> bool:
-    """True when page-level audit should block create/edit publication."""
-    if get_page_audit_mode() != "strict":
+    """True when strict mode and explicit block-publication flag are both enabled."""
+    if get_page_audit_mode() != "strict" or not page_audit_block_publication_enabled():
         return False
     strict_codes = _strict_page_codes()
     return any(i.code in strict_codes for i in issues or [])

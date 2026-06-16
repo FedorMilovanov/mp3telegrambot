@@ -542,9 +542,21 @@ def get_content_audit_mode() -> str:
     return mode if mode in {"off", "warn", "strict"} else "warn"
 
 
+def content_audit_block_publication_enabled() -> bool:
+    """Explicit opt-in for blocking publication on audit findings.
+
+    The operational policy is repair/log/history-first: bad pages must be found
+    and improved, not silently withheld from the researcher. Blocking is reserved
+    for rare CI/manual gate runs and requires an explicit flag in addition to
+    CONTENT_AUDIT_MODE=strict.
+    """
+    raw = (os.getenv("CONTENT_AUDIT_BLOCK_PUBLICATION", "0") or "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def should_abort_for_content_audit(issues: list[ContentAuditIssue]) -> bool:
-    """True only in strict mode and only for critical issue classes."""
-    if get_content_audit_mode() != "strict":
+    """True only when strict mode and explicit block-publication flag are both enabled."""
+    if get_content_audit_mode() != "strict" or not content_audit_block_publication_enabled():
         return False
     strict_codes = _strict_content_codes()
     return any(i.code in strict_codes for i in issues or [])

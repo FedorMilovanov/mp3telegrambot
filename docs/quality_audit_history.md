@@ -183,3 +183,30 @@ Follow-up fixes:
 - third-person scrubber/page/DOM audit now recognizes common speaker surnames, not only generic `автор/лектор/проповедник` and `МакАртур`;
 - official registry now preserves Calvin's `Institutes of the Christian Religion` as `Наставление в христианской вере`;
 - existing already-published pages still need repair/re-publish if we want to rewrite their Telegraph content; the code changes prevent the same classes from passing silently in future strict runs.
+
+## 2026-06-16 — Audit policy clarified: repair/log first, blocking opt-in only
+
+Operator clarification: the goal is not to hide bad conspects; the goal is to find bugs, repair the generator, keep the pages available for reading/review, and record issues in history. Therefore strict audit modes now do **not** block publication by themselves.
+
+Blocking requires an explicit extra opt-in:
+
+```env
+CONTENT_AUDIT_MODE=strict
+CONTENT_AUDIT_STRICT_CODES=all
+CONTENT_AUDIT_BLOCK_PUBLICATION=1
+
+PAGE_AUDIT_MODE=strict
+PAGE_AUDIT_STRICT_CODES=all
+PAGE_AUDIT_BLOCK_PUBLICATION=1
+```
+
+Without `*_BLOCK_PUBLICATION=1`, strict mode is a loud audit mode: warnings are logged and can be written to history/repair reports, but the bot continues publishing so the operator can read and inspect the material.
+
+Production recommendation for this workflow:
+
+```env
+CONTENT_AUDIT_MODE=warn
+PAGE_AUDIT_MODE=warn
+```
+
+Then run DOM/repair audits over published links and fix generator bugs when a repeated class appears.

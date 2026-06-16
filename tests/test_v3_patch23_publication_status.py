@@ -71,6 +71,8 @@ def test_content_audit_mode_defaults_warn_and_strict_aborts(monkeypatch):
 
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
     assert get_content_audit_mode() == "strict"
+    assert should_abort_for_content_audit(issues) is False
+    monkeypatch.setenv("CONTENT_AUDIT_BLOCK_PUBLICATION", "1")
     assert should_abort_for_content_audit(issues) is True
 
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "off")
@@ -93,15 +95,17 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "publication_missing=missing_to_json(_pub_status.missing)" in pipe
 
 
-def test_content_audit_strict_codes_all_aborts_on_warning(monkeypatch):
+def test_content_audit_strict_codes_do_not_block_without_explicit_flag(monkeypatch):
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
     monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "all")
+    monkeypatch.delenv("CONTENT_AUDIT_BLOCK_PUBLICATION", raising=False)
     issues = [ContentAuditIssue("scripture_role_missing_warning", "x", "thin scripture")]
-    assert should_abort_for_content_audit(issues) is True
+    assert should_abort_for_content_audit(issues) is False
 
 
-def test_content_audit_strict_codes_specific_aborts_on_selected_warning(monkeypatch):
+def test_content_audit_block_publication_is_explicit_and_selective(monkeypatch):
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
+    monkeypatch.setenv("CONTENT_AUDIT_BLOCK_PUBLICATION", "1")
     monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "third_person_warning")
     assert should_abort_for_content_audit([ContentAuditIssue("third_person_warning", "x", "wrapper")]) is True
     assert should_abort_for_content_audit([ContentAuditIssue("source_relevance_missing_warning", "x", "thin")]) is False

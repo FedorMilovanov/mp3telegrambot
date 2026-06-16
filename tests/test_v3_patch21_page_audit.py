@@ -128,6 +128,8 @@ def test_page_audit_strict_controls(monkeypatch):
 
     monkeypatch.setenv("PAGE_AUDIT_MODE", "strict")
     monkeypatch.setenv("PAGE_AUDIT_STRICT_CODES", "source_map_original_title")
+    assert should_abort_for_page_audit(issues) is False
+    monkeypatch.setenv("PAGE_AUDIT_BLOCK_PUBLICATION", "1")
     assert should_abort_for_page_audit(issues) is True
 
     monkeypatch.setenv("PAGE_AUDIT_MODE", "off")
