@@ -7,6 +7,7 @@ real Gemini clients and can be called from sync or async pipeline stages.
 
 from __future__ import annotations
 
+from core.database import _db_conn
 import asyncio
 import json
 import logging
@@ -180,7 +181,7 @@ def log_gemini_run(
     )
 
     try:
-        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        with _db_conn() as conn:
             db_key = str(DB_PATH)
             if db_key not in _TABLE_ENSURED_DB_PATHS:
                 _ensure_gemini_runs_table(conn)
@@ -257,7 +258,7 @@ def fetch_recent_gemini_runs(limit: int = 10) -> list[dict[str, Any]]:
     """Return recent Gemini run rows as dictionaries for admin readouts."""
     limit = max(1, min(_safe_int(limit, 10), 50))
     try:
-        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        with _db_conn() as conn:
             conn.row_factory = sqlite3.Row
             _ensure_gemini_runs_table(conn)
             rows = conn.execute(
@@ -301,7 +302,7 @@ def summarize_gemini_runs(hours: int = 24) -> dict[str, Any]:
         "recent_errors": [],
     }
     try:
-        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        with _db_conn() as conn:
             conn.row_factory = sqlite3.Row
             _ensure_gemini_runs_table(conn)
             totals = conn.execute(

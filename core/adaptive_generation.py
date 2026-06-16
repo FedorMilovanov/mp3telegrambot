@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import sqlite3
+from core.database import _db_conn
 import time
 from typing import Any
 
@@ -56,7 +57,7 @@ def get_gemini_task_health(task: str, *, hours: int = 24, min_samples: int = 3) 
         return GeminiTaskHealth(task="")
     since = time.time() - max(1, min(int(hours or 24), 24 * 30)) * 3600
     try:
-        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        with _db_conn() as conn:
             row = conn.execute(
                 """
                 SELECT COUNT(*) AS total,

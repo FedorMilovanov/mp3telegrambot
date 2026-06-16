@@ -462,7 +462,7 @@ def update_rate_limit(user_id: int) -> None:
     today = _today_str()  # AUDIT L8
     now   = time.time()
     try:
-        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        with _db_conn() as conn:
             conn.execute(
                 """
                 INSERT INTO rate_limit (user_id, last_request, daily_count, daily_date)
