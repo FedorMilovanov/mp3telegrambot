@@ -2226,7 +2226,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     _repair_urls.append(_u)
             if _repair_urls:
                 try:
-                    from services.telegraph_repair import repair_telegraph_page_url
+                    from services.telegraph_repair import expand_telegraph_page_chain, repair_telegraph_page_url
+                    _expanded_repair_urls = []
+                    for _base_url in _repair_urls:
+                        for _expanded_url in (await expand_telegraph_page_chain(_base_url) or [_base_url]):
+                            if _expanded_url not in _expanded_repair_urls:
+                                _expanded_repair_urls.append(_expanded_url)
+                    _repair_urls = _expanded_repair_urls
                     for _r_url in _repair_urls:
                         _r_res = await repair_telegraph_page_url(_r_url)
                         _auto_repair_results.append(_r_res)

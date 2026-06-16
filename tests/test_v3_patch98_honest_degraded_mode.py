@@ -65,3 +65,9 @@ def test_pipeline_persists_auto_repair_unresolved_audit_summaries():
     assert "unresolved audit" in src
     assert "audit_summary" in src
     assert "for x in (getattr(_r, \"error\", \"\"), getattr(_r, \"audit_summary\", \"\"))" in src
+
+
+def test_pipeline_auto_repair_expands_multipart_telegraph_chains():
+    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "expand_telegraph_page_chain" in src
+    assert "_expanded_repair_urls" in src

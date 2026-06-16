@@ -340,3 +340,15 @@ postprocess made no changes -> ok=True, changed=False, no editPage call
 Auto-repair now records unresolved page-audit summaries as repair metadata, not only hard edit errors. If deterministic postprocess cannot fully clean a just-published page, the pipeline logs the unresolved audit and stores it in the generated-pages archive repair fields.
 
 This keeps the normal behavior (pages remain available) while making recurring unfixable defects visible in archive/history for the next generator/prompt repair pass.
+
+## 2026-06-16 — Multi-part Telegraph repair coverage
+
+Auto-repair and archive repair now expand Telegraph part chains via `➡ Дальше` links before repairing. This closes a gap for multi-part Synopsis pages: previously only the first Telegraph URL stored in the archive was repaired, while part 2/3/4/5 could keep old formatting artifacts.
+
+Behavior now:
+
+```text
+stored first-page URL -> fetch content -> find ➡ Дальше links -> repair every chained Telegraph part
+```
+
+The repair remains deterministic and Gemini-free.

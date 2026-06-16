@@ -118,3 +118,21 @@ def test_repair_service_skips_edit_when_postprocess_makes_no_changes():
     assert "no deterministic changes" in src
     assert "_edit_telegraph_page" in src[src.find("if not changed:"):]
     assert src.find("if not changed:") < src.find("ok = await _edit_telegraph_page")
+
+
+def test_repair_extracts_chained_telegraph_next_part_urls():
+    from services.telegraph_repair import _extract_next_part_urls
+
+    nodes = [{"tag": "p", "children": [
+        {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
+        " ",
+        {"tag": "a", "attrs": {"href": "https://example.com/no"}, "children": ["➡ external"]},
+    ]}]
+    assert _extract_next_part_urls(nodes) == ["https://telegra.ph/Part-2"]
+
+
+def test_repair_record_expands_chained_multipart_pages():
+    src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
+    assert "expand_telegraph_page_chain" in src
+    assert "chain = await expand_telegraph_page_chain(url)" in src
+    assert "for item in (chain or [url])" in src

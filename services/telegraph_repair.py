@@ -51,6 +51,62 @@ def collect_record_page_urls(record: dict[str, Any] | None) -> list[str]:
     return urls
 
 
+def _extract_next_part_urls(nodes: Any, *, base: str = "https://telegra.ph") -> list[str]:
+    """Extract Telegraph pagination links (➡ Дальше) from node trees."""
+    out: list[str] = []
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("tag") == "a":
+            children_text = str(node.get("children", ""))
+            href = str((node.get("attrs") or {}).get("href") or "").strip()
+            if href and "➡" in children_text:
+                if href.startswith("/"):
+                    href = base.rstrip("/") + href
+                if telegraph_path_from_url(href) and href not in out:
+                    out.append(href)
+        for child in node.get("children", []) or []:
+            walk(child)
+
+    for item in nodes or []:
+        walk(item)
+    return out
+
+
+async def expand_telegraph_page_chain(url: str, *, max_pages: int = 12) -> list[str]:
+    """Return URL plus chained Telegraph "next part" URLs. Never raises."""
+    start = str(url or "").strip()
+    if not telegraph_path_from_url(start):
+        return []
+    loop = asyncio.get_running_loop()
+    seen: set[str] = set()
+    queue: list[str] = [start]
+    out: list[str] = []
+    while queue and len(out) < max(1, min(int(max_pages or 12), 50)):
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        out.append(current)
+        path = telegraph_path_from_url(current)
+        try:
+            resp = await loop.run_in_executor(None, lambda p=path: requests.get(
+                f"https://api.telegra.ph/getPage/{p}?return_content=true",
+                timeout=30,
+            ))
+            data = resp.json()
+            if not data.get("ok"):
+                continue
+            nodes = (data.get("result") or {}).get("content") or []
+            for nxt in _extract_next_part_urls(nodes):
+                if nxt not in seen and nxt not in queue:
+                    queue.append(nxt)
+        except Exception as exc:
+            logger.info("Telegraph chain expansion skipped for %s: %s", current, str(exc)[:160])
+    return out
+
+
 def _nodes_signature(nodes: Any) -> str:
     return repr(nodes)
 
@@ -96,8 +152,14 @@ async def repair_generated_page_record(record: dict[str, Any]) -> list[Telegraph
     urls = collect_record_page_urls(record)
     if not urls:
         return []
-    results: list[TelegraphRepairResult] = []
+    expanded: list[str] = []
     for url in urls:
+        chain = await expand_telegraph_page_chain(url)
+        for item in (chain or [url]):
+            if item not in expanded:
+                expanded.append(item)
+    results: list[TelegraphRepairResult] = []
+    for url in expanded:
         results.append(await repair_telegraph_page_url(url))
         await asyncio.sleep(1.0)  # gentle Telegraph API pacing
     return results
