@@ -8,7 +8,8 @@ machines without browsers.
 Usage:
   python tools/audit_telegraph_pages.py --limit 20
   python tools/audit_telegraph_pages.py --url https://telegra.ph/...
-  python tools/audit_telegraph_pages.py --no-network --sample-html sample.html
+  python tools/audit_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md
+  python tools/audit_telegraph_pages.py --sample-html sample.html
 """
 from __future__ import annotations
 
@@ -133,6 +134,7 @@ def main() -> int:
     ap.add_argument("--history", type=Path, default=Path("docs/quality_audit_history.md"))
     ap.add_argument("--json-out", type=Path, default=Path("docs/telegraph_dom_audit.json"))
     ap.add_argument("--url", action="append", default=[], help="Telegraph URL to audit; may be repeated")
+    ap.add_argument("--url-file", type=Path, default=None, help="Text/Markdown file containing Telegraph URLs")
     ap.add_argument("--limit", type=int, default=50)
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--requests-only", action="store_true", help="Disable Playwright even if installed")
@@ -146,7 +148,13 @@ def main() -> int:
         fetcher = "local-html"
         source = str(args.sample_html)
     else:
-        urls = list(args.url) or extract_telegraph_urls(args.archive)
+        urls = list(args.url)
+        source = "--url" if urls else str(args.archive)
+        if args.url_file:
+            urls.extend(extract_telegraph_urls(args.url_file))
+            source = str(args.url_file)
+        if not urls:
+            urls = extract_telegraph_urls(args.archive)
         if args.limit:
             urls = urls[: max(1, args.limit)]
         results, fetcher = asyncio.run(run_audit(
@@ -154,7 +162,6 @@ def main() -> int:
             prefer_playwright=not args.requests_only,
             timeout=args.timeout,
         ))
-        source = str(args.archive) if not args.url else "--url"
 
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(

@@ -48,3 +48,9 @@ def test_dom_audit_catches_author_surname_third_person_but_not_missing_href():
     codes = {i.code for i in issues}
     assert "third_person_wrapper" in codes
     assert "bad_links" not in codes
+
+
+def test_audit_tool_supports_url_file_argument():
+    src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
+    assert "--url-file" in src
+    assert "extract_telegraph_urls(args.url_file)" in src

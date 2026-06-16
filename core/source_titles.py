@@ -54,6 +54,7 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
     "George Müller": "Георг Мюллер",
     "Thomas Watson": "Томас Уотсон",
+    "Jonathan Edwards": "Джонатан Эдвардс",
     "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
     "Martyn Ллойд-Джонс": "Мартин Ллойд-Джонс",
 }
@@ -70,6 +71,7 @@ OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("John Calvin", "Commentary on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Commentaries on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Institutes of the Christian Religion"): "Наставление в христианской вере",
+    ("Jonathan Edwards", "Religious Affections"): "Религиозные чувства",
 }
 
 RU_TITLE_CORRECTIONS: dict[str, str] = {

@@ -84,3 +84,9 @@ def test_source_card_known_calvin_institutes_keeps_official_ru_title():
     assert normalize_source_card_line(
         "• Наставление в христианской вере, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
     ) == "• **Наставление в христианской вере**, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
+
+
+def test_source_card_known_religious_affections_keeps_official_ru_title_and_author():
+    assert normalize_source_card_line(
+        "• Религиозные чувства, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
+    ) == "• **Религиозные чувства**, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."

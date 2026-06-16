@@ -241,3 +241,17 @@ python tools/repair_telegraph_pages.py --url-file docs/telegraph_repair_targets_
 ```
 
 Also reduced a page-audit false positive: registered official Russian source titles (e.g. Calvin's `Наставление в христианской вере`) are no longer treated as hallucinated source-map titles.
+
+## 2026-06-16 — Repair/audit operator UX follow-up
+
+Small but useful follow-up for the repair workflow:
+
+- `tools/audit_telegraph_pages.py` now supports `--url-file`, so the same target list can be used for dry-run repair and post-repair DOM audit.
+- Added canonical registry support for Jonathan Edwards and `Religious Affections` → `Религиозные чувства`, so official Russian source titles are preserved while unregistered title guesses still fall back to original titles.
+
+Typical loop on the runtime machine:
+
+```bash
+python tools/repair_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md --apply
+python tools/audit_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md --requests-only
+```
