@@ -462,7 +462,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _info_timeout = 180
         try:
             info_proc = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, timeout=_info_timeout)
+                None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_info_timeout)
             )
         except subprocess.TimeoutExpired as _ytdlp_timeout:
             logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
@@ -1687,7 +1687,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 url,
             ]
             proc = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: subprocess.run(audio_cmd, capture_output=True, text=True, timeout=600)
+                None, lambda: subprocess.run(audio_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
             )
             if proc.returncode != 0:
                 raise Exception(proc.stderr[-500:] if proc.stderr else "yt-dlp error")
