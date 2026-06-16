@@ -31,6 +31,25 @@ import requests
 from core.telegraph_dom_audit import TelegraphDomIssue, audit_telegraph_html, summarize_dom_issues
 
 
+def write_repair_targets(path: Path, results: list[tuple[str, list[TelegraphDomIssue]]]) -> int:
+    """Write a Markdown target list for pages that still have audit issues."""
+    failing = [(url, issues) for url, issues in results if issues]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Telegraph repair targets",
+        "",
+        "Generated from DOM/page audit. These are technical pages worth deterministic repair.",
+        "",
+    ]
+    if not failing:
+        lines.append("No repair targets: audit found no issues.")
+    for url, issues in failing:
+        codes = ", ".join(sorted({i.code for i in issues}))
+        lines.append(f"- {url}  <!-- {codes} -->")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return len(failing)
+
+
 TELEGRAPH_URL_RE = re.compile(r"https://telegra\.ph/[^\s)\]]+")
 
 
@@ -139,6 +158,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--requests-only", action="store_true", help="Disable Playwright even if installed")
     ap.add_argument("--sample-html", type=Path, default=None, help="Audit one local HTML file without network")
+    ap.add_argument("--repair-targets-out", type=Path, default=None, help="Write Markdown URL list for pages with issues")
     ap.add_argument("--no-history", action="store_true")
     args = ap.parse_args()
 
@@ -172,10 +192,16 @@ def main() -> int:
         ) + "\n",
         encoding="utf-8",
     )
+    if args.repair_targets_out:
+        count = write_repair_targets(args.repair_targets_out, results)
+    else:
+        count = 0
     if not args.no_history:
         append_history(args.history, results=results, fetcher=fetcher, source=source)
     print(summarize_dom_issues(results))
     print(f"json={args.json_out}")
+    if args.repair_targets_out:
+        print(f"repair_targets={args.repair_targets_out} count={count}")
     if not args.no_history:
         print(f"history={args.history}")
     return 1 if any(issues for _, issues in results) else 0

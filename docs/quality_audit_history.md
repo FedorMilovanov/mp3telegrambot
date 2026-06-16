@@ -269,3 +269,21 @@ Confirmed dry-run on the 8 known technical pages still reaches:
 ```text
 pages=8 changed=8 unresolved_after=0 errors=0 applied=0 mode=dry-run
 ```
+
+## 2026-06-16 — Audit-generated repair targets
+
+Added `--repair-targets-out` to `tools/audit_telegraph_pages.py`. This closes the operator loop:
+
+```bash
+python tools/audit_telegraph_pages.py \
+  --archive docs/generated_pages_archive.md \
+  --requests-only \
+  --repair-targets-out docs/telegraph_repair_targets_AUTO.md
+
+python tools/repair_telegraph_pages.py \
+  --url-file docs/telegraph_repair_targets_AUTO.md \
+  --apply \
+  --fail-on-unresolved
+```
+
+The audit step now writes a Markdown list containing only pages with issues and annotates each URL with issue codes in an HTML comment.

@@ -61,3 +61,19 @@ def test_repair_tool_reports_failed_edit_and_supports_fail_on_unresolved():
     assert "editPage_failed_or_no_telegraph_token" in src
     assert "--fail-on-unresolved" in src
     assert "args.fail_on_unresolved" in src
+
+
+def test_audit_tool_can_write_repair_targets(tmp_path):
+    from core.telegraph_dom_audit import TelegraphDomIssue
+    from tools.audit_telegraph_pages import write_repair_targets
+
+    out = tmp_path / "targets.md"
+    count = write_repair_targets(out, [
+        ("https://telegra.ph/bad", [TelegraphDomIssue("third_person_wrapper", "x")]),
+        ("https://telegra.ph/good", []),
+    ])
+    text = out.read_text(encoding="utf-8")
+    assert count == 1
+    assert "https://telegra.ph/bad" in text
+    assert "third_person_wrapper" in text
+    assert "https://telegra.ph/good" not in text
