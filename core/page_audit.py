@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from core.text_utils import find_mixed_greek_cyrillic_tokens
+from core.text_utils import find_mixed_greek_cyrillic_tokens, normalize_source_map_text
 
 
 @dataclass(frozen=True)
@@ -111,8 +111,21 @@ def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[P
             # source-card regex on prose.
             continue
         if in_source_map:
+            # Doctrinal concept bullets can legitimately contain parenthetical
+            # Latin/English terms followed by an explanation dash, e.g.
+            # "Sola Gratia (...) — principle...". They are not bibliography
+            # source cards and should not be flagged as invented source titles.
+            if re.search(r"\)\s*[—-]\s+", line):
+                continue
             m = _SOURCE_RU_ORIGINAL_RE.search(line)
             if m:
+                # If the source normalizer keeps the Russian title as the
+                # canonical bold title, it is known/official rather than a
+                # hallucinated title. Example: Calvin's Institutes.
+                raw_title = re.sub(r"^\s*[•\-]\s*", "", line).split(",", 1)[0].strip().strip("*")
+                normalized = normalize_source_map_text(line)
+                if raw_title and f"**{raw_title}**" in normalized:
+                    continue
                 issues.append(PageAuditIssue(
                     "source_map_original_title",
                     "source card may contain invented Russian title before original title",

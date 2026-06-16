@@ -48,3 +48,28 @@ def test_caption_trimming_has_compact_timestamp_fallback():
     assert '"main_topic": ""' in src
     assert "ts_mini = _trim_timestamps" in src
     assert "ts_in_cap=0" in src  # logging remains for cases where even 3 timestamps cannot fit
+
+
+def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_source():
+    nodes = [
+        {"tag": "h3", "children": ["Карта источников"]},
+        {"tag": "p", "children": [
+            "• Спасение только по благодати, только через веру, только во Христа "
+            "(Sola Gratia, Sola Fide, Solus Christus) — реформатский принцип, "
+            "утверждающий, что спасение не основано на заслугах человека."
+        ]},
+    ]
+    issues = audit_telegraph_page("T", nodes, page_type="study")
+    assert "source_map_original_title" not in {i.code for i in issues}
+
+
+def test_page_audit_allows_registered_official_ru_source_title():
+    nodes = [
+        {"tag": "h3", "children": ["Карта источников"]},
+        {"tag": "p", "children": [
+            "• Наставление в христианской вере, Жан Кальвин "
+            "(Institutes of the Christian Religion, John Calvin)."
+        ]},
+    ]
+    issues = audit_telegraph_page("T", nodes, page_type="study")
+    assert "source_map_original_title" not in {i.code for i in issues}

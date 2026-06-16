@@ -88,7 +88,7 @@ def audit_telegraph_html(html: str, *, url: str = "") -> list[TelegraphDomIssue]
         ))
 
     m = _SOURCE_INVENTED_RU_TITLE_RE.search(text)
-    if m:
+    if m and not re.search(r"\)\s*[—-]\s+", m.group(0)):
         issues.append(TelegraphDomIssue(
             "source_map_original_title",
             "source card may put invented Russian title before original title",

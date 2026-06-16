@@ -221,3 +221,23 @@ Also strengthened source-card repair for existing pages where the invented Russi
 - after repair nodes: `• **Of the Mortification of Sin**, Джон Оуэн (John Owen)`
 
 Confirmed locally via Telegraph `getPage` + current postprocess: the problematic sample pages change and page-audit warnings disappear. Actual `editPage` repair requires `TELEGRAPH_TOKEN` at runtime; the sandbox currently has no Telegraph token, so code is ready but remote pages were not edited from here.
+
+## 2026-06-16 — Deterministic repair tool dry-run
+
+Added `tools/repair_telegraph_pages.py` and a target list:
+
+- `docs/telegraph_repair_targets_2026-06-16.md`
+
+Dry-run over the 8 audited technical Telegraph pages:
+
+```text
+pages=8 changed=8 unresolved_after=0 errors=0 applied=0 mode=dry-run
+```
+
+This means the current deterministic repair/postprocess can clean all known issue classes from the target list without Gemini calls. Applying the repair on the runtime machine requires `TELEGRAPH_TOKEN`:
+
+```bash
+python tools/repair_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md --apply
+```
+
+Also reduced a page-audit false positive: registered official Russian source titles (e.g. Calvin's `Наставление в христианской вере`) are no longer treated as hallucinated source-map titles.
