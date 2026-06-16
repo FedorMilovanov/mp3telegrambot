@@ -760,7 +760,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                             display_name=f"{performer} - {title}",
                         ),
                     )
+                    _uf_start = asyncio.get_running_loop().time()
                     while uf.state == "PROCESSING":
+                        if asyncio.get_running_loop().time() - _uf_start > 300:
+                            raise TimeoutError("Gemini file processing timeout (300s)")
                         await asyncio.sleep(3)
                         uf = await client.aio.files.get(name=uf.name)
                     if uf.state == "FAILED":  # fix #8
@@ -887,7 +890,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                                 display_name=f"{performer} - {title}",
                             ),
                         )
+                        _uf_start = asyncio.get_running_loop().time()
                         while uf.state == "PROCESSING":
+                            if asyncio.get_running_loop().time() - _uf_start > 300:
+                                raise TimeoutError("Gemini file processing timeout (300s)")
                             await asyncio.sleep(3)
                             uf = await client.aio.files.get(name=uf.name)
                         if uf.state == "FAILED":  # fix #8
