@@ -53,6 +53,9 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Jackie Hill Perry": "Джеки Хилл Перри",
     "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
     "George Müller": "Георг Мюллер",
+    "Thomas Watson": "Томас Уотсон",
+    "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
+    "Martyn Ллойд-Джонс": "Мартин Ллойд-Джонс",
 }
 
 OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
@@ -149,6 +152,15 @@ _SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
     r"(?P<tail>\.?\s*)$"
 )
 
+_SOURCE_RU_TITLE_AUTHOR_WITH_ORIGINAL_RE = re.compile(
+    r"^(?P<bullet>\s*[•\-]\s*)?"
+    r"(?P<ru_title>[А-ЯЁ][^,()\n]{2,140}),\s*"
+    r"(?P<author>[А-ЯЁA-Z][^()\n]{2,100})\s*"
+    r"\(\s*(?P<en_title>[A-Za-z][^,()]{2,220}),\s*"
+    r"(?P<en_author>[A-Za-z][^)]{2,120})\s*\)"
+    r"(?P<tail>\.?\s*)$"
+)
+
 _EN_AUTHOR_WITH_TITLE_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
     r"(?P<en_author>[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z .’'\-]{2,100}),\s+"
@@ -207,6 +219,7 @@ def canonical_author_name(value: str) -> str:
 def original_author_name(value: str) -> str:
     """Best-effort original author label for parenthetical source cards."""
     raw = str(value or "").strip()
+    raw = raw.replace("Martyn Ллойд-Джонс", "Martyn Lloyd-Jones")
     if re.search(r"[A-Za-z]", raw):
         return raw
     canon = canonical_person_name(raw)
@@ -370,6 +383,23 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
             fallback_ru_title=flex_dup.group("title"),
         )
 
+    title_author = _SOURCE_RU_TITLE_AUTHOR_WITH_ORIGINAL_RE.match(out.strip())
+    if title_author and re.search(r"[A-Za-z]", title_author.group("en_title")):
+        bullet = title_author.group("bullet") or ""
+        en_author = original_author_name(title_author.group("en_author").strip())
+        en_title = title_author.group("en_title").strip().rstrip(".")
+        # Guard against the opposite parenthetical order: (English Author, English Title).
+        # Example: "Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)"
+        # belongs to _SOURCE_RU_WITH_ORIGINAL_RE below, not this title-first shape.
+        if canonical_author_name(en_title) == en_title:
+            author = canonical_author_name(en_author) or canonical_author_name(title_author.group("author").strip())
+            return _format_canonical_source_card(
+                bullet, author, en_author, en_title,
+                # Do not trust model-invented Russian titles in title-first source cards;
+                # official_ru_title() will still supply known published Russian titles.
+                fallback_ru_title="",
+            )
+
     m = _SOURCE_RU_WITH_ORIGINAL_RE.match(out.strip())
     if m and re.search(r"[A-Za-z]", m.group("en_title")):
         bullet = m.group("bullet") or ""
@@ -378,7 +408,9 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         author = canonical_author_name(en_author) or m.group("author").strip()
         return _format_canonical_source_card(
             bullet, author, en_author, en_title,
-            fallback_ru_title=m.group("ru_title"),
+            # Do not trust model-invented Russian titles; official_ru_title()
+            # still supplies known canonical Russian titles.
+            fallback_ru_title="",
         )
 
     m2 = _EN_AUTHOR_WITH_TITLE_RE.match(out.strip())

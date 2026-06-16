@@ -110,3 +110,19 @@ Implemented behavior:
 - alternative RuTube/VK matching is skipped in degraded mode to avoid weak false-positive links from fallback titles.
 
 This matches the quality rule: better no conspect than a shallow or hallucinated one.
+
+## 2026-06-16 — Source-card title hallucination hardening
+
+Live logs showed repeated `source_map_original_title` warnings such as:
+
+- `• Умерщвление греха, Джон Оуэн (Of the Mortification of Sin, John Owen).`
+- `• Все ради блага, Томас Уотсон (All Things for Good, Thomas Watson).`
+- `• Пламенная проповедь, Мартин Ллойд-Джонс (Preaching and Preachers, Martyn Ллойд-Джонс).`
+
+The old source normalizer misread these as `author, title` and could render the author as the bold title. It now recognizes the `RU-title, RU-author (Original-title, Original-author)` shape and renders verifiable title-first source cards:
+
+- `• **Of the Mortification of Sin**, Джон Оуэн (John Owen).`
+- `• **All Things for Good**, Томас Уотсон (Thomas Watson).`
+- `• **Preaching and Preachers**, Мартин Ллойд-Джонс (Martyn Lloyd-Jones).`
+
+Policy: if a Russian source title is not in the official registry, do not trust it; show the original title instead. Known official Russian titles (for example `Strange Fire` → `Чуждый огонь`) still render in Russian.

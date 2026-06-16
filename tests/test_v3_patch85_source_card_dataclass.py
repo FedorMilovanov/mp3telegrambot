@@ -66,3 +66,15 @@ def test_structured_source_block_renders_same_title_first_policy():
     flat = _flat(_section_to_nodes_v2(section))
     assert "Чуждый огонь, Джон МакАртур (Strange Fire, John MacArthur)" in flat
     assert "Полезна для темы" in flat
+
+
+def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru_title():
+    assert normalize_source_card_line(
+        "• Умерщвление греха, Джон Оуэн (Of the Mortification of Sin, John Owen)."
+    ) == "• **Of the Mortification of Sin**, Джон Оуэн (John Owen)."
+    assert normalize_source_card_line(
+        "• Все ради блага, Томас Уотсон (All Things for Good, Thomas Watson)."
+    ) == "• **All Things for Good**, Томас Уотсон (Thomas Watson)."
+    assert normalize_source_card_line(
+        "• Пламенная проповедь, Мартин Ллойд-Джонс (Preaching and Preachers, Martyn Ллойд-Джонс)."
+    ) == "• **Preaching and Preachers**, Мартин Ллойд-Джонс (Martyn Lloyd-Jones)."
