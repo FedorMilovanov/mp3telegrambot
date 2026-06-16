@@ -2565,10 +2565,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # ── Shorts (после основного результата) ─────────
         _feat_shorts = await asettings_get("shorts")
+        # ENG mode: use translated video for Shorts/Clips/Montage if LiveDub succeeded
+        _shorts_livedub_path = None
         if ai_data and _feat_shorts:
             logger.info("Shorts: feature enabled, starting pipeline")
-            # ENG mode: use translated video for Shorts if LiveDub succeeded
-            _shorts_livedub_path = None
             if (user_mode in ("eng", "eng_fast", "eng_fast_qa")
                     and "livedub_path" in locals()
                     and livedub_path and Path(livedub_path).exists()):
@@ -2610,7 +2610,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 existing_client=used_client,            # ← REUSE
                 rutube_url=rutube_url,
                 vk_url=vk_url,
-                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
+                livedub_video_path=_shorts_livedub_path,
             )
         else:
             logger.info(f"Clips: skipped (feat={_feat_clips}, ai_data={'yes' if ai_data else 'no'})")
@@ -2637,7 +2637,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ai_data=ai_data, update=update,
                 rutube_url=rutube_url, vk_url=vk_url,
                 prefetched_candidates=_prefetched_extras.get("montage_candidates", []),
-                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
+                livedub_video_path=_shorts_livedub_path,
             )
         else:
             logger.info(f"Montage: skipped (feat={_feat_montage})")
@@ -2650,7 +2650,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ai_data=ai_data, update=update,
                 rutube_url=rutube_url, vk_url=vk_url,
                 prefetched_candidates=_prefetched_extras.get("highlights_candidates", []),
-                livedub_video_path=_shorts_livedub_path if '_shorts_livedub_path' in dir() else None,
+                livedub_video_path=_shorts_livedub_path,
             )
         else:
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")
