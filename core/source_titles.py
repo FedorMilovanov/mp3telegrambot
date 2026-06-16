@@ -57,6 +57,33 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Jonathan Edwards": "Джонатан Эдвардс",
     "Martyn Lloyd-Jones": "Мартин Ллойд-Джонс",
     "Martyn Ллойд-Джонс": "Мартин Ллойд-Джонс",
+
+    "John Murray": "Джон Мюррей",
+    "B.B. Warfield": "Б. Б. Уорфилд",
+    "B. B. Warfield": "Б. Б. Уорфилд",
+    "J.C. Ryle": "Дж. Ч. Райл",
+    "J. C. Ryle": "Дж. Ч. Райл",
+    "Louis Berkhof": "Луис Беркхоф",
+    "Jerry Bridges": "Джерри Бриджес",
+    "Thomas Brooks": "Томас Брукс",
+    "Athanasius": "Афанасий Великий",
+    "Augustine": "Августин",
+    "Herman Bavinck": "Герман Бавинк",
+    "Robert Letham": "Роберт Летэм",
+    "Richard Gaffin": "Ричард Гаффин",
+    "Anthony Hoekema": "Энтони Хокема",
+    "George Eldon Ladd": "Джордж Элдон Лэдд",
+    "O. Palmer Robertson": "О. Палмер Робертсон",
+    "Michael Horton": "Майкл Хортон",
+    "Edmund Clowney": "Эдмунд Клауни",
+    "Bryan Chapell": "Брайан Чапелл",
+    "Graeme Goldsworthy": "Грэм Голдсуорси",
+    "Sidney Greidanus": "Сидни Грейданус",
+    "Peter Masters": "Питер Мастерс",
+    "J. Gresham Machen": "Дж. Грешем Мейчен",
+    "Iain Murray": "Иэн Мюррей",
+    "Arnold Dallimore": "Арнольд Даллимор",
+    "Michael Haykin": "Майкл Хейкин",
 }
 
 OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
@@ -72,6 +99,12 @@ OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("John Calvin", "Commentaries on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Institutes of the Christian Religion"): "Наставление в христианской вере",
     ("Jonathan Edwards", "Religious Affections"): "Религиозные чувства",
+
+    ("John Murray", "Redemption Accomplished and Applied"): "Искупление совершённое и применённое",
+    ("J.C. Ryle", "Holiness"): "Святость",
+    ("J. C. Ryle", "Holiness"): "Святость",
+    ("Jerry Bridges", "The Pursuit of Holiness"): "Стремление к святости",
+    ("Thomas Watson", "The Doctrine of Repentance"): "Учение о покаянии",
 }
 
 RU_TITLE_CORRECTIONS: dict[str, str] = {

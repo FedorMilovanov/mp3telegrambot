@@ -472,3 +472,16 @@ Manual prompt pass removed exact false-precision examples that could be copied i
 - bad Russian case examples after `согласно`
 
 The prompt now describes the error as a pattern: do not invent dictionary volumes/pages; use cautious lexical wording unless absolutely certain; after `согласно` use dative case. Prompt-health leaky literal detection was expanded to prevent these exact bad examples from returning to live prompts.
+
+## 2026-06-16 — Source registry expanded for source-pack authors
+
+Expanded deterministic source-card registry for common authors appearing in `core/source_packs.py`, including Murray, Warfield, Ryle, Berkhof, Bridges, Brooks, Bavinck, Hoekema, Horton, Chapell, Goldsworthy, Greidanus, Machen and others.
+
+Added known official Russian titles for several high-frequency works:
+
+- `Redemption Accomplished and Applied` → `Искупление совершённое и применённое`
+- `Holiness` → `Святость`
+- `The Pursuit of Holiness` → `Стремление к святости`
+- `The Doctrine of Repentance` → `Учение о покаянии`
+
+This reduces English-author leakage in source cards while preserving original titles when Russian titles are not registry-confirmed.

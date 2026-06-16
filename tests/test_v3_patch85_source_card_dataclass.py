@@ -90,3 +90,19 @@ def test_source_card_known_religious_affections_keeps_official_ru_title_and_auth
     assert normalize_source_card_line(
         "• Религиозные чувства, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
     ) == "• **Религиозные чувства**, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
+
+
+def test_source_card_registry_covers_common_reformed_source_pack_authors():
+    assert normalize_source_card_line("• John Murray, Redemption Accomplished and Applied") == (
+        "• **Искупление совершённое и применённое**, Джон Мюррей "
+        "(Redemption Accomplished and Applied, John Murray)."
+    )
+    assert normalize_source_card_line("• B.B. Warfield, The Inspiration and Authority of the Bible") == (
+        "• **The Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
+    )
+    assert normalize_source_card_line("• J.C. Ryle, Holiness") == (
+        "• **Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
+    )
+    assert normalize_source_card_line("• Louis Berkhof, Systematic Theology") == (
+        "• **Systematic Theology**, Луис Беркхоф (Louis Berkhof)."
+    )
