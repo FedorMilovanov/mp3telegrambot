@@ -918,6 +918,140 @@ async def segments_command(update, context):
     )
 
 
+async def customcut_command(update, context):
+    """Cut video by text phrases: /cut VIDEO_ID "from phrase" "to phrase" [shorts|wide]"""
+    user_id = update.effective_user.id
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+
+    args = context.args or []
+    if len(args) < 1:
+        await update.message.reply_text(
+            "✂️ <b>Вырезка по словам</b>\n\n"
+            "Использование:\n"
+            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\"</code>\n"
+            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\" shorts</code>\n"
+            "<code>/cut VIDEO_ID \"от фразы\" \"до фразы\" wide</code>\n\n"
+            "Пример:\n"
+            "<code>/cut lpsGi_7wvUg \"рождение свыше\" \"Царствия Божия\"</code>\n\n"
+            "• <b>shorts</b> — вертикальный формат 9:16 с субтитрами\n"
+            "• <b>wide</b> — оригинальный 16:9 (по умолчанию)\n"
+            "• Фразы ищутся через Whisper-транскрипцию",
+            parse_mode="HTML",
+        )
+        return
+
+    # Parse: VIDEO_ID "phrase1" "phrase2" [shorts|wide]
+    raw_text = update.message.text or ""
+    # Extract quoted phrases
+    quotes = re.findall(r'"([^"]+)"', raw_text)
+    if len(quotes) < 2:
+        # Try «» quotes
+        quotes = re.findall(r'[«"]([^»"]+)[»"]', raw_text)
+    if len(quotes) < 2:
+        await update.message.reply_text(
+            '⚠️ Укажите две фразы в кавычках:\n'
+            '<code>/cut VIDEO_ID "от фразы" "до фразы"</code>',
+            parse_mode="HTML",
+        )
+        return
+
+    video_id = args[0].strip()
+    start_phrase = quotes[0].strip()
+    end_phrase = quotes[1].strip()
+
+    # Mode: last arg if "shorts" or "wide"
+    mode = "wide"
+    last_word = raw_text.strip().split()[-1].lower()
+    if last_word in ("shorts", "short", "вертикальный", "9:16"):
+        mode = "shorts"
+    elif last_word in ("wide", "горизонтальный", "16:9"):
+        mode = "wide"
+
+    mode_label = "9:16 Shorts" if mode == "shorts" else "16:9 Wide"
+    msg = await update.message.reply_text(
+        f"✂️ Ищу фразы в видео...\n"
+        f"От: «{start_phrase[:50]}»\n"
+        f"До: «{end_phrase[:50]}»\n"
+        f"Формат: {mode_label}\n\n"
+        f"⏳ Транскрибирую аудио через Whisper (может занять 1-3 мин)..."
+    )
+
+    try:
+        from services.shorts_video import download_video_for_shorts
+        from services.custom_cut import custom_cut_video
+
+        # Download video
+        video_path = await download_video_for_shorts(
+            f"https://www.youtube.com/watch?v={video_id}", video_id
+        )
+        if not video_path:
+            await msg.edit_text("❌ Не удалось скачать видео.")
+            return
+
+        # Cut
+        import uuid
+        output_path = DOWNLOAD_DIR / f"{video_id}_cut_{uuid.uuid4().hex[:8]}.mp4"
+        result = await custom_cut_video(
+            video_path=video_path,
+            start_phrase=start_phrase,
+            end_phrase=end_phrase,
+            output_path=output_path,
+            mode=mode,
+        )
+
+        if not result or not result.exists():
+            await msg.edit_text(
+                "❌ Не удалось найти фразы в видео.\n\n"
+                "Попробуйте:\n"
+                "• Другие слова (Whisper может транскрибировать иначе)\n"
+                "• Более короткие фразы (2-4 слова)\n"
+                "• Убедитесь что фразы идут в правильном порядке"
+            )
+            return
+
+        size_mb = result.stat().st_size / (1024 * 1024)
+        if size_mb > 50:
+            await msg.edit_text(f"❌ Файл слишком большой: {size_mb:.1f} МБ (лимит 50 МБ)")
+            result.unlink(missing_ok=True)
+            return
+
+        await msg.edit_text(f"✂️ Готово! Отправляю ({size_mb:.1f} МБ)...")
+
+        caption = (
+            f"✂️ <b>Custom Cut</b>\n"
+            f"От: «{start_phrase[:40]}»\n"
+            f"До: «{end_phrase[:40]}»\n"
+            f"Формат: {mode_label}"
+        )
+        await update.message.reply_video(
+            video=result,
+            caption=caption,
+            parse_mode="HTML",
+            supports_streaming=True,
+            write_timeout=300,
+            read_timeout=300,
+            connect_timeout=60,
+        )
+        await msg.delete()
+
+    except Exception as e:
+        logger.warning("customcut failed: %s", e, exc_info=True)
+        try:
+            await msg.edit_text(f"❌ Ошибка: {_mask(str(e))[:200]}")
+        except Exception:
+            pass
+    finally:
+        try:
+            if 'output_path' in locals():
+                output_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 async def cutseg_command(update, context):
     """Render and send deterministic segment(s) by timestamp boundary."""
     user_id = update.effective_user.id
