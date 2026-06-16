@@ -108,7 +108,7 @@ def test_prompt_rules_inline_timestamp_content():
 def test_prompt_rules_strict_bans_content():
     from core.prompt_rules import STRICT_BANS
     assert "СТРОГИЕ ЗАПРЕТЫ" in STRICT_BANS
-    assert "важно понять" in STRICT_BANS
+    assert "канцелярские вводные" in STRICT_BANS
     assert "автор/проповедник/спикер" in STRICT_BANS
     assert "таким образом" in STRICT_BANS
 

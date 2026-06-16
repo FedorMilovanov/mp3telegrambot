@@ -449,3 +449,15 @@ Manual prompt pass removed remaining Study lexicon/source guidance that encourag
 - `X полезна здесь потому, что показывает...`
 
 Replacement guidance now asks for direct descriptions of the sermon moment and the term/source function without starting from the author's name. This should reduce third-person wrappers in lexicon/source blocks before content-audit retry or deterministic repair need to intervene.
+
+## 2026-06-16 — Prompt meta-formula literal cleanup
+
+Manual prompt pass removed additional literal meta-formulas from prompts and shared prompt rules:
+
+- `в материале говорится/рассматривается`
+- `материал показывает/касается`
+- `следует отметить/следует заметить/можно сказать`
+- `данный раздел/этот блок/в этой секции`
+- `автор показывает`
+
+These are now described as pattern classes (`канцелярские вводные`, `мета-формулы про материал/раздел`) instead of being repeated as exact phrases Gemini may copy. Prompt-health leaky literal detection was expanded accordingly and current prompts report zero known leaks.
