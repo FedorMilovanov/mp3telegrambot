@@ -146,3 +146,23 @@ CONTENT_AUDIT_STRICT_CODES=third_person_warning,source_relevance_missing_warning
 Default behavior is unchanged: only historically critical issues abort in strict mode. With `CONTENT_AUDIT_STRICT_CODES=all`, unresolved warnings such as thin scripture/source/application blocks stop publication instead of being merely logged.
 
 Also cleaned duplicate empty-section guards in `telegraph_pages.py` and fixed malformed audit locations from `blocks[0` to `blocks[0]`, making logs easier to trace back to exact JSON blocks.
+
+## 2026-06-16 — Page-audit strict publication gate
+
+Page-level Telegraph audit can now block create/edit before hitting the Telegraph API.
+
+```env
+PAGE_AUDIT_MODE=strict
+PAGE_AUDIT_STRICT_CODES=all
+```
+
+or targeted:
+
+```env
+PAGE_AUDIT_MODE=strict
+PAGE_AUDIT_STRICT_CODES=source_map_original_title,third_person,mixed_greek_cyrillic
+```
+
+`PAGE_AUDIT_MODE` overrides `CONTENT_AUDIT_MODE`; if unset, it inherits `CONTENT_AUDIT_MODE`. Default remains warn-only.
+
+This gives a second gate after section-level content audit: even if a formatting/source-card problem survives into final Telegraph nodes, createPage/editPage can abort instead of publishing a visually or bibliographically unsafe page.

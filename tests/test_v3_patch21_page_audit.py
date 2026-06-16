@@ -106,3 +106,35 @@ def test_patch21_page_audit_reports_unfixed_classes():
     codes = {i.code for i in issues}
     assert "mixed_greek_cyrillic" in codes
     assert "third_person" in codes
+
+
+def test_page_audit_strict_controls(monkeypatch):
+    from core.page_audit import get_page_audit_mode, should_abort_for_page_audit
+
+    issues = audit_telegraph_page(
+        "Карта источников",
+        [
+            {"tag": "h3", "children": ["Карта источников"]},
+            {"tag": "p", "children": ["• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."]},
+        ],
+        page_type="study",
+    )
+    assert any(i.code == "source_map_original_title" for i in issues)
+
+    monkeypatch.delenv("PAGE_AUDIT_MODE", raising=False)
+    monkeypatch.delenv("CONTENT_AUDIT_MODE", raising=False)
+    assert get_page_audit_mode() == "warn"
+    assert should_abort_for_page_audit(issues) is False
+
+    monkeypatch.setenv("PAGE_AUDIT_MODE", "strict")
+    monkeypatch.setenv("PAGE_AUDIT_STRICT_CODES", "source_map_original_title")
+    assert should_abort_for_page_audit(issues) is True
+
+    monkeypatch.setenv("PAGE_AUDIT_MODE", "off")
+    assert should_abort_for_page_audit(issues) is False
+
+
+def test_telegraph_create_edit_wire_page_audit_strict_abort():
+    src = __import__("pathlib").Path("converters/md_telegraph.py").read_text(encoding="utf-8")
+    assert "should_abort_for_page_audit" in src
+    assert "page_audit_strict" in src

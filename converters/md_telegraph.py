@@ -11,7 +11,7 @@ from core.text_utils import (
 )
 from core.source_titles import build_source_card, render_source_card
 from core.url_utils import get_youtube_timestamp_url
-from core.page_audit import audit_telegraph_page, format_audit_issues
+from core.page_audit import audit_telegraph_page, format_audit_issues, should_abort_for_page_audit
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
 from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers  # FIX: circular imports
 from core.globals import TELEGRAPH_TOKEN        # FIX markdown
@@ -1730,7 +1730,10 @@ async def _create_telegraph_page_single(title: str, author: str,
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
     _audit = audit_telegraph_page(title, nodes, page_type="create")
     if _audit:
-        logger.warning("Telegraph createPage audit: %s", format_audit_issues(_audit))
+        _audit_summary = format_audit_issues(_audit)
+        logger.warning("Telegraph createPage audit: %s", _audit_summary)
+        if should_abort_for_page_audit(_audit):
+            return None, "page_audit_strict: " + _audit_summary[:300]
 
     # ConnectionError / TimeoutError / OSError handled by broad except below
     last_err = "unknown"
@@ -1784,7 +1787,10 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
     _audit = audit_telegraph_page(title, nodes, page_type="edit")
     if _audit:
-        logger.warning("Telegraph editPage audit for %s: %s", page_url, format_audit_issues(_audit))
+        _audit_summary = format_audit_issues(_audit)
+        logger.warning("Telegraph editPage audit for %s: %s", page_url, _audit_summary)
+        if should_abort_for_page_audit(_audit):
+            return False
     path = page_url.replace("https://telegra.ph/", "")
     for _edit_attempt in range(3):
         try:

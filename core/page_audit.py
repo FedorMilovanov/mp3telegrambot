@@ -8,6 +8,7 @@ and recurring typo remnants.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -129,3 +130,46 @@ def format_audit_issues(issues: list[PageAuditIssue], limit: int = 5) -> str:
     if len(issues) > limit:
         rendered.append(f"... и ещё {len(issues) - limit}")
     return " | ".join(rendered)
+
+
+_PAGE_WARNING_CODES = {
+    "typo",
+    "mixed_greek_cyrillic",
+    "third_person",
+    "pompous_label",
+    "possible_bare_bullet",
+    "source_map_original_title",
+}
+_PAGE_CRITICAL_CODES = {
+    "mixed_greek_cyrillic",
+}
+
+
+def get_page_audit_mode() -> str:
+    """Return PAGE_AUDIT_MODE/CONTENT_AUDIT_MODE: off | warn | strict.
+
+    PAGE_AUDIT_MODE overrides CONTENT_AUDIT_MODE. This lets operators run
+    strict DOM/page checks only for surgical review sessions without changing
+    section-level content audit defaults.
+    """
+    raw = os.getenv("PAGE_AUDIT_MODE", os.getenv("CONTENT_AUDIT_MODE", "warn"))
+    mode = (raw or "warn").strip().lower()
+    return mode if mode in {"off", "warn", "strict"} else "warn"
+
+
+def _strict_page_codes() -> set[str]:
+    raw = (os.getenv("PAGE_AUDIT_STRICT_CODES", "") or "").strip()
+    if not raw:
+        return set(_PAGE_CRITICAL_CODES)
+    if raw.lower() in {"all", "warnings", "warning"}:
+        return set(_PAGE_WARNING_CODES) | set(_PAGE_CRITICAL_CODES)
+    codes = {x.strip() for x in re.split(r"[,;\s]+", raw) if x.strip()}
+    return codes | set(_PAGE_CRITICAL_CODES)
+
+
+def should_abort_for_page_audit(issues: list[PageAuditIssue]) -> bool:
+    """True when page-level audit should block create/edit publication."""
+    if get_page_audit_mode() != "strict":
+        return False
+    strict_codes = _strict_page_codes()
+    return any(i.code in strict_codes for i in issues or [])
