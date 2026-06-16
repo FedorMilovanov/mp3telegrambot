@@ -76,13 +76,17 @@ async def repair_telegraph_page_url(url: str) -> TelegraphRepairResult:
         before = _nodes_signature(nodes)
         fixed_nodes = _postprocess_telegraph_nodes(nodes)
         after = _nodes_signature(fixed_nodes)
+        changed = before != after
         issues = audit_telegraph_page(title, fixed_nodes, page_type="repair")
         audit_summary = format_audit_issues(issues, limit=4)
+        if not changed:
+            logger.info("Telegraph repair: no deterministic changes for %s", url)
+            return TelegraphRepairResult(url=url, ok=True, changed=False, title=title, audit_summary=audit_summary)
         ok = await _edit_telegraph_page(url, title, author, fixed_nodes, loop)
         if not ok:
-            return TelegraphRepairResult(url=url, ok=False, changed=(before != after), title=title, error="editPage_failed", audit_summary=audit_summary)
-        logger.info("Telegraph repair OK: %s changed=%s", url, before != after)
-        return TelegraphRepairResult(url=url, ok=True, changed=(before != after), title=title, audit_summary=audit_summary)
+            return TelegraphRepairResult(url=url, ok=False, changed=True, title=title, error="editPage_failed", audit_summary=audit_summary)
+        logger.info("Telegraph repair OK: %s changed=True", url)
+        return TelegraphRepairResult(url=url, ok=True, changed=True, title=title, audit_summary=audit_summary)
     except Exception as exc:
         logger.warning("Telegraph repair failed for %s: %s", url, exc)
         return TelegraphRepairResult(url=url, ok=False, error=f"{type(exc).__name__}: {str(exc)[:240]}")

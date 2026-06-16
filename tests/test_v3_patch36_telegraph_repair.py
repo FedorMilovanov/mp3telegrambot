@@ -110,3 +110,11 @@ def test_repair_commands_persist_repair_status():
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "aupdate_generated_page_repair_status" in commands
     assert "last_repair" not in commands  # persistence is via helper, not manual SQL
+
+
+def test_repair_service_skips_edit_when_postprocess_makes_no_changes():
+    src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
+    assert "if not changed:" in src
+    assert "no deterministic changes" in src
+    assert "_edit_telegraph_page" in src[src.find("if not changed:"):]
+    assert src.find("if not changed:") < src.find("ok = await _edit_telegraph_page")

@@ -323,3 +323,14 @@ Post-publish auto-repair is now recorded in the durable generated-pages archive.
 - `last_repair_errors`
 
 This makes automatic repair visible in archive Markdown/SQLite, not only in runtime logs.
+
+## 2026-06-16 — Repair avoids unnecessary editPage calls
+
+The deterministic repair service now skips `editPage` when current postprocess makes no node changes. This matters because auto-repair runs after every new Telegraph publication: clean pages should not spend extra Telegraph API quota or risk FLOOD_WAIT just to write identical content.
+
+Changed behavior:
+
+```text
+postprocess changed nodes -> editPage
+postprocess made no changes -> ok=True, changed=False, no editPage call
+```
