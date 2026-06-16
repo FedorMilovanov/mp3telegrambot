@@ -86,13 +86,13 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 import sqlite3
 from core.globals import DB_PATH
+from core.database import _db_conn
 
 
 def _get_user_mode_raw(user_id: int) -> str:
     """Читает строковое значение режима пользователя из bot_settings."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("PRAGMA busy_timeout=5000")
+        with _db_conn() as conn:
             row = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = ?",
                 (f"user_mode_{user_id}",)
@@ -108,8 +108,7 @@ def _set_user_mode_raw(user_id: int, mode: str) -> None:
     """Сохраняет строковое значение режима пользователя."""
     if mode not in VALID_MODES:
         raise ValueError(f"invalid mode: {mode}")
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("PRAGMA busy_timeout=5000")
+    with _db_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
             (f"user_mode_{user_id}", mode)

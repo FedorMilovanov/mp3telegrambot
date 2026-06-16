@@ -12,6 +12,7 @@ from core.globals import (
     DB_PATH, _THUMBS_CLEANUP_INTERVAL,
 )
 from core.database import (
+    _db_conn,
     db_get, db_init, settings_get, settings_get_all,
     # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
     WHITELIST_IDS, CACHE_TTL_DAYS,
@@ -408,7 +409,7 @@ def check_rate_limit(user_id: int) -> tuple[bool, str]:
     today = _today_str()  # AUDIT L8
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             row = conn.execute(
                 "SELECT last_request, daily_count, daily_date FROM rate_limit WHERE user_id = ?",
                 (user_id,)

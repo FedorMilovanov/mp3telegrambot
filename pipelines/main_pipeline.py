@@ -10,6 +10,7 @@ from core.globals import (
     html_mod,                                          # FIX #11
 )
 from core.database import (
+    _db_conn,
     adb_get, adb_save, asettings_get, asettings_get_all,
     is_cache_valid, db_init,
     GEMINI_MODEL, MAX_FILE_SIZE_MB, CACHE_VERSION,    # FIX #11
@@ -542,8 +543,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         user_mode = "rus"
         if user_id:
             try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("PRAGMA busy_timeout=5000")
+                with _db_conn() as conn:
                     row = conn.execute(
                         "SELECT value FROM bot_settings WHERE key = ?",
                         (f"user_mode_{user_id}",)

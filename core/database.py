@@ -21,6 +21,21 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
+def _db_conn() -> sqlite3.Connection:
+    """Create a DB connection with WAL mode and busy_timeout.
+
+    Every sqlite3.connect() in the project MUST use this helper to avoid
+    'database is locked' errors when multiple async handlers write concurrently.
+    Without busy_timeout, a concurrent writer will immediately raise
+    OperationalError instead of waiting.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
 # Версия Telegram file_id для LiveDub. Важно отдельно от AI cache_version:
 # file_id может указывать на старый уже отправленный mp4. При изменении микса
 # (например, tail guard против обрывов Shorts) старый file_id надо игнорировать
@@ -59,7 +74,7 @@ def current_livedub_file_id_cache_fingerprint() -> str:
 # DB_PATH импортирован из globals — дублирующее определение убрано (FIX #19)
 
 def db_init():
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         # AUDIT M17: WAL + busy_timeout — для безопасной параллельной записи
         # rate_limit / video_cache / bot_settings из разных async-обработчиков.
         try:
@@ -217,7 +232,7 @@ def db_cleanup_old_records():
     """
     try:
         cutoff = int(time.time()) - CACHE_TTL_DAYS * 86400
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             conn.execute("PRAGMA busy_timeout=5000")
             deleted = conn.execute(
                 "DELETE FROM video_cache WHERE updated_at > 0 AND updated_at < ?", (cutoff,)
@@ -261,7 +276,7 @@ def db_save(video_id: str, url: str, questions: list,
     _prompt_version = prompt_version or get_prompt_fingerprint()
     _model_name     = model_name     or GEMINI_MODEL
     _updated_at     = int(time.time())
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""
             INSERT INTO video_cache
@@ -311,7 +326,7 @@ def _db_set_file_id(video_id: str, column: str, file_id: str) -> None:
     column валидируется по белому списку — никакого SQL-injection."""
     if column not in _FILE_ID_COLUMNS:
         raise ValueError(f"недопустимая колонка file_id: {column!r}")
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         if column == "livedub_file_id":
             version = current_livedub_file_id_cache_version() if file_id else ""
@@ -395,7 +410,7 @@ def db_backup(max_keep: int = 7) -> str:
 
 
 def db_get(video_id: str) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         row = conn.execute(
             "SELECT url, questions, quotes_tg_url, questions_tg_url, ai_data, telegraph_url, "
@@ -469,7 +484,7 @@ def _one_time_enable_subtitles():
     Если пользователь после этого выключит вручную — повторно не включаем.
     """
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             row = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = '_migration_enable_subs_v1'"
             ).fetchone()
@@ -504,7 +519,7 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
                     candidate_json: str = "{}", video_path_nosub: str = "",
                     nosub_expiry: int = 0, source_duration: int = 0) -> None:
     """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""
             INSERT OR REPLACE INTO short_trims
@@ -520,7 +535,7 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
         conn.commit()
 
 def short_trim_get(short_id: str) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         # AUDIT M5: добавлено поле source_duration
         try:
@@ -658,7 +673,7 @@ SHORTS_SPEED_DEFAULT: str     = "1.0"
 def shorts_speed_get() -> str:
     """Читает текущую скорость Shorts из БД."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             conn.execute("PRAGMA busy_timeout=5000")
             row = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = 'shorts_speed'"
@@ -671,7 +686,7 @@ def shorts_speed_get() -> str:
 
 def shorts_speed_set(value: str) -> None:
     """Сохраняет скорость Shorts в БД."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('shorts_speed', ?)",
@@ -694,7 +709,7 @@ def shorts_speed_cycle() -> str:
 def settings_get(key: str) -> bool:
     """Читает настройку из БД. Fallback на дефолт если не задана."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             conn.execute("PRAGMA busy_timeout=5000")
             row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
         if row:
@@ -706,7 +721,7 @@ def settings_get(key: str) -> bool:
 
 def settings_set(key: str, value: bool) -> None:
     """Сохраняет настройку в БД."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
@@ -718,7 +733,7 @@ def settings_set(key: str, value: bool) -> None:
 def settings_get_all() -> dict[str, bool]:
     """Возвращает все настройки за один SELECT вместо N отдельных соединений."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             conn.execute("PRAGMA busy_timeout=5000")
             rows = conn.execute("SELECT key, value FROM bot_settings").fetchall()
         db_vals = {k: (v.lower() in ("1", "true", "yes")) for k, v in rows}

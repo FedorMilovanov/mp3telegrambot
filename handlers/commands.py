@@ -12,6 +12,7 @@ from core.globals import (
     _get_video_lock, _release_video_lock,              # FIX #9 / PART5
 )
 from core.database import (
+    _db_conn,
     adb_get, adb_save, asettings_get, asettings_get_all,
     db_init, is_cache_valid,
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
@@ -164,7 +165,7 @@ async def _do_resetcache_one(video_id: str, update) -> None:
     """Удаляет одну запись кэша и отвечает в чат."""
     loop = asyncio.get_running_loop()
     def _delete():
-        with sqlite3.connect(DB_PATH) as conn:
+        with _db_conn() as conn:
             r = conn.execute("DELETE FROM video_cache WHERE video_id = ?", (video_id,)).rowcount
             conn.commit()
             return r
@@ -228,7 +229,7 @@ async def reset_cache_command(update, context):
     if arg.lower() == "all":
         loop = asyncio.get_running_loop()
         def _delete_all():
-            with sqlite3.connect(DB_PATH) as conn:
+            with _db_conn() as conn:
                 r = conn.execute("DELETE FROM video_cache").rowcount
                 conn.commit()
                 return r

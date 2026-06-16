@@ -19,6 +19,7 @@ from core.globals import (
     InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from core.database import (
+    _db_conn,
     asettings_get, asettings_set, asettings_get_all,
     shorts_speed_get, shorts_speed_set, shorts_speed_cycle,
     ashorts_speed_get, ashorts_speed_cycle,        # AUDIT M4
@@ -378,7 +379,7 @@ async def handle_callback(update, context) -> None:
         loop = asyncio.get_running_loop()
 
         def _delete_all_cache():
-            with sqlite3.connect(DB_PATH) as conn:
+            with _db_conn() as conn:
                 r = conn.execute("DELETE FROM video_cache").rowcount
                 conn.commit()
                 return r
