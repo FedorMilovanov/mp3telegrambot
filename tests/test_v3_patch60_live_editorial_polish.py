@@ -7,7 +7,7 @@ from converters.md_telegraph import _postprocess_telegraph_nodes
 from core.json_parser import _parse_gemini_response
 from core.person_names import normalize_person_names
 from core.source_titles import normalize_source_card_line
-from core.text_utils import normalize_hashtag, scrub_third_person_phrases
+from core.text_utils import normalize_common_typos, normalize_hashtag, scrub_third_person_phrases
 from core.title_topic_audit import audit_title_topic_consistency
 
 
@@ -108,3 +108,7 @@ def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording():
     assert "Историко-грамматический метод" in flat
     assert "Данный академический" not in flat
     assert "Академический труд" in flat
+
+
+def test_common_typos_repair_mixed_english_day_in_scripture_quote():
+    assert normalize_common_typos("И был вечер, и было утро: day один") == "И был вечер, и было утро: день один"

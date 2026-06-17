@@ -50,3 +50,15 @@ def test_source_pack_for_ai_data_reads_duration_and_gives_positive_guidance():
     assert "темы: angelology" in pack
     assert "Не добавляй случайные книги" in pack
     assert "Названия на английском не переводи" in pack
+
+
+def test_source_packs_do_not_include_disallowed_authors():
+    from core.source_packs import _PACKS
+    from core.source_titles import is_disallowed_source_author
+
+    offenders = []
+    for pack_name, items in _PACKS.items():
+        for item in items:
+            if is_disallowed_source_author(item):
+                offenders.append((pack_name, item))
+    assert offenders == []

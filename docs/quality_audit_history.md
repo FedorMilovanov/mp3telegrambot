@@ -568,3 +568,13 @@ accept if score improves OR (issue_count decreases AND new_score >= 85% of old_s
 ```
 
 This keeps the benefit of accepting concrete audit improvements while preventing a shorter/shallower retry from replacing a fuller Synopsis just because one warning disappeared.
+
+## 2026-06-17 — Mixed English `day` in Scripture quotes
+
+The latest run exposed a small mixed-language artifact in a generated Scripture quote during the first audio analysis pass:
+
+```text
+И был вечер, и было утро: day один
+```
+
+Added a narrow deterministic typo repair for `day один/первый` -> `день один/первый`. The final published pages did not retain this artifact after Study content-audit retry, but the normalizer now catches the class earlier if it appears again.
