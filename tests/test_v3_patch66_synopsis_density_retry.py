@@ -45,6 +45,6 @@ def test_telegraph_wires_nonfatal_density_retry():
 def test_synopsis_density_retry_accepts_fewer_quality_issues_even_if_score_not_higher():
     src = open("services/telegraph.py", encoding="utf-8").read()
     assert "_retry_improved_issues" in src
-    assert "or _retry_improved_issues" in src
+    assert "_retry_improved_issues and _retry_not_much_thinner" in src
     assert "issues=%d->%d" in src
-    assert "not denser and no fewer issues" in src
+    assert "too much thinner" in src

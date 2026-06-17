@@ -558,3 +558,13 @@ accept retry if density_score improves OR synopsis_quality_issue_count decreases
 ```
 
 The log now records both score and issue-count deltas. This better matches the goal: if Gemini fixes the concrete density/audit problem, keep the improved version even when total character score is similar.
+
+## 2026-06-17 — Density retry acceptance made safer
+
+The previous density retry improvement accepted a retry when the issue count decreased, even if the coarse density score was lower. Tightened this so issue-count improvement is accepted only when the retry is not substantially thinner:
+
+```text
+accept if score improves OR (issue_count decreases AND new_score >= 85% of old_score)
+```
+
+This keeps the benefit of accepting concrete audit improvements while preventing a shorter/shallower retry from replacing a fuller Synopsis just because one warning disappeared.

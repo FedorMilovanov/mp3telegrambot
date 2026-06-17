@@ -1091,7 +1091,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     _old_issue_count = len(_syn_quality_issues)
                     _new_issue_count = len(_retry_quality_issues)
                     _retry_improved_issues = _new_issue_count < _old_issue_count
-                    if _new_score > _old_score or _retry_improved_issues:
+                    _retry_not_much_thinner = _new_score >= int(_old_score * 0.85)
+                    if _new_score > _old_score or (_retry_improved_issues and _retry_not_much_thinner):
                         sections, outline = _retry_sections, _retry_outline
                         _syn_quality_issues = _retry_quality_issues
                         logger.info(
@@ -1100,7 +1101,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         )
                     else:
                         logger.info(
-                            "Synopsis v2: density retry rejected — not denser and no fewer issues (score=%d->%d issues=%d->%d)",
+                            "Synopsis v2: density retry rejected — not denser, not enough issue improvement, or too much thinner (score=%d->%d issues=%d->%d)",
                             _old_score, _new_score, _old_issue_count, _new_issue_count,
                         )
             except Exception as _density_retry_err:
