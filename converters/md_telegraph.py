@@ -2096,6 +2096,11 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # и тогда она ошибочно превращается в "Джон МакАртур". Source-card
         # нормализуется выше на цельной строке; здесь оставляем только typos.
         text = normalize_common_typos(text, source_map=False)
+        text = re.sub(r"\bДанный\s+академический\s+труд\b", "Академический труд", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bДанный\s+труд\b", "Этот труд", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bДанная\s+книга\b", "Эта книга", text, flags=re.IGNORECASE)
+        text = re.sub(r"Историко\s+[—-]\s+грамматическ", "Историко-грамматическ", text)
+        text = re.sub(r"Лексико\s+[—-]\s+семантическ", "Лексико-семантическ", text)
         text = scrub_third_person_phrases(text)
         return text
 
@@ -2216,6 +2221,34 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         children = _strip_leading_icon_prefix(children)
         children = _deb0ld_marker(children)
 
+        def _fix_split_hyphenated_bold_term(ch):
+            """Repair old pages where one hyphenated term was split as
+            <b>Историко</b> + " — грамматический".
+            """
+            out = list(ch)
+            for i in range(len(out) - 1):
+                cur, nxt = out[i], out[i + 1]
+                if not (isinstance(cur, dict) and cur.get('tag') in ('b', 'strong') and isinstance(nxt, str)):
+                    continue
+                head = _flatten_text(cur).strip()
+                mapping = {
+                    'Историко': 'грамматический',
+                    'историко': 'грамматический',
+                    'Лексико': 'семантический',
+                    'лексико': 'семантический',
+                }
+                tail_word = mapping.get(head)
+                if not tail_word:
+                    continue
+                m = re.match(rf'^\s+[—-]\s+({tail_word}\w*)', nxt, flags=re.IGNORECASE)
+                if not m:
+                    continue
+                nn = dict(cur)
+                nn['children'] = [head + '-' + m.group(1)]
+                out[i] = nn
+                out[i + 1] = nxt[m.end():]
+            return [x for x in out if not (isinstance(x, str) and x == '')]
+
         def _trim_inline_spacing(ch):
             """Normalize spaces across inline Telegraph children.
 
@@ -2273,6 +2306,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 compact.append(item)
             return compact
 
+        children = _trim_inline_spacing(children)
+        children = _fix_split_hyphenated_bold_term(children)
         children = _trim_inline_spacing(children)
 
         def _normalize_quote_ref_bullet(ch):

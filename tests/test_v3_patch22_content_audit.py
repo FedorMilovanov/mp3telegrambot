@@ -80,3 +80,11 @@ def test_content_audit_is_wired_into_expanded_and_synopsis_pipelines():
     assert "from core.content_audit import audit_expanded_sections" in telegraph
     assert "sections, outline, _content_audit = audit_expanded_sections(" in telegraph
     assert "Synopsis v2: content audit before publish" in telegraph
+
+
+def test_content_audit_rewrites_dannyy_academic_source_wording():
+    sections = [{"title": "Карта источников", "content": "Данный академический труд исследует тему."}]
+    out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
+    assert "Данный академический" not in out[0]["content"]
+    assert "Академический труд" in out[0]["content"]
+    assert any(i.code == "prompt_context_leak_fixed" for i in issues)

@@ -96,3 +96,15 @@ def test_third_person_scrubber_handles_author_surnames_from_live_pages():
     out = scrub_third_person_phrases(text)
     assert "Данкан подчеркивает" not in out
     assert "Поклонение должно быть" in out
+
+
+def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording():
+    nodes = [{"tag": "p", "children": [
+        "• ", {"tag": "b", "children": ["Историко"]},
+        " — грамматический метод. Данный академический труд исследует тему."
+    ]}]
+    out = _postprocess_telegraph_nodes(nodes)
+    flat = _flat(out)
+    assert "Историко-грамматический метод" in flat
+    assert "Данный академический" not in flat
+    assert "Академический труд" in flat

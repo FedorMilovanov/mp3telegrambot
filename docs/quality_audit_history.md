@@ -522,3 +522,27 @@ Fixes:
 - DOM audit now treats `Назад` / `Дальше` pagination links as valid navigation.
 
 Verified against the latest run: auditing only `https://telegra.ph/SHest-dnej-tvoreniya-vselennoj--Dzhon-MakArtur-06-17` expands to all 4 parts and reports zero DOM issues.
+
+## 2026-06-17 — Latest run audited and repaired
+
+Audited the latest `Шесть дней творения вселенной` run from the operator log.
+
+Findings:
+
+- root audio analysis used strict `gemini-3.5-flash` only;
+- timestamp coverage repair succeeded (`36 lines`);
+- Study content-audit retry succeeded (`14 -> 0` warnings);
+- Synopsis part 1 had previously missed the `➡ Дальше` link because TOC made `editPage` too large;
+- Study page still had a deterministic style artifact: `Данный академический труд...` and split hyphenated term rendering (`Историко — грамматический`).
+
+Actions applied with the provided Telegraph token:
+
+- deterministic repair applied to the latest pages;
+- Study page was edited (`changed=1`);
+- Synopsis part 1 was edited to add the missing `➡ Дальше: 2/4` pagination link before cross-page links;
+- post-repair DOM audit over the full 4-part Synopsis chain reports `pages_with_issues=0`.
+
+Code hardening from this pass:
+
+- postprocess now repairs split hyphenated terms such as `Историко — грамматический` -> `Историко-грамматический` even when the first word is inside `<strong>`;
+- content/postprocess now rewrites `Данный академический труд` to `Академический труд`.

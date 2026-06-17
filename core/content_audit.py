@@ -94,6 +94,9 @@ _CHANNEL_POSITION_RE = re.compile(
     re.IGNORECASE,
 )
 _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bДанный\s+академический\s+труд\b", re.IGNORECASE), "Академический труд"),
+    (re.compile(r"\bДанный\s+труд\b", re.IGNORECASE), "Этот труд"),
+    (re.compile(r"\bДанная\s+книга\b", re.IGNORECASE), "Эта книга"),
     (re.compile(r"\bВ\s+материале\s+этот\s+термин\s+рассматривается\b", re.IGNORECASE), "Этот термин работает"),
     (re.compile(r"\bВ\s+материале\s+говорится\b", re.IGNORECASE), "Автор говорит"),
     (re.compile(r"\bВ\s+материале\s+", re.IGNORECASE), ""),
