@@ -17,6 +17,8 @@ def test_question_quality_repairs_question_mark_for_question_like_start():
 def test_question_quality_rejects_generic_questions():
     assert is_generic_question("Как это применить?") is True
     assert is_generic_question("Что это значит для меня?") is True
+    assert is_generic_question("Что утверждает материал?") is True
+    assert is_generic_question("Какой ответ верен?") is True
     assert is_generic_question("Как шесть дней творения связаны с авторитетом Бытия?") is False
 
 

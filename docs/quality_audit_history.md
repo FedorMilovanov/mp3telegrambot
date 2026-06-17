@@ -655,3 +655,14 @@ Added shared deterministic helpers for generated questions used by both Quiz pol
 - preserve question mark when trimming long questions.
 
 `services.quiz_generator` and `services.telegraph_pages` now share the same question usability logic, reducing drift between Telegram quiz polls and Telegraph reflection questions.
+
+## 2026-06-18 — Quiz/test guardrails tightened after parser audit
+
+Follow-up audit of Telegram Quiz/test generation found two risky edges and closed them:
+
+- numeric-string answers are now treated conservatively: JSON integer `1` still means 0-based index as requested by schema, while string `"1"` is treated as a human/list-style first answer instead of silently shifting to option 2;
+- meta/generic quiz questions such as `Что утверждает материал?` and `Какой ответ верен?` are rejected by the shared question-quality layer;
+- placeholder/weak quiz options (`A/B/C/D`, `1/2/3/4`, yes/no, `не знаю`, `затрудняюсь`, etc.) are rejected before polls are accepted;
+- send-time Telegram poll payloads are sanitized again so even non-parser callers cannot send overlong questions/explanations, invalid option lists, or bad correct indexes.
+
+This keeps the quiz feature in the “repair/filter bad Gemini shape, publish only usable tests” lane without hiding broader conspect output.

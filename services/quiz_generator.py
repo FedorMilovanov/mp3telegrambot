@@ -119,27 +119,40 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
 
 def _bad_quiz_option(text: str) -> bool:
     low = str(text or "").strip().casefold()
+    compact = re.sub(r"[\W_]+", "", low)
+    if not compact:
+        return True
+    # Telegram allows tiny options, but for a theological quiz one-letter
+    # placeholders or yes/no answers are almost always Gemini/schema drift.
+    if compact in {"a", "b", "c", "d", "а", "б", "в", "г", "1", "2", "3", "4", "да", "нет", "верно", "неверно"}:
+        return True
     return any(
         marker in low
         for marker in (
             "все перечислен", "всё перечислен", "все варианты", "всё варианты",
             "нет правильного", "нет верного", "ни один", "ни один из",
             "оба варианта", "a и b", "а и б", "all of the above", "none of the above",
+            "затрудняюсь", "не знаю", "не уверен", "нельзя определить",
         )
     )
 
 
 def _parse_correct_index(value, options: list[str]) -> int | None:
-    # Numeric strings are common, but Gemini may use 1-based numbering.
+    # Integers from the JSON schema follow the requested 0-based contract.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value if 0 <= value < len(options) else None
+
+    # Numeric strings are schema drift. Treat "0" as explicit 0-based, but
+    # "1"-"4" as human/list numbering; this is safer than silently shifting
+    # a model-produced "correct": "1" to the second answer.
     raw = str(value if value is not None else "").strip()
-    try:
+    if re.fullmatch(r"\d+", raw):
         idx = int(raw)
-        if 0 <= idx < len(options):
-            return idx
+        if idx == 0:
+            return 0 if options else None
         if 1 <= idx <= len(options):
             return idx - 1
-    except (TypeError, ValueError):
-        pass
+        return None
 
     letter_map = {
         "A": 0, "B": 1, "C": 2, "D": 3,
@@ -330,6 +343,28 @@ async def generate_quiz(
         return None
 
 
+def _sanitize_poll_payload(q: dict, *, index: int, total: int) -> dict | None:
+    question = normalize_question_text(q.get("question") or "", max_len=255)
+    options = [_safe_trim(o, 100) for o in (q.get("options") or []) if str(o).strip()]
+    options = _dedupe_keep_order(options)
+    correct = q.get("correct")
+    if not question_is_usable(question) or len(options) != 4 or any(_bad_quiz_option(o) for o in options):
+        return None
+    if not isinstance(correct, int) or not (0 <= correct < len(options)):
+        return None
+    poll_question = f"❓ {index}/{total}: {question}"
+    if len(poll_question) > 300:
+        suffix = "…?" if question.endswith("?") else "…"
+        prefix = f"❓ {index}/{total}: "
+        available = max(1, 300 - len(prefix) - len(suffix))
+        body = question[:available].rstrip(".,;:—-? ")
+        poll_question = prefix + body + suffix
+    explanation = _safe_trim(q.get("explanation") or "", 200)
+    if not explanation:
+        return None
+    return {"question": poll_question, "options": options, "correct": correct, "explanation": explanation}
+
+
 async def send_quiz_polls(
     questions: list[dict],
     update,
@@ -343,18 +378,20 @@ async def send_quiz_polls(
     if not questions:
         return 0
     sent = 0
+    total = len(questions)
     for i, q in enumerate(questions):
+        payload = _sanitize_poll_payload(q, index=i + 1, total=total)
+        if not payload:
+            logger.warning("[Quiz] Skipping invalid poll payload %d/%d", i + 1, total)
+            continue
         try:
-            _q_text = f"❓ {i+1}/{len(questions)}: {q['question']}"
-            if len(_q_text) > 300:
-                _q_text = _q_text[:297] + "..."
             await context.bot.send_poll(
                 chat_id=update.effective_chat.id,
-                question=_q_text,
-                options=q["options"],
+                question=payload["question"],
+                options=payload["options"],
                 type="quiz",
-                correct_option_id=q["correct"],
-                explanation=q.get("explanation") or None,
+                correct_option_id=payload["correct"],
+                explanation=payload["explanation"],
                 is_anonymous=True,
                 reply_to_message_id=update.message.message_id if i == 0 else None,
             )
@@ -369,11 +406,11 @@ async def send_quiz_polls(
                 try:
                     await context.bot.send_poll(
                         chat_id=update.effective_chat.id,
-                        question=_q_text,
-                        options=q["options"],
+                        question=payload["question"],
+                        options=payload["options"],
                         type="quiz",
-                        correct_option_id=q["correct"],
-                        explanation=q.get("explanation") or None,
+                        correct_option_id=payload["correct"],
+                        explanation=payload["explanation"],
                         is_anonymous=True,
                     )
                     sent += 1

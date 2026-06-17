@@ -1,10 +1,10 @@
-from services.quiz_generator import _format_ai_context, _parse_quiz_json, quiz_response_schema
+from services.quiz_generator import _format_ai_context, _parse_quiz_json, _sanitize_poll_payload, quiz_response_schema
 
 
 def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
     raw = """
     [
-      {"question":"Что утверждает материал?","options":["A","B","C","D"],"correct":1,"explanation":"Потому что таков ход аргумента."},
+      {"question":"Почему авторитет Бытия важен для аргумента о творении?","options":["Потому что текст Бытия задаёт рамку толкования","Потому что вопрос сводится к жанру притчи","Потому что наука отменяет экзегезу","Потому что хронология не имеет значения"],"correct":0,"explanation":"Материал связывает выводы о творении с доверием к тексту Бытия."},
       {"question":"bad","options":["A","A","C","D"],"correct":0,"explanation":"x"},
       {"question":"bad2","options":["A","B","C"],"correct":0,"explanation":"x"},
       {"question":"bad3","options":["A","B","C","D"],"correct":9,"explanation":"x"}
@@ -12,18 +12,23 @@ def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
     """
     parsed = _parse_quiz_json(raw)
     assert parsed == [{
-        "question": "Что утверждает материал?",
-        "options": ["A", "B", "C", "D"],
-        "correct": 1,
-        "explanation": "Потому что таков ход аргумента.",
+        "question": "Почему авторитет Бытия важен для аргумента о творении?",
+        "options": [
+            "Потому что текст Бытия задаёт рамку толкования",
+            "Потому что вопрос сводится к жанру притчи",
+            "Потому что наука отменяет экзегезу",
+            "Потому что хронология не имеет значения",
+        ],
+        "correct": 0,
+        "explanation": "Материал связывает выводы о творении с доверием к тексту Бытия.",
     }]
 
 
 def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
     long_q = "Как " + ("В" * 400)
     raw = str([
-        {"question": long_q, "options": ["A" * 150, "B", "C", "D"], "correct": 0, "explanation": "E" * 250},
-        {"question": long_q, "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "dup"},
+        {"question": long_q, "options": ["A" * 150, "Вторая позиция", "Третья позиция", "Четвёртая позиция"], "correct": 0, "explanation": "E" * 250},
+        {"question": long_q, "options": ["Первая", "Вторая", "Третья", "Четвёртая"], "correct": 0, "explanation": "dup"},
     ]).replace("'", '"')
     parsed = _parse_quiz_json(raw)
     assert parsed and len(parsed) == 1
@@ -74,19 +79,19 @@ def test_quiz_prompt_avoids_literal_bad_third_person_example():
 def test_parse_quiz_json_accepts_wrapped_questions_and_letter_or_text_answer():
     raw = """
     {"questions": [
-      {"question":"Какой ответ верен?","options":["Первый","Второй","Третий","Четвёртый"],"correct":"B","explanation":"Второй вариант отражает аргумент."},
-      {"question":"Какой текст ключевой?","options":["Бытие 1","Иона 2","Руфь 1","Есфирь 4"],"answer":"Бытие 1","explanation":"Материал строится вокруг Бытия 1."}
+      {"question":"Почему ответ о буквальном дне лучше отражает ход аргумента?","options":["Он сохраняет связь текста с авторитетом Писания","Он превращает Бытие в поэтическую метафору","Он делает богословие независимым от текста","Он снимает вопрос о творении вообще"],"correct":"A","explanation":"Первый вариант прямо связан с аргументом материала."},
+      {"question":"Какой текст остаётся ключевым для разбора творения?","options":["Бытие 1","Иона 2","Руфь 1","Есфирь 4"],"answer":"Бытие 1","explanation":"Материал строится вокруг Бытия 1."}
     ]}
     """
     parsed = _parse_quiz_json(raw)
-    assert parsed and [q["correct"] for q in parsed] == [1, 0]
+    assert parsed and [q["correct"] for q in parsed] == [0, 0]
 
 
 def test_parse_quiz_json_rejects_all_or_none_style_options():
     raw = """
     [
-      {"question":"Что верно?","options":["A","B","Все перечисленное","D"],"correct":2,"explanation":"bad"},
-      {"question":"Что неверно?","options":["A","B","Нет правильного ответа","D"],"correct":2,"explanation":"bad"}
+      {"question":"Почему буквальное творение связано с авторитетом Писания?","options":["Текст Бытия задаёт рамку","Жанр отменяет историю","Все перечисленное","Аргумент не касается Библии"],"correct":2,"explanation":"bad"},
+      {"question":"Как материал связывает грехопадение и творение?","options":["Через историчность Бытия","Через отказ от экзегезы","Нет правильного ответа","Через отрицание Адама"],"correct":2,"explanation":"bad"}
     ]
     """
     assert _parse_quiz_json(raw) is None
@@ -95,13 +100,44 @@ def test_parse_quiz_json_rejects_all_or_none_style_options():
 def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
     raw = """
     [
-      {"question":"Какой ответ является первым?","options":["A","B","C","D"],"correct":"1","explanation":"Первый вариант."},
-      {"question":"Какой ответ является третьим?","options":["A","B","C","D"],"correct":"В","explanation":"Кириллическая В соответствует третьему варианту."},
-      {"question":"Какой ответ является четвёртым?","options":["A","B","C","D"],"correct":"вариант Г","explanation":"Кириллическая Г соответствует четвёртому варианту."}
+      {"question":"Почему первый день важен для структуры повествования?","options":["Он задаёт повторяющийся ритм вечера и утра","Он отменяет последовательность дней","Он делает текст полностью аллегорическим","Он не связан с дальнейшим аргументом"],"correct":"1","explanation":"Строковая 1 трактуется как первый пункт списка."},
+      {"question":"Какой вывод лучше соответствует аргументу о третьем дне?","options":["День не имеет границ","Текст не говорит о порядке","Повторяющаяся формула поддерживает последовательность","Повествование не связано с творением"],"correct":"В","explanation":"Кириллическая В соответствует третьему варианту."},
+      {"question":"Какой вариант точнее передаёт итоговый богословский акцент?","options":["История не важна","Авторитет Писания вторичен","Экзегеза не нужна","Текст должен формировать вывод"],"correct":"вариант Г","explanation":"Кириллическая Г соответствует четвёртому варианту."}
     ]
     """
     parsed = _parse_quiz_json(raw)
-    assert parsed and [q["correct"] for q in parsed] == [1, 2, 3]
+    assert parsed and [q["correct"] for q in parsed] == [0, 2, 3]
+
+
+def test_parse_quiz_json_rejects_meta_questions_and_placeholder_options():
+    raw = """
+    [
+      {"question":"Что утверждает материал?","options":["Текст Бытия важен","Жанр всё отменяет","Вопрос неясен","Вывод вторичен"],"correct":0,"explanation":"Слишком общий вопрос."},
+      {"question":"Почему авторитет Бытия важен для аргумента о творении?","options":["A","B","C","D"],"correct":0,"explanation":"Плейсхолдеры не годятся."}
+    ]
+    """
+    assert _parse_quiz_json(raw) is None
+
+
+def test_sanitize_poll_payload_enforces_telegram_limits_and_quality():
+    payload = _sanitize_poll_payload({
+        "question": "Почему буквальное чтение дней творения связано с авторитетом Писания" + " очень" * 80,
+        "options": ["Текст Бытия задаёт рамку", "Жанр отменяет историю", "Экзегеза вторична", "Порядок не важен"],
+        "correct": 0,
+        "explanation": "Объяснение" * 40,
+    }, index=12, total=20)
+    assert payload
+    assert len(payload["question"]) <= 300
+    assert payload["question"].startswith("❓ 12/20: ")
+    assert payload["question"].endswith("…?")
+    assert len(payload["explanation"]) <= 200
+
+    assert _sanitize_poll_payload({
+        "question": "Почему авторитет Бытия важен для аргумента о творении?",
+        "options": ["A", "B", "C", "D"],
+        "correct": 0,
+        "explanation": "bad",
+    }, index=1, total=1) is None
 
 
 def test_reflection_question_normalizer_repairs_markers_dedupes_and_filters():
