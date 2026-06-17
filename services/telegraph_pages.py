@@ -40,6 +40,7 @@ from core.analysis_profiles import get_expanded_analysis_profile
 from core.reasoning_guidance import build_reasoning_first_block
 from core.adaptive_generation import get_adaptive_text_generation_params
 from core.prompt_compactor import compact_prompt_for_generation
+from core.question_quality import normalize_question_text, question_is_usable, question_key
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.generated_pages import aget_related_materials, extract_scripture_refs
@@ -158,19 +159,10 @@ def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[s
         marker = "🟢"
         if text.startswith("🔵"):
             marker = "🔵"
-        text = re.sub(r"^[🟢🔵]\s*", "", text)
-        text = _scrub_inline(_strip_meta_lines(_clean_field(" ".join(x.strip() for x in text.splitlines() if x.strip()))))
-        if not text or is_meta_garbage(text):
+        text = _scrub_inline(_strip_meta_lines(_clean_field(normalize_question_text(text))))
+        if not text or is_meta_garbage(text) or not question_is_usable(text):
             continue
-        text = re.sub(r"\s+", " ", text).strip()
-        if len(text) < 18:
-            continue
-        if not text.endswith("?"):
-            if re.match(r"^(как|почему|что|где|когда|каким|какая|какой|какие|насколько|что именно)\b", text, re.I):
-                text = text.rstrip(".!…") + "?"
-            else:
-                continue
-        key = re.sub(r"\W+", "", text.casefold())
+        key = question_key(text)
         if not key or key in seen:
             continue
         seen.add(key)

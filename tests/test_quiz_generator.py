@@ -20,7 +20,7 @@ def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
 
 
 def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
-    long_q = "В" * 400
+    long_q = "Как " + ("В" * 400)
     raw = str([
         {"question": long_q, "options": ["A" * 150, "B", "C", "D"], "correct": 0, "explanation": "E" * 250},
         {"question": long_q, "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "dup"},
@@ -95,9 +95,9 @@ def test_parse_quiz_json_rejects_all_or_none_style_options():
 def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
     raw = """
     [
-      {"question":"Первый?","options":["A","B","C","D"],"correct":"1","explanation":"Первый вариант."},
-      {"question":"Третий?","options":["A","B","C","D"],"correct":"В","explanation":"Кириллическая В соответствует третьему варианту."},
-      {"question":"Четвёртый?","options":["A","B","C","D"],"correct":"вариант Г","explanation":"Кириллическая Г соответствует четвёртому варианту."}
+      {"question":"Какой ответ является первым?","options":["A","B","C","D"],"correct":"1","explanation":"Первый вариант."},
+      {"question":"Какой ответ является третьим?","options":["A","B","C","D"],"correct":"В","explanation":"Кириллическая В соответствует третьему варианту."},
+      {"question":"Какой ответ является четвёртым?","options":["A","B","C","D"],"correct":"вариант Г","explanation":"Кириллическая Г соответствует четвёртому варианту."}
     ]
     """
     parsed = _parse_quiz_json(raw)

@@ -23,6 +23,7 @@ from typing import Any
 from core.globals import GEMINI_CLIENTS, make_text_config_smart, is_quota_error, is_overload_error
 from core.database import GEMINI_MODEL
 from core.text_utils import _scrub_inline
+from core.question_quality import normalize_question_text, question_is_usable, question_key
 from core.observability import alog_gemini_response, alog_gemini_run
 
 logger = logging.getLogger(__name__)
@@ -186,11 +187,11 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
     for item in data:
         if not isinstance(item, dict):
             continue
-        q = _safe_trim(item.get("question") or "", 255)
+        q = normalize_question_text(item.get("question") or "", max_len=255)
         opts_raw = item.get("options")
-        if not q or not isinstance(opts_raw, list):
+        if not q or not isinstance(opts_raw, list) or not question_is_usable(q):
             continue
-        q_key = re.sub(r"\W+", "", q.casefold())
+        q_key = question_key(q)
         if not q_key or q_key in seen_questions:
             continue
         opts = _dedupe_keep_order([_safe_trim(o, 100) for o in opts_raw if str(o).strip()])

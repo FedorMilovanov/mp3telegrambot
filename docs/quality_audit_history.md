@@ -644,3 +644,14 @@ Improved the questions/reflection pipeline beyond quiz polls:
 - 🟢/🔵 marker contract is preserved, defaulting to 🟢 when Gemini omits a marker.
 
 This prevents weak duplicated/generated questions from becoming the scaffold of a Reflection page.
+
+## 2026-06-17 — Shared question quality helpers
+
+Added shared deterministic helpers for generated questions used by both Quiz polls and Reflection/Questions pages:
+
+- repair missing `?` for question-like starts;
+- reject generic questions such as `Как это применить?` / `Что это значит для меня?`;
+- normalize question keys for dedupe;
+- preserve question mark when trimming long questions.
+
+`services.quiz_generator` and `services.telegraph_pages` now share the same question usability logic, reducing drift between Telegram quiz polls and Telegraph reflection questions.
