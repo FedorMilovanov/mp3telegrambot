@@ -1071,7 +1071,7 @@ async def _retry_expanded_sections_for_content_audit(
         "Исправь ТОЛЬКО перечисленные проблемы и верни валидный JSON {outline, sections}. "
         "Не сокращай страницу, не удаляй сильные мысли, не добавляй новых источников вне уже разрешённого контекста. "
         "Если scripture/source/application/lexicon блок тонкий — дополни его grounded объяснением из исходного задания. "
-        "Убери third-person wrappers: пиши тезис напрямую, без 'автор показывает'. "
+        "Убери third-person wrappers: пиши тезис напрямую, без конструкции 'роль/имя автора + показывает/объясняет'. "
         "Сохрани порядок sections и таймкоды. Верни только JSON.\n\n"
         f"CONTENT_AUDIT_ISSUES:\n{issue_summary}\n\n"
         "ORIGINAL_TASK_CONTEXT:\n" + original_prompt[:24000] + "\n\n"

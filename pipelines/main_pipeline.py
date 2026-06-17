@@ -101,8 +101,6 @@ _KNOWN_AUTHOR_RU: dict[str, str] = {
     "Steve Lawson": "Стивен Лоусон",
     "Sinclair Ferguson": "Синклер Фергюсон",
     "Derek Prince": "Дерек Принс",
-    "Tim Keller": "Тим Келлер",
-    "Timothy Keller": "Тим Келлер",
     "Martyn Lloyd-Jones": "Мартин Лойд-Джонс",
     "Lloyd-Jones": "Мартин Лойд-Джонс",
     "David Platt": "Дэвид Платт",

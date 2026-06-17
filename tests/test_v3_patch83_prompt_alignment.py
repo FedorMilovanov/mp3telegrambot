@@ -94,3 +94,9 @@ def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers():
 def test_study_prompt_does_not_recommend_tim_keller():
     assert "Tim Keller" not in STUDY_ANALYSIS_PROMPT
     assert "Тим Келлер" not in STUDY_ANALYSIS_PROMPT
+
+
+def test_content_audit_retry_prompt_avoids_literal_author_shows_phrase():
+    src = __import__("pathlib").Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert "без 'автор показывает'" not in src
+    assert "роль/имя автора + показывает/объясняет" in src

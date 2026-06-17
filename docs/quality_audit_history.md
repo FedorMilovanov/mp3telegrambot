@@ -623,3 +623,12 @@ Quiz parser now accepts more safe Gemini variants for the correct answer field:
 - exact option text.
 
 It still rejects invalid or ambiguous answers and keeps the four-unique-options rule.
+
+## 2026-06-17 — Remaining Keller/name and retry-prompt literals removed
+
+Follow-up sweep removed remaining non-source references that could confuse the source policy:
+
+- removed Keller normalization entries outside the explicit source-card denylist;
+- removed the literal `автор показывает` from the content-audit retry prompt, replacing it with a pattern-level description.
+
+The explicit Keller denylist remains in `core/source_titles.py` so any source-card attempt is still silently dropped.
