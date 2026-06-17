@@ -666,3 +666,16 @@ Follow-up audit of Telegram Quiz/test generation found two risky edges and close
 - send-time Telegram poll payloads are sanitized again so even non-parser callers cannot send overlong questions/explanations, invalid option lists, or bad correct indexes.
 
 This keeps the quiz feature in the “repair/filter bad Gemini shape, publish only usable tests” lane without hiding broader conspect output.
+
+## 2026-06-18 — Quiz prompt final self-check added
+
+Static prompt-health review showed `QUIZ_PROMPT` had no final self-check block while the long Telegraph prompts did. Added a compact final self-check directly to the quiz prompt:
+
+- exact requested question count;
+- exactly four meaningful options per poll;
+- unambiguous correct answer grounded in the material;
+- no placeholder distractors;
+- no meta-question about choosing an “answer/variant”;
+- explanation remains within Telegram limits and does not add outside facts.
+
+`/prompthealth` now reports `QUIZ_PROMPT.final_checks=1` with zero known leaky literals.

@@ -61,6 +61,11 @@ def test_prompt_health_current_prompts_have_no_known_leaky_literals():
     assert offenders == {}
 
 
+def test_quiz_prompt_has_final_self_check():
+    items = {i.name: i for i in collect_prompt_health()}
+    assert items["QUIZ_PROMPT"].final_check_blocks == 1
+
+
 def test_prompt_health_report_includes_leak_counter():
     report = format_prompt_health_report()
     assert "leaks=" in report
