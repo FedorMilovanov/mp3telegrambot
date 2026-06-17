@@ -129,15 +129,26 @@ def _bad_quiz_option(text: str) -> bool:
 
 
 def _parse_correct_index(value, options: list[str]) -> int | None:
+    # Numeric strings are common, but Gemini may use 1-based numbering.
+    raw = str(value if value is not None else "").strip()
     try:
-        idx = int(value)
-        return idx if 0 <= idx < len(options) else None
+        idx = int(raw)
+        if 0 <= idx < len(options):
+            return idx
+        if 1 <= idx <= len(options):
+            return idx - 1
     except (TypeError, ValueError):
         pass
-    raw = str(value or "").strip()
-    if len(raw) == 1 and raw.upper() in "ABCD":
-        idx = ord(raw.upper()) - ord("A")
+
+    letter_map = {
+        "A": 0, "B": 1, "C": 2, "D": 3,
+        "А": 0, "Б": 1, "В": 2, "Г": 3,
+    }
+    raw_up = raw.upper().replace("ВАРИАНТ", "").replace("OPTION", "").strip(" .):-—")
+    if raw_up in letter_map:
+        idx = letter_map[raw_up]
         return idx if idx < len(options) else None
+
     # Some models return the full correct option text instead of an index.
     norm = re.sub(r"\W+", "", raw.casefold())
     for idx, option in enumerate(options):

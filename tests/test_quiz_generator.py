@@ -90,3 +90,15 @@ def test_parse_quiz_json_rejects_all_or_none_style_options():
     ]
     """
     assert _parse_quiz_json(raw) is None
+
+
+def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
+    raw = """
+    [
+      {"question":"Первый?","options":["A","B","C","D"],"correct":"1","explanation":"Первый вариант."},
+      {"question":"Третий?","options":["A","B","C","D"],"correct":"В","explanation":"Кириллическая В соответствует третьему варианту."},
+      {"question":"Четвёртый?","options":["A","B","C","D"],"correct":"вариант Г","explanation":"Кириллическая Г соответствует четвёртому варианту."}
+    ]
+    """
+    parsed = _parse_quiz_json(raw)
+    assert parsed and [q["correct"] for q in parsed] == [1, 2, 3]

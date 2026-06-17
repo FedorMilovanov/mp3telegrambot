@@ -611,3 +611,15 @@ Hardened quiz/test parsing further:
 - rejects weak quiz options like `all of the above` / `none of the above` / `все перечисленное` / `нет правильного ответа`.
 
 This makes the quiz feature more tolerant of harmless Gemini output-shape variation while still refusing low-quality poll patterns.
+
+## 2026-06-17 — Quiz correct-answer parser hardened
+
+Quiz parser now accepts more safe Gemini variants for the correct answer field:
+
+- numeric index strings;
+- Latin letters `A/B/C/D`;
+- Cyrillic letters `А/Б/В/Г`;
+- labels like `вариант Г` / `option C`;
+- exact option text.
+
+It still rejects invalid or ambiguous answers and keeps the four-unique-options rule.
