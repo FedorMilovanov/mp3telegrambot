@@ -18,64 +18,104 @@ import json
 import logging
 import os
 import re
-from typing import Optional
+from typing import Any
 
 from core.globals import GEMINI_CLIENTS, make_text_config_smart, is_quota_error, is_overload_error
 from core.database import GEMINI_MODEL
 from core.text_utils import _scrub_inline
+from core.observability import alog_gemini_response, alog_gemini_run
 
 logger = logging.getLogger(__name__)
 
 QUIZ_QUESTION_COUNT = int(os.getenv("QUIZ_QUESTION_COUNT", "10"))
 
 QUIZ_PROMPT = """\
-Ты — опытный преподаватель богословия и составитель экзаменационных вопросов.
+Ты — преподаватель богословия и составитель проверочных вопросов.
 
-На основе прослушанного аудио-материала (проповедь/лекция/Q&A) составь ровно {count} вопросов
-для проверки понимания ключевых богословских истин, фактов и аргументов.
+На основе аудио-материала и переданного анализа составь ровно {count} вопросов
+для Telegram Native Quiz. Это не игра в угадайку, а проверка понимания аргумента.
 
-ТРЕБОВАНИЯ К ВОПРОСАМ:
-1. Каждый вопрос должен проверять ПОНИМАНИЕ, а не механическое запоминание.
-2. Вопросы должны покрывать РАЗНЫЕ части материала (начало, середину, конец).
-3. Неправильные варианты должны быть ПРАВДОПОДОБНЫМИ — не абсурдными.
-4. Правильный ответ должен ОДНОЗНАЧНО следовать из материала.
-5. Объяснение (explanation) должно КРАТКО объяснить почему этот ответ верный,
-   со ссылкой на Писание или аргумент спикера. Макс 200 символов.
-6. Сложность: первые 3 вопроса — базовые, следующие 4 — средние, последние 3 — сложные.
-7. Типы вопросов: факты, определения терминов, логика аргументов, применение.
+ЖЁСТКИЕ ПРАВИЛА:
+1. Вопросы grounded: правильный ответ должен следовать из материала/таймкодов/анализа.
+2. Не спрашивай о фактах, которых нет в материале. Не добавляй внешние сведения.
+3. Покрой разные части материала: начало, середину и финал.
+4. Каждый вопрос проверяет понимание, причинно-следственную связь, термин или применение.
+5. У каждого вопроса ровно 4 варианта ответа.
+6. Неправильные варианты правдоподобны, но однозначно неверны по материалу.
+7. Не делай варианты вроде «всё перечисленное», «нет правильного ответа».
+8. Не повторяй один и тот же вопрос другими словами.
+9. Не используй third-person wrappers: не пиши «автор показывает». Формулируй вопрос напрямую.
+10. Объяснение до 200 символов: почему ответ верный, с опорой на аргумент/Писание.
+
+СЛОЖНОСТЬ:
+- первые 3 вопроса — базовые;
+- следующие 4 — средние;
+- последние — сложные, на связь аргументов и богословский смысл.
 
 ДАННЫЕ О МАТЕРИАЛЕ:
 Название: {title}
 Автор: {author}
 Длительность: {duration}
 
-Ответь строго JSON-массивом без текста вокруг:
+Верни строго JSON-массив без текста вокруг:
 [
   {{
-    "question": "Текст вопроса (до 300 символов)",
+    "question": "Текст вопроса до 255 символов",
     "options": ["Вариант A", "Вариант B", "Вариант C", "Вариант D"],
     "correct": 0,
-    "explanation": "Краткое объяснение правильного ответа (до 200 символов)"
-  }},
-  ...
+    "explanation": "Краткое объяснение правильного ответа до 200 символов"
+  }}
 ]
 
-correct — индекс правильного ответа (0-3).
-Все тексты — на РУССКОМ ЯЗЫКЕ.
+correct — индекс правильного ответа 0-3. Все тексты — на русском языке.
 """
 
 
-def _parse_quiz_json(raw: str) -> list[dict] | None:
-    """Parse Gemini quiz response into list of question dicts."""
+def quiz_response_schema() -> dict:
+    item = {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string"},
+            "options": {"type": "array", "items": {"type": "string"}},
+            "correct": {"type": "integer"},
+            "explanation": {"type": "string"},
+        },
+        "required": ["question", "options", "correct", "explanation"],
+    }
+    return {"type": "array", "items": item}
+
+
+def _safe_trim(text: str, limit: int) -> str:
+    text = _scrub_inline(str(text or "").replace("\x00", "").strip())
+    text = re.sub(r"\s+", " ", text)
+    if len(text) <= limit:
+        return text
+    cut = text[: max(1, limit - 1)].rstrip()
+    if " " in cut and len(cut) > limit * 0.65:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(".,;:—-") + "…"
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        key = re.sub(r"\W+", "", item.casefold())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dict] | None:
+    """Parse and validate Gemini quiz response into Telegram-ready dicts."""
     if not raw:
         return None
-    # Strip markdown fences
     text = re.sub(r'^```(?:json)?\s*', '', raw.strip())
     text = re.sub(r'\s*```$', '', text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        # Try to find JSON array in text
         m = re.search(r'\[.*\]', text, re.DOTALL)
         if not m:
             return None
@@ -85,42 +125,67 @@ def _parse_quiz_json(raw: str) -> list[dict] | None:
             return None
     if not isinstance(data, list):
         return None
-    # Validate each question
-    valid = []
+
+    valid: list[dict] = []
+    seen_questions: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
-        q = str(item.get("question") or "").strip()
-        opts = item.get("options")
-        correct = item.get("correct")
-        explanation = str(item.get("explanation") or "").strip()
-        if not q or not isinstance(opts, list) or len(opts) < 2:
+        q = _safe_trim(item.get("question") or "", 255)
+        opts_raw = item.get("options")
+        if not q or not isinstance(opts_raw, list):
             continue
-        # Ensure options are strings
-        opts = [str(o).strip() for o in opts if str(o).strip()]
-        if len(opts) < 2 or len(opts) > 10:
+        q_key = re.sub(r"\W+", "", q.casefold())
+        if not q_key or q_key in seen_questions:
             continue
-        # Validate correct index
+        opts = _dedupe_keep_order([_safe_trim(o, 100) for o in opts_raw if str(o).strip()])
+        if len(opts) != 4:
+            continue
         try:
-            correct = int(correct)
+            correct = int(item.get("correct"))
         except (TypeError, ValueError):
-            correct = 0
+            continue
         if correct < 0 or correct >= len(opts):
-            correct = 0
-        # Telegram limits: question max 300 chars INCLUDING any prefix
-        # send_quiz_polls adds "❓ N/M: " prefix (~10 chars)
-        if len(q) > 255:
-            q = q[:252] + "..."
-        opts = [o[:100] for o in opts]  # Telegram: max 100 chars per option
-        if len(explanation) > 200:
-            explanation = explanation[:197] + "..."
-        valid.append({
-            "question": q,
-            "options": opts,
-            "correct": correct,
-            "explanation": explanation,
-        })
+            continue
+        explanation = _safe_trim(item.get("explanation") or "", 200)
+        if not explanation:
+            continue
+        seen_questions.add(q_key)
+        valid.append({"question": q, "options": opts, "correct": correct, "explanation": explanation})
+        if expected_count and len(valid) >= expected_count:
+            break
     return valid if valid else None
+
+
+def _format_ai_context(ai_data: dict | None) -> str:
+    ai = ai_data or {}
+    parts: list[str] = []
+    for label, key, limit in (
+        ("Главная тема", "main_topic", 900),
+        ("Аналитика", "analysis_summary", 900),
+        ("Ход аргумента", "argument_arc", 900),
+    ):
+        value = str(ai.get(key) or "").strip()
+        if value:
+            parts.append(f"{label}: {_safe_trim(value, limit)}")
+    timestamps = str(ai.get("timestamps") or "").strip()
+    if timestamps:
+        parts.append("Таймкоды/структура:\n" + timestamps[:3500])
+    cats = ai.get("key_categories") or []
+    if isinstance(cats, list) and cats:
+        parts.append("Ключевые категории:\n" + "\n".join(f"- {_safe_trim(c, 180)}" for c in cats[:12]))
+    td = ai.get("terms_data") or {}
+    if isinstance(td, dict):
+        term_lines: list[str] = []
+        for key in ("concepts", "scripture", "translations", "lexicon_notes"):
+            for raw in (td.get(key) or [])[:6]:
+                term_lines.append(f"- {_safe_trim(raw, 260)}")
+        if term_lines:
+            parts.append("Термины/тексты/лексика:\n" + "\n".join(term_lines[:18]))
+    qs = ai.get("questions") or []
+    if isinstance(qs, list) and qs:
+        parts.append("Уже созданные вопросы для размышления (не копировать дословно):\n" + "\n".join(f"- {_safe_trim(q, 220)}" for q in qs[:8]))
+    return "\n\n".join(parts)
 
 
 async def generate_quiz(
@@ -133,77 +198,56 @@ async def generate_quiz(
     count: int | None = None,
 ) -> list[dict] | None:
     """Generate quiz questions from video AI analysis.
-    
-    Uses existing Gemini audio_part if available (no extra upload cost).
-    Falls back to text-only prompt from ai_data if audio_part unavailable.
-    
-    Returns list of question dicts or None on failure.
+
+    Uses existing Gemini audio_part if available (no extra upload cost). Falls
+    back to text-only context from ai_data. Returns list of question dicts or
+    None on failure.
     """
     if not GEMINI_CLIENTS:
         return None
-    
-    count = count or QUIZ_QUESTION_COUNT
+    count = max(1, min(int(count or QUIZ_QUESTION_COUNT or 10), 20))
     real_title = _scrub_inline((ai_data or {}).get("real_title") or title or "")
     real_author = _scrub_inline((ai_data or {}).get("real_author") or performer or "")
-    
     duration_str = ""
     if duration:
         h, rem = divmod(int(duration), 3600)
         m, s = divmod(rem, 60)
         duration_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-    
+
     prompt = QUIZ_PROMPT.format(
         count=count,
         title=real_title or "Без названия",
         author=real_author or "Не указан",
         duration=duration_str or "Не указана",
     )
-    
-    # If we have audio_part — use it for higher quality (Gemini hears the actual content)
-    # Otherwise fall back to text context from ai_data
-    if not existing_audio_part or not existing_client:
-        # Text-only fallback: add ai_data context to prompt
-        context_parts = []
-        if ai_data:
-            if ai_data.get("main_topic"):
-                context_parts.append(f"Тема: {ai_data['main_topic'][:500]}")
-            if ai_data.get("timestamps"):
-                context_parts.append(f"Структура:\n{ai_data['timestamps'][:1000]}")
-            if ai_data.get("questions"):
-                qs = ai_data["questions"]
-                if isinstance(qs, list):
-                    context_parts.append("Вопросы для размышления:\n" + "\n".join(str(q) for q in qs[:8]))
-        if context_parts:
-            prompt += "\n\nКОНТЕКСТ МАТЕРИАЛА:\n" + "\n\n".join(context_parts)
-    
+    context = _format_ai_context(ai_data)
+    if context:
+        prompt += "\n\nКОНТЕКСТ МАТЕРИАЛА:\n" + context
+
+    started = asyncio.get_running_loop().time()
     try:
-        # Pick client: prefer the one that already has audio_part uploaded
         client = existing_client if existing_client in GEMINI_CLIENTS else GEMINI_CLIENTS[0]
-        
-        contents = []
+        contents: list[Any] = []
         if existing_audio_part and existing_client is client:
             contents.append(existing_audio_part)
         contents.append(prompt)
-        
-        config = make_text_config_smart(
-            max_output_tokens=8000,
-            model_name=GEMINI_MODEL,
-            thinking_level="medium",  # Balance quality/cost
-            response_mime_type="application/json",
-        )
-        
+        schema = quiz_response_schema()
         resp = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=contents,
-                config=config,
+                config=make_text_config_smart(
+                    max_output_tokens=9000,
+                    model_name=GEMINI_MODEL,
+                    thinking_level="high",
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                ),
             ),
-            timeout=120.0,
+            timeout=180.0,
         )
-        
         raw = getattr(resp, "text", "") or ""
         if not raw:
-            # Try extracting from candidates
             try:
                 for part in resp.candidates[0].content.parts:
                     if not getattr(part, "thought", False) and getattr(part, "text", None):
@@ -211,20 +255,19 @@ async def generate_quiz(
                         break
             except Exception:
                 pass
-        
         if not raw:
+            await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error="empty_response")
             logger.warning("[Quiz] Gemini returned empty response")
             return None
-        
-        questions = _parse_quiz_json(raw)
+        questions = _parse_quiz_json(raw, expected_count=count)
+        await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=bool(questions), error="" if questions else "parse_failed")
         if not questions:
             logger.warning("[Quiz] Failed to parse quiz JSON: %s", raw[:200])
             return None
-        
         logger.info("[Quiz] Generated %d questions", len(questions))
         return questions[:count]
-        
     except Exception as e:
+        await alog_gemini_run(task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error=f"{type(e).__name__}: {str(e)[:240]}")
         if is_quota_error(e):
             logger.warning("[Quiz] Gemini quota error: %s", str(e)[:120])
         elif is_overload_error(e):
@@ -241,16 +284,14 @@ async def send_quiz_polls(
     title: str = "",
 ) -> int:
     """Send quiz questions as Telegram Native Quiz polls.
-    
+
     Returns number of successfully sent polls.
     """
     if not questions:
         return 0
-    
     sent = 0
     for i, q in enumerate(questions):
         try:
-            # Telegram quiz question limit: 300 chars total
             _q_text = f"❓ {i+1}/{len(questions)}: {q['question']}"
             if len(_q_text) > 300:
                 _q_text = _q_text[:297] + "..."
@@ -265,12 +306,10 @@ async def send_quiz_polls(
                 reply_to_message_id=update.message.message_id if i == 0 else None,
             )
             sent += 1
-            # Small delay between polls to avoid flood
             if i < len(questions) - 1:
                 await asyncio.sleep(1.5)
         except Exception as e:
             logger.warning("[Quiz] Failed to send poll %d: %s", i+1, str(e)[:120])
-            # If we get flood-limited, wait and continue
             retry_after = getattr(e, "retry_after", None)
             if retry_after:
                 await asyncio.sleep(float(retry_after) + 1)
@@ -287,8 +326,6 @@ async def send_quiz_polls(
                     sent += 1
                 except Exception:
                     pass
-    
     if sent:
         logger.info("[Quiz] Sent %d/%d quiz polls for '%s'", sent, len(questions), title[:40])
-    
     return sent

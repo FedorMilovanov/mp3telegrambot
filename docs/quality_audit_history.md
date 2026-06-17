@@ -578,3 +578,17 @@ The latest run exposed a small mixed-language artifact in a generated Scripture 
 ```
 
 Added a narrow deterministic typo repair for `day один/первый` -> `день один/первый`. The final published pages did not retain this artifact after Study content-audit retry, but the normalizer now catches the class earlier if it appears again.
+
+## 2026-06-17 — Quiz/test generator hardened
+
+Reviewed and upgraded `services/quiz_generator.py` (Telegram native quiz/test questions):
+
+- structured JSON schema for quiz output;
+- strict validation: exactly 4 unique options, valid `correct` index, non-empty explanation;
+- duplicate question removal;
+- safer trimming for Telegram limits;
+- richer grounded context from `main_topic`, `analysis_summary`, `argument_arc`, timestamps, key categories and terms_data;
+- high thinking level on the configured primary model;
+- Gemini observability logging for quiz generation.
+
+This makes the optional quiz/test feature less likely to produce shallow, duplicated or invalid polls.
