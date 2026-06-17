@@ -44,7 +44,6 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Steven Lawson": "Стивен Лоусон",
     "Sinclair Ferguson": "Синклер Фергюсон",
     "Derek Prince": "Дерек Принс",
-    "Tim Keller": "Тим Келлер",
     "David Platt": "Дэвид Платт",
     "Francis Chan": "Фрэнсис Чан",
     "Matt Chandler": "Мэтт Чендлер",
@@ -231,6 +230,18 @@ RU_TITLE_CORRECTIONS: dict[str, str] = {
     "странный огонь": "чуждый огонь",
 }
 
+DISALLOWED_SOURCE_AUTHORS: set[str] = {
+    "Tim Keller", "Timothy Keller", "Keller", "Тим Келлер", "Тимоти Келлер",
+}
+
+
+def is_disallowed_source_author(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    raw_cf = raw.casefold()
+    return any(item.casefold() in raw_cf for item in DISALLOWED_SOURCE_AUTHORS)
+
 
 @dataclass(frozen=True)
 class SourceCard:
@@ -283,8 +294,12 @@ def build_source_card(
     why_relevant: str = "",
 ) -> SourceCard:
     """Create a canonical SourceCard from raw model/legacy fields."""
+    if is_disallowed_source_author(author) or is_disallowed_source_author(original_author):
+        return SourceCard(author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant="")
     title_original = str(title_original or "").strip().rstrip(".")
     original_author = original_author_name(original_author or author)
+    if is_disallowed_source_author(original_author):
+        return SourceCard(author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant="")
     author_ru = canonical_author_name(author or original_author)
     title_ru = official_ru_title(original_author, title_original) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
     if title_ru and re.search(r"[A-Za-z]", title_ru) and not re.search(r"[А-Яа-яЁё]", title_ru):
@@ -490,6 +505,8 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     # parenthetical verifier `(John MacArthur, Strange Fire)` превращается в
     # `(Джон МакАртур, Strange Fire)`, и мы теряем оригинального автора.
     out = correct_known_ru_title(str(line or ""))
+    if is_disallowed_source_author(out):
+        return ""
     # Only source-card-like lines need aggressive whitespace/dedupe normalization.
     # Plain inline nodes such as "• " must keep their spacing.
     looks_like_source = bool(re.search(r"[A-Za-z].*,|,\s*[A-Za-z][A-Za-z ]{2,}|\([^)]*[A-Za-z]{3,}[^)]*\)", out))

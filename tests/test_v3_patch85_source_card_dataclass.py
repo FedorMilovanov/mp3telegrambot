@@ -137,3 +137,21 @@ def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical(
     assert normalize_source_card_line("• Warfield, Inspiration and Authority of the Bible") == (
         "• **Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
     )
+
+
+def test_tim_keller_is_silently_dropped_from_source_cards():
+    from core.source_titles import is_disallowed_source_author
+
+    assert is_disallowed_source_author("Tim Keller")
+    assert normalize_source_card_line("• Tim Keller, Center Church") == ""
+    section = {
+        "title": "Sources",
+        "content": "fallback",
+        "blocks": [
+            {"type": "source", "author": "Tim Keller", "title_original": "Center Church", "why_relevant": "Не должен появиться."},
+            {"type": "source", "author": "John Owen", "title_original": "Mortification of Sin", "why_relevant": "Полезно."},
+        ],
+    }
+    flat = _flat(_section_to_nodes_v2(section))
+    assert "Keller" not in flat and "Келлер" not in flat and "Center Church" not in flat
+    assert "Оуэн" in flat

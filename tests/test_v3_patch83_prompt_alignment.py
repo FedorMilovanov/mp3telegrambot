@@ -89,3 +89,8 @@ def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers():
         assert phrase not in STUDY_ANALYSIS_PROMPT
     assert "без конструкции «автор + глагол действия»" in STUDY_ANALYSIS_PROMPT
     assert "В ключевой сцене это понятие становится диагнозом" in STUDY_ANALYSIS_PROMPT
+
+
+def test_study_prompt_does_not_recommend_tim_keller():
+    assert "Tim Keller" not in STUDY_ANALYSIS_PROMPT
+    assert "Тим Келлер" not in STUDY_ANALYSIS_PROMPT

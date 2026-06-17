@@ -496,3 +496,17 @@ Examples:
 - `Warfield, Inspiration and Authority of the Bible` → `**Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)`
 
 Added a regression test that scans `core/source_packs.py` and fails if an English source-pack author label lacks a source-card registry alias.
+
+## 2026-06-16 — Tim Keller removed from source recommendations
+
+Per operator instruction, Tim Keller is no longer recommended as a source.
+
+Changes:
+
+- removed Tim Keller from Study prompt authorized/recommended source lists;
+- added a deterministic source-card denylist for Tim Keller / Timothy Keller / Keller / Тим Келлер;
+- source-card normalization now silently drops Keller source cards instead of rendering or repairing them;
+- structured source blocks with Keller are skipped during Telegraph rendering;
+- prompt-health leaky literal guard includes Keller names so they do not re-enter prompts.
+
+This is intentionally silent in generated pages: no warning card, no replacement source invented.

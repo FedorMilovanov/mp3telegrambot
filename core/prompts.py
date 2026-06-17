@@ -2335,7 +2335,6 @@ SECTION TYPE 5 — ИСТОРИКО-БОГОСЛОВСКИЕ ЛИНИИ ЧТЕН
   Strange Fire (цессационизм); MacArthur Study Bible
 Д.А. Карсон (D.A. Carson) — Exegetical Fallacies; The Gagging of God;
   New Testament Commentary on John
-Тим Келлер (Tim Keller) — The Reason for God; Preaching; Center Church
 Пол Вошер (Paul Washer) — The Gospel's Power and Message;
   проповеди о ложной уверенности (Shocking Youth Message)
 Мэтт Чандлер (Matt Chandler) — The Explicit Gospel
@@ -2590,7 +2589,7 @@ SECTION TYPE 7 — КАРТА ИСТОЧНИКОВ ДЛЯ ДАЛЬНЕЙШЕГО
 5. Правильные русские имена авторов: R.C. Sproul = Р.Ч. Спрол, Paul Washer = Пол Вошер,
    John Owen = Джон Оуэн, Jonathan Edwards = Джонатан Эдвардс, Thomas Watson = Томас Уотсон,
    John Calvin = Жан Кальвин, John Murray = Джон Мюррей, John Bunyan = Джон Баньян,
-   Charles Spurgeon = Чарльз Сперджен, D.A. Carson = Д.А. Карсон, Tim Keller = Тим Келлер,
+   Charles Spurgeon = Чарльз Сперджен, D.A. Carson = Д.А. Карсон,
    Wayne Grudem = Уэйн Грудем, J.I. Packer = Дж.И. Пакер, John MacArthur = Джон МакАртур,
    Andrew Fuller = Эндрю Фуллер, Martyn Lloyd-Jones = Мартин Ллойд-Джонс.
 
@@ -2947,7 +2946,6 @@ AUTHORS_REFERENCE = """
   Специализация: герменевтика ВЗ-авторов, Израиль/Церковь, буквальное исполнение пророчеств.
 Джон МакАртур — MacArthur Study Bible; Strange Fire; Gospel According to Jesus.
 Д.А. Карсон — Exegetical Fallacies; The Gagging of God; Commentary on John.
-Тим Келлер — The Reason for God; Preaching; Center Church.
 Пол Вошер — Gospel's Power and Message; проповеди о ложной уверенности.
 Мэтт Чандлер — The Explicit Gospel. Мартин Ллойд-Джонс — Sermon on the Mount; Romans series.
 Эдмунд Клауни — Preaching Christ in All of Scripture. Грэм Голдсуорти — Gospel and Kingdom.

@@ -9,7 +9,7 @@ from core.text_utils import (
     normalize_author_name, normalize_common_typos, normalize_source_map_text,
     scrub_third_person_phrases, title_case_fragment,
 )
-from core.source_titles import build_source_card, render_source_card
+from core.source_titles import build_source_card, is_disallowed_source_author, render_source_card
 from core.url_utils import get_youtube_timestamp_url
 from core.page_audit import audit_telegraph_page, format_audit_issues, should_abort_for_page_audit
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
@@ -793,6 +793,8 @@ def _structured_blocks_to_nodes_v2(
             author = _scrub_inline(author_raw)
             title_original = _scrub_inline(str(raw.get("title_original") or raw.get("title") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or text or "").strip())
+            if is_disallowed_source_author(author_raw) or is_disallowed_source_author(author):
+                continue
             # PATCH-FIX: use canonical SourceCard rendering for consistent
             # title-first style with known-author corrections and ru titles.
             card = build_source_card(
