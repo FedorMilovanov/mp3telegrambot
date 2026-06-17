@@ -69,3 +69,24 @@ def test_quiz_prompt_avoids_literal_bad_third_person_example():
 
     assert "автор показывает" not in QUIZ_PROMPT
     assert "роль/имя автора + показывает" in QUIZ_PROMPT
+
+
+def test_parse_quiz_json_accepts_wrapped_questions_and_letter_or_text_answer():
+    raw = """
+    {"questions": [
+      {"question":"Какой ответ верен?","options":["Первый","Второй","Третий","Четвёртый"],"correct":"B","explanation":"Второй вариант отражает аргумент."},
+      {"question":"Какой текст ключевой?","options":["Бытие 1","Иона 2","Руфь 1","Есфирь 4"],"answer":"Бытие 1","explanation":"Материал строится вокруг Бытия 1."}
+    ]}
+    """
+    parsed = _parse_quiz_json(raw)
+    assert parsed and [q["correct"] for q in parsed] == [1, 0]
+
+
+def test_parse_quiz_json_rejects_all_or_none_style_options():
+    raw = """
+    [
+      {"question":"Что верно?","options":["A","B","Все перечисленное","D"],"correct":2,"explanation":"bad"},
+      {"question":"Что неверно?","options":["A","B","Нет правильного ответа","D"],"correct":2,"explanation":"bad"}
+    ]
+    """
+    assert _parse_quiz_json(raw) is None

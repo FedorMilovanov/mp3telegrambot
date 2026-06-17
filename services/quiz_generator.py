@@ -116,6 +116,36 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _bad_quiz_option(text: str) -> bool:
+    low = str(text or "").strip().casefold()
+    return any(
+        marker in low
+        for marker in (
+            "все перечислен", "всё перечислен", "все варианты", "всё варианты",
+            "нет правильного", "нет верного", "ни один", "ни один из",
+            "оба варианта", "a и b", "а и б", "all of the above", "none of the above",
+        )
+    )
+
+
+def _parse_correct_index(value, options: list[str]) -> int | None:
+    try:
+        idx = int(value)
+        return idx if 0 <= idx < len(options) else None
+    except (TypeError, ValueError):
+        pass
+    raw = str(value or "").strip()
+    if len(raw) == 1 and raw.upper() in "ABCD":
+        idx = ord(raw.upper()) - ord("A")
+        return idx if idx < len(options) else None
+    # Some models return the full correct option text instead of an index.
+    norm = re.sub(r"\W+", "", raw.casefold())
+    for idx, option in enumerate(options):
+        if norm and norm == re.sub(r"\W+", "", option.casefold()):
+            return idx
+    return None
+
+
 def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dict] | None:
     """Parse and validate Gemini quiz response into Telegram-ready dicts."""
     if not raw:
@@ -132,6 +162,11 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
             data = json.loads(m.group(0))
         except json.JSONDecodeError:
             return None
+    if isinstance(data, dict):
+        for key in ("questions", "quiz", "items"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
     if not isinstance(data, list):
         return None
 
@@ -148,13 +183,10 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
         if not q_key or q_key in seen_questions:
             continue
         opts = _dedupe_keep_order([_safe_trim(o, 100) for o in opts_raw if str(o).strip()])
-        if len(opts) != 4:
+        if len(opts) != 4 or any(_bad_quiz_option(o) for o in opts):
             continue
-        try:
-            correct = int(item.get("correct"))
-        except (TypeError, ValueError):
-            continue
-        if correct < 0 or correct >= len(opts):
+        correct = _parse_correct_index(item.get("correct", item.get("correct_index", item.get("answer"))), opts)
+        if correct is None:
             continue
         explanation = _safe_trim(item.get("explanation") or "", 200)
         if not explanation:

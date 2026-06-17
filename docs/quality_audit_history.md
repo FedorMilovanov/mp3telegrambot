@@ -600,3 +600,14 @@ Follow-up hardening for the quiz/test generator:
 - `QUIZ_QUESTION_COUNT` parsing is now robust against invalid environment values;
 - quiz prompt no longer contains the literal bad phrase `автор показывает`; it uses a pattern-level description instead;
 - `/prompthealth` now includes `QUIZ_PROMPT`, so leaky literal regression checks cover quiz generation too.
+
+## 2026-06-17 — Quiz parser accepts common Gemini variants safely
+
+Hardened quiz/test parsing further:
+
+- accepts wrapped JSON objects such as `{ "questions": [...] }`;
+- accepts correct answers as numeric index, letter (`A`/`B`/`C`/`D`) or exact option text;
+- still rejects invalid correct answers;
+- rejects weak quiz options like `all of the above` / `none of the above` / `все перечисленное` / `нет правильного ответа`.
+
+This makes the quiz feature more tolerant of harmless Gemini output-shape variation while still refusing low-quality poll patterns.
