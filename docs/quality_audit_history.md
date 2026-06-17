@@ -546,3 +546,15 @@ Code hardening from this pass:
 
 - postprocess now repairs split hyphenated terms such as `Историко — грамматический` -> `Историко-грамматический` even when the first word is inside `<strong>`;
 - content/postprocess now rewrites `Данный академический труд` to `Академический труд`.
+
+## 2026-06-17 — Synopsis density retry accepts issue reduction
+
+The latest run showed `Synopsis v2: density retry rejected — not denser than original` after a retry intended to fix `synopsis_too_few_paragraphs`. The old acceptance rule compared only a coarse density score (chars + section count + small coverage bonus). A retry that reduced audit problems but did not raise the score enough could be rejected.
+
+Updated acceptance rule:
+
+```text
+accept retry if density_score improves OR synopsis_quality_issue_count decreases
+```
+
+The log now records both score and issue-count deltas. This better matches the goal: if Gemini fixes the concrete density/audit problem, keep the improved version even when total character score is similar.

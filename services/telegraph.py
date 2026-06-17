@@ -1085,12 +1085,24 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         label="SynopsisDensityRetry",
                         expected_author=author,
                     )
-                    if synopsis_density_score(_retry_sections, _duration) > synopsis_density_score(sections, _duration):
+                    _retry_quality_issues = audit_synopsis_density(_retry_sections, _duration)
+                    _old_score = synopsis_density_score(sections, _duration)
+                    _new_score = synopsis_density_score(_retry_sections, _duration)
+                    _old_issue_count = len(_syn_quality_issues)
+                    _new_issue_count = len(_retry_quality_issues)
+                    _retry_improved_issues = _new_issue_count < _old_issue_count
+                    if _new_score > _old_score or _retry_improved_issues:
                         sections, outline = _retry_sections, _retry_outline
-                        _syn_quality_issues = audit_synopsis_density(sections, _duration)
-                        logger.info("Synopsis v2: density retry accepted (sections=%d)", len(sections))
+                        _syn_quality_issues = _retry_quality_issues
+                        logger.info(
+                            "Synopsis v2: density retry accepted (sections=%d score=%d->%d issues=%d->%d)",
+                            len(sections), _old_score, _new_score, _old_issue_count, _new_issue_count,
+                        )
                     else:
-                        logger.info("Synopsis v2: density retry rejected — not denser than original")
+                        logger.info(
+                            "Synopsis v2: density retry rejected — not denser and no fewer issues (score=%d->%d issues=%d->%d)",
+                            _old_score, _new_score, _old_issue_count, _new_issue_count,
+                        )
             except Exception as _density_retry_err:
                 logger.warning("Synopsis v2: density retry failed non-fatally: %s", str(_density_retry_err)[:180])
 

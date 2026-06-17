@@ -40,3 +40,11 @@ def test_telegraph_wires_nonfatal_density_retry():
     assert "SynopsisDensityRetry" in src
     assert "ЖЁСТКИЙ МИНИМУМ" in src
     assert "_syn_profile.min_total_chars" in src
+
+
+def test_synopsis_density_retry_accepts_fewer_quality_issues_even_if_score_not_higher():
+    src = open("services/telegraph.py", encoding="utf-8").read()
+    assert "_retry_improved_issues" in src
+    assert "or _retry_improved_issues" in src
+    assert "issues=%d->%d" in src
+    assert "not denser and no fewer issues" in src
