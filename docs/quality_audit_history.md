@@ -510,3 +510,15 @@ Changes:
 - prompt-health leaky literal guard includes Keller names so they do not re-enter prompts.
 
 This is intentionally silent in generated pages: no warning card, no replacement source invented.
+
+## 2026-06-17 — Recovery for outdated first part without next-link
+
+The new run exposed a specific multi-part Synopsis edge case: part 1 `editPage` can fail with `CONTENT_TOO_BIG` before the `➡ Дальше` pagination link is written. Parts `-2`, `-3`, ... still exist, but a chain walk starting from part 1 cannot discover them.
+
+Fixes:
+
+- future Synopsis edit now retries part 1 without TOC when TOC makes `editPage` too large, preserving the `➡ Дальше` link;
+- audit/repair chain expansion now probes the conventional `-2` URL when the first page has no next-link, so old pages with this failure are still recoverable;
+- DOM audit now treats `Назад` / `Дальше` pagination links as valid navigation.
+
+Verified against the latest run: auditing only `https://telegra.ph/SHest-dnej-tvoreniya-vselennoj--Dzhon-MakArtur-06-17` expands to all 4 parts and reports zero DOM issues.

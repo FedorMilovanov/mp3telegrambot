@@ -111,7 +111,7 @@ def audit_telegraph_html(html: str, *, url: str = "") -> list[TelegraphDomIssue]
             ", ".join(bad_links[:5]),
         ))
 
-    nav_mentions = len(re.findall(r"\b(?:Часть\s+\d+|Навигация|Разбор|Размышление|Конспект)\b", text, re.I))
+    nav_mentions = len(re.findall(r"\b(?:Часть\s+\d+|Навигация|Разбор|Размышление|Конспект|Дальше|Назад)\b", text, re.I))
     if "telegra.ph" in url and len(text) > 3500 and nav_mentions == 0:
         issues.append(TelegraphDomIssue(
             "navigation_missing_warning",

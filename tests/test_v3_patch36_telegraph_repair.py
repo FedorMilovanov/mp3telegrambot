@@ -136,3 +136,12 @@ def test_repair_record_expands_chained_multipart_pages():
     assert "expand_telegraph_page_chain" in src
     assert "chain = await expand_telegraph_page_chain(url)" in src
     assert "for item in (chain or [url])" in src
+
+
+def test_repair_chain_has_suffix_probe_for_outdated_first_part():
+    from services.telegraph_repair import guess_telegraph_part_url
+
+    assert guess_telegraph_part_url("https://telegra.ph/Page-06-17", 2) == "https://telegra.ph/Page-06-17-2"
+    src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
+    assert "If part 1 editPage failed" in src
+    assert "guess_telegraph_part_url(start, 2)" in src

@@ -51,6 +51,14 @@ def collect_record_page_urls(record: dict[str, Any] | None) -> list[str]:
     return urls
 
 
+def guess_telegraph_part_url(url: str, part_num: int) -> str:
+    """Return Telegraph's common multipart suffix URL (part 2 -> `url-2`)."""
+    base = str(url or "").strip().split("?", 1)[0].rstrip("/")
+    if not base or part_num <= 1:
+        return base
+    return f"{base}-{int(part_num)}"
+
+
 def _extract_next_part_urls(nodes: Any, *, base: str = "https://telegra.ph") -> list[str]:
     """Extract Telegraph pagination links (➡ Дальше) from node trees."""
     out: list[str] = []
@@ -99,7 +107,25 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int = 12) -> list[
             if not data.get("ok"):
                 continue
             nodes = (data.get("result") or {}).get("content") or []
-            for nxt in _extract_next_part_urls(nodes):
+            next_urls = _extract_next_part_urls(nodes)
+            # If part 1 editPage failed before pagination links were written,
+            # Telegraph still usually created sibling URLs with -2/-3 suffixes.
+            # Probe the conventional -2 URL so archive/CLI repair can recover
+            # the full chain even from an outdated first page.
+            if not next_urls and current == start:
+                guessed = guess_telegraph_part_url(start, 2)
+                if guessed and guessed not in seen and guessed not in queue:
+                    try:
+                        gpath = telegraph_path_from_url(guessed)
+                        gresp = await loop.run_in_executor(None, lambda p=gpath: requests.get(
+                            f"https://api.telegra.ph/getPage/{p}?return_content=false",
+                            timeout=30,
+                        ))
+                        if (gresp.json() or {}).get("ok"):
+                            next_urls.append(guessed)
+                    except Exception:
+                        pass
+            for nxt in next_urls:
                 if nxt not in seen and nxt not in queue:
                     queue.append(nxt)
         except Exception as exc:

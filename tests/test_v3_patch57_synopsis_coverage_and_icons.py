@@ -41,3 +41,10 @@ def test_telegraph_postprocess_replaces_warning_icon_for_false_view_context():
     flat = _flat(out[0])
     assert "⚠️" not in flat
     assert "❌" in flat
+
+
+def test_synopsis_editpage_has_no_toc_fallback_for_first_part_content_too_big():
+    src = __import__("pathlib").Path("services/telegraph.py").read_text(encoding="utf-8")
+    assert "упала с TOC — повтор без оглавления" in src
+    assert "_nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))" in src
+    assert "content-size fallback" in src

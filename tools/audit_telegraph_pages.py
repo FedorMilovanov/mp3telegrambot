@@ -58,6 +58,13 @@ def telegraph_path_from_url(url: str) -> str:
     return m.group("path") if m else ""
 
 
+def guess_telegraph_part_url(url: str, part_num: int) -> str:
+    base = str(url or "").strip().split("?", 1)[0].rstrip("/")
+    if not base or part_num <= 1:
+        return base
+    return f"{base}-{int(part_num)}"
+
+
 def _extract_next_part_urls_from_nodes(nodes: object, *, base: str = "https://telegra.ph") -> list[str]:
     out: list[str] = []
 
@@ -99,7 +106,18 @@ def expand_telegraph_url_chain_sync(url: str, *, max_pages: int = 12, timeout: i
             data = resp.json()
             if not data.get("ok"):
                 continue
-            for nxt in _extract_next_part_urls_from_nodes((data.get("result") or {}).get("content") or []):
+            next_urls = _extract_next_part_urls_from_nodes((data.get("result") or {}).get("content") or [])
+            if not next_urls and current == start:
+                guessed = guess_telegraph_part_url(start, 2)
+                if guessed and guessed not in seen and guessed not in queue:
+                    try:
+                        gpath = telegraph_path_from_url(guessed)
+                        gresp = requests.get(f"https://api.telegra.ph/getPage/{gpath}?return_content=false", timeout=timeout)
+                        if (gresp.json() or {}).get("ok"):
+                            next_urls.append(guessed)
+                    except Exception:
+                        pass
+            for nxt in next_urls:
                 if nxt not in seen and nxt not in queue:
                     queue.append(nxt)
         except Exception:

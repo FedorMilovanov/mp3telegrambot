@@ -95,3 +95,17 @@ def test_audit_and_repair_tools_expand_multipart_chains_by_default():
     assert "--no-expand-chains" in audit_src
     assert "expand_telegraph_page_chain" in repair_src
     assert "expand_chains=not args.no_expand_chains" in repair_src
+
+
+def test_dom_audit_treats_prev_next_links_as_navigation():
+    html = "<html><body><article>" + ("длинный текст " * 400) + "<a href='/p2'>➡ Дальше: [2/4]</a></article></body></html>"
+    issues = audit_telegraph_html(html, url="https://telegra.ph/p1")
+    assert "navigation_missing_warning" not in {i.code for i in issues}
+
+
+def test_audit_chain_has_suffix_probe_for_outdated_first_part():
+    from tools.audit_telegraph_pages import guess_telegraph_part_url
+
+    assert guess_telegraph_part_url("https://telegra.ph/Page-06-17", 2) == "https://telegra.ph/Page-06-17-2"
+    src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
+    assert "guess_telegraph_part_url(start, 2)" in src

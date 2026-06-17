@@ -1310,6 +1310,28 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 )
                 await asyncio.sleep(wait_time)
 
+            # Edge fallback: first part can exceed Telegraph edit limit when
+            # TOC is prepended after publish-time splitting. If editPage failed
+            # for part 1, retry once without TOC but with section content and
+            # next/prev navigation so the chain remains usable.
+            if not ok and i == 0 and total > 1:
+                _nodes_no_toc: list = []
+                for sec_idx, sec in enumerate(part_secs):
+                    if sec_idx > 0:
+                        _nodes_no_toc.append({"tag": "hr"})
+                    _nodes_no_toc.extend(_section_to_nodes_v2(
+                        sec, yt_url=url,
+                        rutube_url=rutube_url, vk_url=vk_url,
+                        page_title=part_title, duration=duration,
+                    ))
+                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))
+                logger.warning(
+                    "Synopsis v2: editPage часть 1/%d упала с TOC — повтор без оглавления (content-size fallback)",
+                    total,
+                )
+                await asyncio.sleep(2)
+                ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_toc, loop)
+
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")
             else:
