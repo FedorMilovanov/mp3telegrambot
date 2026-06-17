@@ -102,3 +102,19 @@ def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
     """
     parsed = _parse_quiz_json(raw)
     assert parsed and [q["correct"] for q in parsed] == [1, 2, 3]
+
+
+def test_reflection_question_normalizer_repairs_markers_dedupes_and_filters():
+    from services.telegraph_pages import _normalize_question_items
+
+    out = _normalize_question_items([
+        "Как этот аргумент проверяет мою веру",
+        "🟢 Как этот аргумент проверяет мою веру?",  # duplicate after ? repair
+        "🔵 Почему буквальное творение связано с авторитетом Писания?",
+        "Коротко",
+        "Это декларативное утверждение без вопроса.",
+    ])
+    assert out == [
+        "🟢 Как этот аргумент проверяет мою веру?",
+        "🔵 Почему буквальное творение связано с авторитетом Писания?",
+    ]

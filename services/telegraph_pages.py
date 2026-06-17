@@ -140,6 +140,46 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
     return await _telegraph_post(f"Аналитика: {title}", author, nodes, loop)
 
 
+def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[str]:
+    """Normalize generated reflection questions before publishing/reusing them.
+
+    Keeps only useful, deduplicated open questions. Preserves the 🟢/🔵 marker
+    contract, defaulting to 🟢 when Gemini omitted a marker. This prevents weak
+    duplicate/generic questions from becoming a whole Reflection page scaffold.
+    """
+    if not isinstance(questions, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in questions:
+        text = str(raw or "").replace("\r", " ").strip()
+        if not text:
+            continue
+        marker = "🟢"
+        if text.startswith("🔵"):
+            marker = "🔵"
+        text = re.sub(r"^[🟢🔵]\s*", "", text)
+        text = _scrub_inline(_strip_meta_lines(_clean_field(" ".join(x.strip() for x in text.splitlines() if x.strip()))))
+        if not text or is_meta_garbage(text):
+            continue
+        text = re.sub(r"\s+", " ", text).strip()
+        if len(text) < 18:
+            continue
+        if not text.endswith("?"):
+            if re.match(r"^(как|почему|что|где|когда|каким|какая|какой|какие|насколько|что именно)\b", text, re.I):
+                text = text.rstrip(".!…") + "?"
+            else:
+                continue
+        key = re.sub(r"\W+", "", text.casefold())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(f"{marker} {text}")
+        if len(out) >= max_items:
+            break
+    return out
+
+
 async def create_telegraph_questions(questions: list, title: str, author: str) -> str | None:
     """Публикует вопросы для обсуждения в Telegraph.
     v9: однофазная публикация — createPage сразу с финальным контентом и заголовком.
@@ -148,13 +188,12 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
     author = _clean_meta_line(author) or "Автор не указан"
     title  = _clean_meta_line(title)  or "Без названия"
 
-    if not isinstance(questions, list):
+    questions = _normalize_question_items(questions, max_items=20)
+    if not questions:
         return None
 
     green = [q for q in questions if str(q).startswith("🟢")]
     blue  = [q for q in questions if str(q).startswith("🔵")]
-    other = [q for q in questions if not str(q).startswith(("🟢", "🔵"))]
-    green = green + other
 
     if not green and not blue:
         return None
@@ -1578,10 +1617,10 @@ async def create_telegraph_study_reflection_combined(
 
     merged_questions = []
     if isinstance(questions, list):
-        green = [q for q in questions if str(q).startswith("\U0001f7e2")]
-        blue = [q for q in questions if str(q).startswith("\U0001f535")]
-        other = [q for q in questions if not str(q).startswith(("\U0001f7e2", "\U0001f535"))]
-        merged_questions = (green + other + blue)[:15]
+        _normalized_questions = _normalize_question_items(questions, max_items=15)
+        green = [q for q in _normalized_questions if str(q).startswith("\U0001f7e2")]
+        blue = [q for q in _normalized_questions if str(q).startswith("\U0001f535")]
+        merged_questions = (green + blue)[:15]
     _question_marker_re = re.compile(r"^[\U0001f7e2\U0001f535]\s*")
     questions_block = "\n".join(f"- {_question_marker_re.sub('', str(q)).strip()}" for q in merged_questions)
     timestamps_block = "\n".join(f"- {line.strip()}" for line in str(_ai.get("timestamps") or "").splitlines() if line.strip()) or "не указаны"
@@ -1795,10 +1834,10 @@ async def create_telegraph_reflection_application(
     duration_str = format_timestamp(duration) if duration else "не указана"
 
     if isinstance(questions, list) and questions:
-        green  = [q for q in questions if str(q).startswith("\U0001f7e2")]
-        blue   = [q for q in questions if str(q).startswith("\U0001f535")]
-        other  = [q for q in questions if not str(q).startswith(("\U0001f7e2", "\U0001f535"))]
-        merged = (green + other + blue)[:15]
+        _normalized_questions = _normalize_question_items(questions, max_items=15)
+        green  = [q for q in _normalized_questions if str(q).startswith("\U0001f7e2")]
+        blue   = [q for q in _normalized_questions if str(q).startswith("\U0001f535")]
+        merged = (green + blue)[:15]
     else:
         merged = []
 

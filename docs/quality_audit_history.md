@@ -632,3 +632,15 @@ Follow-up sweep removed remaining non-source references that could confuse the s
 - removed the literal `автор показывает` from the content-audit retry prompt, replacing it with a pattern-level description.
 
 The explicit Keller denylist remains in `core/source_titles.py` so any source-card attempt is still silently dropped.
+
+## 2026-06-17 — Reflection question normalization
+
+Improved the questions/reflection pipeline beyond quiz polls:
+
+- generated reflection questions are normalized before legacy Questions pages, combined Study+Reflection prompts, and ReflectionApplication prompts;
+- missing question marks are repaired only for question-like Russian starts (`как/почему/что/...`);
+- duplicate questions are removed after normalization;
+- declarative slogans and too-short entries are filtered;
+- 🟢/🔵 marker contract is preserved, defaulting to 🟢 when Gemini omits a marker.
+
+This prevents weak duplicated/generated questions from becoming the scaffold of a Reflection page.
