@@ -27,7 +27,16 @@ from core.observability import alog_gemini_response, alog_gemini_run
 
 logger = logging.getLogger(__name__)
 
-QUIZ_QUESTION_COUNT = int(os.getenv("QUIZ_QUESTION_COUNT", "10"))
+
+def _env_int(name: str, default: int, *, min_value: int = 1, max_value: int = 20) -> int:
+    try:
+        value = int(os.getenv(name, "") or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, min(int(value), max_value))
+
+
+QUIZ_QUESTION_COUNT = _env_int("QUIZ_QUESTION_COUNT", 10)
 
 QUIZ_PROMPT = """\
 Ты — преподаватель богословия и составитель проверочных вопросов.
@@ -44,7 +53,7 @@ QUIZ_PROMPT = """\
 6. Неправильные варианты правдоподобны, но однозначно неверны по материалу.
 7. Не делай варианты вроде «всё перечисленное», «нет правильного ответа».
 8. Не повторяй один и тот же вопрос другими словами.
-9. Не используй third-person wrappers: не пиши «автор показывает». Формулируй вопрос напрямую.
+9. Не используй third-person wrappers: избегай конструкции «роль/имя автора + показывает/объясняет». Формулируй вопрос напрямую.
 10. Объяснение до 200 символов: почему ответ верный, с опорой на аргумент/Писание.
 
 СЛОЖНОСТЬ:
@@ -205,7 +214,7 @@ async def generate_quiz(
     """
     if not GEMINI_CLIENTS:
         return None
-    count = max(1, min(int(count or QUIZ_QUESTION_COUNT or 10), 20))
+    count = _env_int("QUIZ_QUESTION_COUNT", count or QUIZ_QUESTION_COUNT or 10)
     real_title = _scrub_inline((ai_data or {}).get("real_title") or title or "")
     real_author = _scrub_inline((ai_data or {}).get("real_author") or performer or "")
     duration_str = ""

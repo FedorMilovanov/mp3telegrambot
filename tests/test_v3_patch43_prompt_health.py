@@ -22,6 +22,7 @@ def test_prompt_health_collects_main_prompts_and_audio_sample():
     assert "STUDY_ANALYSIS_PROMPT" in names
     assert "REFLECTION_APPLICATION_PROMPT" in names
     assert "AUDIO_ANALYSIS_PROMPT(deep sample)" in names
+    assert "QUIZ_PROMPT" in names
     assert all(i.chars > 1000 for i in items)
 
 

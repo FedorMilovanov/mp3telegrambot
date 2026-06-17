@@ -592,3 +592,11 @@ Reviewed and upgraded `services/quiz_generator.py` (Telegram native quiz/test qu
 - Gemini observability logging for quiz generation.
 
 This makes the optional quiz/test feature less likely to produce shallow, duplicated or invalid polls.
+
+## 2026-06-17 — Quiz prompt included in prompt-health leak checks
+
+Follow-up hardening for the quiz/test generator:
+
+- `QUIZ_QUESTION_COUNT` parsing is now robust against invalid environment values;
+- quiz prompt no longer contains the literal bad phrase `автор показывает`; it uses a pattern-level description instead;
+- `/prompthealth` now includes `QUIZ_PROMPT`, so leaky literal regression checks cover quiz generation too.
