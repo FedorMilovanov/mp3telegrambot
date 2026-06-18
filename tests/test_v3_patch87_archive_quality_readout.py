@@ -209,6 +209,41 @@ def test_archive_quality_exports_markdown_and_json(tmp_path):
     assert "prompt_variants" in js.read_text(encoding="utf-8")
 
 
+def test_archive_quality_html_escapes_archive_fields(tmp_path):
+    from core.archive_quality import format_prompt_variant_comparison, format_quality_records_report
+
+    save_generated_page_record(
+        build_generated_page_record(
+            video_id="<vid&1>",
+            source_url="https://youtu.be/html",
+            title="Title <b>bad</b> & raw",
+            author="Author <script> & raw",
+            synopsis_url="https://telegra.ph/html?x=<bad>&y=1",
+            study_url="https://telegra.ph/study?x=<bad>&y=1",
+            reflection_url="https://telegra.ph/refl?x=<bad>&y=1",
+            publication_status="complete<bad>",
+            prompt_variant="var<one>&two",
+            quality_warnings=["timestamp <low> & unsafe"],
+        ),
+        base_dir=tmp_path,
+    )
+
+    report = format_archive_quality_report(limit=10, base_dir=tmp_path)
+    records = format_quality_records_report(limit=10, base_dir=tmp_path)
+    cmp = format_prompt_variant_comparison("var<one>&two", "missing<bad>", limit=10, base_dir=tmp_path)
+    combined = "\n".join([report, records, cmp])
+
+    assert "Title <b>bad</b> & raw" not in combined
+    assert "Author <script> & raw" not in combined
+    assert "var<one>&two" not in combined
+    assert "timestamp <low> & unsafe" not in combined
+    assert "Title &lt;b&gt;bad&lt;/b&gt; &amp; raw" in combined
+    assert "Author &lt;script&gt; &amp; raw" in combined
+    assert "var&lt;one&gt;&amp;two" in combined
+    assert "timestamp &lt;low&gt; &amp; unsafe" in combined
+    assert 'href="https://telegra.ph/html?x=&lt;bad&gt;&amp;y=1"' in combined
+
+
 def test_archivequalityfile_command_is_registered():
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")

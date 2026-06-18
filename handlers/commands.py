@@ -338,7 +338,7 @@ async def metrics_command(update, context):
 
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, lambda: format_gemini_metrics_report(hours=hours, recent_limit=7))
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def codehealth_command(update, context):
@@ -351,7 +351,7 @@ async def codehealth_command(update, context):
         return
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, format_code_health_report)
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def archivequality_command(update, context):
@@ -367,7 +367,7 @@ async def archivequality_command(update, context):
     limit = _archive_parse_limit(context.args, 50)
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, lambda: format_archive_quality_report(limit=limit))
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def comparevariants_command(update, context):
@@ -392,7 +392,7 @@ async def comparevariants_command(update, context):
         None,
         lambda: format_prompt_variant_comparison(left, right, limit=limit),
     )
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def archivequalityfile_command(update, context):
@@ -446,9 +446,7 @@ async def qualityrecords_command(update, context):
         None,
         lambda: format_quality_records_report(limit=limit, warnings_only=warnings_only),
     )
-    if len(report) > 3900:
-        report = report[:3850] + "\n…обрезано"
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def promptrecommend_command(update, context):
@@ -462,7 +460,7 @@ async def promptrecommend_command(update, context):
     limit = _archive_parse_limit(context.args, 50)
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, lambda: recommend_prompt_variant(limit=limit))
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def prompthealth_command(update, context):
@@ -475,7 +473,7 @@ async def prompthealth_command(update, context):
         return
     loop = asyncio.get_running_loop()
     report = await loop.run_in_executor(None, format_prompt_health_report)
-    await update.message.reply_text(report, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def pdf_command(update, context):
@@ -637,6 +635,57 @@ def _archive_parse_limit(args, default: int = 7) -> int:
         return max(1, min(int(str(args[-1]).strip()), 20))
     except (TypeError, ValueError):
         return default
+
+
+def _html_message_limit(html_text, *, limit: int = 3900, suffix: str = "\n…обрезано") -> str:
+    """Trim a Telegram HTML message without cutting tags/entities."""
+    text = str(html_text or "").replace("\x00", "")
+    if len(text) <= limit:
+        return text
+    paired = {"b", "i", "u", "s", "a", "tg-emoji", "code", "pre", "spoiler"}
+    out: list[str] = []
+    open_tags: list[str] = []
+    i = 0
+    budget = max(0, limit - len(suffix) - 64)
+    while i < len(text) and len("".join(out)) < budget:
+        ch = text[i]
+        if ch == "<":
+            end = text.find(">", i)
+            if end == -1:
+                break
+            token = text[i:end + 1]
+            m = re.match(r"<\s*(/?)\s*([A-Za-z][\w-]*)\b[^>]*>", token)
+            if m:
+                closing, tag = m.group(1), m.group(2).lower()
+                if tag in paired:
+                    if closing:
+                        if tag in open_tags:
+                            while open_tags and open_tags[-1] != tag:
+                                open_tags.pop()
+                            if open_tags:
+                                open_tags.pop()
+                    elif not token.rstrip().endswith("/>"):
+                        open_tags.append(tag)
+            if len("".join(out)) + len(token) > budget:
+                break
+            out.append(token)
+            i = end + 1
+            continue
+        if ch == "&":
+            end = text.find(";", i)
+            if end != -1 and end - i <= 12:
+                token = text[i:end + 1]
+                if len("".join(out)) + len(token) > budget:
+                    break
+                out.append(token)
+                i = end + 1
+                continue
+        out.append(ch)
+        i += 1
+    result = "".join(out).rstrip() + suffix
+    for tag in reversed(open_tags):
+        result += f"</{tag}>"
+    return result if len(result) <= limit else result[:limit]
 
 
 def _html_pre_message(text, *, limit: int = 3900) -> str:

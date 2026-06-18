@@ -87,6 +87,18 @@ def test_archive_formatter_uses_html_links_without_web_preview():
     assert "safe_trim" not in commands.lower()  # formatter has its own conservative truncation
 
 
+def test_html_message_limit_preserves_tags_and_entities():
+    from handlers.commands import _html_message_limit
+
+    msg = _html_message_limit("<b>" + ("A &amp; B " * 1000) + "</b><code>tail</code>", limit=3900)
+
+    assert len(msg) <= 3900
+    assert "…обрезано" in msg
+    assert msg.count("<b>") == msg.count("</b>")
+    assert msg.count("<code>") == msg.count("</code>")
+    assert "&am…" not in msg
+
+
 def test_html_pre_message_truncates_before_escaping_entities():
     from handlers.commands import _html_pre_message
 

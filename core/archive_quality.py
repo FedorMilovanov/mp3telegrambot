@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+import html
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,10 @@ class AuthorQualityProfile:
 def _norm(value: Any, fallback: str = "unknown") -> str:
     text = str(value or "").strip()
     return text or fallback
+
+
+def _h(value: Any, *, quote: bool = False) -> str:
+    return html.escape(str(value or ""), quote=quote)
 
 
 def _warning_kind(raw: str) -> str:
@@ -266,14 +271,14 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
         "<b>Status</b>",
     ]
     if summary.status_counts:
-        lines.extend(f"- <code>{k}</code>: <code>{v}</code>" for k, v in _top(summary.status_counts))
+        lines.extend(f"- <code>{_h(k)}</code>: <code>{v}</code>" for k, v in _top(summary.status_counts))
     else:
         lines.append("- no archive records")
 
     lines.append("")
     lines.append("<b>Prompt variants</b>")
     if summary.prompt_variant_counts:
-        lines.extend(f"- <code>{k}</code>: <code>{v}</code>" for k, v in _top(summary.prompt_variant_counts))
+        lines.extend(f"- <code>{_h(k)}</code>: <code>{v}</code>" for k, v in _top(summary.prompt_variant_counts))
     else:
         lines.append("- no prompt variant data")
 
@@ -284,7 +289,7 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
         for item in variant_stats[:6]:
             cov = f", cov={item.avg_timestamp_coverage:.0%}" if item.avg_timestamp_coverage else ""
             lines.append(
-                f"- <code>{item.variant}</code>: score=<code>{item.quality_score}</code> "
+                f"- <code>{_h(item.variant)}</code>: score=<code>{item.quality_score}</code> "
                 f"records=<code>{item.total}</code> warnings=<code>{item.warning_total}</code>"
                 f" partial=<code>{item.partial_segments}</code>{cov}"
             )
@@ -294,14 +299,14 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
     lines.append("")
     lines.append("<b>Quality warning kinds</b>")
     if summary.warning_counts:
-        lines.extend(f"- <code>{k}</code>: <code>{v}</code>" for k, v in _top(summary.warning_counts))
+        lines.extend(f"- <code>{_h(k)}</code>: <code>{v}</code>" for k, v in _top(summary.warning_counts))
     else:
         lines.append("- no quality warnings in sampled archive records")
 
     lines.append("")
     lines.append("<b>Authors with warnings</b>")
     if summary.warning_by_author:
-        lines.extend(f"- {k}: <code>{v}</code>" for k, v in _top(summary.warning_by_author))
+        lines.extend(f"- {_h(k)}: <code>{v}</code>" for k, v in _top(summary.warning_by_author))
     else:
         lines.append("- none")
 
@@ -312,8 +317,8 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
         for item in author_profiles[:6]:
             fmt = ",".join(item.formats)
             lines.append(
-                f"- {item.author}: records=<code>{item.total}</code> "
-                f"warnings=<code>{item.warning_total}</code> formats=<code>{fmt}</code> — {item.recommendation}"
+                f"- {_h(item.author)}: records=<code>{item.total}</code> "
+                f"warnings=<code>{item.warning_total}</code> formats=<code>{_h(fmt)}</code> — {_h(item.recommendation)}"
             )
     else:
         lines.append("- no author profile data")
@@ -397,16 +402,16 @@ def format_prompt_variant_comparison(
     lines = [
         "🧪 <b>Prompt variant comparison</b>",
         "",
-        f"left=<code>{_norm(left_variant, 'default')}</code> right=<code>{_norm(right_variant, 'default')}</code> records_limit=<code>{limit}</code>",
+        f"left=<code>{_h(_norm(left_variant, 'default'))}</code> right=<code>{_h(_norm(right_variant, 'default'))}</code> records_limit=<code>{limit}</code>",
     ]
     if not cmp.left or not cmp.right:
-        lines.append("⚠️ " + cmp.recommendation)
+        lines.append("⚠️ " + _h(cmp.recommendation))
         return "\n".join(lines)
 
     def row(label: str, item: PromptVariantQualityStats) -> str:
         cov = f" coverage=<code>{item.avg_timestamp_coverage:.0%}</code>" if item.avg_timestamp_coverage else ""
         return (
-            f"- <b>{label}</b> <code>{item.variant}</code>: "
+            f"- <b>{label}</b> <code>{_h(item.variant)}</code>: "
             f"score=<code>{item.quality_score}</code> records=<code>{item.total}</code> "
             f"warnings=<code>{item.warning_total}</code> partial=<code>{item.partial_segments}</code>"
             f" timestamp=<code>{item.timestamp_low}</code> title-topic=<code>{item.title_topic_warnings}</code>{cov}"
@@ -420,8 +425,8 @@ def format_prompt_variant_comparison(
         f"warnings=<code>{_fmt_delta(cmp.warning_delta)}</code> "
         f"partial=<code>{_fmt_delta(cmp.partial_delta)}</code>"
     )
-    lines.append(f"winner=<code>{cmp.winner}</code>")
-    lines.append("Recommendation: " + cmp.recommendation)
+    lines.append(f"winner=<code>{_h(cmp.winner)}</code>")
+    lines.append("Recommendation: " + _h(cmp.recommendation))
     lines.append("")
     lines.append("Archive warnings are a filter, not a final judge: always inspect sample pages manually before promoting a variant.")
     return "\n".join(lines)
@@ -629,17 +634,17 @@ def format_quality_records_report(
             trim = f" caption_ts=<code>{item.caption_timestamps_shown}/{item.caption_timestamps_total}</code>"
         links = []
         if item.synopsis_url:
-            links.append(f'<a href="{item.synopsis_url}">Synopsis</a>')
+            links.append(f'<a href="{_h(item.synopsis_url, quote=True)}">Synopsis</a>')
         if item.study_url:
-            links.append(f'<a href="{item.study_url}">Study</a>')
+            links.append(f'<a href="{_h(item.study_url, quote=True)}">Study</a>')
         if item.reflection_url:
-            links.append(f'<a href="{item.reflection_url}">Reflection</a>')
+            links.append(f'<a href="{_h(item.reflection_url, quote=True)}">Reflection</a>')
         link_text = " · ".join(links)
         lines.append(
-            f"{idx}. <b>{item.title}</b> — {item.author}\n"
-            f"   video=<code>{item.video_id}</code> variant=<code>{item.prompt_variant}</code> "
-            f"status=<code>{item.publication_status}</code> segments=<code>{item.segments_status}</code>{cov}{trim}\n"
-            f"   warnings=<code>{warning_text}</code>" + (f"\n   {link_text}" if link_text else "")
+            f"{idx}. <b>{_h(item.title)}</b> — {_h(item.author)}\n"
+            f"   video=<code>{_h(item.video_id)}</code> variant=<code>{_h(item.prompt_variant)}</code> "
+            f"status=<code>{_h(item.publication_status)}</code> segments=<code>{_h(item.segments_status)}</code>{cov}{trim}\n"
+            f"   warnings=<code>{_h(warning_text)}</code>" + (f"\n   {link_text}" if link_text else "")
         )
     lines.append("")
     lines.append("Use /repairpage for deterministic Telegraph repair, or rerun with a prompt variant after inspecting the linked pages.")
@@ -663,12 +668,12 @@ def recommend_prompt_variant(*, limit: int = 50, base_dir: Path | None = None, m
         lines.append("Not enough records per variant for recommendation yet.")
         lines.append("Observed variants:")
         for s in stats[:8]:
-            lines.append(f"- <code>{s.variant}</code>: records=<code>{s.total}</code> score=<code>{s.quality_score}</code>")
+            lines.append(f"- <code>{_h(s.variant)}</code>: records=<code>{s.total}</code> score=<code>{s.quality_score}</code>")
         return "\n".join(lines)
 
     best = eligible[0]
     lines.append(
-        f"Best current candidate: <code>{best.variant}</code> "
+        f"Best current candidate: <code>{_h(best.variant)}</code> "
         f"score=<code>{best.quality_score}</code> records=<code>{best.total}</code>"
     )
     lines.append("")
@@ -676,7 +681,7 @@ def recommend_prompt_variant(*, limit: int = 50, base_dir: Path | None = None, m
     for s in eligible[:8]:
         cov = f" coverage=<code>{s.avg_timestamp_coverage:.0%}</code>" if s.avg_timestamp_coverage else ""
         lines.append(
-            f"- <code>{s.variant}</code>: score=<code>{s.quality_score}</code> "
+            f"- <code>{_h(s.variant)}</code>: score=<code>{s.quality_score}</code> "
             f"records=<code>{s.total}</code> warnings=<code>{s.warning_total}</code> "
             f"partial=<code>{s.partial_segments}</code>{cov}"
         )

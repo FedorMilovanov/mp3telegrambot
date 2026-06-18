@@ -732,3 +732,20 @@ Added regression tests to ensure the contract remains present and includes the i
 Follow-up Telegram HTML audit found the same escaped-then-truncated pattern in the `segpage:` callback branch. That could cut escaped entities in paginated segment text and make Telegram reject `edit_message_text`.
 
 The callback now reuses the safe `_html_pre_message()` helper from command handlers, so plain text is trimmed before escaping and wrapped in `<pre>`. Regression test now checks the callback uses the helper and no longer contains the unsafe `safe[:3850]` truncation pattern.
+
+## 2026-06-18 — Archive quality admin HTML escaping fixed
+
+Continued Telegram/admin-output audit found that archive quality readouts could interpolate archive-derived strings directly into HTML:
+
+- prompt variant names;
+- author/title/status values;
+- warning kinds;
+- Telegraph URLs inside `<a href="...">`.
+
+If a malformed archive record contained `<`, `>`, or `&`, admin commands such as `/archivequality`, `/qualityrecords`, `/comparevariants`, and `/promptrecommend` could produce invalid Telegram HTML or render unintended markup.
+
+Fixes:
+
+- `core.archive_quality` now HTML-escapes all archive-derived fields and quote-escapes link hrefs;
+- admin report sending now passes through `_html_message_limit()` so long HTML reports are not cut through tags/entities;
+- regression tests cover malicious archive fields, unsafe URLs, and tag/entity-safe truncation.
