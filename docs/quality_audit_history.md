@@ -710,3 +710,25 @@ Fixes:
 - resetcache echo now escapes the displayed id.
 
 Regression tests cover long archive output, long preformatted output with `<`, `>`, `&`, and resetcache escaping.
+
+## 2026-06-18 — Agent contract and regression instructions added
+
+Repository had no root agent/maintenance contract for future AI/code agents. Added `AGENTS.md` covering:
+
+- repair/log/history-first quality policy;
+- explicit opt-in publication blocking flags only;
+- Telegraph token implies programmatic repair rather than manual workflow;
+- required `python tools/verify_repo.py` verification;
+- prompt-health/leaky-literal policy;
+- source-card/Keller policy;
+- Telegram HTML safety rules;
+- quiz/test quality rules;
+- git/secret hygiene.
+
+Added regression tests to ensure the contract remains present and includes the important guardrails. Also added a command-registration regression test so new async command handlers cannot be forgotten in `main.py`.
+
+## 2026-06-18 — Segment pagination callback HTML truncation fixed
+
+Follow-up Telegram HTML audit found the same escaped-then-truncated pattern in the `segpage:` callback branch. That could cut escaped entities in paginated segment text and make Telegram reject `edit_message_text`.
+
+The callback now reuses the safe `_html_pre_message()` helper from command handlers, so plain text is trimmed before escaping and wrapped in `<pre>`. Regression test now checks the callback uses the helper and no longer contains the unsafe `safe[:3850]` truncation pattern.

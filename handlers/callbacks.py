@@ -219,20 +219,17 @@ async def handle_callback(update, context) -> None:
             await query.answer("🧩 Сегменты выключены.", show_alert=True)
             return
         try:
-            from handlers.commands import _build_segments_keyboard, _format_segments_page_text, _resolve_segment_source, _segments_from_cache
-            import html as _html
+            from handlers.commands import _build_segments_keyboard, _format_segments_page_text, _html_pre_message, _resolve_segment_source, _segments_from_cache
             _vid, cache, archive_record = await _resolve_segment_source(video_id)
             if not cache:
                 await query.answer("Нет video_cache с ai_data.", show_alert=True)
                 return
             segments, title, _duration, fmt, _seg_status = _segments_from_cache(cache, archive_record)
             text = _format_segments_page_text(_vid, title, fmt, segments, page=page)
-            safe = _html.escape(text)
-            if len(safe) > 3900:
-                safe = safe[:3850] + "\n…обрезано"
+            safe = _html_pre_message(text)
             await query.answer(f"Страница {page + 1}")
             await query.edit_message_text(
-                f"<pre>{safe}</pre>",
+                safe,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
                 reply_markup=_build_segments_keyboard(_vid, segments, page=page),

@@ -36,4 +36,6 @@ def test_segpage_callback_is_wired():
     assert 'data.startswith("segpage:")' in callbacks
     assert "_build_segments_keyboard" in callbacks
     assert "_format_segments_page_text" in callbacks
+    assert "_html_pre_message" in callbacks
     assert "edit_message_text" in callbacks
+    assert "safe[:3850]" not in callbacks
