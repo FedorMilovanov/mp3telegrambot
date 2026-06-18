@@ -679,3 +679,17 @@ Static prompt-health review showed `QUIZ_PROMPT` had no final self-check block w
 - explanation remains within Telegram limits and does not add outside facts.
 
 `/prompthealth` now reports `QUIZ_PROMPT.final_checks=1` with zero known leaky literals.
+
+## 2026-06-18 — Quiz pedagogy upgraded: close answers, non-trivial distractors
+
+User requested that Telegram Quiz/tests stop being easy “guess the obvious” polls. The quiz generator now has both prompt-level and deterministic guardrails for smarter tests:
+
+- prompt now requires all four options to be close in semantic category, length, and specificity;
+- distractors must be plausible near-alternatives, not absurd negations or caricatures;
+- simple recognition questions are discouraged unless tied to the argument's interpretation;
+- parser rejects options that are too short/thin, placeholder-like, length-outliers, or obvious negations such as “not important / not related / cancels exegesis” patterns;
+- parser rejects option sets that look category-mismatched rather than like four near answers;
+- send-time poll sanitizer uses the same quality check, so invalid external/non-parser quiz payloads are skipped;
+- if Gemini returns too few quality-accepted questions, generation performs one quality retry with explicit instruction to create closer, more thoughtful answers.
+
+This keeps the user-facing quiz closer to a real theological comprehension test: one correct answer, but the wrong answers are plausible enough that the learner must understand the argument.

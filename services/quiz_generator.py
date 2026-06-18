@@ -57,6 +57,13 @@ QUIZ_PROMPT = """\
 9. Не используй third-person wrappers: избегай конструкции «роль/имя автора + показывает/объясняет». Формулируй вопрос напрямую.
 10. Объяснение до 200 символов: почему ответ верный, с опорой на аргумент/Писание.
 
+УМНАЯ ПЕДАГОГИКА ТЕСТА:
+- варианты ответа должны быть близкими по смысловой категории, длине и уровню конкретности;
+- distractors — не карикатуры и не очевидные отрицания, а похожие богословские ходы, неверные именно по материалу;
+- не спрашивай простое узнавание «кто/какой текст/какой вариант», если это не связано с толкованием аргумента;
+- хороший вопрос заставляет различить нюанс: основание вывода, порядок аргумента, роль текста, границу термина;
+- если неправильный вариант выглядит смешно, слишком общо или сразу очевидно ложен — замени его на более близкую альтернативу.
+
 СЛОЖНОСТЬ:
 - первые 3 вопроса — базовые;
 - следующие 4 — средние;
@@ -82,6 +89,7 @@ correct — индекс правильного ответа 0-3. Все тек�
 ФИНАЛЬНАЯ САМОПРОВЕРКА ПЕРЕД JSON:
 - ровно {count} вопросов и у каждого ровно 4 содержательных варианта;
 - правильный ответ однозначен по материалу, а distractors не являются плейсхолдерами;
+- все 4 варианта близки по категории и не выдают правильный ответ длиной/очевидностью;
 - вопрос не мета-формата про «ответ/вариант», а проверяет конкретный аргумент;
 - explanation не длиннее 200 символов и не добавляет внешних фактов.
 """
@@ -123,6 +131,37 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+_RU_STOPWORDS = {
+    "а", "без", "более", "был", "была", "были", "было", "быть", "в", "во", "вот",
+    "все", "всё", "для", "до", "его", "ее", "её", "если", "же", "за", "и", "из", "или",
+    "именно", "их", "к", "как", "ко", "ли", "на", "над", "не", "но", "о", "об", "от",
+    "по", "под", "при", "с", "со", "так", "то", "у", "что", "это", "этот", "эта", "эти",
+    "он", "она", "они", "оно", "потому", "через", "его", "ее", "её",
+}
+
+_TRIVIAL_DISTRACTOR_RE = re.compile(
+    r"(?:"
+    r"\bне\s+(?:важн\w+|связан\w*|касает\w+|нужн\w+|имеет\s+значени\w*|говорит|относит\w+)|"
+    r"\b(?:вопрос\s+неясен|вывод\s+вторичен|ничего\s+не|не\s+нужно)|"
+    r"\b(?:отменя\w+|исключа\w+)\s+(?:истори\w+|экзегез\w+|богослови\w+|текст)|"
+    r"\bполностью\s+аллегор\w+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _content_tokens(text: str) -> list[str]:
+    tokens = re.findall(r"[A-Za-zА-Яа-яЁё0-9]{3,}", str(text or "").casefold())
+    return [t for t in tokens if t not in _RU_STOPWORDS]
+
+
+def _content_roots(text: str) -> set[str]:
+    roots: set[str] = set()
+    for token in _content_tokens(text):
+        roots.add(token[:6] if len(token) >= 6 else token)
+    return roots
+
+
 def _bad_quiz_option(text: str) -> bool:
     low = str(text or "").strip().casefold()
     compact = re.sub(r"[\W_]+", "", low)
@@ -131,6 +170,10 @@ def _bad_quiz_option(text: str) -> bool:
     # Telegram allows tiny options, but for a theological quiz one-letter
     # placeholders or yes/no answers are almost always Gemini/schema drift.
     if compact in {"a", "b", "c", "d", "а", "б", "в", "г", "1", "2", "3", "4", "да", "нет", "верно", "неверно"}:
+        return True
+    if len(compact) < 8 or len(_content_tokens(low)) < 2:
+        return True
+    if _TRIVIAL_DISTRACTOR_RE.search(low):
         return True
     return any(
         marker in low
@@ -141,6 +184,44 @@ def _bad_quiz_option(text: str) -> bool:
             "затрудняюсь", "не знаю", "не уверен", "нельзя определить",
         )
     )
+
+
+def _quiz_options_quality_issue(options: list[str], correct: int) -> str | None:
+    """Return a deterministic quality issue for too-obvious quiz options.
+
+    This is deliberately heuristic: it does not try to prove theological
+    correctness. It catches Gemini's common lazy pattern where one answer is
+    specific and the rest are short, absurd negations or category-mismatched
+    throwaways, which makes a quiz useless even when JSON is valid.
+    """
+    if len(options) != 4 or not (0 <= correct < len(options)):
+        return "shape"
+    compact_lengths = [len(re.sub(r"\s+", "", o)) for o in options]
+    min_len = min(compact_lengths)
+    median_len = sorted(compact_lengths)[len(compact_lengths) // 2]
+    if min_len < max(10, median_len * 0.35):
+        return "option_length_outlier"
+    correct_len = compact_lengths[correct]
+    if correct_len > median_len * 2.4 or correct_len < median_len * 0.45:
+        return "correct_length_outlier"
+
+    token_counts = [len(_content_tokens(o)) for o in options]
+    if min(token_counts) < 2:
+        return "option_too_thin"
+    if token_counts[correct] > sorted(token_counts)[2] + 5:
+        return "correct_too_specific"
+
+    correct_roots = _content_roots(options[correct])
+    shared_with_correct = sum(1 for i, option in enumerate(options) if i != correct and correct_roots & _content_roots(option))
+    all_roots = [_content_roots(o) for o in options]
+    pairwise_shared = sum(1 for i in range(4) for j in range(i + 1, 4) if all_roots[i] & all_roots[j])
+    # If no distractor shares vocabulary with the answer and the set has almost
+    # no pairwise overlap, options are probably from different semantic worlds.
+    # We allow this when all options are fairly developed (>=4 content tokens),
+    # because legitimate near-answers may use different wording.
+    if shared_with_correct == 0 and pairwise_shared <= 1 and min(token_counts) < 4:
+        return "options_not_close"
+    return None
 
 
 def _parse_correct_index(value, options: list[str]) -> int | None:
@@ -218,6 +299,8 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
             continue
         correct = _parse_correct_index(item.get("correct", item.get("correct_index", item.get("answer"))), opts)
         if correct is None:
+            continue
+        if _quiz_options_quality_issue(opts, correct):
             continue
         explanation = _safe_trim(item.get("explanation") or "", 200)
         if not explanation:
@@ -299,45 +382,66 @@ async def generate_quiz(
     started = asyncio.get_running_loop().time()
     try:
         client = existing_client if existing_client in GEMINI_CLIENTS else GEMINI_CLIENTS[0]
-        contents: list[Any] = []
-        if existing_audio_part and existing_client is client:
-            contents.append(existing_audio_part)
-        contents.append(prompt)
         schema = quiz_response_schema()
-        resp = await asyncio.wait_for(
-            client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=make_text_config_smart(
-                    max_output_tokens=9000,
-                    model_name=GEMINI_MODEL,
-                    thinking_level="high",
-                    response_mime_type="application/json",
-                    response_schema=schema,
+        retry_note = """
+
+ПОВТОРНАЯ ГЕНЕРАЦИЯ КАЧЕСТВА:
+предыдущий результат был отброшен/усечён валидатором из-за банальных вопросов,
+очевидных distractors, плейсхолдеров или вариантов из разных смысловых категорий.
+Сделай тест более продуманным: близкие ответы, один нюанс различия, без карикатур.
+"""
+        best_questions: list[dict] = []
+        last_raw = ""
+        for attempt, attempt_prompt in enumerate((prompt, prompt + retry_note), start=1):
+            contents: list[Any] = []
+            if existing_audio_part and existing_client is client:
+                contents.append(existing_audio_part)
+            contents.append(attempt_prompt)
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=contents,
+                    config=make_text_config_smart(
+                        max_output_tokens=9000,
+                        model_name=GEMINI_MODEL,
+                        thinking_level="high",
+                        response_mime_type="application/json",
+                        response_schema=schema,
+                    ),
                 ),
-            ),
-            timeout=180.0,
-        )
-        raw = getattr(resp, "text", "") or ""
-        if not raw:
-            try:
-                for part in resp.candidates[0].content.parts:
-                    if not getattr(part, "thought", False) and getattr(part, "text", None):
-                        raw = part.text
-                        break
-            except Exception:
-                pass
-        if not raw:
-            await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error="empty_response")
-            logger.warning("[Quiz] Gemini returned empty response")
+                timeout=180.0,
+            )
+            raw = getattr(resp, "text", "") or ""
+            if not raw:
+                try:
+                    for part in resp.candidates[0].content.parts:
+                        if not getattr(part, "thought", False) and getattr(part, "text", None):
+                            raw = part.text
+                            break
+                except Exception:
+                    pass
+            last_raw = raw or last_raw
+            if not raw:
+                await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error="empty_response")
+                logger.warning("[Quiz] Gemini returned empty response")
+                continue
+            questions = _parse_quiz_json(raw, expected_count=count)
+            enough = bool(questions and len(questions) >= count)
+            error = "" if enough else ("insufficient_quality" if questions else "parse_failed")
+            await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=bool(questions), error=error)
+            if questions and len(questions) > len(best_questions):
+                best_questions = questions
+            if enough:
+                logger.info("[Quiz] Generated %d questions", len(questions))
+                return questions[:count]
+            if attempt == 1:
+                logger.warning("[Quiz] Quality retry requested: accepted %d/%d questions", len(questions or []), count)
+
+        if not best_questions:
+            logger.warning("[Quiz] Failed to parse quality quiz JSON: %s", last_raw[:200])
             return None
-        questions = _parse_quiz_json(raw, expected_count=count)
-        await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=bool(questions), error="" if questions else "parse_failed")
-        if not questions:
-            logger.warning("[Quiz] Failed to parse quiz JSON: %s", raw[:200])
-            return None
-        logger.info("[Quiz] Generated %d questions", len(questions))
-        return questions[:count]
+        logger.warning("[Quiz] Returning partial quality quiz: %d/%d questions", len(best_questions), count)
+        return best_questions[:count]
     except Exception as e:
         await alog_gemini_run(task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error=f"{type(e).__name__}: {str(e)[:240]}")
         if is_quota_error(e):
@@ -357,6 +461,8 @@ def _sanitize_poll_payload(q: dict, *, index: int, total: int) -> dict | None:
     if not question_is_usable(question) or len(options) != 4 or any(_bad_quiz_option(o) for o in options):
         return None
     if not isinstance(correct, int) or not (0 <= correct < len(options)):
+        return None
+    if _quiz_options_quality_issue(options, correct):
         return None
     poll_question = f"❓ {index}/{total}: {question}"
     if len(poll_question) > 300:
