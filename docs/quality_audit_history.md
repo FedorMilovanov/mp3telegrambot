@@ -749,3 +749,19 @@ Fixes:
 - `core.archive_quality` now HTML-escapes all archive-derived fields and quote-escapes link hrefs;
 - admin report sending now passes through `_html_message_limit()` so long HTML reports are not cut through tags/entities;
 - regression tests cover malicious archive fields, unsafe URLs, and tag/entity-safe truncation.
+
+## 2026-06-18 — Metrics/status admin HTML escaping and truncation hardened
+
+Continued surgical Telegram HTML audit found remaining admin readouts that could still render archive/log/env-derived strings without escaping or could rely on unsafe internal truncation:
+
+- Gemini metrics report used task/model/error/finish-reason/rejection strings from the observability DB inside HTML without escaping;
+- metrics report also had its own raw `text[:3820]` truncation, which could cut an HTML tag/entity before the command handler saw it;
+- `/status` and `/disk` had dynamic environment/path/exception values in HTML messages.
+
+Fixes:
+
+- `core.observability.format_gemini_metrics_report()` now escapes all DB-derived display fields and no longer performs raw HTML slicing;
+- admin command handlers send long HTML reports through `_html_message_limit()`;
+- `/status` escapes Bot API URL, backup suffix and cache fingerprint values;
+- `/disk` escapes exception text;
+- regression tests cover malicious metrics rows and safe status/disk command formatting.

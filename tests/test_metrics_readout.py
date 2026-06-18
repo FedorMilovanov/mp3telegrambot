@@ -63,6 +63,33 @@ def test_metrics_summary_and_report_include_task_tokens_and_errors(tmp_path, mon
     assert "idx_gemini_runs_task_ts" in indexes
 
 
+def test_metrics_report_escapes_html_from_logged_fields(tmp_path, monkeypatch):
+    db_path = tmp_path / "metrics_html.db"
+    monkeypatch.setattr(observability, "DB_PATH", db_path)
+
+    log_gemini_run(
+        task="task<bad>&x",
+        model="model<bad>&x",
+        error="error <b>boom</b> & details",
+        finish_reason="STOP<bad>&x",
+        validation_summary={"reasons": {"reason<bad>&x": 1}, "rejected": 1},
+        json_valid=False,
+    )
+
+    report = format_gemini_metrics_report(hours=24, recent_limit=5)
+
+    assert "task<bad>&x" not in report
+    assert "model<bad>&x" not in report
+    assert "error <b>boom</b> & details" not in report
+    assert "STOP<bad>&x" not in report
+    assert "reason<bad>&x" not in report
+    assert "task&lt;bad&gt;&amp;x" in report
+    assert "model&lt;bad&gt;&amp;x" in report
+    assert "error &lt;b&gt;boom&lt;/b&gt; &amp; details" in report
+    assert "STOP&lt;bad&gt;&amp;x" in report
+    assert "reason&lt;bad&gt;&amp;x" in report
+
+
 def test_metrics_command_is_registered_in_main_and_admin_menu():
     main_source = Path("main.py").read_text(encoding="utf-8")
     command_source = Path("handlers/commands.py").read_text(encoding="utf-8")

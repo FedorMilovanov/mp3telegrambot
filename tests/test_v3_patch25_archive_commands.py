@@ -87,6 +87,14 @@ def test_archive_formatter_uses_html_links_without_web_preview():
     assert "safe_trim" not in commands.lower()  # formatter has its own conservative truncation
 
 
+def test_admin_status_and_disk_reports_use_safe_html_limit():
+    commands = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert '_html_message_limit("\\n".join(lines))' in commands
+    assert "html_mod.escape(str(LOCAL_BOT_API_URL))" in commands
+    assert "html_mod.escape(str(_bak_info))" in commands
+    assert "html_mod.escape(str(e))" in commands
+
+
 def test_html_message_limit_preserves_tags_and_entities():
     from handlers.commands import _html_message_limit
 

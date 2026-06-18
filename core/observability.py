@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from core.database import _db_conn
 import asyncio
+import html
 import json
 import logging
 import sqlite3
@@ -38,6 +39,10 @@ def _safe_text(value: Any, max_len: int = 1000) -> str:
     if len(text) > max_len:
         return text[: max_len - 1] + "…"
     return text
+
+
+def _h(value: Any, max_len: int = 1000) -> str:
+    return html.escape(_safe_text(value, max_len), quote=False)
 
 
 def _bool_to_db(value: bool | None) -> int | None:
@@ -411,6 +416,21 @@ def _fmt_int(value: Any) -> str:
     return f"{_safe_int(value):,}".replace(",", " ")
 
 
+def _limit_html_lines(lines: list[str], *, limit: int = 3900) -> str:
+    """Limit an HTML report by whole lines to avoid cutting tags/entities."""
+    text = "\n".join(lines)
+    if len(text) <= limit:
+        return text
+    notice = "\n\n<i>⚠️ Отчёт обрезан. Используйте меньший период.</i>"
+    out: list[str] = []
+    for line in lines:
+        candidate = "\n".join([*out, line]) if out else line
+        if len(candidate) + len(notice) > limit:
+            break
+        out.append(line)
+    return ("\n".join(out).rstrip() + notice)[:limit]
+
+
 def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
     """Build an HTML-safe admin report for Telegram."""
     summary = summarize_gemini_runs(hours)
@@ -438,7 +458,7 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         lines.append("<b>By task</b>")
         for row in summary["by_task"][:8]:
             lines.append(
-                f"• <code>{_safe_text(row.get('task'), 40)}</code>: "
+                f"• <code>{_h(row.get('task'), 40)}</code>: "
                 f"runs={_fmt_int(row.get('runs'))}, err={_fmt_int(row.get('errors'))}, "
                 f"bad_json={_fmt_int(row.get('json_invalid'))}, "
                 f"tok={_fmt_int(row.get('total_tokens'))}, avg={_safe_int(row.get('avg_duration_ms'))}ms"
@@ -449,7 +469,7 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         lines.append("<b>Finish reasons</b>")
         lines.append(
             ", ".join(
-                f"<code>{_safe_text(row.get('finish_reason'), 30)}</code>={_fmt_int(row.get('runs'))}"
+                f"<code>{_h(row.get('finish_reason'), 30)}</code>={_fmt_int(row.get('runs'))}"
                 for row in summary["by_finish_reason"][:6]
             )
         )
@@ -460,7 +480,7 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         lines.append(f"Total rejected: <b>{_fmt_int(summary['candidate_rejections'])}</b>")
         lines.append(
             ", ".join(
-                f"<code>{_safe_text(row.get('reason'), 32)}</code>={_fmt_int(row.get('count'))}"
+                f"<code>{_h(row.get('reason'), 32)}</code>={_fmt_int(row.get('count'))}"
                 for row in summary["candidate_rejection_reasons"][:8]
             )
         )
@@ -470,8 +490,8 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         lines.append("<b>Recent errors</b>")
         for row in summary["recent_errors"][:5]:
             lines.append(
-                f"• <code>{_safe_text(row.get('task'), 32)}</code> "
-                f"{_safe_text(row.get('model'), 32)}: {_safe_text(row.get('error'), 120)}"
+                f"• <code>{_h(row.get('task'), 32)}</code> "
+                f"{_h(row.get('model'), 32)}: {_h(row.get('error'), 120)}"
             )
 
     if recent:
@@ -480,13 +500,10 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         for row in recent[:recent_limit]:
             status = "❌" if row.get("error") else ("⚠️" if row.get("json_valid") == 0 else "✅")
             lines.append(
-                f"{status} <code>{_safe_text(row.get('task'), 30)}</code> "
-                f"{_safe_text(row.get('model'), 28)} "
+                f"{status} <code>{_h(row.get('task'), 30)}</code> "
+                f"{_h(row.get('model'), 28)} "
                 f"{_safe_int(row.get('duration_ms'))}ms "
                 f"tok={_fmt_int(row.get('total_tokens'))}"
             )
 
-    text = "\n".join(lines)
-    if len(text) > 3900:
-        text = text[:3820].rstrip() + "\n\n<i>⚠️ Отчёт обрезан. Используйте меньший период.</i>"
-    return text
+    return _limit_html_lines(lines)

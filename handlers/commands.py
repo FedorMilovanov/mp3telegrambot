@@ -278,7 +278,7 @@ async def status_command(update, context):
     try:
         from services.ffmpeg import _get_video_encoder
         _enc, _, _ = _get_video_encoder()
-        lines.append(f"🎬 Энкодер: {_enc}")
+        lines.append(f"🎬 Энкодер: {html_mod.escape(str(_enc))}")
     except Exception:
         pass
     try:
@@ -291,7 +291,7 @@ async def status_command(update, context):
             f"base-tail={_ldp.get('tail_pad_ms', 0)}мс · "
             f"freeze≤{_ldp.get('tail_freeze_max_sec', 0)}с · "
             "vot-duration=floor · "
-            f"cache={_ld_fingerprint()}"
+            f"cache={html_mod.escape(str(_ld_fingerprint()))}"
         )
     except Exception:
         pass
@@ -299,7 +299,8 @@ async def status_command(update, context):
     _tg_proxy = bool(os.getenv("TELEGRAM_PROXY_URL", "").strip())
     _local_proxy = bool((os.getenv("LOCAL_BOT_API_PROXY_URL", "")
                          or os.getenv("LOCAL_BOT_API_PROXY_SERVER", "")).strip())
-    lines.append(f"🌐 Bot API: {'локальный (' + LOCAL_BOT_API_URL + ')' if LOCAL_BOT_API_URL else 'облачный'}")
+    _bot_api_label = "локальный (" + html_mod.escape(str(LOCAL_BOT_API_URL)) + ")" if LOCAL_BOT_API_URL else "облачный"
+    lines.append(f"🌐 Bot API: {_bot_api_label}")
     lines.append(f"🧭 Proxy: PTB={'✅' if _tg_proxy else '❌'} · local Bot API HTTP={'✅' if _local_proxy else '❌'}")
     # Диск
     try:
@@ -313,10 +314,10 @@ async def status_command(update, context):
         _db_kb = Path(DB_PATH).stat().st_size // 1024
         _baks = sorted(Path(str(DB_PATH)).parent.glob(Path(str(DB_PATH)).name + ".bak.*"))
         _bak_info = _baks[-1].name.split(".bak.")[-1] if _baks else "нет"
-        lines.append(f"🗄 БД: {_db_kb} КБ · бэкап: {_bak_info}")
+        lines.append(f"🗄 БД: {_db_kb} КБ · бэкап: {html_mod.escape(str(_bak_info))}")
     except OSError:
         pass
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await update.message.reply_text(_html_message_limit("\n".join(lines)), parse_mode="HTML")
 
 
 async def metrics_command(update, context):
@@ -512,9 +513,9 @@ async def disk_command(update, context):
         lines.append(f"<b>Размер БД:</b> {db_size:.0f} КБ")
         
     except Exception as e:
-        lines.append(f"❌ Ошибка: {e}")
+        lines.append(f"❌ Ошибка: {html_mod.escape(str(e))}")
         
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await update.message.reply_text(_html_message_limit("\n".join(lines)), parse_mode="HTML")
 
 
 async def stop_command(update, context):
