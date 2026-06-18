@@ -693,3 +693,20 @@ User requested that Telegram Quiz/tests stop being easy “guess the obvious” 
 - if Gemini returns too few quality-accepted questions, generation performs one quality retry with explicit instruction to create closer, more thoughtful answers.
 
 This keeps the user-facing quiz closer to a real theological comprehension test: one correct answer, but the wrong answers are plausible enough that the learner must understand the argument.
+
+## 2026-06-18 — Bot admin-message HTML safety bugs fixed
+
+Bug audit found runtime Telegram HTML risks in admin/archive commands:
+
+- `/archive`-style output used to truncate already-built HTML at an arbitrary byte/character boundary, which could cut an `<a>`/`<b>`/`<code>` tag and make Telegram reject the message with an entity parse error;
+- `<pre>` admin outputs escaped first and then truncated, which could cut an escaped entity such as `&lt;` / `&amp;` and also cause Telegram parse failures;
+- `/resetcache` echoed user-supplied `video_id` inside `<code>` without HTML escaping when the argument was not a parsed YouTube id.
+
+Fixes:
+
+- archive formatter now clips plain fields before escaping and truncates at record boundaries;
+- added `_html_pre_message()` that trims plain text before HTML escaping, so entities cannot be cut;
+- repair/segment admin outputs now use the safe pre-message helper;
+- resetcache echo now escapes the displayed id.
+
+Regression tests cover long archive output, long preformatted output with `<`, `>`, `&`, and resetcache escaping.

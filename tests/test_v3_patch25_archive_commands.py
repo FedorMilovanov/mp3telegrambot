@@ -85,3 +85,50 @@ def test_archive_formatter_uses_html_links_without_web_preview():
     assert "disable_web_page_preview=True" in commands
     assert '<a href="{html_mod.escape(url)}">{label}</a>' in commands
     assert "safe_trim" not in commands.lower()  # formatter has its own conservative truncation
+
+
+def test_html_pre_message_truncates_before_escaping_entities():
+    from handlers.commands import _html_pre_message
+
+    msg = _html_pre_message(("<&> " * 2000), limit=3900)
+
+    assert len(msg) <= 3900
+    assert msg.startswith("<pre>") and msg.endswith("</pre>")
+    assert "…обрезано" in msg
+    assert "<&>" not in msg
+    assert msg.count("<pre>") == msg.count("</pre>") == 1
+    assert msg.count("&lt;") == msg.count("&gt;")
+
+
+def test_resetcache_echo_escapes_user_supplied_video_id():
+    commands = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert "safe_video_id = html_mod.escape" in commands
+    assert "<code>{safe_video_id}</code>" in commands
+    assert "<code>{video_id}</code>" not in commands
+
+
+def test_archive_formatter_truncates_without_breaking_html_tags():
+    from handlers.commands import _archive_format_records
+
+    records = []
+    for i in range(40):
+        records.append({
+            "title": "Очень длинное название <с тегами> & сущностями " * 20,
+            "author": "Автор & проверка <HTML>",
+            "publication_status": "complete",
+            "youtube_url": f"https://youtu.be/video{i}?q=<bad>&x=1",
+            "synopsis_url": f"https://telegra.ph/page{i}",
+            "study_url": f"https://telegra.ph/study{i}",
+            "reflection_url": f"https://telegra.ph/refl{i}",
+            "publication_warning": "warning <must escape> & details " * 20,
+        })
+
+    text = _archive_format_records(records, title="Архив <опасный> & длинный")
+
+    assert len(text) <= 3900
+    assert "…обрезано" in text
+    assert text.count("<b>") == text.count("</b>")
+    assert text.count("<code>") == text.count("</code>")
+    assert text.count("<a href=") == text.count("</a>")
+    assert "<с тегами>" not in text
+    assert "& сущностями" not in text

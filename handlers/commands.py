@@ -170,13 +170,14 @@ async def _do_resetcache_one(video_id: str, update) -> None:
             conn.commit()
             return r
     rows = await loop.run_in_executor(None, _delete)
+    safe_video_id = html_mod.escape(str(video_id or ""))
     if rows:
         await update.message.reply_text(
-            f"✅ Кэш сброшен: <code>{video_id}</code>\nТеперь отправь ссылку заново.",
+            f"✅ Кэш сброшен: <code>{safe_video_id}</code>\nТеперь отправь ссылку заново.",
             parse_mode="HTML")
     else:
         await update.message.reply_text(
-            f"⚠️ Не найдено в кэше: <code>{video_id}</code>",
+            f"⚠️ Не найдено в кэше: <code>{safe_video_id}</code>",
             parse_mode="HTML")
 
 
@@ -638,30 +639,68 @@ def _archive_parse_limit(args, default: int = 7) -> int:
         return default
 
 
+def _html_pre_message(text, *, limit: int = 3900) -> str:
+    """Build a Telegram HTML <pre> message without cutting escaped entities."""
+    raw = str(text or "").replace("\x00", "")
+    suffix = "\n…обрезано"
+    wrapper_len = len("<pre></pre>")
+    escaped = html_mod.escape(raw)
+    if len(escaped) + wrapper_len <= limit:
+        return f"<pre>{escaped}</pre>"
+    lo, hi = 0, len(raw)
+    best = ""
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate_raw = raw[:mid].rstrip() + suffix
+        candidate = html_mod.escape(candidate_raw)
+        if len(candidate) + wrapper_len <= limit:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return f"<pre>{best}</pre>"
+
+
+def _archive_clip_plain(value, limit: int) -> str:
+    text = str(value or "").replace("\x00", "").strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) <= limit:
+        return text
+    cut = text[: max(1, limit - 1)].rstrip()
+    if " " in cut and len(cut) > limit * 0.55:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(".,;:—-") + "…"
+
+
 def _archive_format_records(records: list[dict], *, title: str) -> str:
     if not records:
-        return f"📚 <b>{html_mod.escape(title)}</b>\n\nНичего не найдено."
-    parts = [f"📚 <b>{html_mod.escape(title)}</b>", ""]
+        return f"📚 <b>{html_mod.escape(_archive_clip_plain(title, 220))}</b>\n\nНичего не найдено."
+    limit = 3900
+    note = "\n\n…обрезано, уточните запрос."
+    parts = [f"📚 <b>{html_mod.escape(_archive_clip_plain(title, 220))}</b>", ""]
     for i, r in enumerate(records, 1):
-        name = html_mod.escape(r.get("title") or "Без названия")
-        author = html_mod.escape(r.get("author") or "Автор не указан")
-        status = html_mod.escape(r.get("publication_status") or "unknown")
-        parts.append(f"<b>{i}. {name}</b>")
-        parts.append(f"👤 {author} · <code>{status}</code>")
+        name = html_mod.escape(_archive_clip_plain(r.get("title") or "Без названия", 180))
+        author = html_mod.escape(_archive_clip_plain(r.get("author") or "Автор не указан", 120))
+        status = html_mod.escape(_archive_clip_plain(r.get("publication_status") or "unknown", 80))
+        item = [f"<b>{i}. {name}</b>", f"👤 {author} · <code>{status}</code>"]
         links = []
         for label, key in (("YouTube", "youtube_url"), ("Конспект", "synopsis_url"), ("Разбор", "study_url"), ("Размышление", "reflection_url")):
-            url = r.get(key) or ""
+            url = _archive_clip_plain(r.get(key) or "", 1000)
             if url:
                 links.append(f'<a href="{html_mod.escape(url)}">{label}</a>')
         if links:
-            parts.append(" · ".join(links))
+            item.append(" · ".join(links))
         if r.get("publication_warning"):
-            parts.append("⚠️ " + html_mod.escape(str(r.get("publication_warning"))))
-        parts.append("")
+            item.append("⚠️ " + html_mod.escape(_archive_clip_plain(str(r.get("publication_warning")), 240)))
+        item.append("")
+        candidate = "\n".join([*parts, *item]).strip()
+        if len(candidate) + len(note) > limit:
+            if len("\n".join(parts).strip()) + len(note) <= limit:
+                parts.append(note.strip())
+            break
+        parts.extend(item)
     text = "\n".join(parts).strip()
-    if len(text) > 3900:
-        text = text[:3850] + "\n\n…обрезано, уточните запрос."
-    return text
+    return text if len(text) <= limit else text[:limit]
 
 
 async def archive_command(update, context):
@@ -762,10 +801,8 @@ async def repairpage_command(update, context):
                 changed_pages=sum(1 for r in item.results if r.changed),
                 errors=[r.error for r in item.results if r.error],
             )
-        text = html_mod.escape(format_batch_repair_results(batch))
-        if len(text) > 3900:
-            text = text[:3850] + "\n…обрезано"
-        await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+        text = _html_pre_message(format_batch_repair_results(batch))
+        await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
         return
 
     if telegraph_path_from_url(target):
@@ -792,10 +829,8 @@ async def repairpage_command(update, context):
             errors=[r.error for r in results if r.error],
         )
 
-    text = html_mod.escape(format_repair_results(results))
-    if len(text) > 3900:
-        text = text[:3850] + "\n…обрезано"
-    await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+    text = _html_pre_message(format_repair_results(results))
+    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def repairrecent_command(update, context):
@@ -813,10 +848,8 @@ async def repairrecent_command(update, context):
             changed_pages=sum(1 for r in item.results if r.changed),
             errors=[r.error for r in item.results if r.error],
         )
-    text = html_mod.escape(format_batch_repair_results(batch))
-    if len(text) > 3900:
-        text = text[:3850] + "\n…обрезано"
-    await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML", disable_web_page_preview=True)
+    text = _html_pre_message(format_batch_repair_results(batch))
+    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict | None]:
@@ -906,12 +939,10 @@ async def segments_command(update, context):
     if seg_status == "partial":
         text = "⚠️ Сегменты построены по неполной сетке таймкодов.\n\n" + text
     text += f"\n\nНажмите кнопку или: /cut {video_id} N"
-    safe = html_mod.escape(text)
-    if len(safe) > 3900:
-        safe = safe[:3850] + "\n…обрезано"
+    safe = _html_pre_message(text)
     markup = _build_segments_keyboard(video_id, segments)
     await update.message.reply_text(
-        f"<pre>{safe}</pre>",
+        safe,
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=markup,
@@ -959,12 +990,10 @@ async def cutseg_command(update, context):
         if seg_status == "partial":
             text = "⚠️ Сегменты построены по неполной сетке таймкодов.\n\n" + text
         text += f"\n\nНажмите кнопку или: /cut {video_id} N"
-        safe = html_mod.escape(text)
-        if len(safe) > 3900:
-            safe = safe[:3850] + "\n…обрезано"
+        safe = _html_pre_message(text)
         markup = _build_segments_keyboard(video_id, segments)
         await update.message.reply_text(
-            f"<pre>{safe}</pre>", parse_mode="HTML",
+            safe, parse_mode="HTML",
             disable_web_page_preview=True, reply_markup=markup,
         )
         return
