@@ -655,6 +655,8 @@ def _html_message_limit(html_text, *, limit: int = 3900, suffix: str = "\n…о�
             if end == -1:
                 break
             token = text[i:end + 1]
+            if len("".join(out)) + len(token) > budget:
+                break
             m = re.match(r"<\s*(/?)\s*([A-Za-z][\w-]*)\b[^>]*>", token)
             if m:
                 closing, tag = m.group(1), m.group(2).lower()
@@ -667,8 +669,6 @@ def _html_message_limit(html_text, *, limit: int = 3900, suffix: str = "\n…о�
                                 open_tags.pop()
                     elif not token.rstrip().endswith("/>"):
                         open_tags.append(tag)
-            if len("".join(out)) + len(token) > budget:
-                break
             out.append(token)
             i = end + 1
             continue
