@@ -7,6 +7,8 @@ Uses a cheap/light Gemini model by default: GEMINI_LIGHT_MODEL=gemini-3.1-flash-
 """
 from __future__ import annotations
 
+import asyncio
+
 import html
 import json
 import logging
@@ -212,10 +214,13 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
                     response_mime_type="application/json",
                     response_schema=livedub_info_response_schema(),
                 )
-                resp = await GEMINI_CLIENTS[0].aio.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=cfg,
+                resp = await asyncio.wait_for(
+                    GEMINI_CLIENTS[0].aio.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=cfg,
+                    ),
+                    timeout=60.0,  # light info card should be fast
                 )
                 raw = _strip_json_fence(getattr(resp, "text", "") or "")
                 data = json.loads(raw)
