@@ -407,23 +407,29 @@ async def run_translation_qa(
                 response_mime_type="application/json",
             )
             try:
-                resp = await client.aio.models.generate_content(
-                    model=model_name,
-                    contents=parts + [prompt],
-                    config=cfg,
+                resp = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model_name,
+                        contents=parts + [prompt],
+                        config=cfg,
+                    ),
+                    timeout=600.0,
                 )
             except Exception as _je:
                 # Fallback: тот же конфиг, но без JSON-mime (текст распарсим сами)
                 logger.info("[LiveDubQA] JSON-mime недоступен (%s) — повтор в текстовом режиме",
                             str(_je)[:120])
-                resp = await client.aio.models.generate_content(
-                    model=model_name,
-                    contents=parts + [prompt],
-                    config=make_audio_config(
-                        max_output_tokens=49152,
-                        model_name=model_name,
-                        thinking_level="high",
+                resp = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model_name,
+                        contents=parts + [prompt],
+                        config=make_audio_config(
+                            max_output_tokens=49152,
+                            model_name=model_name,
+                            thinking_level="high",
                     ),
+                    ),
+                    timeout=600.0,
                 )
             return resp
 

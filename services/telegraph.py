@@ -680,15 +680,18 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             """
             if use_schema and _synopsis_structured_output_enabled():
                 try:
-                    return await client.aio.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=make_audio_config(
-                            max_output_tokens=max_tokens,
-                            model_name=model_name,
-                            response_mime_type="application/json",
-                            response_schema=expanded_page_response_schema(),
+                    return await asyncio.wait_for(
+                        client.aio.models.generate_content(
+                            model=model_name,
+                            contents=contents,
+                            config=make_audio_config(
+                                max_output_tokens=max_tokens,
+                                model_name=model_name,
+                                response_mime_type="application/json",
+                                response_schema=expanded_page_response_schema(),
+                            ),
                         ),
+                        timeout=960.0,
                     )
                 except Exception as _schema_err:
                     if is_quota_error(_schema_err) or is_overload_error(_schema_err):
@@ -697,10 +700,13 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         "Synopsis structured output failed (%s: %s) — retry legacy JSON config",
                         type(_schema_err).__name__, str(_schema_err)[:180],
                     )
-            return await client.aio.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=make_audio_config(max_output_tokens=max_tokens, model_name=model_name),
+            return await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=make_audio_config(max_output_tokens=max_tokens, model_name=model_name),
+                ),
+                timeout=960.0,
             )
 
         async def _synopsis_with_client(client, upload_fn, prompt_text, _loop):
