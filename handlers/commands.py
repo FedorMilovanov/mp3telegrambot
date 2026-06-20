@@ -763,7 +763,7 @@ async def archive_command(update, context):
     records = await aquery_generated_pages(limit=limit)
     text = _archive_format_records(records, title=f"Последние публикации ({limit})")
     text += f"\n\n📁 Папка архива: <code>{html_mod.escape(str(ARCHIVE_DIR))}</code>"
-    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(_html_message_limit(text), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def lastpages_command(update, context):
@@ -783,7 +783,7 @@ async def search_archive_command(update, context):
         return
     records = await aquery_generated_pages(limit=10, query=query)
     await update.message.reply_text(
-        _archive_format_records(records, title=f"Поиск: {query}"),
+        _html_message_limit(_archive_format_records(records, title=f"Поиск: {query}")),
         parse_mode="HTML", disable_web_page_preview=True,
     )
 
@@ -800,7 +800,7 @@ async def author_archive_command(update, context):
         return
     records = await aquery_generated_pages(limit=10, author=author)
     await update.message.reply_text(
-        _archive_format_records(records, title=f"Автор: {author}"),
+        _html_message_limit(_archive_format_records(records, title=f"Автор: {author}")),
         parse_mode="HTML", disable_web_page_preview=True,
     )
 
@@ -817,7 +817,7 @@ async def scripture_archive_command(update, context):
         return
     records = await aquery_generated_pages(limit=10, scripture=ref)
     await update.message.reply_text(
-        _archive_format_records(records, title=f"Писание: {ref}"),
+        _html_message_limit(_archive_format_records(records, title=f"Писание: {ref}")),
         parse_mode="HTML", disable_web_page_preview=True,
     )
 

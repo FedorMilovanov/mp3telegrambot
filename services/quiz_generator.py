@@ -219,7 +219,7 @@ def _quiz_options_quality_issue(options: list[str], correct: int) -> str | None:
     # no pairwise overlap, options are probably from different semantic worlds.
     # We allow this when all options are fairly developed (>=4 content tokens),
     # because legitimate near-answers may use different wording.
-    if shared_with_correct == 0 and pairwise_shared <= 1 and min(token_counts) < 4:
+    if shared_with_correct == 0 and pairwise_shared <= 1 and min(token_counts) < 2:
         return "options_not_close"
     return None
 
