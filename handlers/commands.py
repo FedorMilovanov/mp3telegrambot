@@ -941,20 +941,22 @@ def _build_segments_keyboard(video_id: str, segments: list, *, page: int = 0, pe
     """
     if not segments:
         return None
+    # FIX: Telegram callback_data max 64 bytes; truncate video_id to stay safe
+    vid = str(video_id or "")[:48]
     total_pages = max(1, (len(segments) + per_page - 1) // per_page)
     page = max(0, min(int(page or 0), total_pages - 1))
     visible = segments[page * per_page:page * per_page + per_page]
     buttons = []
     for segment in visible:
         label = f"🎬 {segment.index}. {_short_title(segment.title)}"
-        buttons.append([InlineKeyboardButton(label, callback_data=f"segcut:{video_id}:{segment.index}")])
+        buttons.append([InlineKeyboardButton(label, callback_data=f"segcut:{vid}:{segment.index}")])
     if total_pages > 1:
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton("⬅️", callback_data=f"segpage:{video_id}:{page - 1}"))
+            nav.append(InlineKeyboardButton("⬅️", callback_data=f"segpage:{vid}:{page - 1}"))
         nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
         if page < total_pages - 1:
-            nav.append(InlineKeyboardButton("➡️", callback_data=f"segpage:{video_id}:{page + 1}"))
+            nav.append(InlineKeyboardButton("➡️", callback_data=f"segpage:{vid}:{page + 1}"))
         buttons.append(nav)
     return InlineKeyboardMarkup(buttons) if buttons else None
 
