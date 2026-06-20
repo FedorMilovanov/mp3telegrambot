@@ -94,15 +94,21 @@ def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):
 
 
 async def _generate_audio_candidate_content(
-    client, *, model: str, contents: list, max_output_tokens: int, schema: dict | None, task: str
+    client, *, model: str, contents: list, max_output_tokens: int, schema: dict | None, task: str,
+    timeout: float = 300.0,
 ):
     """Try Gemini structured JSON first, then fall back to legacy JSON prompt mode."""
     try:
-        return await client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=_candidate_audio_config(max_output_tokens, schema),
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=_candidate_audio_config(max_output_tokens, schema),
+            ),
+            timeout=timeout,
         )
+    except asyncio.TimeoutError:
+        raise
     except Exception as exc:
         if not schema:
             raise
@@ -110,10 +116,13 @@ async def _generate_audio_candidate_content(
             "%s: structured output failed (%s: %s) — retry legacy JSON config",
             task, type(exc).__name__, str(exc)[:180],
         )
-        return await client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=_candidate_audio_config(max_output_tokens, None),
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=_candidate_audio_config(max_output_tokens, None),
+            ),
+            timeout=timeout,
         )
 
 

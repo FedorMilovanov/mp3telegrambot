@@ -627,17 +627,20 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             for i, client in enumerate(_CLIENTS):
                 try:
                     try:
-                        resp = await client.aio.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=make_text_config_smart(
-                                temperature=temperature,
-                                max_output_tokens=max_tokens,
-                                model_name=model_name,
-                                thinking_level=thinking_level,
-                                response_mime_type=response_mime_type,
-                                response_schema=response_schema,
+                        resp = await asyncio.wait_for(
+                            client.aio.models.generate_content(
+                                model=model_name,
+                                contents=prompt,
+                                config=make_text_config_smart(
+                                    temperature=temperature,
+                                    max_output_tokens=max_tokens,
+                                    model_name=model_name,
+                                    thinking_level=thinking_level,
+                                    response_mime_type=response_mime_type,
+                                    response_schema=response_schema,
+                                ),
                             ),
+                            timeout=600.0,
                         )
                     except Exception as _schema_err:
                         # Schema support can vary by SDK/model. Quota/overload/internal
@@ -649,15 +652,18 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                             "_gemini_text_request[%s]: structured output failed (%s: %s) — retry legacy JSON config",
                             model_name, type(_schema_err).__name__, str(_schema_err)[:180],
                         )
-                        resp = await client.aio.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=make_text_config_smart(
-                                temperature=temperature,
-                                max_output_tokens=max_tokens,
-                                model_name=model_name,
-                                thinking_level=thinking_level,
+                        resp = await asyncio.wait_for(
+                            client.aio.models.generate_content(
+                                model=model_name,
+                                contents=prompt,
+                                config=make_text_config_smart(
+                                    temperature=temperature,
+                                    max_output_tokens=max_tokens,
+                                    model_name=model_name,
+                                    thinking_level=thinking_level,
+                                ),
                             ),
+                            timeout=600.0,
                         )
                     try:
                         result = resp.text or ""

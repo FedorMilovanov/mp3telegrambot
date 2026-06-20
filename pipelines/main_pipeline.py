@@ -374,10 +374,13 @@ async def _translate_livedub_title_for_caption(
             thinking_level="minimal",
             response_mime_type="application/json",
         )
-        resp = await GEMINI_CLIENTS[0].aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=cfg,
+        resp = await asyncio.wait_for(
+            GEMINI_CLIENTS[0].aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=30.0,  # title translation is tiny
         )
         raw = (getattr(resp, "text", "") or "").strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)

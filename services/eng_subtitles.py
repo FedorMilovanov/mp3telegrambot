@@ -44,13 +44,16 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
         client = GEMINI_CLIENTS[attempt % len(GEMINI_CLIENTS)]
         try:
             from google.genai import types
-            response = await client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                )
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        response_mime_type="application/json",
+                    )
+                ),
+                timeout=120.0,
             )
             text = response.text.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)

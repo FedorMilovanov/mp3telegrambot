@@ -351,11 +351,16 @@ def _extras_text_config(max_output_tokens: int, schema: dict | None = None):
 async def _generate_extras_content(client, *, model: str, prompt: str, max_output_tokens: int, schema: dict | None):
     """Try structured JSON for extras, then fall back to legacy JSON config."""
     try:
-        return await client.aio.models.generate_content(
-            model=model,
-            contents=[prompt],
-            config=_extras_text_config(max_output_tokens, schema),
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=[prompt],
+                config=_extras_text_config(max_output_tokens, schema),
+            ),
+            timeout=180.0,
         )
+    except asyncio.TimeoutError:
+        raise
     except Exception as exc:
         if not schema:
             raise
@@ -363,10 +368,13 @@ async def _generate_extras_content(client, *, model: str, prompt: str, max_outpu
             "extras_candidates: structured output failed (%s: %s) — retry legacy JSON config",
             type(exc).__name__, str(exc)[:180],
         )
-        return await client.aio.models.generate_content(
-            model=model,
-            contents=[prompt],
-            config=_extras_text_config(max_output_tokens, None),
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=[prompt],
+                config=_extras_text_config(max_output_tokens, None),
+            ),
+            timeout=180.0,
         )
 
 
