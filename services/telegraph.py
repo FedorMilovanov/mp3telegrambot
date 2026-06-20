@@ -28,6 +28,7 @@ from core.database import GEMINI_MODEL      # FIX telegraph
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
+from services.gemini_analyze import _spawn_safe_delete  # FIX: cleanup uploaded Gemini files
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.candidate_schema import expanded_page_response_schema
@@ -486,6 +487,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
     4. Деление на части — только по границам разделов.
     5. Навигация добавляется через editPage после публикации всех частей.
     """
+    # FIX: track uploaded Gemini files for cleanup after synopsis generation
+    _synopsis_uploaded_files: list[tuple] = []  # [(client, file_name), ...]
     try:
         if not GEMINI_CLIENTS:
             logger.warning("Synopsis: нет GEMINI_CLIENTS — пропускаем")
@@ -774,6 +777,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         uf = await client.aio.files.get(name=uf.name)
                     if uf.state == "FAILED":  # fix #8
                         raise Exception("Gemini file processing failed")
+                    _synopsis_uploaded_files.append((client, uf.name))  # FIX: track for cleanup
                     return uf
                 else:
                     audio_bytes = mp3_path.read_bytes()
@@ -904,6 +908,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                             uf = await client.aio.files.get(name=uf.name)
                         if uf.state == "FAILED":  # fix #8
                             raise Exception("Gemini file processing failed")
+                        _synopsis_uploaded_files.append((client, uf.name))  # FIX: track for cleanup
                         return uf
                     else:
                         return types.Part.from_bytes(data=mp3_path.read_bytes(), mime_type="audio/mpeg")
@@ -1362,7 +1367,14 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
     except Exception as e:
         logger.warning(f"Synopsis v2 error: {e}")
-    return None, None
+        return None, None
+    finally:
+        # FIX: cleanup uploaded Gemini files to prevent file leak
+        for _cl_client, _cl_name in _synopsis_uploaded_files:
+            try:
+                _spawn_safe_delete(_cl_client, _cl_name)
+            except Exception:
+                pass
 
 
 # ─── Видимая длина HTML-caption и умная обрезка ──────────────
