@@ -1649,14 +1649,15 @@ def _final_telegraph_polish(nodes: list) -> list:
     _ORPHAN_BOLD_RE = re.compile(r'(?<!\*)\*{2,3}(?!\*)')
     _BIDI_RE = re.compile(r'[\u2066-\u2069\u202a-\u202e\u200f]')
     # FIX BUG-10: stray English words in Russian text (code-switching from Gemini)
+    # Only replace when word is adjacent to Cyrillic (not inside English titles/quotes)
     _STRAY_EN = {
-        "especially": "особенно", "vanity": "суета", "because": "потому что",
+        "especially": "особенно", "because": "потому что",
         "however": "однако", "actually": "на самом деле", "basically": "по сути",
     }
     _STRAY_EN_RE = re.compile(
-        r'\b(' + '|'.join(re.escape(k) for k in _STRAY_EN) + r')\b',
+        r'(?<=[а-яёА-ЯЁ,.:;!?\s])(' + '|'.join(re.escape(k) for k in _STRAY_EN) + r')(?=[\s,.:;!?]*[а-яёА-ЯЁ])',
         re.IGNORECASE,
-    )  # U+200E (LTR mark) excluded — inserted by RTL fix
+    )
 
     def _polish_node(node):
         if isinstance(node, str):

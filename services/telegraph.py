@@ -1297,7 +1297,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             nodes_edit: list = []
             if i == 0:
                 nodes_edit.extend(_build_toc_nodes_v2(outline, yt_url=url, parts=parts))
-            elif total > 1 and len(part_secs) > 1:
+            elif total > 1:
                 # FIX BUG-5: add mini-outline for parts 2+ so reader sees section titles
                 _mini_outline = []
                 for _ps in part_secs:
