@@ -1370,6 +1370,26 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 await asyncio.sleep(2)
                 ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_toc, loop)
 
+            # FIX BUG-5 fallback: if editPage for part 2+ failed with mini-outline,
+            # retry without mini-outline
+            if not ok and i > 0 and total > 1:
+                _nodes_no_mini: list = []
+                for sec_idx, sec in enumerate(part_secs):
+                    if sec_idx > 0:
+                        _nodes_no_mini.append({"tag": "hr"})
+                    _nodes_no_mini.extend(_section_to_nodes_v2(
+                        sec, yt_url=url,
+                        rutube_url=rutube_url, vk_url=vk_url,
+                        page_title=part_title, duration=duration,
+                    ))
+                _nodes_no_mini.extend(_build_nav_nodes_v2(i, total, parts_urls))
+                logger.warning(
+                    "Synopsis v2: editPage часть %d/%d упала с mini-outline — повтор без него",
+                    part_num, total,
+                )
+                await asyncio.sleep(2)
+                ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_mini, loop)
+
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")
             else:
