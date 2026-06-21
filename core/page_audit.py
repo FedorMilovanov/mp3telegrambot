@@ -43,7 +43,14 @@ _POMPOUS_RE = re.compile(
 )
 
 _SOURCE_RU_ORIGINAL_RE = re.compile(
+    # FIX BUG-7: relaxed — only flag if Russian title does NOT have original in parens.
+    # Pattern: «Русское, Автор (English, Author)» is STANDARD Russian bibliography format.
+    # Only flag when there's no parenthetical original at all.
     r"^\s*[•\-]\s*[А-ЯЁ][^\n]{2,120}\(\s*[A-Z][A-Za-z .'-]{2,80},\s*[A-Za-z][^)]{2,160}\)",
+)
+# Standard Russian bibliographic format: «Русское, Автор (Original, Author)» — NOT a bug
+_SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
+    r"^\s*[•\-]\s*\*?\*?[А-ЯЁ][^,\n]{2,80},\s*[А-ЯЁ][^(]{2,50}\(\s*[A-Z].*?,\s*[A-Z].*?\)",
 )
 
 _BARE_BULLET_RE = re.compile(
@@ -119,6 +126,10 @@ def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[P
                 continue
             m = _SOURCE_RU_ORIGINAL_RE.search(line)
             if m:
+                # FIX BUG-7: standard Russian bibliographic format «Русское, Автор (Original, Author)»
+                # is NOT a bug — it's how Russian-language bibliographies work.
+                if _SOURCE_RU_WITH_ORIGINAL_RE.search(line):
+                    continue  # standard format, original title present in parens
                 # If the source normalizer keeps the Russian title as the
                 # canonical bold title, it is known/official rather than a
                 # hallucinated title. Example: Calvin's Institutes.

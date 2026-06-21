@@ -104,6 +104,29 @@ def _fix_rtl_in_nodes(nodes: list) -> list:
     return [_walk(n) for n in nodes]
 
 
+def _dedup_consecutive_timestamps(content: str) -> str:
+    """FIX BUG-4: when two consecutive paragraphs start with the same timestamp,
+    merge them by removing the duplicate timestamp from the second paragraph."""
+    if not content:
+        return content
+    _TS_START = re.compile(r'^(\d{1,2}:\d{2}(?::\d{2})?)\s')
+    lines = content.split('\n')
+    result = []
+    prev_ts = None
+    for line in lines:
+        m = _TS_START.match(line.strip())
+        if m:
+            cur_ts = m.group(1)
+            if cur_ts == prev_ts and result:
+                # Same timestamp as previous paragraph — remove timestamp from this line
+                line = line.strip()[len(cur_ts):].lstrip()
+            prev_ts = cur_ts
+        elif line.strip():
+            prev_ts = None  # reset on non-timestamp line
+        result.append(line)
+    return '\n'.join(result)
+
+
 def _clamp_content_timestamps(content: str, duration: int) -> str:
     """Удаляет или корректирует таймкоды в тексте, превышающие duration видео.
     Работает только с маркированными таймкодами (⏱, 🔗, 📌, ⏳, 📍)."""
@@ -1192,6 +1215,10 @@ def _section_to_nodes_v2(
     )
 
     content = _fix_orphaned_bold_markers(content)
+
+    # FIX BUG-4: deduplicate consecutive paragraphs starting with the same timestamp
+    content = _dedup_consecutive_timestamps(content)
+
     if duration:
         content = _clamp_content_timestamps(content, duration)
 
