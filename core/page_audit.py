@@ -50,7 +50,7 @@ _SOURCE_RU_ORIGINAL_RE = re.compile(
 )
 # Standard Russian bibliographic format: «Русское, Автор (Original, Author)» — NOT a bug
 _SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
-    r"^\s*[•\-]\s*\*?\*?[А-ЯЁ][^,\n]{2,80},\s*[А-ЯЁ][^(]{2,50}\(\s*[A-Z].*?,\s*[A-Z].*?\)",
+    r"^\s*[•\-]\s*\*?\*?[А-ЯЁ][^\n]{2,120}\(\s*[A-Z].*?,\s*[A-Z].*?\)",
 )
 
 _BARE_BULLET_RE = re.compile(

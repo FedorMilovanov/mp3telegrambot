@@ -109,7 +109,7 @@ def _dedup_consecutive_timestamps(content: str) -> str:
     merge them by removing the duplicate timestamp from the second paragraph."""
     if not content:
         return content
-    _TS_START = re.compile(r'^(\d{1,2}:\d{2}(?::\d{2})?)\s')
+    _TS_START = re.compile(r'^(\d{1,2}:\d{2}(?::\d{2})?)(?:\s|$)')
     lines = content.split('\n')
     result = []
     prev_ts = None
