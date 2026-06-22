@@ -513,6 +513,38 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
                         i += 1
                         continue
 
+            # ── Случай 2г: mid-text bare timestamp ───────────────────────────────
+            # Updated prompt allows timestamps mid-paragraph: `...фраза. 15:07 Новая мысль...`
+            # Split text around timestamps, linkify each one.
+            # GUARD: skip if preceded by a Scripture book abbreviation (Рим. 8:28)
+            if allow_plain_bold_fallback and isinstance(child, str):
+                _MID_TS = re.compile(r'(?<=[\s.!?;,])(\d{1,2}:\d{2}(?::\d{2})?)(?=\s)')
+                _SCRIPTURE_BEFORE = re.compile(rf'(?:^|\s){_SCRIPTURE_BOOK_RE}\.?\s*$')
+                _mid_matches = list(_MID_TS.finditer(child))
+                if _mid_matches:
+                    parts = []
+                    last_end = 0
+                    any_linked = False
+                    for _mm in _mid_matches:
+                        ts_text = _mm.group(1)
+                        # Skip if preceded by "Книга. " pattern (Scripture ref)
+                        before = child[:_mm.start()]
+                        if _SCRIPTURE_BEFORE.search(before):
+                            continue  # likely Scripture ref, not a timestamp
+                        lnk = _make_ts_link("", ts_text)
+                        if lnk is not None:
+                            if _mm.start() > last_end:
+                                parts.append(child[last_end:_mm.start()])
+                            parts.append(lnk)
+                            last_end = _mm.end()
+                            any_linked = True
+                    if any_linked:
+                        if last_end < len(child):
+                            parts.append(child[last_end:])
+                        new_children.extend(parts)
+                        i += 1
+                        continue
+
             # ── Случай 3: fallback — plain bold timestamp без маркера ─────────────
             if allow_plain_bold_fallback:
                 plain_ts = _is_plain_bold_timestamp(child)
