@@ -207,9 +207,9 @@ def synopsis_density_score(sections: list[dict], duration_seconds: int | float =
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
         dur = 0
-    # Coverage is a tie-breaker, not a substitute for real content.
-    # Old bonus=2000 could make a thin retry beat a substantially deeper original.
-    coverage_bonus = min(250, int((max(times) / dur) * 250)) if times and dur else 0
+    # Coverage matters: if retry covers 100% vs original 68%, that's a big deal.
+    # Bonus should be significant enough to prefer fuller coverage.
+    coverage_bonus = min(1500, int((max(times) / dur) * 1500)) if times and dur else 0
     return total_chars + len(valid) * 350 + coverage_bonus
 
 
