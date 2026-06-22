@@ -1216,6 +1216,10 @@ def _section_to_nodes_v2(
 
     content = _fix_orphaned_bold_markers(content)
 
+    # FIX BUG-14: ensure space before inline timestamps glued to quotes/punctuation
+    # Gemini sometimes writes: »**17:28** Text  →  should be: ». 17:28 Text
+    content = re.sub(r'([»"\')\]\.!?])(\*{0,2})(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}', r'\1 \3', content)
+
     # FIX BUG-4: deduplicate consecutive paragraphs starting with the same timestamp
     content = _dedup_consecutive_timestamps(content)
 
