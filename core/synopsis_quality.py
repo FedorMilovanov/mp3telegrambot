@@ -228,7 +228,7 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
     except (TypeError, ValueError):
         dur = 0
     codes = {i.code for i in issues or []}
-    basic = {"synopsis_too_few_sections", "synopsis_too_few_chars"}
+    basic = {"synopsis_too_few_sections", "synopsis_too_few_chars", "synopsis_time_coverage_low"}
     if dur >= 20 * 60 and codes & basic:
         return True
     if dur < 45 * 60:
