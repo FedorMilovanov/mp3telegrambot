@@ -577,6 +577,34 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
             # Теперь корректно: 0 результатов → диагностика и return None,
             # есть результаты → собираем url и вызываем _best_match.
             if len(items) == 0:
+                # FIX: if AI-generated real_title gave 0 results, retry with original YouTube title
+                _fallback_q = re.sub(r"\[[^\]]+\]|\([^\)]*\)$", "", title).strip()
+                if _fallback_q and _fallback_q != search_title:
+                    logger.info("VK: 0 по AI-title '%s', fallback на YouTube-title '%s'", search_title, _fallback_q[:60])
+                    _fb_params = dict(params, q=_fallback_q)
+                    try:
+                        _fb_resp = await loop.run_in_executor(None, lambda: requests.get(
+                            "https://api.vk.com/method/video.search",
+                            params=_fb_params, timeout=10, headers=headers))
+                        _fb_rj = _fb_resp.json()
+                        if "error" not in _fb_rj:
+                            _fb_items = _fb_rj.get("response", {}).get("items", [])
+                            if _fb_items:
+                                logger.info("VK fallback: %d items по YouTube-title", len(_fb_items))
+                                for item in _fb_items:
+                                    oid = item.get("owner_id", ""); vid = item.get("id", "")
+                                    canonical = f"https://vk.com/video{oid}_{vid}"
+                                    if mapping and mapping.get("vk_domain"):
+                                        item["url"] = f"https://vkvideo.ru/@{mapping['vk_domain']}?z=video{oid}_{vid}"
+                                    else:
+                                        item["url"] = canonical
+                                    item["_canonical"] = canonical
+                                result, _sc = _best_match(_fb_items, _fallback_q, duration, "vk")
+                                if result and _sc >= 0.50:
+                                    logger.info("VK fallback best_match (score=%.2f): %s", _sc, result)
+                                    return result
+                    except Exception as _fb_err:
+                        logger.warning("VK fallback error: %s", _fb_err)
                 logger.info(
                     "VK: 0 результатов по запросу '%s'. "
                     "Причины: 1) video.search требует User Token (OAuth), не Service Token "
