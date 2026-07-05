@@ -1727,6 +1727,10 @@ def _final_telegraph_polish(nodes: list) -> list:
         if isinstance(node, str):
             node = _ORPHAN_BOLD_RE.sub('', node)
             node = _BIDI_RE.sub('', node)
+            # AUDIT R9 (иврит): LTR-mark в пробелах рисует дыру «** \u200e —».
+            # Финальный чокпоинт: сюда попадают и строки после bold-split.
+            node = re.sub(r'[ \t\u00a0]+\u200e', '\u200e', node)
+            node = re.sub(r'\u200e{2,}', '\u200e', node)
             # FIX BUG-10: replace stray English words in Russian context
             node = _STRAY_EN_RE.sub(lambda m: _STRAY_EN.get(m.group(0).lower(), m.group(0)), node)
             return node
@@ -2173,6 +2177,11 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'\(\s+\*\*', '(**', text)
         # FIX 2026-05-25: malformed hour timestamps: 1:0:00 → 1:00:00
         text = re.sub(r'(\d+):(\d):(\d{2})', lambda m: f"{m.group(1)}:{m.group(2).zfill(2)}:{m.group(3)}", text)
+        # AUDIT R9 (иврит): U+200E (LTR mark) нужен ПОСЛЕ иврита, чтобы тире/
+        # латиница дальше не зеркалились, но окружённый пробелами он рисует
+        # видимую дыру «** ‎ —». Прижимаем маркер к предыдущему символу.
+        text = re.sub(r'[ \t]+\u200e', '\u200e', text)
+        text = re.sub(r'\u200e{2,}', '\u200e', text)
         # ПРАВИЛО ПРОЕКТА (AGENTS.md, оператор 2026-07-05): ⏱-таймкод стоит
         # ДО точки: «…Духа ⏱ 11:29.», не «…Духа. ⏱ 11:29». Чиним хвостовые.
         text = re.sub(
