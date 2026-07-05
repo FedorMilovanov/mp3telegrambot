@@ -25,12 +25,16 @@ def test_run_expanded_pipeline_passes_thinking_level():
 
 
 def test_reflection_reverted_to_high_quality():
-    # V3-P15+17: quality first — Reflection uses default high
+    # V3-P15+17: quality first — Reflection uses default high.
+    # AUDIT R5: окно расширено до конца вызова — override medium однажды
+    # вернулся НИЖЕ старого окна +500 симв. и тихо жил, обходя этот тест.
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     refl_pos = src.find('label="ReflectionApplication"')
-    refl_block = src[max(0, refl_pos-20):refl_pos+500] if refl_pos != -1 else ""
+    assert refl_pos != -1
+    refl_block = src[max(0, refl_pos - 20):refl_pos + 1500]
     assert 'thinking_level="medium"' not in refl_block, \
         "Reflection must use default high, not medium"
+    assert 'thinking_level=' not in refl_block or 'thinking_level="high"' in refl_block
 
 
 def test_study_keeps_default_high():

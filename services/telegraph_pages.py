@@ -1943,7 +1943,9 @@ async def create_telegraph_reflection_application(
         vk_url=vk_url,
         duration=int(duration) if duration else 0,
         plain_scripture=True,  # FIXED #127: REFLECTION требует plain text для Scripture refs в скобках
-        thinking_level="medium",  # V3-P14: пастырский стиль не требует high reasoning
+        # AUDIT R5: V3-P15/17 постановили quality-first (default high), но
+        # override medium вернулся ниже окна проверки теста. Директива
+        # оператора: максимум качества на 3.5-flash — используем default high.
         ai_data=_ai,
         video_id=video_id,
     )
