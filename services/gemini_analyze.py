@@ -67,7 +67,9 @@ def _audio_fallback_models(primary_model: str) -> list[str]:
     primary = str(primary_model or "").strip()
     mode = (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict").strip().lower()
     if mode in {"lite", "all", "legacy"}:
-        candidates = [primary, "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"]
+        # MODEL MIGRATION 2026-07: 2.5-flash-lite выключается ~22.07.2026 —
+        # остаётся только GA gemini-3.1-flash-lite (audio поддерживает).
+        candidates = [primary, "gemini-3.1-flash-lite"]
     else:
         candidates = [primary]
     out: list[str] = []
@@ -373,11 +375,16 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                 _compacted_prompt.removed_lines,
             )
         prompt = _compacted_prompt.text
+        # Аудио = 32 токена/сек (Gemini API docs). Для free tier TPM это
+        # главный расход: 2ч ≈ 230K токенов, 3ч ≈ 345K — может упереться
+        # в пер-минутный лимит проекта одной заявкой.
+        _audio_tokens_est = int(duration or 0) * 32
         logger.info(
-            "Gemini audio analysis prompt prepared: mode=%s chars=%s duration=%ss",
+            "Gemini audio analysis prompt prepared: mode=%s chars=%s duration=%ss (~%dK audio tokens)",
             AUDIO_ANALYSIS_MODE,
             len(prompt),
             duration,
+            _audio_tokens_est // 1000,
         )
 
         # AUDIT FIX MULTI-MODEL: внешний цикл по моделям-кандидатам
@@ -555,20 +562,75 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             pass
 
         # BUG-B04: response.text может быть None (thinking-only) или ValueError (safety filter)
-        raw_text = None
-        try:
-            raw_text = response.text
-        except ValueError:
-            pass
-        if not raw_text:
-            # Fallback: собираем text из parts, пропуская thinking-части
-            if response.candidates:
-                for part in response.candidates[0].content.parts:
+        def _extract_raw_text(resp) -> str | None:
+            _txt = None
+            try:
+                _txt = resp.text
+            except ValueError:
+                pass
+            if not _txt and getattr(resp, "candidates", None):
+                for part in resp.candidates[0].content.parts:
                     if hasattr(part, "thought") and part.thought:
                         continue
                     if hasattr(part, "text") and part.text:
-                        raw_text = part.text
+                        _txt = part.text
                         break
+            return _txt
+
+        def _finish_reason_of(resp) -> str:
+            if getattr(resp, "candidates", None):
+                _f = getattr(resp.candidates[0], "finish_reason", None)
+                return str(_f) if _f is not None else "UNKNOWN"
+            return "UNKNOWN"
+
+        async def _retry_low_thinking(reason: str):
+            """FIX AUDIT R5: на Gemini API thinking-токены делят бюджет с
+            max_output_tokens — thinking=high может съесть его целиком
+            (finish=MAX_TOKENS при пустом/обрезанном тексте). Раньше это была
+            ПОЛНАЯ потеря анализа; теперь один повтор с thinking_level=low."""
+            logger.warning("Gemini %s — повтор с thinking_level=low (thinking делит бюджет с ответом)", reason)
+            try:
+                if _audio_structured_output_enabled():
+                    _cfg = make_audio_config(
+                        max_output_tokens=65536,
+                        model_name=_obs_model or _current_model,
+                        thinking_level="low",
+                        response_mime_type="application/json",
+                        response_schema=audio_analysis_response_schema(),
+                    )
+                else:
+                    _cfg = make_audio_config(
+                        max_output_tokens=65536,
+                        model_name=_obs_model or _current_model,
+                        thinking_level="low",
+                    )
+                return await asyncio.wait_for(
+                    used_client.aio.models.generate_content(
+                        model=_obs_model or _current_model,
+                        contents=[used_audio_part, prompt],
+                        config=_cfg,
+                    ),
+                    timeout=960.0,
+                )
+            except Exception as _rl_err:
+                logger.warning("low-thinking retry failed: %s", str(_rl_err)[:200])
+                return None
+
+        raw_text = _extract_raw_text(response)
+        _finish_str = _finish_reason_of(response)
+        if (not raw_text) or ("MAX_TOKENS" in _finish_str):
+            _reason = "вернул пустой ответ (thinking-only)" if not raw_text else "обрезал ответ (MAX_TOKENS)"
+            _retry_resp = await _retry_low_thinking(_reason)
+            if _retry_resp is not None:
+                _retry_text = _extract_raw_text(_retry_resp)
+                _retry_finish = _finish_reason_of(_retry_resp)
+                if _retry_text and "MAX_TOKENS" not in _retry_finish:
+                    response = _retry_resp
+                    raw_text = _retry_text
+                    _finish_str = _retry_finish
+                    _obs_thinking_level = "low"
+                    logger.info("Gemini low-thinking retry успешен")
+
         if not raw_text:
             logger.warning("Gemini вернул пустой ответ (thinking-only или safety filter)")
             await alog_gemini_response(
@@ -588,32 +650,29 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         logger.info(f"Gemini ответ (первые 2000 символов): {answer[:2000]}")
 
         # BUG-B05: явная обработка MAX_TOKENS — обрезанный ответ = None
-        if response.candidates:
-            _finish = getattr(response.candidates[0], "finish_reason", None)
-            _finish_str = str(_finish) if _finish is not None else "UNKNOWN"
-            if "MAX_TOKENS" in _finish_str:
-                logger.error(
-                    f"Gemini обрезал ответ (MAX_TOKENS). Длина: {len(answer)} символов. "
-                    "Возвращаем None."
-                )
-                await alog_gemini_response(
-                    response=response,
-                    task="audio_analysis",
-                    video_id=_obs_video_id,
-                    model=_obs_model or _current_model,
-                    thinking_level=_obs_thinking_level,
-                    duration_ms=_obs_duration_ms(),
-                    retry_num=_obs_retry_num,
-                    is_fallback=_obs_is_fallback,
-                    json_valid=False,
-                    error="max_tokens",
-                )
-                return None, used_client, used_audio_part
-            elif _finish_str not in ("FinishReason.STOP", "STOP", "1"):
-                logger.warning(
-                    f"Gemini finish_reason={_finish_str} — ответ возможно неполный. "
-                    f"Длина: {len(answer)} символов"
-                )
+        if "MAX_TOKENS" in _finish_str:
+            logger.error(
+                f"Gemini обрезал ответ (MAX_TOKENS) даже после low-thinking retry. "
+                f"Длина: {len(answer)} символов. Возвращаем None."
+            )
+            await alog_gemini_response(
+                response=response,
+                task="audio_analysis",
+                video_id=_obs_video_id,
+                model=_obs_model or _current_model,
+                thinking_level=_obs_thinking_level,
+                duration_ms=_obs_duration_ms(),
+                retry_num=_obs_retry_num,
+                is_fallback=_obs_is_fallback,
+                json_valid=False,
+                error="max_tokens",
+            )
+            return None, used_client, used_audio_part
+        elif _finish_str not in ("FinishReason.STOP", "STOP", "1", "UNKNOWN"):
+            logger.warning(
+                f"Gemini finish_reason={_finish_str} — ответ возможно неполный. "
+                f"Длина: {len(answer)} символов"
+            )
 
         # BUG-B03: валидация и исправление таймкодов после парсинга
         parsed = _parse_gemini_response(answer, duration)

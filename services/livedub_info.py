@@ -40,7 +40,10 @@ def get_light_model() -> str:
 
 
 def get_light_model_fallbacks() -> list[str]:
-    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite").strip()
+    # MODEL MIGRATION 2026-07: gemini-3.1-flash-lite-preview выключается
+    # 09.07.2026, gemini-2.5-flash-lite — ~22.07.2026 (deprecations Gemini API).
+    # Единственный живой лёгкий fallback — GA gemini-3.1-flash-lite.
+    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.1-flash-lite").strip()
     out: list[str] = []
     for item in raw.split(","):
         model = item.strip()

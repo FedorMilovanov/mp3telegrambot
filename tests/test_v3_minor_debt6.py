@@ -59,11 +59,13 @@ def test_study_analysis_bans_reflection_content():
         "STUDY_ANALYSIS_PROMPT must ban reflection content"
 
 
-def test_study_analysis_longer_than_baseline():
-    """After adding STRICT_BANS_STUDY prompt must be longer than old 60198."""
+def test_study_analysis_has_strict_bans_but_not_bloated():
+    """STRICT_BANS_STUDY присутствует; AUDIT R5 сократил каталог авторов —
+    гардируем содержание, а не «чем длиннее, тем лучше»."""
     from core.prompts import STUDY_ANALYSIS_PROMPT
-    assert len(STUDY_ANALYSIS_PROMPT) > 60198, \
-        f"Expected > 60198 chars, got {len(STUDY_ANALYSIS_PROMPT)}"
+    assert "REFLECTION, не STUDY" in STUDY_ANALYSIS_PROMPT
+    assert 40000 < len(STUDY_ANALYSIS_PROMPT) < 60000, \
+        f"got {len(STUDY_ANALYSIS_PROMPT)}"
 
 
 def test_study_analysis_no_raw_placeholders():

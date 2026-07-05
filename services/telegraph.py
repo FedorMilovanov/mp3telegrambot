@@ -656,16 +656,25 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if _tr_text:
                     _transcript_attached = True
                     _transcript_text = _tr_text
-                    prompt += (
-                        "\n\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
-                        "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА / AUTO-CAPTIONS\n"
+                    # AUDIT R5 (Gemini 3.x guide): ДАННЫЕ — сначала, ЗАДАЧА и
+                    # критические правила — последними строками промпта.
+                    # Раньше 120К-стенограмма шла ПОСЛЕ инструкций, и модель
+                    # теряла форматные ограничения, прочитанные до неё.
+                    prompt = (
                         "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
-                        "Используй этот timed transcript как главный текстовый скелет речи. "
-                        "Переводи и структурируй его максимально дословно на русский, "
-                        "не превращай в summary. Сохраняй порядок фраз, примеры, имена, "
-                        "риторические вопросы и переходы. Аудиофайл используй для проверки "
-                        "интонации и спорных мест.\n\n"
+                        "ОРИГИНАЛЬНАЯ АНГЛИЙСКАЯ СТЕНОГРАММА / AUTO-CAPTIONS\n"
+                        "(данные; задача и правила — ПОСЛЕ стенограммы)\n"
+                        "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n\n"
                         + _tr_text
+                        + "\n\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+                        "КОНЕЦ СТЕНОГРАММЫ — ДАЛЕЕ ЗАДАЧА И ПРАВИЛА\n"
+                        "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n\n"
+                        + prompt
+                        + "\n\nСТЕНОГРАММА ВЫШЕ — главный текстовый скелет речи: "
+                        "переводи и структурируй её максимально дословно на русский, "
+                        "не превращай в summary. Сохраняй порядок фраз, примеры, имена, "
+                        "риторические вопросы и переходы. Аудиофайл используй для "
+                        "проверки интонации и спорных мест."
                     )
             except Exception as _tr_err:
                 logger.info("[SynopsisTranscript] prompt attach failed: %s", str(_tr_err)[:160])
@@ -806,17 +815,18 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 return await _synopsis_with_client(client, _upload, prompt, loop)
 
             # AUDIT-SUPER-FIX-BUG3: multi-model fallback для synopsis
-            # Если GEMINI_MODEL не работает (429/503) — пробуем gemini-2.5-flash-lite
+            # MODEL MIGRATION 2026-07: резерв — GA gemini-3.1-flash-lite
+            # (2.5-flash-lite выключается ~22.07.2026).
             response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis, model_name=GEMINI_MODEL)
 
             # 429 / 503 на основной модели → пробуем резервную
             if response is None:
-                logger.warning("Synopsis: основная модель недоступна — пробую gemini-2.5-flash-lite")
+                logger.warning("Synopsis: основная модель недоступна — пробую gemini-3.1-flash-lite")
                 try:
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
-                            client, "gemini-2.5-flash-lite", [audio, prompt],
+                            client, "gemini-3.1-flash-lite", [audio, prompt],
                             max_tokens=_syn_max_tokens,
                             use_schema=not _transcript_attached,
                         )
@@ -943,14 +953,16 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 else:
                     logger.warning("Synopsis: retry тоже вернул сломанный JSON — пробую упрощённый промпт")
                     # ── 3-й retry: упрощённый промпт (6 секций, меньше текста) ──
+                    # FIX AUDIT R5: это НЕ format-строка — двойные {{ }} показывали
+                    # модели буквально невалидный JSON в последнем retry.
                     simple_prompt = (
                         f"Создай краткий конспект материала «{title}» ({duration_str}).\n"
                         "Только валидный JSON без ```json и без текста вне JSON.\n"
                         "Ровно 6 разделов, каждый не более 150 слов.\n\n"
-                        '{{\n'
-                        '  "outline": [{{"title": "...", "time": "0:00"}}, ...],\n'
-                        '  "sections": [{{"title": "...", "time": "0:00", "content": "..."}}, ...]\n'
-                        '}}'
+                        '{\n'
+                        '  "outline": [{"title": "...", "time": "0:00"}, ...],\n'
+                        '  "sections": [{"title": "...", "time": "0:00", "content": "..."}, ...]\n'
+                        '}'
                     )
                     simple_response = None
                     try:
@@ -1229,6 +1241,31 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 f"Synopsis v2: мало nodes ({total_nodes_estimate}) для {mins}мин "
                 f"— конспект может быть слишком коротким"
             )
+
+        # AUDIT R5 GROUNDING: сохраняем фрагменты финальной стенограммы в
+        # общий ai_data (in-memory blackboard) — Study/Reflection работают
+        # text-only и без этого просили verbatim-цитаты у модели, у которой
+        # нет текста речи (главный источник галлюцинаций цитат).
+        # Ключ приватный: db_save его отбрасывает, в кэш не попадает.
+        try:
+            if isinstance(ai_data, dict) and sections:
+                _ground_parts: list[str] = []
+                _ground_len = 0
+                for _gs in sections:
+                    _g_title = str((_gs or {}).get("title") or "").strip()
+                    _g_time = str((_gs or {}).get("time") or "").strip()
+                    _g_text = str((_gs or {}).get("content") or "").strip()
+                    if not _g_text:
+                        continue
+                    _chunk = f"### {_g_title} ({_g_time})\n{_g_text}"
+                    _ground_parts.append(_chunk)
+                    _ground_len += len(_chunk)
+                    if _ground_len > 24000:
+                        break
+                if _ground_parts:
+                    ai_data["_synopsis_grounding"] = "\n\n".join(_ground_parts)[:24000]
+        except Exception:
+            pass
 
         # ── Рекурсивная публикация по sections ───────────────
         # Стратегия: publish-first → при CONTENT_TOO_BIG делить sections пополам.

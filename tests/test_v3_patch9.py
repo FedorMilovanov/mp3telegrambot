@@ -12,9 +12,13 @@ def test_study_analysis_no_raw_placeholders():
     assert not re.findall(r"\{[A-Z_]+\}", STUDY_ANALYSIS_PROMPT)
 
 
-def test_study_analysis_longer_than_pre_patch():
+def test_study_analysis_substantive_but_not_bloated():
+    """AUDIT R5: 12К-знаковый статический каталог авторов заменён компактным
+    ядром + тематическим {source_pack} — гардируем и низ (содержательность),
+    и верх (диета: Gemini 3.x хуже следует раздутым промптам)."""
     from core.prompts import STUDY_ANALYSIS_PROMPT
-    assert len(STUDY_ANALYSIS_PROMPT) > 60849
+    assert len(STUDY_ANALYSIS_PROMPT) > 40000
+    assert len(STUDY_ANALYSIS_PROMPT) < 60000
 
 
 def test_qa_title_requires_question_mark():

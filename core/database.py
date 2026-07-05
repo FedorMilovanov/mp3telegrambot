@@ -277,6 +277,10 @@ def db_save(video_id: str, url: str, questions: list,
     _prompt_version = prompt_version or get_prompt_fingerprint()
     _model_name     = model_name     or GEMINI_MODEL
     _updated_at     = int(time.time())
+    # AUDIT R5: приватные in-memory ключи (стенограмма-грунт для Study/
+    # Reflection) не персистим — иначе кэш раздувается на ~24КБ на видео.
+    if isinstance(ai_data, dict) and any(k.startswith("_") for k in ai_data):
+        ai_data = {k: v for k, v in ai_data.items() if not k.startswith("_")}
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""
@@ -877,7 +881,8 @@ MAX_PLAYLIST_SIZE = 50
 # ─── Gemini модели (v10, 2026-05-21) ────────────────────────────────────
 # История: до v7 — 2.5-pro/1.5-pro (платные); v7-v8 — 3.1-pro (ПЛАТНАЯ, убрана)
 # Сейчас: gemini-3.5-flash — GA 19.05.2026, бесплатный tier, thinking_level=high
-# Резерв при 429: gemini-2.5-flash-lite (в _gemini_text_request)
+# Резерв при 429: gemini-3.1-flash-lite (в _gemini_text_request);
+# 2.5-flash-lite выключена Google ~22.07.2026
 # ВАЖНО: gemini-3.1-pro ПЛАТНАЯ — не использовать как fallback
 # ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
 GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")

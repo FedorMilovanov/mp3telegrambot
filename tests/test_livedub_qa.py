@@ -897,13 +897,16 @@ def test_livedub_info_message_escapes_html():
     assert "x &lt; y" in msg
 
 
-def test_livedub_light_model_default_fallbacks_include_preview_and_stable_lite(monkeypatch):
+def test_livedub_light_model_default_fallbacks_are_alive_models(monkeypatch):
+    """MODEL MIGRATION 2026-07: -preview умер 09.07.2026, 2.5-flash-lite —
+    ~22.07.2026. В дефолтной цепочке не должно быть выключенных моделей."""
     from services.livedub_info import get_light_model_fallbacks
     monkeypatch.delenv("GEMINI_LIGHT_FALLBACK_MODELS", raising=False)
     monkeypatch.delenv("GEMINI_LIGHT_MODEL", raising=False)
     fallbacks = get_light_model_fallbacks()
-    assert "gemini-3.1-flash-lite-preview" in fallbacks
-    assert "gemini-2.5-flash-lite" in fallbacks
+    assert "gemini-3.1-flash-lite-preview" not in fallbacks
+    assert "gemini-2.5-flash-lite" not in fallbacks
+    assert any("3.1-flash-lite" in m or "3.5-flash" in m for m in fallbacks)
 
 
 def test_livedub_info_message_uses_safe_html_trim():
@@ -941,7 +944,13 @@ def test_livedub_info_card_wired_for_eng_quick_and_quick_qa():
 def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
-    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite-preview,gemini-2.5-flash-lite" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite" in env
+    # выключенные модели не должны стоять ЗНАЧЕНИЕМ fallback-цепочки
+    assert "FALLBACK_MODELS=gemini-3.1-flash-lite-preview" not in env
+    assert not any(
+        "2.5-flash-lite" in line and line.strip().startswith("GEMINI_LIGHT_FALLBACK_MODELS")
+        for line in env.splitlines()
+    )
     assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")

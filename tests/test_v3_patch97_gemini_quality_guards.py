@@ -10,7 +10,6 @@ def test_audio_analysis_default_is_primary_model_only(monkeypatch):
     monkeypatch.setenv("AUDIO_ANALYSIS_FALLBACK_MODE", "lite")
     assert gemini_analyze._audio_fallback_models("gemini-3.5-flash") == [
         "gemini-3.5-flash",
-        "gemini-2.5-flash-lite",
         "gemini-3.1-flash-lite",
     ]
 

@@ -569,7 +569,8 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     # При 503/500 (overload) — retry с короткой паузой, может пройти.
     #
     # КАЧЕСТВО: ВСЕ задачи на gemini-3.5-flash (GEMINI_MODEL).
-    # Никаких lite — fallback только на 2.5-flash-lite (свежая модель).
+    # MODEL MIGRATION 2026-07: 2.5-flash-lite выключается ~22.07.2026 —
+    # резерв теперь GA gemini-3.1-flash-lite.
     #
     # Time-budget 180с — защита от зависания.
     _start_time = time.time()
@@ -579,10 +580,9 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
         return int((time.time() - _start_time) * 1000)
 
     # ВСЕ на максимальном качестве — 3.5-flash
-    # Резерв: 2.5-flash-lite (свежая модель, не lite по качеству)
     _models = [GEMINI_MODEL]
-    if allow_model_fallback and GEMINI_MODEL != "gemini-2.5-flash-lite":
-        _models.append("gemini-2.5-flash-lite")
+    if allow_model_fallback and GEMINI_MODEL != "gemini-3.1-flash-lite":
+        _models.append("gemini-3.1-flash-lite")
 
     def _is_internal_error(e: Exception) -> bool:
         s = str(e)
@@ -1458,6 +1458,18 @@ async def create_telegraph_study_analysis(
     else:
         _synopsis_context = ""
 
+    # AUDIT R5 GROUNDING: verbatim-стенограмма конспекта — главный источник
+    # формулировок и цитат автора для text-only Study-вызова.
+    _steno = str(_ai.get("_synopsis_grounding") or "").strip()
+    if _steno:
+        _synopsis_context = (
+            (_synopsis_context + "\n\n" if _synopsis_context else "")
+            + "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (главный источник "
+              "формулировок: когда передаёшь мысль или слова автора — опирайся "
+              "на этот текст, НЕ изобретай цитат):\n"
+            + _steno
+        )
+
     # V3 SOURCE_PACKS: тематический пакет источников по key_categories
     _source_pack = get_source_pack_for_ai_data(_ai)
     _study_profile = get_expanded_analysis_profile(effective_duration, page_kind="study")
@@ -1878,6 +1890,17 @@ async def create_telegraph_reflection_application(
         )
     else:
         _synopsis_context = ""
+
+    # AUDIT R5 GROUNDING: стенограмма конспекта — применения и молитва должны
+    # брать язык и образы именно этой проповеди, а не универсальную мораль.
+    _steno_r = str(_ai.get("_synopsis_grounding") or "").strip()
+    if _steno_r:
+        _synopsis_context = (
+            (_synopsis_context + "\n\n" if _synopsis_context else "")
+            + "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (бери язык, образы и "
+              "формулировки применений отсюда; цитаты автора — только из этого текста):\n"
+            + _steno_r
+        )
 
     _reflection_profile = get_expanded_analysis_profile(duration, page_kind="reflection")
     _profile_block = build_reasoning_first_block("reflection") + "\n\n" + _reflection_profile.prompt_block("reflection")

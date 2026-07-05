@@ -142,7 +142,7 @@ YouTube-название + словарь известных авторов.
 
 
 Для быстрых текстовых задач можно использовать отдельную лёгкую модель:
-`GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite`. Если GA-имя недоступно, fallback пробует `gemini-3.1-flash-lite-preview`, затем `gemini-2.5-flash-lite`. Она не заменяет основной
+`GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite`. Если лёгкая модель недоступна, fallback уходит на основную `GEMINI_MODEL` (3.1-lite-preview и 2.5-flash-lite выключены Google в июле 2026). Она не заменяет основной
 `GEMINI_MODEL`, а используется для дешёвых карточек ENG Quick: Telegram/YouTube
 описание, компактные тезисы/субтитры по SRT перевода. Включено по умолчанию:
 `LIVEDUB_INFO_CARD=1`; выключить можно `LIVEDUB_INFO_CARD=0`.

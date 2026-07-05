@@ -10,7 +10,9 @@ python-telegram-bot[socks]>=22.5,<23.0
 # ── YouTube downloader ────────────────────────────────────────────────────────
 # FIXED v21 (#6): убрана верхняя граница <2026.0.0; добавлен экстра [default]
 # (включает mutagen, pycryptodomex, websockets — нужны для части форматов)
-yt-dlp[default]>=2025.1.0
+# >=2026.7.4: фикс CVE-2026-55404 (command injection через --write-link);
+# yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
+yt-dlp[default]>=2026.7.4
 
 # ── HTTP-клиент ───────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована
@@ -21,7 +23,9 @@ Pillow>=10.0.0,<12.0.0
 
 # ── Gemini AI ─────────────────────────────────────────────────────────────────
 # Опционально — бот работает и без него
-google-genai>=1.5.0,<3.0.0   # PATCH: allow SDK v2.x
+# Floor 2.0: thinking_level появился в 1.51, minimal/medium — в 1.56;
+# breaking changes 2.0 касаются только Interactions API, generate_content не тронут.
+google-genai>=2.0.0,<3.0.0
 
 # ── Health-check сервер ───────────────────────────────────────────────────────
 flask>=3.0.0,<4.0.0

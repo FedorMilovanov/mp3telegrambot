@@ -68,6 +68,13 @@ _LEAKY_LITERAL_PATTERNS = (
     "Чередуй полное имя",
     "проповедник показывает",
     "Джон МакАртур анализирует",
+    # AUDIT R5: расширенные вариации рамок «имя + глагол наблюдения»
+    "Джон МакАртур рассматривает",
+    "МакАртур рассматривает",
+    "Вошер описывает",
+    "Вошер объясняет",
+    "о чём говорил Вошер",
+    "как молился Мюллер",
 )
 
 
@@ -130,6 +137,9 @@ def collect_prompt_health() -> list[PromptHealthItem]:
     from core import prompts
 
     items = [
+        # AUDIT R5: VERBATIM — дефолтный synopsis-промпт (V2 — только opt-out
+        # через SYNOPSIS_VERBATIM_PROMPT=0), мониторим оба.
+        analyze_prompt_text("SYNOPSIS_VERBATIM_PROMPT", getattr(prompts, "SYNOPSIS_VERBATIM_PROMPT", "")),
         analyze_prompt_text("SYNOPSIS_PROMPT_V2", getattr(prompts, "SYNOPSIS_PROMPT_V2", "")),
         analyze_prompt_text("SYNOPSIS_PROMPT_QA", getattr(prompts, "SYNOPSIS_PROMPT_QA", "")),
         analyze_prompt_text("STUDY_ANALYSIS_PROMPT", getattr(prompts, "STUDY_ANALYSIS_PROMPT", "")),

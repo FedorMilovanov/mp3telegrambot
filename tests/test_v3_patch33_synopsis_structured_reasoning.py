@@ -27,7 +27,9 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "retry legacy JSON config" in src
     assert "return await _generate_synopsis_content(" in src
     assert "client, GEMINI_MODEL" in src
-    assert "gemini-2.5-flash-lite" in src
+    # MODEL MIGRATION 2026-07: резерв — живая GA-модель
+    assert "gemini-3.1-flash-lite" in src
+    assert "gemini-2.5-flash-lite" not in src
 
 
 def test_synopsis_structured_output_preserves_quota_overload_passthrough():
