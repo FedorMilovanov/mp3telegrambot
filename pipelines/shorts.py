@@ -121,8 +121,13 @@ async def process_and_send_shorts(
         do_title_poster  = await asettings_get("shorts_title_poster")
         # speed читается в начале функции — не повторяем здесь
         # Читаем заранее — используется в finally (await там нельзя)
+        # FIX AUDIT R4: clips тоже переиспользуют это видео — иначе после
+        # шортов clips перекачивал оригинал (в ENG-режиме — молча рендерил
+        # клипы из английского видео вместо перевода).
         _keep_for_montage = (
-            await asettings_get("shorts_montage") or await asettings_get("shorts_highlights")
+            await asettings_get("shorts_montage")
+            or await asettings_get("shorts_highlights")
+            or await asettings_get("clips")
         )
 
         logger.info(
@@ -446,7 +451,10 @@ async def process_and_send_shorts(
                 pass
         if video_path:
             try:
-                if not _keep_for_montage:
+                # FIX AUDIT R4: LiveDub-видео принадлежит основному пайплайну
+                # (ld_work), shorts его лишь одалживает — не удаляем чужое.
+                _borrowed = livedub_video_path is not None and video_path == livedub_video_path
+                if not _keep_for_montage and not _borrowed:
                     video_path.unlink(missing_ok=True)
             except Exception:
                 pass

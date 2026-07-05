@@ -624,9 +624,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_info_enabled = False
 
             async def _run_livedub_bg(video_url, workdir, source_lang=""):
+                # FIX AUDIT R4: внутренние таски объявлены до try — finally
+                # ниже отменяет их при cancel() родителя, иначе vot-cli/ffmpeg/
+                # Whisper продолжали качать сотни МБ и писать в каталог,
+                # который пайплайн уже rmtree-нул.
+                subs_task = None
+                dub_task = None
+                dub_subs_task = None
                 try:
                     # Запускаем создание субтитров параллельно с скачиванием LiveDub
-                    subs_task = None
                     if eng_subs_enabled:
                         subs_task = asyncio.create_task(
                             create_gemini_subtitles(video_url, workdir, known_duration=duration, lang=source_lang)
@@ -659,7 +665,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
                     # Субтитры перевода Яндекса — точный текст дубляжа для QA.
                     # Качаются параллельно, сбой не критичен.
-                    dub_subs_task = None
                     if _livedub_qa_enabled or _livedub_info_enabled or _livedub_quick_qa_enabled:
                         from services.yandex_live_dub import get_translation_subtitles
                         dub_subs_task = asyncio.create_task(
@@ -730,6 +735,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 except Exception as e:
                     logger.warning(f"[LiveDub Background] Ошибка: {e}")
                     return None, False, False
+                finally:
+                    _inner = [t for t in (subs_task, dub_task, dub_subs_task)
+                              if t is not None and not t.done()]
+                    for _t in _inner:
+                        _t.cancel()
+                    if _inner:
+                        try:
+                            await asyncio.gather(*_inner, return_exceptions=True)
+                        except BaseException:
+                            pass
 
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work, source_lang=source_lang))
         # --- END LIVEDUB ---
@@ -1250,8 +1265,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                       and (ld_work / ".auth_required").exists())
                 except OSError:
                     pass
+                # FIX AUDIT R4: в плейлисте (silent_errors=True) не шумим
+                # отдельным сообщением на каждый неудачный entry — итоговую
+                # сводку даёт handle_playlist (AUDIT M3).
                 try:
-                    if _auth_required:
+                    if silent_errors:
+                        pass
+                    elif _auth_required:
                         await update.message.reply_text(
                             "❌ Яндекс теперь требует авторизацию для «Живых голосов».\n"
                             "🔑 Добавь VOT_API_TOKEN в .env (инструкция в .env.example):\n"
@@ -1271,7 +1291,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     pass
             cleanup_files(media_id)
             logger.info(f"ENG Quick done: {media_id} delivered={_delivered}")
-            return True
+            # FIX AUDIT R4: return _delivered — иначе handle_playlist считал
+            # недоставленный entry успешным (✅) при уже списанном слоте лимита.
+            return _delivered
 
         # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
         cached = await adb_get(media_id)
@@ -1336,6 +1358,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Если длительность > 40 минут — сразу качаем в 64kbps
             audio_quality = "64K" if duration > 3600 else "128K"
             mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
+            # FIX AUDIT R4: прошлый прогон длинного видео мог оставить только
+            # пережатый {media_id}_64.mp3 (оригинал удалён) — кэш-hit зря
+            # перекачивал и пережимал всё аудио на каждый повторный запрос.
+            # Зеркалим glob-реюз свежего пути.
+            if not mp3_path.exists():
+                _existing_mp3 = sorted(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))
+                if _existing_mp3:
+                    mp3_path = _existing_mp3[0]
+                    logger.info(f"Кэш аудио: реюз существующего {mp3_path.name}")
             if not mp3_path.exists():
                 dl_cmd = YTDLP_BASE_ARGS + _sponsorblock_args() + [
                     "--extract-audio", "--audio-format", "mp3", "--audio-quality", audio_quality,
@@ -1372,6 +1403,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         mp3_64_path.unlink(missing_ok=True)
                 if file_size_mb > MAX_FILE_SIZE_MB:
                     await update.message.reply_text(f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия.")
+                    # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
+                    try:
+                        await _send_livedub_result()
+                    except Exception as _ld_send_err:
+                        logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
                     cleanup_files(media_id)
                     return False
             # Ищем альт-ссылки: берём из кэша если сохранены, иначе делаем запрос
@@ -1490,8 +1526,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 pass  # mp3 доставлен мгновенно — переходим к остальной отправке
             else:
               try:
-                from services.mp3_chapters import embed_chapters
-                _ts_chap_c = (c_ai or {}).get("timestamps") or []
+                from services.mp3_chapters import embed_chapters, timestamps_to_chapter_list
+                # FIX AUDIT R4: timestamps — строка, см. основной путь выше.
+                _ts_chap_c = timestamps_to_chapter_list((c_ai or {}).get("timestamps"))
                 _thumb_path_c = None
                 _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
                 if _thumb_candidates:
@@ -1501,7 +1538,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if c_tg:
                     _comment_c += f"\nSynopsis: {c_tg}"
                 
-                if isinstance(_ts_chap_c, list) and _ts_chap_c:
+                if _ts_chap_c:
                     await asyncio.get_running_loop().run_in_executor(
                         None, lambda: embed_chapters(
                             mp3_path, _ts_chap_c, duration,
@@ -1746,6 +1783,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
                     f"Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ. Попробуйте более короткое видео."
                 )
+                # FIX AUDIT R4: у LiveDub-видео свой независимый size-check и
+                # своё сообщение — не теряем обещанный ENG-перевод из-за
+                # слишком большого MP3.
+                try:
+                    await _send_livedub_result()
+                except Exception as _ld_send_err:
+                    logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
                 cleanup_files(media_id)
                 return False
 
@@ -2495,8 +2539,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # ID3-главы из Gemini-таймкодов: навигация по темам в подкаст-плеерах
         try:
-            from services.mp3_chapters import embed_chapters
-            _ts_for_chap = (ai_data or {}).get("timestamps") or []
+            from services.mp3_chapters import embed_chapters, timestamps_to_chapter_list
+            # FIX AUDIT R4: timestamps — строка "M:SS тема\n…", а не список;
+            # старый isinstance-гейт делал вшивание глав мёртвым кодом.
+            _ts_for_chap = timestamps_to_chapter_list((ai_data or {}).get("timestamps"))
             _thumb_path = None
             _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
             if _thumb_candidates:
@@ -2510,7 +2556,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if reflection_application_tg:
                 _comment += f"\nReflection: {reflection_application_tg}"
 
-            if isinstance(_ts_for_chap, list) and _ts_for_chap:
+            if _ts_for_chap:
                 await asyncio.get_running_loop().run_in_executor(
                     None, lambda: embed_chapters(
                         mp3_path, _ts_for_chap, duration,

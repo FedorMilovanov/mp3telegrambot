@@ -148,12 +148,15 @@ async def process_and_send_montage(
         if livedub_video_path and _P(livedub_video_path).exists():
             video_path = _P(livedub_video_path)
             logger.info(f"Montage: using LiveDub video: {video_path.name}")
+            # FIX AUDIT R4: LiveDub-видео нам НЕ принадлежит. owned_video=True
+            # здесь удалял переведённое видео, и highlights молча рендерился
+            # из английского оригинала.
         else:
             video_path = await download_video_for_shorts(url, media_id)
+            owned_video = True
         if not video_path:
             logger.warning("Montage: не удалось скачать видео")
             return
-        owned_video = True
         real_author = (ai_data or {}).get("real_author", "") or performer or ""
         format_name = (ai_data or {}).get("format", "other") or "other"
         sent = 0
@@ -210,12 +213,13 @@ async def process_and_send_highlights(
         if livedub_video_path and _P(livedub_video_path).exists():
             video_path = _P(livedub_video_path)
             logger.info(f"Highlights: using LiveDub video: {video_path.name}")
+            # FIX AUDIT R4: LiveDub-видео нам НЕ принадлежит — не удаляем.
         else:
             video_path = await download_video_for_shorts(url, media_id)
+            owned_video = True
         if not video_path:
             logger.warning("Highlights: не удалось скачать видео")
             return
-        owned_video = True
         real_author = (ai_data or {}).get("real_author", "") or performer or ""
         format_name = (ai_data or {}).get("format", "other") or "other"
         cand = candidates[0]

@@ -39,6 +39,30 @@ def _clean_title(topic: str, max_len: int = 120) -> str:
     return t[:max_len] if t else ""
 
 
+_TS_LINE_RE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
+
+
+def timestamps_to_chapter_list(timestamps) -> list:
+    """Приводит таймкоды к списку {"time","topic"} для embed_chapters.
+
+    FIX AUDIT R4: пайплайн хранит ai_data["timestamps"] СТРОКОЙ
+    «M:SS тема\\n…» (core/json_parser.py собирает через "\\n".join), а
+    embed_chapters ждёт список dict'ов — гейт isinstance(..., list) в
+    пайплайне был всегда False, и ID3-главы не вшивались НИ В ОДИН mp3.
+    """
+    if isinstance(timestamps, list):
+        return [
+            t for t in timestamps
+            if isinstance(t, dict) and str(t.get("time") or "").strip() and str(t.get("topic") or "").strip()
+        ]
+    out: list[dict] = []
+    for line in str(timestamps or "").splitlines():
+        m = _TS_LINE_RE.match(line.strip())
+        if m:
+            out.append({"time": m.group(1), "topic": m.group(2).strip()})
+    return out
+
+
 def embed_chapters(
     mp3_path: Path, 
     timestamps: list, 

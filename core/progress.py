@@ -32,19 +32,22 @@ def _progress_bar(pct: int) -> str:
 # но на больших плейлистах возникал cache thrashing и терялась дедупликация.
 # OrderedDict даёт настоящий LRU с ограниченным размером.
 _PROGRESS_CACHE_MAX = 500
-_last_text_cache: OrderedDict[int, str] = OrderedDict()
+# FIX AUDIT R4: ключ — (chat_id, message_id). message_id уникален только
+# внутри чата: у двух пользователей в разных личках id совпадают, и второй
+# пользователь «наследовал» кэш первого — его прогресс замирал.
+_last_text_cache: OrderedDict[tuple, str] = OrderedDict()
 
 
-def _progress_cache_get(message_id: int) -> str | None:
-    value = _last_text_cache.get(message_id)
+def _progress_cache_get(key: tuple) -> str | None:
+    value = _last_text_cache.get(key)
     if value is not None:
-        _last_text_cache.move_to_end(message_id)
+        _last_text_cache.move_to_end(key)
     return value
 
 
-def _progress_cache_put(message_id: int, text: str) -> None:
-    _last_text_cache[message_id] = text
-    _last_text_cache.move_to_end(message_id)
+def _progress_cache_put(key: tuple, text: str) -> None:
+    _last_text_cache[key] = text
+    _last_text_cache.move_to_end(key)
     while len(_last_text_cache) > _PROGRESS_CACHE_MAX:
         _last_text_cache.popitem(last=False)
 
@@ -68,7 +71,11 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
                 lines.append(val)
 
     text = "\n".join(lines)
-    msg_id = getattr(status_msg, "message_id", None)
+    _mid = getattr(status_msg, "message_id", None)
+    _chat = getattr(status_msg, "chat_id", None)
+    if _chat is None:
+        _chat = getattr(getattr(status_msg, "chat", None), "id", None)
+    msg_id = (_chat, _mid) if _mid is not None else None
 
     # AUDIT M11: дедупликация — Telegram отвечает BadRequest("message is not modified")
     if msg_id is not None and _progress_cache_get(msg_id) == text:

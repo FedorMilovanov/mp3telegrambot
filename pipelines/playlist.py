@@ -91,8 +91,11 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             await safe_edit_text(status_msg, "❌ Плейлист пуст.")
             return
         ai_status = "✅" if GEMINI_CLIENTS else "❌"
-        await status_msg.edit_text(
-            f"📋 {title}\n🎬 Записей: {total}\n🧠 AI: {ai_status}\n🎵 128 kbps\n⏳ Начинаю..."
+        # FIX AUDIT R4: safe_edit_text — удалённое пользователем статус-сообщение
+        # (BadRequest) роняло ВЕСЬ плейлист до обработки первого видео.
+        await safe_edit_text(
+            status_msg,
+            f"📋 {title}\n🎬 Записей: {total}\n🧠 AI: {ai_status}\n🎵 128 kbps\n⏳ Начинаю...",
         )
         await asyncio.sleep(2)
         success = fail = 0
@@ -110,11 +113,13 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             if user_id and not is_vip:
                 allowed, reason = await areserve_rate_limit(user_id)
                 if not allowed:
-                    await status_msg.edit_text(
+                    # FIX AUDIT R4: safe_edit_text — не роняем итоговый статус.
+                    await safe_edit_text(
+                        status_msg,
                         f"📋 {title}\n"
                         f"⏸ Лимит исчерпан после {i-1}/{total}\n"
                         f"✅ {success}  ❌ {fail}\n\n"
-                        f"{reason}"
+                        f"{reason}",
                     )
                     break
 
