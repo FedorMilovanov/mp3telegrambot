@@ -59,10 +59,14 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
 
     if dur and dur < 20 * 60:
         if kind == "reflection":
+            # AUDIT R10 (лог 2026-07-06): на high-thinking Reflection стабильно
+            # тратит 15-20K токенов на размышление ДО ответа (бюджет общий!).
+            # 26000 у balanced обрезал JSON ровно на потолке (18971+7013=25984)
+            # — страницу спасал парсер обрезков. Подняты все reflection-бюджеты.
             return ExpandedAnalysisProfile(
                 name="fast",
                 duration_label="короткий материал (<20 мин)",
-                max_tokens=14000,
+                max_tokens=22000,
                 target_sections="4–5",
                 target_chars="2500–4200 символов",
                 source_focus="не требуется",
@@ -87,7 +91,7 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
             return ExpandedAnalysisProfile(
                 name="very_long",
                 duration_label="очень длинный материал (2+ часа)",
-                max_tokens=42000,
+                max_tokens=56000,
                 target_sections="7–8",
                 target_chars="7000–10000 символов",
                 source_focus="не требуется",
@@ -112,7 +116,7 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
             return ExpandedAnalysisProfile(
                 name="deep",
                 duration_label="длинный материал (60+ мин)",
-                max_tokens=32000,
+                max_tokens=46000,
                 target_sections="6–7",
                 target_chars="5500–8500 символов",
                 source_focus="не требуется",
@@ -137,7 +141,7 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
         return ExpandedAnalysisProfile(
             name="balanced",
             duration_label="средний материал или длительность неизвестна",
-            max_tokens=26000,
+            max_tokens=38000,
             target_sections="5–6",
             target_chars="4500–7500 символов",
             source_focus="не требуется",

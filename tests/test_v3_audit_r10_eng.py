@@ -148,3 +148,49 @@ def test_lang_passthrough_video_and_tts_paths():
 
 def test_dead_env_int_removed_from_yandex_live_dub():
     assert "def _env_int" not in _read("services/yandex_live_dub.py")
+
+
+# ── 7. Живой лог 2026-07-06: обрезание Reflection и дубль автора ─
+
+def test_reflection_budgets_survive_high_thinking():
+    """thoughts+output делят ОДИН бюджет: на high thinking съедает 15-20K
+    ДО ответа. balanced=26000 обрезал JSON ровно на потолке
+    (18971+7013=25984) — все reflection-бюджеты должны держать
+    ~20K thinking + полноценный ответ."""
+    from core.analysis_profiles import get_expanded_analysis_profile
+
+    fast = get_expanded_analysis_profile(10 * 60, "reflection")
+    balanced = get_expanded_analysis_profile(41 * 60, "reflection")
+    deep = get_expanded_analysis_profile(70 * 60, "reflection")
+    very_long = get_expanded_analysis_profile(150 * 60, "reflection")
+
+    assert balanced.max_tokens >= 36000, "balanced reflection обрезался на 26000"
+    assert fast.max_tokens >= 20000
+    assert deep.max_tokens >= 44000
+    assert very_long.max_tokens >= 52000
+    assert fast.max_tokens < balanced.max_tokens < deep.max_tokens < very_long.max_tokens
+
+
+def test_search_title_does_not_duplicate_author():
+    """После отбраковки выдуманного названия real_title = полный YouTube-титул,
+    часто уже с автором — второй раз автора не приклеиваем."""
+    from services.search import _build_search_title
+
+    ai = {"real_title": "Пол Вошер. Свидетельство. Трус и лжец",
+          "real_author": "Пол Вошер", "real_event": ""}
+    t = _build_search_title(ai, "fallback")
+    assert t.lower().count("пол вошер") == 1, f"дубль автора в запросе: {t!r}"
+
+    # автор, которого в названии нет, по-прежнему добавляется
+    ai2 = {"real_title": "Что есть настоящий евангелизм",
+           "real_author": "Джон МакАртур", "real_event": ""}
+    t2 = _build_search_title(ai2, "fallback")
+    assert "МакАртур" in t2 and "евангелизм" in t2.lower()
+
+
+def test_truncation_visible_in_log():
+    src = _read("services/telegraph_pages.py")
+    assert "MAX_TOKENS" in src and "ОБРЕЗАН по max_tokens" in src, (
+        "обрезание ответа должно логироваться warning'ом, а не тонуть в info"
+    )
+    assert "finish=%s" in src, "finish_reason должен быть в token-логе"

@@ -277,7 +277,11 @@ def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
         parts.append(real_event)
     if real_title:
         parts.append(real_title)
-    if real_author:
+    # AUDIT R10 (лог 2026-07-06): после отбраковки выдуманного названия в
+    # real_title попадает ПОЛНЫЙ YouTube-титул, часто уже с автором
+    # («Пол Вошер. Свидетельство...») — без проверки получался запрос
+    # «... - Пол Вошер» с дублем автора, размывающим точность поиска.
+    if real_author and real_author.lower() not in " ".join(parts).lower():
         parts.append(real_author)
 
     combined = " - ".join(parts) if parts else ""

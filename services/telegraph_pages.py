@@ -677,13 +677,24 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                     if result:
                         # PATCH v2: thinking tokens logging
                         _meta = getattr(resp, 'usage_metadata', None)
+                        _fr = str(resp.candidates[0].finish_reason) if getattr(resp, "candidates", None) else "?"
                         if _meta:
                             logger.info(
-                                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s",
+                                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s finish=%s",
                                 model_name,
                                 getattr(_meta, 'prompt_token_count', '?'),
                                 getattr(_meta, 'thoughts_token_count', '?'),
                                 getattr(_meta, 'candidates_token_count', '?'),
+                                _fr,
+                            )
+                        # AUDIT R10 (лог 2026-07-06): Reflection упёрся в потолок
+                        # (thoughts+output == max_tokens) и JSON пришлось чинить
+                        # из обрезка. Обрезание должно быть ВИДНО в логе сразу.
+                        if "MAX_TOKENS" in _fr.upper():
+                            logger.warning(
+                                "_gemini_text_request[%s]: ответ ОБРЕЗАН по max_tokens=%s "
+                                "(thinking съел бюджет) — хвост JSON потерян, поднимите профильный бюджет",
+                                model_name, max_tokens,
                             )
                         await alog_gemini_response(
                             response=resp,
