@@ -45,7 +45,9 @@ def test_content_audit_removes_channel_position_and_material_wording():
     assert "Канал занимает" not in text
     assert "В материале" not in text
     assert "Этот термин работает" in text
-    assert "Автор критикует" in text
+    # AUDIT R6: безличная форма вместо запрещённой обёртки «Автор критикует»
+    assert "Автор критикует" not in text
+    assert "Критикуется" in text
     assert any(i.code == "prompt_context_leak_fixed" for i in issues)
 
 
