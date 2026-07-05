@@ -98,9 +98,17 @@ _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bДанный\s+труд\b", re.IGNORECASE), "Этот труд"),
     (re.compile(r"\bДанная\s+книга\b", re.IGNORECASE), "Эта книга"),
     (re.compile(r"\bВ\s+материале\s+этот\s+термин\s+рассматривается\b", re.IGNORECASE), "Этот термин работает"),
-    (re.compile(r"\bВ\s+материале\s+говорится\b", re.IGNORECASE), "Автор говорит"),
+    # FIX AUDIT R6: рерайт в «Автор говорит/показывает…» сам создавал
+    # запрещённый third-person wrapper, который следом вычищал другой
+    # скраббер. Переписываем сразу в безличную форму.
+    (re.compile(r"\bВ\s+материале\s+говорится\b", re.IGNORECASE), "Говорится"),
     (re.compile(r"\bВ\s+материале\s+", re.IGNORECASE), ""),
-    (re.compile(r"\bМатериал\s+(критикует|показывает|подчеркивает|разбирает|указывает|связывает)\b", re.IGNORECASE), r"Автор \1"),
+    (re.compile(r"\bМатериал\s+критикует\b", re.IGNORECASE), "Критикуется"),
+    (re.compile(r"\bМатериал\s+показывает\b", re.IGNORECASE), "Показывается"),
+    (re.compile(r"\bМатериал\s+подчеркивает\b", re.IGNORECASE), "Подчеркивается"),
+    (re.compile(r"\bМатериал\s+разбирает\b", re.IGNORECASE), "Разбирается"),
+    (re.compile(r"\bМатериал\s+указывает\b", re.IGNORECASE), "Указывается"),
+    (re.compile(r"\bМатериал\s+связывает\b", re.IGNORECASE), "Связывается"),
     (re.compile(r"[^.?!…]*(?:конфессиональн\w+\s+рамк\w+\s+канал\w*|редакторск\w+\s+позици\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*", re.IGNORECASE), ""),
 )
 

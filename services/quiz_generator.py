@@ -108,7 +108,9 @@ def quiz_response_schema() -> dict:
         "type": "object",
         "properties": {
             "question": {"type": "string"},
-            "options": {"type": "array", "items": {"type": "string"}},
+            # AUDIT R6: ровно 4 варианта уже на уровне схемы — валидатор
+            # молча выбрасывал вопросы с 3/5 вариантами после dedupe.
+            "options": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 4},
             "correct": {"type": "integer"},
             "explanation": {"type": "string"},
         },

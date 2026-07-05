@@ -896,7 +896,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 model=GEMINI_MODEL, thinking_level="high", json_valid=True,
             )
         elif _looks_like_json(synopsis_text):
-            # Сломанный JSON → один retry с пониженной температурой
+            # Сломанный JSON → один retry с явным указанием на ошибку формата
+            # (temperature на 3.x не переопределяется — см. make_audio_config)
             logger.warning("Synopsis: сломанный JSON от Gemini — выполняю retry")
             await asyncio.sleep(10)  # Пауза перед retry
             retry_response = None
