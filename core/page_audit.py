@@ -59,6 +59,11 @@ _BARE_BULLET_RE = re.compile(
 )
 
 
+def _fold_title(s: str) -> str:
+    """Case/ё-insensitive fold for comparing Russian titles."""
+    return s.replace("ё", "е").replace("Ё", "Е").lower().strip()
+
+
 def flatten_telegraph_nodes(nodes: Any) -> str:
     """Flatten Telegraph node tree to readable text for audit."""
     if isinstance(nodes, str):
@@ -126,15 +131,29 @@ def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[P
                 continue
             m = _SOURCE_RU_ORIGINAL_RE.search(line)
             if m:
-                # FIX BUG-7: standard Russian bibliographic format «Русское, Автор (Original, Author)»
-                # is NOT a bug — it's how Russian-language bibliographies work.
-                if _SOURCE_RU_WITH_ORIGINAL_RE.search(line):
-                    continue  # standard format, original title present in parens
-                # If the source normalizer keeps the Russian title as the
-                # canonical bold title, it is known/official rather than a
-                # hallucinated title. Example: Calvin's Institutes.
-                raw_title = re.sub(r"^\s*[•\-]\s*", "", line).split(",", 1)[0].strip().strip("*")
+                # FIX BUG-7 + regression fix: standard Russian bibliographic
+                # format «Русское, Автор (Original, Author)» is fine ONLY when
+                # the Russian title is not a known-wrong variant. Ask the
+                # source-title normalizer: if it rewrites the card to a
+                # canonical title that is absent from the raw line (e.g.
+                # «Странный огонь» → «Чуждый огонь»), the card carries an
+                # invented/non-official Russian title and must be flagged even
+                # though the parenthetical original is present.
                 normalized = normalize_source_map_text(line)
+                canon_m = re.search(r"\*\*(.+?)\*\*", normalized)
+                if canon_m:
+                    canon_title = _fold_title(canon_m.group(1))
+                    if canon_title and canon_title not in _fold_title(line):
+                        issues.append(PageAuditIssue(
+                            "source_map_original_title",
+                            "source card contains non-official Russian title "
+                            f"(canonical: {canon_m.group(1).strip()})",
+                            line[:240],
+                        ))
+                    continue
+                if _SOURCE_RU_WITH_ORIGINAL_RE.search(line):
+                    continue  # standard format, unknown title — conservative skip
+                raw_title = re.sub(r"^\s*[•\-]\s*", "", line).split(",", 1)[0].strip().strip("*")
                 if raw_title and f"**{raw_title}**" in normalized:
                     continue
                 issues.append(PageAuditIssue(

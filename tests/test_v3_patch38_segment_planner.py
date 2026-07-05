@@ -59,7 +59,10 @@ def test_segments_and_cutseg_commands_are_registered():
     assert "render_and_send_segment" in commands
     assert "parse_segment_selection" in commands
     assert "segments_batch_render" in commands
-    assert "segcut:{video_id}:{segment.index}" in commands
+    # cc3a2b5: video_id is truncated to `vid` so callback_data fits Telegram's
+    # 64-byte limit.
+    assert "segcut:{vid}:{segment.index}" in commands
+    assert '[:48]' in commands, "video_id must be truncated for callback_data 64-byte limit"
     assert 'CommandHandler("segments"' in main
     assert 'CommandHandler("cutseg"' in main
     assert 'CommandHandler("cut"' in main

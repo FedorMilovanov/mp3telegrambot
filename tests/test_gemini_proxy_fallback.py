@@ -29,10 +29,16 @@ def test_env_example_documents_gemini_proxy():
 
 def test_auto_proxy_excludes_russian_services():
     """When HTTPS_PROXY is auto-set from TELEGRAM_PROXY_URL, Russian services
-    must be added to NO_PROXY so requests.get to RuTube/VK/Telegraph goes direct."""
+    must be added to NO_PROXY so requests.get to RuTube/VK goes direct.
+
+    Telegraph (telegra.ph / api.telegra.ph) intentionally goes THROUGH the
+    proxy since commit a064309 — Telegraph can be blocked locally, so it must
+    NOT be in the auto NO_PROXY list."""
     src = Path("core/globals.py").read_text(encoding="utf-8")
     assert "rutube.ru" in src, "NO_PROXY must include rutube.ru"
     assert "api.vk.com" in src, "NO_PROXY must include api.vk.com"
-    assert "telegra.ph" in src, "NO_PROXY must include telegra.ph"
+    assert "telegra.ph" not in src, (
+        "telegra.ph must stay OUT of auto NO_PROXY — Telegraph goes through proxy (a064309)"
+    )
     assert "api.telegram.org" in src, "NO_PROXY must include api.telegram.org"
     assert "_proxy_was_auto" in src, "must track whether proxy was auto-set"

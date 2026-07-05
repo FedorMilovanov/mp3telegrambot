@@ -101,7 +101,10 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     prompts = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "SYNOPSIS_VERBATIM_PROMPT" in prompts
     assert "Не summary. Не статья. Не анализ. Не пересказ." in prompts
-    assert "Каждый абзац content начинай с таймкода" in prompts
+    # eb893df: timestamps are inline ⏱ **M:SS** anchors before the period,
+    # not paragraph-start prefixes.
+    assert "Внутри content ставь inline-якоря ⏱ **M:SS**" in prompts
+    assert "всегда ВНУТРИ предложения ПЕРЕД точкой" in prompts
     assert "Не используй source cards" in prompts
     assert "_synopsis_verbatim_prompt_enabled" in src
     assert "SYNOPSIS_VERBATIM_PROMPT" in src
