@@ -232,10 +232,19 @@ _INLINE_SCRUB_PATTERNS = [
     r"\w+\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}",    # "March 7 at 5:11"
     r"текст\s+подготовлен\s+с\s+помощью[^.]*",
     r"подготовлен[оа]?\s+с\s+помощью\s+gemini\s*ai[^.]*",
-    # BUG-R3-01: git/tech английские слова попадающие в русский текст через
-    # YouTube-субтитры или транскрипцию Whisper — «опубли commit вавшего»
-    r"\b(commit|push|merge|branch|diff|rebase|checkout|stash|fetch|pull request)\b",
 ]
+
+# BUG-R3-01: git/tech английские слова, попадающие в РУССКИЙ текст через
+# YouTube-субтитры или транскрипцию Whisper — «опубли commit вавшего».
+# FIX AUDIT R4: скраб только в кириллическом контексте. Безусловный \b-паттерн
+# вырезал обычные английские слова из цитат Писания: "Commit your way to the
+# LORD" (Пс 36:5), "a righteous Branch" (Иер 23:5) — поля en_raw/quote портились.
+_GIT_NOISE_RE = re.compile(
+    r"(?:(?<=[а-яА-ЯёЁ])|^)[ \t]*"
+    r"\b(?:commit|push|merge|branch|diff|rebase|checkout|stash|fetch|pull request)\b"
+    r"[ \t]*(?=[а-яА-ЯёЁ]|$)",
+    re.IGNORECASE,
+)
 
 
 def _scrub_inline(text: str) -> str:
@@ -246,6 +255,9 @@ def _scrub_inline(text: str) -> str:
         return text
     for pat in _INLINE_SCRUB_PATTERNS:
         text = re.sub(pat, "", text, flags=re.IGNORECASE)
+    # git-шум вычищаем только рядом с кириллицей; заменяем пробелом, чтобы
+    # не склеивать соседние русские слова («опубликовал push серию»).
+    text = _GIT_NOISE_RE.sub(" ", text)
     text = normalize_common_typos(text)
     text = scrub_third_person_phrases(text)
     # Схлопываем только множественные пробелы/табы внутри строки

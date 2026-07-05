@@ -330,7 +330,10 @@ def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
 _video_processing_locks: dict[str, asyncio.Lock] = {}
 _video_lock_meta: dict[str, float] = {}
 _video_locks_mutex = threading.Lock()
-_VIDEO_LOCK_TTL_SEC = float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600"))
+try:
+    _VIDEO_LOCK_TTL_SEC = float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600")
+except ValueError:
+    _VIDEO_LOCK_TTL_SEC = 3600.0
 
 def _cleanup_video_locks_locked(now: float | None = None) -> None:
     now = now or time.time()
@@ -525,13 +528,25 @@ class _TokenMaskFilter(logging.Filter):
                 if masked != formatted:
                     record.msg  = masked
                     record.args = ()
+            # Трейсбеки тоже содержат секреты (например, URL с access_token
+            # внутри requests.ConnectionError). Formatter использует exc_text,
+            # если он уже установлен — маскируем и кэшируем его здесь.
+            if record.exc_info and record.exc_info[1] is not None and not record.exc_text:
+                exc_text = logging.Formatter().formatException(record.exc_info)
+                record.exc_text = self._mask(exc_text)
         except Exception:
             pass
         return True
 
 
 _token_filter = _TokenMaskFilter()
+# ВАЖНО: фильтр на самом root-логгере срабатывает только для записей,
+# сделанных напрямую через root. Записи из logging.getLogger(__name__)
+# (все модули бота) проходят к root-хендлерам МИМО фильтров root-логгера —
+# поэтому вешаем фильтр на сами хендлеры (console из basicConfig + файл).
 logging.getLogger().addFilter(_token_filter)
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_token_filter)
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)

@@ -213,7 +213,13 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
     if isinstance(ts_list, list):
         lines = []
         dropped = []
-        for ts in ts_list[:50]:  # raised from 35 to keep final timestamps
+        # FIX AUDIT R4: cap 50 сохраняет ХВОСТ (финал/призыв/молитва), а не
+        # только начало — head-slice отбрасывал именно те поздние таймкоды,
+        # ради которых лимит поднимали с 35.
+        if len(ts_list) > 50:
+            logger.warning("timestamps: %d записей — оставляю первые 40 и последние 10", len(ts_list))
+            ts_list = ts_list[:40] + ts_list[-10:]
+        for ts in ts_list:
             if not isinstance(ts, dict):
                 continue
             t_str = (ts.get("time") or "").strip()

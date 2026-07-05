@@ -457,10 +457,18 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         break
                     except Exception as e:
                         _is_quota = is_quota_error(e)
+                        # FIX AUDIT R4: исчерпанный ReadTimeout на одном ключе не должен
+                        # ронять весь анализ — другие ключи (другие проекты/бэкенды)
+                        # могли бы ответить. _gemini_call_with_retry уже сделал 3 попытки
+                        # на этом ключе, поэтому сразу ротируемся на следующий.
+                        _is_timeout = (
+                            isinstance(e, TimeoutError)
+                            or "Timeout" in type(e).__name__
+                        ) and not _is_quota
                         _is_overload = is_overload_error(e) and not _is_quota
-                        if _is_quota or _is_overload:
+                        if _is_quota or _is_overload or _is_timeout:
                             logger.warning(
-                                f"Gemini {'квота' if _is_quota else '503/disconnect'}: "
+                                f"Gemini {'квота' if _is_quota else ('timeout' if _is_timeout else '503/disconnect')}: "
                                 f"{type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ..."
                             )
                             # FIX: удаляем загруженный временный файл при ротации
@@ -473,6 +481,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             if _is_quota:
                                 # Не баним модель глобально (ключи в разных проектах имеют свои квоты)
                                 break
+                            if _is_timeout:
+                                break  # 3 ретрая на этом ключе уже были — следующий клиент
                             # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
                             if _is_overload and attempt < 2:
                                 _wait_503 = 15 * (attempt + 1)  # 15s, 30s
@@ -494,6 +504,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                 logger.warning("Gemini 503 на всех ключах — жду 60s и пробую ещё раз весь круг...")
                 await asyncio.sleep(60)
                 for client in GEMINI_CLIENTS:
+                    audio_part = None
                     try:
                         _obs_retry_num = 3
                         audio_part, used_client = await upload_to_client(client)
@@ -506,10 +517,18 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             timeout=960.0,
                         )
                         used_audio_part = audio_part
+                        # FIX AUDIT R4: без success=True следующая итерация цикла
+                        # моделей обнуляла response (строки сброса в начале итерации)
+                        # и выбрасывала успешный ответ второго круга.
+                        success = True
                         logger.info("Gemini: второй круг успешен!")
                         break
                     except Exception as e2:
                         logger.warning(f"Gemini второй круг: {type(e2).__name__}: {str(e2)[:150]}")
+                        # FIX AUDIT R4: зеркалим очистку первого круга — иначе каждый
+                        # неудачный клиент второго круга оставляет ~50MB файл в Files API.
+                        if audio_part is not None and hasattr(audio_part, 'name'):
+                            _spawn_safe_delete(client, audio_part.name)
                         last_err = e2
                         continue
 

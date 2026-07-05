@@ -234,13 +234,23 @@ DISALLOWED_SOURCE_AUTHORS: set[str] = {
     "Tim Keller", "Timothy Keller", "Keller", "Тим Келлер", "Тимоти Келлер",
 }
 
+# FIX AUDIT R4: денилист по подстроке «Keller» ловил и других авторов
+# (W. Phillip Keller, «A Shepherd Looks at Psalm 23» — легитимная карточка).
+# Матчим полное имя с границами слов; русские формы — с падежными окончаниями.
+_DISALLOWED_AUTHOR_RE = re.compile(
+    r"\b(?:"
+    r"tim(?:othy)?\s+(?:[a-z]\.\s*)*keller"
+    r"|тим(?:оти)?[а-яё]*\s+(?:[а-яё]\.\s*)*келлер[а-яё]*"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 def is_disallowed_source_author(value: str) -> bool:
     raw = str(value or "").strip()
     if not raw:
         return False
-    raw_cf = raw.casefold()
-    return any(item.casefold() in raw_cf for item in DISALLOWED_SOURCE_AUTHORS)
+    return bool(_DISALLOWED_AUTHOR_RE.search(raw))
 
 
 @dataclass(frozen=True)
@@ -337,6 +347,13 @@ _EN_AUTHOR_WITH_TITLE_RE = re.compile(
     r"(?P<title>[A-Za-z][^\n]{2,220})$"
 )
 
+# «Похоже на имя автора»: минимум два слова с заглавной буквы; допускаются
+# инициалы и соединители «и»/«and» для соавторов. Отсекает английскую прозу
+# вида "Behold, I stand at the door" (en_author был бы одиночным словом).
+_MULTIWORD_NAME_RE = re.compile(
+    r"^[А-ЯЁA-Z][\w.’'\-]*(?:\s+(?:и|and|[А-ЯЁA-Z][\w.’'\-]*)){1,4}$"
+)
+
 _SOURCE_AUTHOR_WHY_TITLE_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
     r"(?P<author>[A-Z][A-Za-z .’'\-]{2,100})\.\s*[—-]\s*"
@@ -367,6 +384,27 @@ _FLEX_DUPLICATE_PAREN_RE = re.compile(
     r"\(\s*(?P<paren_author>[^,\n]{2,120}),\s*"
     r"(?P<paren_title>[^()\n]{2,220}?)\.?\s*\)\.?$"
 )
+
+
+def _looks_like_source_card_line(s: str) -> bool:
+    """True для строк, похожих на библиографическую карточку.
+
+    Денилист авторов должен вырезать карточки, а не любую прозу,
+    в которой упомянуто имя (например, разбор критики взглядов автора).
+    """
+    s = str(s or "").strip()
+    if not s:
+        return False
+    if re.match(r"^\s*[•\-]\s+", s):
+        return True
+    return bool(
+        _SOURCE_RU_WITH_ORIGINAL_RE.match(s)
+        or _SOURCE_RU_TITLE_AUTHOR_WITH_ORIGINAL_RE.match(s)
+        or _EN_AUTHOR_WITH_TITLE_RE.match(s)
+        or _SOURCE_AUTHOR_WHY_TITLE_RE.match(s)
+        or _SOURCE_TITLE_AUTHOR_DUP_WHY_RE.match(s)
+        or _DUPLICATE_PAREN_RE.match(s)
+    )
 
 
 def _same_author(a: str, b: str) -> bool:
@@ -505,7 +543,11 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     # parenthetical verifier `(John MacArthur, Strange Fire)` превращается в
     # `(Джон МакАртур, Strange Fire)`, и мы теряем оригинального автора.
     out = correct_known_ru_title(str(line or ""))
-    if is_disallowed_source_author(out):
+    # FIX AUDIT R4: правило AGENTS.md — «silently drop disallowed authors» —
+    # относится к source-КАРТОЧКАМ. Раньше упоминание автора в любой прозе
+    # (например, разбор лекции с критикой его взглядов) обнуляло всё поле
+    # через _scrub_inline → normalize_source_map_text — тихая потеря контента.
+    if is_disallowed_source_author(out) and _looks_like_source_card_line(out):
         return ""
     # Only source-card-like lines need aggressive whitespace/dedupe normalization.
     # Plain inline nodes such as "• " must keep their spacing.
@@ -593,7 +635,12 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         en_author = m2.group("en_author").strip()
         title = m2.group("title").strip().rstrip(".")
         author = canonical_author_name(en_author)
-        if author != en_author or re.search(r"[A-Za-z]", title):
+        # FIX AUDIT R4: карточку строим только для известного автора или
+        # имени из ≥2 капитализированных слов. Ветка «любой Latin в title»
+        # превращала обычные английские фразы в фейковые карточки:
+        # "Behold, I stand at the door and knock." →
+        # "**I stand at the door and knock**, Behold."
+        if author != en_author or _MULTIWORD_NAME_RE.match(en_author):
             return _format_canonical_source_card(bullet, author, en_author, title)
 
     if looks_like_source and out.strip().startswith(("•", "-")) and not re.search(r"[.!?]\s*$", out):

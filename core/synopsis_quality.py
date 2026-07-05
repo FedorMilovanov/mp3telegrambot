@@ -127,19 +127,28 @@ def _section_author_voice_markers(section: dict[str, Any]) -> int:
                     text += " " + str(step)
     return len(_BOLD_PHRASE_RE.findall(text)) + len(_YEAR_OR_NAME_RE.findall(text))
 
-_TS_INLINE_RE = re.compile(r"(?:⏱|📌)?\s*\b\d{1,2}:\d{2}(?::\d{2})?\b")
+# FIX AUDIT R4: маркер ⏱/📌 обязателен. Опциональный маркер превращал ссылки
+# на стихи («Ин 3:16», «Рим 8:28») в «якоря» — конспект без единого реального
+# inline-таймкода проходил аудит и density retry никогда не срабатывал.
+_TS_INLINE_RE = re.compile(r"[⏱📌]\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?")
+# Структурные поля блоков хранят «голый» таймкод без маркера — это тоже якорь.
+_TS_FIELD_RE = re.compile(r"^\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}\s*$")
 
 
 def _section_inline_timestamp_count(section: dict[str, Any]) -> int:
     text = str((section or {}).get("content") or "")
     blocks = (section or {}).get("blocks") or []
+    field_count = 0
     if isinstance(blocks, list):
         for b in blocks:
             if isinstance(b, dict):
-                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "timestamp", "why_relevant", "role_in_argument", "anchor_timestamp"))
+                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "why_relevant", "role_in_argument"))
                 for step in b.get("steps") or []:
                     text += " " + str(step)
-    return len(_TS_INLINE_RE.findall(text))
+                for k in ("timestamp", "anchor_timestamp"):
+                    if _TS_FIELD_RE.match(str(b.get(k) or "")):
+                        field_count += 1
+    return field_count + len(_TS_INLINE_RE.findall(text))
 
 def audit_synopsis_density(sections: list[dict], duration_seconds: int | float = 0) -> list[SynopsisQualityIssue]:
     """Return warnings when Synopsis looks too thin for material duration."""

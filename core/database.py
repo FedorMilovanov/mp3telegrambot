@@ -877,7 +877,10 @@ GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")
-CACHE_TTL_DAYS        = int(os.getenv("CACHE_TTL_DAYS",    "45"))
+try:
+    CACHE_TTL_DAYS = int(os.getenv("CACHE_TTL_DAYS", "45").strip() or "45")
+except ValueError:
+    CACHE_TTL_DAYS = 45
 PROMPT_SCHEMA_VERSION = os.getenv("PROMPT_SCHEMA_VERSION", "analysis-deep-v7")
 _AUDIO_ANALYSIS_MODE = os.getenv("AUDIO_ANALYSIS_MODE", "deep").strip().lower() or "deep"
 if _AUDIO_ANALYSIS_MODE not in {"deep", "balanced", "fast"}:

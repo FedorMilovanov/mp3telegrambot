@@ -47,6 +47,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# V3-P1 fix: в режиме health-check бот работает в daemon-потоке, где ни
+# loop.add_signal_handler, ни signal.signal не работают (только main thread).
+# Сигнал ловим в main() (main thread) и передаём через этот Event.
+_STOP_EVENT = threading.Event()
+
 async def run_bot_async():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN не найден!")
@@ -55,12 +60,20 @@ async def run_bot_async():
     # AUDIT C5: чистим словарь per-video locks. После краша run_bot_async и
     # создания нового event loop старые Lock'и привязаны к мёртвому loop,
     # что в Python 3.10+ даёт RuntimeError при первом параллельном запросе.
-    from core.globals import _video_processing_locks, _video_locks_mutex
+    from core.globals import _video_processing_locks, _video_locks_mutex, _video_lock_meta
     with _video_locks_mutex:
         _stale = len(_video_processing_locks)
         _video_processing_locks.clear()
+        _video_lock_meta.clear()
     if _stale:
         logger.info(f"🧹 Очищено per-video locks от предыдущего запуска: {_stale}")
+    # Тот же класс бага для rate-limit локов: _rate_limit_locks_guard и
+    # per-user asyncio.Lock'и переживают пересоздание event loop и остаются
+    # привязаны к мёртвому loop — каждый не-VIP запрос падал бы с
+    # RuntimeError "bound to a different event loop" до ручного рестарта.
+    import core.database as _core_db
+    _core_db._rate_limit_async_locks.clear()
+    _core_db._rate_limit_locks_guard = asyncio.Lock()
 
     logger.info("🚀 Бот запускается...")
     # AUDIT 2026-06-10: startup-диагностика внешних инструментов.
@@ -748,7 +761,13 @@ async def run_bot_async():
             BotCommand("help",  "ℹ️ Справка"),
             BotCommand("mode",  "🌐 Режим: RUS / ENG + живой перевод"),
         ]
-        await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
+        try:
+            await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
+        except Exception as _e:
+            # Косметическая регистрация меню не должна ронять уже запущенный
+            # polling: исключение здесь раскручивает async with app и уводит
+            # бота в полный restart-цикл.
+            logger.warning("set_my_commands(default) failed: %s", _e)
 
         # VIP/Admin видят расширенное меню с /resetcache и /settings
         for admin_id in ADMIN_IDS:
@@ -817,14 +836,14 @@ async def run_bot_async():
         asyncio.create_task(_periodic_maintenance())
 
         while True:
-            if app.bot_data.get("stop_requested"):
+            if app.bot_data.get("stop_requested") or _STOP_EVENT.is_set():
                 logger.info("🛑 Stop requested — останавливаем polling/application")
                 await _stop_started_application()
                 return "stop_requested"
             mark_bot_alive()
             # Спим короткими шагами, чтобы /stop не ждал до 60 секунд.
             for _ in range(60):
-                if app.bot_data.get("stop_requested"):
+                if app.bot_data.get("stop_requested") or _STOP_EVENT.is_set():
                     logger.info("🛑 Stop requested — останавливаем polling/application")
                     await _stop_started_application()
                     return "stop_requested"
@@ -879,9 +898,40 @@ def main():
         logger.info("🏠 Локальный режим: Flask отключён (DISABLE_HEALTH_CHECK=1)")
         run_bot()
         return
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    # V3-P1 fix: сигналы работают только в main thread. Регистрируем здесь,
+    # ДО старта waitress: Render/Railway шлют SIGTERM при redeploy — без этого
+    # процесс убивался мгновенно посреди обработки видео.
+    def _sig_stop(signum, _frame):
+        try:
+            name = signal.Signals(signum).name
+        except Exception:
+            name = str(signum)
+        logger.warning("🛑 Получен %s — graceful shutdown requested", name)
+        _STOP_EVENT.set()
+
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(_sig, _sig_stop)
+        except (ValueError, RuntimeError, OSError):
+            pass
+
+    # /stop и SIGTERM: после выхода run_bot() из цикла бот-поток завершается,
+    # но waitress в main thread продолжал бы жить вечно — процесс «зависал»,
+    # а на Render контейнер перезапускался по STALE health-check, тихо отменяя
+    # /stop. Завершаем процесс явно.
+    def _run_bot_then_exit():
+        run_bot()
+        logger.info("🛑 Бот остановлен — завершаем процесс целиком")
+        logging.shutdown()
+        os._exit(0)
+
+    bot_thread = threading.Thread(target=_run_bot_then_exit, daemon=True)
     bot_thread.start()
-    port = int(os.environ.get("PORT", 10000))
+    try:
+        port = int(os.environ.get("PORT", "10000").strip() or "10000")
+    except ValueError:
+        logger.warning("PORT задан некорректно — использую 10000")
+        port = 10000
     # Используем production-grade WSGI-сервер вместо Flask dev-сервера.
     # waitress: многопоточный, не выдаёт "WARNING: Do not use dev server in production".
     try:
