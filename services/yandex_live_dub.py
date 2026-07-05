@@ -142,14 +142,6 @@ def _vot_oauth_token_present() -> bool:
     return bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
 
 
-def _env_int(name: str, default: int, min_value: int = 0, max_value: int = 60) -> int:
-    try:
-        v = int(os.getenv(name, "") or default)
-        return v if min_value <= v <= max_value else default
-    except ValueError:
-        return default
-
-
 def _vot_request_duration(duration: float) -> int:
     """Длительность для VOT cache-key/request.
 
@@ -255,8 +247,19 @@ async def _get_audio_new_protocol(
 
 
 def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
-    """Находит самый свежий файл по шаблону в директории."""
-    files = list(directory.glob(pattern))
+    """Находит самый свежий файл по шаблону, пропуская НАШИ служебные артефакты.
+
+    AUDIT ENG (2026-07-05): в одном workdir параллельно живут скачанный
+    оригинал (original_video.* / original_audio.*), наш микс (pro_dub*.mp4)
+    и QA-извлечения (*_qa.mp3). Если vot-cli не напечатал путь в stdout,
+    старый «самый свежий файл» мог выдать пользователю ОРИГИНАЛ вместо
+    перевода. Служебные имена детерминированы — исключаем их.
+    """
+    files = [
+        p for p in directory.glob(pattern)
+        if not p.name.startswith(("original_video", "original_audio", "pro_dub", "live_dub_merged"))
+        and not p.stem.endswith(("_qa", "_qa_original"))
+    ]
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
@@ -346,6 +349,7 @@ async def get_live_dub_video(
     translation_volume: float = 1.5,
     keep_original_audio: bool = True,
     duration: float = 0.0,
+    lang: str = "",
 ) -> Path:
     """Скачивает/собирает ВИДЕО с переводом строго «Живые голоса».
 
@@ -360,7 +364,7 @@ async def get_live_dub_video(
     # Сначала — новый протокол. Это закрывает случай, когда pro-mix выключен:
     # раньше этот путь всё равно падал в старый vot-cli --merge-video.
     try:
-        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live", duration=duration)
+        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live", duration=duration, lang=lang)
         from services.eng_subtitles import download_original_video
         from services.livedub_mix import mix_tracks
         orig_video = await download_original_video(video_url, output_dir)
@@ -383,6 +387,9 @@ async def get_live_dub_video(
         vot, "--output", str(output_dir), "--voice-style", "live",
         "--merge-video", "--quiet",
     ]
+    _clean_lang = lang.split('-')[0].lower() if lang else ""
+    if _clean_lang:
+        cmd += ["--lang", _clean_lang]
     if not keep_original_audio:
         cmd.append("--keep-original-audio=false")
     else:

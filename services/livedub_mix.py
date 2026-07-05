@@ -581,7 +581,7 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
                 and tts_fallback_enabled):
             logger.info("[LiveDubMix] Живые голоса недоступны — LIVEDUB_TTS_FALLBACK=1, пробую обычные (tts)")
             try:
-                ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts", duration=duration)
+                ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts", duration=duration, lang=lang)
                 logger.info("[LiveDubMix] Перевод получен обычными голосами (tts)")
                 # маркер для caption: перевод не «Живые голоса», а обычные
                 try:
@@ -620,9 +620,13 @@ def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
     """Ищет сохранённые дорожки pro-микса (для QA-автоправки)."""
     workdir = Path(workdir)
     orig = None
-    for f in workdir.glob("original_video.*"):
-        orig = f
-        break
+    # AUDIT ENG (2026-07-05): рядом может лежать audio-only артефакт
+    # (original_video.f140.m4a) — раньше брался первый попавшийся, mix_tracks
+    # отклонял его и авто-правка срывалась, хотя настоящий mp4 лежал рядом.
+    for f in sorted(workdir.glob("original_video.*")):
+        if has_video_stream(f):
+            orig = f
+            break
     ru = None
     mp3s = sorted(workdir.glob("*.mp3"), key=lambda x: x.stat().st_mtime, reverse=True)
     for f in mp3s:

@@ -659,6 +659,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             translation_volume=1.5,
                             keep_original_audio=True,
                             duration=duration,
+                            lang=source_lang,
                         )
 
                     dub_task = asyncio.create_task(_make_dub())
@@ -899,6 +900,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     return await _notify_full_livedub_failure(_reason)
 
                 _quick_qa_report_html = ""
+                _quick_qa_skip_note = ""
                 # ── ENG Quick QA: лёгкая проверка коротких роликов до отправки ──
                 if user_mode == "eng_fast_qa" and not is_fallback:
                     try:
@@ -923,7 +925,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     reverse=True,
                                 )
                                 _orig_for_quick = _orig_candidates[0] if _orig_candidates else None
-                            if _quick_srt and _orig_for_quick:
+                            # AUDIT ENG (2026-07-05): SRT больше НЕ обязателен.
+                            # На установках без старого vot-cli субтитры перевода
+                            # не скачиваются никогда — старый гейт «srt AND orig»
+                            # молча выключал ВСЮ проверку режима Quick QA.
+                            # Без SRT run_translation_qa сам извлечёт звук дубляжа
+                            # из готового видео и сравнит аудио-с-аудио.
+                            if _orig_for_quick:
                                 _quick_qa = await run_translation_qa(
                                     dub_video_path=livedub_path,
                                     original_audio_path=_orig_for_quick,
@@ -956,10 +964,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                         logger.warning("[LiveDubQuickQA] автофикс не удался: %s", str(_qfix_err)[:160])
                                 if _quick_qa:
                                     _quick_qa_report_html = format_qa_report(_quick_qa, video_url=url)
+                                else:
+                                    _quick_qa_skip_note = "Проверка перевода не удалась (Gemini не дал ответ)"
+                            else:
+                                logger.warning("[LiveDubQuickQA] skipped: оригинальная дорожка не сохранилась в workdir")
+                                _quick_qa_skip_note = "Проверка перевода пропущена: оригинальная дорожка не сохранилась"
                         except Exception as _quick_qa_err:
                             logger.info("[LiveDubQuickQA] skip: %s", str(_quick_qa_err)[:160])
+                            _quick_qa_skip_note = "Проверка перевода не удалась (внутренняя ошибка)"
                     else:
                         logger.info("[LiveDubQuickQA] skipped: duration=%s > max=%s", duration, _max_q)
+                        _quick_qa_skip_note = f"Проверка перевода пропущена: ролик длиннее {_max_q} сек"
 
                 # Telegram/локальный Bot API берёт basename файла. Без этого
                 # пользователь скачивает десятки одинаковых pro_dub.mp4.
@@ -1012,6 +1027,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     caption = _title_prefix + _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
+                    # Режим называется «Quick QA» — если проверка не запускалась,
+                    # юзер должен это видеть, а не думать, что перевод проверен.
+                    if user_mode == "eng_fast_qa" and _quick_qa_skip_note:
+                        caption += f"\n🔍 {_quick_qa_skip_note}"
                 # Path вместо file handle: с локальным Bot API (local_mode=True)
                 # PTB передаёт file:// URI — сервер читает файл с диска напрямую,
                 # без HTTP-загрузки сотен МБ (это причина TimedOut на больших файлах).

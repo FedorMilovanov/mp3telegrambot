@@ -303,7 +303,16 @@ async def run_translation_qa(
     client_used = None
     _temp_original_audio: Path | None = None
     try:
-        _have_srt = bool(dub_srt_path and Path(dub_srt_path).exists())
+        # AUDIT ENG (2026-07-05): текст SRT парсим ДО решения «нужен ли звук
+        # дубляжа». Раньше пустой/битый SRT-файл считался «есть текст», аудио
+        # дубляжа не извлекалось — и Gemini получал ТОЛЬКО оригинал, без
+        # какого-либо дубляжа вообще: весь отчёт был бы галлюцинацией.
+        dub_timed_text = ""
+        if dub_srt_path and Path(dub_srt_path).exists():
+            dub_timed_text = srt_to_timed_text(dub_srt_path)
+            if not dub_timed_text:
+                logger.warning("[LiveDubQA] SRT перевода пустой/битый — перехожу на аудио дубляжа")
+        _have_srt = bool(dub_timed_text)
         dub_audio = None
         if not _have_srt:
             # Аудио дубляжа нужно только когда нет официального текста перевода
@@ -343,22 +352,44 @@ async def run_translation_qa(
             )
 
         dub_text_block = ""
-        if dub_srt_path and Path(dub_srt_path).exists():
-            timed = srt_to_timed_text(dub_srt_path)
-            if timed:
-                dub_text_block = (
-                    "\n\nТОЧНЫЙ ТЕКСТ русского дубляжа (официальные субтитры перевода "
-                    "Яндекса с таймкодами — цитируй поле heard ИЗ НЕГО, таймкоды бери отсюда):\n"
-                    + timed
-                )
-                logger.info("[LiveDubQA] использую текст перевода из SRT (%d строк)",
-                            timed.count("\n") + 1)
+        if _have_srt:
+            dub_text_block = (
+                "\n\nТОЧНЫЙ ТЕКСТ русского дубляжа (официальные субтитры перевода "
+                "Яндекса с таймкодами — цитируй поле heard ИЗ НЕГО, таймкоды бери отсюда):\n"
+                + dub_timed_text
+            )
+            logger.info("[LiveDubQA] использую текст перевода из SRT (%d строк)",
+                        dub_timed_text.count("\n") + 1)
 
-        prompt = _QA_PROMPT.format(
-            reference_block=(reference_block or
-            "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). Сравнивай их напрямую.")
-            + dub_text_block
-        )
+        # AUDIT ENG (2026-07-05): описание вложений должно соответствовать
+        # РЕАЛЬНОМУ составу файлов. Раньше при «оригинал-аудио + SRT» промт
+        # утверждал «второй файл — ДУБЛЯЖ», хотя второго файла не было —
+        # модель искала дубляж в несуществующем вложении.
+        if reference_block:
+            # Оригинального аудио нет (эталон — конспект).
+            if _have_srt:
+                reference_block += (
+                    "\n\nАудиофайлы НЕ приложены: сравнивай конспект оригинала "
+                    "с текстом дубляжа ниже."
+                )
+            else:
+                reference_block += (
+                    "\n\nЕдинственный приложенный аудиофайл — русский ДУБЛЯЖ "
+                    "(озвучка перевода)."
+                )
+        elif _have_srt:
+            reference_block = (
+                "Приложен ОДИН аудиофайл — английский ОРИГИНАЛ. Русский дубляж "
+                "дан НИЖЕ ТОЛЬКО ТЕКСТОМ (официальные субтитры перевода) — "
+                "сравнивай аудио оригинала с этим текстом."
+            )
+        else:
+            reference_block = (
+                "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). "
+                "Сравнивай их напрямую."
+            )
+
+        prompt = _QA_PROMPT.format(reference_block=reference_block + dub_text_block)
 
         async def _attempt(client):
             # FIX AUDIT R4: без nonlocal присваивание ниже создавало ЛОКАЛЬНУЮ
@@ -427,11 +458,14 @@ async def run_translation_qa(
                     client.aio.models.generate_content(
                         model=model_name,
                         contents=parts + [prompt],
+                        # тот же thinking_level, что и в основном вызове:
+                        # Quick QA работает на minimal — high здесь съедал бы
+                        # время/токены лёгкой модели без причины
                         config=make_audio_config(
                             max_output_tokens=49152,
                             model_name=model_name,
-                            thinking_level="high",
-                    ),
+                            thinking_level=thinking_level,
+                        ),
                     ),
                     timeout=600.0,
                 )
