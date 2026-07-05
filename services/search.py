@@ -673,6 +673,20 @@ async def find_alternative_links(title: str, channel_name: str, duration: int,
         return {"rutube": None, "vk": None}
     if isinstance(rutube_url, Exception): logger.warning(f"RuTube: {rutube_url}", exc_info=rutube_url); rutube_url = None
     if isinstance(vk_url,    Exception): logger.warning(f"VK: {vk_url}",          exc_info=vk_url);    vk_url    = None
+    # FIX AUDIT R7: retry с ОРИГИНАЛЬНЫМ YouTube-названием был только у RuTube.
+    # VK искал по AI-заголовку (Gemini переименовывает материал — «Трусливый
+    # лжец…» вместо реального «Трус и лжец») и получал 0 результатов.
+    # ai_data=None — иначе search_vk_video снова соберёт AI-заголовок.
+    if not vk_url and fallback_title and fallback_title != title:
+        try:
+            logger.info(f"VK retry с оригинальным названием: '{fallback_title}'")
+            vk_url = await asyncio.wait_for(
+                search_vk_video(fallback_title, channel_name, duration, ai_data=None),
+                timeout=45,
+            )
+        except Exception as _vk_retry_err:
+            logger.warning(f"VK retry failed: {_vk_retry_err}")
+            vk_url = None
     logger.info(f"Альт-ссылки: rutube={rutube_url}, vk={vk_url}")
     return {"rutube": rutube_url, "vk": vk_url}
 

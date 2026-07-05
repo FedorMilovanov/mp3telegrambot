@@ -3,10 +3,14 @@
 from core.text_utils import sentence_case_russian_title, title_case_fragment
 
 
-def test_russian_title_case_uses_sentence_case_not_english_title_case():
-    assert title_case_fragment("Вопросы и Ответы") == "Вопросы и ответы"
-    assert title_case_fragment("Как Проповедовать Пламенно") == "Как проповедовать пламенно"
-    assert title_case_fragment("Свидания, Брак и Семейная Жизнь") == "Свидания, брак и семейная жизнь"
+def test_russian_title_case_is_operator_title_case():
+    """ПРАВИЛО ПРОЕКТА (оператор, 2026-07-05): каждое значимое слово
+    с Заглавной, предлоги/союзы — строчными. Sentence-case был регрессией."""
+    assert title_case_fragment("Вопросы и Ответы") == "Вопросы и Ответы"
+    assert title_case_fragment("Как проповедовать пламенно") == "Как Проповедовать Пламенно"
+    assert title_case_fragment("Трус и лжец") == "Трус и Лжец"
+    assert title_case_fragment("Трусливый лжец: история радикального обращения") == \
+        "Трусливый Лжец: История Радикального Обращения"
 
 
 def test_russian_title_case_preserves_divine_biblical_and_internal_caps():

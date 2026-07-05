@@ -80,3 +80,14 @@ git diff --check
 ```
 
 - Commit focused changes with tests. Push after meaningful commits when credentials are available.
+
+## Title casing rule (operator-confirmed, 2026-07-05)
+
+Russian material titles use **Title Case**: every significant word is
+capitalized; prepositions/conjunctions/particles stay lowercase
+(«Трус и Лжец», «Вопросы и Ответы о Спасении»). Sentence-case for titles
+is a known past regression — do not reintroduce it. Implemented via
+`title_case_fragment` → `sentence_case_russian_title(aggressive_title_case=True)`.
+Also: if the audio analysis invents a title with ~zero overlap with its own
+timestamps (`title_topic_low_overlap`), the invented `real_title` is dropped
+and the real YouTube title is used everywhere (caption, Telegraph, search).

@@ -261,6 +261,12 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
                 "Title/topic MISMATCH: %s overlap=%.2f title_terms=%s — Gemini may have misidentified!",
                 _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
             )
+            # FIX AUDIT R7: нулевое перекрытие = выдуманное название («Трусливый
+            # лжец…» вместо реального «Трус и лжец»). Не публикуем его: пустое
+            # real_title включает fallback на реальный YouTube-заголовок во всех
+            # потребителях (caption, Telegraph, поиск VK/RuTube).
+            result["real_title_ai_rejected"] = result.get("real_title", "")
+            result["real_title"] = ""
         else:
             logger.warning(
                 "Title/topic warning: %s overlap=%.2f title_terms=%s",

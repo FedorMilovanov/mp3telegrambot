@@ -494,10 +494,11 @@ def title_case_fragment(s: str) -> str:
     if not s:
         return s
         
-    # Русский заголовок — sentence case, не English Title Case:
-    # «Вопросы и ответы», а не «Вопросы и Ответы».
+    # ПРАВИЛО ПРОЕКТА (AGENTS.md, подтверждено оператором 2026-07-05):
+    # русские названия материалов — Title Case: Каждое Значимое Слово
+    # с Заглавной, кроме предлогов/союзов. Регрессия sentence-case откачена.
     if _is_cyrillic_dominant(s):
-        return sentence_case_russian_title(s, aggressive_title_case=False)
+        return sentence_case_russian_title(s, aggressive_title_case=True)
 
     _LOWER_MID = {
         "в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об", "от",
