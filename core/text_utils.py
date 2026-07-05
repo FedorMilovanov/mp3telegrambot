@@ -340,11 +340,28 @@ def normalize_author_name(s: str) -> str:
     return s
 
 
+_LAT2CYR_HOMOGLYPHS = str.maketrans("AaBCcEeHKMOoPpTXxy", "АаВСсЕеНКМОоРрТХху")
+
+
+def _fix_latin_homoglyphs(s: str) -> str:
+    """AUDIT R8: одиночные латинские буквы-гомоглифы внутри кириллических слов
+    («Cемья» с латинской C) → кириллица. Слова с реальными латинскими
+    последовательностями (QA, YouTube) не трогаем."""
+    out = []
+    for w in re.split(r"(\s+)", s or ""):
+        if re.search(r"[А-Яа-яЁё]", w) and re.search(r"[A-Za-z]", w):
+            if all(len(run) == 1 for run in re.findall(r"[A-Za-z]+", w)):
+                w = w.translate(_LAT2CYR_HOMOGLYPHS)
+        out.append(w)
+    return "".join(out)
+
+
 def normalize_title_text(s: str) -> str:
     """Нормализует заголовок: убирает ведущий номер серии, имя автора в скобках, лишние разделители."""
     s = _strip_meta_lines((s or "").strip())
     if not s or is_meta_garbage(s):
         return ""
+    s = _fix_latin_homoglyphs(s)
 
     s = re.sub(r"^\d+\s*[|:]\s*", "", s)
     s = re.sub(r"^№\d+\s*[|:\-]?\s*", "", s)

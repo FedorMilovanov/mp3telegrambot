@@ -91,3 +91,17 @@ is a known past regression — do not reintroduce it. Implemented via
 Also: if the audio analysis invents a title with ~zero overlap with its own
 timestamps (`title_topic_low_overlap`), the invented `real_title` is dropped
 and the real YouTube title is used everywhere (caption, Telegraph, search).
+
+## Timestamp & card-visual rules (operator-confirmed, 2026-07-05)
+
+1. Inline ⏱ timestamps ALWAYS stand BEFORE the sentence period, including in
+   headings/sub-headers: «…Духа ⏱ 11:29.» — never «…Духа. ⏱ 11:29».
+   A deterministic fixer in md_telegraph moves trailing-after-period
+   timestamps back before the period; do not remove it.
+2. Definition cards «• **Термин** — описание» are rendered WITHOUT the
+   leading • bullet (the bold term anchors the card visually). Short list
+   items and scripture blocks («• **Мф 7:21:** *«…»*») keep the bullet.
+   Implemented render-side in md_telegraph so prompts/audits stay unchanged.
+3. Timestamp-coverage repair must preserve the topic style of the original
+   list (one **bold key phrase** per topic) — repaired lists must not strip
+   caption bold.
