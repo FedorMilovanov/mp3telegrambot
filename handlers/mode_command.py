@@ -33,7 +33,11 @@ MODE_DESCRIPTIONS = {
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
-        current = _get_user_mode_raw(user_id)
+        # AUDIT M4 / FIX AUDIT R4: синхронный SQLite — только в executor,
+        # иначе contended-БД (busy_timeout до 5с) замораживает весь event loop.
+        import asyncio as _asyncio
+        loop = _asyncio.get_running_loop()
+        current = await loop.run_in_executor(None, _get_user_mode_raw, user_id)
     except Exception:
         current = "rus"
     current_label = MODE_LABELS.get(current, MODE_LABELS["rus"])
@@ -69,17 +73,27 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
 
     try:
-        _set_user_mode_raw(user_id, mode)
+        # AUDIT M4 / FIX AUDIT R4: синхронный SQLite — только в executor.
+        import asyncio as _asyncio
+        loop = _asyncio.get_running_loop()
+        await loop.run_in_executor(None, _set_user_mode_raw, user_id, mode)
     except Exception as e:
         logger.error(f"mode save err: {e}")
         await query.edit_message_text("❌ Ошибка сохранения режима.")
         return
 
     label = MODE_LABELS.get(mode, mode)
-    await query.edit_message_text(
-        f"✅ Режим установлен: <b>{label}</b>\n<i>{MODE_DESCRIPTIONS.get(mode, '')}</i>",
-        parse_mode="HTML",
-    )
+    try:
+        await query.edit_message_text(
+            f"✅ Режим установлен: <b>{label}</b>\n<i>{MODE_DESCRIPTIONS.get(mode, '')}</i>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        # FIX AUDIT R4: двойной тап по той же кнопке даёт второй edit с тем же
+        # текстом → BadRequest "Message is not modified" уходил в глобальный
+        # error handler и юзер получал «Внутренняя ошибка» на успешное действие.
+        if "is not modified" not in str(e).lower():
+            raise
 
 
 # --- helpers: direct DB access ---

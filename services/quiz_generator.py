@@ -211,16 +211,14 @@ def _quiz_options_quality_issue(options: list[str], correct: int) -> str | None:
     if token_counts[correct] > sorted(token_counts)[2] + 5:
         return "correct_too_specific"
 
-    correct_roots = _content_roots(options[correct])
-    shared_with_correct = sum(1 for i, option in enumerate(options) if i != correct and correct_roots & _content_roots(option))
-    all_roots = [_content_roots(o) for o in options]
-    pairwise_shared = sum(1 for i in range(4) for j in range(i + 1, 4) if all_roots[i] & all_roots[j])
-    # If no distractor shares vocabulary with the answer and the set has almost
-    # no pairwise overlap, options are probably from different semantic worlds.
-    # We allow this when all options are fairly developed (>=4 content tokens),
-    # because legitimate near-answers may use different wording.
-    if shared_with_correct == 0 and pairwise_shared <= 1 and min(token_counts) < 2:
-        return "options_not_close"
+    # FIX AUDIT R4: ветка options_not_close удалена как мёртвая. После
+    # ослабления 8f7a028 (min<2) условие стало недостижимым: option_too_thin
+    # выше уже отсекает min<2. Возвращать порог нельзя — лексическая
+    # непересекаемость НЕ означает category mismatch: валидные богословские
+    # варианты («Вменение праведности», «Покаяние без веры») используют
+    # разную лексику и ложно отклонялись. Категорийное соответствие
+    # обеспечивается промптом; здесь остаются только измеримые сигналы
+    # (длины, thin-варианты, слишком специфичный правильный ответ).
     return None
 
 
@@ -294,10 +292,24 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
         q_key = question_key(q)
         if not q_key or q_key in seen_questions:
             continue
-        opts = _dedupe_keep_order([_safe_trim(o, 100) for o in opts_raw if str(o).strip()])
+        opts_full = [_safe_trim(o, 100) for o in opts_raw]
+        opts = _dedupe_keep_order([o for o in opts_full if str(o).strip()])
         if len(opts) != 4 or any(_bad_quiz_option(o) for o in opts):
             continue
-        correct = _parse_correct_index(item.get("correct", item.get("correct_index", item.get("answer"))), opts)
+        _correct_raw = item.get("correct", item.get("correct_index", item.get("answer")))
+        if len(opts_full) == len(opts):
+            correct = _parse_correct_index(_correct_raw, opts)
+        else:
+            # FIX AUDIT R4: числовой индекс модели указывает в ИСХОДНЫЙ список
+            # до dedupe/фильтра пустых. Резолвим там и мапим по тексту — иначе
+            # выпавший дубль смещал «правильный» ответ на соседний вариант.
+            _src_idx = _parse_correct_index(_correct_raw, opts_full)
+            if _src_idx is None:
+                continue
+            try:
+                correct = opts.index(opts_full[_src_idx])
+            except ValueError:
+                continue
         if correct is None:
             continue
         if _quiz_options_quality_issue(opts, correct):

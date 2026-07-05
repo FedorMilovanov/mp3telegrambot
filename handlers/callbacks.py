@@ -282,8 +282,10 @@ async def handle_callback(update, context) -> None:
             if _render_token is None:
                 await query.message.reply_text("⏳ Для этого видео уже идёт рендер сегмента. Дождитесь окончания.")
                 return
+            # FIX AUDIT R4: reply_text без parse_mode — plain text, escape
+            # здесь показывал юзеру буквальные &amp; в заголовке сегмента.
             msg = await query.message.reply_text(
-                f"🎬 Рендерю сегмент {segment.index}: {_html.escape(segment.title[:120])}\n"
+                f"🎬 Рендерю сегмент {segment.index}: {segment.title[:120]}\n"
                 f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
             )
             ai_data = (cache or {}).get("ai_data") or {}
@@ -327,10 +329,9 @@ async def handle_callback(update, context) -> None:
         if not rec:
             await query.answer("Данные Short не найдены — возможно видео устарело.", show_alert=True)
             return
+        # FIX AUDIT R4: отсутствие исходника больше не мгновенный отказ —
+        # nosub он вообще не нужен, а для ретрима перекачиваем по yt_url ниже.
         video_path = Path(rec["video_path"])
-        if not video_path.exists():
-            await query.answer("Исходное видео не найдено на сервере.", show_alert=True)
-            return
 
         start_s = rec["start_seconds"]
         end_s   = rec["end_seconds"]
@@ -363,6 +364,31 @@ async def handle_callback(update, context) -> None:
             return
 
         await query.answer(f"✂️ {label}, перерезаю...")
+        if not video_path.exists():
+            # Исходник удалён после отправки шортов — перекачиваем по yt_url.
+            yt_url = rec.get("yt_url", "")
+            if not yt_url:
+                await query.message.reply_text(
+                    "⚠️ Исходное видео удалено и нет ссылки для повторного скачивания."
+                )
+                return
+            _was_livedub = "original_video" in video_path.name or "livedub" in str(video_path).lower()
+            _dl_note = (
+                "⬇️ Переведённый исходник удалён — скачиваю оригинал (перерезка будет БЕЗ перевода)…"
+                if _was_livedub else
+                "⬇️ Исходник удалён — скачиваю заново для перерезки…"
+            )
+            status = await query.message.reply_text(_dl_note)
+            from services.shorts_video import download_video_for_shorts
+            import hashlib as _hashlib
+            _m = re.match(r"^(.+?)_video\.[A-Za-z0-9]+$", video_path.name)
+            _media_id = _m.group(1) if _m else "retrim_" + _hashlib.sha1(yt_url.encode()).hexdigest()[:12]
+            new_src = await download_video_for_shorts(yt_url, _media_id)
+            if not new_src:
+                await safe_edit_text(status, "❌ Не удалось скачать исходное видео заново.")
+                return
+            await safe_edit_text(status, "✂️ Исходник скачан, перерезаю…")
+            video_path = new_src
         await _handle_strim_retrim(query, rec, video_path, start_s, end_s, label, source_duration)
         return
 
@@ -436,13 +462,16 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
             vk_url=rec.get("vk_url", ""),
             rutube_url=rec.get("rutube_url", ""),
         )
+        # FIX AUDIT R4: лимит 1024 проверяем ПОСЛЕ добавления префикса —
+        # иначе на длинных caption получали MEDIA_CAPTION_TOO_LONG.
+        caption = f"🚫 Без субтитров\n\n{caption}"
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
         # Path: file:// при local_mode
         await query.message.reply_video(
             video=nosub_path,
-            caption=f"🚫 Без субтитров\n\n{caption}",
+            caption=caption,
             duration=end_s - start_s,
             width=720,
             height=1280,
@@ -493,7 +522,10 @@ async def _handle_strim_retrim(
             None,
             lambda: short_trim_save(
                 short_id=new_short_id,
-                video_path=str(out_path),
+                # FIX AUDIT R4: в новой записи — ИСХОДНИК, не out_path:
+                # out_path удаляется в finally ниже, и кнопки нового
+                # сообщения были бы навсегда мертвы.
+                video_path=str(video_path),
                 start_seconds=start_s,
                 end_seconds=end_s,
                 visual_mode=rec.get("visual_mode", "full_frame_vertical"),
@@ -534,13 +566,16 @@ async def _handle_strim_retrim(
             vk_url=rec.get("vk_url", ""),
             rutube_url=rec.get("rutube_url", ""),
         )
+        # FIX AUDIT R4: лимит 1024 проверяем ПОСЛЕ добавления префикса —
+        # иначе на длинных caption получали MEDIA_CAPTION_TOO_LONG.
+        caption = f"✂️ {label}\n\n{caption}"
         if visible_length(caption) > 1024:
             caption = safe_trim_caption(caption, 1024)
 
         # Path: file:// при local_mode
         await query.message.reply_video(
             video=out_path,
-            caption=f"✂️ {label}\n\n{caption}",
+            caption=caption,
             duration=end_s - start_s,
             width=720,
             height=1280,

@@ -483,6 +483,29 @@ def update_rate_limit(user_id: int) -> None:
         logger.warning(f"update_rate_limit DB error: {e}")
 
 
+def refund_rate_limit(user_id: int) -> None:
+    """FIX AUDIT R4: вернуть зарезервированный слот дневного лимита.
+
+    areserve_rate_limit списывает слот ДО обработки. Если обработка так и не
+    началась (например, таймаут ожидания per-video лока), слот возвращаем —
+    иначе каждая попытка занятого видео выжигала дневной лимит впустую.
+    Cooldown (last_request) намеренно не откатываем: антиспам остаётся.
+    """
+    if user_id in WHITELIST_IDS:
+        return
+    today = _today_str()
+    try:
+        with _db_conn() as conn:
+            conn.execute(
+                "UPDATE rate_limit SET daily_count = MAX(daily_count - 1, 0) "
+                "WHERE user_id = ? AND daily_date = ?",
+                (user_id, today),
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"refund_rate_limit DB error: {e}")
+
+
 # ─── Gemini AI анализ ─────────────────────────────────────────
 
 # ─── Gemini AI анализ ─────────────────────────────────────────

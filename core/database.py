@@ -773,6 +773,13 @@ async def aupdate_rate_limit(user_id: int) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, update_rate_limit, user_id)
 
+
+async def arefund_rate_limit(user_id: int) -> None:
+    """FIX AUDIT R4: async-обёртка для refund_rate_limit (см. core/utils.py)."""
+    from core.utils import refund_rate_limit
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, refund_rate_limit, user_id)
+
 # PART5: atomic-ish reservation for async handlers in this bot process.
 # check_rate_limit() и update_rate_limit() исторически разделены, поэтому два
 # параллельных handler-а могли одновременно пройти check. Этот lock сериализует

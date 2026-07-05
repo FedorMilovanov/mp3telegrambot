@@ -18,6 +18,7 @@ from core.database import (
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
     MAX_PLAYLIST_SIZE, MAX_FILE_SIZE_MB, DB_PATH,
     areserve_rate_limit,  # AUDIT M4/PART5
+    arefund_rate_limit,   # FIX AUDIT R4
 )
 from core.utils import (
     mask_api_key as _mask,
@@ -478,10 +479,100 @@ async def prompthealth_command(update, context):
 
 
 async def pdf_command(update, context):
-    """Генерирует и отправляет PDF из кэша для указанного видео."""
-    ...
-    # (Existing implementation)
-    ...
+    """Генерирует и отправляет PDF из кэша/архива для указанного видео.
+
+    Использование:
+        /pdf            — по последнему видео из архива
+        /pdf VIDEO_ID   — по конкретному видео
+
+    FIX AUDIT R4: тело команды было заглушкой `...` — /pdf молча ничего
+    не делал (без ответа и без ошибки).
+    """
+    user_id = update.effective_user.id
+    if not ADMIN_IDS or user_id not in ADMIN_IDS:
+        await update.message.reply_text(
+            f"⛔ Нет доступа.\nВаш Telegram ID: <code>{user_id}</code>", parse_mode="HTML"
+        )
+        return
+    target = (context.args[0].strip() if context.args else "last")
+    video_id, cache, archive_record = await _resolve_segment_source(target)
+    if not cache and not archive_record:
+        await update.message.reply_text(
+            "⚠️ Не нашёл видео ни в кэше, ни в архиве. Использование: /pdf VIDEO_ID (или /pdf — последнее)."
+        )
+        return
+
+    ai = (cache or {}).get("ai_data") or {}
+    urls: dict[str, str] = {}
+    _syn = (cache or {}).get("telegraph_url") or (archive_record or {}).get("synopsis_url") or ""
+    _study = (cache or {}).get("study_tg_url") or (archive_record or {}).get("study_url") or ""
+    _refl = (cache or {}).get("reflection_tg_url") or (archive_record or {}).get("reflection_url") or ""
+    _terms = (cache or {}).get("terms_tg_url") or (archive_record or {}).get("terms_url") or ""
+    if _syn:
+        urls["synopsis"] = _syn
+    if _study:
+        urls["study"] = _study
+    if _refl:
+        urls["reflection"] = _refl
+    if _terms and not (_study and _refl):
+        urls["terms"] = _terms
+    if not urls:
+        await update.message.reply_text("⚠️ У этого видео нет Telegraph-страниц — PDF собирать не из чего.")
+        return
+
+    _raw_t = (ai.get("real_title") or (archive_record or {}).get("title") or "").strip()
+    _raw_a = (ai.get("real_author") or (archive_record or {}).get("author") or "").strip()
+    pdf_title = normalize_title_text(_raw_t) if _raw_t else "Без названия"
+    pdf_author = normalize_author_name(_raw_a) if _raw_a else "Неизвестный"
+    _dur = int(ai.get("duration") or (archive_record or {}).get("duration") or 0)
+    dur_str = format_timestamp(_dur) if _dur else ""
+
+    status = await update.message.reply_text("📄 Генерирую PDF…")
+    pdf_path = None
+    try:
+        from services.pdf_generator import generate_sermon_pdf_async
+
+        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        pdf_path = str(DOWNLOAD_DIR / f"{video_id}_{uuid.uuid4().hex[:6]}.pdf")
+
+        async def _pdf_progress(stage: str, pct: int):
+            await safe_edit_text(status, f"📄 PDF: {stage} ({pct}%)")
+
+        result = await generate_sermon_pdf_async(
+            output_path=pdf_path,
+            title=pdf_title,
+            performer=pdf_author,
+            duration_str=dur_str,
+            urls=urls,
+            progress_callback=_pdf_progress,
+        )
+        if result and Path(result).exists() and 200 < Path(result).stat().st_size < 49 * 1024 * 1024:
+            def _safe_fn(s: str) -> str:
+                return re.sub(r'[\\/:*?"<>|\n\r\t]', '', s).strip()[:80] or "doc"
+            fn = f"{_safe_fn(pdf_author)} — {_safe_fn(pdf_title)}.pdf"
+            with open(result, "rb") as pdf_f:
+                await update.message.reply_document(
+                    document=pdf_f,
+                    filename=fn,
+                    caption="📄 <b>PDF-версия материала</b>",
+                    parse_mode="HTML",
+                    write_timeout=180,
+                    read_timeout=180,
+                )
+            await safe_edit_text(status, "✅ PDF отправлен.")
+        else:
+            await safe_edit_text(status, "❌ Не удалось создать PDF.")
+    except ImportError:
+        await safe_edit_text(status, "❌ PDF-генератор не установлен (pdfkit/wkhtmltopdf).")
+    except Exception as exc:
+        logger.warning("pdf_command failed: %s", exc, exc_info=True)
+        await safe_edit_text(status, f"❌ Ошибка PDF: {html_mod.escape(str(exc)[:160])}")
+    finally:
+        if pdf_path:
+            try:
+                Path(pdf_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 async def disk_command(update, context):
     """Admin readout for disk space usage."""
@@ -604,6 +695,14 @@ async def handle_message(update, context):
                 "Video lock timeout для %s после %.0fs ожидания",
                 _vid_id_hint, _lock_timeout,
             )
+            # FIX AUDIT R4: слот лимита списан до обработки, а обработка не
+            # началась — возвращаем, иначе повторные попытки занятого видео
+            # выжигали дневной лимит впустую.
+            if not is_vip:
+                try:
+                    await arefund_rate_limit(user_id)
+                except Exception:
+                    pass
             try:
                 await msg.edit_text("⚠️ Это видео уже обрабатывается слишком долго. Попробуйте позже.")
             except Exception:

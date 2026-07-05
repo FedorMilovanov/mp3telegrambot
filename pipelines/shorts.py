@@ -350,9 +350,15 @@ async def process_and_send_shorts(
                 logger.info(f"Shorts: отправляю {i}/{total}")
                 # Сохраняем данные для trim-кнопок
                 short_id = uuid.uuid4().hex[:16]
+                # FIX AUDIT R4: в trim-записи хранится ИСХОДНОЕ видео, а не
+                # отрендеренный 20-60с клип. start/end_seconds — абсолютные
+                # координаты исходника; клип к тому же удаляется в finally,
+                # поэтому все trim-кнопки были мертвы («Исходное видео не
+                # найдено»). Если исходник удалят позже — callback перекачает
+                # его заново по yt_url.
                 short_trim_save(
                     short_id=short_id,
-                    video_path=str(current_path),
+                    video_path=str(video_path),
                     start_seconds=c.get("start_seconds", 0),
                     end_seconds=c.get("end_seconds", 0),
                     visual_mode=visual_mode,
