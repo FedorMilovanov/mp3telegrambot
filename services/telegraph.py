@@ -393,22 +393,35 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
 
     async def _post_once(t, ns):
         logger.info(f"Telegraph: публикую '{t}' ({len(ns)} блоков)")
-        try:
-            resp = await loop.run_in_executor(None, lambda: requests.post(
-                "https://api.telegra.ph/createPage",
-                json={"access_token": token, "title": t,
-                      "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
-                      "author_url": (author_url or "")[:512],  # AUDIT M21
-                      "content": ns, "return_content": False},
-                timeout=30,
-            ))
-            data = resp.json()
-            if data.get("ok"):
-                return data["result"]["url"], None
-            return None, data.get("error", "")
-        except Exception as e:
-            logger.warning(f"Telegraph ошибка: {e}")
-            return None, str(e)
+        last_err = ""
+        # FIX AUDIT R4: FLOOD_WAIT-ретрай — burst-публикация Synopsis+Study+
+        # Reflection упиралась в FLOOD_WAIT_5, и Terms/Analytics страница
+        # терялась навсегда, хотя 5 секунд ожидания решали проблему.
+        for _attempt in range(3):
+            try:
+                resp = await loop.run_in_executor(None, lambda: requests.post(
+                    "https://api.telegra.ph/createPage",
+                    json={"access_token": token, "title": t,
+                          "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
+                          "author_url": (author_url or "")[:512],  # AUDIT M21
+                          "content": ns, "return_content": False},
+                    timeout=30,
+                ))
+                data = resp.json()
+                if data.get("ok"):
+                    return data["result"]["url"], None
+                last_err = data.get("error", "")
+            except Exception as e:
+                logger.warning(f"Telegraph ошибка: {e}")
+                last_err = str(e)
+            _fw = re.search(r"FLOOD_WAIT_(\d+)", str(last_err))
+            if _fw and _attempt < 2:
+                _wait = min(int(_fw.group(1)), 30) + 1
+                logger.info(f"Telegraph FLOOD_WAIT — жду {_wait}s и повторяю")
+                await asyncio.sleep(_wait)
+                continue
+            return None, last_err
+        return None, last_err
 
     url, err = await _post_once(title, nodes)
     if url:
@@ -432,35 +445,41 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 return j  # разрез перед этим заголовком
         return mid  # fallback: по середине
 
-    def _split_nodes(ns: list) -> list:
-        """Рекурсивно делит список нод на чанки по границам h3/h4."""
-        if len(ns) <= 1:
-            return [ns]
-        split = _find_split_index(ns)
-        return [ns[:split], ns[split:]]
-
     split_idx = _find_split_index(nodes)
     chunks = [nodes[:split_idx], nodes[split_idx:]]
     chunks = [c for c in chunks if c]  # убираем пустые
 
     parts_urls = []
-    for idx, chunk in enumerate(chunks):
-        part_title = f"{title} ({idx+1}/{len(chunks)})"
-        part_url, part_err = await _post_once(part_title, chunk)
+
+    # FIX AUDIT R4: рекурсивный сплит вместо жёстких двух уровней — раньше
+    # третья глубина CONTENT_TOO_BIG (или FLOOD_WAIT части) молча ТЕРЯЛА
+    # четверть контента, а TOC рапортовал успех.
+    async def _publish_chunk(chunk, label: str, depth: int = 0) -> bool:
+        part_url, part_err = await _post_once(f"{title} ({label})", chunk)
         if part_url:
-            parts_urls.append((idx + 1, part_url))
-        elif part_err == "CONTENT_TOO_BIG":
-            # Ещё раз делим по h3/h4
-            sub_split = _find_split_index(chunk)
-            sub_chunks = [c for c in [chunk[:sub_split], chunk[sub_split:]] if c]
-            for sidx, sub in enumerate(sub_chunks):
-                sub_title = f"{title} ({idx+1}.{sidx+1})"
-                sub_url, _ = await _post_once(sub_title, sub)
-                if sub_url:
-                    parts_urls.append((f"{idx+1}.{sidx+1}", sub_url))
+            parts_urls.append((label, part_url))
+            return True
+        if part_err == "CONTENT_TOO_BIG" and depth < 4 and len(chunk) > 1:
+            _s = _find_split_index(chunk)
+            _subs = [c for c in [chunk[:_s], chunk[_s:]] if c]
+            _ok = True
+            for _i, _sub in enumerate(_subs, 1):
+                _ok = await _publish_chunk(_sub, f"{label}.{_i}", depth + 1) and _ok
+            return _ok
+        logger.warning(f"Telegraph: часть '{label}' не опубликована: {part_err}")
+        return False
+
+    _all_ok = True
+    for idx, chunk in enumerate(chunks, 1):
+        _all_ok = await _publish_chunk(chunk, str(idx)) and _all_ok
 
     if not parts_urls:
         return None
+    if not _all_ok:
+        logger.warning(
+            "Telegraph: '%s' опубликован НЕ полностью (%d частей) — TOC неполный",
+            title, len(parts_urls),
+        )
     if len(parts_urls) == 1:
         return parts_urls[0][1]
 
@@ -1292,7 +1311,14 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         await asyncio.sleep(2)
         for i, (part_secs, page_url) in enumerate(published_parts):
             part_num   = i + 1
-            part_title = tg_title if total == 1 else f"{tg_title} [{part_num}/{total}]"
+            # FIX AUDIT R4: суффикс [N/M] не должен выталкивать итоговый
+            # заголовок за лимит Telegraph 256 — editPage падал 3/3, и части
+            # оставались без TOC/навигации.
+            if total == 1:
+                part_title = tg_title
+            else:
+                _sfx = f" [{part_num}/{total}]"
+                part_title = tg_title[:256 - len(_sfx)] + _sfx
 
             nodes_edit: list = []
             if i == 0:

@@ -66,6 +66,22 @@ _SCRIPTURE_BOOK_RE = (
     r'1\s*Пет|2\s*Пет|1\s*Ин|2\s*Ин|3\s*Ин|Иуд|Откр)'
 )
 
+# FIX AUDIT R4: ПОЛНЫЕ русские названия книг — guard линкификации mid-text
+# таймкодов знал только аббревиатуры, и «в Иоанна 3:16» / «Римлянам 8:28»
+# превращались в ссылки на минуту видео на каждой странице конспекта.
+_SCRIPTURE_FULL_BOOK_RE = (
+    r'(?:Бытие|Исход|Левит|Числа|Второзаконие|Иисус\s*Навин|Судьи|Руфь|'
+    r'1\s*(?:Царств|Пар)|2\s*(?:Царств|Пар)|3\s*Царств|4\s*Царств|'
+    r'Ездра|Неемия|Есфирь|Иов|Псалом|Псалмы|Псалма|Псалме|Притчи|Екклесиаст|Песнь|'
+    r'Исаия|Иеремия|Плач|Иезекииль|Иезекиль|Езекииль|Езекиль|Даниил|Осия|Иоиль|Амос|Авдий|Иона|'
+    r'Михей|Наум|Аввакум|Софония|Аггей|Захария|Малахия|'
+    r'Матфея|Марка|Луки|Иоанна|Деяния|Римлянам|'
+    r'1\s*Коринфянам|2\s*Коринфянам|Галатам|Ефесянам|Филиппийцам|Колоссянам|'
+    r'1\s*Фессалоникийцам|2\s*Фессалоникийцам|1\s*Тимофею|2\s*Тимофею|'
+    r'Титу|Филимону|Евреям|Иакова|1\s*Петра|2\s*Петра|'
+    r'1\s*Иоанна|2\s*Иоанна|3\s*Иоанна|Иуды|Откровение)'
+)
+
 # Ссылки в скобках: (Рим. 8:28), (Рим. 8:28, 29), (Рим. 8:28; 1 Кор. 15:14), (1 Кор. 15:1–4)
 _SCRIPTURE_REF_RE = re.compile(
     rf'(?<!\*)\('
@@ -519,7 +535,11 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
             # GUARD: skip if preceded by a Scripture book abbreviation (Рим. 8:28)
             if allow_plain_bold_fallback and isinstance(child, str):
                 _MID_TS = re.compile(r'(?<=[\s.!?;,])(\d{1,2}:\d{2}(?::\d{2})?)(?=\s)')
-                _SCRIPTURE_BEFORE = re.compile(rf'(?:^|\s){_SCRIPTURE_BOOK_RE}\.?\s*$')
+                # FIX AUDIT R4: guard знает и полные названия книг («Иоанна 3:16»),
+                # не только аббревиатуры («Ин. 3:16»).
+                _SCRIPTURE_BEFORE = re.compile(
+                    rf'(?:^|\s)(?:{_SCRIPTURE_BOOK_RE}\.?|{_SCRIPTURE_FULL_BOOK_RE})\s*$'
+                )
                 _mid_matches = list(_MID_TS.finditer(child))
                 if _mid_matches:
                     parts = []
@@ -2147,7 +2167,9 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'(\d+):(\d):(\d{2})', lambda m: f"{m.group(1)}:{m.group(2).zfill(2)}:{m.group(3)}", text)
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
-        text = re.sub(r'\[([^\]]*?)\](?!\()', r'\1', text)  # [text] → text (но не [text](url))
+        # FIX AUDIT R4: комментарий обещал не трогать [N/M], а регэксп трогал —
+        # навигация multipart-страниц публиковалась как «Назад: 1/3» без скобок.
+        text = re.sub(r'\[(?!\d+\s*/\s*\d+\])([^\]]*?)\](?!\()', r'\1', text)  # [text] → text
         if "⚠️" in text and re.search(r"заблуж|ложн|ошиб|ерес|отриц", text, flags=re.IGNORECASE):
             text = text.replace("⚠️", "❌")
         # spacing polish for Gemini/Markdown glue in source cards and Study bullets

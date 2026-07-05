@@ -99,7 +99,15 @@ def extract_records(db_path: Path) -> list[dict[str, Any]]:
                 # Deduplicate same Telegraph URL under legacy aliases
                 # (e.g. reflection_tg_url == questions_tg_url in older cache rows).
                 label = LINK_LABELS.get(col, col)
-                links.setdefault(label, url)
+                # FIX AUDIT R4: quotes_tg_url и study_tg_url делят ярлык
+                # «Разбор» — при РАЗНЫХ URL вторая страница молча выпадала
+                # из экспорта (setdefault терял url, но seen_urls его гасил).
+                if label in links:
+                    _n = 2
+                    while f"{label} {_n}" in links:
+                        _n += 1
+                    label = f"{label} {_n}"
+                links[label] = url
                 seen_urls.add(url)
         if not links:
             continue

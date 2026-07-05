@@ -976,7 +976,12 @@ async def _publish_expanded_page(
 
     for i, (page_url, part_secs) in enumerate(zip(parts_urls, parts)):
         part_num   = i + 1
-        part_title = f"{page_title} (часть {part_num}/{total})" if total > 1 else page_title
+        # FIX AUDIT R4: суффикс части не должен выталкивать заголовок за 256.
+        if total > 1:
+            _sfx = f" (часть {part_num}/{total})"
+            part_title = str(page_title)[:256 - len(_sfx)] + _sfx
+        else:
+            part_title = page_title
 
         final_nodes: list = []
         if include_toc and i == 0:
@@ -1320,11 +1325,15 @@ async def _run_expanded_pipeline(
         else:
             _sep = ": "
 
+        # FIX AUDIT R4: [:256] ПОСЛЕ добавления префикса — иначе итоговый
+        # заголовок createPage превышал лимит Telegraph и страница молча
+        # деградировала в compact-fallback.
+        _full_title = f"{page_prefix}{_sep}{tg_title}"[:256]
         url = await _publish_expanded_page(
             sections=sections,
             outline=outline,
-            page_title=f"{page_prefix}{_sep}{tg_title}",
-            tg_title=f"{page_prefix}{_sep}{tg_title}",
+            page_title=_full_title,
+            tg_title=_full_title,
             author=author,
             yt_url=yt_url,
             include_toc=include_toc,

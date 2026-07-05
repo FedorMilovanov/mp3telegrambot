@@ -263,36 +263,23 @@ def _record_values(record: dict[str, Any]) -> tuple:
     )
 
 
-def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        """
-        SELECT video_id, source_url, title, author, event, format, duration,
-               youtube_url, rutube_url, vk_url, synopsis_url, study_url, reflection_url,
-               terms_url, questions_url, hashtags, key_categories, scripture_refs,
-               publication_status, publication_missing, publication_warning,
-               quality_warnings, timestamp_coverage_ratio, segments_status,
-               caption_trim_stage, caption_timestamps_total, caption_timestamps_shown,
-               model, prompt_version, prompt_variant, last_repaired_at, repair_count,
-               last_repair_changed_pages, last_repair_errors, created_at, updated_at
-        FROM generated_pages
-        ORDER BY updated_at DESC
-        LIMIT ?
-        """,
-        (int(limit),),
-    ).fetchall()
-    keys = [
-        "video_id", "source_url", "title", "author", "event", "format", "duration",
-        "youtube_url", "rutube_url", "vk_url", "synopsis_url", "study_url", "reflection_url",
-        "terms_url", "questions_url", "hashtags", "key_categories", "scripture_refs",
-        "publication_status", "publication_missing", "publication_warning",
-        "quality_warnings", "timestamp_coverage_ratio", "segments_status",
-        "caption_trim_stage", "caption_timestamps_total", "caption_timestamps_shown",
-        "model", "prompt_version", "prompt_variant", "last_repaired_at", "repair_count",
-        "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
-    ]
+_RECORD_KEYS = [
+    "video_id", "source_url", "title", "author", "event", "format", "duration",
+    "youtube_url", "rutube_url", "vk_url", "synopsis_url", "study_url", "reflection_url",
+    "terms_url", "questions_url", "hashtags", "key_categories", "scripture_refs",
+    "publication_status", "publication_missing", "publication_warning",
+    "quality_warnings", "timestamp_coverage_ratio", "segments_status",
+    "caption_trim_stage", "caption_timestamps_total", "caption_timestamps_shown",
+    "model", "prompt_version", "prompt_variant", "last_repaired_at", "repair_count",
+    "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
+]
+_RECORD_SELECT = "SELECT " + ", ".join(_RECORD_KEYS) + " FROM generated_pages"
+
+
+def _rows_to_dicts(rows: list) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
-        item = dict(zip(keys, row))
+        item = dict(zip(_RECORD_KEYS, row))
         for k in ("hashtags", "key_categories", "scripture_refs", "publication_missing", "quality_warnings"):
             try:
                 item[k] = json.loads(item.get(k) or "[]")
@@ -300,6 +287,25 @@ def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, A
                 item[k] = []
         out.append(item)
     return out
+
+
+def _load_recent(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        _RECORD_SELECT + " ORDER BY updated_at DESC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def _load_by_video_id(conn: sqlite3.Connection, video_id: str) -> dict[str, Any] | None:
+    """FIX AUDIT R4: точный SELECT по video_id вместо скана 500 последних —
+    записи старше 500-й переставали находиться для /repairpage и /segments."""
+    rows = conn.execute(
+        _RECORD_SELECT + " WHERE video_id = ? LIMIT 1",
+        (str(video_id),),
+    ).fetchall()
+    recs = _rows_to_dicts(rows)
+    return recs[0] if recs else None
 
 
 def _fmt_ts(ts: int) -> str:
@@ -422,13 +428,13 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                 format=excluded.format,
                 duration=excluded.duration,
                 youtube_url=excluded.youtube_url,
-                rutube_url=excluded.rutube_url,
-                vk_url=excluded.vk_url,
-                synopsis_url=excluded.synopsis_url,
-                study_url=excluded.study_url,
-                reflection_url=excluded.reflection_url,
-                terms_url=excluded.terms_url,
-                questions_url=excluded.questions_url,
+                rutube_url=CASE WHEN excluded.rutube_url<>'' THEN excluded.rutube_url ELSE rutube_url END,
+                vk_url=CASE WHEN excluded.vk_url<>'' THEN excluded.vk_url ELSE vk_url END,
+                synopsis_url=CASE WHEN excluded.synopsis_url<>'' THEN excluded.synopsis_url ELSE synopsis_url END,
+                study_url=CASE WHEN excluded.study_url<>'' THEN excluded.study_url ELSE study_url END,
+                reflection_url=CASE WHEN excluded.reflection_url<>'' THEN excluded.reflection_url ELSE reflection_url END,
+                terms_url=CASE WHEN excluded.terms_url<>'' THEN excluded.terms_url ELSE terms_url END,
+                questions_url=CASE WHEN excluded.questions_url<>'' THEN excluded.questions_url ELSE questions_url END,
                 hashtags=excluded.hashtags,
                 key_categories=excluded.key_categories,
                 scripture_refs=excluded.scripture_refs,
@@ -491,6 +497,9 @@ def query_generated_pages(
 
     def haystack(r: dict[str, Any]) -> str:
         parts = [
+            # FIX AUDIT R4: video_id/source_url в haystack — поиск по точному
+            # идентификатору находил только то, что попало в 500 последних.
+            r.get("video_id", ""), r.get("source_url", ""),
             r.get("title", ""), r.get("author", ""), r.get("event", ""),
             r.get("format", ""), r.get("publication_status", ""),
             " ".join(r.get("quality_warnings") or []), r.get("segments_status", ""),
@@ -599,11 +608,7 @@ def get_generated_page_record(video_id: str, base_dir: Path | None = None) -> di
         return None
     with _db_conn(db_path) as conn:
         _ensure_schema(conn)
-        rows = _load_recent(conn, limit=500)
-    for row in rows:
-        if str(row.get("video_id") or "") == video_id:
-            return row
-    return None
+        return _load_by_video_id(conn, video_id)
 
 
 async def aget_generated_page_record(video_id: str, base_dir: Path | None = None) -> dict[str, Any] | None:
