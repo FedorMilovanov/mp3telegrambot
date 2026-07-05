@@ -496,17 +496,33 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
             params["owner_id"] = mapping["vk_owner_id"]
         elif mapping and mapping.get("vk_domain"):
             try:
+                # FIX AUDIT R4: без access_token VK отвечает error 5, а в
+                # v5.199 response = {"groups": [...]} (не список, как в
+                # v5.126) — owner_id никогда не резолвился и поиск тихо шёл
+                # по ВСЕМУ VK: чужой перезалив мог опубликоваться как
+                # «официальная» VK-ссылка.
+                _gid_params = {"group_id": mapping["vk_domain"], "v": "5.199"}
+                if vk_token:
+                    _gid_params["access_token"] = vk_token
                 r = await loop.run_in_executor(None, lambda: requests.get(
                     "https://api.vk.com/method/groups.getById",
-                    params={"group_id": mapping["vk_domain"], "v": "5.199"},
+                    params=_gid_params,
                     timeout=8, headers=headers))
-                gdata = r.json().get("response", [{}])
-                if gdata:
-                    gid = gdata[0].get("id")
-                    if gid:
-                        params["owner_id"] = f"-{gid}"
-            except Exception:
-                pass
+                _resp_json = r.json().get("response", {})
+                if isinstance(_resp_json, dict):
+                    _groups = _resp_json.get("groups") or []
+                else:  # старый формат v<=5.126: список
+                    _groups = _resp_json or []
+                gid = (_groups[0] or {}).get("id") if _groups else None
+                if gid:
+                    params["owner_id"] = f"-{gid}"
+                else:
+                    logger.warning(
+                        "VK groups.getById: не удалось определить owner_id для домена %s — "
+                        "поиск будет НЕ ограничен каналом", mapping["vk_domain"],
+                    )
+            except Exception as _gid_err:
+                logger.warning("VK groups.getById error: %s", str(_gid_err)[:120])
         if vk_token:
             params["access_token"] = vk_token
         resp = await loop.run_in_executor(None, lambda: requests.get(

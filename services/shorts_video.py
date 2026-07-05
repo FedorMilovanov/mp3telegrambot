@@ -44,9 +44,15 @@ async def download_video_for_shorts(url: str, media_id: str, workdir: Optional[P
     """
     # 2026-06-11: Пытаемся реюзить видео из workdir (temp), если оно там есть.
     # Это экономит трафик и время, если пайплайн LiveDub уже скачал оригинал.
+    # FIX AUDIT R4: пропускаем недокачанные (.part/.ytdl) и audio-only файлы
+    # (original_video.f140.m4a) — как download_original_video в eng_subtitles,
+    # иначе рендер шорта падал на crop-фильтре или выходил обрезанным.
     if workdir and workdir.exists():
+        from services.eng_subtitles import _has_video_stream
         for existing in workdir.glob("original_video.*"):
-             if existing.is_file() and existing.stat().st_size > 100 * 1024:
+            if existing.suffix.lower() in {".part", ".ytdl"}:
+                continue
+            if existing.is_file() and _has_video_stream(existing):
                 logger.info(f"Shorts reuse video from workdir: {existing.name}")
                 return existing
 

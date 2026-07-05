@@ -236,6 +236,10 @@ async def render_montage_short(
     visual_mode: str = "full_frame_vertical",
 ) -> bool:
     """Склеивает несколько фрагментов в один Short 9:16 через ffmpeg concat."""
+    # FIX AUDIT R4: temp_parts/concat_list_path объявляем ДО try — except ниже
+    # их итерирует, и OSError из mkdir превращался в NameError из хендлера.
+    temp_parts: list[Path] = []
+    concat_list_path: Path | None = None
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not source_video_path.exists() or not fragments:
@@ -255,8 +259,6 @@ async def render_montage_short(
             )
             _use_fc = True
 
-        temp_parts: list[Path] = []
-        concat_list_path: Path | None = None
         _enc, _quality, _preset = _get_video_encoder()
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):

@@ -1584,7 +1584,7 @@ def _build_html(
 _MIN_PDF_SIZE: int = 200
 _WKHTMLTOPDF_TIMEOUT: int = 120
 _ASYNC_FETCH_TIMEOUT: int = 90
-_POPEN_PATCH_LOCK = threading.Lock()
+# FIX AUDIT R4: _POPEN_PATCH_LOCK удалён вместе с monkeypatch subprocess.Popen.
 
 
 def _pdfkit_options(title: str, performer: str) -> Dict[str, str]:
@@ -1629,10 +1629,10 @@ def _gen_wkhtmltopdf(
     wp: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Генерирует PDF через wkhtmltopdf/pdfkit.
+    Генерирует PDF прямым вызовом wkhtmltopdf (CLI-опции — как у pdfkit).
 
-    При таймауте убивает дочерний процесс wkhtmltopdf через
-    перехват subprocess.Popen.
+    При таймауте убивает СВОЙ дочерний процесс (локальный Popen), не трогая
+    чужие subprocess'ы других потоков.
 
     Returns:
         Путь к файлу или None.
@@ -1645,9 +1645,6 @@ def _gen_wkhtmltopdf(
 
     tmp: Optional[str] = None
     try:
-        cfg = pdfkit.configuration(  # type: ignore[union-attr]
-            wkhtmltopdf=wp,
-        )
         opts = _pdfkit_options(title, performer)
         with tempfile.NamedTemporaryFile(
             suffix=".html", mode="w", encoding="utf-8", delete=False,
@@ -1655,55 +1652,40 @@ def _gen_wkhtmltopdf(
             f.write(html_str)
             tmp = f.name
 
-        error_holder: List[Optional[Exception]] = [None]
-        proc_holder: List[Optional[_subprocess.Popen]] = [None]
-        _orig_popen = _subprocess.Popen
-
-        class _TrackedPopen(_orig_popen):  # type: ignore[misc]
-            """Обёртка для захвата PID дочернего процесса."""
-            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-                super().__init__(*args, **kwargs)
-                proc_holder[0] = self
-
-        def _worker() -> None:
-            try:
-                with _POPEN_PATCH_LOCK:
-                    _subprocess.Popen = _TrackedPopen  # type: ignore[misc]
-                try:
-                    pdfkit.from_file(  # type: ignore[union-attr]
-                        tmp, out, options=opts, configuration=cfg,
-                    )
-                finally:
-                    with _POPEN_PATCH_LOCK:
-                        _subprocess.Popen = _orig_popen  # type: ignore[misc]
-            except Exception as exc:
-                error_holder[0] = exc
-
-        worker = threading.Thread(target=_worker, daemon=True)
-        worker.start()
-        worker.join(timeout=_WKHTMLTOPDF_TIMEOUT)
-
-        if worker.is_alive():
+        # FIX AUDIT R4: раньше wkhtmltopdf запускался через pdfkit с ГЛОБАЛЬНЫМ
+        # monkeypatch subprocess.Popen. Патч ловил ЛЮБОЙ процесс, запущенный в
+        # это время из других потоков (ffmpeg-рендер шорта!), и по таймауту
+        # убивал его вместо зависшего wkhtmltopdf; два параллельных PDF могли
+        # навсегда оставить Popen подменённым. Теперь wkhtmltopdf вызывается
+        # напрямую локальным Popen.
+        args = [wp]
+        for _k, _v in opts.items():
+            args.append(f"--{_k}")
+            if _v != "":
+                args.append(str(_v))
+        args += [tmp, out]
+        proc = _subprocess.Popen(
+            args, stdout=_subprocess.DEVNULL, stderr=_subprocess.PIPE,
+        )
+        try:
+            _, _stderr = proc.communicate(timeout=_WKHTMLTOPDF_TIMEOUT)
+        except _subprocess.TimeoutExpired:
             logger.error(
                 "wkhtmltopdf: таймаут %ds, убиваем процесс",
                 _WKHTMLTOPDF_TIMEOUT,
             )
-            proc = proc_holder[0]
-            if proc is not None:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                except Exception:
-                    pass
-            return None
-
-        if error_holder[0] is not None:
-            logger.error("wkhtmltopdf: %s", error_holder[0])
             try:
-                Path(out).unlink(missing_ok=True)
+                proc.kill()
+                proc.communicate(timeout=5)
             except Exception:
                 pass
             return None
+
+        if proc.returncode != 0:
+            # load-error-handling=ignore: ненулевой код может сопровождать
+            # пригодный PDF — решает финальная проверка размера ниже.
+            _err_txt = (_stderr or b"").decode("utf-8", errors="replace")[-400:]
+            logger.warning("wkhtmltopdf: rc=%s: %s", proc.returncode, _err_txt)
 
         out_path = Path(out)
         sz = out_path.stat().st_size if out_path.exists() else 0

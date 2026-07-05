@@ -101,10 +101,15 @@ def get_mix_params() -> dict:
 # ── Утилиты ──────────────────────────────────────────────────────
 
 def parse_mmss(time_str: str) -> Optional[float]:
-    """'MM:SS' / 'H:MM:SS' → секунды. None при мусоре."""
+    """'MM:SS' / 'H:MM:SS' → секунды. None при мусоре.
+
+    FIX AUDIT R4: минуты до 3 цифр — srt_to_timed_text даёт «[105:22]» для
+    видео ≥100 минут; QA-отметки финала длинных проповедей теряли ссылки,
+    а autofix молча пропускал major-ошибки в конце.
+    """
     if not time_str:
         return None
-    m = re.match(r"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$", str(time_str))
+    m = re.match(r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s*$", str(time_str))
     if not m:
         return None
     h = int(m.group(1) or 0)

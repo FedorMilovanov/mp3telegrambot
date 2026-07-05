@@ -224,7 +224,9 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
                 )
                 raw = _strip_json_fence(getattr(resp, "text", "") or "")
                 data = json.loads(raw)
-                card = _normalize_card(data, title_line)
+                # FIX AUDIT R4: без source_url успешная карточка теряла ссылку
+                # «Оригинал на YouTube» — она была только в fallback-карточке.
+                card = _normalize_card(data, title_line, source_url)
                 card["model"] = model
                 return card
             except Exception as e:

@@ -124,11 +124,20 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     loop = asyncio.get_running_loop()
     proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
 
+    # FIX AUDIT R4: проверяем код выхода yt-dlp и пропускаем обломки
+    # недокачанного файла (.part/.ytdl) — иначе Whisper транскрибировал
+    # обрезанный фрагмент и видео уходило с оборванными субтитрами.
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Не удалось скачать аудио (yt-dlp rc={proc.returncode}). "
+            f"stderr: {proc.stderr[-500:] if proc.stderr else ''}"
+        )
     actual_audio = None
     for file in workdir.glob("original_audio.*"):
-        if file.suffix != ".srt":
-            actual_audio = file
-            break
+        if file.suffix in {".srt", ".part", ".ytdl"}:
+            continue
+        actual_audio = file
+        break
 
     if not actual_audio or not actual_audio.exists():
         raise RuntimeError(f"Не удалось скачать аудио. stderr: {proc.stderr[-500:] if proc.stderr else ''}")

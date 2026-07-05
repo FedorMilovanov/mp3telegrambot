@@ -90,8 +90,15 @@ def _check_vot_cli() -> str:
 
 def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 600):
     """Универсальный subprocess wrapper. Возвращает (stdout, stderr, returncode)."""
-    if len(cmd_parts) == 1 and " " in cmd_parts[0] and not cmd_parts[0].startswith('"'):
-        cmd_parts = cmd_parts[0].split()
+    # FIX AUDIT R4: npx-fallback возвращает argv[0]="/usr/bin/npx vot-cli-live"
+    # одной строкой, а все вызовы добавляют свои аргументы — старое условие
+    # len==1 никогда не срабатывало и subprocess падал с FileNotFoundError
+    # (весь старый протокол и выгрузка перевод-SRT были мертвы на npx-хостах).
+    # Сплитим argv[0] с пробелом, если это не существующий путь
+    # (защита от "C:\Program Files\...\vot-cli-live.cmd").
+    if cmd_parts and " " in str(cmd_parts[0]) and not str(cmd_parts[0]).startswith('"') \
+            and not Path(str(cmd_parts[0])).exists():
+        cmd_parts = str(cmd_parts[0]).split() + list(cmd_parts[1:])
 
     # Windows: .cmd/.bat files need shell=True for subprocess.run
     _use_shell = False

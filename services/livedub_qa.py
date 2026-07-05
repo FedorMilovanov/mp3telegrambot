@@ -361,7 +361,11 @@ async def run_translation_qa(
         )
 
         async def _attempt(client):
-            nonlocal client_used
+            # FIX AUDIT R4: без nonlocal присваивание ниже создавало ЛОКАЛЬНУЮ
+            # _temp_original_audio — внешняя оставалась None, и cleanup в
+            # finally был мёртв: {stem}_qa_original.mp3 утекал на диск после
+            # каждого Quick-QA прогона.
+            nonlocal client_used, _temp_original_audio
             client_used = client
             parts = []
             # PERF 2026-06-10: оригинал уже залит в Gemini основным анализом
