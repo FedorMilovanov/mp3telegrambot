@@ -960,6 +960,9 @@ def _section_to_nodes_v2(
     # Убираем тех. пометки частей
     title = re.sub(r'\s*\(ч\.\s*\d+(?:/\d+)?\)\s*', '', title).strip()
     title = re.sub(r'\s*\(часть\s*\d+(?:/\d+)?\)\s*', '', title, flags=re.IGNORECASE).strip()
+    # AUDIT R11: заголовки секций не начинаются с маркеров списка —
+    # h3/h4 сами дают визуальную иерархию, «•» тут лишний шум.
+    title = re.sub(r'^\s*[•▪◦‣·]\s*', '', title)
 
     content = (section.get("content") or "").strip()
     content = _strip_meta_lines(content)
@@ -976,6 +979,17 @@ def _section_to_nodes_v2(
         r"(?m)^•\s+(?=\*\*[^*\n]+\*\*(?:\s*\(\*\*[^*\n]+\*\*\))?\s+—)",
         "", content,
     )
+    # AUDIT R11 (запрос оператора: «опять много кружков»): карточки с длинной
+    # жирной шапкой («• **От иллюзии земного благополучия….** Текст…») тоже
+    # теряют маркер — жирная шапка сама держит структуру. Кружок остаётся
+    # у коротких пунктов, scripture-ссылок («• **Мф 7:21:** …» — жирная часть
+    # короткая и кончается двоеточием) и «Карты источников»: там жирный
+    # позже снимается целиком, и • — единственный маркер карточки.
+    if not re.search(r'карта\s+источников', title or "", flags=re.IGNORECASE):
+        content = re.sub(
+            r"(?m)^•\s+(?=\*\*[^*\n]{18,}[^:*\s]\*\*)",
+            "", content,
+        )
 
     # ------------------------------------------------------------------
     # 1. БАЗОВАЯ НОРМАЛИЗАЦИЯ ТЕКСТА
@@ -1837,6 +1851,9 @@ async def _create_telegraph_page_single(title: str, author: str,
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
+    # AUDIT R11: полировка (orphan **, bidi, code-switching) раньше жила только
+    # в пути Synopsis — Study/Reflection публиковались с сырыми «**».
+    nodes = _final_telegraph_polish(nodes)
     _audit = audit_telegraph_page(title, nodes, page_type="create")
     if _audit:
         _audit_summary = format_audit_issues(_audit)
@@ -1894,6 +1911,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn2(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
+    nodes = _final_telegraph_polish(nodes)  # AUDIT R11: и на editPage тоже
     _audit = audit_telegraph_page(title, nodes, page_type="edit")
     if _audit:
         _audit_summary = format_audit_issues(_audit)
@@ -2154,6 +2172,12 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         # на этапе компиляции литерала, а не передавал в parser re.
         _CLOCK = '⏱'  # ⏱
         _ENDASH = '–'  # –
+        # AUDIT R11: эмодзи-вариант ⏱️ (U+FE0F) ломал все ⏱-регэкспы ниже —
+        # селектор не пробел и не цифра. Нормализуем к базовому символу.
+        text = text.replace('⏱️', '⏱')
+        # AUDIT R11: литеральный «\n» (бэкслеш+n из перекодированного JSON)
+        # публиковался как текст. Настоящих переводов строк это не касается.
+        text = re.sub(r'\s*\\n\s*', ' ', text)
         text = re.sub(r'(\S)⏱', lambda m: m.group(1) + ' ' + _CLOCK, text)
         text = re.sub(r'⏱(\S)',  lambda m: _CLOCK + ' ' + m.group(1), text)
         # Strip leading zero from minute in timestamps: 05:32 → 5:32
@@ -2183,11 +2207,17 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'[ \t]+\u200e', '\u200e', text)
         text = re.sub(r'\u200e{2,}', '\u200e', text)
         # ПРАВИЛО ПРОЕКТА (AGENTS.md, оператор 2026-07-05): ⏱-таймкод стоит
-        # ДО точки: «…Духа ⏱ 11:29.», не «…Духа. ⏱ 11:29». Чиним хвостовые.
-        text = re.sub(
-            r'\.\s*(⏱\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2})\s*$',
-            r' \1.', text,
-        )
+        # ДО точки: «…Духа ⏱ 11:29.», не «…Духа. ⏱ 11:29».
+        # AUDIT R11 (лог 2026-07-06): модель ставила точку С ОБЕИХ сторон
+        # («…слово. ⏱ 11:29. Дальше…») и в СЕРЕДИНЕ абзаца — старый фиксер
+        # ловил только хвост строки. Точка остаётся одна и только после таймкода.
+        _TS_RE = r'⏱\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}'
+        # «слово. ⏱ 11:29.» → «слово ⏱ 11:29.» (двойная точка, где угодно)
+        text = re.sub(r'\.(\s*' + _TS_RE + r')\s*\.', r'\1.', text)
+        # «слово. ⏱ 11:29» в конце строки → точка переезжает за таймкод
+        text = re.sub(r'\.(\s*' + _TS_RE + r')\s*$', r'\1.', text)
+        # «слово. ⏱ 11:29 Дальше…» перед новым предложением → «… ⏱ 11:29. Дальше»
+        text = re.sub(r'\.(\s*' + _TS_RE + r')(?=\s+[А-ЯЁA-Z«])', r'\1.', text)
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         # FIX AUDIT R4: комментарий обещал не трогать [N/M], а регэксп трогал —

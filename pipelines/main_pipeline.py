@@ -2189,8 +2189,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     clean_nodes = current_nodes[:-2]  # убираем hr + p
 
                         final_nodes = clean_nodes + nav_nodes
-                        await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
-                        logger.info(f"Navigation: добавлена навигация на {page_url}")
+                        # AUDIT R11: editPage возвращает False при CONTENT_TOO_BIG
+                        # (страница у лимита 64КБ) — раньше «успех» логировался
+                        # безусловно. Fallback: компактный вариант без hr/шапки.
+                        _nav_ok = await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
+                        if not _nav_ok:
+                            _compact_nav = [{"tag": "p", "children": ["📂 "] + nav_children}]
+                            _nav_ok = await _edit_telegraph_page(
+                                page_url, current_title, current_author,
+                                clean_nodes + _compact_nav, loop,
+                            )
+                        if _nav_ok:
+                            logger.info(f"Navigation: добавлена навигация на {page_url}")
+                        else:
+                            logger.warning(
+                                f"Navigation: {page_url} у лимита размера Telegraph — "
+                                f"навигация не добавлена (страница цела, но без футера)"
+                            )
 
                         # BUG-C FIX v2: propagate cross-nav to ALL subsequent parts
                         # Walk chain: page 1 → page 2 → page 3 etc. via ➡ Дальше links
@@ -2252,11 +2267,22 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                         for n in _p_nodes[-3:]
                                     )
                                     if not _already:
-                                        await _edit_telegraph_page(
+                                        _p_ok = await _edit_telegraph_page(
                                             _part_url, _p_title, _p_author,
                                             _p_nodes + nav_nodes, loop
                                         )
-                                        logger.info(f"Navigation: добавлена навигация на {_part_url} (часть 2+)")
+                                        if not _p_ok:
+                                            _compact_nav = [{"tag": "p", "children": ["📂 "] + nav_children}]
+                                            _p_ok = await _edit_telegraph_page(
+                                                _part_url, _p_title, _p_author,
+                                                _p_nodes + _compact_nav, loop
+                                            )
+                                        if _p_ok:
+                                            logger.info(f"Navigation: добавлена навигация на {_part_url} (часть 2+)")
+                                        else:
+                                            logger.warning(
+                                                f"Navigation: часть {_part_url} у лимита размера — без футера"
+                                            )
                             except Exception as _e:
                                 logger.warning(f"Navigation: не удалось добавить на часть {_part_url}: {_e}")
 
