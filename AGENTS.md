@@ -110,3 +110,40 @@ and the real YouTube title is used everywhere (caption, Telegraph, search).
 3. Timestamp-coverage repair must preserve the topic style of the original
    list (one **bold key phrase** per topic) — repaired lists must not strip
    caption bold.
+
+## No default-vocabulary injection rule (operator-confirmed, 2026-07-06)
+
+**Root cause discovered in R13:** a prompt that repeats the SAME concrete
+worked example (term, phrase, connector word, scripture ref) across many
+rule sections trains the model to reproduce that exact example regardless
+of whether the actual source material calls for it — few-shot anchoring.
+Live evidence: `STUDY_ANALYSIS_PROMPT` used «Спасение господством»
+(Lordship Salvation) / «Лёгкое верие» (Easy Believism) as THE calque-format
+example 9 times across the file; 7/13 and 9/13 Study Analysis pages from one
+playlist run (sermons on prayer, on the fear of God, on the vision of Christ
+in Revelation — none of which substantively debate those two doctrines)
+contained them anyway, because the model was pattern-matching the prompt's
+own illustration instead of extracting terms from the specific sermon.
+
+**Rule for all future prompt edits:**
+1. Never introduce a new worked example (theological term, connector word,
+   phrase, scripture reference) and then reuse the EXACT SAME example across
+   more than 2-3 rule sections in the same prompt. If a format rule needs
+   illustrating in multiple places, rotate through different concrete
+   examples each time — the format is what's being taught, not the specific
+   term.
+2. Any illustrative example that names a real doctrine/term must be
+   explicitly marked as a format sample, not a content requirement (e.g.
+   "это образец формата, не чек-лист обязательных терминов").
+3. When a fix targets one specific over-anchored pair (like R13), also grep
+   the rest of `core/prompts.py` for OTHER terms/phrases repeated ≥4 times
+   as worked examples — the same mechanism silently creates the next
+   instance of this bug. `Total Depravity` / `Age of Accountability` were
+   checked in R13 (repeated 4-5x each) and found low-risk empirically (0
+   occurrences across 13 real dumps) — re-check if they start appearing in
+   unrelated material.
+4. `STUDY_ANALYSIS_PROMPT` has a hard diet ceiling (<60000 chars, see
+   `test_v3_patch9.py`/`test_v3_minor_debt6.py`) — anti-anchoring fixes must
+   stay concise (a short "СТОП" block + a self-check line), not verbose
+   essays, or they will blow the budget and Gemini 3.x follows the prompt
+   worse overall.
