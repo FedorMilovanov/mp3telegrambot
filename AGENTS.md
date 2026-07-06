@@ -95,13 +95,18 @@ and the real YouTube title is used everywhere (caption, Telegraph, search).
 ## Timestamp & card-visual rules (operator-confirmed, 2026-07-05)
 
 1. Inline ⏱ timestamps ALWAYS stand BEFORE the sentence period, including in
-   headings/sub-headers: «…Духа ⏱ 11:29.» — never «…Духа. ⏱ 11:29».
-   A deterministic fixer in md_telegraph moves trailing-after-period
-   timestamps back before the period; do not remove it.
-2. Definition cards «• **Термин** — описание» are rendered WITHOUT the
-   leading • bullet (the bold term anchors the card visually). Short list
-   items and scripture blocks («• **Мф 7:21:** *«…»*») keep the bullet.
-   Implemented render-side in md_telegraph so prompts/audits stay unchanged.
+   headings/sub-headers: «…Духа ⏱ 11:29.» — never «…Духа. ⏱ 11:29» and never
+   «…Духа. ⏱ 11:29.» (double period). Deterministic fixer
+   `_fix_ts_period_order` in md_telegraph runs on the MARKDOWN stage BEFORE
+   timestamp linkification (after it the ⏱ is split into an <a> node and
+   string rules can't see it) plus again node-side; do not remove either.
+2. Cards with a bold header («**Термин** — описание», «**От…к….** Текст»)
+   are rendered WITHOUT the leading • bullet (the bold anchors the card).
+   Short list items, scripture blocks («• **Мф 7:21:** *«…»*») and source
+   cards («• **Название**, Автор») keep the bullet. Enforced BOTH ways
+   (R12, 2026-07-06): render-side `_strip_card_bullets` in md_telegraph
+   (content path AND blocks path) + prompt templates no longer prescribe
+   «• » before bold card headers — do not reintroduce either.
 3. Timestamp-coverage repair must preserve the topic style of the original
    list (one **bold key phrase** per topic) — repaired lists must not strip
    caption bold.

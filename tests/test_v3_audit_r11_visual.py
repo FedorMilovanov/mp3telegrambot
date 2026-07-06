@@ -89,16 +89,17 @@ def test_final_polish_applied_on_create_and_edit_paths():
 # ── 4. Кружки: длинные жирные шапки и заголовки без • ───────────
 
 def test_bullet_stripped_from_long_bold_card_headers():
-    src = (ROOT / "converters/md_telegraph.py").read_text(encoding="utf-8")
-    assert r"^•\s+(?=\*\*[^*\n]{18,}[^:*\s]\*\*)" in src
-    import re
-    pat = re.compile(r"(?m)^•\s+(?=\*\*[^*\n]{18,}[^:*\s]\*\*)")
-    card = "• **От иллюзии земного благополучия к упованию.** Ибо мы склонны"
-    assert pat.sub("", card).startswith("**От иллюзии")
+    from converters.md_telegraph import _strip_card_bullets
+
+    card = "• **От иллюзии земного благополучия к упованию.** Мы склонны"
+    assert _strip_card_bullets(card).startswith("**От иллюзии")
     scripture = "• **Мф 7:21:** *«Не всякий, говорящий Мне»*"
-    assert pat.sub("", scripture) == scripture, "scripture-блок должен сохранить •"
+    assert _strip_card_bullets(scripture) == scripture, "scripture-блок должен сохранить •"
     short_item = "• **Покаяние** и вера"
-    assert pat.sub("", short_item) == short_item, "короткий пункт сохраняет •"
+    assert _strip_card_bullets(short_item) == short_item, "короткий пункт сохраняет •"
+    # R12: карточка источника «**Название**, Автор» — жирный + запятая — сохраняет •
+    source = "• **Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death)."
+    assert _strip_card_bullets(source) == source, "source-карточка сохраняет •"
 
 
 def test_source_map_cards_keep_their_bullet():

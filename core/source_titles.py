@@ -283,7 +283,9 @@ def render_source_card(card: SourceCard, *, trailing_period: bool = True) -> str
     original_bits: list[str] = []
     if title_ru and title_original and title_ru.casefold() != title_original.casefold():
         original_bits.append(title_original)
-    if author_original and author_original != author_ru:
+    # AUDIT R12 (дамп 2026-07-06): сравнение без учёта регистра — иначе
+    # выходило «, Джон МакАртур (Джон МакАртур)»: дубль автора в скобках.
+    if author_original and author_original.casefold() != author_ru.casefold():
         original_bits.append(author_original)
 
     rendered = f"{bullet}**{display_title}**, {author_ru}" if author_ru else f"{bullet}**{display_title}**"

@@ -51,6 +51,47 @@ _ENSURE_TS_INLINE_RE = re.compile(
     r'[⏱📌]\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}\s*$'
 )
 
+# AUDIT R12: токен inline-таймкода для правил «точка после таймкода».
+_TS_TOKEN_RE = r'⏱️?\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}'
+
+
+def _fix_ts_period_order(text: str) -> str:
+    """Точка ровно одна и только ПОСЛЕ ⏱-таймкода (правило AGENTS.md).
+
+    AUDIT R12 (дампы 2026-07-06): применять надо на MARKDOWN-строке ДО
+    линкификации — после неё таймкод уже разрезан на <a>-узел, и строковые
+    правила его не видят. Q&A-страницы публиковались с «…бумаге. ⏱ 0:15.»
+    (точка с обеих сторон), которое линкификация замуровывала навсегда.
+    """
+    text = text.replace('⏱️', '⏱')
+    # «слово. ⏱ 0:15.» → «слово ⏱ 0:15.» (двойная точка, где угодно)
+    text = re.sub(r'\.(\s*' + _TS_TOKEN_RE + r')\s*\.', r'\1.', text)
+    # «слово. ⏱ 0:15» в конце строки/абзаца → точка после таймкода
+    text = re.sub(r'\.(\s*' + _TS_TOKEN_RE + r')(?=\s*$)', r'\1.', text, flags=re.MULTILINE)
+    # «слово. ⏱ 0:15 Дальше…» перед новым предложением
+    text = re.sub(r'\.(\s*' + _TS_TOKEN_RE + r')(?=\s+[А-ЯЁA-Z«])', r'\1.', text)
+    return text
+
+
+def _strip_card_bullets(content: str, *, long_bold: bool = True) -> str:
+    """R8+R11+R12: карточки с жирной шапкой теряют маркер «•».
+
+    Теряют: «• **Термин** — описание», «• **Длинная жирная шапка.** Текст».
+    Сохраняют: scripture («• **Мф 7:21:** …» — коротко, кончается «:»),
+    короткие пункты, карточки источников («• **Название**, Автор» — после
+    жирного идёт запятая).
+    """
+    content = re.sub(
+        r"(?m)^•\s+(?=\*\*[^*\n]+\*\*(?:\s*\(\*\*[^*\n]+\*\*\))?\s+—)",
+        "", content,
+    )
+    if long_bold:
+        content = re.sub(
+            r"(?m)^•\s+(?=\*\*[^*\n]{18,}[^:*\s]\*\*(?!,))",
+            "", content,
+        )
+    return content
+
 
 # ─── Scripture-reference паттерны (модульный уровень) ────────────────────────
 # A07 FIX / Bug-fix #N: ранее эти паттерны были только локально внутри функций;
@@ -810,7 +851,8 @@ def _structured_blocks_to_nodes_v2(
             challenge = _scrub_inline(str(raw.get("challenge") or text or "").strip())
             anchor = _scrub_inline(str(raw.get("anchor_timestamp") or raw.get("timestamp") or "").strip())
             step = _scrub_inline(str(raw.get("concrete_step") or "").strip())
-            line = f"• **{challenge}**" if challenge else ""
+            # R12: карточки с жирной шапкой — без «•» (запрос оператора)
+            line = f"**{challenge}**" if challenge else ""
             if anchor:
                 line += f" ⏱ {anchor}"
             if step:
@@ -891,14 +933,14 @@ def _structured_blocks_to_nodes_v2(
             heading = _scrub_inline(str(raw.get("title_original") or raw.get("text") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or raw.get("role_in_argument") or "").strip())
             if heading and why:
-                chunks.append(f"• **{heading}** — {why}")
+                chunks.append(f"**{heading}** — {why}")  # R12: карточка без «•»
             elif why:
                 chunks.append("• " + why)
         elif btype in {"lexicon", "term", "lexical_analysis"}:
             lemma = _scrub_inline(str(raw.get("lemma") or "").strip())
             role = _scrub_inline(str(raw.get("role_in_argument") or text or "").strip())
             if lemma and role:
-                chunks.append(f"• **{lemma}** — {role}")
+                chunks.append(f"**{lemma}** — {role}")  # R12: карточка без «•»
             elif role:
                 chunks.append("• " + role)
         elif btype in {"heading", "subheading"}:
@@ -911,6 +953,14 @@ def _structured_blocks_to_nodes_v2(
     markdown = "\n\n".join(c for c in chunks if c.strip()).strip()
     if not markdown:
         return []
+    # AUDIT R12 (дампы 2026-07-06): blocks-путь шёл МИМО зачисток content-пути —
+    # кружки у карточек-определений/лексики и «. ⏱ X:XX.» уходили в Telegraph.
+    # Литеральный «\n» из перекодированного JSON превращаем в НАСТОЯЩИЙ перенос
+    # (он стоит на месте разрыва абзаца после жирного вопроса — заменять
+    # пробелом значило бы склеить шапку с телом).
+    markdown = markdown.replace('\\n', '\n')
+    markdown = _strip_card_bullets(markdown)
+    markdown = _fix_ts_period_order(markdown)
     if duration:
         markdown = _clamp_content_timestamps(markdown, duration)
     if plain_scripture:
@@ -965,31 +1015,25 @@ def _section_to_nodes_v2(
     title = re.sub(r'^\s*[•▪◦‣·]\s*', '', title)
 
     content = (section.get("content") or "").strip()
+    # AUDIT R12: литеральный «\n» → настоящий перенос (см. blocks-путь).
+    content = content.replace('\\n', '\n')
     content = _strip_meta_lines(content)
     # Gemini иногда возвращает literal escaped markdown: \*\*жирный\*\*.
     # Дальше весь renderer ожидает обычные **, иначе Telegraph показывает сырьё.
     content = unescape_markdown_markers(content)
     content = re.sub(r"(?m)^(\s*[•\-]\s*)\*\*\s*[•\-]\s*", r"\1**", content)
     content = normalize_misbolded_bullet_lead(content)
-    # AUDIT R8 (визуал, запрос оператора): карточки-определения
-    # «• **Термин** — описание» теряют маркер • — жирный термин сам держит
-    # структуру, а лес кружочков выглядит перегруженно. Короткие списочные
-    # пункты и scripture-блоки («• **Мф 7:21:** *«…»*») сохраняют маркер.
-    content = re.sub(
-        r"(?m)^•\s+(?=\*\*[^*\n]+\*\*(?:\s*\(\*\*[^*\n]+\*\*\))?\s+—)",
-        "", content,
-    )
-    # AUDIT R11 (запрос оператора: «опять много кружков»): карточки с длинной
-    # жирной шапкой («• **От иллюзии земного благополучия….** Текст…») тоже
-    # теряют маркер — жирная шапка сама держит структуру. Кружок остаётся
-    # у коротких пунктов, scripture-ссылок («• **Мф 7:21:** …» — жирная часть
-    # короткая и кончается двоеточием) и «Карты источников»: там жирный
+    # AUDIT R8+R11 (визуал, запрос оператора): карточки с жирной шапкой теряют
+    # маркер «•» — жирный сам держит структуру, лес кружочков перегружает.
+    # «Карта источников» защищена дополнительно по названию секции: там жирный
     # позже снимается целиком, и • — единственный маркер карточки.
-    if not re.search(r'карта\s+источников', title or "", flags=re.IGNORECASE):
-        content = re.sub(
-            r"(?m)^•\s+(?=\*\*[^*\n]{18,}[^:*\s]\*\*)",
-            "", content,
-        )
+    content = _strip_card_bullets(
+        content,
+        long_bold=not re.search(r'карта\s+источников', title or "", flags=re.IGNORECASE),
+    )
+    # AUDIT R12: правило «точка после таймкода» — ДО линкификации (после неё
+    # таймкод разрезан на <a>-узел и строковые правила бессильны).
+    content = _fix_ts_period_order(content)
 
     # ------------------------------------------------------------------
     # 1. БАЗОВАЯ НОРМАЛИЗАЦИЯ ТЕКСТА
@@ -1747,6 +1791,12 @@ def _final_telegraph_polish(nodes: list) -> list:
             node = re.sub(r'\u200e{2,}', '\u200e', node)
             # FIX BUG-10: replace stray English words in Russian context
             node = _STRAY_EN_RE.sub(lambda m: _STRAY_EN.get(m.group(0).lower(), m.group(0)), node)
+            # AUDIT R12: «Имя (Имя)» — дубль в скобках (карточки источников:
+            # «Джон МакАртур (Джон МакАртур)») схлопывается до одного имени.
+            node = re.sub(
+                r'([A-ZА-ЯЁ][\w.Ѐ-ӿ-]*(?:\s+[A-ZА-ЯЁ][\w.Ѐ-ӿ-]*){0,3})\s*\(\s*\1\s*\)',
+                r'\1', node,
+            )
             return node
         if isinstance(node, dict):
             tag = node.get("tag", "").lower()
@@ -2207,17 +2257,9 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r'[ \t]+\u200e', '\u200e', text)
         text = re.sub(r'\u200e{2,}', '\u200e', text)
         # ПРАВИЛО ПРОЕКТА (AGENTS.md, оператор 2026-07-05): ⏱-таймкод стоит
-        # ДО точки: «…Духа ⏱ 11:29.», не «…Духа. ⏱ 11:29».
-        # AUDIT R11 (лог 2026-07-06): модель ставила точку С ОБЕИХ сторон
-        # («…слово. ⏱ 11:29. Дальше…») и в СЕРЕДИНЕ абзаца — старый фиксер
-        # ловил только хвост строки. Точка остаётся одна и только после таймкода.
-        _TS_RE = r'⏱\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}'
-        # «слово. ⏱ 11:29.» → «слово ⏱ 11:29.» (двойная точка, где угодно)
-        text = re.sub(r'\.(\s*' + _TS_RE + r')\s*\.', r'\1.', text)
-        # «слово. ⏱ 11:29» в конце строки → точка переезжает за таймкод
-        text = re.sub(r'\.(\s*' + _TS_RE + r')\s*$', r'\1.', text)
-        # «слово. ⏱ 11:29 Дальше…» перед новым предложением → «… ⏱ 11:29. Дальше»
-        text = re.sub(r'\.(\s*' + _TS_RE + r')(?=\s+[А-ЯЁA-Z«])', r'\1.', text)
+        # ДО точки. R12: общий хелпер, тот же что на markdown-стадии —
+        # здесь это второй рубеж для строк, не прошедших через section-путь.
+        text = _fix_ts_period_order(text)
         # FIX 2026-05-25: квадратные скобки — запрещены промптом, Gemini иногда вставляет
         # НО: не трогаем [N/M] навигацию и Markdown-ссылки [text](url)
         # FIX AUDIT R4: комментарий обещал не трогать [N/M], а регэксп трогал —
