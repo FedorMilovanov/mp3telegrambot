@@ -1381,66 +1381,54 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         # ── Переименовываем и добавляем TOC + навигацию ──────
         # V3-P16: пауза перед editPage — Telegraph rate limit после быстрой публикации.
         # Без паузы editPage падает 3/3 при >50 nodes (0.7с между create и edit).
-        await asyncio.sleep(2)
-        for i, (part_secs, page_url) in enumerate(published_parts):
-            part_num   = i + 1
-            # FIX AUDIT R4: суффикс [N/M] не должен выталкивать итоговый
-            # заголовок за лимит Telegraph 256 — editPage падал 3/3, и части
-            # оставались без TOC/навигации.
-            if total == 1:
-                part_title = tg_title
-            else:
-                _sfx = f" [{part_num}/{total}]"
-                part_title = tg_title[:256 - len(_sfx)] + _sfx
 
-            nodes_edit: list = []
-            if i == 0:
-                nodes_edit.extend(_build_toc_nodes_v2(outline, yt_url=url, parts=parts))
-            elif total > 1:
-                # FIX BUG-5: add mini-outline for parts 2+ so reader sees section titles
-                # AUDIT R15 (скриншот оператора 2026-07-09): таймкод здесь вставлялся
-                # ГОЛОЙ СТРОКОЙ без href — в отличие от _build_toc_nodes_v2 (часть 1),
-                # который строит настоящую <a>-ссылку. TOC на частях 2+ был мёртвым:
-                # ни один таймкод не кликался. Строим ссылку так же, как в части 1.
-                # AUDIT R16 (скриншот оператора: «кружочки, а не цифры»): часть 1
-                # нумерует «1. 2. 3.», а mini-outline частей 2+ ставил «•» и НЕ
-                # продолжал сквозную нумерацию материала — разный формат оглавления
-                # на разных страницах одного конспекта. Нумеруем СКВОЗНО от
-                # глобального индекса секции в материале (5. 6. / 7. 8. 9. …).
-                _sec_offset_for_part = sum(len(p) for p in parts[:i])
-                _mini_outline = []
-                for _ps_idx, _ps in enumerate(part_secs):
-                    _ps_title = _ps.get("title", "")
-                    _ps_time = (_ps.get("time") or "").strip()
-                    if not _ps_title:
-                        continue
-                    _global_num = _sec_offset_for_part + _ps_idx + 1
-                    _children = [{"tag": "b", "children": [f"{_global_num}.\xa0"]}]
-                    _children.extend(_md_parse_inline(_ps_title))
-                    if _ps_time:
-                        _secs = time_to_seconds(_ps_time)
-                        if _secs is not None and url:
-                            _children.append(" — ⏱\xa0")
-                            _children.append({
-                                "tag": "a",
-                                "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
-                                "children": [_ps_time],
-                            })
-                        else:
-                            _children.append(f" — ⏱ {_ps_time}")
-                    _mini_outline.append({"tag": "p", "children": _children})
-                if _mini_outline:
-                    nodes_edit.extend(_mini_outline)
-                    nodes_edit.append({"tag": "hr"})
+        # AUDIT R19 (лог 2026-07-09, «Что такое Евангелие?»): вынесено в
+        # хелпер, чтобы одну и ту же сборку nodes_edit можно было ПОВТОРНО
+        # вызвать после сжатия части (см. ниже) без дублирования кода TOC/
+        # mini-outline/nav/related-materials.
+        async def _build_part_nodes_edit(i: int, part_secs: list, part_title: str,
+                                          *, include_outline: bool = True) -> list:
+            _nodes: list = []
+            if include_outline:
+                if i == 0:
+                    _nodes.extend(_build_toc_nodes_v2(outline, yt_url=url, parts=parts))
+                elif total > 1:
+                    # FIX BUG-5: add mini-outline for parts 2+ so reader sees section titles
+                    # AUDIT R16: сквозная нумерация от глобального индекса секции.
+                    _sec_offset_for_part = sum(len(p) for p in parts[:i])
+                    _mini_outline = []
+                    for _ps_idx, _ps in enumerate(part_secs):
+                        _ps_title = _ps.get("title", "")
+                        _ps_time = (_ps.get("time") or "").strip()
+                        if not _ps_title:
+                            continue
+                        _global_num = _sec_offset_for_part + _ps_idx + 1
+                        _children = [{"tag": "b", "children": [f"{_global_num}.\xa0"]}]
+                        _children.extend(_md_parse_inline(_ps_title))
+                        if _ps_time:
+                            _secs = time_to_seconds(_ps_time)
+                            if _secs is not None and url:
+                                _children.append(" — ⏱\xa0")
+                                _children.append({
+                                    "tag": "a",
+                                    "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
+                                    "children": [_ps_time],
+                                })
+                            else:
+                                _children.append(f" — ⏱ {_ps_time}")
+                        _mini_outline.append({"tag": "p", "children": _children})
+                    if _mini_outline:
+                        _nodes.extend(_mini_outline)
+                        _nodes.append({"tag": "hr"})
             for sec_idx, sec in enumerate(part_secs):
                 if sec_idx > 0:
-                    nodes_edit.append({"tag": "hr"})
-                nodes_edit.extend(_section_to_nodes_v2(sec, yt_url=url,
-                                                        rutube_url=rutube_url, vk_url=vk_url,
-                                                        page_title=part_title, duration=duration))
+                    _nodes.append({"tag": "hr"})
+                _nodes.extend(_section_to_nodes_v2(sec, yt_url=url,
+                                                    rutube_url=rutube_url, vk_url=vk_url,
+                                                    page_title=part_title, duration=duration))
             if total > 1:
-                nodes_edit.extend(_build_nav_nodes_v2(i, total, parts_urls))
-                
+                _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
+
             # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
             if i == total - 1:
                 try:
@@ -1453,9 +1441,24 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         limit=3
                     )
                     if _related:
-                        nodes_edit.extend(_build_related_materials_nodes(_related))
+                        _nodes.extend(_build_related_materials_nodes(_related))
                 except Exception as _rel_err:
                     logger.debug("Related materials block skip: %s", _rel_err)
+            return _nodes
+
+        await asyncio.sleep(2)
+        for i, (part_secs, page_url) in enumerate(published_parts):
+            part_num   = i + 1
+            # FIX AUDIT R4: суффикс [N/M] не должен выталкивать итоговый
+            # заголовок за лимит Telegraph 256 — editPage падал 3/3, и части
+            # оставались без TOC/навигации.
+            if total == 1:
+                part_title = tg_title
+            else:
+                _sfx = f" [{part_num}/{total}]"
+                part_title = tg_title[:256 - len(_sfx)] + _sfx
+
+            nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title)
 
             ok = False
             for retry_attempt in range(3):
@@ -1469,47 +1472,51 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 )
                 await asyncio.sleep(wait_time)
 
-            # Edge fallback: first part can exceed Telegraph edit limit when
-            # TOC is prepended after publish-time splitting. If editPage failed
-            # for part 1, retry once without TOC but with section content and
-            # next/prev navigation so the chain remains usable.
-            if not ok and i == 0 and total > 1:
-                _nodes_no_toc: list = []
-                for sec_idx, sec in enumerate(part_secs):
-                    if sec_idx > 0:
-                        _nodes_no_toc.append({"tag": "hr"})
-                    _nodes_no_toc.extend(_section_to_nodes_v2(
-                        sec, yt_url=url,
-                        rutube_url=rutube_url, vk_url=vk_url,
-                        page_title=part_title, duration=duration,
-                    ))
-                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))
-                logger.warning(
-                    "Synopsis v2: editPage часть 1/%d упала с TOC — повтор без оглавления (content-size fallback)",
-                    total,
-                )
-                await asyncio.sleep(2)
-                ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_toc, loop)
+            # AUDIT R19 (лог 2026-07-09, «Что такое Евангелие?»): editPage с
+            # TOC/mini-outline может не влезть после publish-time splitting
+            # (часть 1 упала: "editPage часть 1/3 упала с TOC" в реальном
+            # логе). Раньше мы СРАЗУ выбрасывали оглавление целиком — читатель
+            # терял навигацию по разделам без веской причины. Теперь СНАЧАЛА
+            # пробуем сжать часть, перенеся её последнюю секцию в начало
+            # следующей части (следующая часть точно существует, если i <
+            # total-1) — оглавление остаётся, решение всё так же принимает
+            # сам Telegraph через editPage, а не догадка по числу нод.
+            # Оглавление выбрасываем только если сжимать больше некуда
+            # (осталась 1 секция) или сжимать некуда физически (последняя
+            # часть, следующей нет).
+            if not ok and total > 1:
+                _kept_outline = False
+                if i < total - 1:
+                    while len(part_secs) > 1:
+                        _moved_sec = part_secs[-1]
+                        part_secs = part_secs[:-1]
+                        published_parts[i] = (part_secs, page_url)
+                        _next_secs, _next_url = published_parts[i + 1]
+                        _next_secs = [_moved_sec] + _next_secs
+                        published_parts[i + 1] = (_next_secs, _next_url)
+                        parts[i] = part_secs
+                        parts[i + 1] = _next_secs
+                        logger.warning(
+                            "Synopsis v2: editPage часть %d/%d с оглавлением не влезла — "
+                            "переношу последнюю секцию в часть %d (осталось %d) и пробую снова",
+                            part_num, total, i + 2, len(part_secs),
+                        )
+                        await asyncio.sleep(2)
+                        nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title)
+                        ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
+                        if ok:
+                            _kept_outline = True
+                            break
 
-            # FIX BUG-5 fallback: if editPage for part 2+ failed with mini-outline,
-            # retry without mini-outline
-            if not ok and i > 0 and total > 1:
-                _nodes_no_mini: list = []
-                for sec_idx, sec in enumerate(part_secs):
-                    if sec_idx > 0:
-                        _nodes_no_mini.append({"tag": "hr"})
-                    _nodes_no_mini.extend(_section_to_nodes_v2(
-                        sec, yt_url=url,
-                        rutube_url=rutube_url, vk_url=vk_url,
-                        page_title=part_title, duration=duration,
-                    ))
-                _nodes_no_mini.extend(_build_nav_nodes_v2(i, total, parts_urls))
-                logger.warning(
-                    "Synopsis v2: editPage часть %d/%d упала с mini-outline — повтор без него",
-                    part_num, total,
-                )
-                await asyncio.sleep(2)
-                ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_mini, loop)
+                if not _kept_outline:
+                    logger.warning(
+                        "Synopsis v2: editPage часть %d/%d — оглавление выбрасываю совсем "
+                        "(content-size fallback, сжимать больше некуда)",
+                        part_num, total,
+                    )
+                    await asyncio.sleep(2)
+                    nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title, include_outline=False)
+                    ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
 
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")

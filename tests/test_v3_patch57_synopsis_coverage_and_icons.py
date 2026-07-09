@@ -43,8 +43,13 @@ def test_telegraph_postprocess_replaces_warning_icon_for_false_view_context():
     assert "❌" in flat
 
 
-def test_synopsis_editpage_has_no_toc_fallback_for_first_part_content_too_big():
+def test_synopsis_editpage_shrinks_before_dropping_toc_on_content_too_big():
+    """AUDIT R19: раньше при CONTENT_TOO_BIG для части 1 TOC выбрасывался
+    сразу и безусловно. Теперь сначала пробуем сжать часть (перенести
+    последнюю секцию в следующую часть) и сохранить TOC; выбрасываем его
+    насовсем только когда сжимать больше некуда. Полный тест алгоритма —
+    tests/test_v3_audit_r19_toc_shrink_rebalance.py."""
     src = __import__("pathlib").Path("services/telegraph.py").read_text(encoding="utf-8")
-    assert "упала с TOC — повтор без оглавления" in src
-    assert "_nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))" in src
+    assert "while len(part_secs) > 1:" in src
+    assert "include_outline=False" in src
     assert "content-size fallback" in src
