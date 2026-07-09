@@ -17,6 +17,7 @@ from core.database import (
     # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
     WHITELIST_IDS, CACHE_TTL_DAYS,
 )
+from core.person_names import known_author_from_text
 
 import logging
 import os
@@ -127,6 +128,19 @@ def parse_title(full_title: str, channel_name: str = "") -> tuple[str, str]:
                 return left, right
             elif channel_lower and channel_lower in right.lower():
                 return right, left
+            # AUDIT R20 (лог 2026-07-09/10, реальные баги): наивный подсчёт
+            # слов ниже путает title/performer, когда более длинная сторона —
+            # это ОПИСАНИЕ, лишь упоминающее автора («Prayer with R.C.
+            # Sproul»), либо короткая сторона — общее название формата, а не
+            # имя («Questions and Answers»). Сначала пробуем распознать
+            # известного автора по имени — тот же сигнал, что и в
+            # _split_title_author_line (LiveDub), а не гадаем по числу слов.
+            left_known  = known_author_from_text(left)
+            right_known = known_author_from_text(right)
+            if left_known and not right_known:
+                return left_known, right
+            if right_known and not left_known:
+                return right_known, left
             left_words  = len(left.split())
             right_words = len(right.split())
             if left_words <= 4 and right_words > left_words:

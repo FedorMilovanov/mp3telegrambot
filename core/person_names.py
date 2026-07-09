@@ -97,3 +97,137 @@ def normalize_person_names(text: str) -> str:
 def canonical_person_name(value: str) -> str:
     """Return one canonical display form for a person/source author name."""
     return normalize_person_names(str(value or "").strip())
+
+
+# ── Known-author recognition (shared by parse_title and LiveDub captions) ──
+#
+# AUDIT R20 (лог 2026-07-09/10, реальные баги): раньше это жило ТОЛЬКО в
+# pipelines/main_pipeline.py и использовалось лишь для LiveDub-подписи —
+# core/utils.py::parse_title() принимал решение title/performer по наивному
+# подсчёту слов, который ломался на реальных YouTube-заголовках вида:
+#   "How to Pray: Prayer with R.C. Sproul"
+#     -> performer="How to Pray", title="Prayer with R.C. Sproul" (перепутано)
+#   "**MacArthur, Mohler, and Sproul**: Questions and Answers"
+#     -> performer="Questions and Answers", title="**MacArthur...**" (перепутано)
+# Вынесено сюда как общий реестр, чтобы обе точки использовали ОДИН и тот
+# же сигнал распознавания имени, а не гадали по числу слов.
+
+KNOWN_AUTHOR_RU: dict[str, str] = {
+    "John MacArthur": "Джон МакАртур",
+    "MacArthur": "Джон МакАртур",
+    "Paul Washer": "Пол Вошер",
+    "Washer": "Пол Вошер",
+    "Abner Chou": "Абнер Чау",
+    "Costi Hinn": "Кости Хинн",
+    "R.C. Sproul": "Р. Ч. Спроул",
+    "R. C. Sproul": "Р. Ч. Спроул",
+    "Charles Spurgeon": "Чарльз Сперджен",
+    "Spurgeon": "Чарльз Сперджен",
+    "George Müller": "Георг Мюллер",
+    "George Muller": "Георг Мюллер",
+    "Voddie Baucham": "Водди Бокам",
+    "John Piper": "Джон Пайпер",
+    "Piper": "Джон Пайпер",
+    "Alistair Begg": "Алистер Бегг",
+    "Begg": "Алистер Бегг",
+    "Steven Lawson": "Стивен Лоусон",
+    "Steve Lawson": "Стивен Лоусон",
+    "Sinclair Ferguson": "Синклер Фергюсон",
+    "Derek Prince": "Дерек Принс",
+    "Martyn Lloyd-Jones": "Мартин Лойд-Джонс",
+    "Lloyd-Jones": "Мартин Лойд-Джонс",
+    "David Platt": "Дэвид Платт",
+    "Francis Chan": "Фрэнсис Чан",
+    "Matt Chandler": "Мэтт Чендлер",
+    "Elisabeth Elliot": "Элизабет Эллиот",
+    "Rosaria Butterfield": "Розария Баттерфилд",
+    "Jackie Hill Perry": "Джеки Хилл Перри",
+    "Albert Mohler": "Альберт Молер",
+    "Al Mohler": "Альберт Молер",
+    "Mohler": "Альберт Молер",
+    "Phil Johnson": "Фил Джонсон",
+    "Tom Pennington": "Том Пеннингтон",
+    "Pennington": "Том Пеннингтон",
+    "Nathan Busenitz": "Натан Бузениц",
+    "Busenitz": "Натан Бузениц",
+    "Alex Montoya": "Алекс Монтойя",
+    "Montoya": "Алекс Монтойя",
+    "Lance Quinn": "Лэнс Куинн",
+    "Joel Beeke": "Джоэль Бики",
+    "Beeke": "Джоэль Бики",
+    "Альберт Моллер": "Альберт Молер",
+    "Стив Лоусон": "Стивен Лоусон",
+    "Алексей Коломийцев": "Алексей Коломийцев",
+    "Евгений Бахмутский": "Евгений Бахмутский",
+    "Николай Скопич": "Николай Скопич",
+    "Виктор Рягузов": "Виктор Рягузов",
+    "Юрий Сипко": "Юрий Сипко",
+    "Владислав Трескин": "Владислав Трескин",
+    "Алексей Прокопенко": "Алексей Прокопенко",
+    "Владимир Дубинский": "Владимир Дубинский",
+    "Алексей Смирнов": "Алексей Смирнов",
+    "Тимур Расулов": "Тимур Расулов",
+    "Ярл Пейсти": "Ярл Пейсти",
+}
+
+KNOWN_CHANNEL_AUTHOR_RU: dict[str, str] = {
+    "grace to you": "Джон МакАртур",
+    "gty": "Джон МакАртур",
+    "heartcry missionary society": "Пол Вошер",
+    "heartcry": "Пол Вошер",
+    "i'll be honest": "I'll Be Honest",
+    "bibleq&a": "BibleQ&A",
+    "слово благодати": "Алексей Коломийцев",
+    "islovo": "Алексей Коломийцев",
+    "русская библейская церковь": "Евгений Бахмутский",
+    "рбц": "Евгений Бахмутский",
+    "covenant baptist theological seminary": "CBTS",
+    "cbts": "CBTS",
+    "desiring god": "Джон Пайпер",
+    "ligonier ministries": "Р. Ч. Спроул",
+    "ligonier": "Р. Ч. Спроул",
+    "bible qa": "Джон МакАртур",
+    "mcarthur": "Джон МакАртур",
+    "tms": "The Master's Seminary",
+    "masters seminary": "The Master's Seminary",
+}
+
+
+def known_author_from_text(*parts: str) -> str:
+    """Return the canonical RU name of the first recognized author mentioned
+    anywhere within the given text fragments (channel name as last resort)."""
+    combined = " | ".join(str(p or "") for p in parts)
+    combined_low = combined.lower()
+    for en, ru in KNOWN_AUTHOR_RU.items():
+        # Для имён с точками (R.C. Sproul) \b вокруг точки ненадёжен.
+        if en.lower() in combined_low or re.search(rf"(?i)\b{re.escape(en)}\b", combined):
+            return ru
+    low = combined.lower()
+    for channel, ru in KNOWN_CHANNEL_AUTHOR_RU.items():
+        if channel in low:
+            return ru
+    return ""
+
+
+def known_ru_author_from_text(text: str) -> str:
+    low = str(text or "").lower()
+    for ru in set(KNOWN_AUTHOR_RU.values()) | set(KNOWN_CHANNEL_AUTHOR_RU.values()):
+        if ru.lower() in low:
+            return ru
+    return ""
+
+
+def looks_like_author_list(text: str) -> bool:
+    text = str(text or "").strip()
+    if not text or len(text) > 80:
+        return False
+    if known_author_from_text(text):
+        return True
+    if re.search(r"[?!:]{1}", text):
+        return False
+    words = [w for w in re.split(r"\s+|\s*&\s*|\s+and\s+", text) if w]
+    if not (2 <= len(words) <= 8):
+        return False
+    meaningful = [w.strip(".,;:()[]{}") for w in words if w.strip(".,;:()[]{}")]
+    caps = sum(1 for w in meaningful if re.match(r"^[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё.'-]+$", w))
+    return caps >= max(2, len(meaningful) - 1)

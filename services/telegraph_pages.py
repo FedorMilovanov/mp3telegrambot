@@ -985,35 +985,32 @@ async def _publish_expanded_page(
     parts_urls = [p[1] for p in published_parts]
     total      = len(parts)
 
-    for i, (page_url, part_secs) in enumerate(zip(parts_urls, parts)):
-        part_num   = i + 1
-        # FIX AUDIT R4: суффикс части не должен выталкивать заголовок за 256.
-        if total > 1:
-            _sfx = f" (часть {part_num}/{total})"
-            part_title = str(page_title)[:256 - len(_sfx)] + _sfx
-        else:
-            part_title = page_title
-
-        final_nodes: list = []
-        if include_toc and i == 0:
-            final_nodes.extend(_build_toc_nodes_v2(outline, yt_url=yt_url, parts=parts, duration=duration))
+    # AUDIT R19b (лог 2026-07-09/10, то же семейство бага что и в Synopsis
+    # R19): вынесено в хелпер, чтобы одну и ту же сборку final_nodes можно
+    # было ПОВТОРНО вызвать после сжатия части при CONTENT_TOO_BIG, вместо
+    # того чтобы сразу выбрасывать оглавление насовсем (старый Edge-A).
+    async def _build_expanded_part_nodes(i: int, part_secs: list, part_title: str,
+                                          *, include_outline: bool = True) -> list:
+        _nodes: list = []
+        if include_outline and i == 0:
+            _nodes.extend(_build_toc_nodes_v2(outline, yt_url=yt_url, parts=parts, duration=duration))
 
         # Nav вверху для частей 2+ (не для первой — там TOC)
         if total > 1 and i > 0:
-            final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
-            final_nodes.append({"tag": "hr"})
+            _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
+            _nodes.append({"tag": "hr"})
 
         for sec_idx, sec in enumerate(part_secs):
             if sec_idx > 0:
-                final_nodes.append({"tag": "hr"})
-            final_nodes.extend(_section_to_nodes_v2(sec, yt_url=yt_url,
-                                                     rutube_url=rutube_url, vk_url=vk_url,
-                                                     page_title=part_title, duration=duration,
-                                                     plain_scripture=plain_scripture))
+                _nodes.append({"tag": "hr"})
+            _nodes.extend(_section_to_nodes_v2(sec, yt_url=yt_url,
+                                                rutube_url=rutube_url, vk_url=vk_url,
+                                                page_title=part_title, duration=duration,
+                                                plain_scripture=plain_scripture))
 
         if total > 1:
             # _build_nav_nodes_v2 already includes its own leading <hr> — do NOT add extra one
-            final_nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
+            _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
         # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
         if i == total - 1 and ai_data:
@@ -1026,9 +1023,21 @@ async def _publish_expanded_page(
                     limit=3
                 )
                 if _related:
-                    final_nodes.extend(_build_related_materials_nodes(_related))
+                    _nodes.extend(_build_related_materials_nodes(_related))
             except Exception as _rel_err:
                 logger.debug("Related materials block skip: %s", _rel_err)
+        return _nodes
+
+    for i, (page_url, part_secs) in enumerate(zip(parts_urls, parts)):
+        part_num   = i + 1
+        # FIX AUDIT R4: суффикс части не должен выталкивать заголовок за 256.
+        if total > 1:
+            _sfx = f" (часть {part_num}/{total})"
+            part_title = str(page_title)[:256 - len(_sfx)] + _sfx
+        else:
+            part_title = page_title
+
+        final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title)
 
         # V3-P16: пауза перед editPage — Telegraph rate limit при >50 nodes.
         if i == 0:  # пауза только перед первым editPage
@@ -1046,32 +1055,43 @@ async def _publish_expanded_page(
             )
             await asyncio.sleep(_backoff)
 
-        # FIX Edge-A: TOC/nav добавляются ПОСЛЕ size-проверки create-фазы. Если часть
-        # оказалась впритык к лимиту Telegraph, editPage с TOC может упасть с
-        # CONTENT_TOO_BIG. _edit_telegraph_page возвращает только bool, поэтому при
-        # полном провале editPage первой части (где есть TOC) делаем последнюю
-        # попытку БЕЗ оглавления — страница сохранит контент и навигацию, а не
-        # останется без правок молча. TOC в этом случае доступен через сами секции.
+        # AUDIT R19b: TOC/nav добавляются ПОСЛЕ size-проверки create-фазы. Если
+        # часть оказалась впритык к лимиту Telegraph, editPage с TOC может
+        # упасть с CONTENT_TOO_BIG. Раньше (Edge-A) мы СРАЗУ выбрасывали
+        # оглавление насовсем. Теперь сначала пробуем СЖАТЬ часть 1, перенеся
+        # её последнюю секцию в начало части 2 (решение снова принимает сам
+        # Telegraph через editPage, не догадка по числу нод) — оглавление
+        # остаётся. Выбрасываем его только если сжимать больше некуда (1
+        # секция осталась) или физически некуда (это единственная часть).
         if not ok and include_toc and i == 0 and total >= 1:
-            _nodes_no_toc: list = []
-            if total > 1 and i > 0:
-                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
-                _nodes_no_toc.append({"tag": "hr"})
-            for sec_idx, sec in enumerate(part_secs):
-                if sec_idx > 0:
-                    _nodes_no_toc.append({"tag": "hr"})
-                _nodes_no_toc.extend(_section_to_nodes_v2(sec, yt_url=yt_url,
-                                                          rutube_url=rutube_url, vk_url=vk_url,
-                                                          page_title=part_title, duration=duration,
-                                                          plain_scripture=plain_scripture))
+            _kept_toc = False
             if total > 1:
-                _nodes_no_toc.extend(_build_nav_nodes_v2(i, total, parts_urls))
-            logger.warning(
-                "Expanded publish: editPage часть %d/%d упала с TOC — повтор без оглавления (Edge-A fallback)",
-                part_num, total,
-            )
-            await asyncio.sleep(2)
-            ok = await _edit_telegraph_page(page_url, part_title, author, _nodes_no_toc, loop)
+                while len(part_secs) > 1:
+                    _moved_sec = part_secs[-1]
+                    part_secs = part_secs[:-1]
+                    parts[i] = part_secs
+                    _next_secs = [_moved_sec] + parts[i + 1]
+                    parts[i + 1] = _next_secs
+                    logger.warning(
+                        "Expanded publish: editPage часть %d/%d с оглавлением не влезла — "
+                        "переношу последнюю секцию в часть %d (осталось %d) и пробую снова",
+                        part_num, total, i + 2, len(part_secs),
+                    )
+                    await asyncio.sleep(2)
+                    final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title)
+                    ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
+                    if ok:
+                        _kept_toc = True
+                        break
+
+            if not _kept_toc:
+                logger.warning(
+                    "Expanded publish: editPage часть %d/%d упала с TOC — повтор без оглавления (content-size fallback)",
+                    part_num, total,
+                )
+                await asyncio.sleep(2)
+                final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title, include_outline=False)
+                ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
 
         if ok:
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)
