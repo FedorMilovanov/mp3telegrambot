@@ -7,7 +7,7 @@ from core.globals import DOWNLOAD_DIR
 from core.database import (
     adb_get, adb_save, asettings_get,
     settings_get,           # FIX pipeline_clips
-    MAX_FILE_SIZE_MB,       # FIX pipeline_clips
+    get_max_file_size_mb,   # FIX pipeline_clips
 )
 from core.utils import cleanup_files
 from services.render_clips_montage import render_clip, create_clip_snapshot, build_clip_caption
@@ -122,7 +122,7 @@ async def process_and_send_clips(
 
             # Проверка размера: Telegram лимит 2GB, но для video-сообщений ~50MB удобнее
             clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
-            if clip_size_mb > MAX_FILE_SIZE_MB:
+            if clip_size_mb > get_max_file_size_mb():
                 logger.warning(
                     f"Clips {i}/{total}: файл слишком большой ({clip_size_mb:.0f}MB), пропускаем"
                 )

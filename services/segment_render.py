@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from core.database import MAX_FILE_SIZE_MB, asettings_get
+from core.database import get_max_file_size_mb, asettings_get
 from core.globals import DOWNLOAD_DIR
 from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
 from core.segment_planner import PlannedSegment, seconds_to_timestamp
@@ -112,10 +112,10 @@ async def render_and_send_segment(
 
         # Size check
         size_mb = final_clip_path.stat().st_size / (1024 * 1024)
-        if size_mb > MAX_FILE_SIZE_MB:
+        if size_mb > get_max_file_size_mb():
             await reply_target.reply_text(
                 f"❌ Сегмент {segment.index} слишком большой: {size_mb:.0f} МБ "
-                f"(лимит {MAX_FILE_SIZE_MB} МБ)."
+                f"(лимит {get_max_file_size_mb()} МБ)."
             )
             return False
 

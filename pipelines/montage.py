@@ -4,7 +4,7 @@ Montage / Highlights Pipeline.
 Извлечено из bot.py строки 12240–12432.
 """
 from core.globals import DOWNLOAD_DIR
-from core.database import asettings_get, shorts_speed_get, ashorts_speed_get, MAX_FILE_SIZE_MB  # AUDIT M4
+from core.database import asettings_get, shorts_speed_get, ashorts_speed_get, get_max_file_size_mb  # AUDIT M4
 from core.utils import cleanup_files
 from services.render_clips_montage import (
     render_montage_short, create_extras_candidates,
@@ -61,8 +61,8 @@ async def _run_montage_or_highlights_pipeline(
         if not ok:
             return False
         size_mb = raw_path.stat().st_size / (1024 * 1024) if raw_path.exists() else 0
-        if size_mb > MAX_FILE_SIZE_MB:
-            logger.warning(f"{prefix}: файл {size_mb:.1f}MB > {MAX_FILE_SIZE_MB}MB, пропускаем")
+        if size_mb > get_max_file_size_mb():
+            logger.warning(f"{prefix}: файл {size_mb:.1f}MB > {get_max_file_size_mb()}MB, пропускаем")
             return False
 
         need_post = do_normalize or (abs(speed - 1.0) > 0.01)

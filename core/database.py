@@ -872,12 +872,48 @@ def get_channel_mapping(channel_name: str) -> dict | None:
 # Облачный Bot API (api.telegram.org): максимум 50 МБ на отправку.
 # Локальный Bot API сервер (LOCAL_BOT_API_URL задан): до 2000 МБ.
 # Можно переопределить вручную через MAX_FILE_SIZE_MB в .env.
+#
+# AUDIT R21 (живой баг: "Request Entity Too Large" при отправке LiveDub-
+# видео, хотя предварительная проверка размера файла его пропустила):
+# это значение считалось ОДИН РАЗ при импорте модуля, только по наличию
+# переменной LOCAL_BOT_API_URL. Но main.py (после старта) может САМ
+# откатиться на облачный Bot API в рантайме, если локальный сервер не
+# ответил на getMe (SOCKS/MTProto-прокси не поддерживается официальным
+# telegram-bot-api.exe без TUN/VPN) — это подтверждено логами, где
+# LOCAL_BOT_API_URL был задан, но бот реально работал через облако.
+# LOCAL_BOT_API_URL=есть ещё не значит «лимит 2000 МБ» — при отсутствии
+# fallback-обновления код ошибочно пропускал 50-2000-МБ файлы через
+# проверку "file_size > MAX_FILE_SIZE_MB", а сам Telegram потом их
+# отклонял. set_effective_max_file_size_mb() вызывается из main.py сразу
+# после того, как решение «локальный или облачный» окончательно принято.
+_MAX_FILE_SIZE_MB_EXPLICIT = bool(os.getenv("MAX_FILE_SIZE_MB", "").strip())
 _default_max_mb = 2000 if LOCAL_BOT_API_URL else 50
 try:
     MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "") or _default_max_mb)
 except ValueError:
     MAX_FILE_SIZE_MB = _default_max_mb
 MAX_PLAYLIST_SIZE = 50
+
+
+def get_max_file_size_mb() -> int:
+    """Текущий эффективный лимит отправки в МБ. ВСЕГДА читать через эту
+    функцию, а не через `from core.database import MAX_FILE_SIZE_MB` —
+    такой импорт замораживает значение в момент импорта модуля, ДО того
+    как main.py успевает проверить, действительно ли поднялся локальный
+    Bot API сервер, и может остаться неверным (2000 МБ вместо реальных
+    50 МБ облака) на всё время работы бота."""
+    return MAX_FILE_SIZE_MB
+
+
+def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
+    """Вызывается из main.py сразу после того, как принято окончательное
+    решение — используется локальный Bot API сервер или произошёл откат
+    на облачный. Не трогает значение, если оператор явно задал
+    MAX_FILE_SIZE_MB в .env — ручной выбор всегда имеет приоритет."""
+    global MAX_FILE_SIZE_MB
+    if _MAX_FILE_SIZE_MB_EXPLICIT:
+        return
+    MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50
 # ─── Gemini модели (v10, 2026-05-21) ────────────────────────────────────
 # История: до v7 — 2.5-pro/1.5-pro (платные); v7-v8 — 3.1-pro (ПЛАТНАЯ, убрана)
 # Сейчас: gemini-3.5-flash — GA 19.05.2026, бесплатный tier, thinking_level=high

@@ -16,7 +16,7 @@ from core.database import (
     adb_get, adb_save, asettings_get, asettings_get_all,
     db_init, is_cache_valid,
     WHITELIST_IDS, ADMIN_IDS, GEMINI_MODEL,
-    MAX_PLAYLIST_SIZE, MAX_FILE_SIZE_MB, DB_PATH,
+    MAX_PLAYLIST_SIZE, DB_PATH,
     areserve_rate_limit,  # AUDIT M4/PART5
     arefund_rate_limit,   # FIX AUDIT R4
 )

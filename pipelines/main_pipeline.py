@@ -13,7 +13,8 @@ from core.database import (
     _db_conn,
     adb_get, adb_save, asettings_get, asettings_get_all,
     is_cache_valid, db_init,
-    GEMINI_MODEL, MAX_FILE_SIZE_MB, CACHE_VERSION,    # FIX #11
+    GEMINI_MODEL, CACHE_VERSION,    # FIX #11
+    get_max_file_size_mb,
     current_livedub_file_id_cache_version,
     get_prompt_fingerprint,                            # FIX #11
 )
@@ -892,12 +893,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         logger.warning(f"[LiveDubQA] technical_check сбой: {_tqe}")
 
                 file_size = livedub_path.stat().st_size / (1024 * 1024)
-                if file_size > MAX_FILE_SIZE_MB:
-                    logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {MAX_FILE_SIZE_MB}MB)")
-                    _livedub_hint = "" if MAX_FILE_SIZE_MB > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
+                if file_size > get_max_file_size_mb():
+                    logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {get_max_file_size_mb()}MB)")
+                    _livedub_hint = "" if get_max_file_size_mb() > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
-                        text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ.{_livedub_hint}",
+                        text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {get_max_file_size_mb()} МБ.{_livedub_hint}",
                         reply_to_message_id=update.message.message_id,
                     )
                     _livedub_result_sent = True
@@ -969,6 +970,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         _sent_msg = await context.bot.send_video(**_send_kwargs)
                 except Exception as _cov_err:
                     if _v_cover is None:
+                        raise
+                    # AUDIT R21 (живой лог: "Request Entity Too Large"): размер
+                    # payload не зависит от cover — повтор без него гарантированно
+                    # провалится ещё раз тем же способом и просто тратит время
+                    # на повторную загрузку тяжёлого видео. Повторяем только когда
+                    # ошибка НЕ похожа на превышение размера.
+                    _cov_err_text = str(_cov_err).lower()
+                    if "entity too large" in _cov_err_text or "too large" in _cov_err_text:
                         raise
                     # Старый Bot API сервер/прокси может не знать cover — повтор без него
                     logger.info(f"[LiveDub] cover не принят ({str(_cov_err)[:100]}) — отправка без cover")
@@ -1098,7 +1107,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                             fallback=f"{media_id}_fixed",
                                         )
                                         _fx_size = fixed.stat().st_size / (1024 * 1024)
-                                        if _fx_size <= MAX_FILE_SIZE_MB:
+                                        if _fx_size <= get_max_file_size_mb():
                                             _fx_meta = {}
                                             try:
                                                 from services.livedub_mix import probe_video_meta
@@ -1142,6 +1151,36 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 return True
             except Exception as e:
                 logger.warning(f"[LiveDub] fail: {e}")
+                # AUDIT R21 (живой лог: перевод сгенерировался, но отправка
+                # видео упала с "Request Entity Too Large" — юзер не получил
+                # вообще никакого объяснения, в отличие от case'ов таймаута
+                # и превышения размера ДО отправки, которые уже уведомляют).
+                try:
+                    _fail_text = str(e)
+                    _size_related = (
+                        "entity too large" in _fail_text.lower()
+                        or "too large" in _fail_text.lower()
+                    )
+                    _hint = (
+                        "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), "
+                        "чтобы отправлять до 2000 МБ."
+                        if _size_related and get_max_file_size_mb() <= 50 else ""
+                    )
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=(
+                            "⚠️ <b>Не удалось отправить видео с переводом</b>\n"
+                            f"{html_mod.escape(_fail_text[:300])}{_hint}\n\n"
+                            "Перевод сгенерирован, но отправка не удалась."
+                        ),
+                        parse_mode="HTML",
+                        reply_to_message_id=update.message.message_id,
+                    )
+                except Exception as _notify_err:
+                    logger.info(
+                        "[LiveDub] send-failure notice not sent: %s",
+                        str(_notify_err)[:160],
+                    )
                 return False
 
         performer, title = parse_title(full_title, channel_name)
@@ -1293,7 +1332,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             bitrate = "64" if duration > 3600 else "128"
             logger.info(f"Кэш аудио: {mp3_path.name} = {file_size_mb:.1f} MB")
             # Сжимаем если больше лимита
-            if file_size_mb > MAX_FILE_SIZE_MB:
+            if file_size_mb > get_max_file_size_mb():
                 mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
                 ffmpeg = shutil.which("ffmpeg")
                 if ffmpeg:
@@ -1309,7 +1348,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         bitrate = "64"
                     elif mp3_64_path.exists():
                         mp3_64_path.unlink(missing_ok=True)
-                if file_size_mb > MAX_FILE_SIZE_MB:
+                if file_size_mb > get_max_file_size_mb():
                     await update.message.reply_text(f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия.")
                     # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
                     try:
@@ -1665,7 +1704,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     raise FileNotFoundError("MP3 файл не найден")
 
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-        if file_size_mb > MAX_FILE_SIZE_MB:
+        if file_size_mb > get_max_file_size_mb():
             await set_progress(status_msg, 3, {"title": f"📝 {title}", "info": f"⚙️ Файл {file_size_mb:.1f} МБ — пересжимаю в 64 kbps..."}, prefix=_pp)
             mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
             # Re-encode existing mp3 via ffmpeg directly
@@ -1686,10 +1725,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
                 elif mp3_64_path.exists():
                     mp3_64_path.unlink(missing_ok=True)  # remove corrupt output
-            if file_size_mb > MAX_FILE_SIZE_MB:
+            if file_size_mb > get_max_file_size_mb():
                 await update.message.reply_text(
                     f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
-                    f"Текущий лимит отправки — {MAX_FILE_SIZE_MB} МБ. Попробуйте более короткое видео."
+                    f"Текущий лимит отправки — {get_max_file_size_mb()} МБ. Попробуйте более короткое видео."
                 )
                 # FIX AUDIT R4: у LiveDub-видео свой независимый size-check и
                 # своё сообщение — не теряем обещанный ENG-перевод из-за

@@ -14,6 +14,7 @@ from core.globals import (
 from core.database import (
     db_init, asettings_get,
     GEMINI_MODEL, WHITELIST_IDS, ADMIN_IDS,
+    set_effective_max_file_size_mb,
 )
 from telegram import Update
 from telegram.ext import (
@@ -631,6 +632,14 @@ async def run_bot_async():
                     "Для no-TUN задайте TELEGRAM_PROXY_URL=socks5h://127.0.0.1:1080 "
                     "и оставьте LOCAL_BOT_API_CLOUD_FALLBACK=1."
                 )
+
+        # AUDIT R21 (живой баг: "Request Entity Too Large" при отправке
+        # LiveDub-видео, хотя проверка размера файла его пропустила): само
+        # наличие LOCAL_BOT_API_URL ещё не значит лимит 2000 МБ — решение
+        # «локальный или облачный» окончательно принято ТОЛЬКО здесь,
+        # ПОСЛЕ проверки getMe. Синхронизируем реальный лимит отправки с
+        # тем, что бот в итоге использует, а не с тем, что задано в .env.
+        set_effective_max_file_size_mb(_using_local_bot_api)
 
         if _using_local_bot_api:
             logger.info(f"🌐 Использую локальный Telegram Bot API: {LOCAL_BOT_API_URL}")
