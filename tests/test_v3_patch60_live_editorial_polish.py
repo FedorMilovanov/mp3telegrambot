@@ -26,7 +26,12 @@ def test_person_name_registry_normalizes_live_variants():
     out = normalize_person_names(text)
     assert "Р. Ч. Спроул" in out
     assert "С. Льюиса Джонсона" in out
-    assert "Мартина Ллойд-Джонса" in out
+    # AUDIT R22: выровнено с KNOWN_AUTHOR_RU ("Мартин Лойд-Джонс", одна "л") —
+    # раньше эта таблица независимо использовала "Ллойд-Джонс" (см.
+    # core/person_names.py::_PERSON_REPLACEMENTS), и один и тот же человек
+    # получал разное написание в зависимости от того, какая функция его
+    # обработала.
+    assert "Мартина Лойд-Джонса" in out
 
 
 def test_third_person_scrubber_handles_new_verbs():

@@ -75,9 +75,11 @@ def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru
     assert normalize_source_card_line(
         "• Все ради блага, Томас Уотсон (All Things for Good, Thomas Watson)."
     ) == "• **All Things for Good**, Томас Уотсон (Thomas Watson)."
+    # AUDIT R22: канонично "Мартин Лойд-Джонс" (одна "л") — выровнено с
+    # core/person_names.py::KNOWN_AUTHOR_RU, ранее здесь было "Ллойд-Джонс".
     assert normalize_source_card_line(
         "• Пламенная проповедь, Мартин Ллойд-Джонс (Preaching and Preachers, Martyn Ллойд-Джонс)."
-    ) == "• **Preaching and Preachers**, Мартин Ллойд-Джонс (Martyn Lloyd-Jones)."
+    ) == "• **Preaching and Preachers**, Мартин Лойд-Джонс (Martyn Lloyd-Jones)."
 
 
 def test_source_card_known_calvin_institutes_keeps_official_ru_title():

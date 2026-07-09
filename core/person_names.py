@@ -16,14 +16,25 @@ _PERSON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("Эс Льюиса Джонсона", "С. Льюиса Джонсона"),
     ("Эс Льюис Джонсон", "С. Льюис Джонсон"),
     ("S. Lewis Johnson", "С. Льюис Джонсон"),
-    ("Мартина Лойда Джонса", "Мартина Ллойд-Джонса"),
-    ("Мартина Ллойд Джонса", "Мартина Ллойд-Джонса"),
-    ("Мартин Лойд Джонс", "Мартин Ллойд-Джонс"),
-    ("Мартин Ллойд Джонс", "Мартин Ллойд-Джонс"),
-    ("Лойда Джонса", "Ллойд-Джонса"),
-    ("Ллойд Джонса", "Ллойд-Джонса"),
-    ("Lloyd-Jones", "Ллойд-Джонс"),
-    ("Martyn Lloyd-Jones", "Мартин Ллойд-Джонс"),
+    # AUDIT R22: выровнено с KNOWN_AUTHOR_RU ниже ("Мартин Лойд-Джонс",
+    # одна "л") — раньше эта таблица независимо использовала "Ллойд-Джонс"
+    # (две "л"), и один и тот же человек получал разное написание в
+    # зависимости от того, какая из двух функций его обработала.
+    ("Мартина Лойда Джонса", "Мартина Лойд-Джонса"),
+    ("Мартина Ллойд Джонса", "Мартина Лойд-Джонса"),
+    ("Мартин Лойд Джонс", "Мартин Лойд-Джонс"),
+    ("Мартин Ллойд Джонс", "Мартин Лойд-Джонс"),
+    ("Лойда Джонса", "Лойд-Джонса"),
+    ("Ллойд Джонса", "Лойд-Джонса"),
+    ("Lloyd-Jones", "Лойд-Джонс"),
+    ("Martyn Lloyd-Jones", "Мартин Лойд-Джонс"),
+    # AUDIT R22: already-hyphenated Cyrillic double-л form — Gemini can
+    # still emit this directly (a third registry, core/source_titles.py's
+    # AUTHOR_CANONICAL, used it as a prompt example until this same audit
+    # fixed it); catch it here too so any residual/cached occurrence still
+    # gets corrected to the single-л canonical spelling.
+    ("Мартин Ллойд-Джонс", "Мартин Лойд-Джонс"),
+    ("Мартина Ллойд-Джонса", "Мартина Лойд-Джонса"),
     ("Си Джей Махони", "Си Джей Мэхэни"),
     ("Си Джей Махани", "Си Джей Мэхэни"),
     ("C.J. Mahaney", "Си Джей Мэхэни"),
@@ -55,8 +66,11 @@ _PERSON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("Ричард Филлипс", "Ричард Филлипс"),
     ("Ричард Д. Филлипс", "Ричард Филлипс"),
     ("Richard Phillips", "Ричард Филлипс"),
-    ("Джоэл Бики", "Джоэл Бики"),
-    ("Joel Beeke", "Джоэл Бики"),
+    # AUDIT R22: выровнено с KNOWN_AUTHOR_RU ("Джоэль Бики", с мягким знаком) —
+    # раньше здесь было "Джоэл" без мягкого знака, другое написание для
+    # того же человека в зависимости от функции.
+    ("Джоэл Бики", "Джоэль Бики"),
+    ("Joel Beeke", "Джоэль Бики"),
     ("Джон МакАртур", "Джон МакАртур"),
     ("John MacArthur", "Джон МакАртур"),
     ("Пол Вошер", "Пол Вошер"),
@@ -199,8 +213,16 @@ def known_author_from_text(*parts: str) -> str:
     combined = " | ".join(str(p or "") for p in parts)
     combined_low = combined.lower()
     for en, ru in KNOWN_AUTHOR_RU.items():
-        # Для имён с точками (R.C. Sproul) \b вокруг точки ненадёжен.
-        if en.lower() in combined_low or re.search(rf"(?i)\b{re.escape(en)}\b", combined):
+        if "." in en:
+            # Для имён с точками (R.C. Sproul) \b вокруг точки ненадёжен —
+            # только для НИХ используем substring, а не для всех имён.
+            if en.lower() in combined_low:
+                return ru
+        # AUDIT R22 (найдено при аудите регрессий): голый substring-матч
+        # без \b ловил фамилию внутри произвольного слова — "Beggar" matched
+        # "Begg" -> "Алистер Бегг", "washer"/"bagpiper" аналогично. \b —
+        # единственно верная проверка для обычных (без точек) имён.
+        elif re.search(rf"(?i)\b{re.escape(en)}\b", combined):
             return ru
     low = combined.lower()
     for channel, ru in KNOWN_CHANNEL_AUTHOR_RU.items():
