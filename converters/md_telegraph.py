@@ -2796,4 +2796,47 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
     for n in normalized:
         for sn in _split_scripture_explanation_node(n):
             split.extend(_split_inline_bullet_paragraph_node(sn))
+
+    # AUDIT R18 (дамп 2026-07-09, повторный прогон «Что такое Евангелие?»):
+    # когда Gemini не заполнил structured "application"-блок (challenge/
+    # anchor_timestamp/concrete_step) и вместо этого написал этот же паттерн
+    # обычным content-текстом, заголовок-триггер перед "Шаг: ..." остаётся
+    # НЕ жирным — в отличие от _structured_blocks_to_nodes_v2, который
+    # гарантированно оборачивает challenge в **. Речь ровно про эту пару
+    # абзацев (контракт "application"-блока: bold-триггер + "Шаг:"),
+    # поэтому дожимаем формат здесь же, постфактум.
+    def _dedup_adjacent_timestamp_link(children: list) -> list:
+        """Тот же баг иногда дублирует один inline-таймкод дважды подряд
+        ("... комфортной ⏱ 41:14. ⏱ 41:14") — схлопываем повтор."""
+        out = list(children)
+        i = 0
+        while i < len(out) - 1:
+            cur = out[i]
+            j = i + 1
+            while j < len(out) and isinstance(out[j], str) and not out[j].strip().strip('.'):
+                j += 1
+            if (isinstance(cur, dict) and cur.get('tag') == 'a'
+                    and j < len(out) and isinstance(out[j], dict) and out[j].get('tag') == 'a'
+                    and cur.get('attrs') == out[j].get('attrs')
+                    and cur.get('children') == out[j].get('children')):
+                del out[i + 1:j + 1]
+                continue
+            i += 1
+        return out
+
+    for _idx in range(1, len(split)):
+        _cur = split[_idx]
+        if not (isinstance(_cur, dict) and _cur.get('tag') == 'p'):
+            continue
+        if not _flatten_text(_cur).strip().startswith('Шаг:'):
+            continue
+        _prev = split[_idx - 1]
+        if not (isinstance(_prev, dict) and _prev.get('tag') == 'p'):
+            continue
+        _prev_children = _prev.get('children') or []
+        if _prev_children and isinstance(_prev_children[0], dict) and _prev_children[0].get('tag') in ('b', 'strong'):
+            continue  # уже жирный — контракт application-блока соблюдён
+        _prev_children = _dedup_adjacent_timestamp_link(_prev_children)
+        split[_idx - 1] = {**_prev, 'children': [{'tag': 'b', 'children': _prev_children}]}
+
     return split
