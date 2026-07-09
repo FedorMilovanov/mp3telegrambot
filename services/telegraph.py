@@ -17,7 +17,8 @@ from converters.md_telegraph import (
     _extract_partial_sections,# FIX telegraph
 )
 # _fix_rtl_in_text и _md_parse_inline перенесены в core_utils (разрыв цикла markdown ↔ caption/telegraph)
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers  # FIX: circular imports + AUDIT-FIX BUG 1
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers, time_to_seconds  # FIX: circular imports + AUDIT-FIX BUG 1
+from core.url_utils import get_youtube_timestamp_url  # AUDIT R15: mini-outline ссылки на части 2+
 from core.globals import (
     TELEGRAPH_TOKEN, GEMINI_CLIENTS,
     gemini_generate,          # FIX telegraph,
@@ -1363,15 +1364,29 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 nodes_edit.extend(_build_toc_nodes_v2(outline, yt_url=url, parts=parts))
             elif total > 1:
                 # FIX BUG-5: add mini-outline for parts 2+ so reader sees section titles
+                # AUDIT R15 (скриншот оператора 2026-07-09): таймкод здесь вставлялся
+                # ГОЛОЙ СТРОКОЙ без href — в отличие от _build_toc_nodes_v2 (часть 1),
+                # который строит настоящую <a>-ссылку. TOC на частях 2+ был мёртвым:
+                # ни один таймкод не кликался. Строим ссылку так же, как в части 1.
                 _mini_outline = []
                 for _ps in part_secs:
                     _ps_title = _ps.get("title", "")
-                    _ps_time = _ps.get("time", "")
-                    if _ps_title:
-                        _mini_outline.append({"tag": "p", "children": [
-                            {"tag": "b", "children": [f"• {_ps_title}"]},
-                            *([f" — ⏱ {_ps_time}"] if _ps_time else []),
-                        ]})
+                    _ps_time = (_ps.get("time") or "").strip()
+                    if not _ps_title:
+                        continue
+                    _children = [{"tag": "b", "children": [f"• {_ps_title}"]}]
+                    if _ps_time:
+                        _secs = time_to_seconds(_ps_time)
+                        if _secs is not None and url:
+                            _children.append(" — ⏱ ")
+                            _children.append({
+                                "tag": "a",
+                                "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
+                                "children": [_ps_time],
+                            })
+                        else:
+                            _children.append(f" — ⏱ {_ps_time}")
+                    _mini_outline.append({"tag": "p", "children": _children})
                 if _mini_outline:
                     nodes_edit.extend(_mini_outline)
                     nodes_edit.append({"tag": "hr"})
