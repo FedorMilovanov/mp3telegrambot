@@ -1338,6 +1338,40 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             # но не возвращаем ссылку — бот не покажет Конспект в caption
             return None, None
 
+        # AUDIT R16 (вопрос оператора: «можно ли 2 и 3 части объединить?»):
+        # _publish_recursive делит sections пополам по КОЛИЧЕСТВУ, а не по
+        # реальному размеру — из-за этого хвостовые части выходят заметно
+        # тоньше соседних (наблюдалось 4+2+3 вместо более компактного расклада).
+        # Пробуем СЛИТЬ последнюю часть с предпоследней РЕАЛЬНЫМ editPage —
+        # решение принимает сам Telegraph (CONTENT_TOO_BIG), а не догадка по
+        # числу нод. При неудаче part'ы остаются как есть, публикация не теряется.
+        # editPage возвращает False сразу на CONTENT_TOO_BIG (без лишних retry),
+        # так что цена одной неудачной попытки — один быстрый API-вызов.
+        # Пауза перед первым editPage — тот же rate-limit, что и в V3-P16 ниже
+        # (editPage сразу после createPage падает 3/3 без паузы).
+        if len(published_parts) >= 2:
+            await asyncio.sleep(2)
+        while len(published_parts) >= 2:
+            _prev_secs, _prev_url = published_parts[-2]
+            _last_secs, _last_url = published_parts[-1]
+            _combined_secs = _prev_secs + _last_secs
+            _combined_nodes = []
+            for _cidx, _csec in enumerate(_combined_secs):
+                if _cidx > 0:
+                    _combined_nodes.append({"tag": "hr"})
+                _combined_nodes.extend(_section_to_nodes_v2(
+                    _csec, yt_url=url, rutube_url=rutube_url, vk_url=vk_url, duration=duration,
+                ))
+            _merged_ok = await _edit_telegraph_page(_prev_url, tg_title, author, _combined_nodes, loop)
+            if not _merged_ok:
+                break
+            logger.info(
+                "Synopsis v2: слил хвостовую часть (%d secs) в предыдущую — частей стало %d вместо %d",
+                len(_last_secs), len(published_parts) - 1, len(published_parts),
+            )
+            published_parts[-2] = (_combined_secs, _prev_url)
+            published_parts.pop()
+
         total      = len(published_parts)
         parts      = [p[0]   for p in published_parts]
         parts_urls = [p[1]   for p in published_parts]
@@ -1368,17 +1402,25 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 # ГОЛОЙ СТРОКОЙ без href — в отличие от _build_toc_nodes_v2 (часть 1),
                 # который строит настоящую <a>-ссылку. TOC на частях 2+ был мёртвым:
                 # ни один таймкод не кликался. Строим ссылку так же, как в части 1.
+                # AUDIT R16 (скриншот оператора: «кружочки, а не цифры»): часть 1
+                # нумерует «1. 2. 3.», а mini-outline частей 2+ ставил «•» и НЕ
+                # продолжал сквозную нумерацию материала — разный формат оглавления
+                # на разных страницах одного конспекта. Нумеруем СКВОЗНО от
+                # глобального индекса секции в материале (5. 6. / 7. 8. 9. …).
+                _sec_offset_for_part = sum(len(p) for p in parts[:i])
                 _mini_outline = []
-                for _ps in part_secs:
+                for _ps_idx, _ps in enumerate(part_secs):
                     _ps_title = _ps.get("title", "")
                     _ps_time = (_ps.get("time") or "").strip()
                     if not _ps_title:
                         continue
-                    _children = [{"tag": "b", "children": [f"• {_ps_title}"]}]
+                    _global_num = _sec_offset_for_part + _ps_idx + 1
+                    _children = [{"tag": "b", "children": [f"{_global_num}.\xa0"]}]
+                    _children.extend(_md_parse_inline(_ps_title))
                     if _ps_time:
                         _secs = time_to_seconds(_ps_time)
                         if _secs is not None and url:
-                            _children.append(" — ⏱ ")
+                            _children.append(" — ⏱\xa0")
                             _children.append({
                                 "tag": "a",
                                 "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
