@@ -16,24 +16,36 @@ from core.url_utils import get_youtube_video_url                         # FIX s
 
 logger = logging.getLogger(__name__)
 
-_RUTUBE_LISTING_CACHE: dict[str, tuple[float, list[dict]]] = {}
+# AUDIT R14 (лог 2026-07-09): третий элемент кортежа — complete-флаг.
+# Ранний выход грузит листинг лишь до страницы с уверенным совпадением ЭТОГО
+# видео. Раньше такой ЧАСТИЧНЫЙ листинг кэшировался и переиспользовался для
+# следующих видео плейлиста — и их ролики за границей загруженных страниц
+# «не находились», хотя реально есть на канале (VK ловил, RuTube терял).
+_RUTUBE_LISTING_CACHE: dict[str, tuple[float, list[dict], bool]] = {}
 _RUTUBE_LISTING_CACHE_TTL = int(os.getenv("RUTUBE_LISTING_CACHE_TTL", "900"))
 
 
-def _get_rutube_listing_cache(cid: str) -> list[dict] | None:
+def _get_rutube_listing_cache(cid: str) -> tuple[list[dict], bool] | None:
+    """Возвращает (results, complete) или None. complete=False — листинг был
+    обрезан ранним выходом, ему нельзя доверять «не найдено»."""
     item = _RUTUBE_LISTING_CACHE.get(str(cid or ""))
     if not item:
         return None
-    ts, results = item
+    ts, results, complete = item
     if time.time() - ts > _RUTUBE_LISTING_CACHE_TTL:
         _RUTUBE_LISTING_CACHE.pop(str(cid or ""), None)
         return None
-    return list(results)
+    return list(results), complete
 
 
-def _set_rutube_listing_cache(cid: str, results: list[dict]) -> None:
-    if cid and results:
-        _RUTUBE_LISTING_CACHE[str(cid)] = (time.time(), list(results))
+def _set_rutube_listing_cache(cid: str, results: list[dict], complete: bool) -> None:
+    if not (cid and results):
+        return
+    # Полный листинг не даём затирать частичным (другое видео могло рано выйти).
+    prev = _RUTUBE_LISTING_CACHE.get(str(cid))
+    if prev and prev[2] and not complete and time.time() - prev[0] <= _RUTUBE_LISTING_CACHE_TTL:
+        return
+    _RUTUBE_LISTING_CACHE[str(cid)] = (time.time(), list(results), complete)
 
 
 def _normalize(s: str) -> str:
@@ -301,6 +313,58 @@ def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
     return _clean_search_title(fallback_title)
 
 
+async def _load_rutube_listing(
+    cid: str, headers: dict, loop, search_title: str, duration: int,
+    *, start_page: int = 1, existing: list[dict] | None = None,
+    allow_early_exit: bool = True,
+) -> tuple[list[dict], bool]:
+    """Грузит листинг канала RuTube постранично. Возвращает (results, complete).
+
+    complete=False — загрузку оборвал ранний выход (найдено уверенное
+    совпадение), листинг НЕПОЛНЫЙ. complete=True — страницы кончились
+    естественно (полный листинг) либо ранний выход отключён и дошли до конца.
+    """
+    all_results: list[dict] = list(existing or [])
+    max_pages = 100  # 100 стр × 20 = 2000 видео — покрывает большие каналы
+    per_page = 20
+    complete = True
+    page = start_page - 1
+    for page in range(start_page, max_pages + 1):
+        try:
+            resp = await loop.run_in_executor(
+                None,
+                lambda p=page: requests.get(
+                    f"https://rutube.ru/api/video/person/{cid}/?page={p}&per_page={per_page}",
+                    timeout=10,
+                    headers=headers,
+                ),
+            )
+            if resp.status_code != 200:
+                logger.info(f"RuTube листинг: status={resp.status_code} на стр.{page}")
+                break
+            page_results = resp.json().get("results", []) or []
+            if not page_results:
+                logger.info(f"RuTube листинг: пусто на стр.{page}")
+                break
+            all_results.extend(page_results)
+            # Ранний выход: если уже есть уверенное совпадение — не грузим дальше.
+            # Листинг помечается НЕПОЛНЫМ, чтобы кэш не соврал другим видео.
+            if allow_early_exit and len(all_results) >= 2 * per_page \
+                    and _best_match_confident(all_results, search_title, duration):
+                logger.info(f"RuTube: досрочный выход на стр.{page} ({len(all_results)} видео) — найдено уверенное совпадение")
+                complete = False
+                break
+            if len(page_results) < per_page:
+                break
+        except Exception as e:
+            logger.warning(f"RuTube листинг стр.{page} ошибка: {e}")
+            if "timed out" in str(e).lower() or "ReadTimeout" in type(e).__name__ or "ssl" in str(e).lower() or "connection" in str(e).lower() or "eof" in str(e).lower():
+                await asyncio.sleep(1.0)
+                continue
+            break
+    return all_results, complete
+
+
 async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
                         fallback_title: str = "") -> str | None:
     loop = asyncio.get_running_loop()
@@ -319,71 +383,52 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
             f"q='{search_title}' (original: '{title}')"
         )
 
-        cached_results = _get_rutube_listing_cache(cid)
-        if cached_results is not None:
-            all_results = cached_results
-            logger.info("RuTube: листинг из кэша — %d видео", len(all_results))
+        cached = _get_rutube_listing_cache(cid)
+        listing_complete = True
+        if cached is not None:
+            all_results, listing_complete = cached
+            logger.info("RuTube: листинг из кэша — %d видео%s",
+                        len(all_results), "" if listing_complete else " (частичный)")
         else:
-            all_results: list[dict] = []
-            max_pages = 100  # 100 стр × 20 = 2000 видео — покрывает большие каналы
-            per_page  = 20
-
-            for page in range(1, max_pages + 1):
-                try:
-                    resp = await loop.run_in_executor(
-                        None,
-                        lambda p=page: requests.get(
-                            f"https://rutube.ru/api/video/person/{cid}/?page={p}&per_page={per_page}",
-                            timeout=10,
-                            headers=headers,
-                        ),
-                    )
-
-                    if resp.status_code != 200:
-                        logger.info(f"RuTube листинг: status={resp.status_code} на стр.{page}")
-                        break
-
-                    page_results = resp.json().get("results", []) or []
-                    if not page_results:
-                        logger.info(f"RuTube листинг: пусто на стр.{page}")
-                        break
-
-                    all_results.extend(page_results)
-
-                    # Страничный ранний выход: после каждой страницы проверяем,
-                    # не нашлось ли уже уверенное совпадение — если да, не грузим дальше
-                    if page >= 2 and _best_match_confident(all_results, search_title, duration):
-                        logger.info(f"RuTube: досрочный выход на стр.{page} ({len(all_results)} видео) — найдено уверенное совпадение")
-                        break
-
-                    if len(page_results) < per_page:
-                        break
-
-                except Exception as e:
-                    logger.warning(f"RuTube листинг стр.{page} ошибка: {e}")
-                    # Timeout — пропускаем страницу и продолжаем листинг
-                    if "timed out" in str(e).lower() or "ReadTimeout" in type(e).__name__ or "ssl" in str(e).lower() or "connection" in str(e).lower() or "eof" in str(e).lower():
-                        await asyncio.sleep(1.0)
-                        continue
-                    # Прочие ошибки (connection refused, DNS) — останавливаем
-                    break
+            all_results, listing_complete = await _load_rutube_listing(
+                cid, headers, loop, search_title, duration,
+            )
+            if all_results:
+                _set_rutube_listing_cache(cid, all_results, listing_complete)
+                logger.info("RuTube: листинг загружен — %d видео%s",
+                            len(all_results), "" if listing_complete else " (частичный, ранний выход)")
         if not all_results:
             logger.info("RuTube: листинг канала пуст, видео не найдено")
             return None
-        if cached_results is None:
-            _set_rutube_listing_cache(cid, all_results)
-            logger.info(f"RuTube: листинг загружен — {len(all_results)} видео за {min(page, max_pages)} стр.")
+
+        def _score_listing():
+            _res, _score = None, 0.0
+            for i, _t in enumerate([search_title, title] + ([fallback_title] if fallback_title and fallback_title != title else [])):
+                _r, _sc = _best_match(all_results, _t, duration, "rutube", log=(i == 0))
+                if _r and _sc > _score:
+                    _score, _res = _sc, _r
+                if _score >= _EARLY_EXIT_SCORE:
+                    break
+            return _res, _score
 
         # Ищем лучшее совпадение в листинге по всем вариантам заголовка
-        listing_result = None
-        listing_score  = 0.0
-        for i, _t in enumerate([search_title, title] + ([fallback_title] if fallback_title and fallback_title != title else [])):
-            _r, _sc = _best_match(all_results, _t, duration, "rutube", log=(i == 0))
-            if _r and _sc > listing_score:
-                listing_score  = _sc
-                listing_result = _r
-            if listing_score >= _EARLY_EXIT_SCORE:
-                break
+        listing_result, listing_score = _score_listing()
+
+        # AUDIT R14: если совпадение слабое, а кэш был ЧАСТИЧНЫМ (ранний выход
+        # на ЧУЖОМ видео) — наш ролик может лежать на ещё не загруженных
+        # страницах. Дозагружаем остаток листинга и ищем снова.
+        if listing_score < _EARLY_EXIT_SCORE and not listing_complete:
+            logger.info("RuTube: частичный листинг без уверенного совпадения — дозагружаю остаток")
+            more, listing_complete = await _load_rutube_listing(
+                cid, headers, loop, search_title, duration,
+                start_page=len(all_results) // 20 + 1, existing=all_results,
+                allow_early_exit=False,
+            )
+            if len(more) > len(all_results):
+                all_results = more
+                _set_rutube_listing_cache(cid, all_results, listing_complete)
+                logger.info("RuTube: листинг дозагружен — %d видео", len(all_results))
+                listing_result, listing_score = _score_listing()
 
         # Уверенное совпадение из листинга — сразу возвращаем
         if listing_result and listing_score >= _EARLY_EXIT_SCORE:

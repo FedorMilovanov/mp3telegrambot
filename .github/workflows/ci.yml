@@ -3,8 +3,25 @@ name: CI
 on:
   push:
     branches: ["main"]
+    # Не гоняем полный CI на коммитах, где меняются только выгрузки страниц,
+    # документация или .gitignore — это частые ручные пуши оператора
+    # (dump_telegraph_pages → commit → push), от них CI-письма только шумят.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".gitignore"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".gitignore"
+
+# Частые пуши подряд отменяют предыдущий незавершённый прогон — не копим
+# очередь запусков и, соответственно, писем.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
