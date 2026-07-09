@@ -468,6 +468,36 @@ def audit_expanded_sections(
 
         new_sections.append(sec)
 
+    # AUDIT R15 (скриншот 2026-07-09): density-retry Synopsis (schema
+    # отключена для verbatim-режима) иногда возвращает ДВЕ секции подряд
+    # с одинаковым title и time — TOC показывал «Решительный выбор в
+    # библиотеке — 20:00» дважды. Ни здесь, ни в services/telegraph.py
+    # дедупликации не было вообще. Убираем ПОДРЯД идущие дубли (одинаковый
+    # нормализованный title + одинаковый time), оставляя более содержательную.
+    def _dedup_key(sec: dict) -> tuple[str, str]:
+        t = re.sub(r"[^\w\s]", "", str(sec.get("title") or "").lower())
+        t = re.sub(r"\s+", " ", t).strip()
+        return t, str(sec.get("time") or "").strip()
+
+    def _section_richness(sec: dict) -> int:
+        blocks_len = sum(len(str(b.get("text") or "")) for b in (sec.get("blocks") or []) if isinstance(b, dict))
+        return len(str(sec.get("content") or "")) + blocks_len
+
+    deduped_sections: list[dict] = []
+    for idx, sec in enumerate(new_sections):
+        key = _dedup_key(sec)
+        if deduped_sections and key[0] and _dedup_key(deduped_sections[-1]) == key:
+            if _section_richness(sec) > _section_richness(deduped_sections[-1]):
+                deduped_sections[-1] = sec
+            issues.append(ContentAuditIssue(
+                code="duplicate_section_removed",
+                location=f"{label or 'expanded'}.sections[{idx}]",
+                message=f"consecutive duplicate section removed: title={key[0]!r} time={key[1]!r}",
+            ))
+            continue
+        deduped_sections.append(sec)
+    new_sections = deduped_sections
+
     new_outline: list[dict] = []
     for idx, raw in enumerate(outline or []):
         if not isinstance(raw, dict):
