@@ -345,31 +345,34 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
     """
     try:
         import yt_dlp
-        from services.ffmpeg import (
-            COOKIES_FILE,
-            _proxy_for_ytdlp,
-            _firefox_cookie_source_available,
-        )
+        from services.ffmpeg import YTDLP_BASE_ARGS
     except Exception:
         return None
 
-    opts = {
-        "quiet": True,
-        "noplaylist": True,
-        "socket_timeout": 30,
-        "retries": 3,
-        "extractor_args": {"youtube": {"player_client": ["web"]}},
-    }
+    # AUDIT R31b (живой лог 2026-07-10: in-process ВСЕГДА падал на YouTube с
+    # «Only images available» → откат на subprocess): прежняя версия жёстко
+    # просила только web-клиента и НЕ передавала js-runtime, поэтому YouTube-n-
+    # challenge не решался. Правильно — точный паритет с рабочим subprocess:
+    # берём те же флаги (cookies, proxy, --js-runtimes, --remote-components,
+    # --format-sort) и превращаем их в ydl_opts через parse_options. На любой
+    # сбой возвращаем None → безопасный откат на subprocess (как и раньше).
     try:
-        if COOKIES_FILE.exists():
-            opts["cookiefile"] = str(COOKIES_FILE)
-        elif _firefox_cookie_source_available("firefox"):
-            opts["cookiesfrombrowser"] = ("firefox",)
-        _proxy = _proxy_for_ytdlp()
-        if _proxy:
-            opts["proxy"] = _proxy
-    except Exception:
-        pass
+        _flags = list(YTDLP_BASE_ARGS)
+        for _i, _tok in enumerate(_flags):
+            if _tok in ("yt_dlp", "yt-dlp"):
+                _flags = _flags[_i + 1:]
+                break
+        _parsed = yt_dlp.parse_options(_flags + ["--no-playlist", "--quiet"])
+        opts = getattr(_parsed, "ydl_opts", None)
+        if opts is None and isinstance(_parsed, (tuple, list)):
+            opts = _parsed[-1]  # старые версии yt-dlp: 4-кортеж
+        if not isinstance(opts, dict):
+            return None
+        opts.setdefault("socket_timeout", 30)
+        opts["noplaylist"] = True
+    except Exception as e:
+        logger.info("yt-dlp in-process: parse_options не сработал (%s) — subprocess", str(e)[:150])
+        return None
 
     def _run():
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -381,7 +384,7 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
             timeout=timeout,
         )
     except Exception as e:
-        logger.warning(
+        logger.info(
             "yt-dlp in-process info не удался (%s) — откат на subprocess",
             str(e)[:200],
         )

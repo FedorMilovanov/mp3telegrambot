@@ -33,12 +33,16 @@ def test_inprocess_tried_before_subprocess():
 
 
 def test_inprocess_carries_cookies_and_proxy():
-    """Метаданные YouTube в no-TUN режиме требуют proxy и часто cookies —
-    in-process путь обязан их прокидывать (как pipelines/playlist.py)."""
-    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:2000]
-    assert "_proxy_for_ytdlp()" in seg
-    assert "cookiefile" in seg
-    assert 'opts["noplaylist"] = True' in seg or '"noplaylist": True' in seg
+    """Метаданные YouTube в no-TUN требуют proxy/cookies И js-runtime для
+    n-challenge. AUDIT R31b (in-process ВСЕГДА падал на YouTube «Only images»):
+    берём тот же набор из YTDLP_BASE_ARGS через parse_options — точный паритет
+    с рабочим subprocess, а не хардкод неполного набора."""
+    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:2600]
+    assert "YTDLP_BASE_ARGS" in seg          # тот же источник флагов, что и subprocess
+    assert "parse_options" in seg            # cookies+proxy+js-runtimes из флагов
+    assert 'opts["noplaylist"] = True' in seg
+    # прежний баг: жёсткий player_client=web без js-runtime — не должно вернуться
+    assert "player_client" not in seg
 
 
 def test_inprocess_returns_none_on_failure_for_fallback():
