@@ -9,7 +9,7 @@ from core.globals import (
     DOWNLOAD_DIR, THUMBS_DIR, HAS_PILLOW,
     html_mod,                     # FIX shorts_video
 )
-from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars  # FIX shorts_video
+from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars, _is_static_video  # FIX shorts_video
 from core.database import settings_get   # FIX shorts_video
 from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
 from core.url_utils import get_youtube_video_url # FIX shorts_video
@@ -162,6 +162,15 @@ async def render_short_clip(
 
         # Детектируем чёрные полосы (letterbox/pillarbox) и срезаем их
         black_bars = await _detect_black_bars(source_video_path, float(start_seconds))
+
+        # AUDIT R28: статичная картинка-заставка (аудио-проповедь с обложкой)
+        # при crop в 9:16 режется криво (заголовок за краем). Для таких кадров
+        # переключаемся на full_frame_blur — картинка целиком по центру, сверху/
+        # снизу размытый фон, субтитры читаются на нём. Реальное видео
+        # проповедника остаётся на crop_zoom (там кадр заполняется отлично).
+        if visual_mode == "crop_zoom" and await _is_static_video(source_video_path, float(start_seconds)):
+            visual_mode = "full_frame_vertical"
+            logger.info("Short: статичный кадр (заставка) — режим full_frame_blur вместо crop")
 
         _use_filter_complex = False   # True для blur-overlay графа с лейблами
         if visual_mode == "crop_zoom":

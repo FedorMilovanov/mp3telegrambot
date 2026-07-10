@@ -433,6 +433,35 @@ async def _find_silence_end(
         return target_end
 
 
+async def _is_static_video(video_path: Path, sample_start: float = 0.0,
+                           probe_seconds: float = 6.0) -> bool:
+    """AUDIT R28: True если фрагмент — практически статичная картинка
+    (аудио-проповедь с обложкой-заставкой вместо реального видео).
+
+    Зачем: для таких кадров crop до 9:16 срезает заголовок/картинку («АНАТОМИЯ
+    ЦЕРКВИ» уезжает за край). Реальное видео проповедника (движение, жесты)
+    статичным НЕ считается — там crop работает отлично, его не трогаем.
+    Детектор — ffmpeg freezedetect (застывший кадр >= 2с). При любой ошибке
+    возвращаем False (безопасно: остаётся прежний crop-режим).
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg or not video_path.exists():
+        return False
+    cmd = [
+        ffmpeg, "-ss", str(max(0.0, sample_start)), "-i", str(video_path),
+        "-t", str(probe_seconds),
+        "-vf", "freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-",
+    ]
+    try:
+        proc = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=30),
+        )
+    except Exception:
+        return False
+    return "freeze_start" in (proc.stderr or "")
+
+
 def _crop_consensus(crop_votes: dict, sample_count: int) -> str:
     """AUDIT R27: выбирает crop только при согласии сэмплов cropdetect.
 

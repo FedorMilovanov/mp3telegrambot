@@ -12,6 +12,7 @@ from core.globals import (
 from core.database import GEMINI_MODEL       # FIX render
 from services.ffmpeg import _get_video_encoder
 from services.ffmpeg import _find_silence_end    # FIX render
+from services.ffmpeg import _is_static_video     # AUDIT R28
 from core.utils import cleanup_files, format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
@@ -246,6 +247,14 @@ async def render_montage_short(
             return False
         output_path.parent.mkdir(parents=True, exist_ok=True)
         loop = asyncio.get_running_loop()
+
+        # AUDIT R28: статичная картинка-заставка при crop в 9:16 режется криво —
+        # вписываем целиком (full_frame_blur). Реальное видео остаётся на crop.
+        if visual_mode == "crop_zoom" and fragments:
+            _frag0_start = float(fragments[0].get("start_seconds", 0) or 0)
+            if await _is_static_video(source_video_path, _frag0_start):
+                visual_mode = "full_frame_vertical"
+                logger.info("Montage: статичный кадр (заставка) — full_frame_blur вместо crop")
 
         if visual_mode == "crop_zoom":
             vf = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=720:1280"
