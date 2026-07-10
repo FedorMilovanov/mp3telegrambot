@@ -433,6 +433,24 @@ async def _find_silence_end(
         return target_end
 
 
+def _crop_consensus(crop_votes: dict, sample_count: int) -> str:
+    """AUDIT R27: выбирает crop только при согласии сэмплов cropdetect.
+
+    Один сэмпл — не доказательство. Живой лог показал три разных crop по
+    одному голосу; blind max() брал случайный (часто невалидный) вариант и
+    ffmpeg падал. Правило: при >=2 сэмплах нужен топ-crop с >=2 голосами И
+    долей >=2/3; при единственном сэмпле принимаем его. Иначе — "" (без
+    обрезки, безопасный полный кадр).
+    """
+    if not crop_votes:
+        return ""
+    crop_str, top = max(crop_votes.items(), key=lambda kv: kv[1])
+    total = sum(crop_votes.values())
+    if total >= 2 and (top < 2 or (top / total) < (2 / 3)):
+        return ""
+    return crop_str
+
+
 async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str:
     """
     Запускает ffmpeg cropdetect на трёх точках фрагмента (начало, середина, +10с).
@@ -493,8 +511,18 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         if not crop_votes:
             return ""
 
-        # Берём самый частый результат
-        crop_str = max(crop_votes, key=lambda k: crop_votes[k])
+        # AUDIT R27 (живой лог: votes={'648:634:154:86':1,'458:620:296:100':1,
+        # '894:644:140:76':1} — три РАЗНЫХ crop по одному голосу, max() брал
+        # случайный битый вариант -> ffmpeg падал, Short терялся). Требуем
+        # консенсус: при >=2 сэмплах нужно согласие большинства (>=2 голоса
+        # и >=2/3). Нет согласия -> без обрезки (безопасный полный кадр).
+        crop_str = _crop_consensus(crop_votes, len(sample_points))
+        if not crop_str:
+            logger.info(
+                "cropdetect: нет консенсуса (votes=%s) — без обрезки, полный кадр",
+                crop_votes,
+            )
+            return ""
 
         # Проверяем что реально что-то срезается (порог 4px)
         # Только читаем заголовок файла — ffmpeg выведет метаданные в stderr и сразу выйдет.
