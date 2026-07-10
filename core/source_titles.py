@@ -450,15 +450,58 @@ def original_author_name(value: str) -> str:
     return raw
 
 
+def _norm_title_for_match(value: str) -> str:
+    """Normalize a book title for tolerant matching: casefold, drop
+    punctuation, collapse spaces, strip a single leading article. Lets a
+    model-shortened title («Of the Mortification of Sin») match the
+    registry's full form («Of the Mortification of Sin in Believers»)."""
+    s = str(value or "").casefold().strip()
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^(?:of the|the|a|an)\s+", "", s)
+    return s
+
+
+def _titles_match(known: str, given: str) -> bool:
+    """True if titles are equal or one is a word-boundary prefix of the
+    other (a shortened form). Author identity is checked separately, so a
+    prefix match here cannot cross-map between different authors' books."""
+    a = _norm_title_for_match(known)
+    b = _norm_title_for_match(given)
+    if not a or not b:
+        return False
+    return a == b or a.startswith(b + " ") or b.startswith(a + " ")
+
+
+def _author_key(value: str) -> str:
+    """Collapse an author (English or Russian) to a comparable key by
+    routing through AUTHOR_CANONICAL then canonical_person_name, so
+    «John Owen», «Джон Оуэн» and spacing variants converge to one key."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    ru = AUTHOR_CANONICAL.get(raw, raw)
+    return canonical_person_name(ru).casefold()
+
+
 def official_ru_title(en_author: str, en_title: str) -> str:
     author = str(en_author or "").strip()
     title = str(en_title or "").strip().rstrip(".")
+    if not title:
+        return ""
     direct = OFFICIAL_RU_TITLES.get((author, title), "")
     if direct:
         return direct
-    author_canon = canonical_person_name(author)
+    # Author identity is required for a match — never guess a book from its
+    # title alone. Empty/unknown author → no fallback (caller may retry with
+    # the Russian author field). AUDIT R34: fixes shortened-title misses
+    # (Owen «…of Sin» vs «…of Sin in Believers») and English-author-empty
+    # misses (Ryle «Holiness» with only the Russian author present).
+    key = _author_key(author)
+    if not key:
+        return ""
     for known_author, known_title in OFFICIAL_RU_TITLES:
-        if known_title == title and canonical_person_name(AUTHOR_CANONICAL.get(known_author, known_author)) == author_canon:
+        if _author_key(known_author) == key and _titles_match(known_title, title):
             return OFFICIAL_RU_TITLES[(known_author, known_title)]
     return ""
 
@@ -540,6 +583,45 @@ def _ensure_source_title_bold(line: str) -> str:
     return line
 
 
+def _upgrade_english_titled_source_card(line: str) -> str | None:
+    """Already-rendered canonical card whose MAIN title is still English but
+    has a known official Russian translation → re-render with the Russian
+    title. Returns None when there is nothing to upgrade (leave line as-is).
+
+    AUDIT R34 (live dump 2026-07-10): the model emits
+    «**Of the Mortification of Sin**, Джон Оуэн (John Owen).» which the
+    canonical-card guard below passed through verbatim, so a published Russian
+    title (Оуэн «Об умерщвлении греха…», Райл «Святость») was never applied.
+    Fires only for an English main title with a registry hit — cards without a
+    known translation (e.g. Пол Вошер «The Power and Message of the Gospel»)
+    are left untouched."""
+    m = re.match(
+        r"^\s*(?:[•\-]\s+)?\*\*(?P<title>[^*]+)\*\*,\s*(?P<author>[^(—]+?)\s*"
+        r"(?:\((?P<paren>[^)]*)\))?\s*\.?\s*(?:—\s*(?P<why>.+))?$",
+        line,
+    )
+    if not m:
+        return None
+    title = m.group("title").strip()
+    # Only act when the MAIN title is English (Latin, no Cyrillic).
+    if not re.search(r"[A-Za-z]", title) or re.search(r"[А-Яа-яЁё]", title):
+        return None
+    author_ru = m.group("author").strip()
+    en_author = ""
+    for part in re.split(r",\s*", (m.group("paren") or "").strip()):
+        p = part.strip()
+        if re.search(r"[A-Za-z]", p) and not _same_title(p, title):
+            en_author = p
+            break
+    if not (official_ru_title(en_author, title) or official_ru_title(author_ru, title)):
+        return None
+    card = render_source_card(build_source_card(
+        author=author_ru, title_original=title, original_author=en_author,
+    ))
+    why = (m.group("why") or "").strip().rstrip(".")
+    return f"{card} — {why}." if why else card
+
+
 def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> str:
     """Normalize one bibliography/source-card line.
 
@@ -573,6 +655,15 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     # без этого без-bullet-варианта здесь guard молчал ломался: уже готовая
     # карточка повторно "нормализовалась" ниже и английское имя в скобках
     # (John MacArthur) переводилось на русский (Джон МакАртур), давая дубль.
+    # AUDIT R34: an English main title with a known published Russian
+    # translation is upgraded here — with or without a parenthetical verifier
+    # (Owen «…of Sin (John Owen)», Ryle «Holiness» без скобок) — before any
+    # pass-through below. Fires only on a registry hit, so English titles
+    # without a known translation are left as-is.
+    upgraded = _upgrade_english_titled_source_card(out)
+    if upgraded is not None:
+        return upgraded
+
     if (re.match(r"^\s*(?:[•\-]\s+)?\*\*", out)
             and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out)):
         return out.rstrip() + ("" if re.search(r"[.!?]\s*$", out) else ".")

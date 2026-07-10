@@ -38,8 +38,12 @@ def test_english_prose_not_rewritten_into_source_card():
 
 
 def test_known_author_card_still_normalized():
+    # AUDIT R34: имя автора канонизируется, а известное название книги теперь
+    # подставляется официальным русским переводом (Оуэн из реестра), англ.
+    # оригинал уходит в скобки-верификатор.
     r = normalize_source_card_line("• John Owen, The Mortification of Sin")
-    assert "Джон Оуэн" in r and "**The Mortification of Sin**" in r
+    assert "Джон Оуэн" in r and "**Об умерщвлении греха в верующих**" in r
+    assert "The Mortification of Sin" in r  # оригинал сохранён в скобках
 
 
 def test_keller_denylist_scoped_to_source_cards():

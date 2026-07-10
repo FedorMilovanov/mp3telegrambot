@@ -72,9 +72,13 @@ def test_structured_source_block_renders_same_title_first_policy():
 
 
 def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru_title():
+    # AUDIT R34: выдуманный моделью русский титул («Умерщвление греха») НЕ
+    # используется — вместо него подставляется ОФИЦИАЛЬНЫЙ из реестра
+    # («Об умерщвлении греха в верующих»); оригинал сохранён в скобках.
     assert normalize_source_card_line(
         "• Умерщвление греха, Джон Оуэн (Of the Mortification of Sin, John Owen)."
-    ) == "**Of the Mortification of Sin**, Джон Оуэн (John Owen)."
+    ) == "**Об умерщвлении греха в верующих**, Джон Оуэн (Of the Mortification of Sin, John Owen)."
+    # Книги НЕ из реестра: русский титул не выдумываем — остаётся оригинал.
     assert normalize_source_card_line(
         "• Все ради блага, Томас Уотсон (All Things for Good, Thomas Watson)."
     ) == "**All Things for Good**, Томас Уотсон (Thomas Watson)."
@@ -143,9 +147,12 @@ def test_source_pack_author_surnames_have_registry_aliases():
 
 
 def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical():
+    # AUDIT R34: фамилия-алиас «Owen» → «Джон Оуэн», полный оригинальный автор
+    # в скобках; известная книга подставлена официальным русским названием.
     assert normalize_source_card_line("• Owen, Mortification of Sin") == (
-        "**Mortification of Sin**, Джон Оуэн (John Owen)."
+        "**Об умерщвлении греха в верующих**, Джон Оуэн (Mortification of Sin, John Owen)."
     )
+    # Книга не из реестра — оригинальное английское название сохраняется.
     assert normalize_source_card_line("• Warfield, Inspiration and Authority of the Bible") == (
         "**Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
     )
