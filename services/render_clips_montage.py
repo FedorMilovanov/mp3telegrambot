@@ -364,10 +364,14 @@ async def _generate_extras_content(client, *, model: str, prompt: str, max_outpu
     except asyncio.TimeoutError:
         raise
     except Exception as exc:
-        if not schema:
+        # AUDIT R26: legacy-JSON retry — только при ошибке самой схемы.
+        # quota/overload/timeout/auth второй запрос не лечит, лишь жжёт квоту.
+        from services.gemini_error_policy import classify_gemini_error
+        _decision = classify_gemini_error(exc)
+        if not schema or not _decision.use_legacy_json_fallback:
             raise
         logger.warning(
-            "extras_candidates: structured output failed (%s: %s) — retry legacy JSON config",
+            "extras_candidates: structured output схема отклонена (%s: %s) — retry legacy JSON config",
             type(exc).__name__, str(exc)[:180],
         )
         return await asyncio.wait_for(

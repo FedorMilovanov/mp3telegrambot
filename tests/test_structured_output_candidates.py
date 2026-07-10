@@ -41,8 +41,10 @@ def test_candidate_generators_try_structured_output_then_legacy_fallback():
     extras_source = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     assert "shorts_response_schema()" in shorts_source
     assert "clips_response_schema()" in shorts_source
-    assert "structured output failed" in shorts_source
+    # AUDIT R26: legacy-JSON fallback остался, но теперь ГАТИРОВАН классификатором
+    # ошибки (только при schema-ошибке, не при quota/overload/timeout).
     assert "retry legacy JSON config" in shorts_source
+    assert "classify_gemini_error" in shorts_source
     assert "extras_response_schema()" in extras_source
-    assert "structured output failed" in extras_source
     assert "retry legacy JSON config" in extras_source
+    assert "classify_gemini_error" in extras_source

@@ -110,10 +110,14 @@ async def _generate_audio_candidate_content(
     except asyncio.TimeoutError:
         raise
     except Exception as exc:
-        if not schema:
+        # AUDIT R26: legacy-JSON retry оправдан ТОЛЬКО при ошибке самой схемы.
+        # При quota/overload/timeout/auth второй запрос лишь жжёт квоту — не делаем.
+        from services.gemini_error_policy import classify_gemini_error
+        _decision = classify_gemini_error(exc)
+        if not schema or not _decision.use_legacy_json_fallback:
             raise
         logger.warning(
-            "%s: structured output failed (%s: %s) — retry legacy JSON config",
+            "%s: structured output схема отклонена (%s: %s) — retry legacy JSON config",
             task, type(exc).__name__, str(exc)[:180],
         )
         return await asyncio.wait_for(
