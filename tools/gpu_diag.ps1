@@ -1,10 +1,10 @@
 # GPU / CUDA / NVENC diagnostics for Windows.
-# Диагностика зависаний GPU при нарезке Shorts. ТОЛЬКО ЧТЕНИЕ: скрипт лишь
-# читает состояние карты и журнал событий Windows, ничего не меняет.
+# Read-only: this script only READS GPU state and the Windows event log.
+# It changes nothing. ASCII-only so it runs on Windows PowerShell 5.1 and 7+.
 #
-# Запуск в PowerShell из папки бота:
+# Run from the bot folder:
 #     powershell -ExecutionPolicy Bypass -File tools\gpu_diag.ps1
-# Результат целиком скопируй и пришли мне.
+# Then copy the WHOLE output and send it back.
 
 $ErrorActionPreference = 'Continue'
 
@@ -23,7 +23,7 @@ function ShowEvents($events, $emptyMsg) {
     }
 }
 
-$since = (Get-Date).AddDays(-14)   # окно поиска по журналу: последние 14 дней
+$since = (Get-Date).AddDays(-14)   # search window in the event log: last 14 days
 
 Section "1. nvidia-smi (overview: driver, GPU, running processes)"
 nvidia-smi
@@ -32,59 +32,59 @@ Section "2. GPU health: temperature / power / clocks / throttle / ECC"
 nvidia-smi -q -d TEMPERATURE,POWER,CLOCK,PERFORMANCE,ECC 2>&1 |
     Select-String -Pattern "GPU Current Temp|GPU Shutdown Temp|GPU Slowdown Temp|Power Draw|Current Power Limit|SM Clock|HW Slowdown|HW Thermal Slowdown|SW Thermal Slowdown|SW Power Cap|Sync Boost|Pending|Single Bit|Double Bit|Aggregate"
 
-Section "3. Xid errors (hardware/driver faults the GPU itself reported)"
+Section "3. Xid errors (hardware/driver faults reported by the GPU itself)"
 $xid = nvidia-smi -q 2>&1 | Select-String -Pattern "Xid"
 if ($xid) {
-    Write-Host "!!! Xid found — это признак сбоя железа/драйвера GPU:" -ForegroundColor Red
+    Write-Host "!!! Xid found - a sign of a GPU hardware/driver fault:" -ForegroundColor Red
     $xid
 } else {
-    Write-Host "Xid не встречается в nvidia-smi -q (хороший знак)." -ForegroundColor Green
+    Write-Host "No Xid lines in nvidia-smi -q (good sign)." -ForegroundColor Green
 }
 
 Section "4. NVENC encoder / decoder utilization snapshot"
 nvidia-smi -q -d UTILIZATION 2>&1 |
     Select-String -Pattern "Utilization|Gpu|Memory|Encoder|Decoder"
 
-Section "5. TDR: Event 4101 — 'display driver stopped responding and recovered'"
+Section "5. TDR: Event 4101 - 'display driver stopped responding and recovered'"
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; Id=4101; StartTime=$since} -ErrorAction SilentlyContinue |
     Select-Object TimeCreated, Id, Message
-ShowEvents $e "Событий 4101 (TDR-восстановление драйвера) за 14 дней нет — хорошо."
+ShowEvents $e "No 4101 (TDR driver-recovery) events in the last 14 days - good."
 
-Section "6. NVIDIA kernel driver events (nvlddmkm) — engine hangs / GPU faults"
+Section "6. NVIDIA kernel driver events (nvlddmkm) - engine hangs / GPU faults"
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='nvlddmkm'; StartTime=$since} -ErrorAction SilentlyContinue |
     Select-Object TimeCreated, Id, LevelDisplayName, Message
-ShowEvents $e "Событий провайдера nvlddmkm за 14 дней нет — хорошо."
+ShowEvents $e "No nvlddmkm provider events in the last 14 days - good."
 
-Section "7. Event ID 153 — что это ИМЕННО на твоей системе (диск или GPU?)"
+Section "7. Event ID 153 - what it actually IS on your system (disk or GPU?)"
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; Id=153; StartTime=$since} -ErrorAction SilentlyContinue |
     Select-Object TimeCreated, ProviderName, Message -First 15
-ShowEvents $e "Событий с Id=153 за 14 дней нет."
-Write-Host "(ProviderName подскажет источник: 'disk'/'storahci' = диск, иначе — смотри текст)" -ForegroundColor DarkGray
+ShowEvents $e "No Id=153 events in the last 14 days."
+Write-Host "(ProviderName tells the source: 'disk'/'storahci' = disk, otherwise read the text)" -ForegroundColor DarkGray
 
-Section "8. WHEA hardware errors (PCIe / GPU / CPU / RAM — corrected & fatal)"
+Section "8. WHEA hardware errors (PCIe / GPU / CPU / RAM - corrected and fatal)"
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Microsoft-Windows-WHEA-Logger'; StartTime=$since} -ErrorAction SilentlyContinue |
     Select-Object TimeCreated, Id, LevelDisplayName, Message
-ShowEvents $e "Событий WHEA-Logger за 14 дней нет — аппаратных ошибок шины/GPU не зафиксировано."
+ShowEvents $e "No WHEA-Logger events in the last 14 days - no hardware bus/GPU errors recorded."
 
-Section "9. Bugchecks / BSOD (Event 1001) и внезапные перезагрузки (Kernel-Power 41)"
+Section "9. Bugchecks / BSOD (Event 1001) and hard reboots (Kernel-Power 41)"
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001; StartTime=$since} -ErrorAction SilentlyContinue |
     Where-Object { $_.ProviderName -match 'BugCheck|WER' } |
     Select-Object TimeCreated, Message
-ShowEvents $e "BSOD-событий (BugCheck 1001) за 14 дней нет."
+ShowEvents $e "No BSOD (BugCheck 1001) events in the last 14 days."
 $e = Get-WinEvent -FilterHashtable @{LogName='System'; Id=41; StartTime=$since} -ErrorAction SilentlyContinue |
     Select-Object TimeCreated, Message
-ShowEvents $e "Событий Kernel-Power 41 (жёсткое выключение/зависание) за 14 дней нет."
+ShowEvents $e "No Kernel-Power 41 (hard shutdown/freeze) events in the last 14 days."
 
 Section "10. TDR registry settings (read-only)"
 $gd = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
 $reg = Get-ItemProperty -Path $gd -ErrorAction SilentlyContinue |
     Select-Object TdrLevel, TdrDelay, TdrDdiDelay
-if ($reg) { $reg | Format-List } else { Write-Host "Ключи Tdr* не заданы — используются значения по умолчанию (TdrDelay=2 сек)." -ForegroundColor DarkGray }
+if ($reg) { $reg | Format-List } else { Write-Host "No Tdr* keys set - defaults in use (TdrDelay=2 sec)." -ForegroundColor DarkGray }
 
-Section "ИТОГ"
-Write-Host "Пришли весь вывод. Что искать:"
-Write-Host "  - Xid / nvlddmkm / 4101  -> драйвер или карта роняются под нагрузкой (TDR)."
-Write-Host "  - WHEA fatal             -> аппаратная проблема (PCIe/питание/сам GPU)."
-Write-Host "  - Temp близко к Shutdown -> перегрев, чистка/термопаста/обороты кулера."
-Write-Host "  - HW/SW Slowdown = Active-> троттлинг (питание или температура)."
-Write-Host "  - 153 с провайдером disk -> это про диск, к зависанию GPU отношения нет."
+Section "SUMMARY - what to look for"
+Write-Host "Send the whole output. Interpretation:"
+Write-Host "  - Xid / nvlddmkm / 4101   -> driver or card crashing under load (TDR)."
+Write-Host "  - WHEA fatal              -> hardware problem (PCIe / power / GPU itself)."
+Write-Host "  - Temp near Shutdown      -> overheating: dust/thermal paste/fan RPM."
+Write-Host "  - HW/SW Slowdown = Active -> throttling (power or temperature)."
+Write-Host "  - 153 with provider disk  -> that's about the DISK, unrelated to GPU hangs."
