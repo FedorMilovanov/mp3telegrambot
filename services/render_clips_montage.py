@@ -98,10 +98,14 @@ async def render_clip(
             str(output_path),
         ]
 
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=900),
-        )
+        # AUDIT R29: сериализуем GPU-рендер клипа — именно этот вызов упирался
+        # в 15-мин таймаут, когда три видео жарили h264_nvenc одновременно.
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.gpu_render:
+            proc = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=900),
+            )
         if proc.returncode != 0:
             stderr_tail = (proc.stderr or '')[-800:]
             # ffmpeg на Windows иногда завершается с кодом != 0 после "received signal 2"
@@ -290,9 +294,12 @@ async def render_montage_short(
                 "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
                 "-y", str(part_path),
             ]
-            proc = await loop.run_in_executor(
-                None, lambda c=cmd: subprocess.run(c, capture_output=True, text=True, timeout=120)
-            )
+            # AUDIT R29: сериализуем GPU-рендер фрагмента montage.
+            from core.resource_scheduler import scheduler as _sched
+            async with _sched.gpu_render:
+                proc = await loop.run_in_executor(
+                    None, lambda c=cmd: subprocess.run(c, capture_output=True, text=True, timeout=120)
+                )
             if proc.returncode != 0 or not part_path.exists():
                 logger.warning(f"Montage: фрагмент {i} не отрендерен")
                 for p in temp_parts: p.unlink(missing_ok=True)

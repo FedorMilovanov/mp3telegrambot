@@ -225,10 +225,14 @@ async def render_short_clip(
             str(output_path),
         ]
 
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
-        )
+        # AUDIT R29: сериализуем GPU-рендер — параллельные видео не дерутся за
+        # одну видеокарту (иначе h264_nvenc упирался в 15-мин таймаут).
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.gpu_render:
+            proc = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
+            )
 
         if proc.returncode != 0:
             stderr = (proc.stderr or "")[-1000:]
@@ -1154,7 +1158,11 @@ async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[
             ]
             return result, getattr(info, "duration", 0), getattr(info, "language", "?"), getattr(info, "language_probability", 1.0)
 
-        segments, audio_duration, detected_lang, lang_prob = await loop.run_in_executor(None, _run_whisper)
+        # AUDIT R29: сериализуем Whisper — параллельные видео не грузят CPU
+        # тремя large-v3 транскрипциями разом (иначе каждая тянется 3-8 мин).
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.whisper:
+            segments, audio_duration, detected_lang, lang_prob = await loop.run_in_executor(None, _run_whisper)
         wav_path.unlink(missing_ok=True)
         wav_path = None
 
