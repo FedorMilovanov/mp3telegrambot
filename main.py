@@ -634,6 +634,14 @@ async def run_bot_async():
                         _getme_window_sec,
                     )
                     break
+            elif _patient_local:
+                # AUDIT R33: не молчим во время ожидания — иначе выглядит как
+                # «бот завис». Показываем прогресс, чтобы было видно, что идёт
+                # ожидание локального сервера, а не зависание.
+                logger.info(
+                    "⏳ Жду локальный /getMe: попытка %d/%d (%s)...",
+                    _gm_attempt + 1, _getme_attempts, _getme_last,
+                )
             await asyncio.sleep(5)
         if not _getme_ok:
             if _fallback_enabled and _cloud_fallback_proxy_url:
