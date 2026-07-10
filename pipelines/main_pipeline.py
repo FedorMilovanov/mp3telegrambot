@@ -2776,7 +2776,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         parse_mode="HTML",
                     )
                     sent = await send_quiz_polls(quiz_questions, update, context, title=_quiz_title)
-                    logger.info(f"Quiz: sent {sent}/{len(quiz_questions)} polls")
+                    logger.info(f"Quiz: started sequential session ({sent} questions)")
                 else:
                     logger.info("Quiz: no questions generated (Gemini returned None)")
             except Exception as _quiz_err:

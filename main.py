@@ -19,7 +19,7 @@ from core.database import (
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters,
+    CallbackQueryHandler, PollAnswerHandler, filters,
 )
 from services.shorts_video import (
     HAS_FASTER_WHISPER,
@@ -720,6 +720,9 @@ async def run_bot_async():
         filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
     app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    # AUDIT R30: последовательная викторина продвигается по ответам пользователя.
+    from services.quiz_sessions import handle_quiz_poll_answer
+    app.add_handler(PollAnswerHandler(handle_quiz_poll_answer))
 
     # FIX 2026-06-10: глобальный error handler. Без него необработанное
     # исключение в хендлере = тихая строка 'No error handlers are registered'

@@ -505,51 +505,16 @@ async def send_quiz_polls(
     context,
     title: str = "",
 ) -> int:
-    """Send quiz questions as Telegram Native Quiz polls.
+    """AUDIT R30 (полная замена по решению оператора): один набор = один
+    последовательный тест. Раньше здесь сразу вываливалось 10 отдельных
+    опросов; теперь запускаем QuizSession — бот шлёт по одному вопросу,
+    ждёт ответ и в конце показывает счёт. Сама викторина продвигается через
+    PollAnswerHandler (services.quiz_sessions.handle_quiz_poll_answer),
+    зарегистрированный в main.py.
 
-    Returns number of successfully sent polls.
+    Возвращает число вопросов в запущенном тесте (0 — если не запустился).
     """
     if not questions:
         return 0
-    sent = 0
-    total = len(questions)
-    for i, q in enumerate(questions):
-        payload = _sanitize_poll_payload(q, index=i + 1, total=total)
-        if not payload:
-            logger.warning("[Quiz] Skipping invalid poll payload %d/%d", i + 1, total)
-            continue
-        try:
-            await context.bot.send_poll(
-                chat_id=update.effective_chat.id,
-                question=payload["question"],
-                options=payload["options"],
-                type="quiz",
-                correct_option_id=payload["correct"],
-                explanation=payload["explanation"],
-                is_anonymous=True,
-                reply_to_message_id=update.message.message_id if i == 0 else None,
-            )
-            sent += 1
-            if i < len(questions) - 1:
-                await asyncio.sleep(1.5)
-        except Exception as e:
-            logger.warning("[Quiz] Failed to send poll %d: %s", i+1, str(e)[:120])
-            retry_after = getattr(e, "retry_after", None)
-            if retry_after:
-                await asyncio.sleep(float(retry_after) + 1)
-                try:
-                    await context.bot.send_poll(
-                        chat_id=update.effective_chat.id,
-                        question=payload["question"],
-                        options=payload["options"],
-                        type="quiz",
-                        correct_option_id=payload["correct"],
-                        explanation=payload["explanation"],
-                        is_anonymous=True,
-                    )
-                    sent += 1
-                except Exception:
-                    pass
-    if sent:
-        logger.info("[Quiz] Sent %d/%d quiz polls for '%s'", sent, len(questions), title[:40])
-    return sent
+    from services.quiz_sessions import start_quiz_session
+    return await start_quiz_session(questions, update, context, title=title)
