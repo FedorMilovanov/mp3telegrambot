@@ -594,8 +594,30 @@ async def run_bot_async():
         _getme_ok = False
         _getme_last = ""
         _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
-        _fast_cloud_fallback = bool(_fallback_enabled and _cloud_fallback_proxy_url)
-        for _gm_attempt in range(12):  # до ~60с после появления TCP-порта
+        # AUDIT R24 (живой баг: с TUN+прокси бот всё равно уходил на облако 50 МБ).
+        # Быстрый fallback был рассчитан на no-TUN: если задан TELEGRAM_PROXY_URL,
+        # бот делал РОВНО ОДНУ проверку getMe (в t=0, сразу после открытия порта)
+        # и уходил на облако. Но telegram-bot-api.exe на холодном старте 20-60с
+        # поднимает соединение с дата-центрами Telegram, поэтому проверка в t=0
+        # ВСЕГДА не успевает. При включённом TUN локальный сервер РАБОТАЕТ, просто
+        # ему нужно дать время. LOCAL_BOT_API_WAIT_LOCAL=1 (для TUN-режима)
+        # отключает быстрый fallback и ждёт локальный /getMe весь отведённый
+        # интервал (LOCAL_BOT_API_GETME_TIMEOUT_SEC, по умолчанию 60с).
+        _patient_local = os.getenv("LOCAL_BOT_API_WAIT_LOCAL", "").strip().lower() in {"1", "true", "yes", "on"}
+        try:
+            _getme_window_sec = int(os.getenv("LOCAL_BOT_API_GETME_TIMEOUT_SEC", "60").strip() or "60")
+        except ValueError:
+            _getme_window_sec = 60
+        _getme_window_sec = max(15, min(_getme_window_sec, 300))
+        _getme_attempts = max(1, _getme_window_sec // 5)
+        _fast_cloud_fallback = bool(_fallback_enabled and _cloud_fallback_proxy_url and not _patient_local)
+        if _patient_local:
+            logger.info(
+                "⏳ LOCAL_BOT_API_WAIT_LOCAL=1: жду локальный /getMe до %dс "
+                "(TUN-режим, целюсь в локальный Bot API 2 ГБ, без быстрого cloud fallback)",
+                _getme_window_sec,
+            )
+        for _gm_attempt in range(_getme_attempts):  # до ~_getme_window_sec после появления TCP-порта
             _getme_ok, _getme_last = await asyncio.get_running_loop().run_in_executor(
                 None, _probe_local_botapi_getme
             )
@@ -606,8 +628,10 @@ async def run_bot_async():
                 logger.warning("⚠️ Local Bot API порт открыт, но getMe пока не отвечает: %s", _getme_last)
                 if _fast_cloud_fallback:
                     logger.warning(
-                        "☁️ no-TUN fast path: proxy для облачного Bot API задан, "
-                        "не жду 60с локальный /getMe — переключаюсь на cloud fallback"
+                        "☁️ Быстрый fallback на облачный Bot API (задан TELEGRAM_PROXY_URL). "
+                        "Если у вас ВКЛЮЧЁН TUN и нужен локальный сервер (2 ГБ) — задайте "
+                        "LOCAL_BOT_API_WAIT_LOCAL=1, тогда бот подождёт локальный /getMe до %dс.",
+                        _getme_window_sec,
                     )
                     break
             await asyncio.sleep(5)
