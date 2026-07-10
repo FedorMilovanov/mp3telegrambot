@@ -31,20 +31,16 @@ def test_commands_access_denied_uses_html():
 
 # ─── shorts.py thumbnails ─────────────────────────────────────────────────
 
-def test_shorts_poster_thumbnail_uses_open():
+def test_shorts_poster_thumbnail_uses_inputfile():
+    # AUDIT R25: open()+`.name=` падал на py3.13 -> InputFile(read_bytes()).
     src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert 'open(title_poster_path, "rb")' in src, \
-        "shorts.py poster must use open(), not BytesIO(read_bytes())"
-    assert "BytesIO(title_poster_path.read_bytes())" not in src, \
-        "shorts.py still has BytesIO(title_poster_path.read_bytes())"
+    assert "InputFile(title_poster_path.read_bytes()" in src
+    assert "thumb_buf.name =" not in src
 
 
-def test_shorts_snapshot_thumbnail_uses_open():
+def test_shorts_snapshot_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert 'open(snapshot_path, "rb")' in src, \
-        "shorts.py snapshot must use open(), not BytesIO(read_bytes())"
-    assert "BytesIO(snapshot_path.read_bytes())" not in src, \
-        "shorts.py still has BytesIO(snapshot_path.read_bytes())"
+    assert "InputFile(snapshot_path.read_bytes()" in src
 
 
 # ─── database.py busy_timeout ─────────────────────────────────────────────

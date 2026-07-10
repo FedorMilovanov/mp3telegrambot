@@ -26,6 +26,7 @@ from services.shorts_video import (
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.shorts_candidates import create_shorts_candidates
+from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import json
 import logging
@@ -318,8 +319,7 @@ async def process_and_send_shorts(
                         c["title"], c["duration_seconds"],
                     )
                     if poster_ok and title_poster_path.exists():
-                        thumb_buf = open(title_poster_path, "rb")
-                        thumb_buf.name = title_poster_path.name
+                        thumb_buf = InputFile(title_poster_path.read_bytes(), filename=title_poster_path.name)
                         logger.info(f"Shorts {i}/{total}: title poster создан")
                 except Exception as poster_err:
                     logger.warning(f"Shorts {i}/{total}: title poster error: {poster_err}")
@@ -331,8 +331,7 @@ async def process_and_send_shorts(
                         current_path, snapshot_path, c["duration_seconds"]
                     )
                     if snap_ok and snapshot_path.exists():
-                        thumb_buf = open(snapshot_path, "rb")
-                        thumb_buf.name = snapshot_path.name
+                        thumb_buf = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
                 except Exception as snap_err:
                     logger.warning(f"Shorts {i}/{total}: snapshot error: {snap_err}")
 
@@ -418,11 +417,9 @@ async def process_and_send_shorts(
             except Exception as send_err:
                 logger.warning(f"Shorts: ошибка отправки {i}/{total}: {send_err}")
             finally:
-                if thumb_buf:
-                    try:
-                        thumb_buf.close()
-                    except Exception:
-                        pass
+                # AUDIT R25: thumb_buf теперь InputFile (данные в памяти) —
+                # закрывать нечего.
+                pass
 
         # ── Шаг 9: итог ──────────────────────────────────────
         if sent == 0:

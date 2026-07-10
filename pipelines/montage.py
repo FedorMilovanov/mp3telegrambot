@@ -23,6 +23,7 @@ from services.shorts_video import (
     get_shorts_visual_mode,       # FIX montage
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
+from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import asyncio
 import logging
@@ -87,15 +88,13 @@ async def _run_montage_or_highlights_pipeline(
         if do_poster:
             try:
                 if await create_short_title_poster(current_path, poster_path, cand["title"], total_dur) and poster_path.exists():
-                    thumb_buf = open(poster_path, "rb")
-                    thumb_buf.name = poster_path.name
+                    thumb_buf = InputFile(poster_path.read_bytes(), filename=poster_path.name)
             except Exception:
                 pass
         if thumb_buf is None and do_snapshot:
             try:
                 if await create_short_snapshot(current_path, snapshot_path, total_dur) and snapshot_path.exists():
-                    thumb_buf = open(snapshot_path, "rb")
-                    thumb_buf.name = snapshot_path.name
+                    thumb_buf = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
             except Exception:
                 pass
 
@@ -116,9 +115,9 @@ async def _run_montage_or_highlights_pipeline(
             logger.warning(f"{prefix}: ошибка отправки: {send_err}")
             return False
         finally:
-            if thumb_buf:
-                try: thumb_buf.close()
-                except Exception: pass
+            # AUDIT R25: thumb_buf теперь InputFile (данные уже в памяти) —
+            # закрывать нечего, файловый handle не держим.
+            pass
     finally:
         for p in cleanup_paths:
             try: p.unlink(missing_ok=True)

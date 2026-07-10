@@ -17,6 +17,7 @@ from services.telegraph import create_telegraph_synopsis
 from converters.caption import build_caption
 from core.progress import set_progress
 from converters.md_telegraph import visible_length, safe_trim_caption
+from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import asyncio
 import logging
@@ -136,8 +137,7 @@ async def process_and_send_clips(
                         clip_path, snap_path, c["duration_seconds"]
                     )
                     if snap_ok and snap_path.exists():
-                        thumb_buf = open(snap_path, "rb")
-                        thumb_buf.name = snap_path.name
+                        thumb_buf = InputFile(snap_path.read_bytes(), filename=snap_path.name)
                 except Exception as snap_err:
                     logger.warning(f"Clips {i}/{total}: snapshot error: {snap_err}")
 
@@ -183,11 +183,9 @@ async def process_and_send_clips(
             except Exception as send_err:
                 logger.warning(f"Clips: ошибка отправки {i}/{total}: {send_err}")
             finally:
-                if thumb_buf:
-                    try:
-                        thumb_buf.close()
-                    except Exception:
-                        pass
+                # AUDIT R25: thumb_buf теперь InputFile (данные в памяти) —
+                # закрывать нечего.
+                pass
 
         # ── Шаг 6: итог ──────────────────────────────────────
         if sent == 0:

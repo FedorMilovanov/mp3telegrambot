@@ -6,29 +6,23 @@
 import pathlib
 
 
-def test_clips_thumbnail_uses_open_not_bytesio():
+def test_clips_thumbnail_uses_inputfile():
+    # AUDIT R25: open()+`.name=` падал на py3.13 (BufferedReader.name read-only).
+    # Теперь InputFile(read_bytes()) — байты в памяти, handle не держим.
     src = pathlib.Path("pipelines/clips.py").read_text(encoding="utf-8")
-    assert "thumb_buf = open(snap_path" in src, \
-        "clips.py must use open() for thumb, not BytesIO(read_bytes())"
-    # Old pattern must be gone
-    assert "BytesIO(snap_path.read_bytes())" not in src, \
-        "clips.py still has BytesIO(snap_path.read_bytes())"
+    assert "InputFile(snap_path.read_bytes()" in src
+    assert "thumb_buf.name =" not in src
 
 
-def test_montage_poster_thumbnail_uses_open():
+def test_montage_poster_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert 'open(poster_path, "rb")' in src, \
-        "montage.py poster must use open(), not BytesIO(read_bytes())"
-    assert "BytesIO(poster_path.read_bytes())" not in src, \
-        "montage.py still has BytesIO(poster_path.read_bytes())"
+    assert "InputFile(poster_path.read_bytes()" in src
+    assert "thumb_buf.name =" not in src
 
 
-def test_montage_snapshot_thumbnail_uses_open():
+def test_montage_snapshot_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert 'open(snapshot_path, "rb")' in src, \
-        "montage.py snapshot must use open(), not BytesIO(read_bytes())"
-    assert "BytesIO(snapshot_path.read_bytes())" not in src, \
-        "montage.py still has BytesIO(snapshot_path.read_bytes())"
+    assert "InputFile(snapshot_path.read_bytes()" in src
 
 
 def test_highlights_cand_guard_present():
