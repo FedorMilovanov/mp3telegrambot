@@ -177,6 +177,15 @@ async def create_clip_snapshot(
         return False
 
 
+def _hashtags_line(tags: list) -> str:
+    """AUDIT R35 (живой прогон 2026-07-10, клип показал «##СилаБожья»):
+    собрать строку хэштегов идемпотентно к тому, содержит ли тег уже «#».
+    Clips хранят теги через normalize_hashtag → УЖЕ с «#», extras — без «#»;
+    поэтому строим через lstrip('#') + один префикс, как это делает Shorts."""
+    clean = [str(t).strip().lstrip("#") for t in (tags or [])[:4]]
+    return " ".join(f"#{t}" for t in clean if t)
+
+
 def build_clip_caption(
     candidate: dict,
     performer: str,
@@ -226,7 +235,7 @@ def build_clip_caption(
         first_line = range_label
 
     links_block = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line   = " ".join(f"#{t}" for t in tags[:4]) if tags else ""
+    tags_line   = _hashtags_line(tags)
 
     parts = [p for p in [first_line, links_block, tags_line] if p]
     return "\n\n".join(parts)
@@ -622,7 +631,7 @@ def build_montage_caption(
     first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
     context      = f"Тематическая подборка: {theme}" if theme else ""
     links_block  = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line    = " ".join(f"#{t}" for t in hashtags[:4]) if hashtags else ""
+    tags_line    = _hashtags_line(hashtags)
     parts = [p for p in [first_line, context, links_block, tags_line] if p]
     return "\n\n".join(parts)
 
@@ -637,7 +646,7 @@ def build_highlights_caption(
     first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
     context      = f"Лучшие моменты ({fragment_count} фрагментов)"
     links_block  = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line    = " ".join(f"#{t}" for t in hashtags[:4]) if hashtags else ""
+    tags_line    = _hashtags_line(hashtags)
     parts = [p for p in [first_line, context, links_block, tags_line] if p]
     return "\n\n".join(parts)
 
