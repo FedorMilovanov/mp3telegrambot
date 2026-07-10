@@ -145,6 +145,35 @@ if _proxy_url:
         os.environ["NO_PROXY"] = _no_proxy
         os.environ["no_proxy"] = _no_proxy
 
+# AUDIT R32 (живой баг: дочерний `python.exe` от бота падает 0xc0000142 при
+# спавне yt-dlp, хотя `python -m yt_dlp` из чистого терминала работает).
+# Причина — PATH процесса-бота: лаунчер/окружение GPU-Whisper (CUDA/cuDNN/
+# ffmpeg) кладёт свой bin-каталог ПЕРЕД системным, и свежий python.exe при
+# инициализации находит там чужую DLL (vcruntime/api-ms-win/python3xx),
+# несовместимую с загрузчиком → STATUS_DLL_INIT_FAILED (0xc0000142).
+# Лечение (только Windows, только PREPEND — ничего не удаляем): ставим в
+# НАЧАЛО PATH каталог самого интерпретатора и System32, чтобы дочерний
+# python.exe грузил ПРАВИЛЬНЫЕ core-DLL раньше любого «отравленного»
+# каталога. Родительский процесс уже загрузил свои DLL — на него не влияет.
+if os.name == "nt":
+    try:
+        import sys as _sys
+        _sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        _front = [
+            os.path.dirname(_sys.executable),
+            os.path.join(_sysroot, "System32"),
+            _sysroot,
+        ]
+        _cur_path = os.environ.get("PATH", "")
+        _cur_dirs = [p for p in _cur_path.split(os.pathsep) if p]
+        _front = [d for d in _front if d]
+        # не дублируем каталоги, которые и так уже в начале
+        _rest = [d for d in _cur_dirs if os.path.normcase(d) not in
+                 {os.path.normcase(x) for x in _front}]
+        os.environ["PATH"] = os.pathsep.join(_front + _rest)
+    except Exception:
+        pass
+
 # FIX #1: инициализируем None ДО создания клиентов
 gemini_client   = None
 gemini_client_2 = None
