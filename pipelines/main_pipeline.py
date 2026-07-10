@@ -331,6 +331,69 @@ def _sponsorblock_args() -> list:
     return ["--sponsorblock-remove", ",".join(parts)]
 
 
+async def _ytdlp_info_inprocess(url: str, timeout: int):
+    """AUDIT R31 (живой баг: `python.exe Application Error 0xc0000142` при
+    спавне `sys.executable -m yt_dlp` из бота — при этом `python -m yt_dlp`
+    из чистого терминала работает). Причина: дочерний python.exe наследует
+    PATH процесса-бота, где какой-то DLL-каталог (CUDA/cuDNN/ffmpeg,
+    добавленный лаунчером) перебивает системную DLL и ломает загрузчик
+    нового процесса. Лечение: берём метаданные видео БЕЗ спавна — через
+    yt-dlp Python API прямо в процессе бота (как pipelines/playlist.py),
+    новый процесс не создаётся и 0xc0000142 невозможен.
+
+    Возвращает info-dict или None (тогда caller откатывается на subprocess).
+    """
+    try:
+        import yt_dlp
+        from services.ffmpeg import (
+            COOKIES_FILE,
+            _proxy_for_ytdlp,
+            _firefox_cookie_source_available,
+        )
+    except Exception:
+        return None
+
+    opts = {
+        "quiet": True,
+        "noplaylist": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "extractor_args": {"youtube": {"player_client": ["web"]}},
+    }
+    try:
+        if COOKIES_FILE.exists():
+            opts["cookiefile"] = str(COOKIES_FILE)
+        elif _firefox_cookie_source_available("firefox"):
+            opts["cookiesfrombrowser"] = ("firefox",)
+        _proxy = _proxy_for_ytdlp()
+        if _proxy:
+            opts["proxy"] = _proxy
+    except Exception:
+        pass
+
+    def _run():
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        info = await asyncio.wait_for(
+            asyncio.get_running_loop().run_in_executor(None, _run),
+            timeout=timeout,
+        )
+    except Exception as e:
+        logger.warning(
+            "yt-dlp in-process info не удался (%s) — откат на subprocess",
+            str(e)[:200],
+        )
+        return None
+
+    # Если пришёл плейлист-подобный ответ — берём первую реальную запись.
+    if isinstance(info, dict) and info.get("entries") and not info.get("id"):
+        entries = [e for e in (info.get("entries") or []) if e]
+        info = entries[0] if entries else info
+    return info if isinstance(info, dict) else None
+
+
 async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
     url = get_youtube_video_url(url)
     thumb_buffer = None
@@ -351,28 +414,35 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _info_timeout = max(60, min(int(os.getenv("YTDLP_INFO_TIMEOUT", "180") or "180"), 900))
         except ValueError:
             _info_timeout = 180
-        try:
-            info_proc = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_info_timeout)
-            )
-        except subprocess.TimeoutExpired as _ytdlp_timeout:
-            logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
-            raise Exception(
-                "yt-dlp не успел получить метаданные YouTube за "
-                f"{_info_timeout}с. Проверь proxy для yt-dlp: YTDLP_PROXY_URL "
-                "или TELEGRAM_PROXY_URL (для v2rayN mixed обычно http://127.0.0.1:10808)."
-            ) from None
-        if info_proc.returncode != 0:
-            raise Exception(info_proc.stderr[-500:] if info_proc.stderr else "yt-dlp info error")
-        info_dict = None
-        for line in info_proc.stdout.strip().splitlines():
-            line = line.strip()
-            if line.startswith("{"):
-                try:
-                    info_dict = json.loads(line)
-                    break
-                except json.JSONDecodeError:
-                    continue
+
+        # AUDIT R31: сначала пробуем yt-dlp В ПРОЦЕССЕ (без спавна дочернего
+        # python.exe) — это обходит краш 0xc0000142 на машинах, где PATH
+        # бота ломает загрузчик нового процесса. Только если не вышло —
+        # откат на прежний subprocess-путь (поведение сохранено).
+        info_dict = await _ytdlp_info_inprocess(url, _info_timeout)
+
+        if info_dict is None:
+            try:
+                info_proc = await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_info_timeout)
+                )
+            except subprocess.TimeoutExpired as _ytdlp_timeout:
+                logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
+                raise Exception(
+                    "yt-dlp не успел получить метаданные YouTube за "
+                    f"{_info_timeout}с. Проверь proxy для yt-dlp: YTDLP_PROXY_URL "
+                    "или TELEGRAM_PROXY_URL (для v2rayN mixed обычно http://127.0.0.1:10808)."
+                ) from None
+            if info_proc.returncode != 0:
+                raise Exception(info_proc.stderr[-500:] if info_proc.stderr else "yt-dlp info error")
+            for line in info_proc.stdout.strip().splitlines():
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        info_dict = json.loads(line)
+                        break
+                    except json.JSONDecodeError:
+                        continue
         if not info_dict:
             raise Exception("Не удалось получить метаданные видео")
 
