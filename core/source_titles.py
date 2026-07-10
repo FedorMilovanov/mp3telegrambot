@@ -269,8 +269,17 @@ class SourceCard:
 
 
 def render_source_card(card: SourceCard, *, trailing_period: bool = True) -> str:
-    """Render source card in the project-wide title-first style."""
-    bullet = card.bullet or ""
+    """Render source card in the project-wide title-first style.
+
+    AUDIT R23 (user report: "• - убери ты это везде, надоедает" — the "•"
+    bullet in Source Card lines): forced blank here, not just at the one
+    call site that used to hardcode "• " — several repair/normalize code
+    paths in this module (normalize_source_card_line) capture and REUSE
+    whatever bullet character was already in raw model text via
+    `bullet = <regex match>.group("bullet") or ""`. Blanking it centrally,
+    at the single render choke point, guarantees no bullet resurfaces
+    regardless of which caller or regex path produced the card."""
+    bullet = ""
     title_original = str(card.title_original or "").strip().rstrip(".")
     title_ru = str(card.title_ru or "").strip().rstrip(".")
     author_ru = canonical_person_name(card.author_ru)
@@ -558,9 +567,13 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         out = dedupe_bilingual_authors(out)
 
     # Уже отрендеренная canonical markdown source-card строка:
-    # • **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur).
+    # **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur).
     # Не нормализуем person names внутри parenthetical verifier.
-    if (re.match(r"^\s*[•\-]\s+\*\*", out)
+    # AUDIT R23: бывший "• " больше не рендерится (см. render_source_card) —
+    # без этого без-bullet-варианта здесь guard молчал ломался: уже готовая
+    # карточка повторно "нормализовалась" ниже и английское имя в скобках
+    # (John MacArthur) переводилось на русский (Джон МакАртур), давая дубль.
+    if (re.match(r"^\s*(?:[•\-]\s+)?\*\*", out)
             and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out)):
         return out.rstrip() + ("" if re.search(r"[.!?]\s*$", out) else ".")
 

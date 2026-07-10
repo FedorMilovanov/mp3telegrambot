@@ -78,14 +78,17 @@ def test_blocks_path_lexicon_card_without_bullet():
     assert "•" not in flat, "лексическая карточка не должна иметь кружок"
 
 
-def test_blocks_path_source_card_keeps_bullet():
+def test_blocks_path_source_card_has_no_bullet():
+    """AUDIT R23 (user report: "• - убери ты это везде, надоедает") —
+    Source Card lines no longer get a leading "•"."""
     nodes = _structured_blocks_to_nodes_v2([
         {"type": "source", "author": "Джон Оуэн",
          "title_original": "The Death of Death in the Death of Christ",
          "why_relevant": "классическая работа об искуплении"},
     ])
     flat = _flat(nodes)
-    assert "•" in flat, "карточка источника сохраняет кружок"
+    assert "•" not in flat
+    assert "Джон Оуэн" in flat
 
 
 def test_blocks_path_fixes_ts_period():

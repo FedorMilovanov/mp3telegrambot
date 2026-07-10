@@ -43,7 +43,7 @@ def test_content_audit_source_map_prefers_original_and_dedupes_authors():
     content = out_sections[0]["content"]
 
     assert "Чуждый огонь (John MacArthur" not in content
-    assert "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)." in content
+    assert "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)." in content
     assert "Грег Гилберт, Greg Gilbert" not in content
     assert "Кевин ДеЯнг и Грег Гилберт" in content
     assert any(i.code == "source_card_fixed" for i in issues)

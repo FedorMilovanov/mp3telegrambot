@@ -97,7 +97,7 @@ def test_error_heading_cross_is_moved_after_full_heading():
 def test_source_cards_are_title_first_with_original_parenthetical():
     from core.source_titles import normalize_source_card_line
     assert normalize_source_card_line("• John MacArthur, Strange Fire") == (
-        "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+        "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
     )
 
 

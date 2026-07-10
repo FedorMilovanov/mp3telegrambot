@@ -931,11 +931,11 @@ def _structured_blocks_to_nodes_v2(
             rendered = render_source_card(card, trailing_period=False)
             if rendered:
                 if why and card.why_relevant:
-                    chunks.append(f"• {rendered}. — {why}")
+                    chunks.append(f"{rendered}. — {why}")
                 else:
-                    chunks.append(f"• {rendered}.")
+                    chunks.append(f"{rendered}.")
             elif why:
-                chunks.append(f"• {why}")
+                chunks.append(why)
         elif btype in {"theological_line", "historical_line"}:
             heading = _scrub_inline(str(raw.get("title_original") or raw.get("text") or "").strip())
             why = _scrub_inline(str(raw.get("why_relevant") or raw.get("role_in_argument") or "").strip())

@@ -16,7 +16,7 @@ from core.synopsis_quality import (
 def test_person_names_and_source_titles_share_canonical_display_names():
     assert canonical_person_name("Р. Ч. Спрол") == "Р. Ч. Спроул"
     assert canonical_author_name("R.C. Sproul") == "Р. Ч. Спроул"
-    assert normalize_source_card_line("• R.C. Sproul, The Holiness of God") == "• **Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
+    assert normalize_source_card_line("• R.C. Sproul, The Holiness of God") == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
 
 
 def test_synopsis_organizational_announcement_filter_removes_only_leading_logistics():

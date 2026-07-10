@@ -15,6 +15,9 @@ def _flat(node):
 
 
 def test_render_source_card_title_first_with_original_parenthetical():
+    # AUDIT R23 (user report: "• - убери ты это везде, надоедает") —
+    # render_source_card() now forces the bullet blank regardless of
+    # what's passed in; the "bullet=" kwarg here is deliberately ignored.
     card = SourceCard(
         title_ru="Чуждый огонь",
         title_original="Strange Fire",
@@ -22,20 +25,20 @@ def test_render_source_card_title_first_with_original_parenthetical():
         author_original="John MacArthur",
         bullet="• ",
     )
-    assert render_source_card(card) == "• **Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    assert render_source_card(card) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
 
 
 def test_build_source_card_uses_registry_and_does_not_invent_ru_title():
     known = build_source_card(author="R.C. Sproul", title_original="The Holiness of God", bullet="• ")
-    assert render_source_card(known) == "• **Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
+    assert render_source_card(known) == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
 
     unknown = build_source_card(author="Kevin DeYoung", title_original="What Is the Mission of the Church?", bullet="• ")
-    assert render_source_card(unknown) == "• **What Is the Mission of the Church?**, Кевин ДеЯнг (Kevin DeYoung)."
+    assert render_source_card(unknown) == "**What Is the Mission of the Church?**, Кевин ДеЯнг (Kevin DeYoung)."
 
 
 def test_normalize_source_card_line_uses_typed_renderer():
     assert normalize_source_card_line("• John Owen, The Death of Death in the Death of Christ") == (
-        "• **Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
+        "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
     )
 
 
@@ -43,14 +46,14 @@ def test_source_card_normalizes_weird_model_source_shapes():
     assert normalize_source_card_line(
         "• John Bunyan. — Книга использовалась отцом автора для воскресных семейных вечеров, The Pilgrim's Progress."
     ) == (
-        "• **Путешествие Пилигрима**, Джон Баньян (The Pilgrim's Progress, John Bunyan). — "
+        "**Путешествие Пилигрима**, Джон Баньян (The Pilgrim's Progress, John Bunyan). — "
         "Книга использовалась отцом автора для воскресных семейных вечеров."
     )
     assert normalize_source_card_line(
         "• Missionary to the New Hebrides: An Autobiography, John G. Paton, John G. Paton. — "
         "Свидетельство миссионера Патона о верности его отца в молитве показывает непреходящую силу семейного поклонения."
     ) == (
-        "• **Missionary to the New Hebrides: An Autobiography**, Джон Патон (John G. Paton). — "
+        "**Missionary to the New Hebrides: An Autobiography**, Джон Патон (John G. Paton). — "
         "Свидетельство миссионера Патона о верности его отца в молитве показывает непреходящую силу семейного поклонения."
     )
 
@@ -71,42 +74,49 @@ def test_structured_source_block_renders_same_title_first_policy():
 def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru_title():
     assert normalize_source_card_line(
         "• Умерщвление греха, Джон Оуэн (Of the Mortification of Sin, John Owen)."
-    ) == "• **Of the Mortification of Sin**, Джон Оуэн (John Owen)."
+    ) == "**Of the Mortification of Sin**, Джон Оуэн (John Owen)."
     assert normalize_source_card_line(
         "• Все ради блага, Томас Уотсон (All Things for Good, Thomas Watson)."
-    ) == "• **All Things for Good**, Томас Уотсон (Thomas Watson)."
+    ) == "**All Things for Good**, Томас Уотсон (Thomas Watson)."
     # AUDIT R22: канонично "Мартин Лойд-Джонс" (одна "л") — выровнено с
     # core/person_names.py::KNOWN_AUTHOR_RU, ранее здесь было "Ллойд-Джонс".
     assert normalize_source_card_line(
         "• Пламенная проповедь, Мартин Ллойд-Джонс (Preaching and Preachers, Martyn Ллойд-Джонс)."
-    ) == "• **Preaching and Preachers**, Мартин Лойд-Джонс (Martyn Lloyd-Jones)."
+    ) == "**Preaching and Preachers**, Мартин Лойд-Джонс (Martyn Lloyd-Jones)."
 
 
 def test_source_card_known_calvin_institutes_keeps_official_ru_title():
     assert normalize_source_card_line(
         "• Наставление в христианской вере, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
-    ) == "• **Наставление в христианской вере**, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
+    ) == "**Наставление в христианской вере**, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
 
 
 def test_source_card_known_religious_affections_keeps_official_ru_title_and_author():
     assert normalize_source_card_line(
         "• Религиозные чувства, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
-    ) == "• **Религиозные чувства**, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
+    ) == "**Религиозные чувства**, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
 
 
 def test_source_card_registry_covers_common_reformed_source_pack_authors():
     assert normalize_source_card_line("• John Murray, Redemption Accomplished and Applied") == (
-        "• **Искупление совершённое и применённое**, Джон Мюррей "
+        "**Искупление совершённое и применённое**, Джон Мюррей "
         "(Redemption Accomplished and Applied, John Murray)."
     )
     assert normalize_source_card_line("• B.B. Warfield, The Inspiration and Authority of the Bible") == (
-        "• **The Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
+        "**The Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
+    )
+    # AUDIT R23 (user report: "Holiness, Дж. К. Райл." — без перевода
+    # "Святость"): выровнено на "Дж. К. Райл" — распространённая опечатка
+    # инициала C (К вместо Ч), которую original_author_name() теперь
+    # умеет свести обратно к "J.C. Ryle".
+    assert normalize_source_card_line("• Дж. К. Райл, Holiness") == (
+        "**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
     )
     assert normalize_source_card_line("• J.C. Ryle, Holiness") == (
-        "• **Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
+        "**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
     )
     assert normalize_source_card_line("• Louis Berkhof, Systematic Theology") == (
-        "• **Systematic Theology**, Луис Беркхоф (Louis Berkhof)."
+        "**Systematic Theology**, Луис Беркхоф (Louis Berkhof)."
     )
 
 
@@ -134,10 +144,10 @@ def test_source_pack_author_surnames_have_registry_aliases():
 
 def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical():
     assert normalize_source_card_line("• Owen, Mortification of Sin") == (
-        "• **Mortification of Sin**, Джон Оуэн (John Owen)."
+        "**Mortification of Sin**, Джон Оуэн (John Owen)."
     )
     assert normalize_source_card_line("• Warfield, Inspiration and Authority of the Bible") == (
-        "• **Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
+        "**Inspiration and Authority of the Bible**, Б. Б. Уорфилд (B.B. Warfield)."
     )
 
 
