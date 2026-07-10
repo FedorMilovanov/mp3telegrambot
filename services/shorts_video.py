@@ -187,16 +187,30 @@ async def render_short_clip(
                 vf = (
                     f"[0:v]{black_bars}[clean];"
                     "[clean]split=2[bg][fg];"
-                    "[bg]scale=720:1280,gblur=sigma=20[blurred];"
-                    "[fg]scale=720:-2[small];"
+                    # AUDIT R28b (оператор: «засплющило, расплющенная ава»):
+                    # фон масштабируем С СОХРАНЕНИЕМ пропорций (cover=increase+
+                    # crop), иначе scale=720:1280 растягивал 16:9→9:16 и для
+                    # статичной картинки этот сплющенный блюр-фон и был всей
+                    # «расплющенной» картинкой. setsar=1 — квадратный пиксель,
+                    # чтобы ничто не растягивалось при показе.
+                    "[bg]scale=720:1280:force_original_aspect_ratio=increase,"
+                    "crop=720:1280,gblur=sigma=20,setsar=1[blurred];"
+                    "[fg]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[small];"
                     "[blurred][small]overlay=(W-w)/2:(H-h)/2[out]"
                 )
                 _use_filter_complex = True
             else:
                 vf = (
                     "[0:v]split=2[bg][fg];"
-                    "[bg]scale=720:1280,gblur=sigma=20[blurred];"
-                    "[fg]scale=720:-2[small];"
+                    # AUDIT R28b (оператор: «засплющило, расплющенная ава»):
+                    # фон масштабируем С СОХРАНЕНИЕМ пропорций (cover=increase+
+                    # crop), иначе scale=720:1280 растягивал 16:9→9:16 и для
+                    # статичной картинки этот сплющенный блюр-фон и был всей
+                    # «расплющенной» картинкой. setsar=1 — квадратный пиксель,
+                    # чтобы ничто не растягивалось при показе.
+                    "[bg]scale=720:1280:force_original_aspect_ratio=increase,"
+                    "crop=720:1280,gblur=sigma=20,setsar=1[blurred];"
+                    "[fg]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[small];"
                     "[blurred][small]overlay=(W-w)/2:(H-h)/2[out]"
                 )
                 _use_filter_complex = True

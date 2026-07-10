@@ -274,9 +274,12 @@ async def render_montage_short(
             _use_fc = False
         else:
             vf = (
+                # AUDIT R28b: фон cover БЕЗ искажения пропорций (см. shorts_video),
+                # иначе статичная заставка выходила «расплющенной».
                 "[0:v]split=2[bg][fg];"
-                "[bg]scale=720:1280,gblur=sigma=20[blurred];"
-                "[fg]scale=720:-2[small];"
+                "[bg]scale=720:1280:force_original_aspect_ratio=increase,"
+                "crop=720:1280,gblur=sigma=20,setsar=1[blurred];"
+                "[fg]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[small];"
                 "[blurred][small]overlay=(W-w)/2:(H-h)/2[out]"
             )
             _use_fc = True
