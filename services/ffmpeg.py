@@ -459,7 +459,18 @@ async def _is_static_video(video_path: Path, sample_start: float = 0.0,
         )
     except Exception:
         return False
-    return "freeze_start" in (proc.stderr or "")
+    stderr = proc.stderr or ""
+    if "freeze_start" not in stderr:
+        return False
+    # AUDIT R28b: раньше ЛЮБОЙ freeze_start (даже 2-сек заставка в начале
+    # реального видео) переводил ВЕСЬ клип в letterbox-режим. Теперь статикой
+    # считаем, только если застывший кадр ДОМИНИРУЕТ в пробе: либо freeze не
+    # закончился в окне (полностью статичная картинка — freeze_duration не
+    # печатается), либо самый долгий freeze покрывает >=80% окна.
+    durs = [float(x) for x in re.findall(r"freeze_duration:\s*([\d.]+)", stderr)]
+    if not durs:
+        return True
+    return max(durs) >= 0.8 * probe_seconds
 
 
 def _crop_consensus(crop_votes: dict, sample_count: int) -> str:
@@ -474,8 +485,15 @@ def _crop_consensus(crop_votes: dict, sample_count: int) -> str:
     if not crop_votes:
         return ""
     crop_str, top = max(crop_votes.items(), key=lambda kv: kv[1])
-    total = sum(crop_votes.values())
-    if total >= 2 and (top < 2 or (top / total) < (2 / 3)):
+    # AUDIT R27b: кворум считаем от ЧИСЛА СЭМПЛОВ (sample_count), а не от числа
+    # полученных голосов. Если часть сэмплов cropdetect не дала crop (таймаут/
+    # ошибка ffmpeg), пропавшие голоса должны считаться ПРОТИВ консенсуса —
+    # иначе одинокий (часто невалидный) crop из 1 уцелевшего сэмпла из 3
+    # принимался как «согласие» и мог испортить/уронить рендер.
+    n = max(int(sample_count or 0), sum(crop_votes.values()))
+    if n <= 1:
+        return crop_str  # единственный сэмпл — принимаем (как и раньше)
+    if top < 2 or (top / n) < (2 / 3):
         return ""
     return crop_str
 

@@ -182,8 +182,11 @@ def _hashtags_line(tags: list) -> str:
     собрать строку хэштегов идемпотентно к тому, содержит ли тег уже «#».
     Clips хранят теги через normalize_hashtag → УЖЕ с «#», extras — без «#»;
     поэтому строим через lstrip('#') + один префикс, как это делает Shorts."""
-    clean = [str(t).strip().lstrip("#") for t in (tags or [])[:4]]
-    return " ".join(f"#{t}" for t in clean if t)
+    # AUDIT R35b: фильтруем пустые ДО среза [:4], иначе пустой/«#»-тег в первых
+    # позициях уменьшал итоговое число тегов. Второй strip убирает пробел после
+    # lstrip('#') у входов вида «# Сила».
+    clean = [c for c in (str(t).strip().lstrip("#").strip() for t in (tags or [])) if c][:4]
+    return " ".join(f"#{c}" for c in clean)
 
 
 def build_clip_caption(
@@ -336,9 +339,13 @@ async def render_montage_short(
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
-        proc = await loop.run_in_executor(
-            None, lambda: subprocess.run(concat_cmd, capture_output=True, text=True, timeout=300)
-        )
+        # AUDIT R29b: финальный concat тоже кодирует NVENC — серилизуем (вне
+        # уже завершённого цикла по фрагментам, так что вложенности семафора нет).
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.gpu_render:
+            proc = await loop.run_in_executor(
+                None, lambda: subprocess.run(concat_cmd, capture_output=True, text=True, timeout=300)
+            )
         for p in temp_parts: p.unlink(missing_ok=True)
         concat_list_path.unlink(missing_ok=True)
 

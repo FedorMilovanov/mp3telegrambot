@@ -463,14 +463,19 @@ def _norm_title_for_match(value: str) -> str:
 
 
 def _titles_match(known: str, given: str) -> bool:
-    """True if titles are equal or one is a word-boundary prefix of the
-    other (a shortened form). Author identity is checked separately, so a
-    prefix match here cannot cross-map between different authors' books."""
-    a = _norm_title_for_match(known)
-    b = _norm_title_for_match(given)
+    """True if the model's title equals the registry title or is a SHORTENED
+    form of it (given is a word-boundary prefix of the canonical title).
+
+    AUDIT R34b: раньше допускалось и обратное направление (given ДЛИННЕЕ
+    реестрового), из-за чего одно-словный реестровый титул «Holiness» (Райл)
+    цеплял любой «Holiness of God» (Спрол) / «Holiness, Repentance and Faith»
+    и подменял чужую книгу переводом Райла. Оставляем только «модель сократила
+    канонное название» (Owen «…of Sin» → реестровое «…of Sin in Believers»)."""
+    a = _norm_title_for_match(known)   # реестровый (канон)
+    b = _norm_title_for_match(given)   # что дала модель
     if not a or not b:
         return False
-    return a == b or a.startswith(b + " ") or b.startswith(a + " ")
+    return a == b or a.startswith(b + " ")
 
 
 def _author_key(value: str) -> str:
@@ -615,10 +620,13 @@ def _upgrade_english_titled_source_card(line: str) -> str | None:
             break
     if not (official_ru_title(en_author, title) or official_ru_title(author_ru, title)):
         return None
+    why = (m.group("why") or "").strip().rstrip(".")
+    # AUDIT R34b: без «why» карточка сама ставит точку; с «why» точку в конце
+    # карточки НЕ ставим, иначе выходит «…(Original, Author). — why.» (точка
+    # перед тире). Каноничный вид — «…(Original, Author) — why.».
     card = render_source_card(build_source_card(
         author=author_ru, title_original=title, original_author=en_author,
-    ))
-    why = (m.group("why") or "").strip().rstrip(".")
+    ), trailing_period=not why)
     return f"{card} — {why}." if why else card
 
 

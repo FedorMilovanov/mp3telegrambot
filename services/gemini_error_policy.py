@@ -62,7 +62,11 @@ def classify_gemini_error(exc: BaseException) -> GeminiDecision:
             retry_after_seconds=retry_after,
         )
 
-    if any(t in lowered for t in ("503", "500", "unavailable", "high demand", "overloaded")):
+    # AUDIT R26b: не ловим «500» как голое число (напр. «exceeds 500 characters»
+    # в 400-ошибке ложно уводило в OVERLOADED). Матчим HTTP-контекст: 503 (одно-
+    # значно), «500 internal», структурное 'code': 500/503 — или фразы перегрузки.
+    if (re.search(r"\b503\b|\b500\s+internal\b|['\"]?code['\"]?\s*[:=]\s*50[03]\b", lowered)
+            or any(t in lowered for t in ("unavailable", "high demand", "overloaded", "internal error"))):
         return GeminiDecision(
             kind=GeminiFailure.OVERLOADED,
             retry=True,

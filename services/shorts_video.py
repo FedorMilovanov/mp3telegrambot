@@ -357,10 +357,16 @@ async def postprocess_short(
             str(output_path),
         ]
 
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
-        )
+        # AUDIT R29b: постобработка тоже кодирует NVENC — серилизуем через тот же
+        # GPU-семафор, иначе при 3 видео параллельно шли 3 NVENC-сессии разом
+        # (render одного + postprocess другого + burn третьего) — ровно та
+        # гонка за видеокарту, ради которой вводился R29.
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.gpu_render:
+            proc = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
+            )
         if proc.returncode != 0:
             logger.warning(f"postprocess_short ffmpeg error: {(proc.stderr or '')[-800:]}")
             return False
@@ -1253,9 +1259,14 @@ async def burn_subtitles_into_short(
             "-c:a", "copy", "-movflags", "+faststart", "-y", str(output_path),
         ]
         loop = asyncio.get_running_loop()
-        proc = await loop.run_in_executor(
-            None, lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        )
+        # AUDIT R29b: burn-in субтитров — самый длинный NVENC-проход пайплайна;
+        # серилизуем через GPU-семафор, чтобы не драться за карту с рендером/
+        # постобработкой параллельных видео.
+        from core.resource_scheduler import scheduler as _sched
+        async with _sched.gpu_render:
+            proc = await loop.run_in_executor(
+                None, lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            )
         ass_path.unlink(missing_ok=True)
         if proc.returncode != 0:
             logger.warning(f"burn_subtitles ffmpeg error: {(proc.stderr or '')[-500:]}")
