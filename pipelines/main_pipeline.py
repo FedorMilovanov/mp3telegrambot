@@ -952,6 +952,113 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 except Exception as _name_err:
                     logger.info("[LiveDub] filename prepare skip: %s", str(_name_err)[:120])
 
+                # ── ENG Full: смысловая QA + авто-приглушение ДО отправки ──
+                # Раньше видео уходило СРАЗУ, а «приглушение звука» в местах
+                # искажения приходило отдельным «🩹»-роликом ПОСЛЕ — основной
+                # ролик у пользователя оставался с ошибкой (правка «на словах»).
+                # Теперь проверяем и чиним ДО отправки: единственный присланный
+                # ролик уже исправлен. Конспект/анализ опубликованы раньше и
+                # отдельно — публикация не блокируется, ждёт только сам дубляж
+                # (ради чего QA и включают).
+                _qa_result_full = None
+                _autofix_note = ""
+                if _livedub_qa_enabled and not is_fallback and livedub_path and livedub_path.exists():
+                    _qa_status_full = None
+                    try:
+                        _qa_status_full = await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text="🔍 Проверяю точность перевода перед отправкой (Gemini сравнивает дубляж с оригиналом)…",
+                            reply_to_message_id=update.message.message_id,
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        from services.livedub_qa import run_translation_qa
+                        _orig_audio = None
+                        _mp3_candidate = DOWNLOAD_DIR / f"{media_id}.mp3"
+                        if _mp3_candidate.exists():
+                            _orig_audio = _mp3_candidate
+                        else:
+                            _mp3_64 = DOWNLOAD_DIR / f"{media_id}_64.mp3"
+                            if _mp3_64.exists():
+                                _orig_audio = _mp3_64
+                        _qa_ai_data = None
+                        try:
+                            _qa_cached = await adb_get(media_id)
+                            _qa_ai_data = (_qa_cached or {}).get("ai_data")
+                        except Exception:
+                            pass
+                        _dub_srt = None
+                        try:
+                            if "ld_work" in locals() and ld_work.exists():
+                                _srt_candidates = sorted(
+                                    (f for f in ld_work.glob("*.srt")
+                                     if f.name != "gemini_subs.srt"),
+                                    key=lambda f: f.stat().st_mtime, reverse=True,
+                                )
+                                _dub_srt = _srt_candidates[0] if _srt_candidates else None
+                        except Exception:
+                            pass
+                        _qa_part = None
+                        _qa_client = None
+                        try:
+                            if used_audio_part is not None and hasattr(used_audio_part, "name"):
+                                _qa_part = used_audio_part
+                                _qa_client = used_client
+                        except NameError:
+                            pass
+                        _qa_result_full = await run_translation_qa(
+                            dub_video_path=livedub_path,
+                            original_audio_path=_orig_audio,
+                            ai_data=_qa_ai_data,
+                            duration=duration,
+                            dub_srt_path=_dub_srt,
+                            existing_audio_part=_qa_part,
+                            existing_client=_qa_client,
+                        )
+                        # Автоправка: major-искажения глушим ПРЯМО в основном ролике.
+                        if _qa_result_full and _livedub_autofix and "ld_work" in locals():
+                            _qa_majors = [i for i in (_qa_result_full.get("issues") or [])
+                                          if str(i.get("severity")) == "major"]
+                            if _qa_majors:
+                                try:
+                                    from services.livedub_mix import (
+                                        apply_qa_audio_fixes,
+                                        prepare_livedub_send_path as _prep_fixed,
+                                    )
+                                    fixed = await apply_qa_audio_fixes(
+                                        ld_work, _qa_result_full.get("issues") or [])
+                                    if fixed and fixed.exists():
+                                        fixed = _prep_fixed(
+                                            fixed, _livedub_title_line,
+                                            fallback=f"{media_id}_fixed")
+                                        if fixed.stat().st_size / (1024 * 1024) <= get_max_file_size_mb():
+                                            livedub_path = fixed  # основной ролик = исправленный
+                                            _autofix_note = (
+                                                f"🩹 В {len(_qa_majors)} месте(ах) с искажением "
+                                                f"русский дубляж приглушён, оригинал выведен в полный голос."
+                                            )
+                                        else:
+                                            logger.info("[LiveDubQA] фикс-версия превышает лимит — шлю оригинал")
+                                    else:
+                                        # find_pro_tracks не нашёл чистые дорожки
+                                        # (глубокий vot-cli --merge-video fallback):
+                                        # честно скажем, что приглушить не смогли.
+                                        _autofix_note = (
+                                            "🩹 Найдены искажения, но авто-приглушение не удалось "
+                                            "(чистые дорожки не сохранились) — детали в отчёте ниже."
+                                        )
+                                except Exception as _fx_err:
+                                    logger.warning(f"[LiveDubQA] авто-правка сбой: {_fx_err}")
+                    except Exception as _qa_err:
+                        logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
+                    finally:
+                        if _qa_status_full is not None:
+                            try:
+                                await _qa_status_full.delete()
+                            except Exception:
+                                pass
+
                 if not is_fallback and livedub_path and livedub_path.exists():
                     _livedub_video_for_downstream = Path(livedub_path)
 
@@ -993,6 +1100,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     caption = _title_prefix + _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
+                    # ENG Full: если QA нашёл major-искажения и мы приглушили дубляж —
+                    # честно помечаем это прямо на присланном (уже исправленном) ролике.
+                    if _autofix_note:
+                        caption += "\n" + _autofix_note
                     # Режим называется «Quick QA» — если проверка не запускалась,
                     # юзер должен это видеть, а не думать, что перевод проверен.
                     if user_mode == "eng_fast_qa" and _quick_qa_skip_note:
@@ -1103,117 +1214,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         pass
                     await _send_livedub_info_card_once(_info_srt)
 
-                # ── Смысловая проверка перевода (ENG Full + настройка livedub_qa) ──
-                if _livedub_qa_enabled and not is_fallback:
+                # ── Отчёт QA (ENG Full): всегда объясняем найденные искажения ──
+                # Проверка и авто-приглушение уже выполнены ДО отправки видео
+                # (блок выше): присланный ролик — уже исправленный. Здесь только
+                # показываем отчёт по искажениям (после видео, как и раньше).
+                if _qa_result_full:
                     try:
-                        from services.livedub_qa import run_translation_qa, format_qa_report
-                        _qa_status = await context.bot.send_message(
+                        from services.livedub_qa import format_qa_report
+                        await asyncio.sleep(1.0)
+                        await context.bot.send_message(
                             chat_id=update.effective_chat.id,
-                            text="🔍 Проверяю точность перевода (Gemini сравнивает дубляж с оригиналом)...",
+                            text=format_qa_report(_qa_result_full, video_url=url),
+                            parse_mode="HTML",
                             reply_to_message_id=update.message.message_id,
+                            disable_web_page_preview=True,
                         )
-                        _orig_audio = None
-                        _mp3_candidate = DOWNLOAD_DIR / f"{media_id}.mp3"
-                        if _mp3_candidate.exists():
-                            _orig_audio = _mp3_candidate
-                        else:
-                            _mp3_64 = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-                            if _mp3_64.exists():
-                                _orig_audio = _mp3_64
-                        _qa_ai_data = None
-                        try:
-                            _qa_cached = await adb_get(media_id)
-                            _qa_ai_data = (_qa_cached or {}).get("ai_data")
-                        except Exception:
-                            pass
-                        _dub_srt = None
-                        try:
-                            if "ld_work" in locals() and ld_work.exists():
-                                _srt_candidates = sorted(
-                                    (f for f in ld_work.glob("*.srt")
-                                     if f.name != "gemini_subs.srt"),
-                                    key=lambda f: f.stat().st_mtime, reverse=True,
-                                )
-                                _dub_srt = _srt_candidates[0] if _srt_candidates else None
-                        except Exception:
-                            pass
-                        # Реюз уже залитого в Gemini оригинала (если анализ его
-                        # заливал и part ещё жив — finally удаляет его позже)
-                        _qa_part = None
-                        _qa_client = None
-                        try:
-                            if used_audio_part is not None and hasattr(used_audio_part, "name"):
-                                _qa_part = used_audio_part
-                                _qa_client = used_client
-                        except NameError:
-                            pass
-                        qa_result = await run_translation_qa(
-                            dub_video_path=livedub_path,
-                            original_audio_path=_orig_audio,
-                            ai_data=_qa_ai_data,
-                            duration=duration,
-                            dub_srt_path=_dub_srt,
-                            existing_audio_part=_qa_part,
-                            existing_client=_qa_client,
-                        )
-                        try:
-                            await _qa_status.delete()
-                        except Exception:
-                            pass
-                        if qa_result:
-                            await context.bot.send_message(
-                                chat_id=update.effective_chat.id,
-                                text=format_qa_report(qa_result, video_url=url),
-                                parse_mode="HTML",
-                                reply_to_message_id=update.message.message_id,
-                                disable_web_page_preview=True,
-                            )
-
-                            # ── Авто-правка: major-искажения глушим, оригинал поднимаем ──
-                            _qa_majors = [i for i in (qa_result.get("issues") or [])
-                                          if str(i.get("severity")) == "major"]
-                            if _livedub_autofix and _qa_majors and "ld_work" in locals():
-                                try:
-                                    from services.livedub_mix import apply_qa_audio_fixes, prepare_livedub_send_path
-                                    fixed = await apply_qa_audio_fixes(ld_work, qa_result.get("issues") or [])
-                                    if fixed and fixed.exists():
-                                        fixed = prepare_livedub_send_path(
-                                            fixed,
-                                            f"{_livedub_title_line} - исправленная версия",
-                                            fallback=f"{media_id}_fixed",
-                                        )
-                                        _fx_size = fixed.stat().st_size / (1024 * 1024)
-                                        if _fx_size <= get_max_file_size_mb():
-                                            _fx_meta = {}
-                                            try:
-                                                from services.livedub_mix import probe_video_meta
-                                                _fx_meta = await asyncio.get_running_loop().run_in_executor(
-                                                    None, lambda: probe_video_meta(fixed))
-                                            except Exception:
-                                                pass
-                                            await context.bot.send_video(
-                                                    chat_id=update.effective_chat.id,
-                                                    video=fixed,
-                                                    width=_fx_meta.get("width"),
-                                                    height=_fx_meta.get("height"),
-                                                    duration=_fx_meta.get("duration"),
-                                                    caption=(
-                                                        f"🩹 Исправленная версия: в {len(_qa_majors)} "
-                                                        f"месте(ах) с искажением русский дубляж вырезан, "
-                                                        f"оригинал выведен в полный голос."
-                                                    ),
-                                                    reply_to_message_id=update.message.message_id,
-                                                    supports_streaming=True,
-                                                    write_timeout=600, read_timeout=600, connect_timeout=60,
-                                                )
-                                    else:
-                                        logger.info("[LiveDubQA] авто-правка не собралась (нет дорожек/интервалов)")
-                                except Exception as _fx_err:
-                                    logger.warning(f"[LiveDubQA] авто-правка сбой: {_fx_err}")
-                        else:
-                            logger.info("[LiveDubQA] проверка не дала результата — отчёт не отправлен")
-                    except Exception as _qa_err:
-                        logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
+                    except Exception as _qrep_err:
+                        logger.info("[LiveDubQA] отчёт не отправлен: %s", str(_qrep_err)[:160])
                 _livedub_result_sent = True
                 return True
             except asyncio.TimeoutError:

@@ -387,7 +387,10 @@ def test_qa_has_global_deadline():
 def test_send_video_uses_path_not_handle():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "video=livedub_path" in src   # Path → file:// при local_mode
-    assert "video=fixed" in src
+    # R41: автоправка больше НЕ отдельный «video=fixed» ролик — она заменяет
+    # основной ролик ДО отправки (livedub_path = fixed), чтобы присланное видео
+    # уже было исправленным, а не битым + патч отдельно.
+    assert "livedub_path = fixed" in src
     assert 'open(livedub_path, "rb")' not in src
 
 
@@ -428,8 +431,10 @@ def test_send_video_passes_metadata():
     assert 'width=_v_meta.get("width")' in src
     assert 'duration=_v_meta.get("duration")' in src
     assert "thumbnail=_v_thumb" in src
-    # autofix-видео тоже с метаданными
-    assert 'width=_fx_meta.get("width")' in src
+    # R41: автофикс теперь заменяет ОСНОВНОЙ ролик (livedub_path = fixed) ДО
+    # отправки — значит исправленное видео уходит с теми же _v_meta метаданными
+    # основного send'а, отдельный _fx_meta-путь больше не нужен.
+    assert "livedub_path = fixed" in src
 
 
 def test_merge_subtitles_has_faststart():
@@ -1029,7 +1034,27 @@ def test_livedub_autofix_mutes_major_errors_by_default(monkeypatch):
     assert "LIVEDUB_AUTOFIX_RU_VOLUME" in src
     assert "полностью вырезается" in src
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "русский дубляж вырезан" in pipe
+    assert "русский дубляж приглушён" in pipe
+
+
+def test_r41_full_qa_and_autofix_run_before_primary_send():
+    """R41: в ENG Full смысловая QA и авто-приглушение выполняются ДО отправки
+    основного ролика, и фикс ЗАМЕНЯЕТ этот ролик (livedub_path = fixed). Иначе
+    пользователь получал битое видео + отдельный патч ('правка на словах')."""
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    i_qa = src.index("_qa_result_full = await run_translation_qa")
+    # именно Full-блочная замена ролика (после QA), а не Quick-QA выше по файлу
+    i_fix = src.index("livedub_path = fixed", i_qa)
+    i_send = src.index("await context.bot.send_video(**_send_kwargs)")
+    assert i_qa < i_send, "QA должна выполняться ДО основной отправки видео"
+    assert i_fix < i_send, "автоправка должна заменять ролик ДО отправки"
+    # отчёт об искажениях — после видео (готовый ролик важнее диагностики)
+    i_report = src.index("format_qa_report(_qa_result_full")
+    assert i_report > i_send
+    # больше НЕТ отдельного «Исправленная версия» второго ролика
+    assert "Исправленная версия" not in src
+    # честный сигнал, если чистые дорожки не сохранились и приглушить не смогли
+    assert "авто-приглушение не удалось" in src
 
 
 def test_livedub_qa_prompt_flags_parent_sexual_mistranslation_as_major():
