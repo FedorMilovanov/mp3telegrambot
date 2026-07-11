@@ -533,5 +533,13 @@ _API_KEY_RE = _re_utils.compile(r'AIza[0-9A-Za-z_-]{35}')
 def mask_api_key(text: str) -> str:
     """Маскирует API-ключи вида AIza... для безопасного логирования.
     Используется в logger.error/warning перед выводом str(e).
+    AUDIT R40: также прячет креды в URL (user:pass@ у proxy) и bot-token —
+    эта маска показывается и пользователю (ошибки плейлиста), не только в лог.
     """
-    return _API_KEY_RE.sub('***APIKEY***', str(text))
+    out = _API_KEY_RE.sub('***APIKEY***', str(text))
+    try:
+        from core.globals import mask_credentials
+        out = mask_credentials(out)
+    except Exception:
+        pass
+    return out

@@ -494,11 +494,12 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     if rc != 0:
         logger.info(f"[LiveDub] субтитры перевода недоступны (rc={rc})")
         return None
+    # AUDIT R40: берём ТОЛЬКО новые .srt этого прогона. Прежний откат на любой
+    # старый *.srt по mtime мог подсунуть QA устаревший файл прошлого видео и
+    # исказить сравнение перевода. Нет нового файла → None (QA пропустит шаг).
     new_files = sorted(set(output_dir.glob("*.srt")) - before,
                        key=lambda f: f.stat().st_mtime, reverse=True)
-    candidates = new_files or sorted(output_dir.glob("*.srt"),
-                                     key=lambda f: f.stat().st_mtime, reverse=True)
-    for f in candidates:
+    for f in new_files:
         if f.stat().st_size > 50:
             return f
     return None

@@ -177,7 +177,10 @@ _KEYWORD_TO_TOPIC: dict[str, str] = {
     "проповед": "preaching_hermeneutics", "hermeneutic": "preaching_hermeneutics", "кафедра": "preaching_hermeneutics",
     "харизмат": "charismatic_cessationism", "цессационизм": "charismatic_cessationism", "чуждый огонь": "charismatic_cessationism",
     "завет": "covenant_theology", "covenant": "covenant_theology", "израиль": "israel_church",
-    "младенец": "infant_salvation_children", "дети": "infant_salvation_children",
+    # AUDIT R40: «дети» (общее) убрано — пак про ВЕЧНУЮ УЧАСТЬ УМЕРШИХ младенцев,
+    # а не про детей вообще; проповедь «Христос и дети» (Лк 18) получала книги
+    # про смерть младенцев. Остаётся специфичный «младенец».
+    "младенец": "infant_salvation_children",
     "евангелизм": "evangelism_gospel", "евангелие": "evangelism_gospel", "благовести": "evangelism_gospel",
     "миссия": "mission", "великое поручение": "mission", "mission": "mission",
     "молитва": "prayer_spirituality", "prayer": "prayer_spirituality",
@@ -238,12 +241,17 @@ def _score_topics(search_text: str) -> dict[str, float]:
     for topic, rule in _TOPIC_RULES.items():
         score = 0.0
         for kw, weight in rule.positive:
-            if _normalize(kw) in text:
+            # AUDIT R40: совпадение по ГРАНИЦЕ СЛОВА, а не подстрокой — иначе
+            # «ангел» цеплял «евАНГЕЛие»/«евангелизм», и евангелизационная
+            # проповедь получала пак по АНГЕЛОЛОГИИ (а правильный evangelism
+            # подавлялся). \b перед началом ключа сохраняет матч словоформ
+            # («ангелы», «благовестие»).
+            if re.search(r"\b" + re.escape(_normalize(kw)), text):
                 score += float(weight)
         for neg in rule.negative:
             # Support accidental tuple entries from older declarations.
             neg_text = neg[0] if isinstance(neg, tuple) else neg
-            if _normalize(str(neg_text)) in text:
+            if re.search(r"\b" + re.escape(_normalize(str(neg_text))), text):
                 score -= 2.0
         if score > 0:
             scores[topic] = score

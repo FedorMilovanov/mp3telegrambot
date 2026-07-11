@@ -385,8 +385,11 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
 
     loop = asyncio.get_running_loop()
     proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
-    
-    if output_path.exists() and output_path.stat().st_size > 1000:
+
+    # AUDIT R40: проверяем returncode, а не только размер — ffmpeg с -y пишет
+    # заголовок контейнера и при сбое mux (конфликт субтитр-потока) оставляет
+    # усечённый >1KB файл, который иначе отдавался пользователю как готовое видео.
+    if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
     
     logger.warning(f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. stderr: {proc.stderr[-300:] if proc.stderr else ''}")
@@ -405,7 +408,7 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         return subprocess.run(cmd_fallback, timeout=t, **kwargs)
 
     proc2 = await loop.run_in_executor(None, lambda: _run_cmd_fallback(300))
-    if output_path.exists() and output_path.stat().st_size > 1000:
+    if proc2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
         
     logger.error(f"[EngSubtitles] Полный отказ склейки. stderr: {proc2.stderr[-300:] if proc2.stderr else ''}")

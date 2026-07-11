@@ -115,7 +115,10 @@ if not _proxy_url:
         _u = _urlparse(_fallback_proxy)
         if (_u.scheme or "").lower().startswith("socks"):
             # v2rayN mixed port: HTTP на том же порту работает без socksio
-            _proxy_url = "http://" + _fallback_proxy.split("://", 1)[1]
+            # AUDIT R40: guard split — «socks5:1080» без «//» иначе ронял [1]
+            # (IndexError) и валил бота на старте.
+            _sp = _fallback_proxy.split("://", 1)
+            _proxy_url = "http://" + _sp[1] if len(_sp) == 2 else _fallback_proxy
             _gemini_proxy_log = (
                 f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} (из {_fallback_proxy})"
             )
@@ -520,6 +523,26 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+# AUDIT R40: маскировка по ШАБЛОНАМ, а не только по известным env-секретам —
+# креды в URL (user:pass@host у proxy), telegram bot token, google AIza-ключ.
+# Ловит секрет, попавший в лог из библиотеки/URL, которого нет в env-списке.
+_CRED_PATTERNS: tuple[tuple, ...] = (
+    (re.compile(r"(://)[^/\s:@]+:[^/\s@]+@"), r"\1***:***@"),   # user:pass@host
+    # bot token часто склеен с «bot» в URL (…/bot123:ABC…/) — без \b-якорей
+    (re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}"), "***"),          # telegram bot token
+    (re.compile(r"AIza[0-9A-Za-z_\-]{35}"), "***"),            # google api key
+)
+
+
+def mask_credentials(text: str) -> str:
+    """Маскирует креды по шаблонам (URL user:pass@, bot token, AIza-ключ).
+    Публичный помощник — используется и user-facing маской (core/utils)."""
+    out = str(text)
+    for _pat, _repl in _CRED_PATTERNS:
+        out = _pat.sub(_repl, out)
+    return out
+
+
 class _TokenMaskFilter(logging.Filter):
     """Маскирует все секретные токены/ключи во всех лог-сообщениях."""
 
@@ -545,11 +568,11 @@ class _TokenMaskFilter(logging.Filter):
         for secret in self._get_secrets():
             if secret in text:
                 text = text.replace(secret, "***")
-        return text
+        return mask_credentials(text)   # AUDIT R40: + шаблоны (proxy creds/token/AIza)
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
-            if record.msg and isinstance(record.msg, str):
+            if isinstance(record.msg, str):
                 record.msg = self._mask(record.msg)
             if record.args:
                 formatted = record.getMessage()
@@ -557,6 +580,10 @@ class _TokenMaskFilter(logging.Filter):
                 if masked != formatted:
                     record.msg  = masked
                     record.args = ()
+            elif record.msg is not None and not isinstance(record.msg, str):
+                # AUDIT R40: не-строковый msg без args (напр. logger.error(exc))
+                # раньше уходил МИМО маски — маскируем его строковое представление.
+                record.msg = self._mask(str(record.msg))
             # Трейсбеки тоже содержат секреты (например, URL с access_token
             # внутри requests.ConnectionError). Formatter использует exc_text,
             # если он уже установлен — маскируем и кэшируем его здесь.

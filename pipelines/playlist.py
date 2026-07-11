@@ -35,6 +35,11 @@ PLAYLIST_DELAY_SEC = float(os.getenv("PLAYLIST_DELAY_SEC", "1.0"))
 
 def _build_media_url(entry: dict) -> str | None:
     """AUDIT L11: учитываем разные платформы вместо хардкода YouTube."""
+    # AUDIT R40: yt-dlp с extract_flat даёт None для удалённых/приватных видео
+    # в плейлисте — без этой проверки .get роняет AttributeError и убивает ВЕСЬ
+    # плейлист (перенос был вне per-video try).
+    if not isinstance(entry, dict):
+        return None
     # 1) Если есть готовый url — используем его
     explicit = entry.get("url") or entry.get("webpage_url")
     if explicit and explicit.startswith("http"):
@@ -85,7 +90,7 @@ async def handle_playlist(url, update, context, user_id: int = 0):
             await safe_edit_text(status_msg, "❌ Не удалось загрузить плейлист.")
             return
         title   = info.get("title", "Плейлист")
-        entries = info.get("entries", [])[:MAX_PLAYLIST_SIZE]
+        entries = (info.get("entries") or [])[:MAX_PLAYLIST_SIZE]  # AUDIT R40: entries может быть None
         total   = len(entries)
         if not entries:
             await safe_edit_text(status_msg, "❌ Плейлист пуст.")

@@ -24,7 +24,9 @@ BAD_META_PATTERNS = [
     # Дата-подписи вида "March 15 at 18:55"
     r"[\s\u2022\-]*\w+\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}",
     r"march\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}",
-    r"(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s*\d{4}",
+    # AUDIT R40: убран голый «Month D, YYYY» — он УДАЛЯЛ ВСЁ поле при легитимной
+    # дате события («Конференция May 5, 2024 в Москве» → ''). Тайм-подписи
+    # «… at H:MM» (публикационные) остаются выше.
     # Русские мета-фразы — только строгие якоря
     r"^статья\s+(содержит|описывает|рассматривает|анализирует|представляет)",
     r"^статья\s+представляет\s+собой",
@@ -49,7 +51,10 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("боголог", "богослов"),
     ("Боголог", "Богослов"),
     ("Божьего Слово", "Божьего Слова"),
-    ("Слово Божьего", "Слова Божьего"),
+    # AUDIT R40: снят ТОЛЬКО голый «Слово Божьего»→«Слова Божьего» — он был
+    # контекст-слепым и ломал легитимный именительный («Слово Божьего пророка
+    # звучало…» → «Слова…»). Якорный вариант ниже однозначен: после «авторитет»
+    # требуется родительный, поэтому он сохранён.
     ("авторитет Слово Божьего", "авторитет Слова Божьего"),
     ("Стину Лоусону", "Стиву Лоусону"),
     ("Стин Лоусон", "Стив Лоусон"),
@@ -61,6 +66,11 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("Стив Лоусон", "Стивен Лоусон"),
     ("епифанита", "Епафродита"),
     ("Епифанита", "Епафродита"),
+    # «Strange Fire» Джона МакАртура — официальный русский титул «Чуждый огонь»
+    # (и синодальный термин, Лев 10:1). В этом корпусе «странный огонь» практически
+    # всегда указывает на книгу/библейское понятие; коррекция намеренная и покрыта
+    # тестами (page_audit, source_titles, patch21/22). R40: возврат после ошибочного
+    # снятия — снимать её значило регрессировать проверенное поведение.
     ("Странный огонь", "Чуждый огонь"),
     ("странный огонь", "чуждый огонь"),
     ("Вопросы и Ответы", "Вопросы и ответы"),
@@ -92,12 +102,10 @@ _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
 
 _GREEK_RE = re.compile(r"[Ͱ-Ͽἀ-῿]")
 _CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
-_MIXED_GREEK_CYRILLIC_TOKEN_RE = re.compile(
-    r"(?=[\wͰ-Ͽἀ-῿]*[Ͱ-Ͽἀ-῿])"
-    r"(?=[\wͰ-Ͽἀ-῿]*[Ѐ-ӿ])"
-    r"[\wͰ-Ͽἀ-῿]+",
-    re.UNICODE,
-)
+# AUDIT R40: плоский матч токена (без lookahead) — O(N). Прежний lookahead-
+# вариант давал O(R²) на длинном word-run без греческого (снейк-кейс/слаг —
+# один run из-за «_») и вешал event loop на секунды для 64KB-страницы.
+_WORD_TOKEN_RE = re.compile(r"[\wͰ-Ͽἀ-῿]+", re.UNICODE)
 
 
 def find_mixed_greek_cyrillic_tokens(text: str) -> list[str]:
@@ -109,8 +117,12 @@ def find_mixed_greek_cyrillic_tokens(text: str) -> list[str]:
     """
     if not text:
         return []
+    # AUDIT R40: дешёвый гейт — mixed-токен требует ОБА алфавита; нет одного из
+    # них во всём тексте → выходим до посимвольного скана.
+    if not (_GREEK_RE.search(text) and _CYRILLIC_RE.search(text)):
+        return []
     seen: list[str] = []
-    for m in _MIXED_GREEK_CYRILLIC_TOKEN_RE.finditer(text):
+    for m in _WORD_TOKEN_RE.finditer(text):
         token = m.group(0)
         if _GREEK_RE.search(token) and _CYRILLIC_RE.search(token) and token not in seen:
             seen.append(token)
@@ -602,8 +614,10 @@ def normalize_hashtag(tag: str) -> str:
       'НовоеТворение'           → '#НовоеТворение'
       'личная_встреча'          → '#ЛичнаяВстреча'
     """
-    tag = str(tag).lstrip("#").strip()
-    if not tag:
+    # AUDIT R40: strip ПЕРЕД lstrip('#') (иначе «  #  🎯 » → «##🎯»); и отвергаем
+    # тег без словных символов (эмодзи/пунктуация-only → '', а не '#🔥'/'#...').
+    tag = str(tag).strip().lstrip("#").strip()
+    if not tag or not re.search(r"\w", tag):
         return ""
     words = [w for w in re.split(r"[\s_\-]+", tag) if w]
     if not words:
