@@ -188,13 +188,7 @@ legalism (законничество), seeker-sensitive (ориентирова�
   (например, замена «ответственности» на «очевидность», «веры» на «чувства»,
   «оправдания» на «улучшение»);
 - ошибки в ссылках на Писание (например, если в оригинале «стих 15», а в переводе
-  «стих 50» или «глава 15») — это major;
-- особенно опасны семейные/сексуальные склейки: например, если оригинал говорит
-  отдельно «fools bring grief to their parents» и отдельно «fools commit sexual
-  immorality», а русский дубляж связывает sexual immorality с родителями — это
-  грубейшее искажение, обязательно пометь major;
-- любые добавленные обвинения в инцесте, прелюбодеянии с родственниками,
-  насилии, богохульстве или ереси, которых нет в оригинале, — major.
+  «стих 50» или «глава 15») — это major.
 
 {reference_block}
 
@@ -375,8 +369,19 @@ async def run_translation_qa(
         else:
             logger.info("[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом (без извлечения дубляжа)")
 
-        # Референс: если оригинального аудио нет — используем готовый анализ
-        if original_audio_path and Path(original_audio_path).exists():
+        # Референс: если оригинального аудио нет — используем готовый анализ.
+        # AUDIT R43: раньше решение смотрело ТОЛЬКО на original_audio_path, но
+        # _attempt() ниже может приложить оригинал через реюз existing_audio_part
+        # НЕЗАВИСИМО от original_audio_path (например, mp3 уже вычищен с диска,
+        # а Gemini-хэндл основного анализа ещё жив). В этом случае промт врал
+        # «аудио не приложены — сравнивай с конспектом», хотя оригинал реально
+        # прикладывался — модели говорили игнорировать то, что она получила.
+        _will_attach_original = bool(
+            (original_audio_path and Path(original_audio_path).exists())
+            or (existing_audio_part is not None and existing_client is not None
+                and "ACTIVE" in str(getattr(existing_audio_part, "state", "")))
+        )
+        if _will_attach_original:
             reference_block = ""
         else:
             ref_lines = []
@@ -546,6 +551,12 @@ async def run_translation_qa(
                     "issues" in result or "score" in result or "verdict" in result
                 ):
                     result.setdefault("issues", [])
+                    # AUDIT R43: без оригинального аудио эталон — лишь конспект
+                    # (main_topic/timestamps), а не полный текст — большая часть
+                    # проповеди для QA невидима. Помечаем как низкую уверенность,
+                    # чтобы отчёт не создавал ложного ощущения полной проверки.
+                    if not _will_attach_original:
+                        result.setdefault("_low_confidence", True)
                     return result
                 # Диагностика вместо немого фейла (прод 2026-06-10)
                 try:
@@ -630,6 +641,14 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
         head = "🔍 <b>Проверка перевода</b>"
 
     lines = [head]
+    # AUDIT R43: без оригинального аудио сверка шла по конспекту (main_topic +
+    # таймкоды), а не по полному тексту — честно предупреждаем, что проверка
+    # частичная, вместо того чтобы отчёт выглядел как полная сверка.
+    if qa.get("_low_confidence"):
+        lines.append(
+            "⚠️ Оригинальное аудио было недоступно — сверка велась по конспекту, "
+            "не по полному тексту. Часть проповеди проверке не подверглась."
+        )
     if verdict:
         # AUDIT R42: вердикт — «одно предложение», но модель иногда выдаёт абзац;
         # без кэпа он мог один съесть весь лимит отчёта.

@@ -25,9 +25,9 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     prompt_lines = [
         "You are an expert subtitle translator. Translate these English subtitle segments into Russian.",
         "Rules:",
-        "1. Preserve exact ID numbers from the input.",
+        "1. Preserve exact ID numbers from the input — output EXACTLY one JSON key per input ID, never merge two IDs into one.",
         "2. Ensure theological, technical, and colloquial terms are accurate and sound natural in Russian.",
-        "3. Keep translations concise to fit nicely on a video screen (merge short stutters smoothly).",
+        "3. Keep each individual translation concise to fit nicely on a video screen (smooth out stutters WITHIN one segment's own text — never by dropping or merging a neighboring ID).",
         "4. Output strictly a JSON object where keys are the IDs (as strings) and values are the translated Russian text.",
         "5. Do NOT output any markdown, explanations, or text outside the JSON object.",
     ]
@@ -210,6 +210,33 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
                 if chunk:
                     last_id = chunk[-1][0]
                     prev_context = data.get(str(last_id), "")
+                # AUDIT R43: правило «сглаживай заикания» иногда толкало модель
+                # СЛИТЬ соседние ID в один ключ ответа — пропавший ID молча падал
+                # на английский текст ниже (строка 228+), без единого сигнала в
+                # логах. Один точечный ретрай именно пропавших ID закрывает
+                # большинство случаев; если модель и во второй раз промолчала —
+                # хотя бы честно видно В ЛОГЕ, что часть строк осталась на
+                # английском (а не выглядит как «всё перевелось»).
+                _missing = [(sid, text) for sid, text in chunk if str(sid) not in translated_segments]
+                if _missing:
+                    logger.warning(
+                        "[EngSubtitles] Чанк %d: %d ID отсутствуют в ответе — ретрай точечно.",
+                        idx + 1, len(_missing),
+                    )
+                    _retry_data = await _translate_chunk_with_retry(_missing, prev_context)
+                    if _retry_data and isinstance(_retry_data, dict):
+                        for k, v in _retry_data.items():
+                            if isinstance(v, str) and v.strip():
+                                translated_segments[str(k)] = v.strip()
+                            elif isinstance(v, (int, float)):
+                                translated_segments[str(k)] = str(v)
+                    _still_missing = [sid for sid, _ in _missing if str(sid) not in translated_segments]
+                    if _still_missing:
+                        logger.warning(
+                            "[EngSubtitles] %d строк(и) остались непереведёнными (ID %s) — "
+                            "в субтитрах будет английский текст.",
+                            len(_still_missing), _still_missing[:10],
+                        )
             else:
                 logger.warning(f"[EngSubtitles] Чанк {idx+1} не удался. Используем оригинал.")
                 for sid, text in chunk:

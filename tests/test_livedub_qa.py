@@ -1057,11 +1057,16 @@ def test_r41_full_qa_and_autofix_run_before_primary_send():
     assert "авто-приглушение не удалось" in src
 
 
-def test_livedub_qa_prompt_flags_parent_sexual_mistranslation_as_major():
+def test_livedub_qa_prompt_flags_sentence_splices_as_major():
+    """R43: убран узкоспециальный «родители/sexual immorality» пример — такие
+    склейки на практике не встречаются, а лурид-пример только путал модель и
+    смещал её к ложным находкам в этой категории (риск лишнего приглушения
+    хорошего звука). Оставлен ОБЩИЙ признак склейки мыслей — он покрывает тот
+    же класс ошибок без наводящего частного случая."""
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
-    assert "fools bring grief to their parents" in src
-    assert "fools commit sexual" in src
-    assert "родителями" in src
+    assert "fools bring grief to their parents" not in src
+    assert "fools commit sexual" not in src
+    assert "склеил две соседние мысли" in src
     assert "severity=major" in src
 
 
