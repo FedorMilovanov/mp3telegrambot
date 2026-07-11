@@ -43,6 +43,15 @@ _SOURCE_MAP_HEADING_RE = re.compile(r"карта\s+источников", re.IGN
 _TRANSLATION_FORKS_HEADING_RE = re.compile(r"переводческ\w*\s+развил", re.IGNORECASE)
 _BULLET_LINE_RE = re.compile(r"^\s*[•\-]\s+(.+?)\s*$")
 
+# AUDIT R45 (живой скриншот 2026-07-11): промт дважды прямым текстом запрещает
+# пары ❌/✅ в Reflection ("этот формат только для Study Analysis"), но модель
+# всё равно иногда воспроизводит фирменный Study-карточный формат ("❌
+# **Название**" / "✅ **Ответ ортодоксальной церкви.**") внутри Reflection —
+# инструкция ненадёжна, нужен детерминированный бэкстоп. Снимаем ТОЛЬКО
+# эмодзи-маркер (с последующим пробелом), текст остаётся полностью — это
+# визуальный формат-баг, а не смысловая правка.
+_FORBIDDEN_PAIR_MARKER_RE = re.compile(r"[❌✅]\s*")
+
 
 _FIRST_PERSON_AUTHOR_RE = re.compile(
     r"\b(?P<prefix>Я|Для меня),\s+(?P<name>[А-ЯЁ][А-ЯЁа-яё]+(?:\s+[А-ЯЁ][А-ЯЁа-яё]+){0,2}),\s*"
@@ -143,6 +152,23 @@ def _scrub_prompt_context_leaks(text: str) -> tuple[str, bool]:
     out = re.sub(r"([.!?…»])([А-ЯЁA-Z])", r"\1 \2", out)
     out = re.sub(r"[ \t]+\n", "\n", out)
     out = re.sub(r"\n[ \t]+", "\n", out).strip()
+    return out, out != original
+
+
+def _scrub_forbidden_pair_markers(text: str) -> tuple[str, bool]:
+    """Removes leaked Study-only ❌/✅ pair-card markers from Reflection text.
+
+    Text-preserving: only the emoji marker (+ trailing space) is removed, the
+    substantive sentence stays intact — this is a format violation, not a
+    content problem.
+    """
+    original = str(text or "")
+    if "❌" not in original and "✅" not in original:
+        return original, False
+    out = _FORBIDDEN_PAIR_MARKER_RE.sub("", original)
+    # Осиротевший маркер списка перед снятой эмодзи ("• Ответ...") — нормально,
+    # но двойной пробел на стыке ("Название  Что это") подчищаем.
+    out = re.sub(r"[ \t]{2,}", " ", out).strip()
     return out, out != original
 
 
@@ -370,6 +396,22 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
             before=issue.before,
             after=issue.after,
         ))
+
+    # AUDIT R45: Reflection-промт дважды прямым текстом запрещает Study-only
+    # пары ❌/✅ — модель всё равно иногда их воспроизводит (живой пример).
+    # Детерминированный бэкстоп ТОЛЬКО для Reflection: Study легитимно
+    # использует этот формат (SECTION TYPE 6), там его не трогаем.
+    if label == "ReflectionApplication":
+        pair_before = text
+        text, pair_changed = _scrub_forbidden_pair_markers(text)
+        if pair_changed:
+            issues.append(ContentAuditIssue(
+                code="reflection_forbidden_marker_scrubbed",
+                location=location,
+                message="Study-only ❌/✅ pair-card marker removed from Reflection text",
+                before=_short(pair_before),
+                after=_short(text),
+            ))
 
     mixed = find_mixed_greek_cyrillic_tokens(text)
     if mixed:
