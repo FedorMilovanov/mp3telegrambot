@@ -497,8 +497,14 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     # AUDIT R40: берём ТОЛЬКО новые .srt этого прогона. Прежний откат на любой
     # старый *.srt по mtime мог подсунуть QA устаревший файл прошлого видео и
     # исказить сравнение перевода. Нет нового файла → None (QA пропустит шаг).
-    new_files = sorted(set(output_dir.glob("*.srt")) - before,
-                       key=lambda f: f.stat().st_mtime, reverse=True)
+    # AUDIT R42: исключаем gemini_subs.srt — независимые Whisper+Gemini субтитры
+    # пишутся в тот же workdir ПАРАЛЛЕЛЬНО и могли попасть в new_files, выдав их
+    # за официальный текст дубляжа Яндекса (тот же фильтр использует QA-глоб).
+    new_files = sorted(
+        (f for f in (set(output_dir.glob("*.srt")) - before)
+         if f.name != "gemini_subs.srt"),
+        key=lambda f: f.stat().st_mtime, reverse=True,
+    )
     for f in new_files:
         if f.stat().st_size > 50:
             return f

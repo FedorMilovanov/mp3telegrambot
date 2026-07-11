@@ -64,6 +64,30 @@ def _ffprobe_json(path: Path) -> Optional[dict]:
         return None
 
 
+def _mean_volume_db(path: Path, start: float = 0.0, dur: float = 120.0) -> Optional[float]:
+    """Средняя громкость участка дорожки (ffmpeg volumedetect), дБ или None.
+
+    AUDIT R42: анализируем ВЫБОРКУ (окно ~2 мин), а не весь файл — иначе на
+    40-минутной проповеди technical_check перестал бы быть «дешёвым».
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    try:
+        cmd = [ffmpeg, "-hide_banner"]
+        if start and start > 0:
+            cmd += ["-ss", str(int(start))]
+        cmd += ["-t", str(int(dur)), "-i", str(path),
+                "-af", "volumedetect", "-f", "null", "-"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        m = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB", proc.stderr or "")
+        if m:
+            return float(m.group(1))
+    except Exception as e:
+        logger.warning("[LiveDubQA] volumedetect failed: %s", e)
+    return None
+
+
 def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
     """Быстрые проверки целостности переведённого видео.
 
@@ -115,6 +139,20 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
         warnings.append("в файле нет аудиодорожки — перевод не наложился")
     if not has_video:
         warnings.append("в файле нет видеопотока")
+
+    # AUDIT R42: наличие аудиопотока ≠ слышен русский голос. Пустой/молчащий
+    # дубляж (Яндекс отдал тишину, или RU-ветка выпала и остался лишь приглушён-
+    # ный EN) даёт has_audio=True и полную длину — прежде проходил как «ок».
+    # Меряем среднюю громкость выборки: цифровая тишина ≈ −70…−91 дБ, нормальный
+    # микс ≈ −16…−26 дБ, поэтому порог −50 дБ разделяет их с запасом.
+    if has_audio:
+        _sample_start = expected_duration * 0.1 if expected_duration and expected_duration > 300 else 0.0
+        mean_db = _mean_volume_db(dub_path, start=_sample_start)
+        if mean_db is not None and mean_db < -50.0:
+            warnings.append(
+                f"звук почти тишина (средняя громкость {mean_db:.0f} дБ) — "
+                "дубляж мог не наложиться"
+            )
 
     return warnings
 
@@ -282,6 +320,7 @@ async def run_translation_qa(
     duration: int,
     model_name: str = "",
     dub_srt_path: Optional[Path] = None,
+    dub_audio_path: Optional[Path] = None,
     existing_audio_part=None,
     existing_client=None,
     thinking_level: str = "high",
@@ -315,10 +354,21 @@ async def run_translation_qa(
         _have_srt = bool(dub_timed_text)
         dub_audio = None
         if not _have_srt:
-            # Аудио дубляжа нужно только когда нет официального текста перевода
-            dub_audio = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: _extract_audio_for_qa(dub_video_path, qa_audio)
-            )
+            # AUDIT R42: предпочитаем ЧИСТУЮ RU-дорожку (dub_audio_path из
+            # find_pro_tracks), если она сохранилась. Извлечение аудио из готового
+            # видео даёт БИЛИНГВАЛЬНЫЙ микс (EN 0.45 под RU) — Gemini слышал
+            # английский «фон» под русским, хотя промт называет файл «чистый
+            # дубляж»: между русскими фразами всплывал EN, и модель могла
+            # недооценить искажение RU или зацепиться за слышимый английский.
+            # Чистая дорожка = ровно то, что промт обещает модели.
+            if dub_audio_path and Path(dub_audio_path).exists():
+                dub_audio = Path(dub_audio_path)
+                logger.info("[LiveDubQA] сравниваю по ЧИСТОЙ RU-дорожке (без EN-фона микса)")
+            else:
+                # Аудио дубляжа нужно только когда нет официального текста перевода
+                dub_audio = await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: _extract_audio_for_qa(dub_video_path, qa_audio)
+                )
             if dub_audio is None:
                 logger.warning("[LiveDubQA] не удалось извлечь аудио дубляжа")
                 return None
@@ -486,7 +536,16 @@ async def run_translation_qa(
                 resp = await asyncio.wait_for(_attempt(client), timeout=_left)
                 _raw_text = getattr(resp, "text", "") or ""
                 result = _parse_qa_json(_raw_text)
-                if result is not None and "issues" in result:
+                # AUDIT R42: чистый перевод модель может вернуть как
+                # {"reasoning","score","verdict"} БЕЗ ключа "issues" (жёсткую
+                # схему не навязываем). Прежде это считалось «не распарсилось» →
+                # ротация всех ключей + утечка файлов + пользователю «проверка не
+                # удалась» для по сути ХОРОШЕГО перевода. Принимаем любой dict со
+                # score/verdict/issues, дефолтя issues=[].
+                if isinstance(result, dict) and (
+                    "issues" in result or "score" in result or "verdict" in result
+                ):
+                    result.setdefault("issues", [])
                     return result
                 # Диагностика вместо немого фейла (прод 2026-06-10)
                 try:
@@ -503,6 +562,16 @@ async def run_translation_qa(
                 except Exception:
                     pass
                 last_err = RuntimeError("ответ модели не распарсился в QA-JSON")
+                # AUDIT R42: при непарсе ТОЖЕ чистим залитые файлы текущего ключа
+                # (как в except-ветке ниже) — иначе они утекали на Gemini, а
+                # следующий ключ доливал свои, и uploaded смешивал ключи (finally
+                # удаляет только на client_used = последнем).
+                for uf in uploaded:
+                    try:
+                        await client.aio.files.delete(name=uf.name)
+                    except Exception:
+                        pass
+                uploaded.clear()
             except Exception as e:
                 last_err = e
                 logger.warning("[LiveDubQA] клиент не справился: %s", str(e)[:200])
@@ -562,7 +631,9 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
 
     lines = [head]
     if verdict:
-        lines.append(html_mod.escape(verdict))
+        # AUDIT R42: вердикт — «одно предложение», но модель иногда выдаёт абзац;
+        # без кэпа он мог один съесть весь лимит отчёта.
+        lines.append(html_mod.escape(verdict[:600]))
 
     majors = [i for i in issues if str(i.get("severity")) == "major"]
     minors = [i for i in issues if str(i.get("severity")) != "major"]
@@ -602,5 +673,25 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
     if not issues:
         lines.append("Искажений смысла не найдено — перевод можно публиковать.")
 
-    text = "\n".join(lines)
-    return text[:4000]
+    # AUDIT R42: раньше был грубый text[:4000] — обрезка могла разрубить <a>/<b>
+    # или &…;-сущность, и Telegram отклонял ВЕСЬ отчёт (parse_mode=HTML → 400),
+    # а пользователь не видел искажений вовсе. Собираем по ЦЕЛЫМ блокам (каждый
+    # HTML-сбалансирован: head/verdict экранированы, _fmt закрывает свои теги) в
+    # пределах лимита, а не режем посреди тега.
+    _LIMIT = 4000
+    _tail = "\n… часть отчёта не поместилась"
+    out: list[str] = []
+    used = 0
+    truncated = False
+    for idx, ln in enumerate(lines):
+        add = (1 if out else 0) + len(ln)  # +1 за перевод строки
+        room = _LIMIT - (len(_tail) if idx < len(lines) - 1 else 0)
+        if used + add > room:
+            truncated = True
+            break
+        out.append(ln)
+        used += add
+    text = "\n".join(out)
+    if truncated:
+        text += _tail
+    return text[:_LIMIT]

@@ -879,6 +879,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             from services.livedub_info import get_light_model
                             _quick_srt = None
                             _orig_for_quick = None
+                            _clean_ru_quick = None  # AUDIT R42: чистая RU-дорожка
                             if "ld_work" in locals() and ld_work.exists():
                                 _srt_candidates = sorted(
                                     (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
@@ -891,6 +892,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     reverse=True,
                                 )
                                 _orig_for_quick = _orig_candidates[0] if _orig_candidates else None
+                                # AUDIT R42: чистая RU-дорожка (без EN-фона микса) —
+                                # точнее для аудио-сравнения, чем звук из готового видео.
+                                try:
+                                    from services.livedub_mix import find_pro_tracks
+                                    _clean_ru_quick = find_pro_tracks(ld_work)[1]
+                                except Exception:
+                                    _clean_ru_quick = None
                             # AUDIT ENG (2026-07-05): SRT больше НЕ обязателен.
                             # На установках без старого vot-cli субтитры перевода
                             # не скачиваются никогда — старый гейт «srt AND orig»
@@ -905,6 +913,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     duration=duration,
                                     model_name=os.getenv("LIVEDUB_QUICK_QA_MODEL", "").strip() or get_light_model(),
                                     dub_srt_path=_quick_srt,
+                                    dub_audio_path=_clean_ru_quick,
                                     thinking_level=os.getenv("LIVEDUB_QUICK_QA_THINKING", "minimal").strip() or "minimal",
                                 )
                                 _quick_majors = [i for i in ((_quick_qa or {}).get("issues") or [])
@@ -989,6 +998,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         except Exception:
                             pass
                         _dub_srt = None
+                        _clean_ru_full = None  # AUDIT R42: чистая RU-дорожка
                         try:
                             if "ld_work" in locals() and ld_work.exists():
                                 _srt_candidates = sorted(
@@ -997,6 +1007,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                                     key=lambda f: f.stat().st_mtime, reverse=True,
                                 )
                                 _dub_srt = _srt_candidates[0] if _srt_candidates else None
+                                # AUDIT R42: чистая RU-дорожка (без EN-фона микса)
+                                try:
+                                    from services.livedub_mix import find_pro_tracks
+                                    _clean_ru_full = find_pro_tracks(ld_work)[1]
+                                except Exception:
+                                    _clean_ru_full = None
                         except Exception:
                             pass
                         _qa_part = None
@@ -1013,6 +1029,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             ai_data=_qa_ai_data,
                             duration=duration,
                             dub_srt_path=_dub_srt,
+                            dub_audio_path=_clean_ru_full,
                             existing_audio_part=_qa_part,
                             existing_client=_qa_client,
                         )
@@ -2923,6 +2940,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         from core.utils import mask_api_key as _mask
         _safe = _mask(str(e))
         logger.error(f"Ошибка: {_safe}", exc_info=True)
+        # AUDIT R42: не теряем УЖЕ ГОТОВЫЙ дубляж, если упали на «extras»
+        # (PDF/quiz/Shorts) ПОСЛЕ основной отправки, но ДО отправки перевода.
+        # Раньше finally просто отменял live_dub_task — обещанный перевод молча
+        # пропадал, а пользователь видел лишь «❌ Ошибка». Хелпер идемпотентен и
+        # сам awaits задачу до конца, поэтому finally затем пропустит cancel.
+        if "_send_livedub_result" in locals():
+            try:
+                await _send_livedub_result()
+            except Exception as _ld_flush_err:
+                logger.warning("[LiveDub] flush в except не удался: %s", str(_ld_flush_err)[:160])
         if not silent_errors:
             try:
                 await update.message.reply_text(f"❌ Ошибка: {_safe[:200]}")

@@ -131,6 +131,16 @@ try {
     process.exit(4);
   }
   const buf = Buffer.from(await resp.arrayBuffer());
+  // AUDIT R42: HTTP 200 ещё не гарантирует целый файл — CDN может отдать
+  // пустое/обрезанное тело (оборванный chunked-стрим). Без этой проверки
+  // 0-байтный/крошечный MP3 писался и exit 0 → Python принимал его как
+  // готовый дубляж, а пользователь получал видео с секундой русского и
+  // тишиной. Настоящий дубляж проповеди — всегда мегабайты.
+  if (!buf || buf.length < 4096) {
+    console.error("LIVEDUB_NOT_AVAILABLE");
+    log(`Скачанный аудиофайл подозрительно мал: ${buf ? buf.length : 0} байт — считаю загрузку битой`);
+    process.exit(4);
+  }
   fs.mkdirSync(args.output, { recursive: true });
   const safeId = (videoData.videoId ?? "translation").toString().replace(/[^\w-]/g, "_");
   const outPath = path.resolve(args.output, `${safeId}.${useLively ? "live" : "tts"}.mp3`);

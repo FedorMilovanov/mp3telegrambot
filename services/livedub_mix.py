@@ -357,18 +357,28 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     normalize амикса, который глушил бы всё на -6 дБ).
     """
     _eq = "highpass=f=70," if voice_eq else ""
-    # RNNoise только на EN (оригинал из зала); путь экранируем для ffmpeg
+    # AUDIT R42: детерминированно приводим ОБЕ дорожки к 48кГц/стерео ДО
+    # sidechaincompress/amix. EN (YouTube, часто 48к стерео) и RU (Яндекс MP3,
+    # нередко моно 44.1к) иначе полагаются на авто-негоциацию ffmpeg — на части
+    # сборок sidechaincompress капризен к рассинхрону раскладок и падал бы,
+    # утягивая весь pro-микс в vot-cli. arnndn тоже работает на 48кГц.
+    _afmt = "aformat=sample_rates=48000:channel_layouts=stereo,"
+    # RNNoise только на EN (оригинал из зала).
     _dn = ""
     if rnnoise_model and Path(rnnoise_model).exists():
-        _m = rnnoise_model.replace("\\", "/").replace(":", "\\:")
+        # AUDIT R42: путь УЖЕ в одинарных кавычках ('{_m}') — внутри них двоеточие
+        # литеральное, экранировать НЕ нужно. Прежний .replace(":", "\\:") давал
+        # arnndn=m='C\:/…' (битый путь) и ТИХО отключал шумодав на документиро-
+        # ванном windows-пути C:\… — денойз считался включённым, но не работал.
+        _m = rnnoise_model.replace("\\", "/")
         _dn = f"arnndn=m='{_m}',"
-    ru_chain = f"[1:a]{_eq}adelay={delay_ms}:all=1"
+    ru_chain = f"[1:a]{_afmt}{_eq}adelay={delay_ms}:all=1"
     if abs(ru_gain_db) > 0.1:
         ru_chain += f",volume={ru_gain_db:.1f}dB"
     ru_chain += f",volume={trans_volume}"
     if ru_extra_expr:
         ru_chain += f",volume='{ru_extra_expr}':eval=frame"
-    en_chain = f"[0:a]{_dn}{_eq}"
+    en_chain = f"[0:a]{_afmt}{_dn}{_eq}"
     if abs(en_gain_db) > 0.1:
         en_chain += f"volume={en_gain_db:.1f}dB,"
     en_chain += f"volume={orig_volume}"
@@ -437,6 +447,21 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         f"{en_lufs:.1f}" if en_lufs is not None else "?", en_gain,
         f"{ru_lufs:.1f}" if ru_lufs is not None else "?", ru_gain,
     )
+
+    # AUDIT R42: усечённый RU-дубляж — Яндекс/CDN иногда отдаёт HTTP 200 с
+    # обрезанным телом, тогда RU-дорожка в разы короче оригинала. amix
+    # duration=longest сохранит полную длину видео, и выйдет «пара секунд
+    # русского, затем тишина под английским» — а size-гейт и technical_check
+    # этого не ловят (длина видео полная). Отклоняем микс → вызывающий уходит
+    # в fallback вместо отправки битого дубляжа. Autofix-ремикс подаёт полную
+    # чистую дорожку, поэтому там условие не срабатывает.
+    if (orig_duration and orig_duration > 30
+            and ru_duration is not None and ru_duration < 0.5 * orig_duration):
+        logger.warning(
+            "[LiveDubMix] RU-дубляж усечён: %.0fс из ~%.0fс оригинала — отклоняю микс",
+            ru_duration, orig_duration,
+        )
+        return None
 
     tail_pad_ms = calculate_tail_pad_ms(
         int(p.get("delay_ms") or 0),
