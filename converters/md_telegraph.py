@@ -2131,8 +2131,12 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
                             buf += entity; vis += 1
                         i = end + 1
                 else:
-                    if vis < limit:
-                        buf += line[i]; vis += 1
+                    # AUDIT R39: эмодзи вне BMP = 2 UTF-16 единицы (как в
+                    # visible_length), иначе эмодзи-насыщенная строка обрезалась
+                    # «по 1» и итог превышал 1024 → Telegram отклонял отправку.
+                    _w = 2 if ord(line[i]) > 0xFFFF else 1
+                    if vis + _w <= limit:
+                        buf += line[i]; vis += _w
                     i += 1
             result_lines.append(buf)
             current_len = vis

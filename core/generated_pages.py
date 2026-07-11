@@ -282,7 +282,11 @@ def _rows_to_dicts(rows: list) -> list[dict[str, Any]]:
         item = dict(zip(_RECORD_KEYS, row))
         for k in ("hashtags", "key_categories", "scripture_refs", "publication_missing", "quality_warnings"):
             try:
-                item[k] = json.loads(item.get(k) or "[]")
+                # AUDIT R39: приводим элементы к str — иначе не-строка в JSON-
+                # списке (ручная правка архива/дрейф схемы) роняла " ".join(...)
+                # в query/related/markdown-экспорте (и дамп-инструмент оператора).
+                _v = json.loads(item.get(k) or "[]")
+                item[k] = [str(x) for x in _v] if isinstance(_v, list) else []
             except Exception:
                 item[k] = []
         out.append(item)

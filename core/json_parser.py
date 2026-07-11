@@ -257,16 +257,20 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
         # Если перекрытие почти нулевое - возможно Gemini галлюцинирует и взял не то видео
         _tt_overlap = getattr(_title_issue, 'overlap', None)
         if _tt_overlap is not None and _tt_overlap < 0.05:
+            # AUDIT R39: метафорическое/образное название («Трус и лжец», «Узкие
+            # врата») ЗАКОННО может не пересекаться словами с пересказом main_topic
+            # → overlap=0.00. Раньше (R7) мы жёстко ОБНУЛЯЛИ real_title и
+            # публиковали сырой YouTube-заголовок (часто с дублем автора — «Пол
+            # Вошер. Свидетельство…»). Больше НЕ обнуляем: решение принимает
+            # choose_safe_public_title() в пайплайне — он подменяет заголовок
+            # только если YouTube-вариант ИЗМЕРИМО ближе к теме (настоящая
+            # галлюцинация «взял не то видео»), иначе оставляет чистый заголовок
+            # Gemini. title_topic_warning ниже включает этот гейт.
             logger.error(
-                "Title/topic MISMATCH: %s overlap=%.2f title_terms=%s — Gemini may have misidentified!",
+                "Title/topic MISMATCH: %s overlap=%.2f title_terms=%s — решит choose_safe_public_title",
                 _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
             )
-            # FIX AUDIT R7: нулевое перекрытие = выдуманное название («Трусливый
-            # лжец…» вместо реального «Трус и лжец»). Не публикуем его: пустое
-            # real_title включает fallback на реальный YouTube-заголовок во всех
-            # потребителях (caption, Telegraph, поиск VK/RuTube).
             result["real_title_ai_rejected"] = result.get("real_title", "")
-            result["real_title"] = ""
         else:
             logger.warning(
                 "Title/topic warning: %s overlap=%.2f title_terms=%s",

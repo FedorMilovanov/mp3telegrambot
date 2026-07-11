@@ -325,16 +325,25 @@ async def handle_callback(update, context) -> None:
 
         # AUDIT M4: short_trim_get — синхронный SQLite, в executor
         loop = asyncio.get_running_loop()
-        rec = await loop.run_in_executor(None, short_trim_get, short_id)
+        # AUDIT R39: ошибка БД/неполная запись больше не оставляет кнопку с
+        # крутящимися часами (у strim: не было try/except, в отличие от segcut:).
+        try:
+            rec = await loop.run_in_executor(None, short_trim_get, short_id)
+        except Exception as _e:
+            logger.warning("strim: short_trim_get error: %s", str(_e)[:120])
+            await query.answer("Ошибка доступа к данным. Попробуйте позже.", show_alert=True)
+            return
         if not rec:
             await query.answer("Данные Short не найдены — возможно видео устарело.", show_alert=True)
             return
         # FIX AUDIT R4: отсутствие исходника больше не мгновенный отказ —
         # nosub он вообще не нужен, а для ретрима перекачиваем по yt_url ниже.
-        video_path = Path(rec["video_path"])
-
-        start_s = rec["start_seconds"]
-        end_s   = rec["end_seconds"]
+        video_path = Path(rec.get("video_path") or "")
+        start_s = rec.get("start_seconds")
+        end_s   = rec.get("end_seconds")
+        if start_s is None or end_s is None:   # AUDIT R39: неполная запись — мягкий отказ
+            await query.answer("Данные Short неполные.", show_alert=True)
+            return
         # AUDIT M5: ограничение по длительности оригинала
         source_duration = rec.get("source_duration", 0) or 0
 

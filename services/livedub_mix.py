@@ -732,6 +732,8 @@ def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[
     delay_s = get_mix_params()["delay_ms"] / 1000.0
     intervals: list[tuple[float, float]] = []
     for issue in issues or []:
+        if not isinstance(issue, dict):   # AUDIT R39: модель без схемы могла дать список строк
+            continue
         if str(issue.get("severity")) != "major":
             continue
         t = parse_mmss(str(issue.get("time") or ""))

@@ -1063,35 +1063,22 @@ async def _publish_expanded_page(
         # Telegraph через editPage, не догадка по числу нод) — оглавление
         # остаётся. Выбрасываем его только если сжимать больше некуда (1
         # секция осталась) или физически некуда (это единственная часть).
-        if not ok and include_toc and i == 0 and total >= 1:
-            _kept_toc = False
-            if total > 1:
-                while len(part_secs) > 1:
-                    _moved_sec = part_secs[-1]
-                    part_secs = part_secs[:-1]
-                    parts[i] = part_secs
-                    _next_secs = [_moved_sec] + parts[i + 1]
-                    parts[i + 1] = _next_secs
-                    logger.warning(
-                        "Expanded publish: editPage часть %d/%d с оглавлением не влезла — "
-                        "переношу последнюю секцию в часть %d (осталось %d) и пробую снова",
-                        part_num, total, i + 2, len(part_secs),
-                    )
-                    await asyncio.sleep(2)
-                    final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title)
-                    ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
-                    if ok:
-                        _kept_toc = True
-                        break
-
-            if not _kept_toc:
-                logger.warning(
-                    "Expanded publish: editPage часть %d/%d упала с TOC — повтор без оглавления (content-size fallback)",
-                    part_num, total,
-                )
-                await asyncio.sleep(2)
-                final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title, include_outline=False)
-                ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
+        # AUDIT R39: editPage с TOC может упасть с CONTENT_TOO_BIG, если часть
+        # впритык к лимиту. РАНЬШЕ (R19b) мы переносили последнюю секцию части в
+        # следующую — но это могло ПОТЕРЯТЬ секцию: если следующая часть затем
+        # тоже не влезала (её editPage падал, а fallback был только для i==0),
+        # перенесённая секция не попадала НИ на одну страницу, а пайплайн
+        # рапортовал успех. Теперь для ЛЮБОЙ части просто пере-издаём БЕЗ
+        # оглавления: контент уже опубликован на create-фазе и точно влезает —
+        # жертвуем максимум оглавлением этой части, но не теряем ни секции.
+        if not ok and include_toc:
+            logger.warning(
+                "Expanded publish: editPage часть %d/%d упала с оглавлением — повтор без него (контент сохраняем)",
+                part_num, total,
+            )
+            await asyncio.sleep(2)
+            final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title, include_outline=False)
+            ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
 
         if ok:
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)

@@ -283,6 +283,8 @@ def format_livedub_info_message(card: dict) -> str:
     if scripture:
         lines += ["", "📖 <b>Упомянутые места Писания</b>"]
         for s in scripture[:5]:
+            if not isinstance(s, dict):   # AUDIT R39: модель могла дать список строк
+                continue
             ref = _h(s.get("ref", ""))
             txt = _h(s.get("text_ru", ""))
             if ref and txt:

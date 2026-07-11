@@ -50,8 +50,11 @@ from services.telegraph_pages import (
     create_telegraph_terms, create_telegraph_study_analysis,
     create_telegraph_reflection_application, create_telegraph_study_reflection_combined,
     combined_study_reflection_enabled,
-    _gemini_last_was_fallback,
 )
+# AUDIT R39: импортируем МОДУЛЬ, а не значение флага — иначе имя связывалось с
+# False на момент импорта и переустановки telegraph_pages._gemini_last_was_fallback
+# его не меняли (маркер lite-модели в подписи был мёртвым кодом).
+import services.telegraph_pages as _tp_module
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
@@ -1408,7 +1411,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if file_size_mb > get_max_file_size_mb():
                 mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
                 ffmpeg = shutil.which("ffmpeg")
-                if ffmpeg:
+                # AUDIT R39: не пере-сжимаем сам в себя (вход==выход) — потеря файла.
+                if ffmpeg and mp3_path.name != mp3_64_path.name:
                     await asyncio.get_running_loop().run_in_executor(
                         None, lambda: subprocess.run(
                             [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
@@ -1743,7 +1747,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # Проверяем кэш MP3 — если файл уже есть, скачивание пропускаем
         mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
-        _existing_mp3 = list(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))
+        _existing_mp3 = sorted(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))  # AUDIT R39: детерминированный выбор
         if _existing_mp3:
             mp3_path = _existing_mp3[0]
             logger.info(f"MP3 кэш: используем существующий файл {mp3_path.name}")
@@ -1782,7 +1786,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
             # Re-encode existing mp3 via ffmpeg directly
             ffmpeg = shutil.which("ffmpeg")
-            if ffmpeg:
+            # AUDIT R39: если переиспользованный из кэша файл — УЖЕ {media_id}_64.mp3,
+            # то вход==выход: `ffmpeg -i X … X` испортит/обнулит единственный файл
+            # (а ниже unlink удалил бы оригинал → потеря аудио + краш stat()). Он и
+            # так 64 kbps — повторное сжатие бессмысленно, пропускаем к «слишком большой».
+            if ffmpeg and mp3_path.name != mp3_64_path.name:
                 proc = await asyncio.get_running_loop().run_in_executor(
                     None, lambda: subprocess.run(
                         [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
@@ -2392,7 +2400,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
 
         # PATCH-FIX: surface lite-model fallback in caption so user knows quality may be reduced
-        if _gemini_last_was_fallback:
+        if _tp_module._gemini_last_was_fallback:   # AUDIT R39: живое значение из модуля
             _ai_caption_base = {**(_ai_caption_base or ai_data), "_gemini_was_fallback": True}
 
         def _build(data, **kw):

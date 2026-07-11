@@ -101,21 +101,21 @@ def test_shrink_before_drop_helper_present():
 
 
 def test_shrink_attempted_before_dropping_outline():
+    """AUDIT R39: перенос секций между частями (shrink) УБРАН — он терял секцию,
+    если принимающая часть тоже не влезала (двойной overflow), а пайплайн при
+    этом рапортовал успех. Осталась безопасная замена: пере-издать часть БЕЗ
+    оглавления (контент уже на create-фазе, точно влезает)."""
     src = _telegraph_src()
-    block = src.split("if not ok and total > 1:", 1)[1][:2500]
-    shrink_pos = block.find("while len(part_secs) > 1:")
-    drop_pos = block.find("include_outline=False")
-    assert shrink_pos != -1, "цикл сжатия не найден"
-    assert drop_pos != -1, "финальный no-outline fallback не найден"
-    assert shrink_pos < drop_pos, "сжатие должно идти РАНЬШЕ выбрасывания оглавления"
+    assert "while len(part_secs) > 1:" not in src        # цикл сжатия убран
+    assert "переношу последнюю секцию" not in src         # лог переноса убран
+    assert "include_outline=False" in src                 # безопасный drop-TOC fallback
 
 
 def test_shrink_guarded_by_next_part_existing():
+    """AUDIT R39: раз переноса нет — нет и его мутаций между частями."""
     src = _telegraph_src()
-    block = src.split("if not ok and total > 1:", 1)[1][:2500]
-    assert "if i < total - 1:" in block, (
-        "сжатие возможно только если следующая часть существует — иначе некуда переносить"
-    )
+    assert "_next_secs = [_moved_sec] + _next_secs" not in src
+    assert "published_parts[i + 1] = (_next_secs, _next_url)" not in src
 
 
 def test_old_unconditional_drop_toc_fallback_removed():

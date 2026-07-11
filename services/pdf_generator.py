@@ -467,7 +467,9 @@ def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
         return ""
     css_parts: List[str] = []
     for f in sorted(d.iterdir()):
-        if f.suffix.lower() not in (".ttf", ".otf", ".woff", ".woff2"):
+        # AUDIT R39: пропускаем каталоги/не-файлы с «шрифтовым» суффиксом —
+        # иначе @font-face указывал бы на директорию и wkhtmltopdf ронял грань.
+        if not f.is_file() or f.suffix.lower() not in (".ttf", ".otf", ".woff", ".woff2"):
             continue
         family, weight, style = _parse_font_filename(f.name)
         fmt = {

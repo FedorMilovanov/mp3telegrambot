@@ -1484,39 +1484,18 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             # Оглавление выбрасываем только если сжимать больше некуда
             # (осталась 1 секция) или сжимать некуда физически (последняя
             # часть, следующей нет).
-            if not ok and total > 1:
-                _kept_outline = False
-                if i < total - 1:
-                    while len(part_secs) > 1:
-                        _moved_sec = part_secs[-1]
-                        part_secs = part_secs[:-1]
-                        published_parts[i] = (part_secs, page_url)
-                        _next_secs, _next_url = published_parts[i + 1]
-                        _next_secs = [_moved_sec] + _next_secs
-                        published_parts[i + 1] = (_next_secs, _next_url)
-                        parts[i] = part_secs
-                        parts[i + 1] = _next_secs
-                        logger.warning(
-                            "Synopsis v2: editPage часть %d/%d с оглавлением не влезла — "
-                            "переношу последнюю секцию в часть %d (осталось %d) и пробую снова",
-                            part_num, total, i + 2, len(part_secs),
-                        )
-                        await asyncio.sleep(2)
-                        nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title)
-                        ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
-                        if ok:
-                            _kept_outline = True
-                            break
-
-                if not _kept_outline:
-                    logger.warning(
-                        "Synopsis v2: editPage часть %d/%d — оглавление выбрасываю совсем "
-                        "(content-size fallback, сжимать больше некуда)",
-                        part_num, total,
-                    )
-                    await asyncio.sleep(2)
-                    nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title, include_outline=False)
-                    ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
+            # AUDIT R39: НЕ переносим секции между частями (это теряло секцию при
+            # двойном overflow — перенесённая секция могла не попасть ни на одну
+            # страницу, а пайплайн рапортовал успех). Просто пере-издаём часть
+            # без оглавления: контент create-фазы гарантированно влезает.
+            if not ok:
+                logger.warning(
+                    "Synopsis v2: editPage часть %d/%d упала с оглавлением — повтор без него (контент сохраняем)",
+                    part_num, total,
+                )
+                await asyncio.sleep(2)
+                nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title, include_outline=False)
+                ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
 
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")

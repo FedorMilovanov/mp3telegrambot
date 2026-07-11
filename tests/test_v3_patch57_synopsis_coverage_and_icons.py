@@ -49,7 +49,9 @@ def test_synopsis_editpage_shrinks_before_dropping_toc_on_content_too_big():
     последнюю секцию в следующую часть) и сохранить TOC; выбрасываем его
     насовсем только когда сжимать больше некуда. Полный тест алгоритма —
     tests/test_v3_audit_r19_toc_shrink_rebalance.py."""
+    # AUDIT R39: R19-перенос секций между частями УБРАН (терял секцию при
+    # двойном overflow). Осталась безопасная замена — пере-издать без TOC.
     src = __import__("pathlib").Path("services/telegraph.py").read_text(encoding="utf-8")
-    assert "while len(part_secs) > 1:" in src
+    assert "while len(part_secs) > 1:" not in src
+    assert "переношу последнюю секцию" not in src
     assert "include_outline=False" in src
-    assert "content-size fallback" in src

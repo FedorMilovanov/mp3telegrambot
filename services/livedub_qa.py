@@ -549,7 +549,9 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
     """
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
-    issues = qa.get("issues") or []
+    # AUDIT R39: отбрасываем не-dict элементы (schema-less модель могла вернуть
+    # issues списком строк) — иначе .get() ниже ронял весь QA-отчёт в except.
+    issues = [i for i in (qa.get("issues") or []) if isinstance(i, dict)]
 
     if isinstance(score, (int, float)) and score >= 95 and not issues:
         head = f"✅ <b>Проверка перевода: {score:.0f}/100</b>"

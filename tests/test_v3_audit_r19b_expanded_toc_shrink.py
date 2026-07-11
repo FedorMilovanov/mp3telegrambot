@@ -46,25 +46,25 @@ def test_helper_extracted_and_reused_at_least_three_times():
 
 
 def test_shrink_attempted_before_dropping_toc():
+    """AUDIT R39: перенос секций между частями убран (терял секцию при двойном
+    overflow). Осталась безопасная замена — пере-издать без оглавления."""
     src = _telegraph_pages_src()
-    block = src.split("if not ok and include_toc and i == 0 and total >= 1:", 1)[1][:2000]
-    shrink_pos = block.find("while len(part_secs) > 1:")
-    drop_pos = block.find("include_outline=False")
-    assert shrink_pos != -1, "цикл сжатия не найден"
-    assert drop_pos != -1, "финальный no-outline fallback не найден"
-    assert shrink_pos < drop_pos, "сжатие должно идти раньше выбрасывания оглавления"
+    assert "while len(part_secs) > 1:" not in src
+    assert "переношу последнюю секцию" not in src
+    assert "include_outline=False" in src
 
 
 def test_shrink_guarded_by_more_than_one_part():
+    """AUDIT R39: раз переноса нет — нет и его мутаций между частями."""
     src = _telegraph_pages_src()
-    block = src.split("if not ok and include_toc and i == 0 and total >= 1:", 1)[1][:2000]
-    assert "if total > 1:" in block
+    assert "_next_secs = [_moved_sec] + parts[i + 1]" not in src
+    assert "parts[i + 1] = _next_secs" not in src
 
 
 def test_old_unconditional_edge_a_language_removed():
     src = _telegraph_pages_src()
     assert "(Edge-A fallback)" not in src
-    assert "content-size fallback" in src
+    assert "include_outline=False" in src   # безопасный drop-TOC fallback присутствует
 
 
 def test_related_materials_still_wired_through_shared_helper():

@@ -122,19 +122,26 @@ def _score_candidate_match(
     word_score = 0.0 if (precision + recall) <= 0 else (2 * precision * recall / (precision + recall))
 
     # AUDIT FIX: if both durations are unknown, don't penalize; treat as unknown (0.5)
+    _both_unknown = not duration and not item_duration
     if duration and item_duration:
         dur_diff = abs(item_duration - duration)
     elif duration or item_duration:
         dur_diff = 999  # one is unknown → mismatch
     else:
-        dur_diff = 0  # both unknown → neutral
-    dur_score = (
-        1.0 if dur_diff < 30 else
-        0.7 if dur_diff < 120 else
-        0.4 if dur_diff < 300 else
-        0.15 if dur_diff < 600 else
-        0.0
-    )
+        dur_diff = 0  # both unknown
+    if _both_unknown:
+        # AUDIT R39: оба unknown = НЕЙТРАЛЬНО (0.5), а не полный буст 1.0 —
+        # иначе слабое текстовое совпадение проскакивало пороги только за счёт
+        # «идеального» дефолтного dur_score.
+        dur_score = 0.5
+    else:
+        dur_score = (
+            1.0 if dur_diff < 30 else
+            0.7 if dur_diff < 120 else
+            0.4 if dur_diff < 300 else
+            0.15 if dur_diff < 600 else
+            0.0
+        )
 
     # Hard safety gates for long materials. One matched author/event word must
     # never beat a real sermon title just because duration is close.

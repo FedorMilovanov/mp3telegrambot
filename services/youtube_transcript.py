@@ -83,7 +83,10 @@ def _append_caption_delta(
     cue_keys = [_word_key(w) for w in cue_words]
     joined_base = " ".join(base_keys)
     joined_cue = " ".join(cue_keys)
-    if joined_cue and joined_cue in joined_base:
+    # AUDIT R39: сравнение по ГРАНИЦЕ СЛОВА (padding пробелами), иначе короткий
+    # cue-подстрока внутри слова («cat» в «cats») ошибочно считался дублем и
+    # терялся. Дубль пропускаем, только если весь cue совпал как цепочка слов.
+    if joined_cue and (f" {joined_cue} " in f" {joined_base} "):
         return
     max_olap = min(len(base_keys), len(cue_keys), 24)
     overlap = 0
