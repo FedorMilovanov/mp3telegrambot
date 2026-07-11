@@ -321,7 +321,6 @@ def expanded_page_response_schema() -> dict:
             "why_relevant": _string_schema(),
             "lemma": _string_schema(),
             "role_in_argument": _string_schema(),
-            "common_misreading": _string_schema(),
             "steps": _string_array_schema(),
             "challenge": _string_schema(),
             "anchor_timestamp": _string_schema(),

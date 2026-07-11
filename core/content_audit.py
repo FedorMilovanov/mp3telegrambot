@@ -512,7 +512,7 @@ def audit_expanded_sections(
                     section_title=new_title,
                     location=block_loc,
                 ))
-                for field in ("text", "quote", "why_relevant", "role_in_argument", "common_misreading", "challenge", "concrete_step"):
+                for field in ("text", "quote", "why_relevant", "role_in_argument", "challenge", "concrete_step"):
                     if field in block and isinstance(block.get(field), str):
                         block_text, got_block = _audit_text(
                             block.get(field, ""),

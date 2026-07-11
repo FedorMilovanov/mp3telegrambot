@@ -138,8 +138,10 @@ def test_structured_schema_has_argument_and_application_blocks():
     for block_type in ("thesis", "argument_spine", "pull_quote", "application"):
         assert block_type in enum
     props = schema["properties"]["sections"]["items"]["properties"]["blocks"]["items"]["properties"]
-    for key in ("common_misreading", "steps", "challenge", "anchor_timestamp", "concrete_step"):
+    for key in ("steps", "challenge", "anchor_timestamp", "concrete_step"):
         assert key in props
+    # R46: удалено насовсем — не должно оставаться и в схеме
+    assert "common_misreading" not in props
 
 
 def test_synopsis_density_audit_requires_inline_anchors_for_long_transcripts():

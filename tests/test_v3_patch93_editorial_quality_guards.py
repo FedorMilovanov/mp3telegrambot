@@ -51,7 +51,10 @@ def test_reflection_application_without_anchor_warns():
     assert any(i.code == "application_anchor_missing_warning" for i in issues)
 
 
-def test_scripture_common_misreading_renders_below_role():
+def test_scripture_common_misreading_field_removed_by_design():
+    """R46: убрано насовсем (не запретом, а удалением инструкции/поля/рендера) —
+    оператор счёл «Частая ошибка чтения» ненужным редакторским комментарием.
+    Даже если модель по инерции пришлёт это поле — рендер его игнорирует."""
     section = {
         "title": "Ключевые тексты",
         "content": "fallback",
@@ -65,8 +68,8 @@ def test_scripture_common_misreading_renders_below_role():
     }
     flat = _flat(_section_to_nodes_v2(section))
     assert "Этот текст показывает" in flat
-    assert "Частая ошибка чтения" in flat
-    assert "общее уважение" in flat
+    assert "Частая ошибка чтения" not in flat
+    assert "общее уважение" not in flat
 
 
 def test_synopsis_density_warns_on_low_voice_and_short_paragraphs():

@@ -53,7 +53,9 @@ def test_study_catalog_cut_and_contracts_added():
     assert "{source_pack}" in P.STUDY_ANALYSIS_PROMPT
     assert "КОНТРАКТ ПОЛЕЙ БЛОКОВ" in P.STUDY_ANALYSIS_PROMPT
     assert "role_in_argument" in P.STUDY_ANALYSIS_PROMPT
-    assert "common_misreading" in P.STUDY_ANALYSIS_PROMPT
+    # R46: «common_misreading» удалён насовсем (не запрещён — вычищен из
+    # промта/схемы/рендера), оператор счёл этот комментарий ненужным.
+    assert "common_misreading" not in P.STUDY_ANALYSIS_PROMPT
     assert "why_relevant" in P.STUDY_ANALYSIS_PROMPT
     # Guardrail Израиль/Церковь пережил сокращение
     assert "supersessionism" in P.STUDY_ANALYSIS_PROMPT
