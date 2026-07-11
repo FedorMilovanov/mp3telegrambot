@@ -53,10 +53,84 @@ logger = logging.getLogger(__name__)
 # Сигнал ловим в main() (main thread) и передаём через этот Event.
 _STOP_EVENT = threading.Event()
 
+
+# ─── Singleton guard: не даём случайно запустить второй экземпляр ─────────
+# Живой лог (2026-07-11): второй запуск бота тихо и БЕСКОНЕЧНО долбился в
+# getUpdates и получал 'Conflict: terminated by other getUpdates request'
+# каждые ~7с — при этом НИ ОДИН из двух экземпляров не получал сообщений,
+# а по логу первый выглядел «рабочим» (просто висел в цикле ретраев PTB).
+# Проверка перед стартом polling даёт честную ошибку сразу вместо скрытой
+# борьбы за long-poll на стороне Telegram.
+_SINGLETON_LOCK_PATH = Path("bot.lock")
+
+
+def _pid_is_running(pid: int) -> bool:
+    """Кросс-платформенная проверка «жив ли процесс с этим PID» (без psutil)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # процесс существует, просто принадлежит другому пользователю
+    except OSError:
+        return False
+    return True
+
+
+def _acquire_singleton_lock() -> bool:
+    """True — лок наш, можно стартовать polling. False — уже занят живым PID."""
+    old_pid = 0
+    if _SINGLETON_LOCK_PATH.exists():
+        try:
+            old_pid = int(_SINGLETON_LOCK_PATH.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            old_pid = 0
+    if old_pid and old_pid != os.getpid() and _pid_is_running(old_pid):
+        logger.error(
+            "❌ Уже запущен другой экземпляр бота (PID %d, lock-файл %s). "
+            "Остановите его и запустите заново — иначе Telegram отдаёт "
+            "'Conflict: terminated by other getUpdates request' в бесконечном "
+            "цикле, и НИ ОДИН экземпляр не получает сообщений. "
+            "Windows: Stop-Process -Id %d -Force",
+            old_pid, _SINGLETON_LOCK_PATH, old_pid,
+        )
+        return False
+    # Лока нет, или PID мёртв (краш прошлого запуска), или это уже наш PID
+    # (повторный вызов после внутреннего restart в run_bot() — тот же процесс).
+    try:
+        _SINGLETON_LOCK_PATH.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError as e:
+        logger.warning("⚠️ Не удалось создать lock-файл %s: %s — проверка пропущена", _SINGLETON_LOCK_PATH, e)
+    return True
+
+
+def _release_singleton_lock() -> None:
+    """Убирает lock-файл, только если он всё ещё наш (не перезахвачен кем-то)."""
+    try:
+        if (_SINGLETON_LOCK_PATH.exists()
+                and _SINGLETON_LOCK_PATH.read_text(encoding="utf-8").strip() == str(os.getpid())):
+            _SINGLETON_LOCK_PATH.unlink()
+    except OSError:
+        pass
+
+
 async def run_bot_async():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN не найден!")
         return
+
+    if not _acquire_singleton_lock():
+        return "singleton_conflict"
 
     # AUDIT C5: чистим словарь per-video locks. После краша run_bot_async и
     # создания нового event loop старые Lock'и привязаны к мёртвому loop,
@@ -902,8 +976,15 @@ def run_bot():
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(run_bot_async())
+            if result == "singleton_conflict":
+                # AUDIT R44: не ретраим — другой живой экземпляр уже держит
+                # long-poll с этим токеном. Бесконечный restart каждые 5с
+                # только спамил бы тем же 'Conflict', никогда не подключаясь.
+                logger.error("🛑 Бот НЕ запущен — завершение процесса (см. причину выше).")
+                break
             if result == "stop_requested":
                 logger.info("🛑 Бот остановлен по /stop — без автоматического restart")
+                _release_singleton_lock()
                 break
             _net_fail_streak = 0
         except Exception as e:

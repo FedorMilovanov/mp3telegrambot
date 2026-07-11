@@ -21,6 +21,7 @@ bot_cache.db.bak.*
 bot.zip
 cookies.txt
 *.log
+bot.lock
 
 # =============== OS ===============
 .DS_Store
