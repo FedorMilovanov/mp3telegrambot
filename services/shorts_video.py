@@ -17,6 +17,7 @@ from core.url_utils import get_youtube_video_url # FIX shorts_video
 import asyncio
 import logging
 import os         # FIX shorts_video
+import re
 import shutil
 import subprocess
 import threading  # FIX shorts_video
@@ -170,7 +171,17 @@ async def render_short_clip(
         # проповедника остаётся на crop_zoom (там кадр заполняется отлично).
         if visual_mode == "crop_zoom" and await _is_static_video(source_video_path, float(start_seconds)):
             visual_mode = "full_frame_vertical"
-            logger.info("Short: статичный кадр (заставка) — режим full_frame_blur вместо crop")
+            # AUDIT R47 (живой скриншот: «видно только левый бок видео, кривой
+            # blur»): cropdetect ищет letterbox-полосы в РЕАЛЬНОМ видеокадре, но
+            # статичная промо-заставка — это дизайн-графика с крупными тёмными/
+            # цветными блоками (фон, текст), а не чёрные полосы. cropdetect(limit=32)
+            # ловит «серые/тёмные полосы» по своему же docstring — на несимметрично
+            # свёрстанной заставке он срезает часть картинки асимметрично, и
+            # blur-фон строится уже из обрезанного (визуально «съехавшего») кадра.
+            # full_frame_vertical и так показывает картинку ЦЕЛИКОМ — обрезка по
+            # чёрным полосам здесь не нужна и только портит статичные заставки.
+            black_bars = ""
+            logger.info("Short: статичный кадр (заставка) — режим full_frame_blur вместо crop, cropdetect игнорируется")
 
         _use_filter_complex = False   # True для blur-overlay графа с лейблами
         if visual_mode == "crop_zoom":
@@ -595,6 +606,37 @@ def _merge_hyphenated_particles(words: list[dict]) -> list[dict]:
     return result
 
 
+_PURE_PUNCT_RE = re.compile(r"^[^\w]+$", re.UNICODE)
+
+
+def _merge_orphan_punctuation(words: list[dict]) -> list[dict]:
+    """Приклеивает токен из ОДНОЙ пунктуации к предыдущему слову.
+
+    Whisper иногда отдаёт закрывающую кавычку+знак («?»» после «Спаситель»)
+    отдельным word-токеном без единой буквы. Если оставить его отдельным
+    элементом, _chunk_words_smart/_wrap_chunk_to_lines может выбрать точку
+    разрыва строки ровно перед ним — субтитр переносит "?»" на новую строку
+    в одиночестве (живой пример: "«Тебе нужен Спаситель" / "?» Тебе нужен").
+    Склеиваем без пробела к предыдущему токену, тайминг предыдущего слова
+    продлеваем до конца пунктуации.
+    """
+    if len(words) < 2:
+        return words
+    result: list[dict] = []
+    for w in words:
+        word_text = w.get("word", "").strip()
+        if word_text and result and _PURE_PUNCT_RE.match(word_text):
+            prev = result[-1]
+            result[-1] = {
+                **prev,
+                "word": prev.get("word", "").strip() + word_text,
+                "end": w.get("end", prev.get("end", 0)),
+            }
+        else:
+            result.append({**w})
+    return result
+
+
 def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float = 0.4) -> list[list[dict]]:
     """
     Умная группировка слов в subtitle chunks.
@@ -805,6 +847,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
         all_words = _normalize_word_timings(all_words)
         all_words = _fill_timing_gaps(all_words)
         all_words = _merge_hyphenated_particles(all_words)
+        all_words = _merge_orphan_punctuation(all_words)
 
         chunks    = _chunk_words_smart(all_words, max_chars=38)
         ass_lines = [header]
@@ -839,6 +882,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
     all_words = _normalize_word_timings(all_words)
     all_words = _fill_timing_gaps(all_words)
     all_words = _merge_hyphenated_particles(all_words)
+    all_words = _merge_orphan_punctuation(all_words)
 
     chunks    = _chunk_words_smart(all_words, max_chars=38, max_pause=0.35)
     ass_lines = [header]
