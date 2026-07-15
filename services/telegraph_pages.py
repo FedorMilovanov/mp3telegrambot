@@ -15,6 +15,7 @@ from core.text_utils import (
     _clean_field, _clean_meta_line,    # FIX telegraph_pages
     _strip_meta_lines, is_meta_garbage, # FIX telegraph_pages
     normalize_title_text, title_case_fragment,  # FIX telegraph_pages
+    join_title_author,                 # R49: не дублировать имя автора в заголовке
 )
 from converters.md_telegraph import (
     _build_toc_nodes_v2, _build_nav_nodes_v2,
@@ -1515,9 +1516,7 @@ async def create_telegraph_study_analysis(
         source_pack=_source_pack,
     )
 
-    tg_title = prompt_title
-    if real_author and real_author != "Автор не указан":
-        tg_title = f"{tg_title} — {real_author}"
+    tg_title = join_title_author(prompt_title, real_author)
     tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
 
     return await _run_expanded_pipeline(
@@ -1746,7 +1745,7 @@ async def create_telegraph_study_reflection_combined(
             continue
         if not outline or len(outline) != len(sections):
             outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
-        tg_title = f"{prompt_title} — {real_author}" if real_author and real_author != "Автор не указан" else prompt_title
+        tg_title = join_title_author(prompt_title, real_author)
         if " — " in tg_title:
             _sep = ": "
         elif ":" in tg_title:
@@ -1940,11 +1939,7 @@ async def create_telegraph_reflection_application(
         synopsis_context=_synopsis_context_for_prompt,
     )
 
-    tg_title = (
-        f"{prompt_title} — {real_author}"
-        if real_author and real_author != "Автор не указан"
-        else prompt_title
-    )
+    tg_title = join_title_author(prompt_title, real_author)
     tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
 
     return await _run_expanded_pipeline(

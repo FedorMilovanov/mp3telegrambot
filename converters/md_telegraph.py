@@ -7,7 +7,7 @@ from core.structured_blocks import normalize_structured_block
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, _has_dirty_meta,
     normalize_author_name, normalize_common_typos, normalize_source_map_text,
-    scrub_third_person_phrases, title_case_fragment,
+    scrub_third_person_phrases, title_case_fragment, join_title_author,
 )
 from core.source_titles import build_source_card, is_disallowed_source_author, render_source_card
 from core.url_utils import get_youtube_timestamp_url
@@ -128,6 +128,19 @@ _SCRIPTURE_FULL_BOOK_RE = (
     r'1\s*Фессалоникийцам|2\s*Фессалоникийцам|1\s*Тимофею|2\s*Тимофею|'
     r'Титу|Филимону|Евреям|Иакова|1\s*Петра|2\s*Петра|'
     r'1\s*Иоанна|2\s*Иоанна|3\s*Иоанна|Иуды|Откровение)'
+)
+
+# AUDIT R49 (живой дамп: «В книге Деяний 2:23» → t=143): guard по названию книги
+# промахивался на КОСВЕННЫХ падежах («Деяний», «Исаии») и оборотах «в книге X»,
+# и ссылка на Писание превращалась в видео-таймкод. Дополнительный контекст-
+# guard: число НЕ таймкод, если ему предшествует книго-цитирующий оборот или
+# склонённая форма названия книги. Видео-таймкод так не пишут.
+_SCRIPTURE_CTX_BEFORE = re.compile(
+    r'(?:кни(?:га|ге|ги|гу|гой)|глав[аеуы]|стих(?:е|а|ах)?|послани[еия])\s+(?:\S+\s+)?$'
+    r'|Деяни(?:й|ях|ям|ями|е)\s*$'
+    r'|Исаи[ия]\s*$'
+    r'|Псал(?:ом|ма|ме|мов|мах)\s*$',
+    re.IGNORECASE,
 )
 
 # Ссылки в скобках: (Рим. 8:28), (Рим. 8:28, 29), (Рим. 8:28; 1 Кор. 15:14), (1 Кор. 15:1–4)
@@ -353,6 +366,15 @@ def _ensure_trailing_period(text: str) -> str:
                 lines[i] = s[:-3].rstrip() + '.***'
             else:
                 lines[i] = s[:-2].rstrip() + '.**'
+        elif s.endswith('*'):
+            # AUDIT R49 (живой дамп: Писание «…уничижен Богом.*.»): строка кончается
+            # закрывающим ITALIC '*' (не '**'). Раньше этот случай не ловился, точка
+            # добавлялась СНАРУЖИ '*' → артефакт '.*.'. Если точка уже стоит перед
+            # '*' — ничего не добавляем; иначе точку кладём ВНУТРЬ italic.
+            _before_star = re.sub(r'\*\s*$', '', s.rstrip())
+            if re.search(r'[.!?»"…]\s*$', _before_star):
+                break
+            lines[i] = s[:-1].rstrip() + '.*'
         else:
             lines[i] = s + '.'
         break
@@ -381,6 +403,61 @@ def _ensure_all_paragraphs_period(text: str) -> str:
     # Убираем ровно две точки подряд (не трогаем многоточие ...)
     result = re.sub(r'(?<!\.)\.\.(?!\.)', '.', result)
     return result
+
+
+_INQUOTE_TS_RE = re.compile(r'\s*⏱\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}')
+
+
+def _strip_timestamps_inside_scripture_quotes(content: str) -> str:
+    """Убирает голые ⏱-таймкоды, попавшие ВНУТРЬ дословной цитаты «…».
+
+    В дословном конспекте Gemini иногда роняет метку видео-таймкода прямо в
+    середину зачитываемого стиха:
+
+        «…и мы ни во что ставили Его ⏱ 2:18. Но Он взял на Себя…»
+
+    Такая цитата часто занимает несколько абзацев (« открывается в одном
+    абзаце, » закрывается на несколько абзацев ниже), поэтому per-node или
+    построчный regex её span не видит — считаем глубину кавычек по ВСЕЙ
+    строке контента секции. Линкификация ещё не прошла (она работает по
+    узлам, уже после этого этапа), поэтому таймкоды тут ещё «сырые»: ⏱ M:SS.
+
+    Безопасность: если « и » в контенте не сбалансированы (битая разметка) —
+    не трогаем ничего, чтобы незакрытая « случайно не «съела» таймкоды в
+    остальном тексте.
+    """
+    if '«' not in content or '⏱' not in content:
+        return content
+    if content.count('«') != content.count('»'):
+        return content
+    out: list[str] = []
+    depth = 0
+    i = 0
+    n = len(content)
+    while i < n:
+        ch = content[i]
+        if ch == '«':
+            depth += 1
+            out.append(ch)
+            i += 1
+            continue
+        if ch == '»':
+            if depth > 0:
+                depth -= 1
+            out.append(ch)
+            i += 1
+            continue
+        if depth > 0 and ch == '⏱':
+            m = _INQUOTE_TS_RE.match(content, i)
+            if m:
+                # Пробел перед меткой уже в out — убираем, чтобы не осталось " ."
+                if out and out[-1] == ' ':
+                    out.pop()
+                i = m.end()
+                continue
+        out.append(ch)
+        i += 1
+    return ''.join(out)
 
 
 def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> list:
@@ -597,7 +674,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
                         ts_text = _mm.group(1)
                         # Skip if preceded by "Книга. " pattern (Scripture ref)
                         before = child[:_mm.start()]
-                        if _SCRIPTURE_BEFORE.search(before):
+                        if _SCRIPTURE_BEFORE.search(before) or _SCRIPTURE_CTX_BEFORE.search(before):
                             continue  # likely Scripture ref, not a timestamp
                         lnk = _make_ts_link("", ts_text)
                         if lnk is not None:
@@ -1375,6 +1452,9 @@ def _section_to_nodes_v2(
     # Нумерованные prayer blocks: если "1. Текст" и потом сразу тело в той же строке
     # допускаем, это лучше чем разваленный номер на отдельной строке
     content = re.sub(r'\n{3,}', '\n\n', content).strip()
+    # R49: убираем ⏱-таймкоды, оброненные ВНУТРЬ дословной цитаты «…»
+    # (span может занимать несколько абзацев) — ДО разбивки на узлы/линкификации.
+    content = _strip_timestamps_inside_scripture_quotes(content)
     content = _ensure_all_paragraphs_period(content)
     # Убираем 2+ точек в конце строки (AI поставил точку + наш код добавил ещё одну).
     # (?=\s*$) гарантирует что трогаем только конец строки, не .. внутри текста.
@@ -1769,7 +1849,7 @@ def _build_related_materials_nodes(records: list[dict[str, Any]]) -> list:
             continue
         nodes.append({"tag": "p", "children": [
             "• ",
-            {"tag": "a", "attrs": {"href": url}, "children": [f"{title} — {author}"]}
+            {"tag": "a", "attrs": {"href": url}, "children": [join_title_author(title, author)]}
         ]})
     return nodes
 
