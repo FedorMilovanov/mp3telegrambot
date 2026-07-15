@@ -7,6 +7,7 @@ from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_author_name,
     title_case_fragment, normalize_title_text,  # FIX telegraph
     BAD_META_PATTERNS, is_meta_garbage,          # FIX telegraph
+    join_title_author,                           # R49: не дублировать имя автора
 )
 from converters.md_telegraph import (
     _section_to_nodes_v2, _build_toc_nodes_v2, _build_nav_nodes_v2,
@@ -529,7 +530,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         prompt_title = title_case_fragment(prompt_title)
         tg_title     = prompt_title
         if author and author != "Проповедь":
-            tg_title = f"{tg_title} — {author}"
+            tg_title = join_title_author(tg_title, author)
         tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
 
         is_qa = (_fmt == "qa")

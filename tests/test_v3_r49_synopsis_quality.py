@@ -137,6 +137,11 @@ def test_r49_join_title_author_used_in_related_and_page_builders():
     # старый наивный конкат больше не используется в построении tg_title
     assert 'f"{tg_title} — {real_author}"' not in tp
     assert 'f"{prompt_title} — {real_author}"' not in tp
+    # Synopsis/Конспект (базовая страница) собирает заголовок в telegraph.py —
+    # именно здесь возникал дубль в дампе Evangelie-ot-Boga; он тоже покрыт.
+    tg = Path("services/telegraph.py").read_text(encoding="utf-8")
+    assert "join_title_author(tg_title, author)" in tg
+    assert 'f"{tg_title} — {author}"' not in tg
 
 
 # ── #37b. Якорь «поверхностное чтение упускает» снят из промпта ──────────────
