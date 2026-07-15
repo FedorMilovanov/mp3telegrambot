@@ -179,3 +179,17 @@ def test_r49_mucem_correction_is_anchored_not_context_blind():
     # но фиксируем намерение: голое «мучем» без «за» не трогаем этой парой)
     src = Path("core/text_utils.py").read_text(encoding="utf-8")
     assert '("мучем за", "мучим за")' in src
+
+
+# ── #37e. Пс. 2:10 «уразумейте, цари» → «вразумитесь, цари» (Синодальный) ─────
+def test_r49_psalm_2_10_urazumejte_typo_fixed():
+    assert normalize_common_typos(
+        "Итак, уразумейте, цари; научитесь, судьи земли",
+        source_map=False,
+    ) == "Итак, вразумитесь, цари; научитесь, судьи земли"
+
+
+def test_r49_psalm_2_10_correction_is_anchored():
+    # голый императив «уразумейте» (не Пс. 2:10) — легитимен, не трогаем
+    assert normalize_common_typos("уразумейте волю Божью", source_map=False) == \
+        "уразумейте волю Божью"
