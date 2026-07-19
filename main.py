@@ -496,6 +496,8 @@ async def run_bot_async():
                    "--local", f"--http-port={_port}", f"--dir={_data}",
                    f"--log={_srv_log_path}", "--verbosity=2", *_botapi_proxy_args]
             kwargs: dict = {}
+            kwargs["env"] = dict(os.environ)
+            kwargs["env"].setdefault("PYTHONIOENCODING", "utf-8")
             if os.name == "nt":
                 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
                 kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
