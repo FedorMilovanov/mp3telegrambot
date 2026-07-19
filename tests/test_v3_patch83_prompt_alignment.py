@@ -7,7 +7,7 @@ from core.prompts import SYNOPSIS_PROMPT_QA, STUDY_ANALYSIS_PROMPT
 def test_study_prompt_source_cards_match_title_first_renderer_policy():
     assert "title-first" in STUDY_ANALYSIS_PROMPT
     assert "**Об умерщвлении греха**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
-    assert "**Рассуждение о религиозных чувствах**, Джонатан Эдвардс" in STUDY_ANALYSIS_PROMPT
+    assert "**Религиозные чувства**, Джонатан Эдвардс" in STUDY_ANALYSIS_PROMPT
     assert "**Safe in the Arms of God**, Джон МакАртур" in STUDY_ANALYSIS_PROMPT
     assert "автор и название — ОБЫЧНЫМ текстом" not in STUDY_ANALYSIS_PROMPT
     assert "НЕ жирным" not in STUDY_ANALYSIS_PROMPT.split("Карта источников", 1)[-1][:500]
