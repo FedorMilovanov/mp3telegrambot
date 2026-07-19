@@ -948,7 +948,9 @@ def _structured_blocks_to_nodes_v2(
                 chunks.append(text)
         elif btype in {"bullet", "list_item", "point"}:
             if text:
-                chunks.append("• " + text.lstrip("•- ").strip())
+                clean = text.lstrip("• ").strip()
+                if clean:
+                    chunks.append(clean)
         elif btype in {"scripture", "scripture_quote"}:
             ref = _scrub_inline(str(raw.get("ref") or "").strip())
             quote = _scrub_inline(str(raw.get("quote") or "").strip())
