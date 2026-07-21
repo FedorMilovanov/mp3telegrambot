@@ -37,6 +37,8 @@ try:
 except Exception as _singleton_error:
     print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
 
+# Решение о local/cloud принимается только после реального запуска
+# telegram-bot-api.exe и настоящей проверки локального /getMe.
 try:
     from services.local_botapi_runtime import prepare_local_bot_api
 
@@ -45,8 +47,7 @@ except Exception as _local_bootstrap_error:
     print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
 
 import main as _main_module
-
-main = _main_module.main
+from main import main
 
 try:
     from services.cloud_media_fallback import install_cloud_media_fallback
