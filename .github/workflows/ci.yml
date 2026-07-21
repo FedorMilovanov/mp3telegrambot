@@ -3,9 +3,6 @@ name: CI
 on:
   push:
     branches: ["main"]
-    # Не гоняем полный CI на коммитах, где меняются только выгрузки страниц,
-    # документация или .gitignore — это частые ручные пуши оператора
-    # (dump_telegraph_pages → commit → push), от них CI-письма только шумят.
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -17,8 +14,6 @@ on:
       - "**/*.md"
       - ".gitignore"
 
-# Частые пуши подряд отменяют предыдущий незавершённый прогон — не копим
-# очередь запусков и, соответственно, писем.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -73,3 +68,51 @@ jobs:
 
       - name: Code health advisory
         run: python tools/check_code_health.py
+
+  windows-runtime:
+    name: Windows runtime safety checks
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Compile runtime modules
+        run: |
+          python -m py_compile bot_new.py
+          python -m py_compile services/local_botapi_bootstrap.py
+          python -m py_compile services/local_botapi_runtime.py
+          python -m py_compile services/cloud_media_fallback.py
+
+      - name: Run Windows-sensitive regression tests
+        run: >-
+          python -m pytest -q
+          tests/test_local_botapi_bootstrap.py
+          tests/test_local_botapi_runtime.py
+          tests/test_cloud_media_fallback.py
+
+      - name: Ruff fatal checks for runtime files
+        run: >-
+          python -m ruff check --select E9,F63,F7,F82
+          bot_new.py
+          services/local_botapi_bootstrap.py
+          services/local_botapi_runtime.py
+          services/cloud_media_fallback.py
+          tests/test_local_botapi_bootstrap.py
+          tests/test_local_botapi_runtime.py
+          tests/test_cloud_media_fallback.py
