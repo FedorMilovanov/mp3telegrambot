@@ -4,8 +4,12 @@ from core.reasoning_guidance import (
 )
 
 
+def _flat(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
 def test_reflection_guidance_places_truth_before_application():
-    prompt = build_reasoning_first_block("reflection")
+    prompt = _flat(build_reasoning_first_block("reflection"))
     assert "ИСТИНА ПРЕЖДЕ ПРАКТИКИ" in prompt
     assert "истина → усвоение → сопротивление → мудрый ответ" in prompt
     assert "Практика без основания" in prompt
@@ -14,7 +18,7 @@ def test_reflection_guidance_places_truth_before_application():
 
 
 def test_study_guidance_teaches_biblical_assimilation():
-    prompt = build_reasoning_first_block("study")
+    prompt = _flat(build_reasoning_first_block("study"))
     assert "МОДЕЛЬ УСВОЕНИЯ ИСТИНЫ" in prompt
     assert "показать её основание в тексте" in prompt
     assert "показать, как читатель может сам проверить" in prompt
@@ -22,7 +26,7 @@ def test_study_guidance_teaches_biblical_assimilation():
 
 
 def test_translation_guidance_is_selective_and_explanatory():
-    prompt = build_reasoning_first_block("study")
+    prompt = _flat(build_reasoning_first_block("study"))
     assert "ПОЛОЖИТЕЛЬНЫЙ МЕТОД РАЗБОРА ПЕРЕВОДОВ И ОРИГИНАЛА" in prompt
     assert "Отсутствие содержательной развилки — нормальный результат" in prompt
     assert "ОБЩАЯ ОСНОВА" in prompt
@@ -33,7 +37,7 @@ def test_translation_guidance_is_selective_and_explanatory():
 
 
 def test_translation_guidance_blocks_fake_aspect_claims_positively():
-    prompt = build_reasoning_first_block("audio")
+    prompt = _flat(build_reasoning_first_block("audio"))
     assert "какая именно форма стоит в оригинале" in prompt
     assert "чего сама по себе НЕ доказывает" in prompt
     assert "Вид действия, временная протяжённость и повторяемость" in prompt
@@ -41,7 +45,7 @@ def test_translation_guidance_blocks_fake_aspect_claims_positively():
 
 
 def test_synopsis_guidance_resolves_verbatim_vs_summary_tension():
-    prompt = build_synopsis_reasoning_note()
+    prompt = _flat(build_synopsis_reasoning_note())
     assert "верная, подробная и читаемая передача речи" in prompt
-    assert "не механическая\nкопия каждого слова" in prompt
+    assert "не механическая копия каждого слова" in prompt
     assert "Сохраняй весь смысловой ход" in prompt
