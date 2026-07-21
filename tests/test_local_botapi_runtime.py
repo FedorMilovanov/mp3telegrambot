@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import services.local_botapi_runtime as runtime
 
@@ -42,7 +41,6 @@ def test_targeted_termination_ignores_unrelated_listener(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(tmp_path / "data"))
     data_dir = runtime._writable_data_dir()
     runtime._write_pid(runtime._pid_path(data_dir), 101)
-    monkeypatch.setattr(runtime.os, "name", "nt")
     monkeypatch.setattr(runtime, "_windows_listener_pids", lambda _port: {101, 202})
     monkeypatch.setattr(runtime, "_is_botapi", lambda pid: pid == 101)
     killed = []
