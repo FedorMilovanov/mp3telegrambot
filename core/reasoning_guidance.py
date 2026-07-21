@@ -1,12 +1,41 @@
 #!/usr/bin/env python3
-"""Positive reasoning guidance shared by Audio, Synopsis, Study and Reflection.
+"""Positive reasoning guidance shared by Audio, Study and Reflection.
 
-The block teaches a procedure instead of adding another wall of bans:
-truth -> understanding -> error correction -> assimilation -> wise response.
-Stable signal phrases are intentionally retained because prompt assembly and
-regression tests use them as compatibility contracts.
+Synopsis is deliberately separate: it is a transcription task, not an analytical
+or editorial task.  Its guidance must never ask the model to compress, improve,
+interpret or de-banalize the speaker's words.
 """
 from __future__ import annotations
+
+
+_SYNOPSIS_VERBATIM_GUIDANCE = """\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+РЕЖИМ ПОЛНОЙ ДОСЛОВНОЙ СТЕНОГРАММЫ
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Задача Synopsis — передать всю речь автора максимально дословно и в исходном
+порядке. Это не summary, не конспективное сжатие, не статья и не анализ.
+
+Сохраняй:
+• каждое произнесённое предложение;
+• повторы, слова-паразиты, оговорки, самокоррекции и незавершённые заходы;
+• длинные рассуждения, отступления, истории, примеры и бытовые детали;
+• риторические вопросы, обращения, тон, ритм и степень категоричности;
+• имена, даты, цитаты, метафоры и порядок переходов.
+
+Не перефразируй, не объединяй предложения, не уплотняй и не заменяй живую речь
+тезисами. При переводе на русский сохраняй структуру каждой фразы настолько
+близко к оригиналу, насколько позволяет грамматика русского языка.
+
+Разрешены только пунктуация, абзацы, навигационные заголовки sections,
+таймкоды и Markdown-выделения без изменения слов автора. Удалять можно только
+не-речевые технические артефакты: служебные метки субтитров, объективный дубль
+overlap auto-captions и шум, который не является речью.
+
+Если полный текст не помещается на одной Telegraph-странице, дели публикацию
+на части. Никогда не сокращай стенограмму ради лимита страницы или красивого
+объёма. Внешний контекст и собственные выводы не добавляй.
+"""
 
 
 def _evidence_ladder(task: str) -> str:
@@ -16,14 +45,6 @@ def _evidence_ladder(task: str) -> str:
 • high — явно звучит или устойчиво подтверждено несколькими таймкодами;
 • medium — следует из хода речи, поэтому формулируй с указанием основания;
 • low — оставь пустым. Лучше отсутствие поля, чем уверенная догадка.
-"""
-    if task == "synopsis":
-        return """\
-Лестница верности речи:
-• реальный порядок мысли, причинные связки и характерные формулировки;
-• очистка оговорок, технического шума и пустых повторов;
-• уплотнение без превращения речи в собственное богословское эссе;
-• внешний контекст никогда не выдаётся за слова автора.
 """
     if task == "study":
         return """\
@@ -50,11 +71,6 @@ def _focus(task: str) -> str:
         return (
             "Восстанови карту материала: жанр, главный вопрос, управляющую истину, "
             "основание, ложную предпосылку, ход аргумента, перелом, последствия и тон."
-        )
-    if task == "synopsis":
-        return (
-            "Восстанови ход речи автора: откуда начинается вопрос, какая истина раскрывается, "
-            "через какие различения идёт автор и к чему приводит слушателя."
         )
     if task == "study":
         return (
@@ -185,6 +201,9 @@ _ANTI_BANALITY = """\
 def build_reasoning_first_block(task: str = "general") -> str:
     """Return one positive, task-aware reasoning block."""
     task = (task or "general").strip().lower()
+    if task == "synopsis":
+        return _SYNOPSIS_VERBATIM_GUIDANCE
+
     parts = [
         "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%",
         "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО — REASONING-FIRST",
@@ -194,7 +213,7 @@ def build_reasoning_first_block(task: str = "general") -> str:
         "",
         _evidence_ladder(task),
         _TRUTH_FIRST if task in {"audio", "study", "reflection"} else "",
-        _GENRE if task in {"audio", "synopsis", "study", "reflection"} else "",
+        _GENRE if task in {"audio", "study", "reflection"} else "",
         _WORKFLOW,
     ]
     if task in {"audio", "study"}:
@@ -223,17 +242,5 @@ def build_reasoning_first_block(task: str = "general") -> str:
 
 
 def build_synopsis_reasoning_note() -> str:
-    """Backward-compatible Synopsis guidance."""
-    return build_reasoning_first_block("synopsis") + """\
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-СТЕПЕНЬ ДОСЛОВНОСТИ КОНСПЕКТА
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-Цель Synopsis — сжатая стенограмма: верная, подробная и читаемая передача речи,
-а не механическая копия каждого слова и не краткий пересказ. Сохраняй весь
-смысловой ход, управляющую истину, причинные связки, важные примеры,
-риторические повороты и сильные формулировки. Разрешено убирать оговорки, пустые
-повторы и технический шум. Не выдавай плотную парафразу за дословную цитату.
-Между красивой редактурой и верностью речи выбирай верность речи.
-"""
+    """Return the dedicated full-verbatim Synopsis contract."""
+    return _SYNOPSIS_VERBATIM_GUIDANCE
