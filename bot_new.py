@@ -37,8 +37,7 @@ try:
 except Exception as _singleton_error:
     print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
 
-# Решение о local/cloud принимается только после реального запуска
-# telegram-bot-api.exe и настоящей проверки локального /getMe.
+# Local/cloud выбирается только после реального запуска telegram-bot-api.exe и /getMe.
 try:
     from services.local_botapi_runtime import prepare_local_bot_api
 
