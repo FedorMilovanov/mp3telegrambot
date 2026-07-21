@@ -5,17 +5,19 @@ The bot needs the local server for original-quality uploads up to 2000 MB. This
 module deliberately has no cloud fallback and no media recompression path:
 
 1. use an already healthy local server;
-2. otherwise call the required cloud ``logOut`` once;
-3. restart the managed local server once;
+2. if a local server is already warming up, wait for it instead of restarting;
+3. otherwise call the required cloud ``logOut`` once and start one server;
 4. continue only after a real local ``getMe`` succeeds.
 
-If the local server cannot reach Telegram (for example, the system TUN/VPN is
-off), startup fails clearly instead of silently changing transport or quality.
+A live server is never killed merely because TDLib needed longer to establish a
+Telegram data-centre session. If startup times out, the process is left alive so
+that enabling/fixing the system TUN can let the same session finish.
 """
 from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -32,10 +34,10 @@ class LocalBotApiRequiredError(RuntimeError):
 
 def _timeout_seconds() -> int:
     try:
-        value = int(os.getenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "90").strip() or "90")
+        value = int(os.getenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "300").strip() or "300")
     except ValueError:
-        value = 90
-    return max(30, min(value, 180))
+        value = 300
+    return max(60, min(value, 600))
 
 
 def _normalise_proxy(url: str) -> str:
@@ -91,6 +93,35 @@ def _mark_local_ready(local_url: str) -> None:
     os.environ["TELEGRAM_PROXY_URL"] = ""
 
 
+def _log_path() -> Path:
+    try:
+        data_dir = process_runtime._writable_data_dir()
+        return data_dir.parent / "botapi-server.log"
+    except Exception:
+        local = os.getenv("LOCALAPPDATA", "").strip()
+        base = Path(local) if local else Path.home() / "AppData" / "Local"
+        return base / "TelegramBotAPI" / "botapi-server.log"
+
+
+def _failure_reason(detail: str, log_path: str | Path) -> str:
+    tail = process_runtime._read_log_tail(str(log_path), max_chars=1600)
+    tail_line = " | ".join(line.strip() for line in tail.splitlines()[-8:] if line.strip())
+    reason = f"локальный /getMe не поднялся: {detail}"
+    if tail_line:
+        reason += f"; botapi-server.log: {tail_line[:900]}"
+    reason += "; сервер оставлен запущенным — включи/исправь системный TUN и запусти бот повторно"
+    return reason
+
+
+def _wait_for_ready(getme_url: str, process, timeout_sec: int) -> tuple[bool, str]:
+    ok, detail, _attempts = probe_runtime._wait_for_getme(
+        getme_url,
+        process,
+        time.monotonic() + timeout_sec,
+    )
+    return ok, detail
+
+
 def require_local_bot_api() -> None:
     """Make the local server healthy or abort application startup."""
     _disable_cloud_transport()
@@ -114,6 +145,19 @@ def require_local_bot_api() -> None:
         print(f"✅ Local Bot API готов ({detail}); лимит отправки — 2000 МБ.")
         return
 
+    timeout_sec = _timeout_seconds()
+
+    # A listening server may be in the middle of TDLib authorization. Restarting
+    # it here destroys the temporary auth key and makes every run begin from zero.
+    if probe_runtime._tcp_open(host, port, timeout_sec=0.5):
+        print(f"⏳ Local Bot API уже запущен и устанавливает сессию; жду /getMe до {timeout_sec}с без перезапуска…")
+        ok, detail = _wait_for_ready(getme_url, None, timeout_sec)
+        if ok:
+            _mark_local_ready(local_url)
+            print(f"✅ Local Bot API готов ({detail}); лимит отправки — 2000 МБ, сжатие отключено.")
+            return
+        raise LocalBotApiRequiredError(_failure_reason(detail, _log_path()))
+
     api_id = os.getenv("TELEGRAM_API_ID", "").strip()
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
     if not api_id or not api_hash:
@@ -130,20 +174,18 @@ def require_local_bot_api() -> None:
     if process is None:
         raise LocalBotApiRequiredError(str(log_path))
 
-    ok, detail, _attempts = probe_runtime._wait_for_getme(
-        getme_url,
-        process,
-        time.monotonic() + _timeout_seconds(),
-    )
+    print(f"⏳ telegram-bot-api.exe запущен; жду настоящий local /getMe до {timeout_sec}с…")
+    ok, detail = _wait_for_ready(getme_url, process, timeout_sec)
     if ok:
         _mark_local_ready(local_url)
         print(f"✅ Local Bot API готов ({detail}); лимит отправки — 2000 МБ, сжатие отключено.")
         return
 
-    process_runtime._terminate_managed_server()
-    tail = process_runtime._read_log_tail(str(log_path), max_chars=1200)
-    tail_line = " | ".join(line.strip() for line in tail.splitlines()[-6:] if line.strip())
-    reason = f"локальный /getMe не поднялся: {detail}"
-    if tail_line:
-        reason += f"; botapi-server.log: {tail_line[:700]}"
-    raise LocalBotApiRequiredError(reason)
+    # Do not kill a live TDLib session on a mere timeout. The next bot run will
+    # detect the open port and continue waiting without another logOut/restart.
+    if process.poll() is not None:
+        raise LocalBotApiRequiredError(
+            f"telegram-bot-api.exe завершился с кодом {process.returncode}; "
+            + _failure_reason(detail, log_path)
+        )
+    raise LocalBotApiRequiredError(_failure_reason(detail, log_path))
