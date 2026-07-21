@@ -95,12 +95,24 @@ def test_aggregate_merges_overlap_duplicates_and_weights_score():
     assert 90 <= combined["score"] <= 95
 
 
-def test_partial_segment_result_is_marked_low_confidence():
+def test_partial_segment_result_has_its_own_honest_marker():
     combined = aggregate_segment_results(
         [(0, 480, {"score": 95, "issues": []})],
         total_windows=4,
         duration=1800,
     )
     assert combined is not None
-    assert combined["_low_confidence"] is True
+    assert combined["_segmented_partial"] is True
+    assert "_low_confidence" not in combined
     assert combined["_coverage_ratio"] < 0.5
+
+
+def test_missing_original_confidence_marker_is_preserved_separately():
+    combined = aggregate_segment_results(
+        [(0, 480, {"score": 95, "issues": [], "_low_confidence": True})],
+        total_windows=1,
+        duration=480,
+    )
+    assert combined is not None
+    assert combined["_low_confidence"] is True
+    assert "_segmented_partial" not in combined
