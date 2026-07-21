@@ -29,7 +29,7 @@ def test_translation_guidance_is_selective_and_explanatory():
     assert "ПОЧЕМУ ВОЗНИКЛИ ВАРИАНТЫ" in prompt
     assert "ВЕРДИКТ ПО СТЕПЕНИ" in prompt
     assert "не «хороший против плохого»" in prompt
-    assert "не создавай эффект «в Синодальном всё потеряно" in prompt
+    assert "не создавай эффект «в синодальном всё потеряно" in prompt.lower()
 
 
 def test_translation_guidance_blocks_fake_aspect_claims_positively():
