@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Full-coverage translation QA for long LiveDub videos.
 
-The legacy Quick-QA gate stopped at 120 seconds.  Simply raising that number
+The legacy Quick-QA gate stopped at 120 seconds. Simply raising that number
 would still be weak: one large request can miss the end of a lecture, while the
-SRT helper is intentionally capped.  This adapter checks long media in
-chronological, overlapping segments and merges the findings back into global
-video timestamps.  It reuses the existing battle-tested QA prompt per segment;
-there is no second prompt stack.
+SRT helper is intentionally capped. This adapter checks long media in
+chronological, overlapping segments and merges findings into global timestamps.
+It reuses the existing QA prompt per segment; there is no second prompt stack.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import math
 import os
@@ -42,7 +40,7 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
 
 
 def segment_windows(duration: int, segment_sec: int = 480, overlap_sec: int = 20) -> list[tuple[int, int]]:
-    """Return complete [start, length] coverage with a small boundary overlap."""
+    """Return complete ``(start, length)`` coverage with boundary overlap."""
     total = max(0, int(duration or 0))
     segment = max(60, int(segment_sec or 480))
     overlap = max(0, min(int(overlap_sec or 0), segment // 3))
@@ -128,8 +126,7 @@ def _extract_audio_segment(source: Path, start: int, length: int, output: Path) 
 
 
 def _parse_clock(value: str) -> float | None:
-    text = str(value or "").strip()
-    parts = text.split(":")
+    parts = str(value or "").strip().split(":")
     try:
         if len(parts) == 2:
             return float(int(parts[0]) * 60 + int(parts[1]))
@@ -208,18 +205,16 @@ def _offset_issues(issues: Any, offset_sec: int) -> list[dict[str, Any]]:
         item = dict(raw)
         seconds = _parse_clock(str(item.get("time") or ""))
         if seconds is not None:
-            item["time"] = _format_clock(seconds + max(0, offset_sec))
-            item["_absolute_seconds"] = seconds + max(0, offset_sec)
+            absolute = seconds + max(0, offset_sec)
+            item["time"] = _format_clock(absolute)
+            item["_absolute_seconds"] = absolute
         out.append(item)
     return out
 
 
 def _issue_signature(issue: dict[str, Any]) -> str:
-    text = " ".join(
-        str(issue.get(key) or "") for key in ("problem", "heard", "should_be")
-    ).lower()
-    words = re.findall(r"[a-zа-яё]{4,}", text)
-    return " ".join(words[:12])
+    text = " ".join(str(issue.get(key) or "") for key in ("problem", "heard", "should_be")).lower()
+    return " ".join(re.findall(r"[a-zа-яё]{4,}", text)[:12])
 
 
 def _merge_issues(results: list[tuple[int, int, dict[str, Any]]]) -> list[dict[str, Any]]:
@@ -231,15 +226,14 @@ def _merge_issues(results: list[tuple[int, int, dict[str, Any]]]) -> list[dict[s
             duplicate = False
             for existing in merged:
                 existing_seconds = float(existing.get("_absolute_seconds") or -9999)
-                if abs(seconds - existing_seconds) <= 20:
-                    existing_signature = _issue_signature(existing)
-                    if signature and existing_signature and (
-                        signature in existing_signature or existing_signature in signature
-                    ):
-                        duplicate = True
-                        if str(issue.get("severity")) == "major":
-                            existing["severity"] = "major"
-                        break
+                existing_signature = _issue_signature(existing)
+                if abs(seconds - existing_seconds) <= 20 and signature and existing_signature and (
+                    signature in existing_signature or existing_signature in signature
+                ):
+                    duplicate = True
+                    if str(issue.get("severity")) == "major":
+                        existing["severity"] = "major"
+                    break
             if not duplicate:
                 merged.append(issue)
     merged.sort(
@@ -277,8 +271,8 @@ def aggregate_segment_results(
         return None
     weighted_sum = 0.0
     weighted_duration = 0
-    for _start, length, result in successful:
-        score = result.get("score")
+    for _start, length, segment_result in successful:
+        score = segment_result.get("score")
         if isinstance(score, (int, float)) and math.isfinite(float(score)):
             weighted_sum += float(score) * max(1, length)
             weighted_duration += max(1, length)
@@ -288,10 +282,8 @@ def aggregate_segment_results(
     checked_seconds = _coverage_seconds([(start, length) for start, length, _ in successful])
     coverage = min(1.0, checked_seconds / max(1, duration))
     if issues:
-        verdict = (
-            f"Сегментная проверка всей записи выявила {len(issues)} существенных неточностей"
-            f"{f', из них серьёзных — {majors}' if majors else ''}."
-        )
+        major_note = f", из них серьёзных — {majors}" if majors else ""
+        verdict = f"Сегментная проверка всей записи выявила {len(issues)} неточностей{major_note}."
     else:
         verdict = "Сегментная проверка всей записи не выявила существенных искажений перевода."
     result: dict[str, Any] = {
@@ -308,7 +300,9 @@ def aggregate_segment_results(
     }
     if score is not None:
         result["score"] = score
-    if len(successful) < total_windows or coverage < 0.9 or any(r.get("_low_confidence") for _, _, r in successful):
+    if len(successful) < total_windows or coverage < 0.9:
+        result["_segmented_partial"] = True
+    if any(segment_result.get("_low_confidence") for _, _, segment_result in successful):
         result["_low_confidence"] = True
     return result
 
@@ -399,7 +393,7 @@ async def _run_long_qa(
                         length,
                         root / f"dub-{index:02d}.mp3",
                     )
-                result = await original_run(
+                segment_result = await original_run(
                     dub_video_path=ru_segment or Path(dub_video_path),
                     original_audio_path=orig_segment,
                     ai_data=None,
@@ -411,8 +405,8 @@ async def _run_long_qa(
                     existing_client=None,
                     thinking_level=long_thinking,
                 )
-                if isinstance(result, dict):
-                    successful.append((start, length, result))
+                if isinstance(segment_result, dict):
+                    successful.append((start, length, segment_result))
                 else:
                     logger.warning("[LiveDubLongQA] segment %d returned no result", index)
             except asyncio.CancelledError:
@@ -507,7 +501,10 @@ def install_livedub_long_qa() -> None:
         checked = int(qa.get("_segments_checked") or 0)
         total = int(qa.get("_segments_total") or 0)
         coverage = float(qa.get("_coverage_ratio") or 0) * 100
-        note = f"🧩 Вся запись проверена по сегментам: {checked}/{total}, покрытие {coverage:.0f}%."
+        if qa.get("_segmented_partial"):
+            note = f"⚠️ Сегментная проверка частичная: {checked}/{total}, покрытие {coverage:.0f}%."
+        else:
+            note = f"🧩 Вся запись проверена по сегментам: {checked}/{total}, покрытие {coverage:.0f}%."
         lines = str(text or "").splitlines()
         lines.insert(1 if lines else 0, note)
         try:
