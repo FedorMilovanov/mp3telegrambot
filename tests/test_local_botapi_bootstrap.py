@@ -31,22 +31,61 @@ def test_healthy_local_server_is_not_restarted(monkeypatch):
     bootstrap.prepare_local_bot_api()
 
     assert os.environ["LOCAL_BOT_API_URL"] == "http://127.0.0.1:8081"
+    assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "local"
     assert restarted == []
 
 
-def test_route_failure_selects_cloud_for_current_process(monkeypatch):
+def test_negative_route_hint_still_attempts_real_server(monkeypatch):
+    _base_env(monkeypatch)
+    calls = []
+    probe_results = iter([(False, "initial timeout")])
+    monkeypatch.setattr(bootstrap, "_probe_getme", lambda *_: next(probe_results))
+    monkeypatch.setattr(bootstrap, "_system_telegram_route_available", lambda *_: False)
+    monkeypatch.setattr(bootstrap, "_terminate_stale_server", lambda: calls.append("stop"))
+    monkeypatch.setattr(bootstrap, "_wait_until_port_closes", lambda *_: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_start_local_server",
+        lambda *_: (_RunningProcess(), r"C:\Temp\botapi-server.log"),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_wait_for_getme",
+        lambda *_args, **_kwargs: (True, "@recovered", 2),
+    )
+
+    bootstrap.prepare_local_bot_api()
+
+    assert calls == ["stop"]
+    assert os.environ["LOCAL_BOT_API_URL"] == "http://127.0.0.1:8081"
+    assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "local"
+
+
+def test_real_getme_failure_selects_cloud_and_enables_media_fallback(monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.setenv("LOCAL_BOT_API_PROXY_URL", "socks5://127.0.0.1:1080")
     monkeypatch.setattr(bootstrap, "_probe_getme", lambda *_: (False, "timeout"))
     monkeypatch.setattr(bootstrap, "_system_telegram_route_available", lambda *_: False)
     monkeypatch.setattr(bootstrap, "_terminate_stale_server", lambda: None)
+    monkeypatch.setattr(bootstrap, "_wait_until_port_closes", lambda *_: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_start_local_server",
+        lambda *_: (_RunningProcess(), r"C:\Temp\missing.log"),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_wait_for_getme",
+        lambda *_args, **_kwargs: (False, "timed out", 4),
+    )
+    monkeypatch.setattr(bootstrap, "_read_log_tail", lambda *_: "failed to connect: timeout")
 
     bootstrap.prepare_local_bot_api()
 
     assert os.environ["LOCAL_BOT_API_URL"] == ""
     assert os.environ["LOCAL_BOT_API_WAIT_LOCAL"] == "0"
-    # Unsupported local SOCKS settings are removed only from this process;
-    # TELEGRAM_PROXY_URL remains available for the cloud request path.
+    assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "cloud"
+    assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "1"
     assert os.environ["LOCAL_BOT_API_PROXY_URL"] == ""
     assert os.environ["TELEGRAM_PROXY_URL"].startswith("socks5h://")
 
@@ -99,10 +138,11 @@ def test_wait_loop_uses_one_real_deadline_and_short_probes():
     assert all(0 < timeout <= 1.5 for timeout in timeouts)
 
 
-def test_entrypoint_runs_bootstrap_before_importing_main():
+def test_entrypoint_runs_bootstrap_before_importing_main_and_installs_fallback_after():
     source = Path("bot_new.py").read_text(encoding="utf-8")
     bootstrap_pos = source.index("prepare_local_bot_api()")
     main_import_pos = source.index("from main import main")
+    fallback_pos = source.index("install_cloud_media_fallback()")
 
-    assert bootstrap_pos < main_import_pos
-    assert "трёхминутный цикл" in source
+    assert bootstrap_pos < main_import_pos < fallback_pos
+    assert "реального запуска telegram-bot-api.exe" in source
