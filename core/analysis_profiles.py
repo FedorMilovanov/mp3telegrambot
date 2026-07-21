@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Positive complexity profiles for expanded Study/Reflection pages.
 
-Duration controls the available ceiling, never a quota.  A long recording may
+Duration controls the available ceiling, never a quota. A long recording may
 justify more sections and research layers, but it does not automatically justify
 Greek, Hebrew, translation comparisons, or practical exercises.
 """
@@ -52,7 +52,10 @@ class ExpandedAnalysisProfile:
         )
 
 
-def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: str = "study") -> ExpandedAnalysisProfile:
+def get_expanded_analysis_profile(
+    duration_seconds: int | float = 0,
+    page_kind: str = "study",
+) -> ExpandedAnalysisProfile:
     """Return duration-aware, non-quota depth guidance."""
     try:
         dur = int(duration_seconds or 0)
@@ -83,7 +86,9 @@ def get_expanded_analysis_profile(duration_seconds: int | float = 0, page_kind: 
             target_sections="3–5",
             target_chars="2200–4500 символов",
             source_focus="0–3 источника; только если источник решает конкретную исследовательскую задачу",
-            original_languages="0–1 форма; только если контекстуальный смысл без неё заметно беднее",
+            original_languages=(
+                "0–1 ключевое слово или форма; только если контекстуальный смысл без неё заметно беднее"
+            ),
             translation_forks="0–1 развилка; только при реальном влиянии на смысл или аргумент",
             reasoning_style="концентрированный разбор истины, основания, различения и следствия",
         )
