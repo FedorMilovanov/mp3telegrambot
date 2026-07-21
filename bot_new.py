@@ -17,7 +17,6 @@ load_dotenv()
 
 _bot_token = os.getenv("BOT_TOKEN", "").strip()
 _gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-_requested_local_bot_api_url = os.getenv("LOCAL_BOT_API_URL", "").strip()
 
 if not _bot_token:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не задан в .env!")
@@ -27,8 +26,7 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
-# Reserve one process before Local API recovery and heavy imports. The legacy
-# main.py guard is rebound to the same absolute path after import.
+# Reserve one process before Local API recovery and heavy imports.
 try:
     from services.project_runtime_hardening import acquire_early_singleton
 
@@ -38,21 +36,17 @@ try:
 except Exception as _singleton_error:
     print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
 
-# Windows runtime управляет только PID/портом этого проекта; local/cloud
-# выбирается после реального запуска telegram-bot-api.exe и проверки /getMe.
+# The project requires the local Bot API. There is no silent cloud fallback and
+# no automatic 47 MB replacement: either the real local /getMe works, or the bot
+# stops before downloading and processing a long video.
 try:
-    from services.local_botapi_runtime import prepare_local_bot_api
+    from services.local_botapi_required import require_local_bot_api
 
-    prepare_local_bot_api()
-except Exception as _local_bootstrap_error:
-    print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
-
-try:
-    from services.local_botapi_diagnostics import explain_local_bot_api_result
-
-    explain_local_bot_api_result(_requested_local_bot_api_url)
-except Exception as _local_diagnostic_error:
-    print(f"⚠️ Диагностика Local Bot API недоступна: {_local_diagnostic_error}")
+    require_local_bot_api()
+except Exception as _local_error:
+    print(f"❌ Local Bot API не поднялся: {_local_error}")
+    print("   Включи системный TUN/VPN и запусти бот снова.")
+    sys.exit(3)
 
 try:
     from services.livedub_info_guard import install_livedub_info_guard
@@ -70,13 +64,6 @@ except Exception as _long_qa_error:
 
 import main as _main_module
 from main import main
-
-try:
-    from services.cloud_media_fallback import install_cloud_media_fallback
-
-    install_cloud_media_fallback()
-except Exception as _cloud_media_fallback_error:
-    print(f"⚠️ Cloud media fallback не установлен: {_cloud_media_fallback_error}")
 
 try:
     from services.livedub_audio_companion import install_livedub_audio_companion
