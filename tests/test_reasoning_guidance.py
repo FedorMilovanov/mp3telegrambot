@@ -44,8 +44,18 @@ def test_translation_guidance_blocks_fake_aspect_claims_positively():
     assert "Не делай этимологию богословием" in prompt
 
 
-def test_synopsis_guidance_resolves_verbatim_vs_summary_tension():
+def test_synopsis_has_a_separate_full_verbatim_contract():
     prompt = _flat(build_synopsis_reasoning_note())
-    assert "верная, подробная и читаемая передача речи" in prompt
-    assert "не механическая копия каждого слова" in prompt
-    assert "Сохраняй весь смысловой ход" in prompt
+    assert "РЕЖИМ ПОЛНОЙ ДОСЛОВНОЙ СТЕНОГРАММЫ" in prompt
+    assert "каждое произнесённое предложение" in prompt
+    assert "повторы, слова-паразиты, оговорки, самокоррекции" in prompt
+    assert "не перефразируй, не объединяй предложения, не уплотняй" in prompt.lower()
+    assert "никогда не сокращай стенограмму" in prompt.lower()
+    assert "сжатая стенограмма" not in prompt.lower()
+    assert "уплотнение без" not in prompt.lower()
+    assert "богословский редактор" not in prompt.lower()
+    assert "АНТИБАНАЛЬНЫЙ ФИЛЬТР" not in prompt
+
+
+def test_synopsis_reasoning_block_is_the_same_dedicated_contract():
+    assert build_reasoning_first_block("synopsis") == build_synopsis_reasoning_note()
