@@ -85,9 +85,9 @@ if not _gemini_key:
 
 # ── 4. Умный pre-flight локального Bot API ──────────────────────────────────
 # Выполняется ДО импорта core.globals/main, поэтому при неудаче может выбрать
-# облачный API только для текущего процесса, не меняя .env. Это устраняет
-# трёхминутный цикл из 12 одинаковых getMe timeout и автоматически перезапускает
-# stale telegram-bot-api.exe, который держит порт 8081, но не связан с Telegram.
+# облачный API только для текущего процесса, не меняя .env. Быстрый сетевой probe
+# теперь только диагностический: он не имеет права заранее объявить local API
+# невозможным без реального запуска telegram-bot-api.exe и проверки /getMe.
 try:
     from services.local_botapi_bootstrap import prepare_local_bot_api
     prepare_local_bot_api()
@@ -96,8 +96,19 @@ except Exception as _local_bootstrap_error:
     # штатный local/cloud fallback.
     print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
 
-# ── 5. Запуск (импорт main запускает всю цепочку импортов проекта) ───────────
+# ── 5. Импорт приложения ────────────────────────────────────────────────────
 from main import main
+
+# ── 6. Резерв для облачного лимита ──────────────────────────────────────────
+# После импорта main уже загружены pipeline-модули. Устанавливаем узкий адаптер:
+# если фактический Bot работает через api.telegram.org и готовый media-файл больше
+# облачного лимита, он один раз автоматически пересжимается до безопасных ~48 МБ.
+# Local Bot API при этом не трогаем и не ухудшаем качество.
+try:
+    from services.cloud_media_fallback import install_cloud_media_fallback
+    install_cloud_media_fallback()
+except Exception as _cloud_media_fallback_error:
+    print(f"⚠️ Cloud media fallback не установлен: {_cloud_media_fallback_error}")
 
 if __name__ == "__main__":
     main()
