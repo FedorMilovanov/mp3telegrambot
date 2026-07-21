@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-path startup for the mandatory local Telegram Bot API.
 
-The bot needs the local server for original-quality uploads up to 2000 MB.  This
+The bot needs the local server for original-quality uploads up to 2000 MB. This
 module deliberately has no cloud fallback and no media recompression path:
 
 1. use an already healthy local server;
@@ -76,20 +76,24 @@ def _cloud_logout(token: str, proxy_url: str) -> None:
         raise LocalBotApiRequiredError(f"cloud logOut отклонён Telegram: {description[:240]}")
 
 
+def _disable_cloud_transport() -> None:
+    os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"
+    os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"
+    os.environ.pop("MP3BOT_EFFECTIVE_BOT_API", None)
+
+
 def _mark_local_ready(local_url: str) -> None:
     os.environ["LOCAL_BOT_API_URL"] = local_url
     os.environ["LOCAL_BOT_API_WAIT_LOCAL"] = "1"
-    os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"
-    os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"
     os.environ["MP3BOT_EFFECTIVE_BOT_API"] = "local"
-    # The Python client now talks only to localhost. Keep the proxy in .env for
-    # a future cloud logOut, but remove it from this process so main.py cannot
-    # construct or advertise a cloud fallback transport.
+    # Keep TELEGRAM_PROXY_URL in .env for the next possible cloud logOut, but
+    # remove it from this process: main.py must have only the localhost route.
     os.environ["TELEGRAM_PROXY_URL"] = ""
 
 
 def require_local_bot_api() -> None:
     """Make the local server healthy or abort application startup."""
+    _disable_cloud_transport()
     local_url = os.getenv("LOCAL_BOT_API_URL", "").strip() or "http://127.0.0.1:8081"
     token = os.getenv("BOT_TOKEN", "").strip()
     if not token:
