@@ -99,6 +99,8 @@ jobs:
           python -m py_compile services/local_botapi_runtime.py
           python -m py_compile services/cloud_media_fallback.py
           python -m py_compile services/project_runtime_hardening.py
+          python -m py_compile services/livedub_audio_companion.py
+          python -m py_compile services/livedub_long_qa.py
 
       - name: Run Windows-sensitive regression tests
         run: >-
@@ -107,6 +109,8 @@ jobs:
           tests/test_local_botapi_runtime.py
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
+          tests/test_livedub_audio_companion.py
+          tests/test_livedub_long_qa.py
 
       - name: Ruff fatal checks for runtime files
         run: >-
@@ -116,7 +120,11 @@ jobs:
           services/local_botapi_runtime.py
           services/cloud_media_fallback.py
           services/project_runtime_hardening.py
+          services/livedub_audio_companion.py
+          services/livedub_long_qa.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
+          tests/test_livedub_audio_companion.py
+          tests/test_livedub_long_qa.py
