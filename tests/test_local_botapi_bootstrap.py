@@ -62,6 +62,7 @@ def test_negative_route_hint_still_attempts_real_server(monkeypatch):
 
 
 def test_real_getme_failure_selects_cloud_and_enables_media_fallback(monkeypatch):
+    """Legacy helper remains tested, but bot_new.py no longer installs this policy."""
     _base_env(monkeypatch)
     monkeypatch.setenv("LOCAL_BOT_API_PROXY_URL", "socks5://127.0.0.1:1080")
     monkeypatch.setattr(bootstrap, "_probe_getme", lambda *_: (False, "timeout"))
@@ -138,12 +139,12 @@ def test_wait_loop_uses_one_real_deadline_and_short_probes():
     assert all(0 < timeout <= 1.5 for timeout in timeouts)
 
 
-def test_entrypoint_runs_runtime_before_importing_main_and_installs_fallback_after():
+def test_entrypoint_requires_local_before_main_without_cloud_fallback():
     source = Path("bot_new.py").read_text(encoding="utf-8")
-    runtime_pos = source.index("from services.local_botapi_runtime import")
-    bootstrap_pos = source.index("prepare_local_bot_api()")
+    required_pos = source.index("from services.local_botapi_required import")
+    call_pos = source.index("require_local_bot_api()")
     main_import_pos = source.index("from main import main")
-    fallback_pos = source.index("install_cloud_media_fallback()")
 
-    assert runtime_pos < bootstrap_pos < main_import_pos < fallback_pos
-    assert "PID/портом этого проекта" in source
+    assert required_pos < call_pos < main_import_pos
+    assert "install_cloud_media_fallback" not in source
+    assert "sys.exit(3)" in source
