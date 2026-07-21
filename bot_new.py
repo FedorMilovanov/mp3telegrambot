@@ -17,6 +17,7 @@ load_dotenv()
 
 _bot_token = os.getenv("BOT_TOKEN", "").strip()
 _gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+_requested_local_bot_api_url = os.getenv("LOCAL_BOT_API_URL", "").strip()
 
 if not _bot_token:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не задан в .env!")
@@ -45,6 +46,20 @@ try:
     prepare_local_bot_api()
 except Exception as _local_bootstrap_error:
     print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
+
+try:
+    from services.local_botapi_diagnostics import explain_local_bot_api_result
+
+    explain_local_bot_api_result(_requested_local_bot_api_url)
+except Exception as _local_diagnostic_error:
+    print(f"⚠️ Диагностика Local Bot API недоступна: {_local_diagnostic_error}")
+
+try:
+    from services.livedub_info_guard import install_livedub_info_guard
+
+    install_livedub_info_guard()
+except Exception as _info_guard_error:
+    print(f"⚠️ Grounding описаний LiveDub не установлен: {_info_guard_error}")
 
 import main as _main_module
 from main import main
