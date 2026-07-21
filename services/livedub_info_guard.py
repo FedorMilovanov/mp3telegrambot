@@ -2,8 +2,9 @@
 """Deterministic grounding for lightweight LiveDub publication cards.
 
 The light model is useful for wording, but it must not decide whether a Bible
-reference or a long author hashtag is real.  This module samples subtitles from
-the whole video and validates high-risk fields against that evidence.
+reference or a long author hashtag is real. This module samples subtitles from
+the whole video for the model and validates high-risk fields against the full
+subtitle evidence.
 """
 from __future__ import annotations
 
@@ -64,8 +65,13 @@ def _read_blocks(path: Path) -> list[tuple[int, str]]:
     return out
 
 
+def full_srt_evidence(path: Path) -> str:
+    """Return all spoken subtitle text for deterministic local validation."""
+    return "\n".join(text for _seconds, text in _read_blocks(Path(path)))
+
+
 def sampled_srt_to_timed_text(path: Path, max_chars: int = 9000) -> str:
-    """Sample chronological windows across the entire SRT, not just its beginning."""
+    """Return a balanced sample that always covers beginning, middle and end."""
     blocks = _read_blocks(Path(path))
     if not blocks:
         return ""
@@ -74,34 +80,37 @@ def sampled_srt_to_timed_text(path: Path, max_chars: int = 9000) -> str:
         return "\n".join(rendered)
 
     bucket_count = max(6, min(14, max_chars // 650))
-    indexes: list[int] = []
     last = len(rendered) - 1
-    for bucket in range(bucket_count):
-        center = round(bucket * last / max(1, bucket_count - 1))
-        for offset in (-1, 0, 1):
-            idx = max(0, min(last, center + offset))
-            if idx not in indexes:
-                indexes.append(idx)
-    indexes.sort()
+    centers = list(dict.fromkeys(round(bucket * last / max(1, bucket_count - 1)) for bucket in range(bucket_count)))
 
-    result: list[str] = []
-    used = 0
-    for idx in indexes:
-        item = rendered[idx]
-        if result and used + len(item) + 1 > max_chars:
-            break
-        result.append(item)
-        used += len(item) + 1
-    return "\n".join(result)
+    selected: set[int] = set(centers)
+    # Centers guarantee timeline coverage. Add neighbours in rounds, so early
+    # long captions can never consume the whole budget before the final bucket.
+    for offset in (1, -1, 2, -2):
+        candidates = [max(0, min(last, center + offset)) for center in centers]
+        projected = sorted(selected | set(candidates))
+        if sum(len(rendered[idx]) + 1 for idx in projected) <= max_chars:
+            selected.update(candidates)
+
+    ordered = sorted(selected)
+    # If even the center set is too large, trim every item fairly and preserve
+    # the first and last buckets rather than dropping the end of the lecture.
+    per_item = max(80, max_chars // max(1, len(ordered)) - 1)
+    result = [rendered[idx][:per_item].rstrip() for idx in ordered]
+    text = "\n".join(result)
+    return text[:max_chars].rstrip()
 
 
 def _book_is_evidenced(ref: str, evidence_lower: str) -> bool:
     ref_lower = ref.lower()
     matching = [group for group in _BOOK_GROUPS if any(alias in ref_lower for alias in group)]
     if matching:
-        return any(any(alias in evidence_lower for alias in group) for group in matching)
+        for group in matching:
+            if any(re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", evidence_lower) for alias in group):
+                return True
+        return False
     words = [word.lower() for word in _WORD_RE.findall(ref)]
-    return any(word in evidence_lower for word in words)
+    return any(re.search(rf"(?<!\w){re.escape(word)}(?!\w)", evidence_lower) for word in words)
 
 
 def _quote_is_evidenced(text: str, evidence: str) -> bool:
@@ -136,11 +145,19 @@ def _verified_scripture(items: Any, evidence: str) -> list[dict[str, str]]:
     return out[:5]
 
 
+def _canonical_tag(value: str) -> str:
+    tag = normalize_hashtag(value)
+    if not tag:
+        return ""
+    body = re.sub(r"[^\w]", "", tag.lstrip("#"), flags=re.UNICODE)
+    return f"#{body}" if body else ""
+
+
 def _clean_hashtags(items: Any, title_line: str) -> list[str]:
     raw = items if isinstance(items, list) else []
     out: list[str] = []
     for item in raw[:10]:
-        tag = normalize_hashtag(str(item or ""))
+        tag = _canonical_tag(str(item or ""))
         body = tag.lstrip("#")
         if not tag or len(body) > 38 or "blueprintforthinkingwith" in body.lower():
             continue
@@ -148,7 +165,7 @@ def _clean_hashtags(items: Any, title_line: str) -> list[str]:
             out.append(tag)
     author = known_ru_author_from_text(title_line) or known_author_from_text(title_line)
     if author:
-        author_tag = normalize_hashtag(author)
+        author_tag = _canonical_tag(author)
         if author_tag:
             out = [tag for tag in out if tag != author_tag]
             out.insert(0, author_tag)
@@ -190,7 +207,7 @@ def sanitize_card(card: dict | None, title_line: str, evidence: str) -> dict | N
 
 
 def install_livedub_info_guard() -> None:
-    """Install once. The public function signatures remain unchanged."""
+    """Install once. It validates output locally and adds no prompt layer."""
     from services import livedub_info as module
 
     if getattr(module, "_MP3BOT_INFO_GUARD_INSTALLED", False):
@@ -202,7 +219,7 @@ def install_livedub_info_guard() -> None:
         card = await original(title_line, dub_srt_path, source_url=source_url, force=force)
         evidence = ""
         if dub_srt_path and Path(dub_srt_path).exists():
-            evidence = sampled_srt_to_timed_text(Path(dub_srt_path), max_chars=9000)
+            evidence = full_srt_evidence(Path(dub_srt_path))
         return sanitize_card(card, str(title_line or ""), evidence)
 
     module.build_livedub_info_card = guarded_build
