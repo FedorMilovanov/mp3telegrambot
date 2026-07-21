@@ -70,8 +70,7 @@ if sys.version_info < (3, 11):
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── 3. Ранняя валидация обязательных переменных окружения ─────────────────────
-
+# ── 3. Ранняя валидация обязательных переменных окружения ──────────────────
 _bot_token = os.getenv("BOT_TOKEN", "").strip()
 _gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
@@ -84,26 +83,23 @@ if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
 # ── 4. Умный pre-flight локального Bot API ──────────────────────────────────
-# Выполняется ДО импорта core.globals/main, поэтому при неудаче может выбрать
-# облачный API только для текущего процесса, не меняя .env. Быстрый сетевой probe
-# теперь только диагностический: он не имеет права заранее объявить local API
-# невозможным без реального запуска telegram-bot-api.exe и проверки /getMe.
+# Источник истины — реальный локальный /getMe. Windows-hardening слой безопасно
+# управляет только PID/портом этого проекта, соблюдает AUTOSTART=0 и сохраняет
+# поддержанный HTTP proxy. При внутренней ошибке старый main.py всё равно имеет
+# собственный local/cloud fallback, поэтому диагност не роняет весь бот.
 try:
-    from services.local_botapi_bootstrap import prepare_local_bot_api
+    from services.local_botapi_runtime import prepare_local_bot_api
     prepare_local_bot_api()
 except Exception as _local_bootstrap_error:
-    # Ошибка диагноста не должна ронять весь бот: основной main.py сохранит свой
-    # штатный local/cloud fallback.
     print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
 
 # ── 5. Импорт приложения ────────────────────────────────────────────────────
 from main import main
 
 # ── 6. Резерв для облачного лимита ──────────────────────────────────────────
-# После импорта main уже загружены pipeline-модули. Устанавливаем узкий адаптер:
-# если фактический Bot работает через api.telegram.org и готовый media-файл больше
-# облачного лимита, он один раз автоматически пересжимается до безопасных ~48 МБ.
-# Local Bot API при этом не трогаем и не ухудшаем качество.
+# Фактический cloud endpoint определяется по Bot.base_url. Большой локальный
+# файл пишется атомарно, проверяется через ffprobe и лишь затем отправляется;
+# Local Bot API получает исходный файл без ухудшения качества.
 try:
     from services.cloud_media_fallback import install_cloud_media_fallback
     install_cloud_media_fallback()
