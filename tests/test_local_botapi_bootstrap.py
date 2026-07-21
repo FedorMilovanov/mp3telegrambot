@@ -138,11 +138,12 @@ def test_wait_loop_uses_one_real_deadline_and_short_probes():
     assert all(0 < timeout <= 1.5 for timeout in timeouts)
 
 
-def test_entrypoint_runs_bootstrap_before_importing_main_and_installs_fallback_after():
+def test_entrypoint_runs_runtime_before_importing_main_and_installs_fallback_after():
     source = Path("bot_new.py").read_text(encoding="utf-8")
+    runtime_pos = source.index("from services.local_botapi_runtime import")
     bootstrap_pos = source.index("prepare_local_bot_api()")
     main_import_pos = source.index("from main import main")
     fallback_pos = source.index("install_cloud_media_fallback()")
 
-    assert bootstrap_pos < main_import_pos < fallback_pos
-    assert "реального запуска telegram-bot-api.exe" in source
+    assert runtime_pos < bootstrap_pos < main_import_pos < fallback_pos
+    assert "PID/портом этого проекта" in source
