@@ -74,6 +74,7 @@ def test_unhealthy_local_uses_one_logout_restart_and_real_getme(monkeypatch):
 
     assert calls == ["logout", "stop", "start"]
     assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "local"
+    assert os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] == "0"
     assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "0"
 
 
@@ -105,8 +106,8 @@ def test_failed_local_start_aborts_without_cloud_or_compression(monkeypatch):
 
     assert len(stops) == 2
     assert os.environ["LOCAL_BOT_API_URL"] == "http://127.0.0.1:8081"
-    assert os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] == "1"
-    assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "1"
+    assert os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] == "0"
+    assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "0"
     assert os.environ.get("MP3BOT_EFFECTIVE_BOT_API") != "cloud"
 
 
