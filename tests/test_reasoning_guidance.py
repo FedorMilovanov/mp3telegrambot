@@ -44,13 +44,14 @@ def test_translation_guidance_blocks_fake_aspect_claims_positively():
     assert "Не делай этимологию богословием" in prompt
 
 
-def test_synopsis_has_a_separate_full_verbatim_contract():
+def test_synopsis_has_a_separate_full_clean_verbatim_contract():
     prompt = _flat(build_synopsis_reasoning_note())
-    assert "РЕЖИМ ПОЛНОЙ ДОСЛОВНОЙ СТЕНОГРАММЫ" in prompt
-    assert "каждое произнесённое предложение" in prompt
-    assert "повторы, слова-паразиты, оговорки, самокоррекции" in prompt
-    assert "не перефразируй, не объединяй предложения, не уплотняй" in prompt.lower()
-    assert "никогда не сокращай стенограмму" in prompt.lower()
+    assert "FULL CLEAN-VERBATIM SYNOPSIS" in prompt
+    assert "полная подробная clean-verbatim стенограмма" in prompt
+    assert "всю содержательную речь" in prompt
+    assert "смысловые повторы-усиления" in prompt
+    assert "Нельзя удалять ни один содержательный фрагмент" in prompt
+    assert "никогда не сокращай содержание" in prompt.lower()
     assert "сжатая стенограмма" not in prompt.lower()
     assert "уплотнение без" not in prompt.lower()
     assert "богословский редактор" not in prompt.lower()
