@@ -83,7 +83,20 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
-# ── 4. Запуск (импорт main запускает всю цепочку импортов проекта) ───────────
+# ── 4. Умный pre-flight локального Bot API ──────────────────────────────────
+# Выполняется ДО импорта core.globals/main, поэтому при неудаче может выбрать
+# облачный API только для текущего процесса, не меняя .env. Это устраняет
+# трёхминутный цикл из 12 одинаковых getMe timeout и автоматически перезапускает
+# stale telegram-bot-api.exe, который держит порт 8081, но не связан с Telegram.
+try:
+    from services.local_botapi_bootstrap import prepare_local_bot_api
+    prepare_local_bot_api()
+except Exception as _local_bootstrap_error:
+    # Ошибка диагноста не должна ронять весь бот: основной main.py сохранит свой
+    # штатный local/cloud fallback.
+    print(f"⚠️ Smart Local Bot API pre-flight пропущен: {_local_bootstrap_error}")
+
+# ── 5. Запуск (импорт main запускает всю цепочку импортов проекта) ───────────
 from main import main
 
 if __name__ == "__main__":
