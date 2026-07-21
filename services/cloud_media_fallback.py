@@ -1,8 +1,8 @@
 """Transparent media fallback for the cloud Telegram Bot API.
 
-The cloud Bot API rejects uploads above roughly 50 MiB, while the local Bot API
-accepts much larger files.  A failed local server must not make an already-built
-LiveDub video disappear.  This module installs a narrow runtime adapter:
+The cloud Bot API has a 50 MB-class upload limit, while the local Bot API
+accepts much larger files. A failed local server must not make an already-built
+LiveDub video disappear. This module installs a narrow runtime adapter:
 
 * the business pipeline may continue past its pre-send size guard;
 * when the effective Bot instance uses api.telegram.org, oversized local video
@@ -40,18 +40,20 @@ def _enabled() -> bool:
 
 
 def _target_mb() -> float:
+    # Keep a real byte-level margin below Telegram's cloud boundary. 47 MiB is
+    # safely below both a decimal 50 MB and a binary 50 MiB interpretation.
     try:
-        value = float(os.getenv("CLOUD_MEDIA_TARGET_MB", "48.0").strip() or "48.0")
+        value = float(os.getenv("CLOUD_MEDIA_TARGET_MB", "47.0").strip() or "47.0")
     except ValueError:
-        value = 48.0
-    return max(20.0, min(value, 49.0))
+        value = 47.0
+    return max(20.0, min(value, 47.5))
 
 
 def _is_cloud_bot(bot: Any) -> bool:
     """Determine the actual request destination at send time.
 
     Reading LOCAL_BOT_API_URL is insufficient because main.py can fall back to
-    the cloud after startup.  PTB's built Bot instance is the source of truth.
+    the cloud after startup. PTB's built Bot instance is the source of truth.
     """
     candidates = [
         getattr(bot, "base_url", ""),
@@ -62,7 +64,7 @@ def _is_cloud_bot(bot: Any) -> bool:
         return True
     if any(host in text for host in ("127.0.0.1", "localhost", "::1")):
         return False
-    # PTB's default is the cloud.  Unknown/custom URLs are left untouched unless
+    # PTB's default is the cloud. Unknown/custom URLs are left untouched unless
     # the bootstrap explicitly marked this run as cloud.
     return os.getenv("MP3BOT_EFFECTIVE_BOT_API", "").strip().lower() == "cloud"
 
@@ -82,8 +84,14 @@ def _probe_duration(path: Path) -> float:
         raise RuntimeError("ffprobe не найден — невозможно рассчитать безопасный битрейт")
     proc = subprocess.run(
         [
-            ffprobe, "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
         ],
         capture_output=True,
         text=True,
@@ -161,30 +169,87 @@ def _transcode_video(source: Path, max_mb: float) -> Path:
         video_kbps = max(80, total_kbps - audio_kbps - 10)
         height = _video_height_for_bitrate(video_kbps)
         scale = f"scale=-2:{height}:force_original_aspect_ratio=decrease"
-        passlog = str(Path(tempfile.gettempdir()) / f"mp3bot-cloud-{os.getpid()}-{abs(hash(str(source))) & 0xFFFFFF:x}")
+        passlog = str(
+            Path(tempfile.gettempdir())
+            / f"mp3bot-cloud-{os.getpid()}-{abs(hash(str(source))) & 0xFFFFFF:x}"
+        )
         null_sink = "NUL" if os.name == "nt" else "/dev/null"
         timeout = max(900, int(duration * 4))
 
         logger.warning(
             "[CloudMediaFallback] Local Bot API недоступен: сжимаю %s %.1fMB → <=%.1fMB "
             "(%dk video + %dk audio, %dp)",
-            source.name, source.stat().st_size / (1024 * 1024), max_mb,
-            video_kbps, audio_kbps, height,
+            source.name,
+            source.stat().st_size / (1024 * 1024),
+            max_mb,
+            video_kbps,
+            audio_kbps,
+            height,
         )
         try:
-            _run([
-                ffmpeg, "-y", "-i", str(source), "-map", "0:v:0",
-                "-vf", scale, "-c:v", "libx264", "-preset", "veryfast",
-                "-b:v", f"{video_kbps}k", "-pass", "1", "-passlogfile", passlog,
-                "-an", "-f", "mp4", null_sink,
-            ], timeout=timeout)
-            _run([
-                ffmpeg, "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0?",
-                "-vf", scale, "-c:v", "libx264", "-preset", "veryfast",
-                "-b:v", f"{video_kbps}k", "-pass", "2", "-passlogfile", passlog,
-                "-c:a", "aac", "-b:a", f"{audio_kbps}k", "-ac", "2",
-                "-movflags", "+faststart", "-pix_fmt", "yuv420p", str(output),
-            ], timeout=timeout)
+            _run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-i",
+                    str(source),
+                    "-map",
+                    "0:v:0",
+                    "-vf",
+                    scale,
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-b:v",
+                    f"{video_kbps}k",
+                    "-pass",
+                    "1",
+                    "-passlogfile",
+                    passlog,
+                    "-an",
+                    "-f",
+                    "null",
+                    null_sink,
+                ],
+                timeout=timeout,
+            )
+            _run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-i",
+                    str(source),
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a:0?",
+                    "-vf",
+                    scale,
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-b:v",
+                    f"{video_kbps}k",
+                    "-pass",
+                    "2",
+                    "-passlogfile",
+                    passlog,
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    f"{audio_kbps}k",
+                    "-ac",
+                    "2",
+                    "-movflags",
+                    "+faststart",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(output),
+                ],
+                timeout=timeout,
+            )
         finally:
             for candidate in Path(tempfile.gettempdir()).glob(Path(passlog).name + "*"):
                 try:
@@ -199,7 +264,8 @@ def _transcode_video(source: Path, max_mb: float) -> Path:
             )
         logger.info(
             "[CloudMediaFallback] Готово: %s (%.1fMB)",
-            output.name, output.stat().st_size / (1024 * 1024),
+            output.name,
+            output.stat().st_size / (1024 * 1024),
         )
         return output
 
@@ -222,12 +288,28 @@ def _transcode_audio(source: Path, max_mb: float) -> Path:
         timeout = max(600, int(duration * 2))
         logger.warning(
             "[CloudMediaFallback] Сжимаю аудио %s %.1fMB → <=%.1fMB (%dk)",
-            source.name, source.stat().st_size / (1024 * 1024), max_mb, bitrate,
+            source.name,
+            source.stat().st_size / (1024 * 1024),
+            max_mb,
+            bitrate,
         )
-        _run([
-            ffmpeg, "-y", "-i", str(source), "-vn", "-map_metadata", "0",
-            "-c:a", "libmp3lame", "-b:a", f"{bitrate}k", str(output),
-        ], timeout=timeout)
+        _run(
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(source),
+                "-vn",
+                "-map_metadata",
+                "0",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                f"{bitrate}k",
+                str(output),
+            ],
+            timeout=timeout,
+        )
         if not _under_limit(output, max_mb):
             size_mb = output.stat().st_size / (1024 * 1024) if output.exists() else 0
             raise RuntimeError(
@@ -237,7 +319,10 @@ def _transcode_audio(source: Path, max_mb: float) -> Path:
 
 
 def _append_fallback_note(kwargs: dict[str, Any]) -> None:
-    note = "\n\n⚠️ Локальный Bot API недоступен: видео автоматически сжато под облачный лимит 50 МБ."
+    note = (
+        "\n\n⚠️ Локальный Bot API недоступен: видео автоматически сжато "
+        "под облачный лимит 50 МБ."
+    )
     caption = kwargs.get("caption")
     if isinstance(caption, str) and len(caption) + len(note) <= 1024:
         kwargs["caption"] = caption + note
@@ -307,10 +392,12 @@ def install_cloud_media_fallback() -> None:
         return
     with _INSTALL_LOCK:
         from telegram import Bot
+
         _wrap_send_method(Bot, "send_video", media_pos=1, kind="video")
         _wrap_send_method(Bot, "send_audio", media_pos=1, kind="audio")
         try:
             from telegram.ext import ExtBot
+
             if ExtBot.send_video is not Bot.send_video:
                 _wrap_send_method(ExtBot, "send_video", media_pos=1, kind="video")
             if ExtBot.send_audio is not Bot.send_audio:
@@ -319,6 +406,7 @@ def install_cloud_media_fallback() -> None:
             pass
         _install_pipeline_limit_adapter()
         logger.info(
-            "☁️ Cloud media fallback: ✅ автосжатие видео/аудио до %.1f МБ при недоступном Local Bot API",
+            "☁️ Cloud media fallback: ✅ автосжатие видео/аудио до %.1f МБ "
+            "при недоступном Local Bot API",
             _target_mb(),
         )
