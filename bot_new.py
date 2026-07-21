@@ -61,6 +61,13 @@ try:
 except Exception as _info_guard_error:
     print(f"⚠️ Grounding описаний LiveDub не установлен: {_info_guard_error}")
 
+try:
+    from services.livedub_long_qa import install_livedub_long_qa
+
+    install_livedub_long_qa()
+except Exception as _long_qa_error:
+    print(f"⚠️ Сегментная проверка длинных LiveDub не установлена: {_long_qa_error}")
+
 import main as _main_module
 from main import main
 
@@ -70,6 +77,13 @@ try:
     install_cloud_media_fallback()
 except Exception as _cloud_media_fallback_error:
     print(f"⚠️ Cloud media fallback не установлен: {_cloud_media_fallback_error}")
+
+try:
+    from services.livedub_audio_companion import install_livedub_audio_companion
+
+    install_livedub_audio_companion()
+except Exception as _livedub_audio_error:
+    print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
 try:
     from services.project_runtime_hardening import install_project_runtime_hardening
