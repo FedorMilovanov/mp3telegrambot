@@ -71,9 +71,15 @@ def test_local_send_keeps_original_file(tmp_path, monkeypatch):
 
 
 def test_pipeline_adapter_bypasses_only_processing_guard(monkeypatch):
+    import pipelines
+
     fake_pipeline = types.ModuleType("pipelines.main_pipeline")
     fake_pipeline.get_max_file_size_mb = lambda: 50
+    # `import pipelines.main_pipeline` can resolve through both sys.modules and
+    # the cached attribute on the parent package. Replace both to emulate a
+    # clean application import deterministically.
     monkeypatch.setitem(sys.modules, "pipelines.main_pipeline", fake_pipeline)
+    monkeypatch.setattr(pipelines, "main_pipeline", fake_pipeline, raising=False)
     monkeypatch.setattr(fallback.shutil, "which", lambda name: "ffmpeg" if name == "ffmpeg" else None)
     monkeypatch.setattr(fallback, "_enabled", lambda: True)
 
