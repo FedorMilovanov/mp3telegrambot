@@ -49,7 +49,9 @@ def test_synopsis_positive_reasoning_note_is_injected_into_qa_and_v2():
     assert "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО" in note
     assert "ход речи автора" in note
     assert "СТЕПЕНЬ ДОСЛОВНОСТИ КОНСПЕКТА" in note
-    assert "сжатая стенограмма" in note
+    assert "FULL CLEAN-VERBATIM SYNOPSIS" in note
+    assert "БЕЗ СМЫСЛОВОГО СЖАТИЯ" in note
+    assert "сжатая стенограмма" not in note.lower()
     assert 'prompt = SYNOPSIS_REASONING_FIRST_NOTE + "\\n\\n" + _qa_prompt_template.format' in src
     assert "_syn_format_note =" in src
     assert 'SYNOPSIS_REASONING_FIRST_NOTE + "\\n" + _format_note' in src
