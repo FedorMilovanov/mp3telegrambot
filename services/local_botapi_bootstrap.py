@@ -1,20 +1,9 @@
 """Fast, quiet bootstrap for the optional local Telegram Bot API server.
 
-This module runs before importing :mod:`main`.  It prevents a stale
-``telegram-bot-api.exe`` process from keeping port 8081 open while its TDLib
-connection is dead — the exact state in which the old startup loop spent about
-three minutes printing twelve identical ``getMe`` timeout messages.
-
-The policy is deliberately conservative:
-
-* a healthy local server is left untouched;
-* an unhealthy local process is restarted at most once;
-* all retries share one real elapsed-time deadline;
-* there are no per-attempt INFO messages;
-* if local recovery fails and a cloud proxy is configured, LOCAL_BOT_API_URL is
-  cleared for this process only, so the current run starts immediately in cloud
-  mode.  The value in ``.env`` is not changed, therefore the next bot restart
-  tries local mode again.
+A TCP route probe is only a hint.  It must never decide that TDLib cannot work:
+VPN split-routing, DNS policy and Telegram DC selection can make a generic probe
+fail while the real server would connect.  The source of truth is a real local
+``getMe`` response after restarting ``telegram-bot-api``.
 """
 
 from __future__ import annotations
@@ -55,7 +44,6 @@ def _clamped_int(name: str, default: int, low: int, high: int) -> int:
 
 
 def _no_proxy_opener() -> urllib.request.OpenerDirector:
-    # Environment HTTP(S)_PROXY values must never intercept localhost.
     return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -79,7 +67,7 @@ def _probe_getme(url: str, timeout_sec: float) -> tuple[bool, str]:
         except Exception:
             body = ""
         return False, f"HTTP {exc.code}: {body}"
-    except Exception as exc:  # timeout, invalid JSON, refused connection, etc.
+    except Exception as exc:
         return False, f"{type(exc).__name__}: {str(exc)[:200]}"
 
 
@@ -91,19 +79,26 @@ def _tcp_open(host: str, port: int, timeout_sec: float = 0.35) -> bool:
         return False
 
 
-def _system_telegram_route_available(timeout_sec: float = 1.25) -> bool:
-    """Cheap hint that a system/TUN route is available.
+def _system_telegram_route_available(timeout_sec: float = 2.0) -> bool:
+    """Return a non-authoritative route hint.
 
-    This is not treated as proof that TDLib will connect.  It only prevents an
-    obviously route-less machine from spending the complete recovery budget.
+    Multiple Telegram endpoints/ports are checked because one blocked host is not
+    evidence that every TDLib data-center route is unavailable.
     """
-    deadline = time.monotonic() + max(0.3, timeout_sec)
-    for host in ("api.telegram.org", "149.154.167.50"):
+    deadline = time.monotonic() + max(0.5, timeout_sec)
+    targets = (
+        ("api.telegram.org", 443),
+        ("149.154.167.50", 443),
+        ("149.154.167.51", 443),
+        ("91.108.56.130", 443),
+        ("149.154.167.50", 80),
+    )
+    for host, port in targets:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
         try:
-            with socket.create_connection((host, 443), timeout=min(0.8, remaining)):
+            with socket.create_connection((host, port), timeout=min(0.7, remaining)):
                 return True
         except OSError:
             continue
@@ -197,11 +192,14 @@ def _start_local_server(host: str, port: int) -> tuple[subprocess.Popen[bytes] |
     log_handle = None
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8", errors="replace") as marker:
+            marker.write(
+                f"\n===== smart bootstrap {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
+            )
         log_handle = log_path.open("ab")
         kwargs["stdout"] = log_handle
         kwargs["stderr"] = subprocess.STDOUT
         if os.name == "nt":
-            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
             kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
         else:
             kwargs["start_new_session"] = True
@@ -244,6 +242,31 @@ def _wait_for_getme(
         delay = min(2.0, delay * 1.6)
 
 
+def _read_log_tail(path_text: str, max_chars: int = 2200) -> str:
+    try:
+        path = Path(path_text)
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")[-max_chars:].strip()
+    except OSError:
+        return ""
+
+
+def _diagnose_failure(detail: str, log_tail: str, route_hint: bool) -> str:
+    combined = f"{detail}\n{log_tail}".lower()
+    if any(x in combined for x in ("access is denied", "permission denied", "can't be opened")):
+        return "telegram-bot-api не может записать data-dir"
+    if any(x in combined for x in ("api-id", "api_id", "api-hash", "api_hash")) and any(
+        x in combined for x in ("invalid", "wrong", "must provide")
+    ):
+        return "неверные TELEGRAM_API_ID/TELEGRAM_API_HASH"
+    if any(x in combined for x in ("network is unreachable", "failed to connect", "timeout", "timed out")):
+        return "TDLib не установил соединение с дата-центрами Telegram"
+    if not route_hint:
+        return "реальный /getMe не поднялся; предварительная проверка также не видит системный маршрут к Telegram"
+    return f"локальный /getMe не поднялся ({detail})"
+
+
 def _cloud_fallback_is_available() -> bool:
     return bool(
         os.getenv("TELEGRAM_PROXY_URL", "").strip()
@@ -253,11 +276,16 @@ def _cloud_fallback_is_available() -> bool:
 
 
 def _select_cloud_for_this_run(reason: str) -> None:
-    # core.globals is imported only after this function returns, so clearing the
-    # variable here cleanly selects cloud mode without changing the user's .env.
     os.environ["LOCAL_BOT_API_URL"] = ""
     os.environ["LOCAL_BOT_API_WAIT_LOCAL"] = "0"
-    print(f"☁️ Local Bot API недоступен: {reason}. Этот запуск сразу использует облачный API.")
+    os.environ["MP3BOT_EFFECTIVE_BOT_API"] = "cloud"
+    # The cloud adapter is enabled by default and will preserve delivery of an
+    # oversized already-generated file through accurate ffmpeg transcoding.
+    os.environ.setdefault("CLOUD_MEDIA_AUTO_COMPRESS", "1")
+    print(
+        f"☁️ Local Bot API недоступен: {reason}. "
+        "Использую облачный API; большие видео будут автоматически сжаты до безопасного лимита."
+    )
 
 
 def prepare_local_bot_api() -> None:
@@ -273,9 +301,6 @@ def prepare_local_bot_api() -> None:
     if host not in _LOCAL_HOSTS:
         return
 
-    # These settings never proxy TDLib in the official binary.  Remove them
-    # from this process to avoid misleading startup warnings; TELEGRAM_PROXY_URL
-    # remains available for the cloud fallback.
     for name in (
         "LOCAL_BOT_API_PROXY_URL",
         "LOCAL_BOT_API_TDLIB_PROXY_TYPE",
@@ -290,20 +315,19 @@ def prepare_local_bot_api() -> None:
     getme_url = f"{local_url.rstrip('/')}/bot{token}/getMe"
     ok, detail = _probe_getme(getme_url, 1.2)
     if ok:
-        # main.py will perform its normal probe, which now returns immediately.
+        os.environ["MP3BOT_EFFECTIVE_BOT_API"] = "local"
         return
 
-    budget_sec = _clamped_int("LOCAL_BOT_API_SMART_TIMEOUT_SEC", 25, 8, 60)
-    route_ok = _system_telegram_route_available(1.5)
-    if not route_ok and _cloud_fallback_is_available():
-        try:
-            _terminate_stale_server()
-        except Exception:
-            pass
-        _select_cloud_for_this_run("нет системного TUN/VPN-маршрута к Telegram")
-        return
+    budget_sec = _clamped_int("LOCAL_BOT_API_SMART_TIMEOUT_SEC", 30, 10, 75)
+    route_hint = _system_telegram_route_available(2.0)
+    if not route_hint:
+        print(
+            "🌐 Предварительная проверка TUN-маршрута не прошла, но это только подсказка — "
+            "реально перезапускаю Local Bot API и проверяю /getMe."
+        )
+    else:
+        print("🌐 Local Bot API не отвечает — один реальный перезапуск и проверка /getMe…")
 
-    print("🌐 Local Bot API не отвечает — один быстрый перезапуск без повторяющихся сообщений…")
     started_at = time.monotonic()
     try:
         _terminate_stale_server()
@@ -311,13 +335,15 @@ def prepare_local_bot_api() -> None:
         if _cloud_fallback_is_available():
             _select_cloud_for_this_run(f"не удалось остановить старый процесс: {exc}")
             return
+        raise
 
     _wait_until_port_closes(host, port, time.monotonic() + 3.0)
-    process, start_detail = _start_local_server(host, port)
+    process, log_path = _start_local_server(host, port)
     if process is None:
         if _cloud_fallback_is_available():
-            _select_cloud_for_this_run(start_detail)
-        return
+            _select_cloud_for_this_run(log_path)
+            return
+        raise RuntimeError(log_path)
 
     ok, detail, attempts = _wait_for_getme(
         getme_url,
@@ -327,10 +353,21 @@ def prepare_local_bot_api() -> None:
     elapsed = time.monotonic() - started_at
     if ok:
         os.environ["LOCAL_BOT_API_WAIT_LOCAL"] = "1"
+        os.environ["MP3BOT_EFFECTIVE_BOT_API"] = "local"
         print(f"✅ Local Bot API восстановлен за {elapsed:.1f}с ({detail}, проверок: {attempts}).")
         return
 
+    log_tail = _read_log_tail(log_path)
+    reason = _diagnose_failure(detail, log_tail, route_hint)
+    try:
+        _terminate_stale_server()
+    except Exception:
+        pass
+    if log_tail:
+        compact_tail = " | ".join(line.strip() for line in log_tail.splitlines()[-5:] if line.strip())
+        if compact_tail:
+            print(f"🧾 Local Bot API log: {compact_tail[:900]}")
     if _cloud_fallback_is_available():
-        _select_cloud_for_this_run(
-            f"не восстановился за {elapsed:.1f}с ({detail}); лог: {start_detail}"
-        )
+        _select_cloud_for_this_run(f"{reason}; попытка заняла {elapsed:.1f}с")
+        return
+    raise RuntimeError(reason)
