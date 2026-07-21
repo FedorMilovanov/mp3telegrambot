@@ -37,7 +37,8 @@ try:
 except Exception as _singleton_error:
     print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
 
-# Local/cloud выбирается только после реального запуска telegram-bot-api.exe и /getMe.
+# Windows runtime управляет только PID/портом этого проекта; local/cloud
+# выбирается после реального запуска telegram-bot-api.exe и проверки /getMe.
 try:
     from services.local_botapi_runtime import prepare_local_bot_api
 
