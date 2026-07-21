@@ -55,7 +55,18 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run tests
-        run: python -m pytest -q
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output-${{ matrix.python-version }}
+          path: pytest-output.txt
+          retention-days: 7
 
       - name: Ruff fatal checks
         run: python -m ruff check --select E9,F63,F7,F82 .
