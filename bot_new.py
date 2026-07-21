@@ -56,6 +56,13 @@ except Exception as _info_guard_error:
     print(f"⚠️ Grounding описаний LiveDub не установлен: {_info_guard_error}")
 
 try:
+    from services.livedub_info_presentation import install_livedub_info_presentation
+
+    install_livedub_info_presentation()
+except Exception as _info_presentation_error:
+    print(f"⚠️ Оформление русских заголовков LiveDub не установлено: {_info_presentation_error}")
+
+try:
     from services.livedub_long_qa import install_livedub_long_qa
 
     install_livedub_long_qa()
@@ -71,6 +78,13 @@ try:
     install_livedub_audio_companion()
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
+
+try:
+    from services.livedub_audio_dedupe import install_livedub_audio_dedupe
+
+    install_livedub_audio_dedupe()
+except Exception as _livedub_dedupe_error:
+    print(f"⚠️ Защита от двух MP3 LiveDub не установлена: {_livedub_dedupe_error}")
 
 try:
     from services.project_runtime_hardening import install_project_runtime_hardening
