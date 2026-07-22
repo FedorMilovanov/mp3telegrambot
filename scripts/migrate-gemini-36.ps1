@@ -52,7 +52,7 @@ Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
 Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
 Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "1"
 Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash"
-Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value "gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value "gemini-3.5-flash,gemini-3.5-flash-lite"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash"
 
 if (-not $NoTtsFallback) {
