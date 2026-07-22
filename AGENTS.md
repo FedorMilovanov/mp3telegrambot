@@ -147,3 +147,48 @@ own illustration instead of extracting terms from the specific sermon.
    stay concise (a short "СТОП" block + a self-check line), not verbose
    essays, or they will blow the budget and Gemini 3.x follows the prompt
    worse overall.
+
+## Synopsis fidelity and multipart rule (operator-confirmed, 2026-07-23)
+
+- `SYNOPSIS_PROMPT_V2` is a transcript product, not an analytical summary.
+  Preserve the speaker's wording, order, examples, stories, transitions,
+  rhetorical force, and scriptural exposition as fully as the source permits.
+- Do not “improve”, shorten, summarize, editorialize, or optimize this prompt
+  while fixing Study Analysis. A concise paraphrase is a regression.
+- Telegraph may split one long transcript into 2, 3, 4, or more linked parts.
+  Multipart output is acceptable and preferable to losing verbatim content.
+  Never introduce an arbitrary maximum-parts cap for Synopsis.
+- Fix only real defects in Synopsis: missing material, invented wording,
+  malformed Markdown, broken navigation, incorrect/out-of-order timestamps,
+  duplicate/lost parts, and Telegraph rendering defects.
+
+## Study Analysis depth rule (operator-confirmed, 2026-07-23)
+
+- Study Analysis is the research layer, not a second Synopsis and not a list of
+  generic definitions. Prefer 2–5 material-specific, deeply distinguished
+  concepts over 5–10 interchangeable dictionary cards.
+- Every concept must be anchored in the actual sermon/lecture by a precise
+  argument, scripture reference, quotation, or timestamp. A block that could be
+  pasted unchanged into another sermon is filler and must be omitted.
+- Original-language study is verse-first, never Greek/Hebrew for display.
+  Require the exact verse, Russian phrase, word form in that verse, lemma,
+  readable Russian pronunciation, basic meaning, contextual meaning, role in
+  the material, limit of the lexical claim, source, and timestamp. Zero word
+  studies is a valid result; an incomplete decorative lexicon card is dropped.
+- Keep dictionary meaning, contextual exegesis, the preacher's use, and pastoral
+  application as separate logical levels. Never present an application as if it
+  were the lexical meaning of one word.
+
+## Study orthodoxy pair-card rule (operator-confirmed, 2026-07-23)
+
+- The Study-only section title is exactly **«Заблуждения и ответ ортодоксии»**.
+  Do not rename it to a neutral editorial heading.
+- Use the section only when the source materially raises a concrete error,
+  heresy, or doctrinal substitution; do not manufacture controversy.
+- Every item is an inseparable pair of two separate paragraphs:
+  1. `**Название проблемы** ❌ **Подмена: название заблуждения.** ...`
+  2. `✅ **Ответ ортодоксальной церкви.** ...`
+- Preserve both markers, the fixed answer label, paragraph separation, concrete
+  Scripture/confession/council support, and timestamp when present.
+- This ❌/✅ pair format belongs to Study Analysis only. Reflection must not copy
+  it, and Reflection cleanup must never remove it from Study Analysis.
