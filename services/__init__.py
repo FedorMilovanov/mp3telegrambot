@@ -1,8 +1,8 @@
 """External services — Telegraph, Gemini, FFmpeg, search, PDF.
 
 The package is imported by ``bot_new.py`` only after ``load_dotenv()``.  That
-makes it the earliest reliable place to force Gemini through the configured
-v2rayN route, before ``core.globals`` creates google-genai clients.  A tiny
+makes it the earliest reliable place to select the project-wide Gemini model
+policy and route before ``core.globals`` creates google-genai clients.  A tiny
 one-shot import hook installs the remaining LiveDub runtime after its companion
 modules have loaded; no entrypoint rewrite is required.
 """
@@ -15,13 +15,18 @@ from types import ModuleType
 from typing import Any
 
 try:
-    from services.livedub_quality_runtime import configure_gemini_network
+    from services.livedub_quality_runtime import (
+        configure_gemini_network,
+        configure_gemini_policy,
+    )
 
+    _gemini_policy = configure_gemini_policy()
+    print(f"🧠 Gemini policy: {_gemini_policy}")
     _gemini_route = configure_gemini_network()
     if _gemini_route:
-        print(f"🌐 Gemini explicit proxy: {_gemini_route}")
+        print(f"🌐 Gemini route: {_gemini_route}")
 except Exception as _gemini_route_error:
-    print(f"⚠️ Явный маршрут Gemini не настроен: {_gemini_route_error}")
+    print(f"⚠️ Gemini policy/route не настроены: {_gemini_route_error}")
 
 
 class _AfterImportLoader(importlib.abc.Loader):
