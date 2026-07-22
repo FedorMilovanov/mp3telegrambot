@@ -19,6 +19,7 @@ _INSTALL_LOCK = threading.Lock()
 _AUDIO_LOCK = threading.Lock()
 _AUDIO_SENT: dict[tuple[str, ...], float] = {}
 _RETIRED_MODELS = {
+    "gemini-3.1-flash-lite",
     "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash-lite",
@@ -28,7 +29,6 @@ _RETIRED_MODELS = {
 _PRIMARY_MODEL = "gemini-3.6-flash"
 _STRONG_FALLBACK_MODEL = "gemini-3.5-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
-_LEGACY_LIGHT_MODEL = "gemini-3.1-flash-lite"
 
 
 def configure_gemini_policy() -> str:
@@ -37,18 +37,14 @@ def configure_gemini_policy() -> str:
     Existing installations commonly pin the former default ``gemini-3.5-flash``
     in ``.env``.  The owner explicitly requested migration to 3.6 everywhere
     quality matters, so that exact former default is upgraded automatically.
-    Deliberately configured unrelated model IDs are left untouched.
+    Retired 3.1/2.x light models are replaced with 3.5 Flash-Lite.
     """
     current_main = os.getenv("GEMINI_MODEL", "").strip()
     if not current_main or current_main == _STRONG_FALLBACK_MODEL:
         os.environ["GEMINI_MODEL"] = _PRIMARY_MODEL
 
     current_light = os.getenv("GEMINI_LIGHT_MODEL", "").strip()
-    if not current_light or current_light in {
-        _LEGACY_LIGHT_MODEL,
-        "gemini-3.1-flash-lite-preview",
-        "gemini-2.5-flash-lite",
-    }:
+    if not current_light or current_light in _RETIRED_MODELS:
         os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
 
     # Quality-sensitive publication and QA tasks use 3.6.  Flash-Lite remains
@@ -56,7 +52,7 @@ def configure_gemini_policy() -> str:
     os.environ.setdefault("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL)
     os.environ.setdefault(
         "LIVEDUB_INFO_FALLBACK_MODELS",
-        f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL},{_LEGACY_LIGHT_MODEL}",
+        f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
     )
     os.environ.setdefault("LIVEDUB_QUICK_QA_MODEL", _PRIMARY_MODEL)
     os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _STRONG_FALLBACK_MODEL)
@@ -165,7 +161,7 @@ def _install_quality_models() -> None:
     def quality_fallbacks() -> list[str]:
         raw = os.getenv(
             "LIVEDUB_INFO_FALLBACK_MODELS",
-            f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL},{_LEGACY_LIGHT_MODEL}",
+            f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
         )
         return [
             model
