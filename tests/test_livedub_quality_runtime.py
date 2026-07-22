@@ -68,3 +68,12 @@ def test_windows_ffprobe_is_utf8_safe():
     assert '"encoding": "utf-8"' in src
     assert '"errors": "replace"' in src
     assert "mix.probe_video_meta = utf8_probe" in src
+
+
+def test_env_migration_script_sets_quality_first_models():
+    script = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
+    assert 'GEMINI_MODEL" -Value "gemini-3.6-flash' in script
+    assert 'LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash' in script
+    assert 'LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash' in script
+    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite' in script
+    assert ".bak-gemini36-" in script
