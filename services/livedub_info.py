@@ -3,7 +3,7 @@
 
 Purpose: produce small text assets (Telegram description, YouTube description,
 compact subtitle-like bullets) without running the heavy audio-analysis pipeline.
-Uses a cheap/light Gemini model by default: GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite.
+Uses Gemini 3.5 Flash-Lite only for genuinely light/mechanical text work.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from services.livedub_qa import srt_to_timed_text
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LIGHT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
 def livedub_info_enabled() -> bool:
@@ -40,10 +40,10 @@ def get_light_model() -> str:
 
 
 def get_light_model_fallbacks() -> list[str]:
-    # MODEL MIGRATION 2026-07: gemini-3.1-flash-lite-preview выключается
-    # 09.07.2026, gemini-2.5-flash-lite — ~22.07.2026 (deprecations Gemini API).
-    # Единственный живой лёгкий fallback — GA gemini-3.1-flash-lite.
-    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.1-flash-lite").strip()
+    # 3.1 and 2.x models are retired from this project.  The only explicit
+    # light fallback is strong GA Gemini 3.5 Flash; the project main model
+    # (normally Gemini 3.6 Flash) remains the final quality fallback.
+    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash").strip()
     out: list[str] = []
     for item in raw.split(","):
         model = item.strip()
@@ -124,7 +124,7 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
     terms = data.get("key_theological_terms") or []
     if not isinstance(terms, list):
         terms = []
-        
+
     out = {
         "telegram_description": _safe_text(data.get("telegram_description") or fb["telegram_description"], 520),
         "youtube_title": title_case_fragment(_safe_text(data.get("youtube_title") or fb["youtube_title"], 100)),
@@ -140,7 +140,7 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         norm = normalize_hashtag(str(tag or ""))
         if norm and norm not in out["hashtags"]:
             out["hashtags"].append(norm)
-            
+
     # Добавляем хэштег автора, если он есть в заголовке
     if fallback_title:
         from core.text_utils import normalize_author_name
@@ -150,7 +150,7 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
             author_tag = normalize_hashtag(author_part)
             if author_tag and author_tag not in out["hashtags"]:
                 out["hashtags"].insert(0, author_tag)
-                
+
     return out
 
 

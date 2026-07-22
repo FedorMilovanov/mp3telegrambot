@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Quality-first LiveDub delivery fixes used by bot_new.py."""
+"""Quality-first Gemini and LiveDub delivery runtime used by bot_new.py."""
 from __future__ import annotations
 
 import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -18,11 +19,55 @@ _INSTALL_LOCK = threading.Lock()
 _AUDIO_LOCK = threading.Lock()
 _AUDIO_SENT: dict[tuple[str, ...], float] = {}
 _RETIRED_MODELS = {
+    "gemini-3.1-flash-lite",
     "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash-lite",
     "gemini-2.0-flash",
 }
+
+_PRIMARY_MODEL = "gemini-3.6-flash"
+_STRONG_FALLBACK_MODEL = "gemini-3.5-flash"
+_LIGHT_MODEL = "gemini-3.5-flash-lite"
+
+
+def configure_gemini_policy() -> str:
+    """Apply the project-wide 3.6-first model policy before any AI imports.
+
+    Existing installations commonly pin the former default ``gemini-3.5-flash``
+    in ``.env``.  The owner explicitly requested migration to 3.6 everywhere
+    quality matters, so that exact former default is upgraded automatically.
+    Retired 3.1/2.x light models are replaced with 3.5 Flash-Lite.
+    """
+    current_main = os.getenv("GEMINI_MODEL", "").strip()
+    if not current_main or current_main == _STRONG_FALLBACK_MODEL:
+        os.environ["GEMINI_MODEL"] = _PRIMARY_MODEL
+
+    current_light = os.getenv("GEMINI_LIGHT_MODEL", "").strip()
+    if not current_light or current_light in _RETIRED_MODELS:
+        os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
+
+    # Quality-sensitive publication and QA tasks use 3.6.  Flash-Lite remains
+    # reserved for genuinely mechanical/high-volume formatting work.
+    os.environ.setdefault("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL)
+    os.environ.setdefault(
+        "LIVEDUB_INFO_FALLBACK_MODELS",
+        f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
+    )
+    os.environ.setdefault("LIVEDUB_QUICK_QA_MODEL", _PRIMARY_MODEL)
+    os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _STRONG_FALLBACK_MODEL)
+    os.environ.setdefault("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
+
+    # The user approved trying ordinary Yandex voices when Live voices are not
+    # available.  The generated result is explicitly marked as TTS elsewhere.
+    os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")
+
+    return (
+        f"main={os.environ.get('GEMINI_MODEL', _PRIMARY_MODEL)}, "
+        f"quality={os.environ.get('LIVEDUB_INFO_MODEL', _PRIMARY_MODEL)}, "
+        f"light={os.environ.get('GEMINI_LIGHT_MODEL', _LIGHT_MODEL)}, "
+        f"fallback={_STRONG_FALLBACK_MODEL}"
+    )
 
 
 def _mixed_http_proxy(value: str) -> str:
@@ -41,15 +86,45 @@ def _safe_proxy_label(value: str) -> str:
         return "configured proxy"
 
 
+def _proxy_reachable(value: str, timeout: float = 0.8) -> bool:
+    """Fast TCP check for local mixed ports; remote proxies are trusted."""
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname or ""
+        port = parsed.port
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            return True
+        if not port:
+            return False
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _clear_dead_proxy(value: str) -> None:
+    """Remove only proxy variables pointing at the same dead local endpoint."""
+    target = _mixed_http_proxy(value).casefold()
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        current = _mixed_http_proxy(os.environ.get(name, "")).casefold()
+        if current == target:
+            os.environ.pop(name, None)
+
+
 def configure_gemini_network() -> str:
-    """Force google-genai through the explicitly configured v2rayN route."""
+    """Use the explicit v2rayN route when alive, otherwise rely on system TUN."""
     explicit = (
         os.getenv("GEMINI_PROXY_URL", "").strip()
         or os.getenv("TELEGRAM_PROXY_URL", "").strip()
     )
     if not explicit:
-        return ""
+        return "system route/TUN"
+
     proxy = _mixed_http_proxy(explicit)
+    if not _proxy_reachable(proxy):
+        _clear_dead_proxy(proxy)
+        return f"system TUN (local proxy {_safe_proxy_label(proxy)} unavailable)"
+
     for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         os.environ[name] = proxy
     no_proxy = [
@@ -79,16 +154,14 @@ def _install_quality_models() -> None:
     import services.livedub_info as info
     from core.database import GEMINI_MODEL
 
-    # Full LiveDub descriptions are a publication artifact, so quality wins.
-    # The main deep-analysis model remains untouched elsewhere in the project.
     def quality_model() -> str:
-        configured = os.getenv("LIVEDUB_INFO_MODEL", "gemini-3.6-flash").strip()
-        return configured if configured not in _RETIRED_MODELS else "gemini-3.6-flash"
+        configured = os.getenv("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL).strip()
+        return configured if configured not in _RETIRED_MODELS else _PRIMARY_MODEL
 
     def quality_fallbacks() -> list[str]:
         raw = os.getenv(
             "LIVEDUB_INFO_FALLBACK_MODELS",
-            "gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite",
+            f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
         )
         return [
             model
@@ -96,7 +169,7 @@ def _install_quality_models() -> None:
             if model != quality_model()
         ]
 
-    info.DEFAULT_LIGHT_MODEL = "gemini-3.6-flash"
+    info.DEFAULT_LIGHT_MODEL = _PRIMARY_MODEL
     info.get_light_model = quality_model
     info.get_light_model_fallbacks = quality_fallbacks
 
@@ -236,6 +309,6 @@ def install_livedub_quality_runtime() -> None:
         _install_audio_once()
         _install_utf8_probe()
         logger.info(
-            "✨ LiveDub quality runtime: ✅ Gemini route, 3.6→3.5 quality cascade, "
+            "✨ LiveDub quality runtime: ✅ Gemini 3.6 primary → 3.5 fallback, "
             "one Russian MP3, UTF-8 ffprobe"
         )
