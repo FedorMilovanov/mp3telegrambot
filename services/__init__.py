@@ -1,10 +1,10 @@
 """External services — Telegraph, Gemini, FFmpeg, search, PDF.
 
 The package is imported by ``bot_new.py`` only after ``load_dotenv()``.  That
-makes it the earliest reliable place to select the project-wide Gemini model
-policy and route before ``core.globals`` creates google-genai clients.  A tiny
-one-shot import hook installs the remaining LiveDub runtime after its companion
-modules have loaded; no entrypoint rewrite is required.
+makes it the earliest reliable place to select the project-wide Gemini model,
+maximum-thinking policy and route before ``core.globals`` creates google-genai
+clients.  A one-shot import hook installs the remaining runtime adapters after
+LiveDub companion modules have loaded; no entrypoint rewrite is required.
 """
 from __future__ import annotations
 
@@ -15,13 +15,15 @@ from types import ModuleType
 from typing import Any
 
 try:
+    from services.gemini_max_quality import configure_max_quality_env
     from services.livedub_quality_runtime import (
         configure_gemini_network,
         configure_gemini_policy,
     )
 
+    _gemini_quality = configure_max_quality_env()
     _gemini_policy = configure_gemini_policy()
-    print(f"🧠 Gemini policy: {_gemini_policy}")
+    print(f"🧠 Gemini policy: {_gemini_policy}; {_gemini_quality}")
     _gemini_route = configure_gemini_network()
     if _gemini_route:
         print(f"🌐 Gemini route: {_gemini_route}")
@@ -45,11 +47,13 @@ class _AfterImportLoader(importlib.abc.Loader):
         except ValueError:
             pass
         try:
+            from services.gemini_max_quality import install_max_quality_runtime
             from services.livedub_quality_runtime import install_livedub_quality_runtime
 
+            install_max_quality_runtime()
             install_livedub_quality_runtime()
         except Exception as exc:
-            print(f"⚠️ LiveDub quality runtime не установлен: {exc}")
+            print(f"⚠️ Gemini/LiveDub quality runtime не установлен: {exc}")
 
 
 class _QualityRuntimeFinder(importlib.abc.MetaPathFinder):
