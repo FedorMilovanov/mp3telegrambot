@@ -30,6 +30,16 @@ try:
 except Exception as _gemini_route_error:
     print(f"⚠️ Gemini policy/route не настроены: {_gemini_route_error}")
 
+try:
+    # Must run before services.telegraph_pages imports prompt/schema helpers.
+    # The installer explicitly preserves both Synopsis prompts unchanged.
+    from services.conspect_quality_contract import install_conspect_quality_contract
+
+    _conspect_contract = install_conspect_quality_contract()
+    print(f"📚 Conspect quality: {_conspect_contract}")
+except Exception as _conspect_contract_error:
+    print(f"⚠️ Conspect quality contract не установлен: {_conspect_contract_error}")
+
 
 class _AfterImportLoader(importlib.abc.Loader):
     def __init__(self, loader: Any, finder: "_QualityRuntimeFinder") -> None:
