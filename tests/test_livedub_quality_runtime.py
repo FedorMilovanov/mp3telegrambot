@@ -32,8 +32,15 @@ def test_former_main_default_is_auto_migrated_to_36():
 def test_light_work_uses_current_flash_lite():
     src = _runtime_source()
     assert 'os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL' in src
-    assert "gemini-3.1-flash-lite-preview" in src
-    assert "gemini-2.5-flash-lite" in src
+    assert "gemini-3.5-flash-lite" in src
+
+
+def test_gemini_31_is_retired_not_an_active_fallback():
+    src = _runtime_source()
+    assert '"gemini-3.1-flash-lite"' in src.split("_RETIRED_MODELS", 1)[1]
+    assert 'f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}"' in src
+    script = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
+    assert "gemini-3.1" not in script
 
 
 def test_dead_local_proxy_falls_back_to_system_tun():
@@ -76,4 +83,5 @@ def test_env_migration_script_sets_quality_first_models():
     assert 'LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash' in script
     assert 'LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash' in script
     assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite' in script
+    assert 'LIVEDUB_INFO_FALLBACK_MODELS" -Value "gemini-3.5-flash,gemini-3.5-flash-lite' in script
     assert ".bak-gemini36-" in script
