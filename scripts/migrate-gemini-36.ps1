@@ -45,15 +45,19 @@ function Set-EnvValue {
     }
 }
 
-# Quality-first policy: 3.6 for analysis/QA/publication, 3.5 as strong backup,
-# 3.5 Flash-Lite only for genuinely mechanical high-volume tasks.
+# Maximum-quality policy: 3.6 for analysis/QA/publication, 3.5 as strong backup,
+# 3.5 Flash-Lite only as a lighter model — but still with thinking_level=high.
 Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.6-flash"
+Set-EnvValue -Name "GEMINI_FORCE_THINKING_LEVEL" -Value "high"
 Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
 Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
 Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "1"
 Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash"
 Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value "gemini-3.5-flash,gemini-3.5-flash-lite"
+Set-EnvValue -Name "LIVEDUB_INFO_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash"
+Set-EnvValue -Name "LIVEDUB_QUICK_QA_THINKING" -Value "high"
+Set-EnvValue -Name "LIVEDUB_LONG_QA_THINKING" -Value "high"
 
 if (-not $NoTtsFallback) {
     # Ordinary Yandex voices are tried only when Live voices are unavailable;
@@ -66,8 +70,9 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 Write-Host "✅ .env обновлён для Gemini 3.6 Flash" -ForegroundColor Green
 Write-Host "   GEMINI_MODEL=gemini-3.6-flash"
-Write-Host "   LIVEDUB_INFO_MODEL=gemini-3.6-flash"
-Write-Host "   LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash"
-Write-Host "   GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite"
-Write-Host "   Сильный fallback: gemini-3.5-flash"
+Write-Host "   GEMINI_FORCE_THINKING_LEVEL=high"
+Write-Host "   LIVEDUB_INFO_MODEL=gemini-3.6-flash / high"
+Write-Host "   LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash / high"
+Write-Host "   GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite / high"
+Write-Host "   Сильный fallback: gemini-3.5-flash / high"
 Write-Host "💾 Резервная копия: $backup" -ForegroundColor Cyan
