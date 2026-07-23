@@ -286,13 +286,22 @@ async def _generate_light(source_line: str) -> dict[str, str] | None:
     attempts = _env_int("LIVEDUB_PUBLICATION_MAX_ATTEMPTS", 2, 1, 8)
     per_timeout = _env_int("LIVEDUB_PUBLICATION_ATTEMPT_TIMEOUT_SEC", 14, 5, 45)
     total_timeout = _env_int("LIVEDUB_PUBLICATION_TOTAL_TIMEOUT_SEC", 28, 8, 90)
-    deadline = asyncio.get_running_loop().time() + total_timeout
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + total_timeout
     used = 0
     for model in publication_models():
+        config = _economy_config(model)
+        if config is None:
+            logger.warning(
+                "[LiveDubPublicationCore] safe minimal config unavailable for %s; "
+                "using deterministic fallback instead",
+                model,
+            )
+            continue
         for client_index, client in enumerate(list(GEMINI_CLIENTS)):
             if used >= attempts:
                 return None
-            remaining = deadline - asyncio.get_running_loop().time()
+            remaining = deadline - loop.time()
             if remaining < 2:
                 return None
             used += 1
@@ -301,7 +310,7 @@ async def _generate_light(source_line: str) -> dict[str, str] | None:
                     client.aio.models.generate_content(
                         model=model,
                         contents=prompt,
-                        config=_economy_config(model),
+                        config=config,
                     ),
                     timeout=min(float(per_timeout), remaining),
                 )
@@ -372,9 +381,16 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
     if cached:
         return cached
 
+    loop = asyncio.get_running_loop()
     task = _INFLIGHT.get(primary_key)
-    if task is None or task.done():
-        task = asyncio.create_task(_build_uncached(source_line, source_url))
+    if (
+        task is None
+        or task.done()
+        or getattr(task, "get_loop", lambda: loop)() is not loop
+    ):
+        # run_bot can recover by creating a new event loop in the same process.
+        # Never await a task left attached to the previous, already-dead loop.
+        task = loop.create_task(_build_uncached(source_line, source_url))
         _INFLIGHT[primary_key] = task
 
         def drop_finished(done: asyncio.Task, key: str = primary_key) -> None:
