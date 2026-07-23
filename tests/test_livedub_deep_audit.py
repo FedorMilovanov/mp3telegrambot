@@ -45,6 +45,14 @@ def test_audio_filename_is_russian_safe_and_bounded():
     assert len(name) <= 124
 
 
+def test_cached_file_id_never_receives_synthetic_filename():
+    src = (Path(__file__).parents[1] / "services/livedub_deep_audit.py").read_text(
+        encoding="utf-8"
+    )
+    assert "if _is_local_audio_upload(kwargs.get(\"audio\"))" in src
+    assert 'kwargs.pop("filename", None)' in src
+
+
 def test_mp3_metadata_is_bounded_without_tiny_fragment():
     text = "Очень Длинное Название Проповеди о Борьбе с Искушением и Сохранении Чистоты Сердца"
     result = publication.metadata_text(text)
