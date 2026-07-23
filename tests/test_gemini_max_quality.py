@@ -2,7 +2,7 @@
 from pathlib import Path
 
 
-def test_max_quality_runtime_forces_high_everywhere():
+def test_max_quality_runtime_forces_high_on_shared_quality_helpers():
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
     assert 'os.environ["GEMINI_FORCE_THINKING_LEVEL"] = "high"' in src
     assert 'os.environ["LIVEDUB_QUICK_QA_THINKING"] = "high"' in src
@@ -14,6 +14,14 @@ def test_max_quality_runtime_forces_high_everywhere():
     assert "make_text_config = max_text_legacy" in src
 
 
+def test_publication_metadata_has_explicit_minimal_lite_exception():
+    src = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
+    assert '_build_thinking_config("minimal")' in src
+    assert '"lite" not in model.casefold()' in src
+    assert 'LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK' in src
+    assert "make_text_config_smart" not in src
+
+
 def test_services_installs_max_quality_before_and_after_imports():
     src = Path("services/__init__.py").read_text(encoding="utf-8")
     assert "configure_max_quality_env" in src
@@ -22,7 +30,7 @@ def test_services_installs_max_quality_before_and_after_imports():
     assert src.index("install_max_quality_runtime()") < src.index("install_livedub_quality_runtime()")
 
 
-def test_env_migration_never_requests_minimal_thinking():
+def test_env_migration_never_requests_minimal_thinking_for_quality_tasks():
     src = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
     assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
     assert 'LIVEDUB_QUICK_QA_THINKING" -Value "high"' in src
