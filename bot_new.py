@@ -79,15 +79,22 @@ except Exception as _qa_trust_error:
 import main as _main_module
 from main import main
 
-# Install this before the audio companion.  The companion still sees the
-# internal LiveDub marker, while the actual Telegram request receives the clean
-# Russian title/caption from the inner output-policy wrapper.
+# Install these before the audio companion. The companion must still see the
+# private LiveDub marker, while the actual Telegram request receives the clean
+# Russian publication card from the inner wrappers.
 try:
     from services.livedub_output_policy import install_livedub_output_policy
 
     install_livedub_output_policy()
 except Exception as _output_policy_error:
     print(f"⚠️ Русские заголовки LiveDub не установлены: {_output_policy_error}")
+
+try:
+    from services.livedub_publication import install_livedub_publication
+
+    install_livedub_publication()
+except Exception as _publication_error:
+    print(f"⚠️ Публикационная карточка LiveDub не установлена: {_publication_error}")
 
 try:
     from services.livedub_audio_companion import install_livedub_audio_companion
