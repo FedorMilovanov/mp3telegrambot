@@ -32,6 +32,19 @@ def test_reported_title_override_and_author_are_canonical():
     assert author == "Тим Конвей"
 
 
+def test_all_caps_title_is_normalized_but_real_acronyms_survive():
+    assert publication.russian_title_case(
+        "БОРЬБА С ГРЕХОМ И ИИ"
+    ) == "Борьба с Грехом и ИИ"
+
+
+def test_audio_filename_is_russian_safe_and_bounded():
+    name = publication.safe_audio_filename('Борьба: с Грехом / "Практика"?')
+    assert name.endswith(".mp3")
+    assert not any(char in name for char in '<>:"/\\|?*')
+    assert len(name) <= 124
+
+
 def test_mp3_metadata_is_bounded_without_tiny_fragment():
     text = "Очень Длинное Название Проповеди о Борьбе с Искушением и Сохранении Чистоты Сердца"
     result = publication.metadata_text(text)
