@@ -74,34 +74,40 @@ def test_probe_suppresses_noise_and_emphasizes_central_motion() -> None:
     vf = runtime._probe_filter(-50.0, 1.5)
     assert "crop=trunc(iw*0.56/2)*2" in vf
     assert "scale=96:96:flags=area" in vf
-    assert "format=gray" in vf
+    assert "format=yuv420p" in vf
     assert "setpts=PTS-STARTPTS" in vf
     assert "signalstats" in vf
     assert "freezedetect=n=-50.0dB:d=1.50" in vf
 
 
-def test_runtime_probe_static_and_fail_safe(monkeypatch, tmp_path: Path) -> None:
+def _static_probe_output() -> str:
+    ydif = "\n".join("lavfi.signalstats.YDIF=0.10" for _ in range(24))
+    return "lavfi.freezedetect.freeze_start: 0.0\n" + ydif
+
+
+def _moving_probe_output() -> str:
+    return "\n".join("lavfi.signalstats.YDIF=4.00" for _ in range(24))
+
+
+def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Path) -> None:
     runtime = _load_runtime()
     source = tmp_path / "slide.mp4"
     source.write_bytes(b"not-a-real-video")
-
-    ydif = "\n".join("lavfi.signalstats.YDIF=0.10" for _ in range(24))
-    output = "lavfi.freezedetect.freeze_start: 0.0\n" + ydif
     seen: list[list[str]] = []
 
     def fake_run(cmd, **kwargs):
         seen.append(list(cmd))
-        return SimpleNamespace(returncode=0, stdout="", stderr=output)
+        return SimpleNamespace(returncode=0, stdout="", stderr=_static_probe_output())
 
     monkeypatch.setattr(runtime.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(runtime.subprocess, "run", fake_run)
     runtime._CACHE.clear()
 
     assert asyncio.run(runtime._is_static_video_confident(source, 12.0)) is True
-    assert seen
-    command = seen[0]
-    assert command[command.index("-ss") + 1] == "12.750"
-    assert "scale=96:96:flags=area" in command[command.index("-vf") + 1]
+    assert len(seen) == 2
+    assert seen[0][seen[0].index("-ss") + 1] == "12.750"
+    assert seen[1][seen[1].index("-ss") + 1] == "24.750"
+    assert "scale=96:96:flags=area" in seen[0][seen[0].index("-vf") + 1]
 
     def failed_run(cmd, **kwargs):
         return SimpleNamespace(returncode=1, stdout="", stderr="decode failed")
@@ -111,12 +117,30 @@ def test_runtime_probe_static_and_fail_safe(monkeypatch, tmp_path: Path) -> None
     assert asyncio.run(runtime._is_static_video_confident(source, 15.0)) is False
 
 
+def test_opening_slide_then_moving_footage_keeps_crop(monkeypatch, tmp_path: Path) -> None:
+    runtime = _load_runtime()
+    source = tmp_path / "talk.mp4"
+    source.write_bytes(b"not-a-real-video")
+    outputs = iter([_static_probe_output(), _moving_probe_output()])
+
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr=next(outputs))
+
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    runtime._CACHE.clear()
+
+    assert asyncio.run(runtime._is_static_video_confident(source, 30.0)) is False
+
+
 def test_installation_precedes_shorts_import_contract() -> None:
     init_source = (ROOT / "services" / "__init__.py").read_text(encoding="utf-8")
     assert "install_short_static_runtime()" in init_source
     assert init_source.index("install_short_static_runtime()") < init_source.index(
         "install_conspect_quality_contract()"
     )
-    assert "moving=crop_zoom" in (ROOT / "services" / "shorts_static_runtime.py").read_text(
+    runtime_source = (ROOT / "services" / "shorts_static_runtime.py").read_text(
         encoding="utf-8"
     )
+    assert "moving=crop_zoom" in runtime_source
+    assert "SHORTS_STATIC_SECOND_PROBE_OFFSET" in runtime_source
