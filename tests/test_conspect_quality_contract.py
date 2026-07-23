@@ -126,3 +126,93 @@ def test_expanded_schema_exposes_full_word_study_contract() -> None:
         "anchor_timestamp",
     ):
         assert field in block["properties"]
+
+
+def test_audit_runtime_removes_thin_legacy_card_instead_of_resurrecting_it() -> None:
+    from core import content_audit
+    from services.conspect_audit_runtime import install_conspect_audit_runtime
+
+    install_conspect_audit_runtime()
+    sections, _outline, issues = content_audit.audit_expanded_sections(
+        [
+            {
+                "title": "Ключевые слова в контексте Писания",
+                "time": "0:00",
+                "content": "",
+                "blocks": [
+                    {
+                        "type": "lexicon",
+                        "lemma": "spoudazō (σπουδάζω, греч.)",
+                        "role_in_argument": "Исключает пассивность.",
+                    }
+                ],
+            }
+        ],
+        [{"title": "Ключевые слова в контексте Писания", "time": "0:00"}],
+        label="StudyAnalysis",
+    )
+
+    assert sections[0]["blocks"] == []
+    assert any(issue.code == "word_study_dropped" for issue in issues)
+    assert not any(issue.code == "lexicon_role_thin_warning" for issue in issues)
+
+
+def test_live_typo_repair_is_anchored_and_deterministic() -> None:
+    from core import text_utils
+    from services.conspect_audit_runtime import install_conspect_audit_runtime
+
+    install_conspect_audit_runtime()
+    source = (
+        "Слово Божьего — нструмент сохранения скелета. "
+        "Систематическая проповедь Слово Божьего — единственное средство."
+    )
+    repaired = text_utils.normalize_common_typos(source)
+
+    assert "Слово Божье — инструмент" in repaired
+    assert "проповедь Слова Божьего" in repaired
+    assert "нструмент" not in repaired
+
+
+def test_near_boundary_inline_timestamp_reconciles_section_and_outline() -> None:
+    from core import content_audit
+    from services.conspect_audit_runtime import install_conspect_audit_runtime
+
+    install_conspect_audit_runtime()
+    sections, outline, issues = content_audit.audit_expanded_sections(
+        [
+            {
+                "title": "Сохранение единства",
+                "time": "44:06",
+                "content": "Начало смыслового узла ⏱ 44:00.",
+                "blocks": [],
+            }
+        ],
+        [{"title": "Сохранение единства", "time": "44:06"}],
+        label="StudyAnalysis",
+    )
+
+    assert sections[0]["time"] == "44:00"
+    assert outline[0]["time"] == "44:00"
+    assert any(issue.code == "section_time_reconciled" for issue in issues)
+
+
+def test_large_backward_timestamp_reference_is_not_rewritten() -> None:
+    from core import content_audit
+    from services.conspect_audit_runtime import install_conspect_audit_runtime
+
+    install_conspect_audit_runtime()
+    sections, outline, _issues = content_audit.audit_expanded_sections(
+        [
+            {
+                "title": "Возвращение к раннему примеру",
+                "time": "44:06",
+                "content": "Сравните с прежней сценой ⏱ 12:00.",
+                "blocks": [],
+            }
+        ],
+        [{"title": "Возвращение к раннему примеру", "time": "44:06"}],
+        label="StudyAnalysis",
+    )
+
+    assert sections[0]["time"] == "44:06"
+    assert outline[0]["time"] == "44:06"
