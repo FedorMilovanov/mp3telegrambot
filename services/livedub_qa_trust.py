@@ -56,9 +56,13 @@ def _clock_seconds(value: Any) -> float | None:
 
 
 def _issue_tokens(issue: dict[str, Any]) -> set[str]:
+    # Match only what the model says it heard and why that audible phrase is
+    # wrong.  ``should_be`` is intentionally excluded: two unrelated candidate
+    # issues often receive the same generic correction text and must not confirm
+    # each other merely because their timestamps are close.
     text = " ".join(
         str(issue.get(key) or "")
-        for key in ("heard", "problem", "should_be")
+        for key in ("heard", "problem")
     ).casefold()
     return {
         token
