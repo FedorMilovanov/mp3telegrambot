@@ -89,12 +89,12 @@ def test_complete_word_study_becomes_contextual_russian_block() -> None:
     assert "⏱ 40:18." in text
 
 
-def test_thin_legacy_lexicon_card_is_dropped() -> None:
+def test_incomplete_new_word_study_is_rejected() -> None:
     from services.conspect_quality_contract import normalize_word_study_block
 
     assert normalize_word_study_block(
         {
-            "type": "lexicon",
+            "type": "word_study",
             "lemma": "spoudazō (σπουδάζω, греч.)",
             "role_in_argument": "Исключает пассивность.",
         }
@@ -128,7 +128,7 @@ def test_expanded_schema_exposes_full_word_study_contract() -> None:
         assert field in block["properties"]
 
 
-def test_audit_runtime_removes_thin_legacy_card_instead_of_resurrecting_it() -> None:
+def test_audit_runtime_removes_incomplete_new_word_study() -> None:
     from core import content_audit
     from services.conspect_audit_runtime import install_conspect_audit_runtime
 
@@ -141,7 +141,7 @@ def test_audit_runtime_removes_thin_legacy_card_instead_of_resurrecting_it() -> 
                 "content": "",
                 "blocks": [
                     {
-                        "type": "lexicon",
+                        "type": "word_study",
                         "lemma": "spoudazō (σπουδάζω, греч.)",
                         "role_in_argument": "Исключает пассивность.",
                     }
@@ -154,7 +154,7 @@ def test_audit_runtime_removes_thin_legacy_card_instead_of_resurrecting_it() -> 
 
     assert sections[0]["blocks"] == []
     assert any(issue.code == "word_study_dropped" for issue in issues)
-    assert not any(issue.code == "lexicon_role_thin_warning" for issue in issues)
+    assert not any(issue.code == "block_schema_warning" for issue in issues)
 
 
 def test_live_typo_repair_is_anchored_and_deterministic() -> None:
@@ -170,7 +170,7 @@ def test_live_typo_repair_is_anchored_and_deterministic() -> None:
 
     assert "Слово Божье — инструмент" in repaired
     assert "проповедь Слова Божьего" in repaired
-    assert "нструмент" not in repaired
+    assert " — нструмент" not in repaired
 
 
 def test_near_boundary_inline_timestamp_reconciles_section_and_outline() -> None:
