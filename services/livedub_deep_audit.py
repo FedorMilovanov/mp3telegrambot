@@ -33,6 +33,44 @@ def _is_local_audio_upload(value) -> bool:
     return hasattr(value, "read")
 
 
+def _release_audio_claim(key) -> None:
+    try:
+        import services.livedub_quality_runtime as quality
+
+        with quality._AUDIO_LOCK:
+            quality._AUDIO_SENT.pop(key, None)
+    except Exception as exc:
+        logger.debug("[LiveDubDeepAudit] audio claim release skipped: %s", exc)
+
+
+def _install_retry_safe_audio_claims() -> None:
+    """A failed/no-op MP3 attempt must not poison dedupe for fifteen minutes."""
+    import services.livedub_audio_companion as companion
+    import services.livedub_quality_runtime as quality
+
+    def wrap(name: str, kind: str) -> None:
+        current = getattr(companion, name)
+        if getattr(current, "_mp3bot_retry_safe_claim", False):
+            return
+
+        async def retry_safe(*args, **kwargs):
+            key = quality._audio_key(kind, kwargs)
+            try:
+                result = await current(*args, **kwargs)
+            except Exception:
+                _release_audio_claim(key)
+                raise
+            if not result:
+                _release_audio_claim(key)
+            return result
+
+        retry_safe._mp3bot_retry_safe_claim = True  # type: ignore[attr-defined]
+        setattr(companion, name, retry_safe)
+
+    wrap("_send_new_audio", "new")
+    wrap("_send_cached_audio", "cached")
+
+
 def _install_publication() -> None:
     import services.livedub_publication as publication
 
@@ -160,9 +198,10 @@ def install_livedub_deep_audit() -> None:
         if _INSTALLED:
             return
         _install_publication()
+        _install_retry_safe_audio_claims()
         install_qa_hardening()
         _INSTALLED = True
         logger.info(
             "🧩 LiveDub deep audit: one lite publication call, bounded cache, "
-            "safe MP3 metadata and one-to-one audio QA enabled"
+            "retry-safe MP3 and one-to-one audio QA enabled"
         )
