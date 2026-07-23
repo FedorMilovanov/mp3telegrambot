@@ -1,9 +1,5 @@
 from services.livedub_publication import (
-    _candidate_windows if False else _canonical_title,  # type: ignore[attr-defined]
-)
-
-# Import explicitly below to keep the public assertions readable.
-from services.livedub_publication import (
+    _canonical_title,
     _fallback_description,
     format_audio_caption,
     format_video_caption,
