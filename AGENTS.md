@@ -192,3 +192,29 @@ own illustration instead of extracting terms from the specific sermon.
   Scripture/confession/council support, and timestamp when present.
 - This ❌/✅ pair format belongs to Study Analysis only. Reflection must not copy
   it, and Reflection cleanup must never remove it from Study Analysis.
+
+## Teacherly Study prose rule (operator-confirmed, 2026-07-23)
+
+- The public Study page is a coherent teaching chapter, not the visible answer to
+  an internal checklist. Hidden schema fields may protect accuracy, but labels
+  such as “Basic meaning”, “In this verse”, “Role in the argument”, “Limit of the
+  claim”, and “Source” must be woven into natural Russian prose, never printed as
+  a questionnaire or field list.
+- Let the material choose its architecture. Use material-specific headings and
+  connected paragraphs; do not force the old section taxonomy or a fixed number
+  of definition cards. Lists are exceptional and only justified by a real finite
+  distinction or sequence in the source.
+- Definitions and original-language observations belong inside the argument.
+  They must advance the reader from thesis to basis, distinction, and consequence.
+  Greek/Hebrew must not be decorative, must not be explained by root-splitting
+  alone, and one word must never be made to prove a whole doctrine.
+- Use semantic **bold anchors** inside paragraphs for real theses, contrasts, and
+  turning points. Do not bold every noun and do not publish long unaccented walls.
+- Begin directly with the truth or problem. Ban meta-introductions such as “this
+  material discusses” and ban descriptions of the generation process.
+- A beautiful synthesis is allowed only when the transcript supports it. For
+  heterogeneous Q&A, cluster related answers without inventing a false single
+  system. Attribute disputed confessional claims to the speaker or tradition.
+- `services.study_synthesis_runtime` is the final effective Study prompt layer.
+  Do not remove it by restoring the legacy rubric prompt unless the operator
+  explicitly reverses this decision.
