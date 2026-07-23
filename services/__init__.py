@@ -31,6 +31,17 @@ except Exception as _gemini_route_error:
     print(f"⚠️ Gemini policy/route не настроены: {_gemini_route_error}")
 
 try:
+    # Install before services.shorts_video / render_clips_montage copy the helper
+    # with ``from services.ffmpeg import _is_static_video``. Moving footage keeps
+    # crop_zoom; only confidently static slides receive the centred blur layout.
+    from services.shorts_static_runtime import install_short_static_runtime
+
+    _shorts_static_policy = install_short_static_runtime()
+    print(f"🎞 Shorts visual policy: {_shorts_static_policy}")
+except Exception as _shorts_static_error:
+    print(f"⚠️ Shorts static-slide detector не установлен: {_shorts_static_error}")
+
+try:
     # Must run before services.telegraph_pages imports prompt/schema/audit helpers.
     # Synopsis remains verbatim. Study gets reliability guards first, then a
     # concise teacherly runtime prompt. The large source prompt stays available
