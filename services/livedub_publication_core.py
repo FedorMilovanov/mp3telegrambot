@@ -355,12 +355,12 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
         )
     except Exception:
         source_url = plain(source_url, 600)
-    primary_key = _url_key(source_url) or _line_key(source_line)
-    cached = cache_get(primary_key, _line_key(source_line))
+    url_key = _url_key(source_url)
+    primary_key = url_key or _line_key(source_line)
+    # A title can legitimately exist at several URLs. Never borrow a card by
+    # title when a concrete source URL is known, or the link may be wrong.
+    cached = cache_get(primary_key)
     if cached:
-        if source_url and not cached.get("source_url"):
-            cached["source_url"] = source_url
-            cache_put(cached, primary_key, _line_key(source_line))
         return cached
 
     task = _INFLIGHT.get(primary_key)
@@ -377,7 +377,10 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
     title_line = str(card.get("title") or "")
     if card.get("author"):
         title_line += f" - {card['author']}"
-    cache_put(card, primary_key, _line_key(source_line), _line_key(title_line))
+    aliases = [primary_key]
+    if not url_key:
+        aliases.extend((_line_key(source_line), _line_key(title_line)))
+    cache_put(card, *aliases)
     return card
 
 
