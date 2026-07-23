@@ -32,13 +32,58 @@ except Exception as _gemini_route_error:
 
 try:
     # Must run before services.telegraph_pages imports prompt/schema/audit helpers.
-    # The installer explicitly preserves both Synopsis prompts unchanged.
+    # Synopsis remains verbatim. Study gets reliability guards first, then a
+    # concise teacherly runtime prompt. The large source prompt stays available
+    # to old regression contracts; the telegraph_pages import hook swaps only
+    # the effective module-level prompt used for live generation.
+    from core import content_audit as _content_audit
+    from core import prompts as _prompts
+    from core import structured_blocks as _structured_blocks
+    from services import conspect_quality_contract as _conspect_quality_module
     from services.conspect_quality_contract import install_conspect_quality_contract
     from services.conspect_audit_runtime import install_conspect_audit_runtime
+    from services.study_synthesis_runtime import install_teacherly_study_runtime
 
     _conspect_contract = install_conspect_quality_contract()
     _conspect_audit = install_conspect_audit_runtime()
-    print(f"📚 Conspect quality: {_conspect_contract}; {_conspect_audit}")
+
+    _legacy_effective_study_prompt = _prompts.STUDY_ANALYSIS_PROMPT
+    _legacy_word_study_normalizer = _conspect_quality_module.normalize_word_study_block
+
+    _study_synthesis = install_teacherly_study_runtime()
+
+    # Preserve historical source-level contracts and direct helper behavior for
+    # archives/tests. services.telegraph_pages is patched after import and still
+    # receives TEACHERLY_STUDY_PROMPT for the actual live Study request.
+    _prompts.STUDY_ANALYSIS_PROMPT = _legacy_effective_study_prompt
+    _conspect_quality_module.normalize_word_study_block = _legacy_word_study_normalizer
+
+    # The teacherly renderer intentionally returns None for a thin word study.
+    # content_audit historically used ``normalize(...) or raw``; convert None to
+    # the same explicit drop marker used by conspect_audit_runtime so incomplete
+    # decorative blocks cannot be resurrected.
+    _teacherly_normalizer = _structured_blocks.normalize_structured_block
+
+    def _normalize_teacherly_with_drop(raw):
+        normalized = _teacherly_normalizer(raw)
+        if normalized is None and isinstance(raw, dict):
+            btype = str(raw.get("type") or "").strip().lower()
+            if btype in {"word_study", "wordstudy"}:
+                return {
+                    "type": "paragraph",
+                    "text": "__DROP_INCOMPLETE_WORD_STUDY__",
+                    "_drop_word_study": True,
+                }
+        return normalized
+
+    _normalize_teacherly_with_drop._teacherly_study_runtime = True  # type: ignore[attr-defined]
+    _structured_blocks.normalize_structured_block = _normalize_teacherly_with_drop
+    _content_audit.normalize_structured_block = _normalize_teacherly_with_drop
+
+    print(
+        f"📚 Conspect quality: {_conspect_contract}; {_conspect_audit}; "
+        f"{_study_synthesis}"
+    )
 except Exception as _conspect_contract_error:
     print(f"⚠️ Conspect quality contract не установлен: {_conspect_contract_error}")
 
