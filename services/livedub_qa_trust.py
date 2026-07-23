@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Conservative trust guard for LiveDub semantic QA.
 
-The first QA pass scans the complete recording (segmented for long media).  A
+The first QA pass scans the complete recording (segmented for long media). A
 second full scan was both expensive and weaker than it looked: it repeated the
 same prompt over the same material and could repeat the same hallucination.
-This guard now verifies only the candidate regions:
+This guard verifies only candidate regions:
 
 * SRT is never accepted as proof of what the user heard;
 * the first pass compares actual English and Russian audio;
@@ -78,10 +78,7 @@ def _format_clock(seconds: float) -> str:
 def _issue_tokens(issue: dict[str, Any]) -> set[str]:
     # The proposed correction is excluded deliberately: unrelated findings can
     # receive the same generic should_be wording and must not confirm each other.
-    text = " ".join(
-        str(issue.get(key) or "")
-        for key in ("heard", "problem")
-    ).casefold()
+    text = " ".join(str(issue.get(key) or "") for key in ("heard", "problem")).casefold()
     return {
         token
         for token in re.findall(r"[a-zа-яё]{4,}", text)
@@ -136,8 +133,6 @@ def _confirmed_result(primary: dict[str, Any], validation: dict[str, Any]) -> di
             if str(issue.get("severity")) == "major" and str(match.get("severity")) == "major"
             else "minor"
         )
-        # The focused verifier often hears the phrase more clearly. Prefer its
-        # concrete audible wording while retaining the first-pass explanation.
         if str(match.get("heard") or "").strip():
             merged["heard"] = str(match.get("heard") or "").strip()
         confirmed.append(merged)
@@ -160,7 +155,7 @@ def _confirmed_result(primary: dict[str, Any], validation: dict[str, Any]) -> di
     if confirmed:
         major_note = f", серьёзных — {majors}" if majors else ""
         result["verdict"] = (
-            f"Полная аудиопроверка и точечная перепроверка подтвердили "
+            "Полная аудиопроверка и точечная перепроверка подтвердили "
             f"{len(confirmed)} неточностей{major_note}."
         )
     else:
@@ -289,6 +284,7 @@ async def _verify_candidate_windows(
     verify_thinking = os.getenv("LIVEDUB_QA_VERIFY_THINKING", "low").strip() or "low"
 
     validations: list[dict[str, Any]] = []
+    successful_windows = 0
     with tempfile.TemporaryDirectory(prefix="mp3bot-qa-verify-") as temp_dir:
         root = Path(temp_dir)
         try:
@@ -332,36 +328,39 @@ async def _verify_candidate_windows(
                     thinking_level=verify_thinking,
                 )
                 if isinstance(checked, dict):
+                    successful_windows += 1
                     validations.extend(_offset_validation_issues(checked, start))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.warning("[LiveDubQATrust] focused window %d failed: %s", index, str(exc)[:220])
 
-    if not validations:
-        return _unconfirmed_failure_result(primary, "ни одно проверочное аудиоокно не дало результата")
+    if successful_windows == 0:
+        return _unconfirmed_failure_result(primary, "ни одно проверочное аудиоокно не завершилось")
 
-    validation_result = {"issues": validations}
-    validation_scores = []
-    # Focused-window scores are intentionally not averaged: they assess selected
-    # suspicious regions, not the complete recording. Keep the first-pass global
-    # score only when at least one issue survives.
-    result = _confirmed_result(primary, validation_result)
+    # An empty issue list from a completed window is valid evidence that the
+    # candidate was not reproduced — it is not a verifier failure.
+    result = _confirmed_result(primary, {"issues": validations})
     if result.get("issues") and _numeric_score(primary.get("score")) is not None:
+        # Window scores describe only suspicious excerpts, not the whole sermon.
         result["score"] = round(float(primary["score"]))
-    result["_qa_verification_windows"] = len(windows)
+    result["_qa_verification_windows"] = successful_windows
+    result["_qa_verification_windows_total"] = len(windows)
     result["_qa_clean_russian_track"] = clean_ru is not None
+    if successful_windows < len(windows):
+        result["_qa_verification_partial"] = True
+        result["_low_confidence"] = True
 
     if clean_ru is None:
-        # The final mix contains quiet English beneath Russian. It is still useful
-        # for review, but not safe enough for destructive automatic muting.
+        # The final mix contains quiet English beneath Russian. It is useful for
+        # review, but not safe enough for destructive automatic muting.
         for issue in result.get("issues") or []:
             issue["severity"] = "minor"
         result["_qa_mixed_audio"] = True
         result["_low_confidence"] = True
         if result.get("issues"):
             result["verdict"] = (
-                f"Точечная проверка смешанной дорожки подтвердила "
+                "Точечная проверка смешанной дорожки подтвердила "
                 f"{len(result.get('issues') or [])} возможных неточностей; "
                 "автоматическое приглушение отключено."
             )
@@ -377,9 +376,14 @@ def _insert_report_notes(text: str, qa: dict[str, Any]) -> str:
             "дорожкам; SRT не использовался как источник истины."
         )
     if int(qa.get("_qa_confirmation_passes") or 0) >= 2:
-        windows = int(qa.get("_qa_verification_windows") or 0)
-        suffix = f" ({windows} аудиоокон)." if windows else "."
-        notes.append("✅ Каждое показанное замечание подтверждено точечной перепроверкой" + suffix)
+        checked = int(qa.get("_qa_verification_windows") or 0)
+        total = int(qa.get("_qa_verification_windows_total") or checked)
+        suffix = f" ({checked}/{total} аудиоокон)." if total else "."
+        notes.append("✅ Показанные замечания прошли точечную перепроверку" + suffix)
+    if qa.get("_qa_verification_partial"):
+        notes.append(
+            "⚠️ Не все проверочные окна завершились; выводы из непроверенных мест отброшены."
+        )
     if qa.get("_qa_mixed_audio"):
         notes.append(
             "⚠️ Чистой русской дорожки не было: проверялся финальный микс с тихим оригиналом; "
@@ -476,10 +480,11 @@ def install_livedub_qa_trust() -> None:
                 dub_audio_path=dub_audio_path,
             )
             logger.info(
-                "[LiveDubQATrust] confirmed=%d dropped=%d windows=%d",
+                "[LiveDubQATrust] confirmed=%d dropped=%d windows=%d/%d",
                 len(result.get("issues") or []),
                 int(result.get("_qa_unconfirmed_dropped") or 0),
                 int(result.get("_qa_verification_windows") or 0),
+                int(result.get("_qa_verification_windows_total") or 0),
             )
             return result
 
