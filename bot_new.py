@@ -69,8 +69,25 @@ try:
 except Exception as _long_qa_error:
     print(f"⚠️ Сегментная проверка длинных LiveDub не установлена: {_long_qa_error}")
 
+try:
+    from services.livedub_qa_trust import install_livedub_qa_trust
+
+    install_livedub_qa_trust()
+except Exception as _qa_trust_error:
+    print(f"⚠️ Аудиопроверка точности LiveDub не установлена: {_qa_trust_error}")
+
 import main as _main_module
 from main import main
+
+# Install this before the audio companion.  The companion still sees the
+# internal LiveDub marker, while the actual Telegram request receives the clean
+# Russian title/caption from the inner output-policy wrapper.
+try:
+    from services.livedub_output_policy import install_livedub_output_policy
+
+    install_livedub_output_policy()
+except Exception as _output_policy_error:
+    print(f"⚠️ Русские заголовки LiveDub не установлены: {_output_policy_error}")
 
 try:
     from services.livedub_audio_companion import install_livedub_audio_companion
@@ -85,6 +102,13 @@ try:
     install_livedub_audio_dedupe()
 except Exception as _livedub_dedupe_error:
     print(f"⚠️ Защита от двух MP3 LiveDub не установлена: {_livedub_dedupe_error}")
+
+try:
+    from services.livedub_output_policy import harden_livedub_audio_dedupe
+
+    harden_livedub_audio_dedupe()
+except Exception as _dedupe_hardening_error:
+    print(f"⚠️ Усиленная защита от английского MP3 не установлена: {_dedupe_hardening_error}")
 
 try:
     from services.project_runtime_hardening import install_project_runtime_hardening
