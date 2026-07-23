@@ -150,8 +150,11 @@ def confirmed_result_one_to_one(
             and str(match.get("severity")) == "major"
             else "minor"
         )
-        if str(match.get("heard") or "").strip():
-            merged["heard"] = str(match.get("heard") or "").strip()
+        # The focused window has cleaner context than the broad first pass.
+        # Once the audible phrase matches, prefer its diagnosis and correction.
+        for field in ("heard", "problem", "should_be"):
+            if str(match.get(field) or "").strip():
+                merged[field] = str(match.get(field) or "").strip()
         confirmed.append(merged)
 
     result = dict(primary)
@@ -198,9 +201,20 @@ def install_qa_hardening() -> None:
     qa._issues_match = issues_match_strict
     qa._confirmed_result = confirmed_result_one_to_one
 
-    # The base prompt permits up to ten findings. Verify all ten by default;
-    # a lower explicit operator limit remains respected and is reported honestly.
-    os.environ.setdefault("LIVEDUB_QA_VERIFY_MAX_ISSUES", "10")
+    # Long recordings aggregate findings from several segment passes, so the
+    # total can exceed the base prompt's per-request limit of ten. Verify twenty
+    # by default and allow an explicit operator limit up to forty.
+    os.environ.setdefault("LIVEDUB_QA_VERIFY_MAX_ISSUES", "20")
+    original_env_int = qa._env_int
+    if not getattr(original_env_int, "_mp3bot_qa_limit_40", False):
+        def qa_env_int(name: str, default: int, low: int, high: int) -> int:
+            if name == "LIVEDUB_QA_VERIFY_MAX_ISSUES":
+                return original_env_int(name, 20, 1, 40)
+            return original_env_int(name, default, low, high)
+
+        qa_env_int._mp3bot_qa_limit_40 = True  # type: ignore[attr-defined]
+        qa._env_int = qa_env_int
+
     current_verify = qa._verify_candidate_windows
     if not getattr(current_verify, "_mp3bot_limit_safe", False):
         async def verify_limit_safe(original_run, *, primary, **kwargs):
@@ -209,7 +223,7 @@ def install_qa_hardening() -> None:
                 for item in (primary.get("issues") or [])
                 if isinstance(item, dict)
             ]
-            max_issues = qa._env_int("LIVEDUB_QA_VERIFY_MAX_ISSUES", 10, 1, 16)
+            max_issues = qa._env_int("LIVEDUB_QA_VERIFY_MAX_ISSUES", 20, 1, 40)
             selected = all_issues[:max_issues]
             limited_primary = dict(primary)
             limited_primary["issues"] = selected
