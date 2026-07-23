@@ -47,7 +47,8 @@ def test_runtime_audits_separate_original_and_russian_availability():
     assert 'result["_qa_original_reference_available"]' in src
     assert 'result["_qa_local_original_available"]' in src
     assert 'result["_qa_russian_audio_available"]' in src
-    assert 'os.environ.setdefault("LIVEDUB_QA_VERIFY_MAX_ISSUES", "10")' in src
+    assert 'os.environ.setdefault("LIVEDUB_QA_VERIFY_MAX_ISSUES", "20")' in src
+    assert 'return original_env_int(name, 20, 1, 40)' in src
 
 
 def test_exact_uncut_original_replaces_edited_mp3_and_uploaded_part():
