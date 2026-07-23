@@ -2,6 +2,7 @@
 """Strict one-to-one confirmation and truthful reporting for LiveDub QA."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -158,6 +159,9 @@ def install_qa_hardening() -> None:
     qa._issues_match = issues_match_strict
     qa._confirmed_result = confirmed_result_one_to_one
 
+    # The base prompt permits up to ten findings. Verify all ten by default;
+    # a lower explicit operator limit remains respected and is reported honestly.
+    os.environ.setdefault("LIVEDUB_QA_VERIFY_MAX_ISSUES", "10")
     current_verify = qa._verify_candidate_windows
     if not getattr(current_verify, "_mp3bot_limit_safe", False):
         async def verify_limit_safe(original_run, *, primary, **kwargs):
