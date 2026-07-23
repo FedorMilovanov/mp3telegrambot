@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 
 from services.livedub_publication_core import (
     build_publication_card,
@@ -19,6 +20,17 @@ from services.livedub_qa_hardening import install_qa_hardening
 logger = logging.getLogger(__name__)
 _LOCK = threading.Lock()
 _INSTALLED = False
+
+
+def _is_local_audio_upload(value) -> bool:
+    if isinstance(value, Path):
+        return value.is_file()
+    if isinstance(value, str):
+        try:
+            return Path(value).is_file()
+        except (OSError, ValueError):
+            return False
+    return hasattr(value, "read")
 
 
 def _install_publication() -> None:
@@ -110,9 +122,15 @@ def _install_publication() -> None:
                 kwargs["performer"] = metadata_text(
                     str(card.get("author") or canonical_author(performer))
                 ) or None
-                kwargs["filename"] = safe_audio_filename(
-                    str(card.get("title") or title)
-                )
+                # Telegram file_id resends are not uploads; passing a synthetic
+                # filename there is unnecessary and has varied across Bot API/PTB
+                # versions. Only name a real local/file-like upload.
+                if _is_local_audio_upload(kwargs.get("audio")):
+                    kwargs["filename"] = safe_audio_filename(
+                        str(card.get("title") or title)
+                    )
+                else:
+                    kwargs.pop("filename", None)
                 caption = publication.format_audio_caption(card)
                 if caption:
                     kwargs["caption"], kwargs["parse_mode"] = caption, "HTML"
