@@ -12,6 +12,7 @@ from services.livedub_publication_core import (
     compatible_info_card,
     metadata_text,
     plain,
+    safe_audio_filename,
 )
 from services.livedub_qa_hardening import install_qa_hardening
 
@@ -69,6 +70,24 @@ def _install_publication() -> None:
     unified_translate._mp3bot_deep_publication = True  # type: ignore[attr-defined]
     output._translate_title_line = unified_translate
 
+    old_clean_audio_caption = output._clean_audio_caption
+
+    def clean_audio_caption(value):
+        low = plain(value, 500).casefold()
+        if any(
+            marker in low
+            for marker in (
+                "аудиоверсия русского перевода яндекса",
+                "чистая аудиодорожка русского перевода яндекса",
+                "аудиоверсия финального дубляжа",
+                "русская аудиоверсия",
+            )
+        ):
+            return ""
+        return old_clean_audio_caption(value)
+
+    output._clean_audio_caption = clean_audio_caption
+
     # Intercept the internal marker before the older wrappers and bound metadata.
     from telegram import Bot
 
@@ -91,6 +110,9 @@ def _install_publication() -> None:
                 kwargs["performer"] = metadata_text(
                     str(card.get("author") or canonical_author(performer))
                 ) or None
+                kwargs["filename"] = safe_audio_filename(
+                    str(card.get("title") or title)
+                )
                 caption = publication.format_audio_caption(card)
                 if caption:
                     kwargs["caption"], kwargs["parse_mode"] = caption, "HTML"
