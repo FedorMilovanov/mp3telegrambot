@@ -138,6 +138,39 @@ def test_inflight_requests_share_one_task(monkeypatch):
     assert first == second
 
 
+def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
+    publication._CACHE.clear()
+    publication._INFLIGHT.clear()
+    calls = 0
+
+    async def fake_build(source_line, source_url):
+        nonlocal calls
+        calls += 1
+        return {
+            "title": "Одинаковое Название",
+            "author": "Автор",
+            "description": source_url,
+            "source_url": source_url,
+            "model": "fake-lite",
+        }
+
+    monkeypatch.setattr(publication, "_build_uncached", fake_build)
+
+    async def run():
+        first = await publication.build_publication_card(
+            "Same", "https://youtu.be/one"
+        )
+        second = await publication.build_publication_card(
+            "Same", "https://youtu.be/two"
+        )
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert calls == 2
+    assert first["source_url"].endswith("one")
+    assert second["source_url"].endswith("two")
+
+
 def test_entrypoint_installs_deep_audit_after_quality_hook_target():
     src = (Path(__file__).parents[1] / "bot_new.py").read_text(encoding="utf-8")
     assert "install_livedub_deep_audit" in src
