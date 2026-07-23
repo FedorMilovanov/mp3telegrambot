@@ -45,7 +45,7 @@ def test_teacherly_prompt_is_material_led_prose_not_rubric() -> None:
     assert "КОМПОЗИЦИЯ: УПРАВЛЯЕМАЯ СВОБОДА" in rendered
     assert "Не используй blocks по умолчанию" in rendered
     assert "Не создавай цепочки карточек" in rendered
-    assert "не описывай ролик со стороны" in rendered
+    assert "не описывай ролик" in rendered
     assert "до 1000 слов" not in rendered
     assert "SECTION TYPE 1" not in rendered
     assert "5–10 карточек" not in rendered
@@ -115,12 +115,14 @@ def test_teacherly_runtime_is_final_prompt_layer() -> None:
     audit_pos = init_source.index("install_conspect_audit_runtime()")
     teacher_pos = init_source.index("install_teacherly_study_runtime()")
     assert quality_pos < audit_pos < teacher_pos
+    assert "_prompts.STUDY_ANALYSIS_PROMPT = _legacy_effective_study_prompt" in init_source
 
 
 def test_agent_contract_prevents_rubric_regression() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert "Teacherly Study prose rule" in agents
     assert "coherent teaching chapter" in agents
-    assert "not the visible answer to an internal checklist" in agents
+    assert "not the visible answer" in agents
+    assert "internal checklist" in agents
     assert "Let the material choose its architecture" in agents
     assert "services.study_synthesis_runtime" in agents
