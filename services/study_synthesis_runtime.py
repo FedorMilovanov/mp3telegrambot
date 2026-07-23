@@ -3,14 +3,21 @@
 The legacy Study prompt accumulated many useful safety rules, but its public-output
 shape became a rubric: section types, cards, labels, and field-by-field answers.
 This runtime keeps the safety boundaries while replacing the effective generation
-prompt with a concise, material-led teaching brief.  Structured fields remain an
+prompt with a concise, material-led teaching brief. Structured fields remain an
 internal reliability aid; visible Telegraph prose must read as coherent Russian
 paragraphs, never as a form filled in by the model.
 """
 from __future__ import annotations
 
+import importlib.abc
+import importlib.util
+import logging
 import re
-from typing import Any, Callable
+import sys
+from types import ModuleType
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _MARKER = "TEACHERLY STUDY SYNTHESIS 2026-07-23"
 _INSTALLED = False
@@ -38,8 +45,10 @@ TEACHERLY STUDY SYNTHESIS 2026-07-23 — ГЛАВНОЕ ПРАВИЛО
 {key_categories}
 {timestamps}
 
-Черновые подсказки из первичного анализа; это не готовый план и не обязательный
-словарь. Проверяй их по стенограмме и свободно отбрасывай слабые:
+Черновые подсказки из первичного анализа; это не готовый план, не доказательство
+и не обязательный словарь. Проверяй их по стенограмме и разрешённым источникам,
+свободно отбрасывай слабые. Переводческая или языковая заметка без проверки —
+только гипотеза, которую нельзя переносить в публичный текст:
 Понятия: {concepts}
 Тексты Писания: {scripture}
 Переводческие заметки: {translations}
@@ -68,6 +77,11 @@ TEACHERLY STUDY SYNTHESIS 2026-07-23 — ГЛАВНОЕ ПРАВИЛО
 различение, последовательность или несколько параллельных видов; после списка
 обязательно объясни связь и богословскую цену различий.
 
+Не ограничивай разбор условным числом слов. Используй столько места, сколько
+оправдано материалом, вплоть до бюджета одной насыщенной Telegraph-страницы,
+указанного в профиле глубины. Короткий материал не раздувай, но сильный длинный
+материал не обрезай ради искусственной краткости.
+
 Используй **жирный** как смысловые опоры внутри прозы: ключевой тезис, контраст,
 поворот аргумента, точное определение. Не жирни каждый термин и не превращай
 абзац в россыпь ярлыков. Для содержательного раздела обычно нужны две–пять таких
@@ -90,6 +104,8 @@ TEACHERLY STUDY SYNTHESIS 2026-07-23 — ГЛАВНОЕ ПРАВИЛО
 Не выдумывай точных цитат, названий книг, страниц, исторических деталей и значений
 слов. Прямая цитата допустима только при наличии её в стенограмме или надёжном
 контексте. Если уверенности недостаточно, передай мысль без кавычек либо опусти.
+Не усиливай тезис автора более категоричной формулой и не приписывай всей панели
+слова одного участника.
 
 ЯЗЫКИ ОРИГИНАЛА — ТОЛЬКО ОРГАНИЧНО
 
@@ -99,10 +115,14 @@ TEACHERLY STUDY SYNTHESIS 2026-07-23 — ГЛАВНОЕ ПРАВИЛО
 затем покажи, почему это важно для аргумента. Не выводи значение из разложения
 слова на корни и не доказывай доктрину одним словом. Этимология, широкий
 словарный диапазон и созвучие с русским словом сами по себе ничего не решают.
-Если точный стих, форма, контекст или источник ненадёжны, языковую заметку опусти.
-Не используй публичные метки «Базовое значение», «В этом стихе», «Роль в
-аргументе», «Граница вывода», «Источник» как анкету: эти проверки выполняются
-внутренне, а читатель получает цельную прозу.
+Не подменяй значение слова богословской системой: судебный, реформатский или
+пасторский вывод может быть верным, но он должен следовать из контекста, а не
+маскироваться под словарную глоссу. Если точный стих, форма, контекст или источник
+ненадёжны, языковую заметку опусти.
+
+Не используй публичные метки «Русская фраза стиха», «Базовое значение», «В этом
+стихе», «Роль в аргументе», «Граница вывода», «Источник» как анкету. Эти проверки
+выполняются внутренне, а читатель получает цельную прозу.
 
 ЗАБЛУЖДЕНИЯ И ОТВЕТ ОРТОДОКСИИ
 
@@ -148,7 +168,7 @@ _FIELD_LABEL_RE = re.compile(
     r"Роль в аргументе(?: материала)?|Граница вывода|Источник)(?:\*\*)?\s*:"
 )
 _CARD_LINE_RE = re.compile(
-    r"(?m)^\s*(?:[•\-]\s*)?\*\*[^*\n]{2,120}\*\*"
+    r"(?m)^\s*(?:[•\-]\s*)?\*\*[^*\n]{2,120}\**"
     r"(?:\s*\(\*\*[^*\n]{2,100}\*\*\))?\s*[—:]"
 )
 _BOLD_RE = re.compile(r"\*\*[^*\n]{2,180}\*\*")
@@ -175,7 +195,7 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Render an exact lexical observation as one coherent Russian paragraph.
 
     The schema may collect reliability fields, but the reader must not see a
-    checklist.  Only the contextual core is mandatory; optional grammar,
+    checklist. Only the contextual core is mandatory; optional grammar,
     pronunciation, source, limit, and timestamp are woven in when present.
     """
     aliases = {
@@ -214,14 +234,18 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
     if any(not values[name] for name in required):
         return None
 
-    opening = f"**{values['scripture_ref']} — «{values['russian_focus']}».**"
-    sentences: list[str] = [opening]
+    sentences: list[str] = [
+        f"**{values['scripture_ref']} — «{values['russian_focus']}».**"
+    ]
     if values["russian_quote"]:
-        sentences.append(_sentence(f"Русский контекст: «{values['russian_quote']}»"))
+        sentences.append(
+            _sentence(
+                f"В русской фразе «{values['russian_quote']}» внимание падает на "
+                f"слово «{values['russian_focus']}»"
+            )
+        )
 
-    form = (
-        f"В оригинале стоит **{values['original_form']}**, форма от *{values['lemma']}*"
-    )
+    form = f"В оригинале стоит **{values['original_form']}**, форма от *{values['lemma']}*"
     reading_bits: list[str] = []
     if values["transliteration"]:
         reading_bits.append(f"*{values['transliteration']}*")
@@ -230,11 +254,16 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
     if reading_bits:
         form += " (" + ", ".join(reading_bits) + ")"
     if values["grammar"]:
-        form += f"; грамматическая форма здесь — {values['grammar']}"
+        form += f"; здесь это {values['grammar']}"
     sentences.append(_sentence(form))
 
     if values["basic_meaning"]:
-        sentences.append(_sentence(f"Обычный смысл слова — {values['basic_meaning']}; здесь {values['meaning_in_context']}"))
+        sentences.append(
+            _sentence(
+                f"Обычный смысл слова — {values['basic_meaning']}; в данном контексте "
+                f"{values['meaning_in_context']}"
+            )
+        )
     else:
         sentences.append(_sentence(f"В данном контексте {values['meaning_in_context']}"))
     sentences.append(_sentence(values["role_in_argument"]))
@@ -246,10 +275,9 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
         tail.append(values["source"])
     if values["anchor_timestamp"]:
         tail.append(f"⏱ **{values['anchor_timestamp']}**")
-    if tail:
-        sentences.append(" (" + "; ".join(tail) + ").")
-
     text = " ".join(part.strip() for part in sentences if part.strip())
+    if tail:
+        text = text.rstrip(". ") + " (" + "; ".join(tail) + ")."
     text = re.sub(r"\s+([,.!?])", r"\1", text)
     return {"type": "paragraph", "text": text}
 
@@ -321,10 +349,14 @@ def _patch_teacherly_content_audit() -> None:
             cards = len(_CARD_LINE_RE.findall(content))
             paragraphs = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
             short_bold_cards = sum(
-                1 for p in paragraphs
-                if len(p) < 320 and re.match(r"^\s*(?:[•\-]\s*)?\*\*", p)
+                1
+                for paragraph in paragraphs
+                if len(paragraph) < 320 and re.match(r"^\s*(?:[•\-]\s*)?\*\*", paragraph)
             )
-            if cards >= 4 or (short_bold_cards >= 4 and short_bold_cards * 2 >= max(1, len(paragraphs))):
+            if cards >= 4 or (
+                short_bold_cards >= 4
+                and short_bold_cards * 2 >= max(1, len(paragraphs))
+            ):
                 issues.append(content_audit.ContentAuditIssue(
                     code="study_fragmented_cards_warning",
                     location=f"{location}.content",
@@ -368,6 +400,82 @@ def _patch_teacherly_content_audit() -> None:
     })
 
 
+def _patch_telegraph_pages(module: ModuleType) -> None:
+    """Make the final imported Study prompt teacherly and reject no-op repairs."""
+    module.STUDY_ANALYSIS_PROMPT = TEACHERLY_STUDY_PROMPT
+
+    current = getattr(module, "_retry_expanded_sections_for_content_audit", None)
+    if current is None or getattr(current, "_teacherly_study_runtime", False):
+        return
+
+    async def retry_only_when_better(*args, **kwargs):
+        original_issues = kwargs.get("issues") or []
+        result = await current(*args, **kwargs)
+        if result is None:
+            return None
+        retry_sections, retry_outline, retry_issues = result
+        before = module._audit_warning_count(original_issues)
+        after = module._audit_warning_count(retry_issues)
+        if after >= before:
+            logger.warning(
+                "%s: teacherly audit retry rejected because warnings did not decrease %d -> %d",
+                kwargs.get("label", "Expanded"),
+                before,
+                after,
+            )
+            return None
+        return retry_sections, retry_outline, retry_issues
+
+    retry_only_when_better._teacherly_study_runtime = True  # type: ignore[attr-defined]
+    module._retry_expanded_sections_for_content_audit = retry_only_when_better
+
+
+class _AfterTelegraphPagesLoader(importlib.abc.Loader):
+    def __init__(self, loader: Any, finder: "_TelegraphPagesFinder") -> None:
+        self._loader = loader
+        self._finder = finder
+
+    def create_module(self, spec):
+        create = getattr(self._loader, "create_module", None)
+        return create(spec) if create else None
+
+    def exec_module(self, module: ModuleType) -> None:
+        self._loader.exec_module(module)
+        try:
+            sys.meta_path.remove(self._finder)
+        except ValueError:
+            pass
+        _patch_telegraph_pages(module)
+
+
+class _TelegraphPagesFinder(importlib.abc.MetaPathFinder):
+    target = "services.telegraph_pages"
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != self.target:
+            return None
+        try:
+            sys.meta_path.remove(self)
+        except ValueError:
+            pass
+        try:
+            spec = importlib.util.find_spec(fullname)
+        finally:
+            sys.meta_path.insert(0, self)
+        if spec is not None and spec.loader is not None:
+            spec.loader = _AfterTelegraphPagesLoader(spec.loader, self)
+        return spec
+
+
+def _install_telegraph_pages_hook() -> None:
+    loaded = sys.modules.get("services.telegraph_pages")
+    if isinstance(loaded, ModuleType):
+        _patch_telegraph_pages(loaded)
+        return
+    if not any(isinstance(finder, _TelegraphPagesFinder) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _TelegraphPagesFinder())
+
+
 def install_teacherly_study_runtime() -> str:
     """Install the concise Study prompt and public-prose quality guards."""
     global _INSTALLED
@@ -376,9 +484,13 @@ def install_teacherly_study_runtime() -> str:
 
     from core import prompts
 
-    # Synopsis remains untouched.  Only the effective Study prompt is replaced.
+    # Synopsis remains untouched. Only the effective Study prompt is replaced.
     prompts.STUDY_ANALYSIS_PROMPT = TEACHERLY_STUDY_PROMPT
     _patch_word_study_renderer()
     _patch_teacherly_content_audit()
+    _install_telegraph_pages_hook()
     _INSTALLED = True
-    return "material-led Study prose; no checklist/cards; organic lexical analysis"
+    return (
+        "material-led Study prose; one-page depth budget; no checklist/cards; "
+        "organic lexical analysis; no-op audit retries rejected"
+    )
