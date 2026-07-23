@@ -32,13 +32,19 @@ except Exception as _gemini_route_error:
 
 try:
     # Must run before services.telegraph_pages imports prompt/schema/audit helpers.
-    # The installer explicitly preserves both Synopsis prompts unchanged.
+    # Synopsis remains verbatim.  Study gets reliability guards first, then the
+    # final concise teacherly prompt/public-prose contract.
     from services.conspect_quality_contract import install_conspect_quality_contract
     from services.conspect_audit_runtime import install_conspect_audit_runtime
+    from services.study_synthesis_runtime import install_teacherly_study_runtime
 
     _conspect_contract = install_conspect_quality_contract()
     _conspect_audit = install_conspect_audit_runtime()
-    print(f"📚 Conspect quality: {_conspect_contract}; {_conspect_audit}")
+    _study_synthesis = install_teacherly_study_runtime()
+    print(
+        f"📚 Conspect quality: {_conspect_contract}; {_conspect_audit}; "
+        f"{_study_synthesis}"
+    )
 except Exception as _conspect_contract_error:
     print(f"⚠️ Conspect quality contract не установлен: {_conspect_contract_error}")
 
