@@ -55,13 +55,15 @@ could be pasted into an unrelated sermon is not material-grounded analysis.
 ### P1 — published typo remained unresolved after repair
 
 The page audit found `Слово Божьего — нструмент...`. The repair path reported a
-change but the following audit still marked the typo unresolved. This remains a
-separate deterministic repair defect to address in the next audit patch.
+change but the following audit still marked the typo unresolved. The fix now
+adds phrase-anchored normalization rather than a dangerous global grammatical
+replacement.
 
 ### P1 — one inline timestamp preceded its section start
 
-A section started at `44:06` but contained inline `44:00`. The next timestamp
-repair patch must reconcile the section boundary rather than merely log it.
+A section started at `44:06` but contained inline `44:00`. The fix now reconciles
+only near-boundary differences up to 30 seconds and preserves genuine references
+to much earlier moments.
 
 ### P1 — large Gemini tasks overlapped and exhausted quota
 
@@ -89,17 +91,20 @@ large Gemini generations need a quality-first queue.
   «Ключевые слова в контексте Писания» and set a valid range of 0–3 blocks.
 - Added a full `word_study` structured schema.
 - Deterministically drops incomplete legacy lexicon cards while preserving the
-  rest of the Study page.
+  rest of the Study page; the old `normalize(...) or raw` fallback can no longer
+  resurrect a rejected thin card.
 - Preserved and explicitly protected the Study-only ❌/✅ orthodoxy pair format.
+- Added anchored repair for the observed `Слово Божьего — нструмент` defect.
+- Reconciles a section start with an inline timestamp only when the difference
+  is 1–30 seconds; large backward references remain untouched.
 - Added focused regression tests.
 
 ## Remaining audit queue
 
-1. Repair and re-audit the published typo path until `changed=True` is followed
-   by zero unresolved typo warnings.
-2. Add deterministic reconciliation for inline timestamps earlier than the
-   containing section start.
-3. Add a per-project semaphore/queue for large Gemini calls while keeping
+1. Add a per-project semaphore/queue for large Gemini calls while keeping
    non-AI media work parallel.
-4. Run the saved generated-page archives through the DOM/Playwright auditor and
+2. Run the saved generated-page archives through the DOM/Playwright auditor and
    compare every Synopsis, Study, Reflection, Terms, and navigation page.
+3. Re-run the already-published affected Telegraph page through the runtime
+   repair tool so the historical typo is corrected remotely, not only prevented
+   in future generations.
