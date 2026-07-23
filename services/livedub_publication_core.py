@@ -27,6 +27,7 @@ _TITLE_OVERRIDES = {
     "the battle against sexual immorality & pornography":
         "Борьба с Сексуальной Безнравственностью и Порнографией",
 }
+_KNOWN_ACRONYMS = {"ИИ", "ВЗ", "НЗ", "США", "РФ", "СССР", "РПЦ"}
 _AUTHOR_OVERRIDES = {
     "tim conway": "Тим Конвей",
     "r.c. sproul": "Р. Ч. Спроул",
@@ -118,8 +119,10 @@ def split_title_author(value: str) -> tuple[str, str]:
 def _capitalize_word(word: str) -> str:
     if not word:
         return word
-    if (word.isupper() and len(word) > 1) or re.search(r"[а-яё][А-ЯЁ]", word):
+    if word in _KNOWN_ACRONYMS or re.search(r"[а-яё][А-ЯЁ]", word):
         return word
+    if word.isupper() and len(word) > 1:
+        word = word.lower()
     for index, char in enumerate(word):
         if char.isalpha():
             return word[:index] + char.upper() + word[index + 1:]
@@ -174,6 +177,12 @@ def metadata_text(value: str, limit: int = 64) -> str:
     return cut.rstrip(" -—–,.;:")
 
 
+def safe_audio_filename(value: str) -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", plain(value, 180))
+    stem = re.sub(r"\s+", " ", stem).strip(" ._-")[:120]
+    return f"{stem or 'Переведённый материал'}.mp3"
+
+
 def publication_models() -> list[str]:
     configured = os.getenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite").strip()
     raw = os.getenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "").strip()
@@ -224,7 +233,7 @@ def _economy_config(model_name: str):
 
 
 def clean_description(value: Any) -> str:
-    text = plain(value, 650)
+    text = plain(value, 420)
     text = re.sub(r"^[🎙️🎧📖💬✨🔥]+\s*", "", text).strip()
     text = re.sub(
         r"(?i)\b(?:живые голоса яндекса|русская аудиоверсия|перевод яндекса|"
