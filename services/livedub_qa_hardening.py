@@ -60,6 +60,45 @@ def _argument(args: tuple, kwargs: dict, index: int, name: str):
     return args[index] if len(args) > index else kwargs.get(name)
 
 
+def _set_argument(
+    args: tuple,
+    kwargs: dict,
+    index: int,
+    name: str,
+    value: Any,
+) -> tuple[tuple, dict]:
+    positional = list(args)
+    options = dict(kwargs)
+    if len(positional) > index:
+        positional[index] = value
+        options.pop(name, None)
+    else:
+        options[name] = value
+    return tuple(positional), options
+
+
+def _exact_original_in_workdir(dub_video: Any) -> Path | None:
+    try:
+        dub_path = Path(dub_video)
+        candidates = sorted(
+            dub_path.parent.glob("original_video.*"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        from services.livedub_mix import has_video_stream
+
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate != dub_path and has_video_stream(candidate)
+            ),
+            None,
+        )
+    except Exception:
+        return None
+
+
 def issues_match_strict(first: dict[str, Any], second: dict[str, Any]) -> bool:
     first_time, second_time = _seconds(first.get("time")), _seconds(second.get("time"))
     if first_time is None or second_time is None:
@@ -195,17 +234,42 @@ def install_qa_hardening() -> None:
     current_run = module.run_translation_qa
     if not getattr(current_run, "_mp3bot_availability_audit", False):
         async def audited_run(*args, **kwargs):
-            result = await current_run(*args, **kwargs)
+            call_args, call_kwargs = tuple(args), dict(kwargs)
+            dub_video_before = _argument(call_args, call_kwargs, 0, "dub_video_path")
+            exact_original = _exact_original_in_workdir(dub_video_before)
+            if exact_original is not None:
+                # The ordinary MP3 may have SponsorBlock cuts or other timeline
+                # transforms. Use the untouched downloaded source video for both
+                # the full pass and every focused window, and do not reuse a
+                # Gemini upload that may represent the edited MP3 timeline.
+                call_args, call_kwargs = _set_argument(
+                    call_args, call_kwargs, 1, "original_audio_path", exact_original
+                )
+                call_args, call_kwargs = _set_argument(
+                    call_args, call_kwargs, 7, "existing_audio_part", None
+                )
+                call_args, call_kwargs = _set_argument(
+                    call_args, call_kwargs, 8, "existing_client", None
+                )
+
+            result = await current_run(*call_args, **call_kwargs)
             if not isinstance(result, dict):
                 return result
-            original_audio = _argument(args, kwargs, 1, "original_audio_path")
-            dub_video = _argument(args, kwargs, 0, "dub_video_path")
-            dub_audio = _argument(args, kwargs, 6, "dub_audio_path")
-            existing_part = _argument(args, kwargs, 7, "existing_audio_part")
-            existing_client = _argument(args, kwargs, 8, "existing_client")
+            original_audio = _argument(
+                call_args, call_kwargs, 1, "original_audio_path"
+            )
+            dub_video = _argument(call_args, call_kwargs, 0, "dub_video_path")
+            dub_audio = _argument(call_args, call_kwargs, 6, "dub_audio_path")
+            existing_part = _argument(
+                call_args, call_kwargs, 7, "existing_audio_part"
+            )
+            existing_client = _argument(
+                call_args, call_kwargs, 8, "existing_client"
+            )
             local_original = _local_file(original_audio)
             reused_original = _active_part(existing_part) and existing_client is not None
             result["_qa_availability_audited"] = True
+            result["_qa_exact_timeline_original"] = exact_original is not None
             result["_qa_original_reference_available"] = bool(
                 local_original or reused_original
             )
