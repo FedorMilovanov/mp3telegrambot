@@ -123,6 +123,9 @@ jobs:
           tests/test_livedub_publication.py
           tests/test_livedub_deep_audit.py
           tests/test_livedub_qa_reporting_hardening.py
+          tests/test_livedub_publication_runtime_resilience.py
+          tests/test_livedub_qa_focused_correction.py
+          tests/test_livedub_audio_retry_claims.py
 
       - name: Ruff fatal checks for runtime files
         run: >-
@@ -152,3 +155,6 @@ jobs:
           tests/test_livedub_publication.py
           tests/test_livedub_deep_audit.py
           tests/test_livedub_qa_reporting_hardening.py
+          tests/test_livedub_publication_runtime_resilience.py
+          tests/test_livedub_qa_focused_correction.py
+          tests/test_livedub_audio_retry_claims.py
