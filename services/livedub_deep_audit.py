@@ -6,6 +6,7 @@ import contextvars
 import logging
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 from services.livedub_publication_core import (
     build_publication_card,
@@ -88,12 +89,19 @@ def _wrap_video_requires_mp3(cls: type) -> None:
         try:
             result = await current(self, *args, **kwargs)
             if _MP3_COMPANION_FAILED.get():
-                # The video may already be visible, but raising here prevents the
-                # pipeline from storing a video file_id that can never reproduce
-                # its missing MP3. The next request will rebuild the complete pair.
+                video_value = kwargs.get("video")
+                if _is_local_audio_upload(video_value):
+                    # The new video is already visible and the companion has sent
+                    # its own clear MP3-failure notice. Return an empty file_id so
+                    # the pipeline continues normally but cannot persist this
+                    # incomplete pair in its fast-resend cache.
+                    return SimpleNamespace(video=SimpleNamespace(file_id=""))
+                # A cached video with a missing paired MP3 must be invalidated by
+                # the caller, otherwise every future request would repeat the same
+                # video-only result forever.
                 raise RuntimeError(
-                    "LiveDub video delivered without its required paired MP3; "
-                    "result is intentionally not cacheable"
+                    "cached LiveDub video has no usable paired MP3; "
+                    "cached pair must be rebuilt"
                 )
             return result
         finally:
