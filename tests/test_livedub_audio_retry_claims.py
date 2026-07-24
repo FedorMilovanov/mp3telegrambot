@@ -20,5 +20,6 @@ def test_video_without_required_mp3_cannot_enter_file_id_cache():
     src = Path("services/livedub_deep_audit.py").read_text(encoding="utf-8")
     assert "_MP3_COMPANION_FAILED.set(True)" in src
     assert "if _MP3_COMPANION_FAILED.get():" in src
-    assert "result is intentionally not cacheable" in src
+    assert 'SimpleNamespace(video=SimpleNamespace(file_id=""))' in src
+    assert "cached pair must be rebuilt" in src
     assert "_wrap_video_requires_mp3(Bot)" in src
