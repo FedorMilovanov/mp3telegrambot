@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Enforce the owner's maximum-quality Gemini policy across the whole bot.
+"""Enforce maximum reasoning for quality-sensitive Gemini work.
 
-The project intentionally prefers answer quality over latency and token economy.
-Every Gemini 3.x request therefore receives ``thinking_level=high``, including
-Quick QA, LiveDub publication cards, title translation, and old helper calls
-that still use ``make_text_config``.
+Deep audio analysis, QA, synopsis and editorial tasks intentionally prefer answer
+quality over latency. Mechanical LiveDub publication metadata is the sole explicit
+exception: ``livedub_publication_core`` builds a direct minimal-thinking config for
+one cheap title/description request, as requested by the project owner.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def configure_max_quality_env() -> str:
     os.environ["LIVEDUB_QUICK_QA_THINKING"] = "high"
     os.environ["LIVEDUB_LONG_QA_THINKING"] = "high"
     os.environ["LIVEDUB_INFO_THINKING"] = "high"
-    return "thinking=high for all Gemini calls"
+    return "thinking=high for quality tasks; publication metadata=minimal"
 
 
 def _force_high_argument(
@@ -60,7 +60,7 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
 
 
 def install_max_quality_runtime() -> None:
-    """Force high reasoning even when an older call site asks for minimal/low."""
+    """Force high reasoning when callers use the shared quality helpers."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -103,4 +103,7 @@ def install_max_quality_runtime() -> None:
     _replace_loaded_references(original_text_legacy, max_text_legacy)
 
     _INSTALLED = True
-    logger.info("🧠 Gemini maximum quality: ✅ thinking_level=high for every active call")
+    logger.info(
+        "🧠 Gemini maximum quality: ✅ high for quality tasks; "
+        "mechanical publication metadata keeps its explicit minimal config"
+    )

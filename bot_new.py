@@ -117,6 +117,15 @@ try:
 except Exception as _dedupe_hardening_error:
     print(f"⚠️ Усиленная защита от английского MP3 не установлена: {_dedupe_hardening_error}")
 
+# Install last: importing livedub_audio_dedupe triggers the project-wide quality
+# runtime, so this final layer cannot be overwritten by its model/info hooks.
+try:
+    from services.livedub_deep_audit import install_livedub_deep_audit
+
+    install_livedub_deep_audit()
+except Exception as _deep_audit_error:
+    print(f"⚠️ Глубокая защита публикации и QA LiveDub не установлена: {_deep_audit_error}")
+
 try:
     from services.project_runtime_hardening import install_project_runtime_hardening
 
