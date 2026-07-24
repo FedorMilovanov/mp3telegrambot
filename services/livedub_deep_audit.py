@@ -2,6 +2,7 @@
 """Install final LiveDub publication and QA integration guards."""
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
 from pathlib import Path
@@ -20,6 +21,9 @@ from services.livedub_qa_hardening import install_qa_hardening
 logger = logging.getLogger(__name__)
 _LOCK = threading.Lock()
 _INSTALLED = False
+_MP3_COMPANION_FAILED: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "mp3bot_livedub_companion_failed", default=False
+)
 
 
 def _is_local_audio_upload(value) -> bool:
@@ -59,9 +63,11 @@ def _install_retry_safe_audio_claims() -> None:
                 result = await current(*args, **kwargs)
             except Exception:
                 _release_audio_claim(key)
+                _MP3_COMPANION_FAILED.set(True)
                 raise
             if not result:
                 _release_audio_claim(key)
+                _MP3_COMPANION_FAILED.set(True)
             return result
 
         retry_safe._mp3bot_retry_safe_claim = True  # type: ignore[attr-defined]
@@ -69,6 +75,32 @@ def _install_retry_safe_audio_claims() -> None:
 
     wrap("_send_new_audio", "new")
     wrap("_send_cached_audio", "cached")
+
+
+def _wrap_video_requires_mp3(cls: type) -> None:
+    """Prevent an incomplete video-only result from entering the file_id cache."""
+    current = getattr(cls, "send_video", None)
+    if current is None or getattr(current, "_mp3bot_requires_mp3", False):
+        return
+
+    async def wrapped(self, *args, **kwargs):
+        token = _MP3_COMPANION_FAILED.set(False)
+        try:
+            result = await current(self, *args, **kwargs)
+            if _MP3_COMPANION_FAILED.get():
+                # The video may already be visible, but raising here prevents the
+                # pipeline from storing a video file_id that can never reproduce
+                # its missing MP3. The next request will rebuild the complete pair.
+                raise RuntimeError(
+                    "LiveDub video delivered without its required paired MP3; "
+                    "result is intentionally not cacheable"
+                )
+            return result
+        finally:
+            _MP3_COMPANION_FAILED.reset(token)
+
+    wrapped._mp3bot_requires_mp3 = True  # type: ignore[attr-defined]
+    setattr(cls, "send_video", wrapped)
 
 
 def _install_publication() -> None:
@@ -181,11 +213,14 @@ def _install_publication() -> None:
         setattr(cls, "send_audio", wrapped)
 
     wrap_audio(Bot)
+    _wrap_video_requires_mp3(Bot)
     try:
         from telegram.ext import ExtBot
 
         if ExtBot.send_audio is not Bot.send_audio:
             wrap_audio(ExtBot)
+        if ExtBot.send_video is not Bot.send_video:
+            _wrap_video_requires_mp3(ExtBot)
     except Exception as exc:
         logger.debug("[LiveDubDeepAudit] ExtBot patch skipped: %s", exc)
 
@@ -197,11 +232,11 @@ def install_livedub_deep_audit() -> None:
     with _LOCK:
         if _INSTALLED:
             return
-        _install_publication()
         _install_retry_safe_audio_claims()
+        _install_publication()
         install_qa_hardening()
         _INSTALLED = True
         logger.info(
             "🧩 LiveDub deep audit: one lite publication call, bounded cache, "
-            "retry-safe MP3 and one-to-one audio QA enabled"
+            "complete video+MP3 caching and one-to-one audio QA enabled"
         )
