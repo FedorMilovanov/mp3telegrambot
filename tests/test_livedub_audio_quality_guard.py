@@ -115,3 +115,21 @@ def test_entrypoint_installs_quality_guard_before_dedupe_and_deep_audit():
     dedupe = source.index("install_livedub_audio_dedupe()")
     deep = source.index("install_livedub_deep_audit()")
     assert quality < dedupe < deep
+
+
+def test_runtime_patch_applies_same_clean_selector_to_mix_and_vot(tmp_path: Path):
+    from services import livedub_mix as mix
+    from services import yandex_live_dub as yandex
+
+    clean = tmp_path / "translation.live.mp3"
+    clean.write_bytes(b"clean" * 400)
+    stale_mix = tmp_path / "translation.final-mix.mp3"
+    stale_mix.write_bytes(b"mixed" * 400)
+    os.utime(clean, (10, 10))
+    os.utime(stale_mix, (20, 20))
+
+    guard._install_clean_track_selection()
+
+    _original, selected = mix.find_pro_tracks(tmp_path)
+    assert selected == clean
+    assert yandex._find_latest_file(tmp_path, "*.mp3") == clean
