@@ -9,8 +9,9 @@ file is the Russian translation returned by VOT.
 This adapter records the exact successful ``get_live_dub_audio`` result in an
 atomic marker and makes ``find_pro_tracks`` prefer that validated path. The marker
 contains only a basename plus immutable-at-selection metadata; absolute paths,
-subdirectories, derived artifacts and changed files are rejected. If provenance is
-missing or invalid, the existing selector remains the compatibility fallback.
+subdirectories, symlinks, derived artifacts and changed files are rejected. A
+returned file is recorded only when the current VOT call created or modified it.
+If provenance is missing or invalid, the existing selector remains the fallback.
 """
 from __future__ import annotations
 
@@ -52,6 +53,37 @@ def _is_derived(path: Path) -> bool:
         return False
 
 
+def _file_state(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+        return int(stat.st_size), int(stat.st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _output_dir(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Path | None:
+    value = kwargs.get("output_dir")
+    if value is None and len(args) > 1:
+        value = args[1]
+    try:
+        return Path(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _snapshot_mp3(workdir: Path | None) -> dict[str, tuple[int, int]]:
+    if workdir is None:
+        return {}
+    try:
+        return {
+            path.name: state
+            for path in workdir.glob("*.mp3")
+            if path.is_file() and (state := _file_state(path)) is not None
+        }
+    except OSError:
+        return {}
+
+
 def write_ru_audio_provenance(path: Path | str, *, voice_style: str = "") -> bool:
     """Atomically record one exact MP3 returned by VOT.
 
@@ -61,7 +93,11 @@ def write_ru_audio_provenance(path: Path | str, *, voice_style: str = "") -> boo
     candidate = Path(path)
     temp: Path | None = None
     try:
-        if not candidate.is_file() or candidate.suffix.casefold() != ".mp3":
+        if (
+            not candidate.is_file()
+            or candidate.is_symlink()
+            or candidate.suffix.casefold() != ".mp3"
+        ):
             return False
         if _is_derived(candidate):
             return False
@@ -112,9 +148,9 @@ def read_ru_audio_provenance(workdir: Path | str) -> Path | None:
         if not filename or Path(filename).suffix.casefold() != ".mp3":
             return None
         candidate = root / filename
-        if not candidate.is_file() or _is_derived(candidate):
+        if candidate.is_symlink() or not candidate.is_file() or _is_derived(candidate):
             return None
-        if candidate.parent.resolve() != root.resolve():
+        if candidate.resolve().parent != root.resolve():
             return None
         stat = candidate.stat()
         if stat.st_size <= 1024:
@@ -146,10 +182,26 @@ def _install_vot_recorder() -> None:
 
     @functools.wraps(current)
     async def recorded(*args: Any, **kwargs: Any):
+        workdir = _output_dir(args, kwargs)
+        before = _snapshot_mp3(workdir)
         result = await current(*args, **kwargs)
         try:
-            if write_ru_audio_provenance(Path(result), voice_style=_voice_style(args, kwargs)):
-                logger.info("[LiveDubProvenance] exact VOT RU source recorded: %s", Path(result).name)
+            candidate = Path(result)
+            if workdir is None or candidate.parent.resolve() != workdir.resolve():
+                logger.warning(
+                    "[LiveDubProvenance] returned MP3 is outside requested output_dir: %s",
+                    candidate,
+                )
+                return result
+            after = _file_state(candidate)
+            if after is None or before.get(candidate.name) == after:
+                logger.warning(
+                    "[LiveDubProvenance] unchanged pre-existing MP3 not recorded: %s",
+                    candidate.name,
+                )
+                return result
+            if write_ru_audio_provenance(candidate, voice_style=_voice_style(args, kwargs)):
+                logger.info("[LiveDubProvenance] exact VOT RU source recorded: %s", candidate.name)
         except Exception as exc:
             logger.warning("[LiveDubProvenance] recorder skipped: %s", str(exc)[:180])
         return result
@@ -189,4 +241,4 @@ def install_livedub_ru_provenance() -> None:
         _install_vot_recorder()
         _install_track_reader()
         _INSTALLED = True
-        logger.info("🧬 LiveDub RU provenance: exact VOT source marker enabled")
+        logger.info("🧬 LiveDub RU provenance: exact current-call VOT source enabled")
