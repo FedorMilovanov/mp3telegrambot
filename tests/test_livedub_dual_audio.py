@@ -156,3 +156,37 @@ def test_complete_cache_resends_both_variants(monkeypatch):
     )
     assert ok is True
     assert [call["audio"] for call in bot.calls] == ["clean-fid", "mixed-fid"]
+
+
+def test_partial_cached_resend_is_not_reported_complete(monkeypatch):
+    monkeypatch.setattr(
+        companion,
+        "_cache_get",
+        lambda _fid: {
+            "variants": {
+                "clean": {"audio_file_id": "clean-fid", "title": "T"},
+                "mixed": {"audio_file_id": "mixed-fid", "title": "T"},
+            }
+        },
+    )
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
+    monkeypatch.setattr(companion, "_cache_drop_variant", lambda *args, **kwargs: None)
+
+    class PartialBot(FakeBot):
+        async def send_audio(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs["audio"] == "mixed-fid":
+                raise RuntimeError("expired")
+            return SimpleNamespace(audio=SimpleNamespace(file_id="clean-ok"))
+
+    bot = PartialBot()
+    ok = asyncio.run(
+        companion._send_cached_audio(
+            bot,
+            chat_id=1,
+            video_file_id="video-fid",
+            reply_to=2,
+        )
+    )
+    assert ok is False
+    assert [call["audio"] for call in bot.calls] == ["clean-fid", "mixed-fid"]
