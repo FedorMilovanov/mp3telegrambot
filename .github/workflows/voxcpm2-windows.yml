@@ -100,6 +100,7 @@ jobs:
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
           tests/test_voxcpm2_production_preflight.py
+          tests/test_voxcpm2_diagnostic_pack.py
 
       - name: Ruff fatal checks
         shell: pwsh
@@ -109,3 +110,4 @@ jobs:
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
           tests/test_voxcpm2_production_preflight.py
+          tests/test_voxcpm2_diagnostic_pack.py
