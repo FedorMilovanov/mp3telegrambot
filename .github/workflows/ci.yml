@@ -104,6 +104,7 @@ jobs:
           python -m py_compile services/local_botapi_required.py
           python -m py_compile services/cloud_media_fallback.py
           python -m py_compile services/project_runtime_hardening.py
+          python -m py_compile services/livedub_quality_runtime.py
           python -m py_compile services/livedub_audio_companion.py
           python -m py_compile services/livedub_audio_quality_guard.py
           python -m py_compile services/livedub_delivery_hardening.py
@@ -129,6 +130,7 @@ jobs:
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
           tests/test_audio_conversion_postcondition.py
+          tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py
           tests/test_livedub_audio_quality_guard.py
           tests/test_livedub_audio_media_integration.py
@@ -154,6 +156,7 @@ jobs:
           services/local_botapi_required.py
           services/cloud_media_fallback.py
           services/project_runtime_hardening.py
+          services/livedub_quality_runtime.py
           services/livedub_audio_companion.py
           services/livedub_audio_quality_guard.py
           services/livedub_delivery_hardening.py
@@ -175,6 +178,7 @@ jobs:
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
           tests/test_audio_conversion_postcondition.py
+          tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py
           tests/test_livedub_audio_quality_guard.py
           tests/test_livedub_audio_media_integration.py

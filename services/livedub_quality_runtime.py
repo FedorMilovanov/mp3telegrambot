@@ -2,6 +2,7 @@
 """Quality-first Gemini and LiveDub delivery runtime used by bot_new.py."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -10,14 +11,16 @@ import socket
 import subprocess
 import threading
 import time
+from concurrent.futures import Future
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 _INSTALL_LOCK = threading.Lock()
 _AUDIO_LOCK = threading.Lock()
 _AUDIO_SENT: dict[tuple[str, ...], float] = {}
+_AUDIO_INFLIGHT: dict[tuple[str, ...], Future[bool]] = {}
 _RETIRED_MODELS = {
     "gemini-3.1-flash-lite",
     "gemini-3.1-flash-lite-preview",
@@ -218,16 +221,87 @@ def _audio_key(kind: str, kwargs: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
-def _claim_audio(key: tuple[str, ...], ttl: int = 900) -> bool:
+def _prune_audio_sent(now: float, ttl: int) -> None:
+    for old_key, saved in list(_AUDIO_SENT.items()):
+        if now - saved > ttl:
+            _AUDIO_SENT.pop(old_key, None)
+
+
+def _reserve_audio(
+    key: tuple[str, ...], ttl: int = 900
+) -> tuple[str, Future[bool] | None]:
+    """Return ``sent``, ``wait`` or ``leader`` for one delivery key.
+
+    The previous implementation wrote to ``_AUDIO_SENT`` before Telegram had
+    accepted the file.  Any exception then poisoned retries for 15 minutes and a
+    duplicate call returned a false success.  A pending Future lets concurrent
+    calls share the real outcome while only completed successes enter the TTL
+    cache.
+    """
     now = time.monotonic()
     with _AUDIO_LOCK:
-        for old_key, saved in list(_AUDIO_SENT.items()):
-            if now - saved > ttl:
-                _AUDIO_SENT.pop(old_key, None)
+        _prune_audio_sent(now, ttl)
         if key in _AUDIO_SENT:
-            return False
-        _AUDIO_SENT[key] = now
+            return "sent", None
+        pending = _AUDIO_INFLIGHT.get(key)
+        if pending is not None:
+            return "wait", pending
+        pending = Future()
+        _AUDIO_INFLIGHT[key] = pending
+        return "leader", pending
+
+
+def _complete_audio(
+    key: tuple[str, ...], pending: Future[bool], success: bool
+) -> None:
+    with _AUDIO_LOCK:
+        if _AUDIO_INFLIGHT.get(key) is pending:
+            _AUDIO_INFLIGHT.pop(key, None)
+        if success:
+            _AUDIO_SENT[key] = time.monotonic()
+    if not pending.done():
+        pending.set_result(success)
+
+
+async def _run_audio_once(
+    key: tuple[str, ...],
+    label: str,
+    sender: Callable[[], Awaitable[Any]],
+) -> Any:
+    state, pending = _reserve_audio(key)
+    if state == "sent":
+        logger.info("[LiveDubAudio] duplicate %s suppressed after confirmed success", label)
         return True
+    if state == "wait":
+        assert pending is not None
+        success = bool(await asyncio.wrap_future(pending))
+        logger.info(
+            "[LiveDubAudio] concurrent %s joined existing delivery: %s",
+            label,
+            "success" if success else "failed",
+        )
+        return success
+
+    assert pending is not None
+    try:
+        result = await sender()
+    except BaseException:
+        _complete_audio(key, pending, False)
+        raise
+    success = bool(result)
+    _complete_audio(key, pending, success)
+    if not success:
+        logger.warning(
+            "[LiveDubAudio] %s returned false; retry key released",
+            label,
+        )
+    return result
+
+
+def _claim_audio(key: tuple[str, ...], ttl: int = 900) -> bool:
+    """Compatibility helper retained for older diagnostics/tests."""
+    state, _pending = _reserve_audio(key, ttl)
+    return state == "leader"
 
 
 def _install_audio_once() -> None:
@@ -237,10 +311,11 @@ def _install_audio_once() -> None:
     if not getattr(current_new, "_mp3bot_once", False):
         async def send_new_once(*args, **kwargs):
             key = _audio_key("new", kwargs)
-            if not _claim_audio(key):
-                logger.info("[LiveDubAudio] duplicate Russian MP3 suppressed")
-                return True
-            return await current_new(*args, **kwargs)
+            return await _run_audio_once(
+                key,
+                "new dual-MP3 set",
+                lambda: current_new(*args, **kwargs),
+            )
 
         send_new_once._mp3bot_once = True  # type: ignore[attr-defined]
         companion._send_new_audio = send_new_once
@@ -249,10 +324,11 @@ def _install_audio_once() -> None:
     if not getattr(current_cached, "_mp3bot_once", False):
         async def send_cached_once(*args, **kwargs):
             key = _audio_key("cached", kwargs)
-            if not _claim_audio(key):
-                logger.info("[LiveDubAudio] duplicate cached Russian MP3 suppressed")
-                return True
-            return await current_cached(*args, **kwargs)
+            return await _run_audio_once(
+                key,
+                "cached dual-MP3 set",
+                lambda: current_cached(*args, **kwargs),
+            )
 
         send_cached_once._mp3bot_once = True  # type: ignore[attr-defined]
         companion._send_cached_audio = send_cached_once
@@ -310,5 +386,5 @@ def install_livedub_quality_runtime() -> None:
         _install_utf8_probe()
         logger.info(
             "✨ LiveDub quality runtime: ✅ Gemini 3.6 primary → 3.5 fallback, "
-            "one Russian MP3, UTF-8 ffprobe"
+            "retry-safe dual-MP3 coalescing, UTF-8 ffprobe"
         )

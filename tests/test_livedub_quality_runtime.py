@@ -1,9 +1,22 @@
 """Regression contracts for Gemini/LiveDub Russian delivery."""
+from __future__ import annotations
+
+import asyncio
 from pathlib import Path
+
+import pytest
+
+from services import livedub_quality_runtime as runtime
 
 
 def _runtime_source() -> str:
     return Path("services/livedub_quality_runtime.py").read_text(encoding="utf-8")
+
+
+def _reset_audio_state() -> None:
+    with runtime._AUDIO_LOCK:
+        runtime._AUDIO_SENT.clear()
+        runtime._AUDIO_INFLIGHT.clear()
 
 
 def test_services_package_configures_policy_and_proxy_before_clients():
@@ -54,7 +67,7 @@ def test_yandex_tts_fallback_is_enabled_but_explicitly_marked():
     src = _runtime_source()
     assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' in src
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
-    assert '.voice_style_tts' in mix
+    assert ".voice_style_tts" in mix
 
 
 def test_retired_models_are_filtered():
@@ -63,11 +76,93 @@ def test_retired_models_are_filtered():
     assert "value not in _RETIRED_MODELS" in src
 
 
-def test_duplicate_russian_mp3_is_suppressed():
+def test_duplicate_delivery_uses_confirmed_success_cache():
     src = _runtime_source()
     assert "_AUDIO_SENT" in src
-    assert "duplicate Russian MP3 suppressed" in src
+    assert "_AUDIO_INFLIGHT" in src
+    assert "after confirmed success" in src
+    assert "retry key released" in src
     assert "companion._send_new_audio = send_new_once" in src
+
+
+def test_failed_audio_send_releases_retry_key():
+    _reset_audio_state()
+    key = ("new", "chat", "reply", "file", "video")
+    attempts = 0
+
+    async def scenario():
+        nonlocal attempts
+
+        async def fail():
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("telegram send failed")
+
+        async def succeed():
+            nonlocal attempts
+            attempts += 1
+            return True
+
+        with pytest.raises(RuntimeError, match="telegram send failed"):
+            await runtime._run_audio_once(key, "test", fail)
+        assert key not in runtime._AUDIO_SENT
+        assert key not in runtime._AUDIO_INFLIGHT
+        assert await runtime._run_audio_once(key, "test", succeed) is True
+
+    asyncio.run(scenario())
+    assert attempts == 2
+    assert key in runtime._AUDIO_SENT
+
+
+def test_false_audio_result_is_not_cached_as_success():
+    _reset_audio_state()
+    key = ("new", "chat", "reply", "file", "video")
+    attempts = 0
+
+    async def scenario():
+        nonlocal attempts
+
+        async def return_false():
+            nonlocal attempts
+            attempts += 1
+            return False
+
+        assert await runtime._run_audio_once(key, "test", return_false) is False
+        assert key not in runtime._AUDIO_SENT
+        assert key not in runtime._AUDIO_INFLIGHT
+        assert await runtime._run_audio_once(key, "test", return_false) is False
+
+    asyncio.run(scenario())
+    assert attempts == 2
+
+
+def test_concurrent_audio_calls_share_the_real_result():
+    _reset_audio_state()
+    key = ("new", "chat", "reply", "file", "video")
+    attempts = 0
+
+    async def scenario():
+        nonlocal attempts
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def sender():
+            nonlocal attempts
+            attempts += 1
+            started.set()
+            await release.wait()
+            return True
+
+        first = asyncio.create_task(runtime._run_audio_once(key, "test", sender))
+        await started.wait()
+        second = asyncio.create_task(runtime._run_audio_once(key, "test", sender))
+        await asyncio.sleep(0)
+        assert attempts == 1
+        release.set()
+        assert await asyncio.gather(first, second) == [True, True]
+
+    asyncio.run(scenario())
+    assert attempts == 1
 
 
 def test_windows_ffprobe_is_utf8_safe():
