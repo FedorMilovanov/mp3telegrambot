@@ -1,221 +1,139 @@
 # VoxCPM2 CPU dubbing handbook
 
-> Проектный статус на 2026-07-25. Этот документ — источник истины для локальной озвучки, будущей интеграции с LiveDub и передачи задачи другим ИИ/разработчикам.
+> Актуальный источник истины для локальной CPU-озвучки, будущей интеграции с LiveDub и передачи задачи другим ИИ/разработчикам. Обновлено 26 июля 2026 года.
 
-## 1. Цель
+## 1. Цель проекта
 
-Собрать управляемый конвейер дубляжа:
+Собрать управляемый конвейер:
 
 ```text
 YouTube / локальное видео
   -> исходный звук и субтитры
   -> проверенный русский перевод
-  -> чистый референс голоса
-  -> VoxCPM2 на CPU
-  -> сегментная подгонка к таймкодам
-  -> QA русского текста и аудио
-  -> sidechain-микс русского голоса с тихим оригиналом
-  -> финальный MP4 / WAV / SRT / JSON-отчёт
+  -> выбранные референсы голоса
+  -> VoxCPM2 строго на CPU
+  -> несколько кандидатов каждого смыслового блока
+  -> NoChew / endpoint / content QA
+  -> точная таймлиния
+  -> постоянный уровень оригинала без sidechain
+  -> двухпроходный master
+  -> MP4 / WAV / SRT / JSON-отчёты
 ```
 
-VoxCPM2 пока не включён в основной LiveDub runtime. Текущий этап — лабораторный CPU-контур и профессиональный сегментный прототип для Shorts.
+VoxCPM2 пока не импортируется основным Telegram bot runtime. Текущий этап — стабильный лабораторный production-контур для Shorts и подготовка архитектуры длинных проповедей.
 
----
+## 2. Текущий статус
 
-## 2. Критически важное ограничение железа
+```text
+Подтверждённая база: V3.2 NoChew
+Финальный эксперимент: Steps 16 / CFG 1.80
+Статус публикации: ещё не утверждён владельцем
+```
 
-### NVIDIA GeForce RTX 3060
+Владелец оценил V3.2 как первый действительно удачный полный результат:
 
-Эта карта считается **подтверждённо аппаратно неисправной** для данного проекта.
+- значительно лучше прежних версий;
+- нет повторяющегося проглатывания слов;
+- окончания фраз звучат чётко;
+- исчезло характерное «жевание» после смысловых блоков;
+- полный ролик собран и звучит связно.
 
-Наблюдавшиеся симптомы:
+Следующие изменения не должны ухудшать endpoint-поведение V3.2.
 
-- CUDA-запуск VoxCPM2 воспроизводимо сбрасывает драйвер;
+Точное текущее состояние:
+
+```text
+docs/voxcpm2/CURRENT_STATE.md
+```
+
+## 3. Безусловное аппаратное ограничение
+
+NVIDIA GeForce RTX 3060 считается подтверждённо аппаратно неисправной для этого проекта.
+
+Наблюдались:
+
+- CUDA-сбросы драйвера;
 - `nvlddmkm`, Event ID 153;
 - LiveKernelEvent / WATCHDOG;
 - временное зависание Windows;
 - CUBLAS internal/execution errors;
 - illegal memory access;
-- сбои BF16/FP16;
-- замена драйвера на 610.62 проблему не исправила;
-- реболл уже выполнялся;
-- CapCut иногда тоже вызывает Event ID 153, хотя отдельные длинные задачи способен завершать.
+- BF16/FP16 failures;
+- замена драйвера проблему не исправила;
+- реболл уже выполнялся.
 
-### Безусловное правило
+До замены карты VoxCPM2 нельзя запускать через CUDA и нельзя использовать RTX как fallback.
 
-До замены видеокарты VoxCPM2 **не запускать через CUDA** и не использовать RTX 3060 как резервный путь.
-
-Каждый локальный скрипт обязан устанавливать переменные **до импорта PyTorch/VoxCPM**:
+До импорта PyTorch/VoxCPM каждый процесс обязан установить:
 
 ```python
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 ```
 
-PowerShell launcher также должен выставлять:
+PowerShell launcher обязан сделать то же:
 
 ```powershell
 $env:CUDA_VISIBLE_DEVICES = "-1"
 $env:CUDA_DEVICE_ORDER = "PCI_BUS_ID"
 ```
 
-Контрольная строка в каждом логе:
+Контрольная строка:
 
 ```text
 CUDA available: False
 ```
 
-Нельзя предлагать пользователю «ещё раз проверить CUDA», «попробовать другой драйвер» или «временно погонять RTX».
-
----
-
-## 3. Зафиксированное локальное окружение
+## 4. Зафиксированное окружение
 
 ```text
-Python:       3.11.9
-voxcpm:       2.0.3
-PyTorch:      2.13.0+cpu
-CUDA:         False
-CPU threads:  10 (первичный профиль)
-LocDiT steps: 4 (черновой профиль)
+Python:        3.11.9
+voxcpm:        2.0.3
+PyTorch:       2.13.0+cpu
+CPU threads:   10
+CPU venv:      C:\AI-Archive\VoxCPM2-CPU-TEST\.venv
+Model archive: C:\AI-Archive\VoxCPM2-paused-RTX3060
+Final package: C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL
 ```
 
-Ключевые пути текущей Windows-машины:
+Snapshot:
 
 ```text
-CPU venv:
-C:\AI-Archive\VoxCPM2-CPU-TEST\.venv
-
-Сохранённая модель / старый архив CUDA-запуска:
-C:\AI-Archive\VoxCPM2-paused-RTX3060
-
-Snapshot модели:
 C:\AI-Archive\VoxCPM2-paused-RTX3060\models\voxcpm2-model-cache\models--openbmb--VoxCPM2\snapshots\bffb3df5a29440629464e5e839f4d214c8714c3d
 ```
 
-Модель весит более 15 ГБ. CPU-venv использует те же сохранённые веса и не должен создавать вторую копию модели.
+Модель уже сохранена локально. Нельзя создавать вторую копию 15+ ГБ без необходимости.
 
-Оценка дополнительного дискового места:
+## 5. Подтверждённые измерения
 
-- CPU virtualenv и зависимости: ориентировочно 2–4 ГБ;
-- pip cache: ориентировочно 1–3 ГБ, после стабильного запуска можно очищать;
-- WAV/JSON/Shorts: существенно меньше модели.
-
----
-
-## 4. Подтверждённые тесты
-
-### 4.1 Первый успешный CPU TTS
+Первый CPU smoke test:
 
 ```text
-Полученный звук:     10.72 сек.
-Время синтеза:       101.37 сек.
-RTF:                 9.46
-Оценка для 42:23:    6.68 часа
-Загрузка модели:     около 17 сек.
+Полученный звук: 10.72 сек.
+Синтез:          101.37 сек.
+RTF:             9.46
+Оценка 42:23:    6.68 часа
 ```
 
-Вывод:
-
-- CPU-контур работает;
-- RTX 3060 не участвует;
-- произношение русского текста хорошее;
-- скорость пригодна для ночной обработки;
-- один длинный вызов всё равно не является правильной архитектурой.
-
-### 4.2 Качество первого голоса
-
-Плюсы:
-
-- хорошая русская дикция;
-- интересный тембр;
-- нет основного фонетического развала.
-
-Минусы:
-
-- ощущение «гаража»;
-- комнатная окраска;
-- шумовой/реверберационный фон;
-- недостаточно сухая студийная подача.
-
-Это привело к правилу: не маскировать плохой референс агрессивным пост-EQ, а сначала выбирать и готовить правильный reference WAV.
-
-### 4.3 MacArthur Shorts, попытка 1
-
-Источник:
+Первый длинный single-pass MacArthur:
 
 ```text
-https://youtube.com/shorts/RAaSAbPj-iw
+Видео:            48.69 сек.
+Русский output:   19.20 сек.
+Синтез:           213.80 сек.
+RTF:              11.14
+Нужный atempo:    0.394299
 ```
 
-Ошибка при combined/ultimate cloning:
+Это был неполный output, а не проблема FFmpeg. Растягивать его до длины видео нельзя.
+
+Подробная история:
 
 ```text
-The expanded size of the tensor (512) must match the existing size (550)
-Target sizes: [1, 2, 512, 128]
-Tensor sizes: [2, 550, 128]
+docs/voxcpm2/EXPERIMENT_LOG.md
 ```
 
-Причина: локальный snapshot создавал KV-cache длиной 512, а один только prompt/reference prefix занимал около 550 позиций.
-
-### 4.4 MacArthur Shorts, попытка 2
-
-После удаления `reference_wav_path` генерация дошла дальше, но завершилась:
-
-```text
-KV cache is full
-```
-
-Это подтвердило, что проблема не в памяти Windows и не в RTX, а в фактической длине `StaticKVCache`.
-
-### 4.5 KV-cache patch
-
-После повторной инициализации обоих кэшей:
-
-```python
-cache_length = 8192
-cache_dtype = next(model.tts_model.parameters()).dtype
-cache_device = model.tts_model.device
-
-model.tts_model.base_lm.setup_cache(
-    1, cache_length, cache_device, cache_dtype
-)
-model.tts_model.residual_lm.setup_cache(
-    1, cache_length, cache_device, cache_dtype
-)
-```
-
-лог подтвердил:
-
-```text
-KV cache expanded to 8192 positions.
-```
-
-### 4.6 MacArthur Shorts, попытка 3
-
-Синтез технически завершился:
-
-```text
-WAV:        macarthur_ru_raw.wav
-Audio:      19.20 сек.
-Synthesis:  213.80 сек.
-RTF:        11.14
-Video:      48.69 сек.
-atempo:     0.394299
-```
-
-Launcher правильно отказался растягивать 19.20 секунды до 48.69:
-
-```text
-Русская дорожка слишком отличается по длительности.
-atempo=0.394299 выходит за безопасный диапазон.
-```
-
-Это не ошибка FFmpeg. Это **преждевременный stop-head / неполная длинная генерация**. Растягивать такой WAV нельзя: речь станет слишком медленной, а часть перевода может отсутствовать.
-
----
-
-## 5. Главный архитектурный вывод
+## 6. Архитектурный вывод
 
 ### Нельзя
 
@@ -223,458 +141,383 @@ atempo=0.394299 выходит за безопасный диапазон.
 model.generate(text=весь_ролик_или_вся_проповедь)
 ```
 
-для 48 секунд и тем более для 42 минут.
-
 ### Нужно
 
-1. Разбить перевод по предложениям и таймкодам.
+1. Разбить перевод на смысловые блоки.
 2. Загрузить модель один раз.
-3. Для каждого сегмента заново подать один и тот же чистый reference WAV.
-4. Задать сегменту собственные `min_len` и `max_len`.
-5. Сохранить отдельный raw WAV.
-6. Умеренно подогнать его через `atempo` к целевому временному окну.
-7. Собрать сегменты на единой таймлинии через `adelay + amix`.
-8. Выполнить один общий loudness pass.
-9. Смешать с английским оригиналом через sidechain ducking.
+3. Для каждого блока снова подать approved reference.
+4. Создать несколько кандидатов с записанными seed.
+5. Проверить длину, clipping, edge silence и post-silence restart.
+6. Выбрать лучший кандидат.
+7. Не замедлять короткий output.
+8. Ускорять только действительно длинный output в безопасном диапазоне.
+9. Добавить тишину до точного временного окна.
+10. Разместить блоки через `adelay`.
+11. Собрать одну timeline WAV.
+12. Выполнить master только после сборки.
 
-Это одновременно решает:
+Это решает:
 
 - переполнение KV-cache;
-- преждевременный stop;
-- дрейф тембра на длинном тексте;
-- невозможность точного lip/timeline fit;
-- дорогую перегенерацию всего файла из-за одной ошибки;
-- восстановление после сбоя.
+- premature stop длинного текста;
+- drift голоса;
+- локальную замену плохого блока;
+- восстановление после сбоя;
+- точное сохранение исходных пауз.
 
----
+## 7. Главный урок NoChew
 
-## 6. Почему `min_len` и `max_len` важнее глобального atempo
+Старые версии рассчитывали `min_len` примерно как 88–95% временного окна. Это оказалось ошибкой.
 
-Для текущего VoxCPM2 один авторегрессионный шаг соответствует примерно:
+Фактический дефект V3.1:
+
+```text
+нормальная речь -> пауза -> слабое повторное бормотание
+```
+
+Фраза уже закончилась, но высокий `min_len` запрещал stop-head остановиться.
+
+Текущее правило:
+
+```text
+Первая попытка: min_len=2
+Повышение: только для доказанно неполной повторной попытки
+Запрещено: выводить min_len из 90%+ subtitle window
+```
+
+`retry_badcase=True` не заменяет QA. Он не понимает:
+
+- пропущенное слово;
+- повтор слога;
+- clipped final consonant;
+- pause-then-chewing restart;
+- voice drift;
+- английский accent leakage.
+
+Нужна собственная проверка кандидатов.
+
+## 8. Правило duration fit
+
+### Запрещено
+
+Замедлять короткий WAV только ради заполнения окна:
+
+```text
+atempo < 1
+```
+
+Так растягиваются:
+
+- паузы;
+- дыхание;
+- шум;
+- слабые хвосты;
+- модельные артефакты.
+
+### Текущее правило
+
+```text
+Короткий output: сохранить естественную скорость и дополнить тишиной
+Длинный output: умеренно ускорить
+```
+
+Никакой end fade не должен касаться произнесённой части. Fade допустим только внутри уже обнаруженной тишины после подтверждённого дефектного хвоста.
+
+## 9. Текущая схема MacArthur
+
+Источник:
+
+```text
+https://youtube.com/shorts/RAaSAbPj-iw
+```
+
+Production timing plan:
+
+```text
+1: 00.000-10.880 — B extended
+2: 10.880-24.160 — B extended
+3: 24.720-32.600 — B extended
+4: 33.200-48.694 — C composite
+```
+
+Файл:
+
+```text
+tools/voxcpm2/examples/macarthur_raasabpj_iw/segments_ru_final.json
+```
+
+Почему четыре блока, а не семь:
+
+- меньше hard prosodic resets;
+- более цельная интонация;
+- меньше искусственных склеек;
+- сохранены естественные исходные паузы.
+
+## 10. Reference strategy
+
+Сравнивались:
+
+```text
+A: 10.88 сек., reference-only
+B: 24 сек., reference-only
+C: около 21 сек., composite reference-only
+D: 10.88 сек., Ultimate
+```
+
+Результат owner listening:
+
+- B — лучший основной голос и начало;
+- C — лучшая завершающая каденция;
+- A — неплохой, но с неестественной внутренней паузой;
+- D — худший.
+
+Production policy:
+
+```text
+Блоки 1-3: B
+Блок 4:    C
+Mode:      reference-only
+Ultimate:  только отдельное исследование
+```
+
+Подготовка B/C:
+
+```text
+highpass=f=65,lowpass=f=7800,loudnorm=I=-20:LRA=7:TP=-2
+```
+
+Не применять агрессивный `afftdn` по умолчанию.
+
+Более длинный reverberant reference может одновременно усилить узнаваемость и перенести больше помещения. Лучший будущий шаг — чистый close-mic MacArthur reference 15–25 секунд.
+
+Полный playbook:
+
+```text
+docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md
+```
+
+## 11. KV-cache
+
+Локальная конфигурация 512 была недостаточна.
+
+Ошибка:
+
+```text
+The expanded size of the tensor (512) must match the existing size (550)
+```
+
+и затем:
+
+```text
+KV cache is full
+```
+
+Сегментный production-профиль использует явную инициализацию обоих кэшей, например 4096:
 
 ```python
-seconds_per_step = (
-    model.tts_model.patch_size
-    * model.tts_model.chunk_size
-    / model.tts_model._encode_sample_rate
+cache_dtype = next(model.tts_model.parameters()).dtype
+cache_device = model.tts_model.device
+
+model.tts_model.base_lm.setup_cache(
+    1, 4096, cache_device, cache_dtype
+)
+model.tts_model.residual_lm.setup_cache(
+    1, 4096, cache_device, cache_dtype
 )
 ```
 
-На имеющемся snapshot это около 0.16 секунды.
+8192 работало для эксперимента, но для коротких production-блоков 4096 достаточно и экономнее.
 
-Для окна `target_duration`:
-
-```python
-desired_steps = target_duration / seconds_per_step
-min_len = floor(desired_steps * 0.88)
-max_len = ceil(desired_steps * 1.35)
-```
-
-`min_len` не даёт stop-head закончить реплику в два-три раза раньше времени. `max_len` ограничивает runaway generation.
-
-После этого `atempo` делает только умеренную коррекцию, а не пытается «спасти» неполный WAV.
-
----
-
-## 7. Режимы клонирования
-
-VoxCPM2 поддерживает четыре фактических режима.
-
-### 7.1 Zero-shot / Voice Design
-
-```python
-wav = model.generate(text="(описание голоса)Текст")
-```
-
-Подходит для нового голоса. Не подходит, когда нужен конкретный проповедник.
-
-### 7.2 Reference-only
-
-```python
-wav = model.generate(
-    text=target_text,
-    reference_wav_path=reference_wav,
-)
-```
-
-Изолированно извлекает тембр и не требует транскрипта референса.
-
-**Проектный default для cross-language ENG -> RU.**
-
-Причина: Ultimate/continuation способен сильнее переносить английскую артикуляцию и акцент в русскую речь.
-
-### 7.3 Continuation
-
-```python
-wav = model.generate(
-    text=target_text,
-    prompt_wav_path=reference_wav,
-    prompt_text=exact_reference_transcript,
-)
-```
-
-Сильнее воспроизводит ритм и продолжение prompt-а. Требует дословно точной расшифровки.
-
-### 7.4 Combined / Ultimate
-
-```python
-wav = model.generate(
-    text=target_text,
-    reference_wav_path=reference_wav,
-    prompt_wav_path=reference_wav,
-    prompt_text=exact_reference_transcript,
-)
-```
-
-Обычно максимальная похожесть, но для переноса английского голоса на русский может сильнее сохранять английскую артикуляцию. Использовать как A/B-вариант после успешного reference-only результата.
-
----
-
-## 8. Золотой стандарт референса
-
-### Рекомендуется
-
-- один говорящий;
-- 5–12 секунд для первого теста;
-- одна или две законченные фразы;
-- без музыки;
-- без аплодисментов;
-- без второго голоса;
-- без резких склеек внутри слова;
-- без сильного зала и эха;
-- без clipping;
-- ровная громкость;
-- максимально близкий микрофон;
-- WAV mono, 16 kHz для encoder input.
-
-### Не рекомендуется
-
-- агрессивный `afftdn` до клонирования;
-- чрезмерный noise gate;
-- сильная компрессия;
-- искусственное «радио»-EQ;
-- MP3, перекодированный несколько раз;
-- длинный reference только ради «больше данных»;
-- неточная расшифровка для prompt/ultimate.
-
-### Безопасная стартовая подготовка FFmpeg
+## 12. Текущий final profile
 
 ```text
-highpass=f=65,
-lowpass=f=7800,
-loudnorm=I=-20:LRA=7:TP=-2
+Device:          CPU
+Clone mode:      reference-only
+Steps:           16
+CFG:             1.80
+Candidates:      2 per block
+Third candidate: only when suspicious
+Seeds:           fixed and recorded
+Intermediate:    PCM 24-bit / 48 kHz
+NoChew:          enabled
+Short slowdown:  forbidden
 ```
 
-Не добавлять `afftdn` по умолчанию. Сначала слушать исходный reference и сравнивать A/B.
+Этот профиль пока является экспериментом. Нельзя утверждать, что Steps 16 / CFG 1.80 лучше V3.2, пока владелец не прослушал результат.
 
----
+## 13. Mix policy
 
-## 9. Параметры качества
+Owner rejected speech-triggered sidechain ducking.
 
-### Черновой Shorts
+Нужно:
 
 ```text
-inference_timesteps = 4
-cfg_value = 2.0
-threads = 10
-clone_mode = reference
-cache_length = 2048
+Русский голос: 100%
+Оригинал:       один постоянный reduced gain
+Sidechain:      disabled
 ```
 
-### Финальный Shorts
+Критически важно различать:
+
+| Формулировка | Gain | Приблизительно |
+|---|---:|---:|
+| снизить на 25% | `0.75` | `-2.50 dB` |
+| оставить на 25% | `0.25` | `-12.04 dB` |
+| снизить на 30% | `0.70` | `-3.10 dB` |
+
+Текущий intended range:
 
 ```text
-inference_timesteps = 8–10
-cfg_value = 1.8–2.2
-threads = 10–16 после A/B benchmark
-clone_mode = reference или ultimate после сравнения
-cache_length = 2048
+OriginalGain: 0.70-0.78
+Default:      0.75
 ```
 
-### Длинная проповедь
-
-- только сегменты;
-- ориентир 10–30 секунд на сегмент;
-- одинаковый reference на каждом сегменте;
-- checkpoint JSON после каждого WAV;
-- повторная генерация только плохих сегментов;
-- финальная проверка faster-whisper;
-- смысловая QA через Gemini по оригиналу, переводу и таймкодам.
-
-### `optimize`
-
-На CPU:
-
-```python
-optimize=False
-```
-
-Официальная реализация оптимизации использует `torch.compile` и ориентирована на CUDA. Не пытаться включать её для текущего CPU-профиля.
-
-### Denoiser
-
-Первичный профиль:
-
-```python
-load_denoiser=False
-denoise=False
-```
-
-Причины:
-
-- меньше RAM;
-- нет дополнительного скачивания;
-- меньше скрытых преобразований референса;
-- проще A/B-анализ.
-
-`load_denoiser=True` проверять отдельно только после рабочего сегментного конвейера.
-
----
-
-## 10. Профессиональная подгонка таймингов
-
-### Для каждого сегмента
-
-1. Генерировать raw WAV с ограничениями длины.
-2. Измерить длительность через `ffprobe`.
-3. Вычислить:
+Изменение gain не требует нового VoxCPM2 synthesis. Использовать:
 
 ```text
-atempo = raw_duration / target_duration
+tools/voxcpm2/windows/Remaster-MacArthur-Constant-Gain.ps1
 ```
 
-4. Применить цепочку `atempo`, если значение выходит за диапазон одного фильтра 0.5–2.0.
-5. Добавить короткие fade-in/fade-out.
-6. `apad` + `atrim` до точной длительности окна.
-7. Разместить сегмент через `adelay=start_ms`.
-8. Сложить `amix=normalize=0`.
-9. Один общий `loudnorm` до -16 LUFS / -1.5 dBTP.
-
-### Защитные пороги
-
-Если raw-сегмент короче целевого окна более чем примерно на 35% или длиннее более чем на 65%, не маскировать проблему экстремальным `atempo`: перегенерировать сегмент или исправить текст/min_len/max_len.
-
----
-
-## 11. Финальный микс
-
-Желаемый результат:
-
-- русский голос впереди;
-- английский оригинал остаётся различимым;
-- во время русской речи английский приглушается sidechain-компрессором;
-- в паузах оригинал возвращается;
-- финальные слова не обрезаются;
-- видео обычно копируется без перекодирования.
-
-Принцип:
+## 14. Production tools
 
 ```text
-RU -> asplit -> sidechain key + final mix
-EN -> volume -> sidechaincompress keyed by RU
-EN ducked + RU -> amix -> limiter
+tools/voxcpm2/production_preflight.py
+tools/voxcpm2/windows/Run-MacArthur-Final-CPU.ps1
+tools/voxcpm2/windows/Remaster-MacArthur-Constant-Gain.ps1
+tools/voxcpm2/examples/macarthur_raasabpj_iw/segments_ru_final.json
+tools/voxcpm2/examples/macarthur_raasabpj_iw/subtitles_ru_final.srt
 ```
 
-Это согласуется с существующим `services/livedub_mix.py`, где уже реализованы sidechain, loudness alignment, tail guard и сохранение чистых дорожек.
-
----
-
-## 12. Интеграция с mp3telegrambot
-
-Будущая интеграция должна быть отдельным сервисом, а не кодом внутри handler-а.
-
-Предлагаемая структура:
+Главный runbook:
 
 ```text
-services/
-  voxcpm2_runtime.py       # загрузка модели, CPU guard, cache setup
-  voxcpm2_reference.py     # поиск/оценка/подготовка референса
-  voxcpm2_segmenter.py     # SRT/перевод -> сегменты
-  voxcpm2_synth.py         # segment generation + checkpoint
-  voxcpm2_timeline.py      # atempo/adelay/amix
-  voxcpm2_qa.py            # ASR + смысловая проверка
-
-pipelines/
-  livedub_voxcpm2.py       # orchestration
+docs/voxcpm2/PRODUCTION_RUNBOOK.md
 ```
 
-Основной pipeline не должен импортировать тяжёлый PyTorch при обычном старте Telegram-бота. Модель загружается лениво только для выбранного режима.
+## 15. Preflight
 
-Требования:
+До загрузки 15+ ГБ модели проверяются:
 
-- lock: одновременно один CPU synthesis job;
-- отмена через существующий `/stop`;
-- прогресс по сегментам;
-- возобновление после сбоя;
-- кэш reference WAV по source ID + speaker window;
-- кэш сегментов по hash текста, reference и параметров;
-- raw/fitted/final дорожки не удалять до успешного QA;
-- не публиковать результат, если отсутствуют сегменты или duration check не прошёл;
-- маркировать синтетический дубляж для прозрачности.
+- Python executable;
+- production package scripts;
+- Python syntax;
+- FFmpeg/ffprobe;
+- source video;
+- source duration;
+- segment bounds;
+- B/C references;
+- model snapshot;
+- free disk;
+- `CUDA_VISIBLE_DEVICES=-1`.
 
----
-
-## 13. Текущий MacArthur V2
-
-Сегменты построены по исходным английским SRT:
+Tool:
 
 ```text
-00:00.000–00:05.120
-00:05.120–00:10.880
-00:10.880–00:16.960
-00:16.960–00:24.160
-00:24.720–00:32.600
-00:33.200–00:39.680
-00:39.680–00:48.000
+tools/voxcpm2/production_preflight.py
 ```
 
-Перевод:
+## 16. PowerShell quality gate
 
-1. «Харизматическое движение само по себе ничего не добавило к ясности Библии.»
-2. «Оно ничего не добавило ни к толкованию Писания, ни к здравому учению.»
-3. «Здравое учение существовало задолго до появления харизматического движения.»
-4. «От верных служителей вплоть до апостолов к нам тянется ясный поток истины.»
-5. «Это движение ничего к нему не добавляет. Оно лишь умаляет истину и вносит путаницу.»
-6. «Спасались ли люди в харизматических церквях и через проповедь харизматических проповедников? Да, спасались.»
-7. «Но ничто, исходившее от этого движения, не было причиной их спасения.»
+Первые final launchers выявили отдельный класс ошибок:
 
-Первый V2-прогон должен использовать `reference-only`, 4 шага и cache 2048. Ultimate проверяется только вторым A/B-прогоном.
+- unmatched expression;
+- encoding corruption;
+- cascading parser errors;
+- relative parser path under `C:\Windows\System32`;
+- missing directories/source/references.
 
----
+Текущая политика:
 
-## 14. Диагностика известных ошибок
+- ASCII-safe control flow;
+- arrays for command arguments instead of fragile backtick chains;
+- automatic directory creation;
+- automatic source reuse/download;
+- automatic B/C generation;
+- AST parse every `.ps1` in CI.
 
-### `from` / `import` не распознаётся PowerShell
-
-Причина: Python-код вставлен прямо в PowerShell.
-
-Решение: давать пользователю PowerShell-команды или готовый ZIP. Не просить вручную вставлять многострочный Python.
-
-### ZIP не найден
-
-Проверить реальный путь и возможное браузерное переименование `(1)`. Не продолжать после `Test-Path=False`.
-
-### `UnicodeEncodeError: charmap`
-
-В Python:
-
-```python
-for stream in (sys.stdout, sys.stderr):
-    if hasattr(stream, "reconfigure"):
-        stream.reconfigure(encoding="utf-8", errors="replace")
-```
-
-В окружении:
+Workflow:
 
 ```text
-PYTHONUTF8=1
-PYTHONIOENCODING=utf-8
+.github/workflows/voxcpm2-windows.yml
 ```
 
-### `unexpected keyword argument 'seed'`
+## 17. Publication acceptance gate
 
-Локальная установленная версия API не принимала `seed`. Не копировать сигнатуру из другой ветки без проверки `inspect.signature(model.generate)`.
+Нельзя утверждать «готово к загрузке», пока не проверено:
 
-### `512 must match 550`
+### Content
 
-Prompt/reference prefix больше выделенного cache. Переинициализировать оба LM cache после загрузки модели.
+- все русские предложения присутствуют;
+- нет swallowed word/consonant;
+- нет повторов и hallucinated words;
+- богословские термины точны;
+- SRT соответствует смыслу финальной речи.
 
-### `KV cache is full`
+### Voice
 
-Слишком короткий cache и/или слишком длинный single-pass. Для Shorts-сегментов использовать cache 2048; для эксперимента с длинным проходом максимум 8192, но архитектурно всё равно сегментировать.
+- MacArthur similarity приемлема;
+- B delivery сохранена в 1–3 блоках;
+- C cadence работает в финале;
+- нет резкого voice drift;
+- нет недопустимого английского акцента.
 
-### Генерация завершилась слишком рано
+### Audio
 
-Использовать рассчитанный `min_len`, а не экстремальный `atempo`.
+- Russian-only прослушан отдельно;
+- нет pause-then-chewing tail;
+- нет clipping;
+- постоянный original gain;
+- нет sidechain pumping;
+- master JSON существует;
+- начало и конец не обрезаны;
+- длительность совпадает с source.
 
-### «Гараж», шум, помещение
+### Reproducibility
 
-Проверить reference WAV до модели. Сравнить raw source, lightly filtered reference и output. Не лечить всё пост-EQ. Переключить Ultimate -> Reference-only. Вырезать другой чистый участок.
+- preflight JSON;
+- synthesis JSON;
+- master JSON;
+- параметры и seed;
+- выбранный candidate каждого блока;
+- source URL и duration.
 
-### RAM около 75%
+## 18. Следующие оптимизации
 
-Для 32 ГБ это допустимо, если остаётся несколько гигабайт available и нет активного thrashing/pagefile. Не запускать параллельно CapCut и тяжёлый браузерный workload.
+В порядке ожидаемой пользы:
 
----
+1. прослушать текущий Steps 16 / CFG 1.80 render;
+2. remaster одного и того же Russian WAV при gain 0.70 / 0.75 / 0.78;
+3. добавить ASR completeness score для каждого candidate;
+4. проверять endpoint phoneme/consonant, а не только энергию;
+5. найти cleaner close-mic reference;
+6. провести CFG 1.55 / 1.75 / 1.95 sweep на одной ending-sensitive фразе;
+7. сравнить Steps 10 / 16 только после выбора CFG;
+8. добавить resumable manifest и selected-segment regeneration;
+9. провести одинаковый русский bake-off с Chatterbox Multilingual V3 и Qwen3-TTS;
+10. Fish S2-Pro тестировать после исправной GPU или в облаке.
 
-## 15. Источники: 40+ первичных ссылок
+Слепое увеличение steps менее перспективно, чем candidate selection, reference acoustics и content QA.
 
-### Официальные VoxCPM2
+## 19. Передача другому ИИ
 
-1. https://github.com/OpenBMB/VoxCPM
-2. https://voxcpm.readthedocs.io/
-3. https://voxcpm.readthedocs.io/en/latest/quickstart.html
-4. https://voxcpm.readthedocs.io/en/latest/installation.html
-5. https://voxcpm.readthedocs.io/en/latest/usage_guide.html
-6. https://voxcpm.readthedocs.io/en/latest/reference/changelog.html
-7. https://huggingface.co/openbmb/VoxCPM2
-8. https://pypi.org/project/voxcpm/
-9. https://pypi.org/project/voxcpm/2.0.3/
-10. https://arxiv.org/abs/2509.24650
-11. https://github.com/OpenBMB/VoxCPM/blob/main/app.py
-12. https://github.com/OpenBMB/VoxCPM/blob/main/src/voxcpm/core.py
-13. https://github.com/OpenBMB/VoxCPM/blob/main/src/voxcpm/model/voxcpm2.py
-14. https://github.com/OpenBMB/VoxCPM/blob/main/src/voxcpm/modules/minicpm4/cache.py
-15. https://github.com/OpenBMB/VoxCPM/blob/main/src/voxcpm/modules/minicpm4/model.py
+Сначала читать:
 
-### Официальные issues: реальные ограничения и edge cases
+1. `docs/voxcpm2/CURRENT_STATE.md`;
+2. `docs/voxcpm2/HANDOFF_FOR_AI.md`;
+3. `docs/voxcpm2/PRODUCTION_RUNBOOK.md`;
+4. `docs/voxcpm2/EXPERIMENT_LOG.md`;
+5. `docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`;
+6. `docs/voxcpm2/QUALITY_RESEARCH_2026-07-26.md`;
+7. `docs/voxcpm2/MODEL_COMPARISON_2026-07-26.md`;
+8. `docs/voxcpm2/SOURCES.md`.
 
-16. https://github.com/OpenBMB/VoxCPM/issues/52
-17. https://github.com/OpenBMB/VoxCPM/issues/62
-18. https://github.com/OpenBMB/VoxCPM/issues/136
-19. https://github.com/OpenBMB/VoxCPM/issues/209
-20. https://github.com/OpenBMB/VoxCPM/issues/213
-21. https://github.com/OpenBMB/VoxCPM/issues/219
-22. https://github.com/OpenBMB/VoxCPM/issues/248
-23. https://github.com/OpenBMB/VoxCPM/issues/256
-24. https://github.com/OpenBMB/VoxCPM/issues/285
-25. https://github.com/OpenBMB/VoxCPM/issues/293
-26. https://github.com/OpenBMB/VoxCPM/issues/296
-27. https://github.com/OpenBMB/VoxCPM/issues/302
-28. https://github.com/OpenBMB/VoxCPM/issues/316
-29. https://github.com/OpenBMB/VoxCPM/issues/321
-30. https://github.com/OpenBMB/VoxCPM/issues/323
-31. https://github.com/OpenBMB/VoxCPM/issues/338
-32. https://github.com/OpenBMB/VoxCPM/issues/342
-33. https://github.com/OpenBMB/VoxCPM/issues/344
-34. https://github.com/OpenBMB/VoxCPM/issues/357
-35. https://github.com/OpenBMB/VoxCPM/issues/359
-36. https://github.com/OpenBMB/VoxCPM/issues/360
+Другой ИИ не должен:
 
-### Первичные источники по runtime и аудио
-
-37. https://ffmpeg.org/ffmpeg-filters.html#atempo
-38. https://ffmpeg.org/ffmpeg-filters.html#adelay
-39. https://ffmpeg.org/ffmpeg-filters.html#amix
-40. https://ffmpeg.org/ffmpeg-filters.html#sidechaincompress
-41. https://ffmpeg.org/ffmpeg-filters.html#loudnorm
-42. https://pytorch.org/docs/stable/generated/torch.set_num_threads.html
-43. https://pytorch.org/docs/stable/generated/torch.inference_mode.html
-44. https://python-soundfile.readthedocs.io/
-45. https://github.com/yt-dlp/yt-dlp
-46. https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache
-47. https://huggingface.co/docs/safetensors/index
-
----
-
-## 16. Правила обновления этого документа
-
-После каждого значимого теста записывать:
-
-- дата;
-- source URL / file;
-- точный commit/version package;
-- clone mode;
-- reference interval;
-- текст сегмента;
-- steps, cfg, min_len, max_len, cache length, threads;
-- load time;
-- synthesis time;
-- raw duration;
-- fitted duration;
-- RTF;
-- субъективное качество;
-- ошибки;
-- путь к WAV/JSON/log.
-
-Не заменять подтверждённые факты предположениями. Экспериментальный совет помечать как экспериментальный.
+- предлагать CUDA;
+- возвращать семь коротких V2-сегментов;
+- восстанавливать timing-derived high `min_len`;
+- замедлять short candidates;
+- использовать Ultimate по умолчанию;
+- возвращать sidechain;
+- путать `reduce by 25%` с `gain 0.25`;
+- утверждать финальный успех без owner listening.
