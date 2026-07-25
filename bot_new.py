@@ -26,7 +26,6 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
-# Reserve one process before Local API recovery and heavy imports.
 try:
     from services.project_runtime_hardening import acquire_early_singleton
 
@@ -36,9 +35,6 @@ try:
 except Exception as _singleton_error:
     print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
 
-# The project requires the local Bot API. There is no silent cloud fallback and
-# no automatic 47 MB replacement: either the real local /getMe works, or the bot
-# stops before downloading and processing a long video.
 try:
     from services.local_botapi_required import require_local_bot_api
 
@@ -76,7 +72,6 @@ try:
 except Exception as _qa_trust_error:
     print(f"⚠️ Аудиопроверка точности LiveDub не установлена: {_qa_trust_error}")
 
-# Must run before main imports the pipeline's YTDLP_BASE_ARGS by value.
 try:
     from services.livedub_delivery_hardening import install_livedub_delivery_hardening
 
@@ -87,9 +82,14 @@ except Exception as _delivery_hardening_error:
 import main as _main_module
 from main import main
 
-# Install these before the audio companion. The companion must still see the
-# private LiveDub marker, while the actual Telegram request receives the clean
-# Russian publication card from the inner wrappers.
+# Replace the imported /help binding before Application handlers are built.
+try:
+    from services.livedub_help_runtime import install_livedub_help_runtime
+
+    install_livedub_help_runtime(_main_module)
+except Exception as _help_runtime_error:
+    print(f"⚠️ Актуальная справка LiveDub не установлена: {_help_runtime_error}")
+
 try:
     from services.livedub_output_policy import install_livedub_output_policy
 
@@ -111,8 +111,6 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
-# Tighten the companion's internal contract before dedupe/deep-audit wrappers
-# capture its callables. This keeps retry semantics and cache invalidation honest.
 try:
     from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
 
@@ -134,7 +132,6 @@ try:
 except Exception as _dedupe_hardening_error:
     print(f"⚠️ Усиленная защита от английского MP3 не установлена: {_dedupe_hardening_error}")
 
-# Install after the legacy publication and QA integration layers.
 try:
     from services.livedub_deep_audit import install_livedub_deep_audit
 
@@ -142,8 +139,6 @@ try:
 except Exception as _deep_audit_error:
     print(f"⚠️ Глубокая защита публикации и QA LiveDub не установлена: {_deep_audit_error}")
 
-# Final audio-facing wrapper: it preserves two distinct public variants instead
-# of allowing the legacy one-MP3 formatters to collapse their captions.
 try:
     from services.livedub_dual_audio_policy import install_livedub_dual_audio_policy
 
