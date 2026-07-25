@@ -117,7 +117,17 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
-# Must run before quality/dedupe/deep-audit wrappers capture cached send callables.
+# Both local and cached MP3 paths must become transactional before later wrappers
+# capture their callables.
+try:
+    from services.livedub_new_delivery_atomicity import (
+        install_livedub_new_delivery_atomicity,
+    )
+
+    install_livedub_new_delivery_atomicity()
+except Exception as _new_atomicity_error:
+    print(f"⚠️ Transactional отправка новых MP3 LiveDub не установлена: {_new_atomicity_error}")
+
 try:
     from services.livedub_cached_delivery_atomicity import (
         install_livedub_cached_delivery_atomicity,
