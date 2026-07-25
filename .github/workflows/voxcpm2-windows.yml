@@ -1,0 +1,111 @@
+name: VoxCPM2 Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "tools/voxcpm2/**"
+      - "tests/test_voxcpm2_*.py"
+      - ".github/workflows/voxcpm2-windows.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "tools/voxcpm2/**"
+      - "tests/test_voxcpm2_*.py"
+      - ".github/workflows/voxcpm2-windows.yml"
+
+concurrency:
+  group: voxcpm2-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Compile VoxCPM2 Python tools
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File |
+            ForEach-Object {
+              Write-Host "Compiling $($_.FullName)"
+              python -m py_compile $_.FullName
+              if ($LASTEXITCODE -ne 0) {
+                throw "Python compile failed: $($_.FullName)"
+              }
+            }
+
+      - name: Parse every VoxCPM2 PowerShell launcher
+        shell: pwsh
+        run: |
+          $failed = $false
+          $scripts = Get-ChildItem -LiteralPath "tools/voxcpm2/windows" -Filter "*.ps1" -File
+
+          if (-not $scripts) {
+            throw "No VoxCPM2 PowerShell launchers found"
+          }
+
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            )
+
+            if ($parseErrors.Count -gt 0) {
+              $failed = $true
+              Write-Host "PowerShell parse failed: $($script.FullName)" -ForegroundColor Red
+              foreach ($errorItem in $parseErrors) {
+                Write-Host (
+                  "Line {0}, column {1}: {2}" -f
+                  $errorItem.Extent.StartLineNumber,
+                  $errorItem.Extent.StartColumnNumber,
+                  $errorItem.Message
+                ) -ForegroundColor Red
+              }
+            }
+            else {
+              Write-Host "PowerShell OK: $($script.Name)" -ForegroundColor Green
+            }
+          }
+
+          if ($failed) {
+            throw "One or more VoxCPM2 launchers contain parse errors"
+          }
+
+      - name: Run lightweight VoxCPM2 tests
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_voxcpm2_tools.py
+          tests/test_voxcpm2_quality_sweep.py
+          tests/test_voxcpm2_production_preflight.py
+
+      - name: Ruff fatal checks
+        shell: pwsh
+        run: >-
+          python -m ruff check --select E9,F63,F7,F82
+          tools/voxcpm2
+          tests/test_voxcpm2_tools.py
+          tests/test_voxcpm2_quality_sweep.py
+          tests/test_voxcpm2_production_preflight.py
