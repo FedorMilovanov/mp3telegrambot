@@ -131,6 +131,8 @@ jobs:
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_new_delivery_atomicity.py
+          tests/test_livedub_new_delivery_roles.py
+          tests/test_livedub_install_order.py
           tests/test_livedub_cached_delivery_atomicity.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
@@ -187,6 +189,8 @@ jobs:
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_new_delivery_atomicity.py
+          tests/test_livedub_new_delivery_roles.py
+          tests/test_livedub_install_order.py
           tests/test_livedub_cached_delivery_atomicity.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
