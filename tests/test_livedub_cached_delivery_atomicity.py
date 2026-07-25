@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -73,7 +74,7 @@ def test_partial_cached_mp3_send_rolls_back_prior_message(monkeypatch):
     assert dropped == [("video-id", "mixed")]
 
 
-def test_cached_video_is_deleted_before_rebuild_signal(monkeypatch):
+def test_cached_video_is_deleted_before_rebuild_signal():
     import services.livedub_deep_audit as deep
 
     deleted: list[tuple[int, int]] = []
@@ -125,3 +126,13 @@ def test_new_local_video_is_not_deleted_when_mp3_companion_fails():
 
     assert result.video.file_id == ""
     assert bot.deleted is False
+
+
+def test_entrypoint_installs_atomicity_before_wrappers_capture_cached_send():
+    source = Path("bot_new.py").read_text(encoding="utf-8")
+    companion = source.index("install_livedub_audio_companion()")
+    atomic = source.index("install_livedub_cached_delivery_atomicity()")
+    quality = source.index("install_livedub_audio_quality_guard()")
+    dedupe = source.index("install_livedub_audio_dedupe()")
+    deep = source.index("install_livedub_deep_audit()")
+    assert companion < atomic < quality < dedupe < deep
