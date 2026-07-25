@@ -18,9 +18,10 @@ class _Message:
 
 def test_help_describes_both_mp3_variants(monkeypatch):
     import core.database as database
+    import core.globals as globals_module
 
     monkeypatch.setattr(database, "WHITELIST_IDS", set())
-    monkeypatch.setattr(database, "DAILY_LIMIT", 5)
+    monkeypatch.setattr(globals_module, "DAILY_LIMIT", 5)
     message = _Message()
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=123),
@@ -34,6 +35,7 @@ def test_help_describes_both_mp3_variants(monkeypatch):
     assert "финальный объединённый MP3" in message.text
     assert "ENG Quick QA" in message.text
     assert "только переведённое видео" not in message.text
+    assert "5 видео/день" in message.text
 
 
 def test_installer_rebinds_commands_and_main(monkeypatch):
