@@ -114,6 +114,7 @@ jobs:
           python -m py_compile services/livedub_deep_audit.py
           python -m py_compile tools/voxcpm2/segmented_cpu_dub.py
           python -m py_compile tools/voxcpm2/validate_run.py
+          python -m py_compile tools/voxcpm2/quality_sweep.py
 
       - name: Run Windows-sensitive regression tests
         run: >-
@@ -135,6 +136,7 @@ jobs:
           tests/test_livedub_qa_focused_correction.py
           tests/test_livedub_audio_retry_claims.py
           tests/test_voxcpm2_tools.py
+          tests/test_voxcpm2_quality_sweep.py
 
       - name: Ruff fatal checks for runtime files
         run: >-
@@ -158,6 +160,7 @@ jobs:
           services/livedub_deep_audit.py
           tools/voxcpm2/segmented_cpu_dub.py
           tools/voxcpm2/validate_run.py
+          tools/voxcpm2/quality_sweep.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
@@ -175,3 +178,4 @@ jobs:
           tests/test_livedub_qa_focused_correction.py
           tests/test_livedub_audio_retry_claims.py
           tests/test_voxcpm2_tools.py
+          tests/test_voxcpm2_quality_sweep.py
