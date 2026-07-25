@@ -22,6 +22,7 @@ if (-not $RepoRoot) {
 }
 
 $PythonScript = Join-Path $RepoRoot "tools\voxcpm2\segmented_cpu_dub.py"
+$ValidatorScript = Join-Path $RepoRoot "tools\voxcpm2\validate_run.py"
 $ExampleDir = Join-Path $RepoRoot "tools\voxcpm2\examples\macarthur_raasabpj_iw"
 $SegmentsJson = Join-Path $ExampleDir "segments_ru.json"
 $PromptTextFile = Join-Path $ExampleDir "reference_transcript_en.txt"
@@ -36,6 +37,7 @@ $Log = Join-Path $WorkRoot "macarthur_segmented_cpu_dub.log"
 
 $ReferenceWav = Join-Path $AudioDir "macarthur_reference_clean_16k.wav"
 $RussianTimeline = Join-Path $AudioDir "macarthur_ru_segmented_timeline.wav"
+$RussianReport = [System.IO.Path]::ChangeExtension($RussianTimeline, ".json")
 $FinalVideo = Join-Path $OutputDir "MacArthur_Russian_Dub_CPU_V2.mp4"
 $FinalSrt = Join-Path $OutputDir "MacArthur_Russian_Dub_CPU_V2.srt"
 
@@ -46,6 +48,7 @@ New-Item -ItemType Directory -Force -Path `
 foreach ($Required in @(
     $Python,
     $PythonScript,
+    $ValidatorScript,
     $SegmentsJson,
     $PromptTextFile,
     $RussianSrt
@@ -188,7 +191,20 @@ try {
         throw "Сегментный VoxCPM2 завершился с ошибкой."
     }
 
-    Write-Host "=== 5. Собираю профессиональный микс ===" `
+    if (-not (Test-Path -LiteralPath $RussianReport)) {
+        throw "Сегментный синтез не создал JSON-отчёт: $RussianReport"
+    }
+
+    Write-Host "=== 5. Проверяю полноту и тайминги ===" `
+        -ForegroundColor Cyan
+
+    & $Python $ValidatorScript $RussianReport
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Валидация сегментного дубляжа не пройдена. Финальный микс запрещён."
+    }
+
+    Write-Host "=== 6. Собираю профессиональный микс ===" `
         -ForegroundColor Cyan
 
     $EnglishVolumeText = $EnglishVolume.ToString(
@@ -232,6 +248,7 @@ try {
     Write-Host "Видео: $FinalVideo" -ForegroundColor Green
     Write-Host "Русская таймлиния: $RussianTimeline" `
         -ForegroundColor Green
+    Write-Host "Отчёт: $RussianReport" -ForegroundColor Green
     Write-Host "Субтитры: $FinalSrt" -ForegroundColor Green
     Write-Host "Лог: $Log" -ForegroundColor Green
 
