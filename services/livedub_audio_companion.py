@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Send a Russian MP3 companion after each successful LiveDub video.
+"""Deliver two validated MP3 companions for every successful LiveDub video.
 
-ENG Quick previously returned immediately after the translated video, so the
-project's normal MP3 branch was never reached.  This adapter attaches to the
-actual ``Bot.send_video`` call instead of duplicating the large pipeline:
+The delivery contract is explicit:
 
-* it runs only for captions that explicitly identify Yandex LiveDub;
-* it prefers the clean Russian track retained by the pro-mix;
-* otherwise it extracts the final translated mix to an atomic MP3;
-* cloud mode reuses ``cloud_media_fallback`` for byte-safe audio compression;
-* Telegram video/audio file_ids are paired so cached video re-sends also return
-  the matching MP3 after a process restart.
+* ``clean`` — the isolated Russian Yandex translation retained by the pro-mix;
+* ``mixed`` — audio extracted from the exact final video that was sent to Telegram
+  (Russian translation plus the controlled original-language bed, including QA
+  auto-fixes when the video was rebuilt).
+
+Both variants are validated independently with ffprobe, sent independently, and
+cached independently. Legacy one-file cache entries remain readable and are
+migrated on the next successful delivery.
 """
 from __future__ import annotations
 
@@ -36,10 +36,23 @@ _LIVEDUB_MARKERS = (
     "живые голоса яндекса",
     "перевод яндекса (обычные голоса)",
 )
+_VARIANTS = ("clean", "mixed")
+_VARIANT_LABELS = {
+    "clean": "Чистый русский перевод",
+    "mixed": "Финальный объединённый микс",
+}
+_VARIANT_CAPTIONS = {
+    "clean": "🎧 Чистая аудиодорожка русского перевода Яндекса",
+    "mixed": "🎧 Аудиоверсия финального дубляжа (русский перевод + тихий оригинал)",
+}
 
 
 def _enabled() -> bool:
     return os.getenv("LIVEDUB_SEND_AUDIO", "1").strip().lower() in _TRUE
+
+
+def _dual_enabled() -> bool:
+    return os.getenv("LIVEDUB_SEND_DUAL_AUDIO", "1").strip().lower() in _TRUE
 
 
 def _media_path(value: Any) -> Path | None:
@@ -47,6 +60,10 @@ def _media_path(value: Any) -> Path | None:
         return value if value.is_file() else None
     if isinstance(value, str):
         path = Path(value)
+        return path if path.is_file() else None
+    name = getattr(value, "name", None)
+    if isinstance(name, str) and name:
+        path = Path(name)
         return path if path.is_file() else None
     return None
 
@@ -69,19 +86,39 @@ def _title_parts(caption: str, fallback: str) -> tuple[str, str]:
     return line[:180], ""
 
 
-def _safe_filename(video_path: Path, title: str) -> str:
-    stem = str(title or video_path.stem or "Переведённое аудио")
-    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", stem)
-    stem = re.sub(r"\s+", " ", stem).strip(" ._-")[:140] or "Переведённое аудио"
-    return f"{stem}.mp3"
+def _safe_stem(value: str, fallback: str = "Переведённое аудио") -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", str(value or ""))
+    stem = re.sub(r"\s+", " ", stem).strip(" ._-")[:120]
+    return stem or fallback
+
+
+def _safe_filename(video_path: Path, title: str, variant: str = "mixed") -> str:
+    stem = _safe_stem(title or video_path.stem)
+    suffix = "чистый RU" if variant == "clean" else "финальный микс"
+    return f"{stem} — {suffix}.mp3"
+
+
+def _run_text(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+    kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "timeout": timeout,
+        "check": False,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    return subprocess.run(command, **kwargs)
 
 
 def _probe_audio(path: Path) -> tuple[bool, int]:
+    """Return ``(valid_audio, rounded_duration_seconds)`` for one local file."""
     ffprobe = shutil.which("ffprobe")
-    if not ffprobe or not path.is_file() or path.stat().st_size <= 1024:
-        return False, 0
     try:
-        proc = subprocess.run(
+        if not ffprobe or not path.is_file() or path.stat().st_size <= 1024:
+            return False, 0
+        proc = _run_text(
             [
                 ffprobe,
                 "-v", "error",
@@ -89,21 +126,31 @@ def _probe_audio(path: Path) -> tuple[bool, int]:
                 "-of", "json",
                 str(path),
             ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=60,
-            check=False,
         )
         if proc.returncode != 0:
+            logger.warning(
+                "[LiveDubAudio] ffprobe rejected %s (rc=%s): %s",
+                path.name,
+                proc.returncode,
+                (proc.stderr or "")[-300:],
+            )
             return False, 0
         data = json.loads(proc.stdout or "{}")
-        has_audio = any(stream.get("codec_type") == "audio" for stream in (data.get("streams") or []))
+        streams = data.get("streams") or []
+        has_audio = any(stream.get("codec_type") == "audio" for stream in streams)
         duration = int(round(float((data.get("format") or {}).get("duration") or 0)))
         return bool(has_audio and duration > 0), max(0, duration)
-    except Exception:
+    except Exception as exc:
+        logger.warning("[LiveDubAudio] probe failed for %s: %s", path.name, str(exc)[:180])
         return False, 0
+
+
+def _duration_compatible(reference: int, candidate: int) -> bool:
+    if reference <= 0 or candidate <= 0:
+        return True
+    tolerance = max(3, int(round(reference * 0.015)))
+    return abs(reference - candidate) <= tolerance
 
 
 def _find_clean_ru_track(video_path: Path) -> Path | None:
@@ -111,7 +158,7 @@ def _find_clean_ru_track(video_path: Path) -> Path | None:
         from services.livedub_mix import find_pro_tracks
 
         _original, russian = find_pro_tracks(video_path.parent)
-        if russian and russian.is_file() and russian.suffix.lower() == ".mp3":
+        if russian and russian.is_file():
             ok, _duration = _probe_audio(russian)
             if ok:
                 return russian
@@ -121,14 +168,17 @@ def _find_clean_ru_track(video_path: Path) -> Path | None:
 
 
 def _extract_mix_mp3(video_path: Path) -> Path:
+    """Atomically extract the audio from the exact final LiveDub video."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg не найден")
-    output = video_path.with_name(f"{video_path.stem}.ru-audio.mp3")
-    temp = output.with_name(f".{output.stem}.{os.getpid()}.part.mp3")
+    output = video_path.with_name(f"{video_path.stem}.final-mix.mp3")
+    temp = output.with_name(f".{output.stem}.{os.getpid()}.{threading.get_ident()}.part.mp3")
     temp.unlink(missing_ok=True)
     try:
-        proc = subprocess.run(
+        _video_ok, video_duration = _probe_audio(video_path)
+        timeout = max(900, int((video_duration or 0) * 2))
+        proc = _run_text(
             [
                 ffmpeg,
                 "-y",
@@ -139,20 +189,20 @@ def _extract_mix_mp3(video_path: Path) -> Path:
                 "-c:a", "libmp3lame",
                 "-b:a", os.getenv("LIVEDUB_AUDIO_BITRATE", "160k").strip() or "160k",
                 "-ar", "44100",
+                "-ac", "2",
                 str(temp),
             ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=max(900, int((_probe_audio(video_path)[1] or 0) * 2)),
-            check=False,
+            timeout=timeout,
         )
         if proc.returncode != 0:
-            raise RuntimeError((proc.stderr or proc.stdout or "ffmpeg error")[-700:])
-        ok, _duration = _probe_audio(temp)
+            raise RuntimeError((proc.stderr or proc.stdout or "ffmpeg error")[-900:])
+        ok, mp3_duration = _probe_audio(temp)
         if not ok:
-            raise RuntimeError("созданный MP3 не прошёл ffprobe")
+            raise RuntimeError("созданный объединённый MP3 не прошёл ffprobe")
+        if not _duration_compatible(video_duration, mp3_duration):
+            raise RuntimeError(
+                f"длительность объединённого MP3 {mp3_duration}с не совпадает с видео {video_duration}с"
+            )
         os.replace(temp, output)
         return output
     finally:
@@ -183,32 +233,81 @@ def _save_cache(data: dict[str, dict[str, Any]]) -> None:
             key=lambda item: float((item[1] or {}).get("saved_at") or 0),
             reverse=True,
         )[:500]
-        payload = dict(newest)
         temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.write_text(
+            json.dumps(dict(newest), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         os.replace(temp, path)
     except OSError as exc:
         logger.debug("[LiveDubAudio] cache save failed: %s", exc)
+
+
+def _normalise_cache_entry(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    entry = dict(value)
+    variants = entry.get("variants")
+    if not isinstance(variants, dict):
+        variants = {}
+    variants = {
+        str(name): dict(meta)
+        for name, meta in variants.items()
+        if name in _VARIANTS and isinstance(meta, dict) and meta.get("audio_file_id")
+    }
+    # Backward compatibility: the old single audio_file_id was normally clean RU.
+    legacy_id = str(entry.get("audio_file_id") or "")
+    if legacy_id and "clean" not in variants:
+        variants["clean"] = {
+            "audio_file_id": legacy_id,
+            "title": entry.get("title"),
+            "performer": entry.get("performer"),
+            "filename": entry.get("filename"),
+        }
+    entry["variants"] = variants
+    entry["schema_version"] = 2
+    return entry
 
 
 def _cache_get(video_file_id: str) -> dict[str, Any] | None:
     if not video_file_id:
         return None
     with _CACHE_LOCK:
-        value = _load_cache().get(video_file_id)
-        return dict(value) if isinstance(value, dict) else None
+        return _normalise_cache_entry(_load_cache().get(video_file_id))
 
 
-def _cache_put(video_file_id: str, audio_file_id: str, **meta: Any) -> None:
-    if not video_file_id or not audio_file_id:
+def _cache_put_variant(video_file_id: str, variant: str, audio_file_id: str, **meta: Any) -> None:
+    if not video_file_id or not audio_file_id or variant not in _VARIANTS:
         return
     with _CACHE_LOCK:
         data = _load_cache()
-        data[video_file_id] = {
+        entry = _normalise_cache_entry(data.get(video_file_id)) or {
+            "schema_version": 2,
+            "variants": {},
+        }
+        entry["variants"][variant] = {
             "audio_file_id": audio_file_id,
-            "saved_at": time.time(),
             **meta,
         }
+        entry["saved_at"] = time.time()
+        data[video_file_id] = entry
+        _save_cache(data)
+
+
+def _cache_drop_variant(video_file_id: str, variant: str) -> None:
+    if not video_file_id:
+        return
+    with _CACHE_LOCK:
+        data = _load_cache()
+        entry = _normalise_cache_entry(data.get(video_file_id))
+        if not entry:
+            return
+        entry["variants"].pop(variant, None)
+        if entry["variants"]:
+            entry["saved_at"] = time.time()
+            data[video_file_id] = entry
+        else:
+            data.pop(video_file_id, None)
         _save_cache(data)
 
 
@@ -221,27 +320,107 @@ def _cache_drop(video_file_id: str) -> None:
             _save_cache(data)
 
 
-async def _send_cached_audio(self, *, chat_id: Any, video_file_id: str, reply_to: Any) -> bool:
+async def _send_cached_audio(
+    self,
+    *,
+    chat_id: Any,
+    video_file_id: str,
+    reply_to: Any,
+) -> bool:
     cached = _cache_get(video_file_id)
-    if not cached or not cached.get("audio_file_id"):
+    variants = (cached or {}).get("variants") or {}
+    if not variants:
         return False
-    try:
-        await self.send_audio(
-            chat_id=chat_id,
-            audio=cached["audio_file_id"],
-            title=cached.get("title") or None,
-            performer=cached.get("performer") or None,
-            caption="🎧 Аудиоверсия русского перевода Яндекса",
-            reply_to_message_id=reply_to,
-            write_timeout=300,
-            read_timeout=300,
-            connect_timeout=60,
+    if _dual_enabled() and any(name not in variants for name in _VARIANTS):
+        logger.info("[LiveDubAudio] legacy/incomplete cache entry requires rebuild")
+        return False
+
+    sent = 0
+    required = [name for name in _VARIANTS if name in variants]
+    for variant in required:
+        meta = variants[variant]
+        try:
+            await self.send_audio(
+                chat_id=chat_id,
+                audio=meta["audio_file_id"],
+                title=meta.get("title") or None,
+                performer=meta.get("performer") or None,
+                caption=_VARIANT_CAPTIONS[variant],
+                reply_to_message_id=reply_to,
+                write_timeout=300,
+                read_timeout=300,
+                connect_timeout=60,
+            )
+            sent += 1
+        except Exception as exc:
+            logger.info(
+                "[LiveDubAudio] cached %s file_id expired: %s",
+                variant,
+                str(exc)[:180],
+            )
+            _cache_drop_variant(video_file_id, variant)
+    return sent > 0
+
+
+async def _send_variant(
+    self,
+    *,
+    variant: str,
+    source: Path,
+    video_path: Path,
+    title: str,
+    performer: str,
+    chat_id: Any,
+    reply_to: Any,
+    thumbnail: Any,
+    video_file_id: str,
+    reference_duration: int,
+) -> bool:
+    ok, duration = await asyncio.to_thread(_probe_audio, source)
+    if not ok:
+        raise RuntimeError(f"{_VARIANT_LABELS[variant]}: MP3 не прошёл ffprobe")
+    if not _duration_compatible(reference_duration, duration):
+        raise RuntimeError(
+            f"{_VARIANT_LABELS[variant]}: длительность {duration}с не совпадает с видео "
+            f"{reference_duration}с"
         )
-        return True
-    except Exception as exc:
-        logger.info("[LiveDubAudio] cached audio file_id expired: %s", str(exc)[:180])
-        _cache_drop(video_file_id)
-        return False
+
+    kwargs: dict[str, Any] = {
+        "chat_id": chat_id,
+        "audio": source,
+        "filename": _safe_filename(video_path, title, variant),
+        "title": title,
+        "performer": performer or None,
+        "duration": duration,
+        "caption": _VARIANT_CAPTIONS[variant],
+        "reply_to_message_id": reply_to,
+        "write_timeout": 600,
+        "read_timeout": 600,
+        "connect_timeout": 60,
+    }
+    thumb_path = _media_path(thumbnail)
+    if thumb_path is not None:
+        kwargs["thumbnail"] = thumb_path
+
+    audio_message = await self.send_audio(**kwargs)
+    audio_file_id = getattr(getattr(audio_message, "audio", None), "file_id", "")
+    if video_file_id and audio_file_id:
+        _cache_put_variant(
+            video_file_id,
+            variant,
+            audio_file_id,
+            title=title,
+            performer=performer,
+            filename=kwargs["filename"],
+            duration=duration,
+        )
+    logger.info(
+        "[LiveDubAudio] %s MP3 sent: %s duration=%ss",
+        variant,
+        kwargs["filename"],
+        duration,
+    )
+    return True
 
 
 async def _send_new_audio(
@@ -255,47 +434,53 @@ async def _send_new_audio(
     video_file_id: str,
 ) -> bool:
     title, performer = _title_parts(caption, video_path.stem)
-    source = _find_clean_ru_track(video_path)
-    pure_russian = source is not None
-    if source is None:
-        source = await asyncio.to_thread(_extract_mix_mp3, video_path)
-    ok, duration = await asyncio.to_thread(_probe_audio, source)
-    if not ok:
-        raise RuntimeError("аудиодорожка не прошла проверку целостности")
+    video_ok, video_duration = await asyncio.to_thread(_probe_audio, video_path)
+    if not video_ok:
+        raise RuntimeError("финальное LiveDub-видео не содержит проверяемой аудиодорожки")
 
-    audio_caption = (
-        "🎧 Чистая аудиодорожка русского перевода Яндекса"
-        if pure_russian
-        else "🎧 Аудиоверсия финального дубляжа (русский перевод + тихий оригинал)"
-    )
-    kwargs: dict[str, Any] = {
-        "chat_id": chat_id,
-        "audio": source,
-        "filename": _safe_filename(video_path, title),
-        "title": title,
-        "performer": performer or None,
-        "duration": duration,
-        "caption": audio_caption,
-        "reply_to_message_id": reply_to,
-        "write_timeout": 600,
-        "read_timeout": 600,
-        "connect_timeout": 60,
-    }
-    thumb_path = _media_path(thumbnail)
-    if thumb_path is not None:
-        kwargs["thumbnail"] = thumb_path
-    audio_message = await self.send_audio(**kwargs)
-    audio_file_id = getattr(getattr(audio_message, "audio", None), "file_id", "")
-    if video_file_id and audio_file_id:
-        _cache_put(
-            video_file_id,
-            audio_file_id,
-            title=title,
-            performer=performer,
-            filename=kwargs["filename"],
+    sources: list[tuple[str, Path]] = []
+    clean = await asyncio.to_thread(_find_clean_ru_track, video_path)
+    if clean is not None:
+        sources.append(("clean", clean))
+    else:
+        logger.warning("[LiveDubAudio] clean RU track unavailable; mixed MP3 will still be sent")
+
+    mixed = await asyncio.to_thread(_extract_mix_mp3, video_path)
+    sources.append(("mixed", mixed))
+    if not _dual_enabled():
+        sources = [("clean", clean)] if clean is not None else [("mixed", mixed)]
+
+    sent = 0
+    failures: list[str] = []
+    for variant, source in sources:
+        try:
+            if await _send_variant(
+                self,
+                variant=variant,
+                source=source,
+                video_path=video_path,
+                title=title,
+                performer=performer,
+                chat_id=chat_id,
+                reply_to=reply_to,
+                thumbnail=thumbnail,
+                video_file_id=video_file_id,
+                reference_duration=video_duration,
+            ):
+                sent += 1
+        except Exception as exc:
+            failures.append(f"{_VARIANT_LABELS[variant]}: {str(exc)[:180]}")
+            logger.exception("[LiveDubAudio] %s variant failed: %s", variant, exc)
+
+    expected = len(sources)
+    if sent == expected:
+        logger.info("[LiveDubAudio] complete companion set delivered: %d/%d", sent, expected)
+        return True
+    if sent:
+        raise RuntimeError(
+            f"отправлен неполный комплект MP3 ({sent}/{expected}); " + "; ".join(failures)
         )
-    logger.info("[LiveDubAudio] MP3 sent: %s (pure_ru=%s)", kwargs["filename"], pure_russian)
-    return True
+    raise RuntimeError("оба MP3 не отправлены: " + "; ".join(failures))
 
 
 def _wrap_send_video(cls: type) -> None:
@@ -343,8 +528,9 @@ def _wrap_send_video(cls: type) -> None:
                 await self.send_message(
                     chat_id=chat_id,
                     text=(
-                        "⚠️ Видео с переводом отправлено, но отдельный MP3 создать не удалось. "
-                        f"Причина: {str(exc)[:220]}"
+                        "⚠️ Видео с переводом отправлено, но полный комплект из двух MP3 "
+                        "сформировать не удалось. "
+                        f"Причина: {str(exc)[:260]}"
                     ),
                     reply_to_message_id=reply_to,
                 )
@@ -357,7 +543,7 @@ def _wrap_send_video(cls: type) -> None:
 
 
 def install_livedub_audio_companion() -> None:
-    """Install after cloud-media fallback so send_audio inherits its safety net."""
+    """Install after cloud-media fallback so send_audio keeps its safety net."""
     if not _enabled():
         return
     with _INSTALL_LOCK:
@@ -371,4 +557,8 @@ def install_livedub_audio_companion() -> None:
                 _wrap_send_video(ExtBot)
         except Exception as exc:
             logger.debug("[LiveDubAudio] ExtBot patch skipped: %s", exc)
-        logger.info("🎧 LiveDub audio companion: ✅ чистый RU MP3 + cached file_id pairing")
+        mode = "clean RU + final mix" if _dual_enabled() else "single configured variant"
+        logger.info(
+            "🎧 LiveDub audio companion: ✅ %s; independent ffprobe + dual file_id cache",
+            mode,
+        )
