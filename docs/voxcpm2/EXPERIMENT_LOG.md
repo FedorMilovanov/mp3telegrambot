@@ -98,7 +98,13 @@ Diagnosis: premature stop / incomplete long single-pass generation, not an FFmpe
 
 ### R05 — segmented MacArthur V2
 
-Status at creation of this entry: running.
+```text
+Status:              technical success, quality revision required
+Final MP4 duration:  48.615 sec
+Final audio:         48 kHz stereo AAC
+Segments:            7
+Clone mode:          reference-only
+```
 
 Architecture:
 
@@ -111,13 +117,38 @@ Architecture:
 - final sidechain mix keeps quiet English under Russian speech;
 - clone mode defaults to `reference` for English-to-Russian transfer.
 
-Expected output root:
+Output root:
 
 ```text
 C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-V2
 ```
 
-Do not mark R05 successful until all seven segments, timeline WAV, MP4, SRT and JSON report exist and have been reviewed.
+Owner listening review:
+
+- the complete Short now exists;
+- several phrase endings sound swallowed or cut;
+- independent segment transitions make the speech less fluid;
+- room/echo coloration remains audible;
+- the result is useful as proof of concept but is not publication quality.
+
+Signal/timeline review of the uploaded final MP4:
+
+- the final media duration is correct;
+- hard prosodic resets occur at the independently generated boundaries around 5.12, 10.88, 16.96 and 39.68 seconds;
+- source-aligned gaps remain around 24.16-24.72 and 32.60-33.20 seconds;
+- the last generated phrase reaches the 48.00-second edge and is the clearest candidate for end trimming;
+- V2 applies a 25 ms end fade plus exact `atrim` to every fitted segment, which can attenuate final Russian consonants;
+- the English bed is mixed at 0.18, so perceived echo may be a combination of cloned room coloration and the original same-speaker voice underneath.
+
+R05 decision:
+
+1. remove speech-touching end fades;
+2. reserve approximately 180-250 ms of protected tail silence per segment;
+3. fit active speech into the window minus the protected tail rather than trimming at the spoken edge;
+4. merge adjacent segments into fewer 10-15 second thought groups to reduce prosodic resets;
+5. reduce the English bed for the next diagnostic mix;
+6. compare the clean Russian timeline against the mixed MP4 before attributing all echo to the model;
+7. test a cleaner external MacArthur reference after the timing defects are fixed.
 
 ## Error catalogue
 
@@ -129,6 +160,8 @@ Do not mark R05 successful until all seven segments, timeline WAV, MP4, SRT and 
 | `KV cache is full` | autoregressive sequence reached cache limit | Larger cache for short jobs; segment long text |
 | output far shorter than source | premature stop or incomplete generation | Reject global stretch; segment and regenerate |
 | garage/room sound | reference/acoustic transfer problem | choose a cleaner reference; use restrained filtering |
+| phrase-ending consonants weakened | fade/trim touches speech edge | reserve tail silence and never fade the spoken edge |
+| choppy segment joins | independent prosody restarts too frequently | use fewer thought-sized segments and protected transitions |
 
 ## Acceptance checklist for every future run
 
