@@ -67,20 +67,11 @@ jobs:
       - name: Ruff fatal checks
         run: python -m ruff check --select E9,F63,F7,F82 .
 
-      - name: Code health advisory
+      - name: Code health report
         run: python tools/check_code_health.py
 
-      - name: Export code health snapshot
-        if: matrix.python-version == '3.13'
-        run: python tools/check_code_health.py --write-baseline --baseline-path code-health-current.json
-
-      - name: Upload code health snapshot
-        if: matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-health-current
-          path: code-health-current.json
-          retention-days: 7
+      - name: Code health regression gate
+        run: python tools/check_code_health.py --fail-on-regression
 
   windows-runtime:
     name: Windows runtime safety checks
