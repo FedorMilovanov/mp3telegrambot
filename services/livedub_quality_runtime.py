@@ -38,7 +38,7 @@ def configure_gemini_policy() -> str:
     """Apply the project-wide 3.6-first model policy before any AI imports.
 
     Existing installations commonly pin the former default ``gemini-3.5-flash``
-    in ``.env``.  The owner explicitly requested migration to 3.6 everywhere
+    in ``.env``. The owner explicitly requested migration to 3.6 everywhere
     quality matters, so that exact former default is upgraded automatically.
     Retired 3.1/2.x light models are replaced with 3.5 Flash-Lite.
     """
@@ -50,7 +50,7 @@ def configure_gemini_policy() -> str:
     if not current_light or current_light in _RETIRED_MODELS:
         os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
 
-    # Quality-sensitive publication and QA tasks use 3.6.  Flash-Lite remains
+    # Quality-sensitive publication and QA tasks use 3.6. Flash-Lite remains
     # reserved for genuinely mechanical/high-volume formatting work.
     os.environ.setdefault("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL)
     os.environ.setdefault(
@@ -62,7 +62,7 @@ def configure_gemini_policy() -> str:
     os.environ.setdefault("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
 
     # The user approved trying ordinary Yandex voices when Live voices are not
-    # available.  The generated result is explicitly marked as TTS elsewhere.
+    # available. The generated result is explicitly marked as TTS elsewhere.
     os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")
 
     return (
@@ -154,6 +154,13 @@ def _unique(values: list[str]) -> list[str]:
 
 
 def _install_quality_models() -> None:
+    """Install model selectors without mutating the shared client registry.
+
+    Native ``livedub_info.build_livedub_info_card`` takes a request-local tuple
+    snapshot and tries clients directly. The historical runtime wrapper rotated
+    ``GEMINI_CLIENTS[:]`` around an await; with concurrent Telegram updates that
+    exposed unrelated analyses to another request's key order.
+    """
     import services.livedub_info as info
     from core.database import GEMINI_MODEL
 
@@ -175,35 +182,11 @@ def _install_quality_models() -> None:
     info.DEFAULT_LIGHT_MODEL = _PRIMARY_MODEL
     info.get_light_model = quality_model
     info.get_light_model_fallbacks = quality_fallbacks
-
-    current = info.build_livedub_info_card
-    if getattr(current, "_mp3bot_all_clients", False):
-        return
-
-    async def all_clients(title_line, dub_srt_path=None, *, source_url="", force=False):
-        from core.globals import GEMINI_CLIENTS
-
-        if len(GEMINI_CLIENTS) <= 1:
-            return await current(
-                title_line, dub_srt_path, source_url=source_url, force=force
-            )
-        original_order = list(GEMINI_CLIENTS)
-        best = None
-        try:
-            for client in original_order:
-                GEMINI_CLIENTS[:] = [client, *[x for x in original_order if x is not client]]
-                card = await current(
-                    title_line, dub_srt_path, source_url=source_url, force=force
-                )
-                best = card or best
-                if isinstance(card, dict) and card.get("source") != "metadata_fallback":
-                    return card
-            return best
-        finally:
-            GEMINI_CLIENTS[:] = original_order
-
-    all_clients._mp3bot_all_clients = True  # type: ignore[attr-defined]
-    info.build_livedub_info_card = all_clients
+    if not getattr(info.build_livedub_info_card, "_mp3bot_all_clients", False):
+        logger.warning(
+            "[LiveDubInfo] native request-local multi-client support is missing; "
+            "global client rotation remains disabled for concurrency safety"
+        )
 
 
 def _audio_key(kind: str, kwargs: dict[str, Any]) -> tuple[str, ...]:
@@ -232,11 +215,9 @@ def _reserve_audio(
 ) -> tuple[str, Future[bool] | None]:
     """Return ``sent``, ``wait`` or ``leader`` for one delivery key.
 
-    The previous implementation wrote to ``_AUDIO_SENT`` before Telegram had
-    accepted the file.  Any exception then poisoned retries for 15 minutes and a
-    duplicate call returned a false success.  A pending Future lets concurrent
-    calls share the real outcome while only completed successes enter the TTL
-    cache.
+    Only completed successes enter ``_AUDIO_SENT``. A pending Future lets
+    concurrent calls share the real Telegram result, while exceptions,
+    cancellation and false returns release the key for a genuine retry.
     """
     now = time.monotonic()
     with _AUDIO_LOCK:
@@ -270,7 +251,9 @@ async def _run_audio_once(
 ) -> Any:
     state, pending = _reserve_audio(key)
     if state == "sent":
-        logger.info("[LiveDubAudio] duplicate %s suppressed after confirmed success", label)
+        logger.info(
+            "[LiveDubAudio] duplicate %s suppressed after confirmed success", label
+        )
         return True
     if state == "wait":
         assert pending is not None
@@ -291,17 +274,16 @@ async def _run_audio_once(
     success = bool(result)
     _complete_audio(key, pending, success)
     if not success:
-        logger.warning(
-            "[LiveDubAudio] %s returned false; retry key released",
-            label,
-        )
+        logger.warning("[LiveDubAudio] %s returned false; retry key released", label)
     return result
 
 
 def _claim_audio(key: tuple[str, ...], ttl: int = 900) -> bool:
-    """Compatibility helper retained for older diagnostics/tests."""
-    state, _pending = _reserve_audio(key, ttl)
-    return state == "leader"
+    """Side-effect-free compatibility probe for older diagnostics."""
+    now = time.monotonic()
+    with _AUDIO_LOCK:
+        _prune_audio_sent(now, ttl)
+        return key not in _AUDIO_SENT and key not in _AUDIO_INFLIGHT
 
 
 def _install_audio_once() -> None:
@@ -309,6 +291,7 @@ def _install_audio_once() -> None:
 
     current_new = companion._send_new_audio
     if not getattr(current_new, "_mp3bot_once", False):
+
         async def send_new_once(*args, **kwargs):
             key = _audio_key("new", kwargs)
             return await _run_audio_once(
@@ -322,6 +305,7 @@ def _install_audio_once() -> None:
 
     current_cached = companion._send_cached_audio
     if not getattr(current_cached, "_mp3bot_once", False):
+
         async def send_cached_once(*args, **kwargs):
             key = _audio_key("cached", kwargs)
             return await _run_audio_once(
@@ -357,9 +341,16 @@ def _install_utf8_probe() -> None:
         try:
             proc = subprocess.run(
                 [
-                    ffprobe, "-v", "error", "-select_streams", "v:0",
-                    "-show_entries", "stream=width,height:format=duration",
-                    "-of", "json", str(path),
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=width,height:format=duration",
+                    "-of",
+                    "json",
+                    str(path),
                 ],
                 **kwargs,
             )
@@ -372,7 +363,9 @@ def _install_utf8_probe() -> None:
                 "duration": int(float(duration)) if duration else None,
             }
         except Exception as exc:
-            logger.warning("[LiveDubMix] UTF-8 ffprobe fallback: %s", str(exc)[:160])
+            logger.warning(
+                "[LiveDubMix] UTF-8 ffprobe fallback: %s", str(exc)[:160]
+            )
             return current(path)
 
     utf8_probe._mp3bot_utf8 = True  # type: ignore[attr-defined]
@@ -386,5 +379,6 @@ def install_livedub_quality_runtime() -> None:
         _install_utf8_probe()
         logger.info(
             "✨ LiveDub quality runtime: ✅ Gemini 3.6 primary → 3.5 fallback, "
-            "retry-safe dual-MP3 coalescing, UTF-8 ffprobe"
+            "request-local client isolation, retry-safe dual-MP3 coalescing, "
+            "UTF-8 ffprobe"
         )
