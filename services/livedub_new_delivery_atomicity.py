@@ -6,10 +6,11 @@ happened to be found. In dual mode a missing clean Russian track therefore
 silently degraded to one mixed MP3. A later Telegram failure could also leave the
 first MP3 visible and cached even though the advertised two-file set had failed.
 
-This runtime is installed immediately after the base audio companion and before
-quality/dedupe/deep-audit wrappers capture ``_send_new_audio``. It requires both
-sources in dual mode, rolls back already-sent MP3 messages best-effort on any
-failure, and commits Telegram file IDs only after the whole set is visible.
+This runtime is installed after clean-track quality guards and before
+quality-independent dedupe/deep-audit wrappers capture ``_send_new_audio``. It
+requires two distinct, role-correct sources in dual mode, rolls back already-sent
+MP3 messages best-effort on any failure, and commits Telegram file IDs only after
+the whole set is visible.
 """
 from __future__ import annotations
 
@@ -22,6 +23,24 @@ from typing import Any
 logger = logging.getLogger(__name__)
 _LOCK = threading.Lock()
 _INSTALLED = False
+
+
+def _path_identity(path: Path) -> str:
+    try:
+        return str(path.resolve()).casefold()
+    except OSError:
+        return str(path).casefold()
+
+
+def _is_valid_clean_source(path: Path | None) -> bool:
+    if path is None:
+        return False
+    try:
+        from services.livedub_audio_quality_guard import is_derived_audio_artifact
+
+        return not is_derived_audio_artifact(path)
+    except Exception:
+        return True
 
 
 async def _send_variant_uncommitted(
@@ -117,6 +136,8 @@ def _install_strict_new_audio() -> None:
 
         dual = companion._dual_enabled()
         clean = await asyncio.to_thread(companion._find_clean_ru_track, video_path)
+        if not _is_valid_clean_source(clean):
+            clean = None
         if dual and clean is None:
             raise RuntimeError(
                 "режим двух MP3 включён, но чистая русская дорожка не найдена; "
@@ -126,6 +147,11 @@ def _install_strict_new_audio() -> None:
         mixed = await asyncio.to_thread(companion._extract_mix_mp3, video_path)
         if dual:
             assert clean is not None
+            if _path_identity(clean) == _path_identity(mixed):
+                raise RuntimeError(
+                    "чистый русский перевод и финальный микс указывают на один файл; "
+                    "дубликат нельзя выдавать за две версии"
+                )
             sources: list[tuple[str, Path]] = [("clean", clean), ("mixed", mixed)]
         elif clean is not None:
             sources = [("clean", clean)]
@@ -184,7 +210,7 @@ def _install_strict_new_audio() -> None:
 
 
 def install_livedub_new_delivery_atomicity() -> None:
-    """Install after the base companion and before wrappers capture callables."""
+    """Install after quality guards and before wrappers capture callables."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -193,4 +219,6 @@ def install_livedub_new_delivery_atomicity() -> None:
             return
         _install_strict_new_audio()
         _INSTALLED = True
-        logger.info("🧾 LiveDub new delivery: strict two-source + transactional MP3 commit")
+        logger.info(
+            "🧾 LiveDub new delivery: strict distinct sources + transactional MP3 commit"
+        )
