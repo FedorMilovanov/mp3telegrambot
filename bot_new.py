@@ -76,6 +76,14 @@ try:
 except Exception as _qa_trust_error:
     print(f"⚠️ Аудиопроверка точности LiveDub не установлена: {_qa_trust_error}")
 
+# Must run before main imports the pipeline's YTDLP_BASE_ARGS by value.
+try:
+    from services.livedub_delivery_hardening import install_livedub_delivery_hardening
+
+    install_livedub_delivery_hardening()
+except Exception as _delivery_hardening_error:
+    print(f"⚠️ Усиление доставки LiveDub не установлено: {_delivery_hardening_error}")
+
 import main as _main_module
 from main import main
 
@@ -108,7 +116,7 @@ try:
 
     install_livedub_audio_dedupe()
 except Exception as _livedub_dedupe_error:
-    print(f"⚠️ Защита от двух MP3 LiveDub не установлена: {_livedub_dedupe_error}")
+    print(f"⚠️ Защита от исходного английского MP3 не установлена: {_livedub_dedupe_error}")
 
 try:
     from services.livedub_output_policy import harden_livedub_audio_dedupe
@@ -117,14 +125,22 @@ try:
 except Exception as _dedupe_hardening_error:
     print(f"⚠️ Усиленная защита от английского MP3 не установлена: {_dedupe_hardening_error}")
 
-# Install last: importing livedub_audio_dedupe triggers the project-wide quality
-# runtime, so this final layer cannot be overwritten by its model/info hooks.
+# Install after the legacy publication and QA integration layers.
 try:
     from services.livedub_deep_audit import install_livedub_deep_audit
 
     install_livedub_deep_audit()
 except Exception as _deep_audit_error:
     print(f"⚠️ Глубокая защита публикации и QA LiveDub не установлена: {_deep_audit_error}")
+
+# Final audio-facing wrapper: it preserves two distinct public variants instead
+# of allowing the legacy one-MP3 formatters to collapse their captions.
+try:
+    from services.livedub_dual_audio_policy import install_livedub_dual_audio_policy
+
+    install_livedub_dual_audio_policy()
+except Exception as _dual_audio_policy_error:
+    print(f"⚠️ Раздельное оформление двух MP3 LiveDub не установлено: {_dual_audio_policy_error}")
 
 try:
     from services.project_runtime_hardening import install_project_runtime_hardening
