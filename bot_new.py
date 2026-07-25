@@ -111,6 +111,15 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
+# Tighten the companion's internal contract before dedupe/deep-audit wrappers
+# capture its callables. This keeps retry semantics and cache invalidation honest.
+try:
+    from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
+
+    install_livedub_audio_quality_guard()
+except Exception as _audio_quality_guard_error:
+    print(f"⚠️ Контроль качества двух MP3 LiveDub не установлен: {_audio_quality_guard_error}")
+
 try:
     from services.livedub_audio_dedupe import install_livedub_audio_dedupe
 
