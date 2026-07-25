@@ -101,6 +101,7 @@ jobs:
           python -m py_compile bot_new.py
           python -m py_compile services/gemini_startup_diagnostics.py
           python -m py_compile services/restart_state_runtime.py
+          python -m py_compile services/livedub_ru_provenance.py
           python -m py_compile services/livedub_new_delivery_atomicity.py
           python -m py_compile services/livedub_cached_delivery_atomicity.py
           python -m py_compile services/local_botapi_bootstrap.py
@@ -130,6 +131,7 @@ jobs:
           python -m pytest -q
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
+          tests/test_livedub_ru_provenance.py
           tests/test_livedub_new_delivery_atomicity.py
           tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py
@@ -163,6 +165,7 @@ jobs:
           bot_new.py
           services/gemini_startup_diagnostics.py
           services/restart_state_runtime.py
+          services/livedub_ru_provenance.py
           services/livedub_new_delivery_atomicity.py
           services/livedub_cached_delivery_atomicity.py
           services/local_botapi_bootstrap.py
@@ -188,6 +191,7 @@ jobs:
           tools/voxcpm2/quality_sweep.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
+          tests/test_livedub_ru_provenance.py
           tests/test_livedub_new_delivery_atomicity.py
           tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py

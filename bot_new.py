@@ -117,15 +117,22 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
-# Install clean-track selection and conversion postconditions first. The
-# transactional layers below must be the final local/cached send implementations
-# before dedupe and deep-audit capture them.
+# Install clean-track selection and conversion postconditions first. Exact VOT
+# provenance then overrides only the heuristic track choice. Transactional layers
+# remain the final local/cached send implementations before dedupe/deep-audit.
 try:
     from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
 
     install_livedub_audio_quality_guard()
 except Exception as _audio_quality_guard_error:
     print(f"⚠️ Контроль качества двух MP3 LiveDub не установлен: {_audio_quality_guard_error}")
+
+try:
+    from services.livedub_ru_provenance import install_livedub_ru_provenance
+
+    install_livedub_ru_provenance()
+except Exception as _ru_provenance_error:
+    print(f"⚠️ Provenance чистой RU-дорожки LiveDub не установлен: {_ru_provenance_error}")
 
 try:
     from services.livedub_new_delivery_atomicity import (
