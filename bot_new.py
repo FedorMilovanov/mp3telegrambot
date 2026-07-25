@@ -117,6 +117,16 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
+# Must run before quality/dedupe/deep-audit wrappers capture cached send callables.
+try:
+    from services.livedub_cached_delivery_atomicity import (
+        install_livedub_cached_delivery_atomicity,
+    )
+
+    install_livedub_cached_delivery_atomicity()
+except Exception as _cached_atomicity_error:
+    print(f"⚠️ Transactional rollback кэшированного LiveDub не установлен: {_cached_atomicity_error}")
+
 try:
     from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
 
@@ -159,8 +169,6 @@ try:
 except Exception as _runtime_hardening_error:
     print(f"⚠️ Project runtime hardening не установлен: {_runtime_hardening_error}")
 
-# Outermost run_bot_async wrapper. It executes once for every new event loop
-# created by main.run_bot(), after all LiveDub module-level state exists.
 try:
     from services.restart_state_runtime import install_restart_state_runtime
 
