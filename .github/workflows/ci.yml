@@ -70,6 +70,9 @@ jobs:
       - name: Code health advisory
         run: python tools/check_code_health.py
 
+      - name: Code health regression gate
+        run: python tools/check_code_health.py --fail-on-regression
+
   windows-runtime:
     name: Windows runtime safety checks
     runs-on: windows-latest
