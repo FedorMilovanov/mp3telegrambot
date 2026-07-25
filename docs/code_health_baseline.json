@@ -1,0 +1,71 @@
+{
+  "files_scanned": 98,
+  "source_title_registry_entries": 198,
+  "structured_block_normalizer": true,
+  "top_files": [
+    {
+      "lines": 2926,
+      "path": "converters/md_telegraph.py",
+      "postprocess_markers": 22,
+      "regex_markers": 194
+    },
+    {
+      "lines": 666,
+      "path": "core/content_audit.py",
+      "postprocess_markers": 29,
+      "regex_markers": 40
+    },
+    {
+      "lines": 1967,
+      "path": "services/telegraph_pages.py",
+      "postprocess_markers": 32,
+      "regex_markers": 30
+    },
+    {
+      "lines": 673,
+      "path": "core/text_utils.py",
+      "postprocess_markers": 7,
+      "regex_markers": 44
+    },
+    {
+      "lines": 1938,
+      "path": "services/pdf_generator.py",
+      "postprocess_markers": 0,
+      "regex_markers": 50
+    },
+    {
+      "lines": 1526,
+      "path": "services/telegraph.py",
+      "postprocess_markers": 16,
+      "regex_markers": 24
+    },
+    {
+      "lines": 238,
+      "path": "core/code_health.py",
+      "postprocess_markers": 27,
+      "regex_markers": 6
+    },
+    {
+      "lines": 763,
+      "path": "core/source_titles.py",
+      "postprocess_markers": 0,
+      "regex_markers": 32
+    },
+    {
+      "lines": 229,
+      "path": "core/page_audit.py",
+      "postprocess_markers": 15,
+      "regex_markers": 9
+    },
+    {
+      "lines": 2994,
+      "path": "pipelines/main_pipeline.py",
+      "postprocess_markers": 10,
+      "regex_markers": 12
+    }
+  ],
+  "total_postprocess_markers": 253,
+  "total_regex_markers": 675,
+  "typed_source_cards": true,
+  "typo_replacements": 50
+}
