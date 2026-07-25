@@ -82,9 +82,6 @@ except Exception as _delivery_hardening_error:
 import main as _main_module
 from main import main
 
-# main.py still contains an old hand-maintained Gemini allow-list. Replace only
-# those obsolete warnings before run_bot_async executes; the runtime policy that
-# configured clients before this import remains the source of truth.
 try:
     from services.gemini_startup_diagnostics import install_gemini_startup_diagnostics
 
@@ -92,7 +89,6 @@ try:
 except Exception as _gemini_diagnostics_error:
     print(f"⚠️ Актуальная Gemini startup-диагностика не установлена: {_gemini_diagnostics_error}")
 
-# Replace the imported /help binding before Application handlers are built.
 try:
     from services.livedub_help_runtime import install_livedub_help_runtime
 
@@ -162,6 +158,15 @@ try:
     install_project_runtime_hardening(_main_module)
 except Exception as _runtime_hardening_error:
     print(f"⚠️ Project runtime hardening не установлен: {_runtime_hardening_error}")
+
+# Outermost run_bot_async wrapper. It executes once for every new event loop
+# created by main.run_bot(), after all LiveDub module-level state exists.
+try:
+    from services.restart_state_runtime import install_restart_state_runtime
+
+    install_restart_state_runtime(_main_module)
+except Exception as _restart_state_error:
+    print(f"⚠️ Очистка LiveDub state между event loop не установлена: {_restart_state_error}")
 
 if __name__ == "__main__":
     main()
