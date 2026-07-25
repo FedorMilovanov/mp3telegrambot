@@ -117,8 +117,16 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
-# Both local and cached MP3 paths must become transactional before later wrappers
-# capture their callables.
+# Install clean-track selection and conversion postconditions first. The
+# transactional layers below must be the final local/cached send implementations
+# before dedupe and deep-audit capture them.
+try:
+    from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
+
+    install_livedub_audio_quality_guard()
+except Exception as _audio_quality_guard_error:
+    print(f"⚠️ Контроль качества двух MP3 LiveDub не установлен: {_audio_quality_guard_error}")
+
 try:
     from services.livedub_new_delivery_atomicity import (
         install_livedub_new_delivery_atomicity,
@@ -136,13 +144,6 @@ try:
     install_livedub_cached_delivery_atomicity()
 except Exception as _cached_atomicity_error:
     print(f"⚠️ Transactional rollback кэшированного LiveDub не установлен: {_cached_atomicity_error}")
-
-try:
-    from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
-
-    install_livedub_audio_quality_guard()
-except Exception as _audio_quality_guard_error:
-    print(f"⚠️ Контроль качества двух MP3 LiveDub не установлен: {_audio_quality_guard_error}")
 
 try:
     from services.livedub_audio_dedupe import install_livedub_audio_dedupe
