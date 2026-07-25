@@ -74,6 +74,39 @@ def _install_clean_track_selection() -> None:
         yandex._find_latest_file = guarded_latest
 
 
+def _install_conversion_postcondition() -> None:
+    """A zero ffmpeg code is success only when the validated output exists."""
+    import services.project_runtime_hardening as hardening
+
+    current = hardening._SubprocessProxy.run
+    if getattr(current, "_mp3bot_audio_postcondition", False):
+        return
+
+    def checked_run(self, *args, **kwargs):
+        command = args[0] if args else kwargs.get("args")
+        guarded = hardening._guarded_mp3_command(command)
+        result = current(self, *args, **kwargs)
+        if guarded is None or result.returncode != 0:
+            return result
+        _cmd, _source, output = guarded
+        if output.exists() and hardening._ffprobe_audio_ok(output):
+            return result
+
+        message = "MP3 conversion returned success without a valid output"
+        stderr = result.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr + (b"\n" if stderr else b"") + message.encode("utf-8")
+        else:
+            stderr = f"{stderr or ''}\n{message}".strip()
+        logger.error("[AudioConversion] %s: %s", message, output)
+        return hardening._subprocess.CompletedProcess(
+            result.args, 1, result.stdout, stderr
+        )
+
+    checked_run._mp3bot_audio_postcondition = True  # type: ignore[attr-defined]
+    hardening._SubprocessProxy.run = checked_run
+
+
 def _install_complete_dual_delivery() -> None:
     import services.livedub_audio_companion as companion
 
@@ -159,6 +192,7 @@ def install_livedub_audio_quality_guard() -> None:
         if _INSTALLED:
             return
         _install_clean_track_selection()
+        _install_conversion_postcondition()
         _install_complete_dual_delivery()
         _INSTALLED = True
-        logger.info("🎧 LiveDub audio quality guard: strict clean RU + 2/2 delivery")
+        logger.info("🎧 LiveDub audio quality guard: clean RU + strict 2/2 + valid conversion")
