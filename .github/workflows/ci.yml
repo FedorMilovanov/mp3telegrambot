@@ -70,6 +70,18 @@ jobs:
       - name: Code health advisory
         run: python tools/check_code_health.py
 
+      - name: Export code health snapshot
+        if: matrix.python-version == '3.13'
+        run: python tools/check_code_health.py --write-baseline --baseline-path code-health-current.json
+
+      - name: Upload code health snapshot
+        if: matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-health-current
+          path: code-health-current.json
+          retention-days: 7
+
   windows-runtime:
     name: Windows runtime safety checks
     runs-on: windows-latest
