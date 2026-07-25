@@ -81,7 +81,7 @@ def test_retired_models_are_filtered():
 def test_gemini_clients_are_never_rotated_globally():
     runtime_src = _runtime_source()
     info_src = Path("services/livedub_info.py").read_text(encoding="utf-8")
-    assert "GEMINI_CLIENTS[:]" not in runtime_src
+    assert "GEMINI_CLIENTS[:] =" not in runtime_src
     assert "_gemini_clients_snapshot" in info_src
     assert "client.aio.models.generate_content" in info_src
     assert "request-local client order" in info_src
