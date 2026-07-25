@@ -1,198 +1,182 @@
-# MP3Bot — Telegram Media Audio Converter + AI Analysis
+# MP3Bot — Telegram Media Converter и AI-анализ
 
-## Структура проекта
+MP3Bot принимает ссылки на видео и плейлисты, извлекает аудио, строит русскоязычные публикационные материалы и поддерживает режимы перевода через Yandex LiveDub.
 
-```
-mp3bot/
-├── bot_new.py              ← Точка входа (запускать ЭТО)
-├── bot.py                  ← Совместимый launcher (перенаправляет на bot_new.py)
-├── main.py                 ← run_bot_async(), main()
-├── Start Bot.bat               ← Windows launcher
-├── cookies.txt             ← Куки для yt-dlp
-├── yt-dlp.conf             ← Конфиг yt-dlp
-├── .env                    ← Переменные окружения (создать самому!)
-│
-├── core/                   ← Фундамент (без внешних зависимостей проекта)
-│   ├── globals.py          ← Глобальные переменные, Flask, Gemini-клиенты
-│   ├── core_utils.py       ← Чистые утилиты (time_to_seconds, RTL fix и т.д.)
-│   ├── database.py         ← SQLite CRUD, кэш, настройки, rate limit
-│   ├── text_utils.py       ← Очистка текста, нормализация
-│   ├── url_utils.py        ← YouTube URL helpers
-│   ├── utils.py            ← Вспомогательные функции (файлы, thumbnail)
-│   ├── prompts.py          ← Все промпты для Gemini AI
-│   ├── json_parser.py      ← Парсинг JSON от Gemini
-│   └── progress.py         ← Прогресс-бар
-│
-├── converters/             ← Конвертеры контента
-│   ├── md_telegraph.py     ← Markdown → Telegraph nodes (⚠️ бывш. markdown.py)
-│   └── caption.py          ← build_caption для Telegram
-│
-├── services/               ← Внешние сервисы и тяжёлая логика
-│   ├── telegraph.py        ← Telegraph publisher
-│   ├── telegraph_pages.py  ← Study/Reflection/Analytics/Terms/Questions
-│   ├── search.py           ← RuTube/VK поиск альтернатив
-│   ├── gemini_analyze.py   ← Анализ аудио через Gemini API
-│   ├── ffmpeg.py           ← FFmpeg / yt-dlp helpers
-│   ├── shorts_video.py     ← Рендер субтитров и видео Shorts
-│   ├── shorts_candidates.py← Поиск кандидатов для Shorts/Clips
-│   ├── render_clips_montage.py ← Рендер клипов и монтажа
-│   └── pdf_generator.py    ← Генерация PDF из Telegraph
-│
-├── handlers/               ← Telegram bot хэндлеры
-│   ├── commands.py         ← /start, /help, /settings, /pdf, /resetcache, /stop
-│   └── callbacks.py        ← Кнопки (InlineKeyboard callbacks)
-│
-└── pipelines/              ← Бизнес-логика обработки
-    ├── main_pipeline.py    ← process_single_video (главный pipeline)
-    ├── shorts.py           ← process_and_send_shorts
-    ├── clips.py            ← process_and_send_clips
-    ├── montage.py          ← process_and_send_montage/highlights
-    └── playlist.py         ← handle_playlist
-```
+Запускать нужно **только `bot_new.py`**. Эта точка входа проверяет окружение, резервирует единственный процесс, поднимает обязательный Local Bot API и устанавливает runtime-защиты до запуска polling.
+
+## Что выдаёт бот
+
+### Русский режим
+
+- MP3 с обложкой и метаданными;
+- тема, описание, таймкоды и цитаты;
+- конспект и дополнительные Telegraph-страницы;
+- опциональные Shorts, клипы и монтаж.
+
+### ENG Full
+
+- полный AI-анализ;
+- видео с русским LiveDub-переводом;
+- **чистый русский MP3** без английского фона;
+- **финальный объединённый MP3** — звук именно из отправленного видео;
+- смысловая QA-проверка перевода и автоисправление подтверждённых major-участков.
+
+### ENG Quick
+
+- видео с переводом;
+- чистый русский MP3;
+- финальный объединённый MP3;
+- без полного конспекта и смысловой QA.
+
+### ENG Quick QA
+
+Тот же комплект, что в ENG Quick, плюс облегчённая QA коротких роликов.
+
+## Требования
+
+- Python 3.11 или новее;
+- FFmpeg и FFprobe в `PATH`;
+- локальный сервер `telegram-bot-api`;
+- системный TUN/VPN для Local Bot API либо рабочая поддерживаемая сеть;
+- Node.js 22+ или Deno 2.3+ для современных YouTube challenge-механизмов;
+- OAuth-токен Яндекса для стабильного создания новых LiveDub-переводов.
+
+Для Whisper-субтитров, PDF и аппаратного рендера нужны дополнительные зависимости, описанные в `requirements.txt`, `requirements-dev.txt` и `.env.example`.
 
 ## Быстрый старт
 
-1. Создайте `.env` файл:
-```
-BOT_TOKEN=ваш_телеграм_токен
-GEMINI_API_KEY=ваш_ключ_gemini
-TELEGRAPH_TOKEN=ваш_telegraph_токен
-# Для ENG-режимов с Яндекс «Живыми голосами»:
-# VOT_API_TOKEN=y0_AgA...  # OAuth-токен Яндекса, см. .env.example
-# YANDEX_OAUTH_TOKEN=...    # альтернативное имя, тоже поддерживается
-```
-
-2. Установите зависимости:
-```
-pip install python-telegram-bot python-dotenv google-genai yt-dlp flask requests Pillow
-pip install faster-whisper  # опционально, для субтитров
-pip install pdfkit beautifulsoup4  # опционально, для PDF
-pip install waitress  # опционально, для production HTTP
-```
-
-3. Запустите:
 ```bash
-python bot_new.py        # Linux/macOS
-py -3.13 bot_new.py      # Windows
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-Или дважды кликните `Start Bot.bat` на Windows.
+Создайте `.env`:
 
+```dotenv
+BOT_TOKEN=telegram_bot_token
+GEMINI_API_KEY=gemini_api_key
 
-### Работа без TUN/VPN
+# Обязательный Local Bot API
+LOCAL_BOT_API_URL=http://127.0.0.1:8081
+LOCAL_BOT_API_ID=123456
+LOCAL_BOT_API_HASH=telegram_api_hash
 
-Бот может работать без TUN-режима, но proxy надо задавать в правильном слое:
+# Для новых LiveDub-переводов
+VOT_API_TOKEN=yandex_oauth_access_token
+# Альтернативное имя:
+# YANDEX_OAUTH_TOKEN=yandex_oauth_access_token
+```
 
-- без `LOCAL_BOT_API_URL`: задайте `TELEGRAM_PROXY_URL` — Python/PTB будет ходить
-  к облачному Bot API через proxy. Для v2rayN mixed-port обычно подходит
-  `socks5h://127.0.0.1:10808`; если не установлен `socksio`, бот попробует
-  HTTP fallback на тот же mixed-port (`TELEGRAM_PROXY_HTTP_FALLBACK=1`);
-- `yt-dlp` запускается отдельным процессом, поэтому без TUN ему тоже нужен proxy:
-  `YTDLP_PROXY_URL=http://127.0.0.1:10808` или fallback от `TELEGRAM_PROXY_URL`.
-- с `LOCAL_BOT_API_URL`: Python ходит только в `127.0.0.1`. Официальный
-  `telegram-bot-api.exe` не поддерживает SOCKS/MTProto TDLib proxy-флаги вида
-  `--proxy-server/--tdlib-proxy-type`; такие аргументы валят сервер на старте.
-  Для no-TUN используйте облачный Bot API + `TELEGRAM_PROXY_URL`, либо включайте
-  TUN/VPN для локального сервера. `LOCAL_BOT_API_PROXY_URL=http://...` может быть
-  передан как официальный `--proxy=<url>` только для HTTP proxy/webhook-сценариев.
-  Если local Bot API порт открыт, но `/getMe` не работает, бот по умолчанию
-  fallback'нется на облачный Bot API через `TELEGRAM_PROXY_URL` или SOCKS из
-  `LOCAL_BOT_API_PROXY_URL` (`LOCAL_BOT_API_CLOUD_FALLBACK=1`), но тогда действуют
-  облачные лимиты Telegram на размер файлов.
+Запуск:
 
-Примеры есть в `.env.example`.
+```bash
+python bot_new.py          # Linux/macOS
+py -3.13 bot_new.py        # Windows
+```
 
-### ENG / «Живые голоса» Яндекса
+На Windows также можно использовать `Start Bot.bat`.
 
-Для режимов `ENG Full` и `ENG Quick` нужен `VOT_API_TOKEN` в `.env`
-(или альтернативное имя `YANDEX_OAUTH_TOKEN`).
-Это OAuth access token аккаунта Яндекса для VOT API. Без него «Живые голоса»
-работают только для роликов, которые уже есть в серверном кэше Яндекса; новые
-ролики могут отвечать `SESSION_REQUIRED` / `Translation not available`.
+## Local Bot API и сеть
 
-Короткая инструкция получения токена и пример строки `.env` есть в `.env.example`.
-Обычные TTS-голоса по умолчанию выключены: `LIVEDUB_TTS_FALLBACK=0`, чтобы ENG
-не подменял живой перевод неживым.
+Текущий production-контракт **не использует тихий облачный fallback**. Если локальный `/getMe` не отвечает, `bot_new.py` завершает запуск до скачивания и обработки больших файлов.
 
-Pro-микс специально держит конец ролика ещё `LIVEDUB_DELAY_MS +
-LIVEDUB_TAIL_MARGIN_MS` (по умолчанию 600 мс + 1000 мс), чтобы задержанный
-русский перевод в Shorts не обрывался на последнем слове. Для коротких роликов
-до `LIVEDUB_TAIL_FREEZE_MAX_SEC=180` последний кадр дозамораживается на этот
-хвост; можно отключить freeze-frame через `LIVEDUB_TAIL_FREEZE_MAX_SEC=0`.
-VOT-запрос получает целую длительность из метаданных YouTube (`floor`), потому
-что лишний padding может ломать попадание в cache-key Яндекса; хвост/договоривание
-защищаются уже на этапе нашего ffmpeg-микса.
+Это сделано намеренно:
 
-Для длинных Synopsis бот по умолчанию пытается скачать YouTube/auto captions и
-добавить timed transcript в prompt (`SYNOPSIS_YT_TRANSCRIPT=1`, лимит
-`SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS=120000`, частичные captions ниже
-`SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE=0.70` отбрасываются). Это нужно, чтобы конспект был не
-обзорной статьёй, а структурированной почти-дословной стенограммой. Сам Synopsis
-по умолчанию использует чистый verbatim-prompt (`SYNOPSIS_VERBATIM_PROMPT=1`) без
-Study/Reflection/source-card шума и работает без Gemini `response_schema`
-(`SYNOPSIS_STRUCTURED=0`), потому что старый schema-free режим лучше держал
-дословность; schema можно включить обратно, если важнее строгая JSON-форма, чем
-плотность.
+- локальный API поддерживает большие медиафайлы;
+- результат не меняется скрытно из-за облачного лимита Telegram;
+- ошибка сети обнаруживается при старте, а не после долгой обработки видео.
 
+Для локального сервера обычно нужен системный TUN/VPN. Переменные proxy для Python или yt-dlp не заменяют сетевой маршрут самого `telegram-bot-api` процесса.
 
-LiveDub captions: в `ENG Full` название берётся из уже готового Gemini-анализа
-(`real_title/real_author`), без отдельного запроса. В `ENG Quick` title переводится через лёгкую модель (`GEMINI_LIGHT_MODEL`),
-а при выключении `LIVEDUB_TITLE_TRANSLATE=0` используется оригинальное
-YouTube-название + словарь известных авторов.
+`yt-dlp` запускается отдельно и при работе без системного TUN может использовать:
 
+```dotenv
+YTDLP_PROXY_URL=http://127.0.0.1:10808
+```
 
-Для быстрых текстовых задач можно использовать отдельную лёгкую модель:
-`GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite`. Если лёгкая модель недоступна, fallback уходит на основную `GEMINI_MODEL` (3.1-lite-preview и 2.5-flash-lite выключены Google в июле 2026). Она не заменяет основной
-`GEMINI_MODEL`, а используется для дешёвых карточек ENG Quick: Telegram/YouTube
-описание, компактные тезисы/субтитры по SRT перевода. Включено по умолчанию:
-`LIVEDUB_INFO_CARD=1`; выключить можно `LIVEDUB_INFO_CARD=0`.
-Title для `ENG Quick` по умолчанию тоже переводится через лёгкую модель:
-`LIVEDUB_TITLE_TRANSLATE=1`; выключить можно `LIVEDUB_TITLE_TRANSLATE=0`.
+## Gemini policy
 
+Runtime выбирает модели до импорта AI-клиентов:
 
-`/mode` также содержит режим `⚡🔍 ENG Quick QA`: он не делает полный конспект,
-но для коротких роликов (по умолчанию до 120 сек) запускает лёгкую проверку
-перевода через `GEMINI_LIGHT_MODEL`. Если найдена major-ошибка, русский дубляж
-в проблемном окне вырезается, а оригинал поднимается. Настройки:
-`LIVEDUB_QUICK_QA_MAX_DURATION=120`, `LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite`.
+- основной quality-маршрут: `gemini-3.6-flash`;
+- сильный fallback: `gemini-3.5-flash`;
+- лёгкие механические задачи: `gemini-3.5-flash-lite`.
 
+Устаревшие 3.1/2.x light-настройки автоматически заменяются актуальной лёгкой моделью. Значения можно переопределить через `.env`, но startup-логи всегда показывают фактически выбранную политику.
 
-## Исправленные баги (относительно рефакторинга)
+## LiveDub и два MP3
 
-### 🔴 Критические
+Для каждого успешного LiveDub-видео бот формирует две независимые версии:
 
-1. **`markdown.py` → `md_telegraph.py`** — файл `markdown.py` конфликтовал с 
-   системной библиотекой `markdown` (pip). Python импортировал не тот модуль →
-   `ImportError: cannot import name '_HEADING_BOLD_STRIP_RE'`.
+1. `Название — чистый RU.mp3` — сохранённая русская дорожка перевода;
+2. `Название — финальный микс.mp3` — аудио, извлечённое из окончательного видео после задержек, ducking и QA-исправлений.
 
-2. **Потеряны regex-паттерны `_HEADING_BOLD_STRIP_RE` и `_ENSURE_TS_INLINE_RE`** —
-   были определены в оригинальном `bot.py` (строка 3050), но потерялись при 
-   разнесении по файлам. Восстановлены в `converters/md_telegraph.py`.
+Обе версии:
 
-3. **Циклический импорт `markdown.py ↔ telegraph.py`** — `markdown.py` лениво 
-   импортировал из `telegraph.py`, а `telegraph.py` — из `markdown.py`. 
-   Решено: lazy imports сохранены с правильными путями.
+- отдельно проверяются FFprobe;
+- сверяются по длительности с финальным видео;
+- получают отдельные Telegram `file_id`;
+- отдельно хранятся в кэше;
+- не считаются полным комплектом, если одна из версий отсутствует или повреждена.
 
-### 🟡 Средние
+Старые производные файлы вроде `*.final-mix.mp3` и `*.ru-audio.mp3` не могут быть повторно выбраны как чистая русская дорожка.
 
-4. **`telegraph_pages.py` импортировал `_fix_rtl_in_text` из `md_telegraph`** — 
-   но эта функция определена в `core_utils.py`. Импорт исправлен.
+## QA перевода
 
-5. **`Start Bot.bat` использовал абсолютный путь** — заменён на `%~dp0` (относительный).
+- все валидные `major`-таймкоды покрываются автоисправлением;
+- пересекающиеся интервалы объединяются;
+- положительный лимит не обрезает список молча: частичный автофикс отклоняется;
+- пересобранное видео проверяется по длительности и наличию видеопотока;
+- финальный объединённый MP3 создаётся уже из проверенной версии видео.
 
-### 🟢 Улучшения
+## Основные команды
 
-6. **Организация по папкам** — 30+ файлов из одной папки разнесены по 5 логическим 
-   пакетам (`core/`, `converters/`, `services/`, `handlers/`, `pipelines/`).
+- `/start` — стартовая панель;
+- `/help` — актуальная справка по режимам и результатам;
+- `/mode` — выбор RUS / ENG Full / ENG Quick / ENG Quick QA;
+- `/settings` — настройки функций;
+- `/archive` — последние публикации;
+- `/search <текст>` — поиск по архиву;
+- `/segments` — список смысловых сегментов;
+- `/cut` — вырезание сегмента;
+- `/status`, `/metrics`, `/codehealth` — административная диагностика.
 
-7. **Автоматический реюз видео** — пайплайн Shorts использует уже скачанные
-   видео из LiveDub, экономя трафик и время.
+## Структура
 
-8. **Блок «Читать также»** — в конце Telegraph-страниц автоматически выводятся
-   ссылки на похожие материалы из архива по автору или теме.
+```text
+bot_new.py                 проверенная точка входа
+main.py                    lifecycle Telegram Application
+core/                      БД, настройки, промпты, общие модели
+handlers/                  команды и callback-обработчики
+pipelines/                 основные пользовательские сценарии
+services/                  LiveDub, Gemini, FFmpeg, Telegraph и runtime-защиты
+converters/                Telegram/Telegraph форматирование
+tests/                     unit и regression-тесты
+tools/                     диагностика и вспомогательные CLI
+```
 
-9. **AV1 и NVENC** — поддержка новейших аппаратных энкодеров для максимального
-   качества и сжатия видео в 2026 году.
+## Проверка качества
 
-10. **ID3-главы и метаданные** — в MP3-файлы вшиваются главы по таймкодам,
-    обложка, автор и ссылки на оригинал.
+GitHub Actions выполняет:
+
+- полный `pytest` на Python 3.11 и 3.13;
+- компиляцию всех Python-файлов;
+- Ruff fatal checks;
+- отдельный Windows runtime-набор на Python 3.13;
+- реальные FFmpeg/FFprobe-интеграционные тесты двух MP3;
+- code-health отчёт по росту regex/postprocess-слоя.
+
+Ручной запуск:
+
+```bash
+python -m pytest -q
+python -m ruff check --select E9,F63,F7,F82 .
+python tools/check_code_health.py
+```
+
+## Безопасная эксплуатация
+
+- не запускайте одновременно несколько экземпляров бота;
+- не публикуйте `.env`, OAuth-токены, cookies и Telegram API hash;
+- после изменения аудиомикса или QA-политики меняйте cache fingerprint;
+- проверяйте startup-логи после обновления FFmpeg, yt-dlp, Node/Deno или Gemini-моделей.
