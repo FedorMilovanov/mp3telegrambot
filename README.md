@@ -152,7 +152,7 @@ LIVEDUB_TTS_FALLBACK=0
 
 ## Качество Synopsis и timed transcript
 
-Перед созданием дословного Synopsis бот может скачать YouTube/auto captions и передать Gemini **timed transcript** как временной скелет речи. Это снижает риск обзорной статьи вместо структурированной стенограммы.
+Перед созданием дословного Synopsis бот может скачать YouTube/auto captions и передать Gemini **timed transcript** как временной скелет речи. Цель — получить не обзорную статью, а материал, который остаётся структурированной почти-дословной стенограммой исходного выступления.
 
 ```dotenv
 SYNOPSIS_YT_TRANSCRIPT=1
