@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main"]
     paths-ignore:
@@ -101,6 +102,9 @@ jobs:
           python -m py_compile services/cloud_media_fallback.py
           python -m py_compile services/project_runtime_hardening.py
           python -m py_compile services/livedub_audio_companion.py
+          python -m py_compile services/livedub_audio_quality_guard.py
+          python -m py_compile services/livedub_delivery_hardening.py
+          python -m py_compile services/livedub_dual_audio_policy.py
           python -m py_compile services/livedub_long_qa.py
           python -m py_compile services/livedub_output_policy.py
           python -m py_compile services/livedub_publication.py
@@ -120,6 +124,8 @@ jobs:
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
           tests/test_livedub_audio_companion.py
+          tests/test_livedub_audio_quality_guard.py
+          tests/test_livedub_dual_audio.py
           tests/test_livedub_long_qa.py
           tests/test_livedub_user_reported_fixes.py
           tests/test_livedub_publication.py
@@ -140,6 +146,9 @@ jobs:
           services/cloud_media_fallback.py
           services/project_runtime_hardening.py
           services/livedub_audio_companion.py
+          services/livedub_audio_quality_guard.py
+          services/livedub_delivery_hardening.py
+          services/livedub_dual_audio_policy.py
           services/livedub_long_qa.py
           services/livedub_output_policy.py
           services/livedub_publication.py
@@ -155,6 +164,8 @@ jobs:
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
           tests/test_livedub_audio_companion.py
+          tests/test_livedub_audio_quality_guard.py
+          tests/test_livedub_dual_audio.py
           tests/test_livedub_long_qa.py
           tests/test_livedub_user_reported_fixes.py
           tests/test_livedub_publication.py
