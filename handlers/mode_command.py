@@ -2,10 +2,10 @@
 """
 Команда /mode — выбор режима обработки видео.
 
-rus      : 🇷🇺 Обычный режим — полный анализ (конспект, цитаты, Shorts...), без перевода.
-eng      : 🇬🇧 ENG Full — полный анализ + Живые голоса + смысловая проверка перевода (Gemini QA).
-eng_fast : ⚡ ENG Quick — ТОЛЬКО перевод Живые голоса, без анализа и без QA. Быстро и дёшево.
-eng_fast_qa : ⚡🔍 ENG Quick QA — быстрый перевод + лёгкая проверка коротких роликов.
+rus         : 🇷🇺 полный анализ без перевода.
+eng         : 🇬🇧 полный анализ + LiveDub-видео + два MP3 + смысловая QA.
+eng_fast    : ⚡ LiveDub-видео + чистый RU MP3 + финальный микс, без анализа и QA.
+eng_fast_qa : ⚡🔍 тот же комплект + лёгкая QA коротких роликов.
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -16,25 +16,36 @@ logger = logging.getLogger(__name__)
 VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa")
 
 MODE_LABELS = {
-    "rus":      "🇷🇺 Русский — полный анализ",
-    "eng":      "🇬🇧 ENG Full — анализ + перевод + проверка",
-    "eng_fast": "⚡ ENG Quick — только перевод",
-    "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + проверка",
+    "rus": "🇷🇺 Русский — полный анализ",
+    "eng": "🇬🇧 ENG Full — анализ + перевод + проверка",
+    "eng_fast": "⚡ ENG Quick — перевод + два MP3",
+    "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + два MP3 + проверка",
 }
 
+_AUDIO_SET = "видео с переводом, чистый русский MP3 и финальный объединённый MP3"
+
 MODE_DESCRIPTIONS = {
-    "rus":      "Конспект, цитаты, вопросы, Shorts — как обычно. Перевода нет.",
-    "eng":      "Всё то же + видео с «Живыми голосами» Яндекса + Gemini сверяет дубляж с оригиналом и присылает отчёт о точности.",
-    "eng_fast": "Только переведённое видео, максимально быстро. Без конспектов, без проверки, без расхода квоты Gemini.",
-    "eng_fast_qa": "Переведённое видео без конспекта, но короткие ролики проверяются лёгкой Gemini-моделью; major-ошибки автоматически вырезаются.",
+    "rus": "Конспект, цитаты, вопросы, Shorts — как обычно. Перевода нет.",
+    "eng": (
+        "Полный анализ и комплект LiveDub: " + _AUDIO_SET + ". "
+        "Gemini сверяет дубляж с оригиналом и присылает отчёт о точности."
+    ),
+    "eng_fast": (
+        "Только комплект LiveDub: " + _AUDIO_SET + ". "
+        "Без конспекта и без смысловой проверки перевода."
+    ),
+    "eng_fast_qa": (
+        "Комплект LiveDub: " + _AUDIO_SET + ". "
+        "Короткие ролики дополнительно проверяются; подтверждённые major-ошибки "
+        "приглушаются в финальном миксе."
+    ),
 }
 
 
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
-        # AUDIT M4 / FIX AUDIT R4: синхронный SQLite — только в executor,
-        # иначе contended-БД (busy_timeout до 5с) замораживает весь event loop.
+        # Синхронный SQLite выполняем вне event loop.
         import asyncio as _asyncio
         loop = _asyncio.get_running_loop()
         current = await loop.run_in_executor(None, _get_user_mode_raw, user_id)
@@ -50,11 +61,10 @@ async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     lines = [f"<b>Текущий режим:</b> {current_label}", ""]
-    for m in VALID_MODES:
-        lines.append(f"{MODE_LABELS[m]}")
-        lines.append(f"      <i>{MODE_DESCRIPTIONS[m]}</i>")
-    lines.append("")
-    lines.append("Выберите режим обработки видео:")
+    for mode in VALID_MODES:
+        lines.append(MODE_LABELS[mode])
+        lines.append(f"      <i>{MODE_DESCRIPTIONS[mode]}</i>")
+    lines.extend(("", "Выберите режим обработки видео:"))
 
     await update.message.reply_text(
         "\n".join(lines),
@@ -73,12 +83,11 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
 
     try:
-        # AUDIT M4 / FIX AUDIT R4: синхронный SQLite — только в executor.
         import asyncio as _asyncio
         loop = _asyncio.get_running_loop()
         await loop.run_in_executor(None, _set_user_mode_raw, user_id, mode)
-    except Exception as e:
-        logger.error(f"mode save err: {e}")
+    except Exception as exc:
+        logger.error("mode save err: %s", exc)
         await query.edit_message_text("❌ Ошибка сохранения режима.")
         return
 
@@ -88,18 +97,15 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             f"✅ Режим установлен: <b>{label}</b>\n<i>{MODE_DESCRIPTIONS.get(mode, '')}</i>",
             parse_mode="HTML",
         )
-    except Exception as e:
-        # FIX AUDIT R4: двойной тап по той же кнопке даёт второй edit с тем же
-        # текстом → BadRequest "Message is not modified" уходил в глобальный
-        # error handler и юзер получал «Внутренняя ошибка» на успешное действие.
-        if "is not modified" not in str(e).lower():
+    except Exception as exc:
+        # Повторный тап по той же кнопке даёт Telegram BadRequest
+        # "Message is not modified" и не является ошибкой сохранения.
+        if "is not modified" not in str(exc).lower():
             raise
 
 
 # --- helpers: direct DB access ---
 
-import sqlite3
-from core.globals import DB_PATH
 from core.database import _db_conn
 
 
@@ -109,7 +115,7 @@ def _get_user_mode_raw(user_id: int) -> str:
         with _db_conn() as conn:
             row = conn.execute(
                 "SELECT value FROM bot_settings WHERE key = ?",
-                (f"user_mode_{user_id}",)
+                (f"user_mode_{user_id}",),
             ).fetchone()
         if row and row[0] in VALID_MODES:
             return row[0]
@@ -125,6 +131,6 @@ def _set_user_mode_raw(user_id: int, mode: str) -> None:
     with _db_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (f"user_mode_{user_id}", mode)
+            (f"user_mode_{user_id}", mode),
         )
         conn.commit()
