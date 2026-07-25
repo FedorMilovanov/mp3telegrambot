@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from services import livedub_ru_provenance as provenance
 
 
@@ -49,6 +51,17 @@ def test_marker_rejects_path_traversal_and_absolute_paths(tmp_path: Path):
         encoding="utf-8",
     )
     assert provenance.read_ru_audio_provenance(tmp_path) is None
+
+
+def test_symlinked_audio_is_rejected(tmp_path: Path):
+    target = _audio(tmp_path.parent / "outside-target.mp3")
+    link = tmp_path / "translation.live.mp3"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable on this platform")
+
+    assert provenance.write_ru_audio_provenance(link) is False
 
 
 def test_changed_file_invalidates_provenance(tmp_path: Path):
@@ -99,12 +112,13 @@ def test_track_reader_preserves_fallback_without_valid_marker(tmp_path: Path, mo
     assert mix.find_pro_tracks(tmp_path) == (None, fallback)
 
 
-def test_vot_wrapper_records_exact_returned_path(tmp_path: Path, monkeypatch):
+def test_vot_wrapper_records_file_created_by_current_call(tmp_path: Path, monkeypatch):
     from services import yandex_live_dub as yandex
 
-    exact = _audio(tmp_path / "returned.live.mp3")
+    exact = tmp_path / "returned.live.mp3"
 
     async def fake_get(*args, **kwargs):
+        _audio(exact)
         return exact
 
     monkeypatch.setattr(yandex, "get_live_dub_audio", fake_get)
@@ -121,3 +135,34 @@ def test_vot_wrapper_records_exact_returned_path(tmp_path: Path, monkeypatch):
     assert provenance.read_ru_audio_provenance(tmp_path) == exact
     payload = json.loads((tmp_path / ".livedub_ru_audio.json").read_text(encoding="utf-8"))
     assert payload["voice_style"] == "live"
+
+
+def test_vot_wrapper_does_not_fossilize_unchanged_old_mp3(tmp_path: Path, monkeypatch):
+    from services import yandex_live_dub as yandex
+
+    stale = _audio(tmp_path / "stale.live.mp3")
+
+    async def fake_get(*args, **kwargs):
+        return stale
+
+    monkeypatch.setattr(yandex, "get_live_dub_audio", fake_get)
+    provenance._install_vot_recorder()
+
+    assert asyncio.run(yandex.get_live_dub_audio("url", tmp_path)) == stale
+    assert not (tmp_path / ".livedub_ru_audio.json").exists()
+
+
+def test_vot_wrapper_rejects_return_outside_requested_directory(tmp_path: Path, monkeypatch):
+    from services import yandex_live_dub as yandex
+
+    outside = tmp_path.parent / "outside-return.live.mp3"
+
+    async def fake_get(*args, **kwargs):
+        _audio(outside)
+        return outside
+
+    monkeypatch.setattr(yandex, "get_live_dub_audio", fake_get)
+    provenance._install_vot_recorder()
+
+    assert asyncio.run(yandex.get_live_dub_audio("url", tmp_path)) == outside
+    assert not (tmp_path / ".livedub_ru_audio.json").exists()
