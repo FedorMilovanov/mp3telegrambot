@@ -9,7 +9,7 @@ The delivery contract is explicit:
   auto-fixes when the video was rebuilt).
 
 Both variants are validated independently with ffprobe, sent independently, and
-cached independently. Legacy one-file cache entries remain readable and are
+cached independently.  Legacy one-file cache entries remain readable and are
 migrated on the next successful delivery.
 """
 from __future__ import annotations
@@ -255,7 +255,6 @@ def _normalise_cache_entry(value: Any) -> dict[str, Any] | None:
         for name, meta in variants.items()
         if name in _VARIANTS and isinstance(meta, dict) and meta.get("audio_file_id")
     }
-    # Backward compatibility: the old single audio_file_id was normally clean RU.
     legacy_id = str(entry.get("audio_file_id") or "")
     if legacy_id and "clean" not in variants:
         variants["clean"] = {
@@ -359,7 +358,7 @@ async def _send_cached_audio(
                 str(exc)[:180],
             )
             _cache_drop_variant(video_file_id, variant)
-    return sent > 0
+    return sent == len(required)
 
 
 async def _send_variant(
