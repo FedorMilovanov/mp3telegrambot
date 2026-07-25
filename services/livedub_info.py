@@ -8,7 +8,6 @@ Uses Gemini 3.5 Flash-Lite only for genuinely light/mechanical text work.
 from __future__ import annotations
 
 import asyncio
-
 import html
 import json
 import logging
@@ -17,11 +16,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.globals import GEMINI_CLIENTS, make_text_config_smart
 from core.database import GEMINI_MODEL
+from core.globals import GEMINI_CLIENTS, make_text_config_smart
 from core.text_utils import (
-    _scrub_inline, _strip_meta_lines, normalize_common_typos,
-    normalize_hashtag, normalize_title_text, title_case_fragment,
+    _scrub_inline,
+    _strip_meta_lines,
+    normalize_common_typos,
+    normalize_hashtag,
+    normalize_title_text,
+    title_case_fragment,
 )
 from converters.md_telegraph import safe_trim_caption
 from services.livedub_qa import srt_to_timed_text
@@ -32,11 +35,18 @@ DEFAULT_LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
 def livedub_info_enabled() -> bool:
-    return os.getenv("LIVEDUB_INFO_CARD", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return os.getenv("LIVEDUB_INFO_CARD", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 def get_light_model() -> str:
-    return (os.getenv("GEMINI_LIGHT_MODEL", DEFAULT_LIGHT_MODEL) or DEFAULT_LIGHT_MODEL).strip()
+    return (
+        os.getenv("GEMINI_LIGHT_MODEL", DEFAULT_LIGHT_MODEL) or DEFAULT_LIGHT_MODEL
+    ).strip()
 
 
 def get_light_model_fallbacks() -> list[str]:
@@ -49,7 +59,12 @@ def get_light_model_fallbacks() -> list[str]:
         model = item.strip()
         if model and model not in out and model != get_light_model():
             out.append(model)
-    if os.getenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}:
+    if os.getenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
         if GEMINI_MODEL and GEMINI_MODEL not in out and GEMINI_MODEL != get_light_model():
             out.append(GEMINI_MODEL)
     return out
@@ -64,20 +79,31 @@ def livedub_info_response_schema() -> dict:
             "youtube_description": {"type": "string"},
             "compact_subtitles": {"type": "array", "items": {"type": "string"}},
             "hashtags": {"type": "array", "items": {"type": "string"}},
-            "key_theological_terms": {"type": "array", "items": {"type": "string"}},
+            "key_theological_terms": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
             "scripture_references": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
                         "ref": {"type": "string"},
-                        "text_ru": {"type": "string"}
+                        "text_ru": {"type": "string"},
                     },
-                    "required": ["ref", "text_ru"]
-                }
-            }
+                    "required": ["ref", "text_ru"],
+                },
+            },
         },
-        "required": ["telegram_description", "youtube_title", "youtube_description", "compact_subtitles", "hashtags", "key_theological_terms", "scripture_references"],
+        "required": [
+            "telegram_description",
+            "youtube_title",
+            "youtube_description",
+            "compact_subtitles",
+            "hashtags",
+            "key_theological_terms",
+            "scripture_references",
+        ],
     }
 
 
@@ -126,12 +152,22 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         terms = []
 
     out = {
-        "telegram_description": _safe_text(data.get("telegram_description") or fb["telegram_description"], 520),
-        "youtube_title": title_case_fragment(_safe_text(data.get("youtube_title") or fb["youtube_title"], 100)),
-        "youtube_description": _safe_text(data.get("youtube_description") or fb["youtube_description"], 1200),
-        "compact_subtitles": [_safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)],
+        "telegram_description": _safe_text(
+            data.get("telegram_description") or fb["telegram_description"], 520
+        ),
+        "youtube_title": title_case_fragment(
+            _safe_text(data.get("youtube_title") or fb["youtube_title"], 100)
+        ),
+        "youtube_description": _safe_text(
+            data.get("youtube_description") or fb["youtube_description"], 1200
+        ),
+        "compact_subtitles": [
+            _safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)
+        ],
         "hashtags": [],
-        "key_theological_terms": [_safe_text(x, 60) for x in terms[:5] if _safe_text(x, 60)],
+        "key_theological_terms": [
+            _safe_text(x, 60) for x in terms[:5] if _safe_text(x, 60)
+        ],
         "scripture_references": scripture[:5],
         "source_url": _safe_text(source_url or fb.get("source_url"), 500),
         "source": "gemini_light",
@@ -143,7 +179,6 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
 
     # Добавляем хэштег автора, если он есть в заголовке
     if fallback_title:
-        from core.text_utils import normalize_author_name
         # Пытаемся вытащить автора из "Название - Автор"
         if " - " in fallback_title:
             author_part = fallback_title.split(" - ", 1)[1]
@@ -154,10 +189,24 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
     return out
 
 
-async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = None, *, source_url: str = "", force: bool = False) -> dict | None:
+def _gemini_clients_snapshot() -> tuple[Any, ...]:
+    """Return a request-local client order without mutating the shared registry."""
+    return tuple(GEMINI_CLIENTS)
+
+
+async def build_livedub_info_card(
+    title_line: str,
+    dub_srt_path: Path | None = None,
+    *,
+    source_url: str = "",
+    force: bool = False,
+) -> dict | None:
     """Build a small reusable description pack for a translated LiveDub video.
 
-    Returns a dict or None. Never raises.
+    Returns a dict or None. Never raises. Each request takes an immutable snapshot
+    of the Gemini clients. This is important because Telegram processes several
+    updates concurrently; reordering the shared ``GEMINI_CLIENTS`` list during an
+    await can route unrelated analyses through the wrong API-key order.
     """
     if not (force or livedub_info_enabled()):
         return None
@@ -166,11 +215,12 @@ async def build_livedub_info_card(title_line: str, dub_srt_path: Path | None = N
     try:
         if dub_srt_path and Path(dub_srt_path).exists():
             timed_text = srt_to_timed_text(Path(dub_srt_path), max_chars=7000)
-    except Exception as e:
-        logger.info("[LiveDubInfo] SRT read failed: %s", str(e)[:120])
+    except Exception as exc:
+        logger.info("[LiveDubInfo] SRT read failed: %s", str(exc)[:120])
         timed_text = ""
 
-    if not GEMINI_CLIENTS:
+    clients = _gemini_clients_snapshot()
+    if not clients:
         return fallback
 
     prompt = f"""
@@ -205,9 +255,11 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
   ]
 }}
 """.strip()
-    try:
-        last_error: Exception | None = None
-        for model in [get_light_model(), *get_light_model_fallbacks()]:
+
+    models = [get_light_model(), *get_light_model_fallbacks()]
+    last_error: Exception | None = None
+    for client_index, client in enumerate(clients, start=1):
+        for model in models:
             try:
                 cfg = make_text_config_smart(
                     temperature=0.2,
@@ -218,28 +270,38 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
                     response_schema=livedub_info_response_schema(),
                 )
                 resp = await asyncio.wait_for(
-                    GEMINI_CLIENTS[0].aio.models.generate_content(
+                    client.aio.models.generate_content(
                         model=model,
                         contents=prompt,
                         config=cfg,
                     ),
-                    timeout=60.0,  # light info card should be fast
+                    timeout=60.0,
                 )
                 raw = _strip_json_fence(getattr(resp, "text", "") or "")
                 data = json.loads(raw)
-                # FIX AUDIT R4: без source_url успешная карточка теряла ссылку
-                # «Оригинал на YouTube» — она была только в fallback-карточке.
                 card = _normalize_card(data, title_line, source_url)
                 card["model"] = model
                 return card
-            except Exception as e:
-                last_error = e
-                logger.info("[LiveDubInfo] light model %s failed: %s", model, str(e)[:120])
-        if last_error:
-            raise last_error
-    except Exception as e:
-        logger.info("[LiveDubInfo] light model failed (%s) — fallback", str(e)[:160])
-        return fallback
+            except Exception as exc:
+                last_error = exc
+                logger.info(
+                    "[LiveDubInfo] client %d model %s failed: %s",
+                    client_index,
+                    model,
+                    str(exc)[:120],
+                )
+
+    if last_error:
+        logger.info(
+            "[LiveDubInfo] all clients/models failed (%s) — fallback",
+            str(last_error)[:160],
+        )
+    return fallback
+
+
+# The quality runtime checks this marker and must not install its historical
+# global-list rotation wrapper around the native multi-client implementation.
+build_livedub_info_card._mp3bot_all_clients = True  # type: ignore[attr-defined]
 
 
 def _h(text: Any) -> str:
@@ -262,7 +324,9 @@ def format_livedub_info_message(card: dict) -> str:
     if tg:
         lines += ["", "📝 <b>Кратко для Telegram</b>", f"<i>{_h(tg)}</i>"]
     if source_url:
-        lines += [f"🔗 <a href=\"{html.escape(source_url, quote=True)}\">Оригинал на YouTube</a>"]
+        lines += [
+            f"🔗 <a href=\"{html.escape(source_url, quote=True)}\">Оригинал на YouTube</a>"
+        ]
 
     clean_compact = [_safe_text(x, 180) for x in compact[:8] if _safe_text(x, 180)]
     if clean_compact:
@@ -272,23 +336,22 @@ def format_livedub_info_message(card: dict) -> str:
     terms = card.get("key_theological_terms") or []
     if terms:
         lines += ["", "🧠 <b>Богословские термины</b>"]
-        # 2026-06-11: Выводим термины в одну строку через пробел, как хэштеги.
-        # Убираем пробелы внутри терминов для корректности тегов.
+        # Выводим термины в одну строку через пробел, как хэштеги.
         tags = []
-        for t in terms[:6]:
-            tag_body = "".join(w.capitalize() for w in str(t).split())
+        for term in terms[:6]:
+            tag_body = "".join(word.capitalize() for word in str(term).split())
             tags.append(f"#{tag_body}")
         lines.append(" ".join(tags))
 
     if scripture:
         lines += ["", "📖 <b>Упомянутые места Писания</b>"]
-        for s in scripture[:5]:
-            if not isinstance(s, dict):   # AUDIT R39: модель могла дать список строк
+        for item in scripture[:5]:
+            if not isinstance(item, dict):
                 continue
-            ref = _h(s.get("ref", ""))
-            txt = _h(s.get("text_ru", ""))
-            if ref and txt:
-                lines.append(f"<b>{ref}</b>: {txt}")
+            ref = _h(item.get("ref", ""))
+            text = _h(item.get("text_ru", ""))
+            if ref and text:
+                lines.append(f"<b>{ref}</b>: {text}")
             elif ref:
                 lines.append(f"<b>{ref}</b>")
 
