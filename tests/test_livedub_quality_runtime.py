@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +76,61 @@ def test_retired_models_are_filtered():
     src = _runtime_source()
     assert "_RETIRED_MODELS" in src
     assert "value not in _RETIRED_MODELS" in src
+
+
+def test_gemini_clients_are_never_rotated_globally():
+    runtime_src = _runtime_source()
+    info_src = Path("services/livedub_info.py").read_text(encoding="utf-8")
+    assert "GEMINI_CLIENTS[:] =" not in runtime_src
+    assert "_gemini_clients_snapshot" in info_src
+    assert "client.aio.models.generate_content" in info_src
+    assert "request-local client order" in info_src
+
+
+def test_info_card_tries_all_clients_without_mutating_registry(monkeypatch):
+    import services.livedub_info as info
+
+    calls: list[tuple[str, str]] = []
+
+    class Models:
+        def __init__(self, name: str, *, fail: bool) -> None:
+            self.name = name
+            self.fail = fail
+
+        async def generate_content(self, *, model, contents, config):
+            del contents, config
+            calls.append((self.name, model))
+            if self.fail:
+                raise RuntimeError(f"{self.name} unavailable")
+            payload = {
+                "telegram_description": "Готово",
+                "youtube_title": "Название",
+                "youtube_description": "Описание",
+                "compact_subtitles": [],
+                "hashtags": [],
+                "key_theological_terms": [],
+                "scripture_references": [],
+            }
+            return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
+
+    class Client:
+        def __init__(self, name: str, *, fail: bool) -> None:
+            self.aio = SimpleNamespace(models=Models(name, fail=fail))
+
+    clients = [Client("first", fail=True), Client("second", fail=False)]
+    original_order = tuple(clients)
+    monkeypatch.setattr(info, "GEMINI_CLIENTS", clients)
+    monkeypatch.setattr(info, "get_light_model", lambda: "model-a")
+    monkeypatch.setattr(info, "get_light_model_fallbacks", lambda: [])
+    monkeypatch.setattr(info, "make_text_config_smart", lambda **kwargs: kwargs)
+
+    card = asyncio.run(info.build_livedub_info_card("Title", force=True))
+
+    assert card is not None
+    assert card["source"] == "gemini_light"
+    assert calls == [("first", "model-a"), ("second", "model-a")]
+    assert info.GEMINI_CLIENTS is clients
+    assert tuple(info.GEMINI_CLIENTS) == original_order
 
 
 def test_duplicate_delivery_uses_confirmed_success_cache():
