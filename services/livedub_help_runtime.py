@@ -12,7 +12,8 @@ _INSTALLED = False
 
 
 async def help_command(update, context) -> None:
-    from core.database import DAILY_LIMIT, WHITELIST_IDS
+    from core.database import WHITELIST_IDS
+    from core.globals import DAILY_LIMIT
 
     user_id = update.effective_user.id
     limit_line = (
