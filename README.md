@@ -58,8 +58,8 @@ GEMINI_API_KEY=gemini_api_key
 
 # Обязательный Local Bot API
 LOCAL_BOT_API_URL=http://127.0.0.1:8081
-LOCAL_BOT_API_ID=123456
-LOCAL_BOT_API_HASH=telegram_api_hash
+TELEGRAM_API_ID=123456
+TELEGRAM_API_HASH=telegram_api_hash
 
 # Для новых LiveDub-переводов
 VOT_API_TOKEN=yandex_oauth_access_token
