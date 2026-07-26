@@ -10,9 +10,9 @@ from services import livedub_new_delivery_atomicity as atomicity
 
 
 class _AudioMessage:
-    def __init__(self, message_id: int, file_id: str) -> None:
+    def __init__(self, message_id: int, file_id: str | None) -> None:
         self.message_id = message_id
-        self.audio = SimpleNamespace(file_id=file_id)
+        self.audio = SimpleNamespace(file_id=file_id) if file_id is not None else None
 
 
 def _install(monkeypatch):
@@ -24,6 +24,15 @@ def _install(monkeypatch):
     monkeypatch.setattr(companion, "_send_new_audio", legacy)
     atomicity._install_strict_new_audio()
     return companion, companion._send_new_audio
+
+
+def _dual_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
+    video = tmp_path / "video.mp4"
+    clean = tmp_path / "clean.mp3"
+    mixed = tmp_path / "mixed.mp3"
+    for path in (video, clean, mixed):
+        path.write_bytes(b"media")
+    return video, clean, mixed
 
 
 def test_dual_mode_refuses_silent_single_mix_degradation(tmp_path: Path, monkeypatch):
@@ -60,11 +69,7 @@ def test_dual_mode_refuses_silent_single_mix_degradation(tmp_path: Path, monkeyp
 
 def test_second_new_variant_failure_rolls_back_first_and_cache(tmp_path: Path, monkeypatch):
     companion, sender = _install(monkeypatch)
-    video = tmp_path / "video.mp4"
-    clean = tmp_path / "clean.mp3"
-    mixed = tmp_path / "mixed.mp3"
-    for path in (video, clean, mixed):
-        path.write_bytes(b"media")
+    video, clean, mixed = _dual_sources(tmp_path)
 
     monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
     monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 300))
@@ -112,13 +117,68 @@ def test_second_new_variant_failure_rolls_back_first_and_cache(tmp_path: Path, m
     assert committed == []
 
 
+@pytest.mark.parametrize("missing_call", [1, 2])
+def test_missing_audio_file_id_rolls_back_every_visible_message(
+    tmp_path: Path,
+    monkeypatch,
+    missing_call: int,
+):
+    companion, sender = _install(monkeypatch)
+    video, clean, mixed = _dual_sources(tmp_path)
+
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
+    monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 180))
+    monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: clean)
+    monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: mixed)
+    dropped: list[str] = []
+    committed: list[str] = []
+    monkeypatch.setattr(companion, "_cache_drop", lambda video_id: dropped.append(video_id))
+    monkeypatch.setattr(
+        companion,
+        "_cache_put_variant",
+        lambda _video_id, variant, _audio_id, **_meta: committed.append(variant),
+    )
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.deleted: list[tuple[int, int]] = []
+
+        async def send_audio(self, **kwargs):
+            self.calls += 1
+            file_id = None if self.calls == missing_call else f"audio-{self.calls}"
+            return _AudioMessage(100 + self.calls, file_id)
+
+        async def delete_message(self, *, chat_id, message_id):
+            self.deleted.append((chat_id, message_id))
+
+    bot = FakeBot()
+    with pytest.raises(RuntimeError, match=r"audio\.file_id"):
+        asyncio.run(
+            sender(
+                bot,
+                chat_id=10,
+                video_path=video,
+                caption="Название - Автор",
+                reply_to=20,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+        )
+
+    expected_visible = 1 if missing_call == 1 else 2
+    assert bot.calls == expected_visible
+    assert bot.deleted == [
+        (10, message_id)
+        for message_id in reversed(range(101, 101 + expected_visible))
+    ]
+    assert dropped == ["video-id"]
+    assert committed == []
+
+
 def test_new_dual_set_commits_only_after_both_messages_exist(tmp_path: Path, monkeypatch):
     companion, sender = _install(monkeypatch)
-    video = tmp_path / "video.mp4"
-    clean = tmp_path / "clean.mp3"
-    mixed = tmp_path / "mixed.mp3"
-    for path in (video, clean, mixed):
-        path.write_bytes(b"media")
+    video, clean, mixed = _dual_sources(tmp_path)
 
     monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
     monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 90))
