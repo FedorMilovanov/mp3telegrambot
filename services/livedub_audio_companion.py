@@ -55,6 +55,21 @@ def _dual_enabled() -> bool:
     return os.getenv("LIVEDUB_SEND_DUAL_AUDIO", "1").strip().lower() in _TRUE
 
 
+def _public_error_text(exc: BaseException, limit: int = 260) -> str:
+    """Return one bounded user-safe error without credentials or bot tokens."""
+    text = str(exc or "").strip() or type(exc).__name__
+    try:
+        from core.utils import mask_api_key
+
+        text = mask_api_key(text)
+    except Exception:
+        token = os.getenv("BOT_TOKEN", "").strip()
+        if token:
+            text = text.replace(token, "***BOT_TOKEN***")
+    text = re.sub(r"([a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/@]+):[^\s/@]+@", r"\1:***@", text)
+    return text[: max(32, int(limit))]
+
+
 def _media_path(value: Any) -> Path | None:
     if isinstance(value, Path):
         return value if value.is_file() else None
@@ -522,19 +537,28 @@ def _wrap_send_video(cls: type) -> None:
                     reply_to=reply_to,
                 )
         except Exception as exc:
-            logger.exception("[LiveDubAudio] MP3 companion failed: %s", exc)
-            try:
-                await self.send_message(
-                    chat_id=chat_id,
-                    text=(
-                        "⚠️ Видео с переводом отправлено, но полный комплект из двух MP3 "
-                        "сформировать не удалось. "
-                        f"Причина: {str(exc)[:260]}"
-                    ),
-                    reply_to_message_id=reply_to,
+            safe_error = _public_error_text(exc)
+            logger.exception("[LiveDubAudio] MP3 companion failed: %s", safe_error)
+            if video_path is None:
+                # The outer cached-delivery guard removes the cached video and
+                # raises the rebuild signal. A generic "video was sent" message
+                # here would remain in chat after that video has been deleted.
+                logger.warning(
+                    "[LiveDubAudio] cached MP3 failure notice deferred to atomic rebuild guard"
                 )
-            except Exception:
-                pass
+            else:
+                try:
+                    await self.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            "⚠️ Видео с переводом отправлено, но полный комплект из двух MP3 "
+                            "сформировать не удалось. "
+                            f"Причина: {safe_error}"
+                        ),
+                        reply_to_message_id=reply_to,
+                    )
+                except Exception:
+                    pass
         return result
 
     wrapped._mp3bot_livedub_audio = True  # type: ignore[attr-defined]

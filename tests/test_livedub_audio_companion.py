@@ -38,6 +38,20 @@ def test_title_and_variant_filenames_are_human_readable(tmp_path: Path):
     assert "?" not in mixed_name
 
 
+def test_public_error_text_masks_bot_tokens_and_proxy_passwords():
+    token = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi_123456"
+    error = RuntimeError(
+        f"POST https://api.telegram.org/bot{token}/sendAudio via "
+        "http://proxy-user:proxy-secret@127.0.0.1:1080 failed"
+    )
+
+    public = companion._public_error_text(error, 500)
+
+    assert token not in public
+    assert "proxy-secret" not in public
+    assert "***" in public
+
+
 def test_file_id_cache_stores_two_independent_variants(tmp_path: Path, monkeypatch):
     cache_path = tmp_path / "audio-map.json"
     monkeypatch.setattr(companion, "_cache_path", lambda: cache_path)
@@ -163,3 +177,77 @@ def test_cached_video_resends_both_paired_audio_file_ids(monkeypatch):
         )
     )
     assert [call["audio"] for call in bot.audio_calls] == ["cached-clean", "cached-mixed"]
+
+
+def test_cached_failure_does_not_leave_false_video_sent_notice(monkeypatch):
+    async def fail_cached(*args, **kwargs):
+        raise RuntimeError("expired cached audio")
+
+    monkeypatch.setattr(companion, "_send_cached_audio", fail_cached)
+
+    class FakeBot:
+        def __init__(self):
+            self.notices = []
+
+        async def send_video(self, *args, **kwargs):
+            return _Message(video_id="cached-video")
+
+        async def send_message(self, *args, **kwargs):
+            self.notices.append(kwargs)
+
+    companion._wrap_send_video(FakeBot)
+    bot = FakeBot()
+    result = asyncio.run(
+        bot.send_video(
+            chat_id=10,
+            video="cached-video-file-id",
+            caption="<b>Название - Автор</b>\n🎬 Живые голоса Яндекса",
+            reply_to_message_id=20,
+        )
+    )
+
+    assert result.video.file_id == "cached-video"
+    assert bot.notices == []
+
+
+def test_local_failure_sends_one_sanitized_accurate_notice(tmp_path: Path, monkeypatch):
+    video = tmp_path / "new-live-dub.mp4"
+    video.write_bytes(b"video")
+    token = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi_123456"
+
+    async def fail_new(*args, **kwargs):
+        raise RuntimeError(
+            f"https://api.telegram.org/bot{token}/sendAudio "
+            "via http://user:secret-password@localhost:1080"
+        )
+
+    monkeypatch.setattr(companion, "_send_new_audio", fail_new)
+
+    class FakeBot:
+        def __init__(self):
+            self.notices = []
+
+        async def send_video(self, *args, **kwargs):
+            return _Message(video_id="new-video")
+
+        async def send_message(self, *args, **kwargs):
+            self.notices.append(kwargs)
+
+    companion._wrap_send_video(FakeBot)
+    bot = FakeBot()
+    result = asyncio.run(
+        bot.send_video(
+            chat_id=10,
+            video=video,
+            caption="<b>Название - Автор</b>\n🎬 Живые голоса Яндекса",
+            reply_to_message_id=20,
+        )
+    )
+
+    assert result.video.file_id == "new-video"
+    assert len(bot.notices) == 1
+    text = bot.notices[0]["text"]
+    assert "Видео с переводом отправлено" in text
+    assert token not in text
+    assert "secret-password" not in text
+    assert "***" in text
