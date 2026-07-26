@@ -16,14 +16,19 @@ from typing import Any
 
 try:
     from services.gemini_max_quality import configure_max_quality_env
+    from services.gemini_qa_policy import configure_gemini_qa_policy
     from services.livedub_quality_runtime import (
         configure_gemini_network,
         configure_gemini_policy,
     )
 
+    _gemini_qa_policy = configure_gemini_qa_policy()
     _gemini_quality = configure_max_quality_env()
     _gemini_policy = configure_gemini_policy()
-    print(f"🧠 Gemini policy: {_gemini_policy}; {_gemini_quality}")
+    print(
+        f"🧠 Gemini policy: {_gemini_policy}; {_gemini_quality}; "
+        f"{_gemini_qa_policy}"
+    )
     _gemini_route = configure_gemini_network()
     if _gemini_route:
         print(f"🌐 Gemini route: {_gemini_route}")
@@ -100,7 +105,7 @@ except Exception as _conspect_contract_error:
 
 
 class _AfterImportLoader(importlib.abc.Loader):
-    def __init__(self, loader: Any, finder: "_QualityRuntimeFinder") -> None:
+    def __init__(self, loader: Any, finder: "_QualityRuntimeFinder"):
         self._loader = loader
         self._finder = finder
 
