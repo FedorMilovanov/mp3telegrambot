@@ -35,6 +35,20 @@ def _dual_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
     return video, clean, mixed
 
 
+def _install_memory_cache(monkeypatch, companion, events: list[str] | None = None):
+    store: dict[str, dict] = {}
+
+    def put(video_id, variant, audio_id, **meta):
+        entry = store.setdefault(video_id, {"variants": {}})
+        entry["variants"][variant] = {"audio_file_id": audio_id, **meta}
+        if events is not None:
+            events.append(f"cache:{variant}")
+
+    monkeypatch.setattr(companion, "_cache_put_variant", put)
+    monkeypatch.setattr(companion, "_cache_get", lambda video_id: store.get(video_id))
+    return store
+
+
 def test_dual_mode_refuses_silent_single_mix_degradation(tmp_path: Path, monkeypatch):
     companion, sender = _install(monkeypatch)
     video = tmp_path / "video.mp4"
@@ -176,6 +190,49 @@ def test_missing_audio_file_id_rolls_back_every_visible_message(
     assert committed == []
 
 
+def test_persistent_pair_mismatch_rolls_back_both_messages(tmp_path: Path, monkeypatch):
+    companion, sender = _install(monkeypatch)
+    video, clean, mixed = _dual_sources(tmp_path)
+
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
+    monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 200))
+    monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: clean)
+    monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: mixed)
+    monkeypatch.setattr(companion, "_cache_put_variant", lambda *args, **kwargs: None)
+    monkeypatch.setattr(companion, "_cache_get", lambda _video_id: None)
+    dropped: list[str] = []
+    monkeypatch.setattr(companion, "_cache_drop", lambda video_id: dropped.append(video_id))
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.deleted: list[tuple[int, int]] = []
+
+        async def send_audio(self, **kwargs):
+            self.calls += 1
+            return _AudioMessage(100 + self.calls, f"audio-{self.calls}")
+
+        async def delete_message(self, *, chat_id, message_id):
+            self.deleted.append((chat_id, message_id))
+
+    bot = FakeBot()
+    with pytest.raises(RuntimeError, match="persistent cache"):
+        asyncio.run(
+            sender(
+                bot,
+                chat_id=10,
+                video_path=video,
+                caption="Название - Автор",
+                reply_to=20,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+        )
+
+    assert bot.deleted == [(10, 102), (10, 101)]
+    assert dropped == ["video-id"]
+
+
 def test_new_dual_set_commits_only_after_both_messages_exist(tmp_path: Path, monkeypatch):
     companion, sender = _install(monkeypatch)
     video, clean, mixed = _dual_sources(tmp_path)
@@ -185,11 +242,7 @@ def test_new_dual_set_commits_only_after_both_messages_exist(tmp_path: Path, mon
     monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: clean)
     monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: mixed)
     events: list[str] = []
-    monkeypatch.setattr(
-        companion,
-        "_cache_put_variant",
-        lambda _video_id, variant, _audio_id, **_meta: events.append(f"cache:{variant}"),
-    )
+    store = _install_memory_cache(monkeypatch, companion, events)
 
     class FakeBot:
         async def send_audio(self, **kwargs):
@@ -209,6 +262,7 @@ def test_new_dual_set_commits_only_after_both_messages_exist(tmp_path: Path, mon
         )
     ) is True
     assert events == ["send:clean", "send:mixed", "cache:clean", "cache:mixed"]
+    assert store["video-id"]["variants"]["mixed"]["audio_file_id"] == "mixed-file-id"
 
 
 def test_single_mode_can_fall_back_to_mixed_only(tmp_path: Path, monkeypatch):
@@ -223,7 +277,7 @@ def test_single_mode_can_fall_back_to_mixed_only(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: None)
     monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: mixed)
     sent: list[Path] = []
-    monkeypatch.setattr(companion, "_cache_put_variant", lambda *args, **kwargs: None)
+    store = _install_memory_cache(monkeypatch, companion)
 
     class FakeBot:
         async def send_audio(self, **kwargs):
@@ -242,3 +296,4 @@ def test_single_mode_can_fall_back_to_mixed_only(tmp_path: Path, monkeypatch):
         )
     ) is True
     assert sent == [mixed]
+    assert store["video-id"]["variants"]["mixed"]["audio_file_id"] == "mixed-id"
