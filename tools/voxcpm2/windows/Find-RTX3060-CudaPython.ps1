@@ -175,7 +175,7 @@ if ($UniqueCandidates.Count -eq 0) {
     throw "No python.exe candidates were found under the configured search roots"
 }
 
-Write-Host "" 
+Write-Host ""
 Write-Host "Found $($UniqueCandidates.Count) Python candidate(s). Probing torch builds..." -ForegroundColor Cyan
 
 $Results = foreach ($Candidate in $UniqueCandidates) {
@@ -198,7 +198,7 @@ if (-not $Winner) {
     )
 }
 
-Write-Host "" 
+Write-Host ""
 Write-Host "CUDA-enabled PyTorch found:" -ForegroundColor Green
 Write-Host $Winner.Path -ForegroundColor Green
 Write-Host "torch=$($Winner.Torch), CUDA runtime=$($Winner.Cuda)" -ForegroundColor Green
@@ -209,22 +209,22 @@ if ($RunInit) {
         throw "Missing probation launcher: $Probation"
     }
 
-    $ProbationArgs = @(
-        "-RepoRoot", $RepoRoot,
-        "-CudaPython", $Winner.Path,
-        "-Profile", "Init"
-    )
+    $ProbationArgs = @{
+        RepoRoot = $RepoRoot
+        CudaPython = $Winner.Path
+        Profile = "Init"
+    }
     if ($OpenLogs) {
-        $ProbationArgs += "-OpenLogs"
+        $ProbationArgs.OpenLogs = $true
     }
 
     & $Probation @ProbationArgs
-    if ($LASTEXITCODE -ne 0) {
+    if (-not $?) {
         throw "CUDA Init probation failed"
     }
 }
 else {
-    Write-Host "" 
+    Write-Host ""
     Write-Host "Run Init with:" -ForegroundColor Yellow
     Write-Host (
         ".\tools\voxcpm2\windows\Test-RTX3060-CUDA-Probation.ps1 " +
