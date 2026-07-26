@@ -105,6 +105,7 @@ jobs:
           python -m py_compile services/livedub_ru_provenance.py
           python -m py_compile services/livedub_new_delivery_atomicity.py
           python -m py_compile services/livedub_cached_delivery_atomicity.py
+          python -m py_compile services/livedub_publication_error_diagnostics.py
           python -m py_compile services/local_botapi_bootstrap.py
           python -m py_compile services/local_botapi_runtime.py
           python -m py_compile services/local_botapi_required.py
@@ -138,6 +139,7 @@ jobs:
           tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py
           tests/test_livedub_cached_delivery_atomicity.py
+          tests/test_livedub_publication_error_diagnostics.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
@@ -171,6 +173,7 @@ jobs:
           services/livedub_ru_provenance.py
           services/livedub_new_delivery_atomicity.py
           services/livedub_cached_delivery_atomicity.py
+          services/livedub_publication_error_diagnostics.py
           services/local_botapi_bootstrap.py
           services/local_botapi_runtime.py
           services/local_botapi_required.py
@@ -200,6 +203,7 @@ jobs:
           tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py
           tests/test_livedub_cached_delivery_atomicity.py
+          tests/test_livedub_publication_error_diagnostics.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
