@@ -111,6 +111,15 @@ except Exception as _publication_error:
     print(f"⚠️ Публикационная карточка LiveDub не установлена: {_publication_error}")
 
 try:
+    from services.livedub_publication_error_diagnostics import (
+        install_livedub_publication_error_diagnostics,
+    )
+
+    install_livedub_publication_error_diagnostics()
+except Exception as _publication_diagnostics_error:
+    print(f"⚠️ Диагностика ошибок публикации LiveDub не установлена: {_publication_diagnostics_error}")
+
+try:
     from services.livedub_audio_companion import install_livedub_audio_companion
 
     install_livedub_audio_companion()
