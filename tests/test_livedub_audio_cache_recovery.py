@@ -20,7 +20,7 @@ def _install(monkeypatch, tmp_path: Path, *, base_save=None, base_load=None):
 
     if base_save is None:
         def base_save(data):
-            _write(path, data)
+            _write(path, recovery._expected_generation(data))
     monkeypatch.setattr(companion, "_save_cache", base_save)
     recovery._install_cache_recovery()
     return companion, path, path.with_suffix(path.suffix + ".bak")
@@ -68,6 +68,60 @@ def test_invalid_new_generation_rolls_back_previous_cache(tmp_path: Path, monkey
     assert json.loads(backup.read_text(encoding="utf-8")) == old
 
 
+def test_valid_but_wrong_generation_rolls_back_previous_cache(tmp_path: Path, monkeypatch):
+    path = tmp_path / "livedub-audio-file-ids.json"
+
+    def stale_save(_data):
+        _write(path, {"unrelated": {"saved_at": 99}})
+
+    companion, path, backup = _install(
+        monkeypatch,
+        tmp_path,
+        base_save=stale_save,
+    )
+    old = {"video-old": {"saved_at": 1}}
+    expected_new = {"video-new": {"saved_at": 2}}
+    _write(path, old)
+
+    companion._save_cache(expected_new)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == old
+    assert json.loads(backup.read_text(encoding="utf-8")) == old
+
+
+def test_noop_save_cannot_pass_because_old_primary_is_still_valid(tmp_path: Path, monkeypatch):
+    companion, path, backup = _install(
+        monkeypatch,
+        tmp_path,
+        base_save=lambda _data: None,
+    )
+    old = {"video-old": {"saved_at": 1}}
+    _write(path, old)
+
+    companion._save_cache({"video-new": {"saved_at": 2}})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == old
+    assert json.loads(backup.read_text(encoding="utf-8")) == old
+
+
+def test_wrong_generation_without_backup_is_discarded(tmp_path: Path, monkeypatch):
+    path = tmp_path / "livedub-audio-file-ids.json"
+
+    def wrong_save(_data):
+        _write(path, {"wrong": {"saved_at": 9}})
+
+    companion, path, backup = _install(
+        monkeypatch,
+        tmp_path,
+        base_save=wrong_save,
+    )
+
+    companion._save_cache({"wanted": {"saved_at": 10}})
+
+    assert not path.exists()
+    assert not backup.exists()
+
+
 def test_corrupt_primary_is_not_promoted_over_existing_backup(tmp_path: Path, monkeypatch):
     companion, path, backup = _install(monkeypatch, tmp_path)
     old = {"video-safe": {"saved_at": 1}}
@@ -105,6 +159,20 @@ def test_recovered_cache_is_preserved_when_new_variant_is_added(tmp_path: Path, 
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["old-video"]["variants"]["mixed"]["audio_file_id"] == "old-mixed"
     assert saved["new-video"]["variants"]["clean"]["audio_file_id"] == "new-clean"
+
+
+def test_expected_generation_matches_newest_500_contract():
+    data = {
+        f"video-{idx}": {"saved_at": idx}
+        for idx in range(510)
+    }
+
+    expected = recovery._expected_generation(data)
+
+    assert len(expected) == 500
+    assert "video-509" in expected
+    assert "video-10" in expected
+    assert "video-9" not in expected
 
 
 def test_bounded_reader_rejects_oversized_or_non_object_json(tmp_path: Path):

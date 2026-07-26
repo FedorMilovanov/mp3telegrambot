@@ -8,9 +8,10 @@ permanently discarding every previously cached pair.
 
 This adapter keeps one validated previous generation in ``.bak``. Reads recover a
 corrupt/oversized primary from that backup; writes back up only a valid primary,
-run the established pruning/atomic-save implementation, verify the result and
-restore the backup if the new generation is invalid. Cache failures remain
-non-fatal to user delivery.
+run the established pruning/atomic-save implementation, then verify that the
+persisted object is the exact expected pruned generation. A syntactically valid
+but stale/wrong primary is therefore treated as a failed save and rolled back just
+like malformed JSON. Cache failures remain non-fatal to user delivery.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 _LOCK = threading.Lock()
 _INSTALLED = False
 _DEFAULT_MAX_BYTES = 16 * 1024 * 1024
+_MAX_ENTRIES = 500
 
 
 def _max_bytes() -> int:
@@ -55,6 +57,23 @@ def _read_mapping(path: Path, *, max_bytes: int | None = None) -> dict[str, Any]
         return data if isinstance(data, dict) else None
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
         return None
+
+
+def _saved_at(item: tuple[str, Any]) -> float:
+    value = item[1]
+    if not isinstance(value, dict):
+        return 0.0
+    try:
+        return float(value.get("saved_at") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _expected_generation(data: dict[str, Any]) -> dict[str, Any]:
+    """Mirror the base companion's newest-500 persistence contract."""
+    return dict(
+        sorted(data.items(), key=_saved_at, reverse=True)[:_MAX_ENTRIES]
+    )
 
 
 def _atomic_copy(source: Path, target: Path) -> bool:
@@ -94,6 +113,13 @@ def _recover_primary(path: Path, backup: Path) -> dict[str, Any] | None:
     return data
 
 
+def _discard_unverified_primary(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("[LiveDubAudioCache] could not discard unverified primary %s: %s", path, exc)
+
+
 def _install_cache_recovery() -> None:
     import services.livedub_audio_companion as companion
 
@@ -121,6 +147,7 @@ def _install_cache_recovery() -> None:
     def resilient_save(data: dict[str, Any]) -> None:
         path = companion._cache_path()
         backup = _backup_path(path)
+        expected = _expected_generation(data)
         previous = _read_mapping(path)
         if previous is not None:
             _atomic_copy(path, backup)
@@ -130,18 +157,23 @@ def _install_cache_recovery() -> None:
         except Exception as exc:
             logger.warning("[LiveDubAudioCache] base save raised: %s", str(exc)[:180])
 
-        if _read_mapping(path) is not None:
+        written = _read_mapping(path)
+        if written == expected:
             return
 
+        mismatch = "invalid" if written is None else "valid-but-wrong"
         recovered = _recover_primary(path, backup)
         if recovered is None:
+            _discard_unverified_primary(path)
             logger.error(
-                "[LiveDubAudioCache] new cache generation invalid and no valid backup exists: %s",
+                "[LiveDubAudioCache] %s new generation and no valid backup exists: %s",
+                mismatch,
                 path,
             )
         else:
             logger.error(
-                "[LiveDubAudioCache] invalid new generation rolled back to %d cached videos",
+                "[LiveDubAudioCache] %s new generation rolled back to %d cached videos",
+                mismatch,
                 len(recovered),
             )
 
@@ -163,4 +195,4 @@ def install_livedub_audio_cache_recovery() -> None:
             return
         _install_cache_recovery()
         _INSTALLED = True
-        logger.info("💾 LiveDub audio cache: validated backup + self-recovery enabled")
+        logger.info("💾 LiveDub audio cache: exact-generation backup + self-recovery enabled")
