@@ -28,6 +28,7 @@ $SourceVideo = Join-Path $WorkRoot "source\source.mp4"
 $RussianTimeline = Join-Path $WorkRoot "audio\macarthur_ru_final_timeline.wav"
 $RemasterWork = Join-Path $WorkRoot "remaster_delayed_nvenc"
 $OutputDir = Join-Path $WorkRoot "output"
+$NvencOutput = Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4"
 
 foreach ($Required in @(
     $Python,
@@ -56,6 +57,11 @@ $GainArg = $OriginalGain.ToString(
 )
 $DelayArg = $DelayMs -join ","
 $StartedAt = Get-Date
+$SavedCudaVisibleDevices = [Environment]::GetEnvironmentVariable(
+    "CUDA_VISIBLE_DEVICES",
+    "Process"
+)
+$HadCudaVisibleDevices = $null -ne $SavedCudaVisibleDevices
 
 Write-Host "RTX 3060 SAFE NVENC TRIAL" -ForegroundColor Cyan
 Write-Host "VoxCPM2 is NOT being regenerated" -ForegroundColor Green
@@ -63,6 +69,11 @@ Write-Host "Original English gain: $GainArg" -ForegroundColor Yellow
 Write-Host "Russian block delays, ms: $DelayArg" -ForegroundColor Yellow
 Write-Host "Decode and audio filters: CPU" -ForegroundColor Yellow
 Write-Host "Video encode only: h264_nvenc" -ForegroundColor Yellow
+
+if ($HadCudaVisibleDevices) {
+    Write-Host "Inherited CUDA_VISIBLE_DEVICES=$SavedCudaVisibleDevices" -ForegroundColor Yellow
+    Write-Host "It will be removed only while the remaster/NVENC child process runs" -ForegroundColor Yellow
+}
 
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     Write-Host "GPU before encode:" -ForegroundColor Cyan
@@ -91,9 +102,25 @@ $Args = @(
     "--bufsize", "28M"
 )
 
-& $Python @Args
-if ($LASTEXITCODE -ne 0) {
-    throw "Delayed remaster failed"
+try {
+    Remove-Item Env:CUDA_VISIBLE_DEVICES -ErrorAction SilentlyContinue
+
+    & $Python @Args
+    if ($LASTEXITCODE -ne 0) {
+        throw "Delayed remaster failed"
+    }
+}
+finally {
+    if ($HadCudaVisibleDevices) {
+        [Environment]::SetEnvironmentVariable(
+            "CUDA_VISIBLE_DEVICES",
+            $SavedCudaVisibleDevices,
+            "Process"
+        )
+    }
+    else {
+        Remove-Item Env:CUDA_VISIBLE_DEVICES -ErrorAction SilentlyContinue
+    }
 }
 
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
@@ -103,21 +130,18 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
         --format=csv
 }
 
-$GpuEvents = @()
-try {
-    $GpuEvents = @(
-        Get-WinEvent `
-            -FilterHashtable @{ LogName = "System"; StartTime = $StartedAt } `
-            -ErrorAction Stop |
-        Where-Object {
-            ($_.ProviderName -in @("nvlddmkm", "Display")) -and
-            ($_.Id -in @(14, 153, 4101))
-        }
-    )
-}
-catch {
-    Write-Warning "Could not inspect the Windows System event log: $($_.Exception.Message)"
-}
+$SystemEvents = @(
+    Get-WinEvent `
+        -FilterHashtable @{ LogName = "System"; StartTime = $StartedAt } `
+        -ErrorAction SilentlyContinue
+)
+$GpuEvents = @(
+    $SystemEvents |
+    Where-Object {
+        ($_.ProviderName -in @("nvlddmkm", "Display")) -and
+        ($_.Id -in @(14, 153, 4101))
+    }
+)
 
 if ($GpuEvents.Count -gt 0) {
     Write-Warning "GPU/Display events were recorded during the trial"
@@ -129,11 +153,18 @@ else {
     Write-Host "No nvlddmkm/Display 14, 153 or 4101 events detected" -ForegroundColor Green
 }
 
-Write-Host "" 
+Write-Host ""
 Write-Host "FILES READY" -ForegroundColor Green
 Write-Host (Join-Path $OutputDir "MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4")
 Write-Host (Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_VIDEO_COPY.mp4")
-Write-Host (Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4")
+
+if (Test-Path -LiteralPath $NvencOutput) {
+    Write-Host $NvencOutput -ForegroundColor Green
+}
+else {
+    Write-Warning "NVENC output was not created; use the VIDEO_COPY master"
+}
+
 Write-Host (Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_NVENC.report.json")
 
 if ($OpenOutput) {
