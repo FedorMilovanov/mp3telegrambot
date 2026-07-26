@@ -15,7 +15,18 @@ _ORIGINAL_GENERATE = VoxCPM.generate
 
 
 def compatible_generate(self: Any, *args: Any, **kwargs: Any) -> Any:
-    """Drop only kwargs unsupported by the installed VoxCPM._generate method."""
+    """Normalize one-attempt semantics and drop unsupported installed-version kwargs."""
+    if kwargs.get("retry_badcase") is False:
+        # VoxCPM uses this value as the total number of loop attempts, not merely retries.
+        # A value of 0 skips inference entirely and leaves latent_pred undefined.
+        kwargs["retry_badcase_max_times"] = 1
+        print(
+            "compatibility wrapper set retry_badcase_max_times=1 "
+            "(one attempt, zero retries)",
+            file=sys.stderr,
+            flush=True,
+        )
+
     try:
         signature = inspect.signature(self._generate)
         parameters = signature.parameters
