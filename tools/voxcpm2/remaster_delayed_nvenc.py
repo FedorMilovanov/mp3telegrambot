@@ -150,7 +150,7 @@ def main() -> int:
     parser.add_argument("--master-script", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--original-gain", type=float, default=0.25)
+    parser.add_argument("--original-gain", type=float, default=0.18)
     parser.add_argument("--delays-ms", default="220,160,100,40")
     parser.add_argument("--nvenc-preset", default="p5")
     parser.add_argument("--nvenc-cq", type=int, default=18)
@@ -187,18 +187,22 @@ def main() -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    gain_tag = int(round(args.original_gain * 100.0))
+    gain_label = f"ENG{gain_tag:02d}"
     shifted_wav = work_dir / "macarthur_ru_final_timeline_delayed.wav"
     cpu_master = (
-        output_dir / "MacArthur_FINAL_ENG25_DELAYED_VIDEO_COPY.mp4"
+        output_dir
+        / f"MacArthur_FINAL_{gain_label}_DELAYED_VIDEO_COPY.mp4"
     )
     russian_only = (
         output_dir / "MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4"
     )
     nvenc_output = (
-        output_dir / "MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4"
+        output_dir / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.mp4"
     )
     report_path = (
-        output_dir / "MacArthur_FINAL_ENG25_DELAYED_NVENC.report.json"
+        output_dir
+        / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.report.json"
     )
 
     delay_filter = build_delay_filter(
@@ -230,7 +234,7 @@ def main() -> int:
     )
 
     gain_text = f"{args.original_gain:.6f}"
-    master_work = work_dir / "master"
+    master_work = work_dir / f"master_gain_{gain_tag:02d}"
     run(
         [
             sys.executable,
@@ -313,12 +317,13 @@ def main() -> int:
                 nvenc_output.unlink()
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "source_video": str(source),
         "source_duration": source_duration,
         "russian_input": str(russian),
         "shifted_russian": str(shifted_wav),
         "original_gain": args.original_gain,
+        "original_gain_percent": gain_tag,
         "segments": [
             {**segment, "delay_ms": delay}
             for segment, delay in zip(
