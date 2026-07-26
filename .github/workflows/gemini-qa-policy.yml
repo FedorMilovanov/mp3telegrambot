@@ -1,0 +1,54 @@
+name: Gemini QA policy
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "services/__init__.py"
+      - "services/gemini_qa_policy.py"
+      - "tests/test_gemini_qa_policy.py"
+      - ".github/workflows/gemini-qa-policy.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "services/__init__.py"
+      - "services/gemini_qa_policy.py"
+      - "tests/test_gemini_qa_policy.py"
+      - ".github/workflows/gemini-qa-policy.yml"
+
+concurrency:
+  group: gemini-qa-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-policy:
+    name: Windows Gemini translation QA policy
+    runs-on: windows-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install focused test tools
+        run: python -m pip install pytest ruff
+
+      - name: Compile policy and bootstrap
+        run: |
+          python -m py_compile services/gemini_qa_policy.py
+          python -m py_compile services/__init__.py
+
+      - name: Run policy regression tests
+        run: python -m pytest -q tests/test_gemini_qa_policy.py
+
+      - name: Ruff fatal checks
+        run: >-
+          python -m ruff check --select E9,F63,F7,F82
+          services/gemini_qa_policy.py
+          tests/test_gemini_qa_policy.py
