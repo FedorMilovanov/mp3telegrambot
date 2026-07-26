@@ -120,9 +120,47 @@ Interpretation:
 
 The transition to P0 after context initialization is not itself a failure. The observed temperature and power remained moderate during this short stage.
 
-## Next test: Quick
+## Passed result: Quick
 
-Run only after saving work and closing GPU-heavy applications:
+The `Quick` profile passed all three isolated stages:
+
+```text
+init:   passed
+memory: passed
+fp32:   passed
+```
+
+Observed telemetry:
+
+| Checkpoint | P-state | Temperature | Power | GPU utilization | Memory utilization | VRAM used |
+|---|---:|---:|---:|---:|---:|---:|
+| Before init | P8 | 44 C | 15.80 W | 25% | 10% | 1611 MiB |
+| After init | P0 | 47 C | 45.12 W | 3% | 0% | 1611 MiB |
+| After memory | P0 | 47 C | 45.13 W | 4% | 0% | 1611 MiB |
+| After FP32 | P5 | 46 C | 44.97 W | 6% | 1% | 1611 MiB |
+
+Results:
+
+- the exact 64 MiB CPU-to-GPU-to-CPU transfer returned the expected data;
+- twelve synchronized 1024x1024 FP32 matrix multiplications completed and produced the expected probe values;
+- no CUDA exception or stage timeout occurred;
+- no `nvlddmkm` Event ID 14 or 153 was detected;
+- no Display Event ID 4101 was detected;
+- no selected WHEA event was detected.
+
+Interpretation:
+
+- the RTX 3060 is not failing on every CUDA use;
+- CUDA context creation, a limited VRAM transfer path and small synchronous FP32 matrix work are currently usable;
+- the historical failures are therefore intermittent, precision-specific, workload-specific, duration-specific or triggered by a combination of those factors;
+- this result still does not prove FP16/BF16, model-shaped CUBLAS, large-memory or long-duration stability;
+- VoxCPM2 CUDA production remains prohibited.
+
+## Next test: Mixed
+
+The next permitted test is `Mixed`, which repeats the already passed stages and adds twelve synchronized 1024x1024 FP16 matrix multiplications.
+
+Run only after saving work and closing all GPU-heavy applications:
 
 ```powershell
 cd "C:\Users\Fedor\Projects\mp3telegrambot"
@@ -131,18 +169,11 @@ git pull origin main
 .\tools\voxcpm2\windows\Test-RTX3060-CUDA-Probation.ps1 `
     -RepoRoot (Get-Location).Path `
     -CudaPython "C:\AI-Archive\VoxCPM2-paused-RTX3060\environment\voxcpm2-torch271\Scripts\python.exe" `
-    -Profile Quick `
+    -Profile Mixed `
     -OpenLogs
 ```
 
-`Quick` repeats context initialization and then adds:
-
-```text
-64 MiB exact CPU -> GPU -> CPU memory round-trip
-12 synchronized FP32 matrix multiplications at 1024x1024
-```
-
-Do not run `Mixed` or `Standard` before the `Quick` reports and Windows events have been reviewed.
+Do not run `Standard` or VoxCPM2 CUDA immediately after `Mixed`. Review the FP16 report and Windows events first.
 
 ## Events that block further testing
 
@@ -157,9 +188,9 @@ nonzero child-process exit
 JSON report status other than passed
 ```
 
-## Interpretation of Quick
+## Interpretation limits
 
-A passed `Quick` profile means only:
+A passed `Quick` profile proves only:
 
 - the CUDA driver initialized;
 - a 64 MiB transfer round-trip matched the expected pattern;
@@ -174,7 +205,7 @@ It does not prove:
 - VoxCPM2 stability;
 - absence of intermittent hardware faults.
 
-Only after reviewing a clean `Quick` result may `Mixed` be considered. `Standard` is not the next automatic step.
+Only after reviewing a clean `Mixed` result may a short sustained or model-shaped smoke test be designed. `Standard` is not an automatic next step.
 
 ## Logs
 
