@@ -4,7 +4,7 @@ param(
     [string]$PackageDir = "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL",
     [string]$WorkRoot = "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL",
     [string]$CpuVenv = "C:\AI-Archive\VoxCPM2-CPU-TEST\.venv",
-    [double]$OriginalGain = 0.25,
+    [double]$OriginalGain = 0.18,
     [int[]]$DelayMs = @(220, 160, 100, 40),
     [switch]$OpenOutput
 )
@@ -20,6 +20,10 @@ if ($DelayMs.Count -ne 4) {
     throw "DelayMs must contain exactly four values"
 }
 
+if ($OriginalGain -lt 0.0 -or $OriginalGain -gt 1.0) {
+    throw "OriginalGain must be between 0.0 and 1.0"
+}
+
 $Python = Join-Path $CpuVenv "Scripts\python.exe"
 $Tool = Join-Path $RepoRoot "tools\voxcpm2\remaster_delayed_nvenc.py"
 $SegmentsJson = Join-Path $RepoRoot "tools\voxcpm2\examples\macarthur_raasabpj_iw\segments_ru_final.json"
@@ -28,7 +32,11 @@ $SourceVideo = Join-Path $WorkRoot "source\source.mp4"
 $RussianTimeline = Join-Path $WorkRoot "audio\macarthur_ru_final_timeline.wav"
 $RemasterWork = Join-Path $WorkRoot "remaster_delayed_nvenc"
 $OutputDir = Join-Path $WorkRoot "output"
-$NvencOutput = Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4"
+$GainTag = [int][Math]::Round($OriginalGain * 100.0)
+$GainLabel = "ENG{0:D2}" -f $GainTag
+$VideoCopyOutput = Join-Path $OutputDir "MacArthur_FINAL_${GainLabel}_DELAYED_VIDEO_COPY.mp4"
+$NvencOutput = Join-Path $OutputDir "MacArthur_FINAL_${GainLabel}_DELAYED_NVENC.mp4"
+$ReportOutput = Join-Path $OutputDir "MacArthur_FINAL_${GainLabel}_DELAYED_NVENC.report.json"
 
 foreach ($Required in @(
     $Python,
@@ -65,7 +73,7 @@ $HadCudaVisibleDevices = $null -ne $SavedCudaVisibleDevices
 
 Write-Host "RTX 3060 SAFE NVENC TRIAL" -ForegroundColor Cyan
 Write-Host "VoxCPM2 is NOT being regenerated" -ForegroundColor Green
-Write-Host "Original English gain: $GainArg" -ForegroundColor Yellow
+Write-Host "Original English gain: $GainArg ($GainTag percent)" -ForegroundColor Yellow
 Write-Host "Russian block delays, ms: $DelayArg" -ForegroundColor Yellow
 Write-Host "Decode and audio filters: CPU" -ForegroundColor Yellow
 Write-Host "Video encode only: h264_nvenc" -ForegroundColor Yellow
@@ -156,7 +164,7 @@ else {
 Write-Host ""
 Write-Host "FILES READY" -ForegroundColor Green
 Write-Host (Join-Path $OutputDir "MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4")
-Write-Host (Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_VIDEO_COPY.mp4")
+Write-Host $VideoCopyOutput
 
 if (Test-Path -LiteralPath $NvencOutput) {
     Write-Host $NvencOutput -ForegroundColor Green
@@ -165,7 +173,7 @@ else {
     Write-Warning "NVENC output was not created; use the VIDEO_COPY master"
 }
 
-Write-Host (Join-Path $OutputDir "MacArthur_FINAL_ENG25_DELAYED_NVENC.report.json")
+Write-Host $ReportOutput
 
 if ($OpenOutput) {
     Start-Process explorer.exe -ArgumentList $OutputDir
