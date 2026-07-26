@@ -3,7 +3,7 @@ param(
     [string]$PackageDir = "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL",
     [string]$WorkRoot = "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL",
     [string]$CpuVenv = "C:\AI-Archive\VoxCPM2-CPU-TEST\.venv",
-    [double]$OriginalGain = 0.25,
+    [double]$OriginalGain = 0.18,
     [switch]$OpenOutput
 )
 
