@@ -11,8 +11,8 @@ quality-independent dedupe/deep-audit wrappers capture ``_send_new_audio``. It
 requires two distinct, role-correct sources in dual mode, rolls back already-sent
 MP3 messages best-effort on any failure, and commits Telegram file IDs only after
 the whole set is visible. Every successful Telegram receipt must expose a nonempty
-``audio.file_id``; otherwise the visible messages are rolled back so the video
-cannot enter cache without a reusable companion pair.
+``audio.file_id`` and, when the video has a file ID, the exact role mapping must be
+readable back from the persistent companion cache before the transaction succeeds.
 """
 from __future__ import annotations
 
@@ -115,6 +115,28 @@ async def _rollback_sent(bot: Any, chat_id: Any, messages: list[Any]) -> int:
         return 0
 
 
+def _verify_persisted_pair(
+    companion: Any,
+    video_file_id: str,
+    pending_cache: list[tuple[str, str, dict[str, Any]]],
+) -> None:
+    """Require exact role IDs to survive the cache save before video caching."""
+    if not video_file_id:
+        return
+    cached = companion._cache_get(video_file_id)
+    variants = (cached or {}).get("variants") or {}
+    for variant, expected_id, _meta in pending_cache:
+        actual_meta = variants.get(variant)
+        actual_id = str(
+            actual_meta.get("audio_file_id") if isinstance(actual_meta, dict) else ""
+        ).strip()
+        if actual_id != expected_id:
+            raise RuntimeError(
+                f"{companion._VARIANT_LABELS[variant]}: audio file_id не сохранился "
+                "в persistent cache; video cache нельзя коммитить"
+            )
+
+
 def _install_strict_new_audio() -> None:
     import services.livedub_audio_companion as companion
 
@@ -187,6 +209,15 @@ def _install_strict_new_audio() -> None:
                         "комплект нельзя безопасно сохранить для повторной отправки"
                     )
                 pending_cache.append((variant, audio_file_id, meta))
+
+            for variant, audio_file_id, meta in pending_cache:
+                companion._cache_put_variant(
+                    video_file_id,
+                    variant,
+                    audio_file_id,
+                    **meta,
+                )
+            _verify_persisted_pair(companion, video_file_id, pending_cache)
         except BaseException as exc:
             deleted = await _rollback_sent(self, chat_id, sent_messages)
             companion._cache_drop(video_file_id)
@@ -197,14 +228,6 @@ def _install_strict_new_audio() -> None:
                 type(exc).__name__,
             )
             raise
-
-        for variant, audio_file_id, meta in pending_cache:
-            companion._cache_put_variant(
-                video_file_id,
-                variant,
-                audio_file_id,
-                **meta,
-            )
 
         logger.info(
             "[LiveDubNewAtomicity] complete new companion set committed: %d/%d",
@@ -229,5 +252,5 @@ def install_livedub_new_delivery_atomicity() -> None:
         _install_strict_new_audio()
         _INSTALLED = True
         logger.info(
-            "🧾 LiveDub new delivery: cacheable receipts + transactional MP3 commit"
+            "🧾 LiveDub new delivery: cacheable receipts + verified persistent pair"
         )
