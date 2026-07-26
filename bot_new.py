@@ -117,6 +117,14 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
+# Patch cache helpers before any later runtime captures or uses them.
+try:
+    from services.livedub_audio_cache_recovery import install_livedub_audio_cache_recovery
+
+    install_livedub_audio_cache_recovery()
+except Exception as _audio_cache_recovery_error:
+    print(f"⚠️ Self-recovery кэша двух MP3 LiveDub не установлен: {_audio_cache_recovery_error}")
+
 # Install clean-track selection and conversion postconditions first. Exact VOT
 # provenance then overrides only the heuristic track choice. Transactional layers
 # remain the final local/cached send implementations before dedupe/deep-audit.
