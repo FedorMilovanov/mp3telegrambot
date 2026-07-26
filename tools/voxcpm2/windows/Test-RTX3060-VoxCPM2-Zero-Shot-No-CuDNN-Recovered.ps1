@@ -25,7 +25,7 @@ if (-not $RepoRoot) {
 
 $SourceText = Get-Content -LiteralPath $SourceScript -Raw
 $Replacements = [ordered]@{
-    'tools\voxcpm2\voxcpm2_cuda_zero_shot_smoke.py' = 'tools\voxcpm2\voxcpm2_cuda_zero_shot_no_cudnn_smoke.py'
+    'tools\voxcpm2\voxcpm2_cuda_zero_shot_smoke.py' = 'tools\voxcpm2\voxcpm2_cuda_zero_shot_no_cudnn_compat_smoke.py'
     '    $PreflightEvents = Get-NewGpuEvents -AfterRecordId $BaselineRecordId -AfterTime $StartedAt' = '    $PreflightEvents = @(Get-NewGpuEvents -AfterRecordId $BaselineRecordId -AfterTime $StartedAt)'
     '    $GpuEvents = Get-NewGpuEvents -AfterRecordId $BaselineRecordId -AfterTime $StartedAt' = '    $GpuEvents = @(Get-NewGpuEvents -AfterRecordId $BaselineRecordId -AfterTime $StartedAt)'
     'RTX 3060 VOXCPM2 CUDA ZERO-SHOT — RECOVERED SESSION' = 'RTX 3060 VOXCPM2 ZERO-SHOT — NO cuDNN'
