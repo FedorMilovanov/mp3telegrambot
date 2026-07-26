@@ -102,6 +102,7 @@ jobs:
           tests/test_voxcpm2_production_preflight.py
           tests/test_voxcpm2_diagnostic_pack.py
           tests/test_voxcpm2_remaster_delayed_nvenc.py
+          tests/test_voxcpm2_cuda_probation_probe.py
 
       - name: Ruff fatal checks
         shell: pwsh
@@ -113,3 +114,4 @@ jobs:
           tests/test_voxcpm2_production_preflight.py
           tests/test_voxcpm2_diagnostic_pack.py
           tests/test_voxcpm2_remaster_delayed_nvenc.py
+          tests/test_voxcpm2_cuda_probation_probe.py
