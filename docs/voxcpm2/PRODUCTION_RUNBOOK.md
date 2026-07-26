@@ -1,10 +1,10 @@
 # VoxCPM2 production runbook
 
-This runbook turns the MacArthur laboratory work into a repeatable Windows CPU workflow. It is intentionally stricter than the early experiment scripts: all folders and references are prepared automatically, a lightweight preflight runs before model loading, and PowerShell launchers are parsed in GitHub Actions.
+This runbook turns the MacArthur laboratory work into a repeatable Windows workflow. VoxCPM2 synthesis stays CPU-only. The damaged RTX 3060 may be used only as an isolated, disposable NVENC helper after a valid CPU master already exists.
 
 ## Current accepted synthesis baseline
 
-The last owner-approved baseline is **V3.2 NoChew**:
+The owner-approved technical baseline is **V3.2 NoChew**:
 
 ```text
 Device:            CPU only
@@ -19,13 +19,6 @@ Tail restart:      detected and conservatively removed
 English bed:       constant gain; no sidechain
 ```
 
-Owner review of V3.2:
-
-- phrase endings were complete;
-- the repeated chewing/swallowed-word defect was no longer audible;
-- speech was substantially better than previous versions;
-- remaining work is final candidate quality, speaker similarity, room coloration and publication mix.
-
 Do not regress to:
 
 - `min_len` derived from 90%+ of the subtitle window;
@@ -33,29 +26,36 @@ Do not regress to:
 - end fades that touch spoken consonants;
 - seven very short independently generated fragments;
 - Ultimate mode as the English-to-Russian default;
-- speech-triggered sidechain ducking of the original speaker.
+- speech-triggered sidechain ducking;
+- VoxCPM2 CUDA on the damaged RTX 3060.
 
-## Volume terminology: reduction is not final gain
+## Current publication mix
 
-This caused a real production misunderstanding and must be stated numerically.
-
-| Spoken request | Correct linear gain | Approximate change |
-|---|---:|---:|
-| “reduce original by 25%” | `0.75` | `-2.50 dB` |
-| “leave original at 25%” | `0.25` | `-12.04 dB` |
-| “reduce original by 22%” | `0.78` | `-2.16 dB` |
-| “reduce original by 30%” | `0.70` | `-3.10 dB` |
-
-The current publication intent is interpreted as:
+The owner clarified the intended level after listening to the completed final render:
 
 ```text
-Russian voice: 100%
-Original English: constant 70-78% of its source level
-Default: 75%
-Sidechain: disabled
+Russian voice:     100%
+Original English:  25% of source level
+Linear gain:       0.25
+Sidechain:          disabled
 ```
 
-Parameter names must say `OriginalGain`, not an ambiguous `OriginalLevel` or “minus percent”.
+This is “leave the original at 25%”, not “reduce it by 25%”. Parameter names should use `OriginalGain` and the actual numeric gain must be written explicitly.
+
+## Current per-block timing profile
+
+The completed Russian timeline starts slightly too early in some places, but not equally in all four blocks. The first listening trial therefore uses separate positive delays:
+
+| Block | Window | Delay |
+|---:|---:|---:|
+| 1 | 0.00–10.88 s | +220 ms |
+| 2 | 10.88–24.16 s | +160 ms |
+| 3 | 24.72–32.60 s | +100 ms |
+| 4 | 33.20–48.694 s | +40 ms |
+
+Delay the existing finished blocks. Do not regenerate or time-stretch speech merely to change entrance timing.
+
+The fourth block is moved least because it already has the best terminal cadence and a 440 ms tail guard. The offsets are intentionally parameters so a later review can change one block without touching the others.
 
 ## Production files
 
@@ -63,13 +63,15 @@ Repository:
 
 ```text
 tools/voxcpm2/production_preflight.py
+tools/voxcpm2/remaster_delayed_nvenc.py
 tools/voxcpm2/windows/Run-MacArthur-Final-CPU.ps1
 tools/voxcpm2/windows/Remaster-MacArthur-Constant-Gain.ps1
+tools/voxcpm2/windows/Remaster-MacArthur-Delayed-NVENC.ps1
 tools/voxcpm2/examples/macarthur_raasabpj_iw/segments_ru_final.json
 tools/voxcpm2/examples/macarthur_raasabpj_iw/subtitles_ru_final.srt
 ```
 
-Local accepted package:
+Local package:
 
 ```text
 C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL
@@ -81,7 +83,9 @@ Local work root:
 C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL
 ```
 
-The self-contained repository launcher:
+## Full CPU synthesis
+
+The self-contained production launcher:
 
 1. creates all required work directories;
 2. reuses a previously downloaded source video when available;
@@ -89,8 +93,98 @@ The self-contained repository launcher:
 4. creates B and C references when missing;
 5. runs production preflight;
 6. launches CPU-only synthesis;
-7. creates a constant-gain mix and two-pass master;
+7. creates a constant-gain master;
 8. copies final subtitles.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+
+.\tools\voxcpm2\windows\Run-MacArthur-Final-CPU.ps1 `
+    -RepoRoot (Get-Location).Path `
+    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
+    -OriginalLevel 0.25 `
+    -Steps 16 `
+    -Cfg 1.80 `
+    -OpenOutput
+```
+
+For an already completed Russian timeline, do not run this command again merely to adjust mix or timing.
+
+## Constant-gain remaster only
+
+```powershell
+.\tools\voxcpm2\windows\Remaster-MacArthur-Constant-Gain.ps1 `
+    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
+    -WorkRoot "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL" `
+    -OriginalGain 0.25 `
+    -OpenOutput
+```
+
+This preserves both the Russian synthesis and original video bitstream.
+
+## Delayed ENG25 remaster with RTX 3060 NVENC trial
+
+Run from the repository root:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+
+.\tools\voxcpm2\windows\Remaster-MacArthur-Delayed-NVENC.ps1 `
+    -RepoRoot (Get-Location).Path `
+    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
+    -WorkRoot "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL" `
+    -OriginalGain 0.25 `
+    -DelayMs 220,160,100,40 `
+    -OpenOutput
+```
+
+The workflow performs these operations in order:
+
+1. cuts the completed Russian timeline back into its four known windows;
+2. places each block later by its own offset;
+3. builds a new 24-bit, 48 kHz delayed Russian timeline;
+4. calls the established two-pass master at `OriginalGain=0.25`;
+5. creates a CPU/video-copy MP4 first;
+6. then attempts a separate H.264 NVENC encode;
+7. writes a JSON report whether NVENC succeeded, failed or was unavailable.
+
+Outputs:
+
+```text
+MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4
+MacArthur_FINAL_ENG25_DELAYED_VIDEO_COPY.mp4
+MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4
+MacArthur_FINAL_ENG25_DELAYED_NVENC.report.json
+```
+
+The CPU/video-copy file is the quality reference and remains valid even when the GPU trial fails.
+
+## RTX 3060 containment policy
+
+The GPU trial deliberately uses only the hardware encoder:
+
+```text
+Software decode:   yes
+CPU audio filters: yes
+NVDEC:             no
+CUDA filters:      no
+PyTorch CUDA:      no
+VoxCPM2 CUDA:      no
+Video encoder:     h264_nvenc
+Preset:            p5
+Tune:              hq
+Rate control:      VBR
+CQ:                18
+Bitrate:           8 Mbit/s
+Max rate:          14 Mbit/s
+Buffer:            28 Mbit/s
+```
+
+The launcher reads `nvidia-smi` before and after the trial and checks new Windows System events from `nvlddmkm` and `Display` for IDs 14, 153 and 4101.
+
+A successful MP4 alone is not enough to call the card stable. Any driver reset, Event ID 153, Display 4101, corruption, freeze or NVENC error means the GPU result is rejected and the CPU/video-copy master is retained.
+
+Do not disable TDR, modify registry timeout values, launch another GPU retry loop or run CapCut/CUDA inference alongside this test.
 
 ## Preflight contract
 
@@ -103,127 +197,53 @@ The self-contained repository launcher:
 - final segments JSON invalid or outside source duration;
 - B/C references missing;
 - model snapshot missing;
-- less than the configured free-disk threshold;
-- `CUDA_VISIBLE_DEVICES` is not exactly `-1`.
+- insufficient free disk space;
+- `CUDA_VISIBLE_DEVICES` is not exactly `-1` during synthesis.
 
-A successful preflight writes:
+## Listening order
 
-```text
-<work-root>\logs\production_preflight.json
-```
+1. Listen to `MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4`.
+2. Judge the four entrances and endings without English underneath.
+3. Compare `ENG25_DELAYED_VIDEO_COPY` against the previous mixed render.
+4. Compare the NVENC file visually against the video-copy reference.
+5. Read the report and Windows event output.
+6. If timing is wrong in one block, alter only the corresponding `DelayMs` value.
 
-## First production render
-
-From a clone of the repository:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-
-.\tools\voxcpm2\windows\Run-MacArthur-Final-CPU.ps1 `
-    -RepoRoot (Get-Location).Path `
-    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
-    -OriginalLevel 0.75 `
-    -Steps 16 `
-    -Cfg 1.80 `
-    -OpenOutput
-```
-
-Note: the historical launcher parameter is still named `OriginalLevel`; pass `0.75` explicitly. A future API cleanup should rename it to `OriginalGain` with backward compatibility.
-
-## Remaster without regenerating speech
-
-When the Russian timeline already exists, never rerun VoxCPM2 merely to change the English bed.
+Suggested second-pass examples:
 
 ```powershell
-.\tools\voxcpm2\windows\Remaster-MacArthur-Constant-Gain.ps1 `
-    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
-    -WorkRoot "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL" `
-    -OriginalGain 0.75 `
-    -OpenOutput
+# Move only block 1 slightly more
+-DelayMs 260,160,100,40
+
+# Keep blocks 3 and 4 unchanged
+-DelayMs 220,160,0,0
 ```
-
-This runs only FFmpeg/loudness mastering. It preserves the accepted Russian synthesis and produces a gain-tagged mixed MP4.
-
-Suggested listening comparison:
-
-```text
-OriginalGain 0.70
-OriginalGain 0.75
-OriginalGain 0.78
-```
-
-Do not compare all three through a new synthesis run. The voice track must remain identical so only the mix ratio changes.
 
 ## Publication acceptance gate
 
 A final MP4 is not publication-ready until all checks pass:
 
-### Speech content
-
 - every intended Russian sentence is present;
 - no swallowed final word or consonant;
 - no pause-then-chewing restart;
 - no repeated syllable or hallucinated word;
-- theological terminology is accurate;
-- subtitle wording matches the final spoken meaning.
-
-### Voice and prosody
-
-- speaker identity is acceptably close to MacArthur;
-- first three blocks retain B’s stable delivery;
-- final block has a convincing terminal cadence;
-- no abrupt prosodic reset feels like a different speaker;
-- no excessive English-accent leakage.
-
-### Audio engineering
-
-- compare Russian-only before blaming the mix for echo;
-- original English remains at one constant gain;
+- theological wording is accurate;
+- all four Russian entrances feel naturally placed;
+- original English remains at constant gain `0.25`;
 - no sidechain pumping;
 - no clipping;
-- final master report exists;
-- integrated loudness and true peak match the chosen publication target;
-- beginning and ending are not clipped;
-- media duration matches the source.
-
-### Reproducibility
-
-- synthesis JSON report retained;
-- preflight JSON retained;
-- master JSON retained;
-- exact steps, CFG, references and seeds recorded;
-- selected candidate per segment recorded;
-- source URL and source duration recorded.
+- beginning and ending are not cut;
+- source and final durations agree;
+- synthesis, master and delayed-remaster reports are retained;
+- NVENC output is rejected if Windows logged a GPU/Display fault.
 
 ## Repository quality controls
 
-The dedicated workflow:
+`.github/workflows/voxcpm2-windows.yml` performs:
 
-```text
-.github/workflows/voxcpm2-windows.yml
-```
-
-performs:
-
-- Python compilation for every VoxCPM2 tool;
+- compilation of every VoxCPM2 Python tool;
 - PowerShell AST parsing for every launcher;
-- lightweight VoxCPM2 regression tests;
+- lightweight timing/remaster regression tests;
 - fatal Ruff checks.
 
-A launcher with an unmatched parenthesis, broken quote or encoding-induced parse error must fail CI before being shared.
-
-## Next optimization priorities
-
-In order of expected value:
-
-1. finish and listen to the current final candidate run;
-2. remaster the identical Russian WAV at gains 0.70, 0.75 and 0.78;
-3. add ASR completeness scoring per generated candidate;
-4. add endpoint phoneme/consonant confidence rather than energy-only detection;
-5. find a cleaner close-mic 15-25 second MacArthur reference;
-6. compare CFG 1.55/1.75/1.95 on one ending-sensitive phrase;
-7. compare Steps 10/16 only after CFG is fixed;
-8. add resumable per-segment manifests and selected-segment regeneration;
-9. compare the accepted VoxCPM2 output against Chatterbox Multilingual V3 and Qwen3-TTS on the same Russian text/reference.
-
-The largest remaining quality gains are more likely to come from candidate selection, reference acoustics and objective content checking than from blindly increasing diffusion steps.
+The dedicated delayed-remaster tests verify the four offsets are translated into absolute timeline positions correctly.
