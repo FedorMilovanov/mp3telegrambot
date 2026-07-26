@@ -56,9 +56,73 @@ no automatic retry
 
 The launcher restores the previous process environment after the test.
 
-## First test
+## Discovered CUDA environments
 
-Run only `Quick` first:
+The local archive contains two CUDA-enabled PyTorch environments:
+
+```text
+Primary probation environment:
+C:\AI-Archive\VoxCPM2-paused-RTX3060\environment\voxcpm2-torch271\Scripts\python.exe
+PyTorch 2.7.1+cu126 / CUDA runtime 12.6
+
+Secondary test environment:
+C:\AI-Archive\VoxCPM2-paused-RTX3060\tests\voxcpm2-test\Scripts\python.exe
+PyTorch 2.11.0+cu126 / CUDA runtime 12.6
+```
+
+The primary environment is used first because it is the archived VoxCPM2 GPU environment. The secondary environment is retained as a diagnostic cross-check, not an automatic fallback after a hardware failure.
+
+## Passed result: Init
+
+Run directory:
+
+```text
+C:\AI-Archive\RTX3060-CUDA-PROBATION\20260726-035648
+```
+
+Profile:
+
+```text
+Profile:                  Init
+PyTorch:                  2.7.1+cu126
+CUDA runtime:             12.6
+CUDA available:           true
+Adapter:                  NVIDIA GeForce RTX 3060
+Compute capability:       8.6
+Total memory:             12,884,377,600 bytes
+Free memory at init:      11,799,625,728 bytes
+Multiprocessors:          28
+Per-process memory limit: 10%
+Context initialization:   passed
+```
+
+Telemetry:
+
+| Stage | P-state | Temperature | Power | GPU utilization | Memory utilization | VRAM used |
+|---|---:|---:|---:|---:|---:|---:|
+| Before init | P8 | 43 C | 15.23 W | 19% | 6% | 1563 MiB |
+| After init | P0 | 46 C | 44.88 W | 3% | 0% | 1563 MiB |
+
+Windows event check:
+
+```text
+No nvlddmkm Event ID 14 or 153.
+No Display Event ID 4101.
+No selected WHEA event.
+```
+
+Interpretation:
+
+- the CUDA driver and runtime can initialize this adapter;
+- PyTorch can create and synchronize a CUDA context;
+- the first real CUDA probation stage completed without a selected Windows hardware/driver event;
+- this does not test host/device data integrity, matrix computation, FP16/BF16, long-duration stability or VoxCPM2.
+
+The transition to P0 after context initialization is not itself a failure. The observed temperature and power remained moderate during this short stage.
+
+## Next test: Quick
+
+Run only after saving work and closing GPU-heavy applications:
 
 ```powershell
 cd "C:\Users\Fedor\Projects\mp3telegrambot"
@@ -66,25 +130,19 @@ git pull origin main
 
 .\tools\voxcpm2\windows\Test-RTX3060-CUDA-Probation.ps1 `
     -RepoRoot (Get-Location).Path `
+    -CudaPython "C:\AI-Archive\VoxCPM2-paused-RTX3060\environment\voxcpm2-torch271\Scripts\python.exe" `
     -Profile Quick `
     -OpenLogs
 ```
 
-The launcher searches these CUDA-PyTorch environments:
+`Quick` repeats context initialization and then adds:
 
 ```text
-C:\AI\voxcpm2_env\Scripts\python.exe
-C:\AI-Archive\VoxCPM2-paused-RTX3060\.venv\Scripts\python.exe
-C:\AI-Archive\VoxCPM2-CUDA-TEST\.venv\Scripts\python.exe
-C:\AI-Archive\VoxCPM2-GPU-TEST\.venv\Scripts\python.exe
-system python
+64 MiB exact CPU -> GPU -> CPU memory round-trip
+12 synchronized FP32 matrix multiplications at 1024x1024
 ```
 
-When discovery fails, pass the exact old CUDA Python path:
-
-```powershell
--CudaPython "C:\path\to\cuda-env\Scripts\python.exe"
-```
+Do not run `Mixed` or `Standard` before the `Quick` reports and Windows events have been reviewed.
 
 ## Events that block further testing
 
@@ -99,7 +157,7 @@ nonzero child-process exit
 JSON report status other than passed
 ```
 
-## Interpretation
+## Interpretation of Quick
 
 A passed `Quick` profile means only:
 
