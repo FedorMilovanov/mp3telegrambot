@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Best-effort rollback for incomplete cached LiveDub video + dual-MP3 sets.
+"""Best-effort rollback for cached LiveDub video + MP3 sets.
 
 Telegram file IDs can expire independently. The legacy cached path sent variants
 sequentially and returned ``False`` when a later ID failed, leaving the already
-sent video/MP3 visible before the pipeline rebuilt the pair. This runtime keeps the
-existing cache format but treats the user-visible resend as one transaction:
+sent video/MP3 visible before the pipeline rebuilt the pair. Older or damaged
+cache data can also assign one audio file ID to both ``clean`` and ``mixed`` and
+make the bot send the same MP3 twice under different labels. Finally, disabling
+dual mode must reduce cached resends to one preferred variant, not replay both
+roles merely because both remain stored.
 
+This runtime treats the user-visible resend as one transaction:
+
+* dual mode requires complete, present and distinct clean/mixed IDs;
+* single mode chooses clean when available, otherwise mixed;
 * previously sent cached MP3 messages are deleted when any required variant fails;
 * the cached video message is deleted before deep-audit raises the rebuild signal;
-* the expired variant is removed from the file-id cache as before.
+* expired or role-invalid cache data is removed before rebuilding.
 
 Deletion is best effort. Failure to delete never hides the original delivery error.
 """
@@ -48,6 +55,46 @@ async def _rollback_messages(bot: Any, chat_id: Any, messages: list[Any]) -> int
     return deleted
 
 
+def _validate_cached_roles(
+    companion: Any,
+    video_file_id: str,
+    variants: dict[str, Any],
+    required: list[str],
+) -> None:
+    """Reject missing/malformed IDs and one file masquerading as two roles."""
+    role_ids: list[str] = []
+    for variant in required:
+        meta = variants.get(variant)
+        audio_file_id = str(meta.get("audio_file_id") if isinstance(meta, dict) else "").strip()
+        if not audio_file_id:
+            companion._cache_drop(video_file_id)
+            raise RuntimeError(
+                f"кэшированный MP3 {variant} не содержит audio_file_id; пара должна быть пересобрана"
+            )
+        role_ids.append(audio_file_id)
+
+    if companion._dual_enabled() and len(role_ids) > 1 and len(set(role_ids)) != len(role_ids):
+        companion._cache_drop(video_file_id)
+        logger.warning(
+            "[LiveDubCacheAtomicity] duplicate role file_id invalidated for video=%s",
+            video_file_id,
+        )
+        raise RuntimeError(
+            "кэшированные clean и mixed ссылаются на один audio_file_id; "
+            "дубликат нельзя выдавать за две версии"
+        )
+
+
+def _required_variants(companion: Any, variants: dict[str, Any]) -> list[str]:
+    if companion._dual_enabled():
+        return list(companion._VARIANTS)
+    if "clean" in variants:
+        return ["clean"]
+    if "mixed" in variants:
+        return ["mixed"]
+    return []
+
+
 def _install_strict_cached_audio() -> None:
     import services.livedub_audio_companion as companion
 
@@ -66,15 +113,19 @@ def _install_strict_cached_audio() -> None:
         variants = (cached or {}).get("variants") or {}
         if not variants:
             return False
-        if companion._dual_enabled() and any(
-            name not in variants for name in companion._VARIANTS
-        ):
+
+        dual = companion._dual_enabled()
+        if dual and any(name not in variants for name in companion._VARIANTS):
             logger.info(
                 "[LiveDubCacheAtomicity] incomplete cache entry requires rebuild"
             )
             return False
 
-        required = [name for name in companion._VARIANTS if name in variants]
+        required = _required_variants(companion, variants)
+        if not required:
+            return False
+        _validate_cached_roles(companion, video_file_id, variants, required)
+
         messages: list[Any] = []
         failures: list[str] = []
         for variant in required:
@@ -110,7 +161,7 @@ def _install_strict_cached_audio() -> None:
                 f"rollback={deleted}/{len(messages)}; "
                 + "; ".join(failures)
             )
-        return len(messages) == len(required) and bool(required)
+        return len(messages) == len(required)
 
     send_cached_atomic._mp3bot_cached_atomicity = True  # type: ignore[attr-defined]
     companion._send_cached_audio = send_cached_atomic
@@ -170,5 +221,5 @@ def install_livedub_cached_delivery_atomicity() -> None:
         deep._wrap_video_requires_mp3 = _atomic_video_guard
         _INSTALLED = True
         logger.info(
-            "♻️ LiveDub cached delivery: transactional video + dual-MP3 rollback"
+            "♻️ LiveDub cached delivery: mode-aware role integrity + rollback"
         )

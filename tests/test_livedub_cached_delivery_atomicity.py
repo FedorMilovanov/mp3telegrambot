@@ -74,6 +74,107 @@ def test_partial_cached_mp3_send_rolls_back_prior_message(monkeypatch):
     assert dropped == [("video-id", "mixed")]
 
 
+def test_duplicate_clean_and_mixed_ids_are_invalidated_before_send(monkeypatch):
+    import services.livedub_audio_companion as companion
+
+    monkeypatch.setattr(
+        companion,
+        "_cache_get",
+        lambda _video_id: {
+            "variants": {
+                "clean": {"audio_file_id": "same-id"},
+                "mixed": {"audio_file_id": "same-id"},
+            }
+        },
+    )
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
+    dropped: list[str] = []
+    monkeypatch.setattr(companion, "_cache_drop", lambda video_id: dropped.append(video_id))
+    monkeypatch.setattr(companion, "_send_cached_audio", lambda *args, **kwargs: None)
+    atomicity._install_strict_cached_audio()
+
+    class FakeBot:
+        async def send_audio(self, **kwargs):
+            raise AssertionError("duplicate role IDs must be rejected before Telegram")
+
+    with pytest.raises(RuntimeError, match="один audio_file_id"):
+        asyncio.run(
+            companion._send_cached_audio(
+                FakeBot(),
+                chat_id=1,
+                video_file_id="video-dup",
+                reply_to=2,
+            )
+        )
+
+    assert dropped == ["video-dup"]
+
+
+def test_single_mode_prefers_clean_from_existing_dual_cache(monkeypatch):
+    import services.livedub_audio_companion as companion
+
+    monkeypatch.setattr(
+        companion,
+        "_cache_get",
+        lambda _video_id: {
+            "variants": {
+                "clean": {"audio_file_id": "clean-id"},
+                "mixed": {"audio_file_id": "mixed-id"},
+            }
+        },
+    )
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: False)
+    monkeypatch.setattr(companion, "_send_cached_audio", lambda *args, **kwargs: None)
+    atomicity._install_strict_cached_audio()
+    sent: list[str] = []
+
+    class FakeBot:
+        async def send_audio(self, **kwargs):
+            sent.append(kwargs["audio"])
+            return _Message(1)
+
+    assert asyncio.run(
+        companion._send_cached_audio(
+            FakeBot(),
+            chat_id=1,
+            video_file_id="video-single",
+            reply_to=2,
+        )
+    ) is True
+    assert sent == ["clean-id"]
+
+
+def test_single_mode_uses_mixed_when_clean_is_unavailable(monkeypatch):
+    import services.livedub_audio_companion as companion
+
+    monkeypatch.setattr(
+        companion,
+        "_cache_get",
+        lambda _video_id: {
+            "variants": {"mixed": {"audio_file_id": "mixed-id"}}
+        },
+    )
+    monkeypatch.setattr(companion, "_dual_enabled", lambda: False)
+    monkeypatch.setattr(companion, "_send_cached_audio", lambda *args, **kwargs: None)
+    atomicity._install_strict_cached_audio()
+    sent: list[str] = []
+
+    class FakeBot:
+        async def send_audio(self, **kwargs):
+            sent.append(kwargs["audio"])
+            return _Message(1)
+
+    assert asyncio.run(
+        companion._send_cached_audio(
+            FakeBot(),
+            chat_id=1,
+            video_file_id="video-mixed-only",
+            reply_to=2,
+        )
+    ) is True
+    assert sent == ["mixed-id"]
+
+
 def test_cached_video_is_deleted_before_rebuild_signal():
     import services.livedub_deep_audit as deep
 
