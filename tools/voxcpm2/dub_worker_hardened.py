@@ -12,6 +12,7 @@ from tools.voxcpm2 import dub_worker as worker
 _RUNTIME_VERSION = "dub-worker-tree-cancel-v2"
 _ORIGINAL_REGISTER = DubStore.register_worker
 _ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
+_ORIGINAL_FINISH_JOB = DubStore.finish_job
 _ORIGINAL_TERMINATE = worker._terminate_process
 
 
@@ -89,10 +90,54 @@ def _heartbeat_versioned_worker(
     )
 
 
+def _deepest_error_line(error: str) -> str:
+    lines = [line.strip() for line in str(error or "").splitlines() if line.strip()]
+    if not lines:
+        return "Неизвестная ошибка runner."
+    prefixes = (
+        "RuntimeError:",
+        "TypeError:",
+        "ValueError:",
+        "AttributeError:",
+        "FileNotFoundError:",
+        "ModuleNotFoundError:",
+        "ImportError:",
+        "OSError:",
+        "ОШИБКА:",
+    )
+    for line in reversed(lines):
+        if line.startswith(prefixes) or "Error:" in line:
+            return line
+    return lines[-1]
+
+
+def _finish_job_with_root_cause(
+    self: DubStore,
+    job_id: int,
+    *,
+    status: str,
+    result: dict[str, Any] | None = None,
+    error: str = "",
+) -> None:
+    payload = str(error or "")
+    if str(status).lower() == "failed" and payload:
+        cause = _deepest_error_line(payload)
+        if not payload.startswith("Точная причина:"):
+            payload = f"Точная причина: {cause}\n\n{payload}"
+    _ORIGINAL_FINISH_JOB(
+        self,
+        job_id,
+        status=status,
+        result=result,
+        error=payload,
+    )
+
+
 def install_hardening() -> None:
     worker._terminate_process = _terminate_process_tree
     DubStore.register_worker = _register_versioned_worker
     DubStore.worker_heartbeat = _heartbeat_versioned_worker
+    DubStore.finish_job = _finish_job_with_root_cause
 
 
 def main() -> None:
