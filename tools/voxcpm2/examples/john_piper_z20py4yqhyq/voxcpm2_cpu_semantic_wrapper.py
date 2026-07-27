@@ -27,14 +27,22 @@ def _load_prompt_texts() -> dict[str, str]:
     return result
 
 
-def _filter_kwargs(function: Any, values: dict[str, Any]) -> dict[str, Any]:
+def _parameters(function: Any) -> dict[str, inspect.Parameter]:
     try:
-        signature = inspect.signature(function)
+        return dict(inspect.signature(function).parameters)
     except (TypeError, ValueError):
+        return {}
+
+
+def _accepts_kwargs(parameters: dict[str, inspect.Parameter]) -> bool:
+    return any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
+
+
+def _filter_kwargs(function: Any, values: dict[str, Any]) -> dict[str, Any]:
+    parameters = _parameters(function)
+    if not parameters or _accepts_kwargs(parameters):
         return values
-    if any(item.kind == inspect.Parameter.VAR_KEYWORD for item in signature.parameters.values()):
-        return values
-    return {key: value for key, value in values.items() if key in signature.parameters}
+    return {key: value for key, value in values.items() if key in parameters}
 
 
 def _install_voxcpm_patch(prompt_texts: dict[str, str]) -> None:
@@ -43,51 +51,58 @@ def _install_voxcpm_patch(prompt_texts: dict[str, str]) -> None:
     original_from_pretrained = VoxCPM.from_pretrained
 
     def hardened_from_pretrained(*args: Any, **kwargs: Any) -> Any:
+        # The user's proven local CPU archive was built and tested without the
+        # optional external denoiser. Trying to load it first can download extra
+        # weights, partially allocate a second model, or fail under offline mode.
+        # Reference cleanup and semantic QA remain mandatory, so keep one stable
+        # model load instead of a risky double-load fallback.
         requested = dict(kwargs)
-        requested["load_denoiser"] = True
-        denoiser_loaded = True
-        try:
-            model = original_from_pretrained(*args, **_filter_kwargs(original_from_pretrained, requested))
-            log("внешний denoiser загружен")
-        except Exception as exc:
-            denoiser_loaded = False
-            fallback = dict(kwargs)
-            fallback["load_denoiser"] = False
-            log(f"denoiser недоступен ({type(exc).__name__}); продолжаю с reference cleanup и semantic QA")
-            model = original_from_pretrained(*args, **_filter_kwargs(original_from_pretrained, fallback))
+        requested["load_denoiser"] = False
+        model = original_from_pretrained(*args, **_filter_kwargs(original_from_pretrained, requested))
+        log("локальная CPU-модель загружена один раз; внешний denoiser отключён")
 
         original_generate = model.generate
+        parameters = _parameters(original_generate)
+        accepts_kwargs = _accepts_kwargs(parameters)
+
+        def supports(name: str) -> bool:
+            return name in parameters or accepts_kwargs
 
         def hardened_generate(*args2: Any, **kwargs2: Any) -> Any:
-            reference = str(kwargs2.pop("reference_wav_path", "") or kwargs2.get("prompt_wav_path", "") or "")
+            reference = str(
+                kwargs2.pop("reference_wav_path", "")
+                or kwargs2.get("prompt_wav_path", "")
+                or ""
+            )
+            if not reference:
+                raise RuntimeError("VoxCPM2 не получил голосовой референс.")
             profile = "composite" if "composite" in Path(reference).name.casefold() else "extended"
             values = dict(kwargs2)
             values["text"] = str(values.get("text") or "").strip()
             values["cfg_value"] = max(1.9, float(values.get("cfg_value", 2.0)))
             values["normalize"] = True
-            values["denoise"] = bool(denoiser_loaded)
+            values["denoise"] = False
             values["retry_badcase"] = True
             values["retry_badcase_max_times"] = 3
             values["retry_badcase_ratio_threshold"] = 4.8
 
-            parameters = {}
-            try:
-                parameters = inspect.signature(original_generate).parameters
-            except (TypeError, ValueError):
-                parameters = {}
-
-            # Prefer the documented prompt API only when the installed model
-            # exposes it explicitly. Older local VoxCPM2 builds accept
-            # reference_wav_path (sometimes behind **kwargs); changing that
-            # blindly would break the working archive installation.
-            if "prompt_wav_path" in parameters or "prompt_text" in parameters:
-                values["prompt_wav_path"] = reference
-                values["prompt_text"] = prompt_texts[profile]
+            # New VoxCPM2 accepts a transcript-conditioned prompt. Keep the same
+            # audio as both prompt and reference when the installed API supports
+            # both; this follows the cloning path without breaking the older local
+            # archive API that only knows reference_wav_path.
+            if supports("prompt_wav_path") or supports("prompt_text"):
+                if supports("prompt_wav_path"):
+                    values["prompt_wav_path"] = reference
+                if supports("prompt_text"):
+                    values["prompt_text"] = prompt_texts[profile]
+                if supports("reference_wav_path"):
+                    values["reference_wav_path"] = reference
             else:
                 values["reference_wav_path"] = reference
-                if "reference_text" in parameters:
+                if supports("reference_text"):
                     values["reference_text"] = prompt_texts[profile]
-            log(f"{profile}: prompt transcript + retry_badcase + denoise={denoiser_loaded}")
+
+            log(f"{profile}: prompt transcript + retry_badcase + denoise=False")
             return original_generate(*args2, **_filter_kwargs(original_generate, values))
 
         model.generate = hardened_generate
