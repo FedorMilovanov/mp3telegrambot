@@ -10,12 +10,82 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import tools.voxcpm2.generic_short_production as pipeline
+
+_TITLE_PROMPT_MARKER = "Ты создаёшь имя готового русского видеофайла"
+_TITLE_WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё]+")
+_JOHN_PIPER_RE = re.compile(r"\b(?:john\s+piper|джон\s+пайпер)\b", re.IGNORECASE)
+
+
+def _capitalize_title_word(match: re.Match[str]) -> str:
+    word = match.group(0)
+    if word.isupper() or any(char.isupper() for char in word[1:]):
+        return word
+    return word[:1].upper() + word[1:].lower()
+
+
+def standardize_russian_title(value: str, *, context: str = "") -> str:
+    """Apply the Dub Studio filename title standard deterministically."""
+    title = re.sub(r"\s+", " ", str(value or "")).strip(" .—–-")
+    title = re.sub(r"\bJohn\s+Piper\b", "Джон Пайпер", title, flags=re.IGNORECASE)
+    title = re.sub(
+        r"\bхристианской\s+женщины\b",
+        "женщины христианки",
+        title,
+        flags=re.IGNORECASE,
+    )
+    title = re.sub(r"\s+[—–-]\s+", " - ", title)
+
+    combined = f"{context}\n{title}"
+    if _JOHN_PIPER_RE.search(combined):
+        title = _JOHN_PIPER_RE.sub("Джон Пайпер", title)
+        title = re.sub(r"(?:\s+-\s+)?Джон\s+Пайпер\s*$", "", title, flags=re.IGNORECASE).strip(" .—–-")
+        title = f"{title} - Джон Пайпер" if title else "Джон Пайпер"
+
+    title = _TITLE_WORD_RE.sub(_capitalize_title_word, title)
+    return re.sub(r"\s+", " ", title).strip()
+
+
+def _standardize_title_payload(payload: Any, prompt: str) -> Any:
+    if _TITLE_PROMPT_MARKER not in prompt or not isinstance(payload, dict):
+        return payload
+    result = dict(payload)
+    result["title"] = standardize_russian_title(str(result.get("title") or ""), context=prompt)
+    return result
+
+
+def _install_project_title_standard() -> None:
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        file_name = Path(str(getattr(module, "__file__", "") or "")).name.casefold()
+        if file_name != "generic_project_runtime.py":
+            continue
+        original = getattr(module, "generate_russian_title", None)
+        if not callable(original) or getattr(original, "_dub_title_standard", False):
+            continue
+
+        def standardized_generate(
+            *args: Any,
+            _original: Any = original,
+            **kwargs: Any,
+        ) -> str:
+            generated = str(_original(*args, **kwargs) or "")
+            metadata = args[0] if args else kwargs.get("metadata", {})
+            try:
+                context = json.dumps(metadata, ensure_ascii=False)
+            except (TypeError, ValueError):
+                context = str(metadata or "")
+            return standardize_russian_title(generated, context=context)
+
+        standardized_generate._dub_title_standard = True  # type: ignore[attr-defined]
+        module.generate_russian_title = standardized_generate
 
 
 def _ytdlp_base() -> list[str]:
@@ -159,7 +229,8 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
                 contents=prompt,
                 config=config,
             )
-            return pipeline._extract_json(getattr(response, "text", ""))
+            payload = pipeline._extract_json(getattr(response, "text", ""))
+            return _standardize_title_payload(payload, prompt)
         except Exception as exc:
             errors.append(f"key#{index}: {type(exc).__name__}: {str(exc)[:220]}")
             pipeline.log(f"Gemini translation route key#{index} не сработал; пробую следующий ключ.")
@@ -170,6 +241,7 @@ def install_runtime_adapters() -> None:
     pipeline.download_source = download_source
     pipeline.download_captions = download_captions
     pipeline.gemini_json = gemini_json
+    _install_project_title_standard()
 
     # Install after project/direct modules have imported their normal subprocess
     # reference. The guard patches only the VoxCPM2 synthesis command and leaves
