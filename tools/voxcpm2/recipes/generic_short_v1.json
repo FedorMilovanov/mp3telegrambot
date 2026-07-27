@@ -29,7 +29,7 @@
       "kind": "render",
       "label": "Мой готовый SRT — озвучить без изменений",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_direct_runtime",
+      "module": "tools.voxcpm2.generic_direct_checked_runtime",
       "parameters": {
         "Mode": "direct"
       }
