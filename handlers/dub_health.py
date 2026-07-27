@@ -7,6 +7,7 @@ import importlib.util
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,39 @@ _WORKER_RUNTIME = "dub-worker-tree-cancel-v2"
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"label": label, "ok": bool(ok), "detail": str(detail)}
+
+
+def _worker_is_current(worker: dict[str, Any] | None) -> bool:
+    details = (worker or {}).get("details") or {}
+    return worker_is_fresh(worker) and details.get("runtime") == _WORKER_RUNTIME
+
+
+def _worker_snapshot_with_repair() -> dict[str, Any] | None:
+    """Replace an idle legacy worker and return the newly registered snapshot."""
+    store = DubStore()
+    worker = store.latest_worker()
+    if _worker_is_current(worker):
+        return worker
+    if str((worker or {}).get("status") or "") == "busy":
+        return worker
+
+    try:
+        from services.dub_studio_runtime import ensure_worker_running
+
+        requested = ensure_worker_running()
+    except Exception:
+        requested = False
+    if not requested:
+        return worker
+
+    # The detached Windows worker normally registers immediately. Poll only
+    # during this explicit admin check so the returned report reflects repair.
+    for _ in range(30):
+        worker = store.latest_worker()
+        if _worker_is_current(worker):
+            return worker
+        time.sleep(0.1)
+    return worker
 
 
 def collect_dub_health() -> list[dict[str, Any]]:
@@ -127,7 +161,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(_check("Dub Studio storage", False, f"{root}: {exc}"))
 
     try:
-        worker = DubStore().latest_worker()
+        worker = _worker_snapshot_with_repair()
         details = (worker or {}).get("details") or {}
         fresh = worker_is_fresh(worker)
         version_ok = details.get("runtime") == _WORKER_RUNTIME
