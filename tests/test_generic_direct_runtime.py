@@ -56,3 +56,12 @@ def test_direct_segments_apply_420ms_delay_without_rewriting() -> None:
     assert segments[0]["text"] == "Точный текст."
     assert subtitles[0].start == 1.42
     assert subtitles[0].text == "Точный текст."
+
+
+def test_last_cue_reduces_delay_only_when_video_would_cut_it_off() -> None:
+    groups = [{"id": 1, "start": 4.8, "end": 5.0, "source": "Финал."}]
+    segments, subtitles = _build_direct_segments(groups, delay_ms=420, duration=5.0)
+    assert segments[0]["start_delay_ms"] < 420
+    assert segments[0]["end"] <= 5.0
+    assert subtitles[0].end <= 5.0
+    assert segments[0]["text"] == "Финал."
