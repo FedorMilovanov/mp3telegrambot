@@ -119,6 +119,15 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
     return NewModel
 
 
+def _fake_voxcpm_class(model_class: type) -> type:
+    class FakeVoxCPM:
+        @staticmethod
+        def from_pretrained(*args, load_denoiser=False, **kwargs):
+            return model_class()
+
+    return FakeVoxCPM
+
+
 def test_voxcpm_wrapper_supports_old_and_new_reference_apis(monkeypatch) -> None:
     import sys
     import types
@@ -127,18 +136,13 @@ def test_voxcpm_wrapper_supports_old_and_new_reference_apis(monkeypatch) -> None
 
     for api in ("old", "new"):
         calls: list[dict[str, Any]] = []
-        model_class = _model_class(api, calls)
-
-        class FakeVoxCPM:
-            @staticmethod
-            def from_pretrained(*args, load_denoiser=False, **kwargs):
-                return model_class()
+        fake_voxcpm = _fake_voxcpm_class(_model_class(api, calls))
 
         fake_module = types.ModuleType("voxcpm")
-        fake_module.VoxCPM = FakeVoxCPM
+        fake_module.VoxCPM = fake_voxcpm
         monkeypatch.setitem(sys.modules, "voxcpm", fake_module)
         wrapper._install_voxcpm_patch({"extended": "English prompt", "composite": "Other prompt"})
-        model = FakeVoxCPM.from_pretrained("fake", load_denoiser=False)
+        model = fake_voxcpm.from_pretrained("fake", load_denoiser=False)
         model.generate(
             text="Русский текст",
             reference_wav_path="extended.wav",
