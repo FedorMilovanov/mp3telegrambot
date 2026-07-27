@@ -4,14 +4,14 @@
   "title": "Short tNlIoCeGyLk — Премиальный Русский Дубляж",
   "speaker": "Определяется из исходного ролика",
   "source_url": "https://youtube.com/shorts/tNlIoCeGyLk",
-  "description": "Один production-job: загрузка, captions/Whisper, двухпроходный буквально-литературный перевод, VoxCPM2 CPU NoChew, русский delay 420 мс и постоянный оригинал 18%.",
+  "description": "Один production-job: защищённая загрузка через bot-wide yt-dlp, captions/Whisper, Gemini high-thinking с резервом ключей, двухпроходный буквально-литературный перевод, VoxCPM2 CPU NoChew, русский delay 420 мс и постоянный оригинал 18%.",
   "work_root": "C:\\AI-Archive\\Short-tNlIoCeGyLk-Russian-Dub",
   "actions": {
     "render": {
       "kind": "render",
       "label": "Подготовить перевод и сделать финальный дубляж",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_short_production",
+      "module": "tools.voxcpm2.generic_short_runtime",
       "parameters": {
         "SourceUrl": "https://youtube.com/shorts/tNlIoCeGyLk",
         "VideoId": "tNlIoCeGyLk",
