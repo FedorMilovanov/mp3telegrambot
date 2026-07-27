@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""
-Команда /mode — выбор режима обработки видео.
+"""Unified /mode navigation for analysis, LiveDub and VoxCPM2 Dub Studio."""
+from __future__ import annotations
 
-rus         : 🇷🇺 полный анализ без перевода.
-eng         : 🇬🇧 полный анализ + LiveDub-видео + два MP3 + смысловая QA.
-eng_fast    : ⚡ LiveDub-видео + чистый RU MP3 + финальный микс, без анализа и QA.
-eng_fast_qa : ⚡🔍 тот же комплект + лёгкая QA коротких роликов.
-"""
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+import asyncio
 import logging
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
+
+from core.database import ADMIN_IDS, _db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -22,95 +21,235 @@ MODE_LABELS = {
     "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + два MP3 + проверка",
 }
 
+MODE_BUTTON_LABELS = {
+    "rus": "🇷🇺 RUS — анализ",
+    "eng": "🇬🇧 ENG Full",
+    "eng_fast": "⚡ ENG Quick",
+    "eng_fast_qa": "⚡🔍 Quick QA",
+}
+
 _AUDIO_SET = "видео с переводом, чистый русский MP3 и финальный объединённый MP3"
 
 MODE_DESCRIPTIONS = {
-    "rus": "Конспект, цитаты, вопросы, Shorts — как обычно. Перевода нет.",
+    "rus": "Конспект, цитаты, вопросы и Shorts. Перевода нет.",
     "eng": (
         "Полный анализ и комплект LiveDub: " + _AUDIO_SET + ". "
-        "Gemini сверяет дубляж с оригиналом и присылает отчёт о точности."
+        "Gemini сверяет дубляж с оригиналом."
     ),
     "eng_fast": (
         "Только комплект LiveDub: " + _AUDIO_SET + ". "
-        "Без конспекта и без смысловой проверки перевода."
+        "Без конспекта и смысловой проверки."
     ),
     "eng_fast_qa": (
-        "Комплект LiveDub: " + _AUDIO_SET + ". "
-        "Короткие ролики дополнительно проверяются; подтверждённые major-ошибки "
-        "приглушаются в финальном миксе."
+        "Комплект LiveDub и лёгкая проверка коротких роликов. "
+        "Подтверждённые major-ошибки приглушаются в финальном миксе."
     ),
 }
 
 
-async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    try:
-        # Синхронный SQLite выполняем вне event loop.
-        import asyncio as _asyncio
-        loop = _asyncio.get_running_loop()
-        current = await loop.run_in_executor(None, _get_user_mode_raw, user_id)
-    except Exception:
-        current = "rus"
-    current_label = MODE_LABELS.get(current, MODE_LABELS["rus"])
+def _is_admin(update: Update) -> bool:
+    user = update.effective_user
+    return bool(user and user.id in ADMIN_IDS)
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(MODE_LABELS["rus"], callback_data="set_mode:rus")],
-        [InlineKeyboardButton(MODE_LABELS["eng"], callback_data="set_mode:eng")],
-        [InlineKeyboardButton(MODE_LABELS["eng_fast"], callback_data="set_mode:eng_fast")],
-        [InlineKeyboardButton(MODE_LABELS["eng_fast_qa"], callback_data="set_mode:eng_fast_qa")],
-    ])
 
-    lines = [f"<b>Текущий режим:</b> {current_label}", ""]
+def _selected_label(mode: str, current: str) -> str:
+    prefix = "✓ " if mode == current else ""
+    return prefix + MODE_BUTTON_LABELS[mode]
+
+
+def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                "📚 Анализ и LiveDub",
+                callback_data="mode_menu:analysis",
+            )
+        ]
+    ]
+    if is_admin:
+        rows.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🤖 Дубляж: Gemini MAX",
+                        callback_data="dubwiz|mode|gemini",
+                    ),
+                    InlineKeyboardButton(
+                        "✍️ Дубляж: SRT",
+                        callback_data="dubwiz|mode|direct",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🎙 Dub Studio",
+                        callback_data="dubwiz|home|show",
+                    ),
+                    InlineKeyboardButton(
+                        "📂 Проекты",
+                        callback_data="dubwiz|projects|list",
+                    ),
+                ],
+            ]
+        )
+    return InlineKeyboardMarkup(rows)
+
+
+def _analysis_keyboard(current: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    _selected_label("rus", current),
+                    callback_data="set_mode:rus",
+                ),
+                InlineKeyboardButton(
+                    _selected_label("eng", current),
+                    callback_data="set_mode:eng",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    _selected_label("eng_fast", current),
+                    callback_data="set_mode:eng_fast",
+                ),
+                InlineKeyboardButton(
+                    _selected_label("eng_fast_qa", current),
+                    callback_data="set_mode:eng_fast_qa",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "↩️ Все режимы",
+                    callback_data="mode_menu:home",
+                )
+            ],
+        ]
+    )
+
+
+def _home_text(current: str, *, is_admin: bool) -> str:
+    lines = [
+        "🎛 <b>Все режимы бота</b>",
+        "",
+        "📚 <b>Обычная обработка ссылки</b>",
+        f"Сейчас: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
+        "<i>Применяется, когда вы просто отправляете ссылку в чат.</i>",
+    ]
+    if is_admin:
+        lines.extend(
+            [
+                "",
+                "🎙 <b>Дубляж видео под ключ</b>",
+                "• <b>Gemini MAX</b>: ссылка → перевод → проверка → голос → MP4.",
+                "• <b>Готовый SRT</b>: ссылка + ваш русский SRT → голос → MP4 без правок текста.",
+            ]
+        )
+    lines.extend(["", "Выберите нужный сценарий:"])
+    return "\n".join(lines)
+
+
+def _analysis_text(current: str, *, saved: bool = False) -> str:
+    lines = [
+        "📚 <b>Анализ и LiveDub</b>",
+        "",
+    ]
+    if saved:
+        lines.extend(
+            [
+                f"✅ Установлен: <b>{MODE_LABELS.get(current, current)}</b>",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"Текущий режим: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
+                "",
+            ]
+        )
     for mode in VALID_MODES:
-        lines.append(MODE_LABELS[mode])
-        lines.append(f"      <i>{MODE_DESCRIPTIONS[mode]}</i>")
-    lines.extend(("", "Выберите режим обработки видео:"))
+        lines.append(f"{MODE_BUTTON_LABELS[mode]} — <i>{MODE_DESCRIPTIONS[mode]}</i>")
+    lines.extend(
+        [
+            "",
+            "Этот выбор действует для обычной ссылки, отправленной прямо в чат.",
+        ]
+    )
+    return "\n".join(lines)
 
-    await update.message.reply_text(
-        "\n".join(lines),
-        reply_markup=keyboard,
+
+async def _read_user_mode(user_id: int) -> str:
+    loop = asyncio.get_running_loop()
+    try:
+        return await loop.run_in_executor(None, _get_user_mode_raw, user_id)
+    except Exception:
+        return "rus"
+
+
+async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    del context
+    current = await _read_user_mode(update.effective_user.id)
+    await update.effective_message.reply_text(
+        _home_text(current, is_admin=_is_admin(update)),
+        reply_markup=_mode_home_keyboard(current, is_admin=_is_admin(update)),
         parse_mode="HTML",
     )
 
 
-async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    del context
     query = update.callback_query
+    if not query:
+        return
     await query.answer()
-    mode = query.data.split(":", 1)[1]
+    data = str(query.data or "")
+    user_id = update.effective_user.id
+
+    if data == "mode_menu:home":
+        current = await _read_user_mode(user_id)
+        await query.edit_message_text(
+            _home_text(current, is_admin=_is_admin(update)),
+            reply_markup=_mode_home_keyboard(current, is_admin=_is_admin(update)),
+            parse_mode="HTML",
+        )
+        return
+
+    if data == "mode_menu:analysis":
+        current = await _read_user_mode(user_id)
+        await query.edit_message_text(
+            _analysis_text(current),
+            reply_markup=_analysis_keyboard(current),
+            parse_mode="HTML",
+        )
+        return
+
+    if not data.startswith("set_mode:"):
+        return
+    mode = data.split(":", 1)[1]
     if mode not in VALID_MODES:
         await query.edit_message_text("❌ Неизвестный режим.")
         return
-    user_id = update.effective_user.id
 
     try:
-        import asyncio as _asyncio
-        loop = _asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _set_user_mode_raw, user_id, mode)
     except Exception as exc:
         logger.error("mode save err: %s", exc)
         await query.edit_message_text("❌ Ошибка сохранения режима.")
         return
 
-    label = MODE_LABELS.get(mode, mode)
-    try:
-        await query.edit_message_text(
-            f"✅ Режим установлен: <b>{label}</b>\n<i>{MODE_DESCRIPTIONS.get(mode, '')}</i>",
-            parse_mode="HTML",
-        )
-    except Exception as exc:
-        # Повторный тап по той же кнопке даёт Telegram BadRequest
-        # "Message is not modified" и не является ошибкой сохранения.
-        if "is not modified" not in str(exc).lower():
-            raise
+    await query.edit_message_text(
+        _analysis_text(mode, saved=True),
+        reply_markup=_analysis_keyboard(mode),
+        parse_mode="HTML",
+    )
 
 
 # --- helpers: direct DB access ---
 
-from core.database import _db_conn
-
 
 def _get_user_mode_raw(user_id: int) -> str:
-    """Читает строковое значение режима пользователя из bot_settings."""
+    """Read the user's normal link-processing mode from bot_settings."""
     try:
         with _db_conn() as conn:
             row = conn.execute(
@@ -125,7 +264,7 @@ def _get_user_mode_raw(user_id: int) -> str:
 
 
 def _set_user_mode_raw(user_id: int, mode: str) -> None:
-    """Сохраняет строковое значение режима пользователя."""
+    """Persist the user's normal link-processing mode."""
     if mode not in VALID_MODES:
         raise ValueError(f"invalid mode: {mode}")
     with _db_conn() as conn:
@@ -134,3 +273,14 @@ def _set_user_mode_raw(user_id: int, mode: str) -> None:
             (f"user_mode_{user_id}", mode),
         )
         conn.commit()
+
+
+__all__ = [
+    "MODE_DESCRIPTIONS",
+    "MODE_LABELS",
+    "VALID_MODES",
+    "_analysis_keyboard",
+    "_mode_home_keyboard",
+    "handle_mode_callback",
+    "mode_command",
+]
