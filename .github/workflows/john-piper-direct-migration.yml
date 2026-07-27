@@ -1,4 +1,4 @@
-name: John Piper Direct Runner Migration
+name: John Piper Direct Runner Cleanup
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  extract:
+  cleanup:
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
@@ -18,52 +18,45 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract production files into the repository
+      - name: Remove obsolete package layers
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           Set-StrictMode -Version Latest
 
-          $example = Join-Path $PWD "tools\voxcpm2\examples\john_piper_z20py4yqhyq"
-          $parts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File | Sort-Object Name)
-          if ($parts.Count -ne 7) {
-              throw "Expected 7 package parts, found $($parts.Count)."
-          }
-
-          $encoded = ($parts | ForEach-Object { [IO.File]::ReadAllText($_.FullName).Trim() }) -join ""
-          $zip = Join-Path $env:RUNNER_TEMP "john-piper-production.zip"
-          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($encoded))
-
-          $extract = Join-Path $env:RUNNER_TEMP "john-piper-production"
-          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
-
+          $exampleRelative = "tools\voxcpm2\examples\john_piper_z20py4yqhyq"
+          $example = Join-Path $PWD $exampleRelative
           $required = @(
-              "README_RU.md",
+              "Run-John-Piper-FINAL-CPU.ps1",
+              "voxcpm2_cpu_shorts_production.py",
+              "master_constant_mix.py",
               "segments_ru_final.json",
               "translation_ru.txt",
               "subtitles_ru_final.srt",
-              "master_constant_mix.py",
               "source_subtitles_en.srt",
-              "voxcpm2_cpu_shorts_production.py",
-              "Run-John-Piper-FINAL-CPU-Inner.ps1"
+              "README_RU.md"
           )
 
           foreach ($name in $required) {
-              $source = Join-Path $extract $name
-              if (-not (Test-Path -LiteralPath $source)) {
-                  throw "Required extracted file is missing: $name"
+              if (-not (Test-Path -LiteralPath (Join-Path $example $name) -PathType Leaf)) {
+                  throw "Direct runner file is missing: $name"
               }
-              Copy-Item -LiteralPath $source -Destination (Join-Path $example $name) -Force
           }
+
+          $legacyParts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File)
+          foreach ($part in $legacyParts) {
+              $relative = $part.FullName.Substring($PWD.Path.Length + 1)
+              git rm -- $relative
+          }
+
+          $legacyInner = Join-Path $exampleRelative "Run-John-Piper-FINAL-CPU-Inner.ps1"
+          if (Test-Path -LiteralPath $legacyInner) {
+              git rm -- $legacyInner
+          }
+
+          git rm -- ".github/workflows/john-piper-direct-migration.yml"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
-
-          if (git diff --cached --quiet) {
-              Write-Host "Direct files are already extracted."
-              exit 0
-          }
-
-          git commit -m "Extract John Piper direct production files"
+          git commit -m "Remove obsolete John Piper package launchers"
           git push origin HEAD:main
