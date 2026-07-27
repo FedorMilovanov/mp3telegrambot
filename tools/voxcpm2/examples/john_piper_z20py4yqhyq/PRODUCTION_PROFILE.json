@@ -1,0 +1,12 @@
+{
+  "engine": "VoxCPM2",
+  "device": "cpu",
+  "voice_mode": "zero-shot reference cloning",
+  "segments": 5,
+  "steps": 16,
+  "cfg": 1.8,
+  "original_level": 0.18,
+  "target_lufs": -14.0,
+  "target_lra": 9.0,
+  "target_true_peak_db": -1.0
+}
