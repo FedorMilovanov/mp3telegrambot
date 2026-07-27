@@ -147,6 +147,7 @@ async def help_command(update, context):
         f"/start — Приветствие\n"
         f"/help  — Справка\n"
         f"/mode — 🌐 Режим: RUS / ENG Full / ENG Quick\n"
+        f"/dub &lt;URL&gt; — 🎬 VoxCPM2-дубляж из готового перевода\n"
         f"/dub <URL> — 🎬 VoxCPM2-дубляж из готового перевода\n"
         f"/archive — Последние публикации\n"
         f"/search <текст> — Поиск по архиву\n"
