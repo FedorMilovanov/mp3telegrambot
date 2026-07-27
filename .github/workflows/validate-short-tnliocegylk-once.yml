@@ -30,7 +30,9 @@ jobs:
         id: deps
         continue-on-error: true
         shell: pwsh
-        run: python -m pip install -r requirements-dev.txt 2>&1 | Tee-Object ci-deps.log
+        run: |
+          python -m pip install -r requirements-dev.txt 2>&1 | Tee-Object ci-deps.log
+          exit $LASTEXITCODE
 
       - name: Compile production modules and repository
         id: compile
@@ -69,25 +71,33 @@ jobs:
         id: imports
         continue-on-error: true
         shell: pwsh
-        run: python -c "import handlers.dub_delivery, services.dub_studio_runtime; print('Dub delivery imports: OK')" 2>&1 | Tee-Object ci-imports.log
+        run: |
+          python -c "import handlers.dub_delivery, services.dub_studio_runtime; print('Dub delivery imports: OK')" 2>&1 | Tee-Object ci-imports.log
+          exit $LASTEXITCODE
 
       - name: Run focused regression tests
         id: tests
         continue-on-error: true
         shell: pwsh
-        run: python -m pytest -q tests/test_generic_short_production.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py 2>&1 | Tee-Object ci-tests.log
+        run: |
+          python -m pytest -q tests/test_generic_short_production.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py 2>&1 | Tee-Object ci-tests.log
+          exit $LASTEXITCODE
 
       - name: Ruff changed surface
         id: ruff
         continue-on-error: true
         shell: pwsh
-        run: python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py 2>&1 | Tee-Object ci-ruff.log
+        run: |
+          python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py 2>&1 | Tee-Object ci-ruff.log
+          exit $LASTEXITCODE
 
       - name: Patch cleanliness
         id: diff
         continue-on-error: true
         shell: pwsh
-        run: git diff --check 2>&1 | Tee-Object ci-diff.log
+        run: |
+          git diff --check 2>&1 | Tee-Object ci-diff.log
+          exit $LASTEXITCODE
 
       - name: Finalize verified recipe
         if: steps.deps.outcome == 'success' && steps.compile.outcome == 'success' && steps.contract.outcome == 'success' && steps.imports.outcome == 'success' && steps.tests.outcome == 'success' && steps.ruff.outcome == 'success' && steps.diff.outcome == 'success'
@@ -138,7 +148,7 @@ jobs:
           diff=${{ steps.diff.outcome }}
           source_commit=${{ github.sha }}
           "@
-          foreach ($Name in @('ci-compile.log','ci-contract.log','ci-imports.log','ci-tests.log','ci-ruff.log','ci-diff.log')) {
+          foreach ($Name in @('ci-deps.log','ci-compile.log','ci-contract.log','ci-imports.log','ci-tests.log','ci-ruff.log','ci-diff.log')) {
             if (Test-Path $Name) {
               $Report += "`n`n=== $Name ===`n"
               $Report += (Get-Content $Name -Tail 120 | Out-String)
