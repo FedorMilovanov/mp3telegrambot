@@ -1,0 +1,324 @@
+name: Install Dub Quality V4 Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/install-dub-quality-v4-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  install-and-validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install quality v4 policies
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path: str, value: str) -> None:
+              Path(path).write_text(value, encoding='utf-8')
+
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              count = value.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one match, got {count}')
+              return value.replace(old, new, 1)
+
+          def regex_once(value: str, pattern: str, replacement: str, label: str) -> str:
+              result, count = re.subn(pattern, replacement, value, count=1, flags=re.S)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one regex match, got {count}')
+              return result
+
+          semantic_path = 'tools/voxcpm2/semantic_tts_guard.py'
+          semantic = read(semantic_path)
+          semantic = replace_once(semantic, '_GUARD_VERSION = "semantic-tts-guard-v1"', '_GUARD_VERSION = "semantic-tts-guard-v4"', 'guard version')
+          semantic = replace_once(semantic, '_WRAPPER_NAME = "voxcpm2_cpu_semantic_wrapper.py"', '_WRAPPER_NAME = "voxcpm2_quality_v4_renderer.py"', 'quality renderer')
+          semantic = replace_once(
+              semantic,
+              '_REAL_SUBPROCESS = _subprocess\n',
+              '_REAL_SUBPROCESS = _subprocess\n_MASTER_NAME = "master_constant_mix.py"\n_QUALITY_MASTER_NAME = "master_quality_v4.py"\n',
+              'master constants',
+          )
+          old_detector = '''def _is_voxcpm_synth(command: Any) -> bool:\n    if not isinstance(command, (list, tuple)):\n        return False\n    return any(Path(str(part)).name.casefold() == _SYNTH_NAME.casefold() for part in command)\n'''
+          new_detector = old_detector + '''\n\ndef _is_legacy_master(command: Any) -> bool:\n    if not isinstance(command, (list, tuple)):\n        return False\n    return any(Path(str(part)).name.casefold() == _MASTER_NAME.casefold() for part in command)\n'''
+          semantic = replace_once(semantic, old_detector, new_detector, 'master detector')
+          guarded_setup = '''    guard_dir = work_dir / "semantic_guard"\n    guard_dir.mkdir(parents=True, exist_ok=True)\n    guarded_segments_path = guard_dir / "segments_guarded.json"\n    segments = _prepare_guarded_segments(segments_source, guarded_segments_path)\n\n    quality_renderer = Path(__file__).resolve().parent / _WRAPPER_NAME\n    if not quality_renderer.is_file():\n        raise RuntimeError(f"Не найден Quality v4 NoChew renderer: {quality_renderer}")\n\n    guarded_command = list(original_command)\n    for index, part in enumerate(guarded_command):\n        if Path(str(part)).name.casefold() == _SYNTH_NAME.casefold():\n            guarded_command[index] = str(quality_renderer)\n            break\n    _replace_flag(guarded_command, "--segments-json", str(guarded_segments_path))\n    # Preserve the clean references created by dub_quality_v4.  Do not run FFT\n    # denoise, do not turn them into prompt continuation, and do not override CFG.\n    env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)\n    env["VOXCPM_ORIGINAL_RENDERER"] = str(Path(original_command[1]).resolve())\n    env["VOXCPM_SEMANTIC_GUARD_VERSION"] = _GUARD_VERSION\n    kwargs["env"] = env\n'''
+          semantic = regex_once(
+              semantic,
+              r'    guard_dir = work_dir / "semantic_guard"\n.*?    kwargs\["env"\] = env\n',
+              guarded_setup,
+              'replace prompt continuation setup',
+          )
+          old_proxy = '''    def run(self, command: Any, *args: Any, **kwargs: Any) -> Any:\n        if _is_voxcpm_synth(command):\n            return _run_guarded_synth(command, *args, **kwargs)\n        return self._real.run(command, *args, **kwargs)\n'''
+          new_proxy = '''    def run(self, command: Any, *args: Any, **kwargs: Any) -> Any:\n        if _is_voxcpm_synth(command):\n            return _run_guarded_synth(command, *args, **kwargs)\n        if _is_legacy_master(command):\n            quality_master = Path(__file__).resolve().parent / _QUALITY_MASTER_NAME\n            if not quality_master.is_file():\n                raise RuntimeError(f"Не найден Quality v4 master: {quality_master}")\n            rewritten = [str(part) for part in command]\n            for index, part in enumerate(rewritten):\n                if Path(part).name.casefold() == _MASTER_NAME.casefold():\n                    rewritten[index] = str(quality_master)\n                    break\n            log("мастеринг: русский нормализуется отдельно; original-level остаётся точным")\n            return self._real.run(rewritten, *args, **kwargs)\n        return self._real.run(command, *args, **kwargs)\n'''
+          semantic = replace_once(semantic, old_proxy, new_proxy, 'quality master proxy')
+          semantic = semantic.replace(
+              '"""Module-like proxy that intercepts only the VoxCPM2 synthesis command."""',
+              '"""Intercept VoxCPM2 synthesis and the legacy whole-mix master."""',
+          )
+          semantic = semantic.replace(
+              'semantic VoxCPM2 guard активирован для Gemini MAX и готового SRT',
+              'semantic VoxCPM2 Quality v4 guard активирован для Gemini MAX и готового SRT',
+          )
+          write(semantic_path, semantic)
+
+          gemini_path = 'tools/voxcpm2/generic_gemini_runtime.py'
+          gemini = read(gemini_path)
+          gemini = replace_once(
+              gemini,
+              'from tools.voxcpm2 import generic_project_runtime as production\n',
+              'from tools.voxcpm2 import dub_quality_v4\nfrom tools.voxcpm2 import generic_project_runtime as production\n',
+              'Gemini quality import',
+          )
+          gemini = replace_once(
+              gemini,
+              'def main() -> None:\n    production.parse_manual_vtt = parse_creator_vtt_preserving_text\n',
+              'def main() -> None:\n    dub_quality_v4.install_gemini_quality(production, pipeline)\n    production.parse_manual_vtt = parse_creator_vtt_preserving_text\n',
+              'Gemini quality install',
+          )
+          write(gemini_path, gemini)
+
+          direct_path = 'tools/voxcpm2/generic_direct_checked_runtime.py'
+          direct = read(direct_path)
+          direct = replace_once(
+              direct,
+              'from tools.voxcpm2 import generic_direct_runtime as production\n',
+              'from tools.voxcpm2 import dub_quality_v4\nfrom tools.voxcpm2 import generic_direct_runtime as production\n',
+              'direct quality import',
+          )
+          direct = replace_once(
+              direct,
+              '    from tools.voxcpm2 import semantic_tts_guard\n\n    semantic_tts_guard.sanitize_tts_text = preserve_user_tts_text\n',
+              '    from tools.voxcpm2 import semantic_tts_guard\n\n    dub_quality_v4.install_direct_quality(production, pipeline)\n    semantic_tts_guard.sanitize_tts_text = preserve_user_tts_text\n',
+              'direct quality install',
+          )
+          write(direct_path, direct)
+
+          runtime_path = 'tools/voxcpm2/generic_short_runtime.py'
+          runtime = read(runtime_path)
+          runtime = runtime.replace(
+              '# reference. The guard patches only the VoxCPM2 synthesis command and leaves\n    # source download, FFmpeg mastering and all mode routing untouched.',
+              '# reference. The guard patches VoxCPM2 synthesis plus the legacy whole-mix\n    # master; source download and all mode routing stay untouched.',
+          )
+          write(runtime_path, runtime)
+
+          health_path = 'handlers/dub_health.py'
+          health = read(health_path)
+          health_block = '''    quality_policy_path = repo / "tools" / "voxcpm2" / "dub_quality_v4.py"\n    quality_renderer_path = repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"\n    quality_master_path = repo / "tools" / "voxcpm2" / "master_quality_v4.py"\n    quality_ok = all(path.is_file() for path in (quality_policy_path, quality_renderer_path, quality_master_path))\n    quality_detail = (\n        f"policy={quality_policy_path}; renderer={quality_renderer_path}; master={quality_master_path}"\n    )\n    checks.append(_check("Semantic TTS guard", guard_path.is_file(), str(guard_path)))\n    checks.append(_check("NoChew Quality v4", quality_ok, quality_detail))\n'''
+          health = regex_once(
+              health,
+              r'    wrapper_entry_path = .*?    checks\.append\(_check\("VoxCPM2 hardened wrapper", wrapper_ok, wrapper_detail\)\)\n',
+              health_block,
+              'health quality paths',
+          )
+          write(health_path, health)
+
+          # A running worker imports guard policy at startup. Bump its contract so
+          # the bot replaces v3 cleanly after pull/restart.
+          for path in Path('.').rglob('*.py'):
+              source = path.read_text(encoding='utf-8')
+              if 'dub-worker-tree-cancel-v3' in source:
+                  path.write_text(source.replace('dub-worker-tree-cancel-v3', 'dub-worker-quality-v4'), encoding='utf-8')
+
+          test_path = Path('tests/test_dub_quality_v4.py')
+          test_path.write_text(r'''from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+
+from tools.voxcpm2.dub_quality_v4 import group_cues_v4, group_ready_srt_v4
+from tools.voxcpm2.voxcpm2_quality_v4_renderer import trim_candidate_edges
+
+
+def _cue(start: float, end: float, text: str):
+    return SimpleNamespace(start=start, end=end, text=text)
+
+
+def test_gemini_groups_are_short_local_timing_anchors() -> None:
+    cues = [
+        _cue(0.0, 1.8, "First thought."),
+        _cue(1.9, 3.8, "Second thought."),
+        _cue(3.9, 5.9, "Third thought."),
+        _cue(6.0, 8.0, "Fourth thought."),
+    ]
+    groups = group_cues_v4(cues)
+    assert len(groups) >= 2
+    assert all(float(item["end"]) - float(item["start"]) <= 7.05 for item in groups)
+
+
+def test_ready_srt_keeps_normal_local_anchors() -> None:
+    groups = group_ready_srt_v4([
+        _cue(0.0, 2.8, "Первая фраза."),
+        _cue(3.1, 5.9, "Вторая фраза."),
+        _cue(6.2, 9.0, "Третья фраза."),
+    ])
+    assert [(item["start"], item["end"]) for item in groups] == [
+        (0.0, 2.8), (3.1, 5.9), (6.2, 9.0)
+    ]
+
+
+def test_edge_trim_skips_isolated_chirp_and_stabilizes_preroll() -> None:
+    sample_rate = 16000
+    audio = np.zeros(sample_rate * 2, dtype=np.float32)
+    audio[240:244] = 0.75  # isolated start chirp
+    start = int(sample_rate * 0.55)
+    t = np.arange(int(sample_rate * 0.70), dtype=np.float32) / sample_rate
+    audio[start : start + len(t)] = 0.12 * np.sin(2 * np.pi * 180 * t)
+    trimmed, report = trim_candidate_edges(audio, sample_rate)
+    assert report["trimmed_leading"] > 0.40
+    assert 0.65 < len(trimmed) / sample_rate < 1.05
+
+
+def test_quality_v4_runtime_has_no_nested_prompt_retry_or_whole_mix_loudnorm() -> None:
+    semantic = Path("tools/voxcpm2/semantic_tts_guard.py").read_text(encoding="utf-8")
+    renderer = Path("tools/voxcpm2/voxcpm2_quality_v4_renderer.py").read_text(encoding="utf-8")
+    master = Path("tools/voxcpm2/master_quality_v4.py").read_text(encoding="utf-8")
+    assert '_WRAPPER_NAME = "voxcpm2_quality_v4_renderer.py"' in semantic
+    assert 'env["VOXCPM_PROMPT_TEXTS_JSON"]' not in semantic
+    assert 'values["retry_badcase"]' not in renderer
+    assert 'whole_mix_loudnorm": False' in master
+    assert 'alimiter=limit=0.985:level=false' in master
+
+
+def test_worker_contract_is_quality_v4() -> None:
+    runtime = Path("services/dub_studio_runtime.py").read_text(encoding="utf-8")
+    worker = Path("tools/voxcpm2/dub_worker_hardened.py").read_text(encoding="utf-8")
+    health = Path("handlers/dub_health.py").read_text(encoding="utf-8")
+    assert 'dub-worker-quality-v4' in runtime
+    assert 'dub-worker-quality-v4' in worker
+    assert 'dub-worker-quality-v4' in health
+''', encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/dub-studio-checks.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          if 'tests/test_dub_quality_v4.py' not in workflow:
+              workflow = re.sub(
+                  r'(?m)^(\s*)tests/test_dub_modes\.py$',
+                  lambda match: match.group(0) + '\n' + match.group(1) + 'tests/test_dub_quality_v4.py',
+                  workflow,
+              )
+          workflow_path.write_text(workflow, encoding='utf-8')
+          print('Dub Quality v4 policies installed')
+          '@ | python -
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile quality v4 and integrated modes
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/dub_quality_v4.py `
+            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
+            tools/voxcpm2/master_quality_v4.py `
+            tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/generic_direct_runtime.py `
+            tools/voxcpm2/dub_worker_hardened.py `
+            services/dub_studio_runtime.py `
+            handlers/dub_health.py
+
+      - name: Run Dub Studio regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q `
+            tests/test_dub_quality_v4.py `
+            tests/test_generic_project_runtime.py `
+            tests/test_generic_direct_runtime.py `
+            tests/test_generic_gemini_runtime.py `
+            tests/test_semantic_tts_guard.py `
+            tests/test_dub_modes.py `
+            tests/test_dub_wizard.py `
+            tests/test_dub_worker.py `
+            tests/test_mode_navigation.py
+
+      - name: Verify exact quality contracts
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json
+
+          semantic = Path('tools/voxcpm2/semantic_tts_guard.py').read_text(encoding='utf-8')
+          assert 'semantic-tts-guard-v4' in semantic
+          assert 'voxcpm2_quality_v4_renderer.py' in semantic
+          assert 'master_quality_v4.py' in semantic
+          assert 'env["VOXCPM_PROMPT_TEXTS_JSON"]' not in semantic
+          renderer = Path('tools/voxcpm2/voxcpm2_quality_v4_renderer.py').read_text(encoding='utf-8')
+          assert 'reference-only NoChew' in renderer
+          assert 'retry_badcase remains disabled' in renderer
+          master = Path('tools/voxcpm2/master_quality_v4.py').read_text(encoding='utf-8')
+          assert 'whole_mix_loudnorm": False' in master
+          recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          assert recipe['actions']['render_gemini']['module'] == 'tools.voxcpm2.generic_gemini_runtime'
+          assert recipe['actions']['render_direct']['module'] == 'tools.voxcpm2.generic_direct_checked_runtime'
+          print('Quality v4 exact contracts: OK')
+          '@ | python -
+
+      - name: Ruff and whitespace
+        shell: pwsh
+        run: |
+          python -m ruff check `
+            tools/voxcpm2/dub_quality_v4.py `
+            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
+            tools/voxcpm2/master_quality_v4.py `
+            tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            tools/voxcpm2/dub_worker_hardened.py `
+            services/dub_studio_runtime.py `
+            handlers/dub_health.py `
+            tests/test_dub_quality_v4.py `
+            tests/test_dub_worker.py
+          git diff --check
+
+      - name: Publish result and remove installer
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Passed = ${{ job.status == 'success' }}
+          $Status = if ($Passed) { 'PASS' } else { 'FAIL' }
+          New-Item -ItemType Directory -Force docs | Out-Null
+          @(
+            '# Dub Studio Quality v4 validation',
+            '',
+            "- Result: **$Status**",
+            '- Source: ${{ github.sha }}',
+            '- Scope: caption coverage, micro-segmentation, reference-only NoChew, stable onset, exact source gain, both modes, worker v4.',
+            '- Compile/tests/contracts/Ruff: ${{ job.status }}',
+            '- Physical VoxCPM2 rerender remains local-only.'
+          ) | Set-Content docs/dub_quality_v4_validation_latest.md -Encoding utf8
+          Remove-Item .github/workflows/install-dub-quality-v4-once.yml -Force
+          git add -A
+          git commit -m "Install Dub Studio Quality v4: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          if (-not $Passed) { exit 1 }
