@@ -13,6 +13,7 @@ from tools.voxcpm2.generic_project_runtime import (
     validate_custom_timing,
     write_translation_template,
 )
+from tools.voxcpm2.generic_short_runtime import standardize_russian_title
 
 
 def _groups() -> list[dict]:
@@ -49,6 +50,20 @@ def test_manual_vtt_keeps_both_human_caption_lines(tmp_path: Path) -> None:
 
 def test_title_filename_keeps_cyrillic_and_removes_windows_chars() -> None:
     assert safe_russian_filename('Почему: Христос / наша "надежда"?') == "Почему Христос наша надежда"
+
+
+def test_dub_title_reuses_shorts_case_and_keeps_service_words_lowercase() -> None:
+    assert standardize_russian_title(
+        "сила и достоинство благочестивой женщины",
+        context="John Piper",
+    ) == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+
+
+def test_dub_title_keeps_initial_preposition_capitalized() -> None:
+    assert standardize_russian_title(
+        "в чем заключается сила христианской женщины",
+        context="Джон Пайпер",
+    ) == "В Чем Заключается Сила Женщины Христианки - Джон Пайпер"
 
 
 def test_template_round_trip_preserves_user_words(tmp_path: Path) -> None:
