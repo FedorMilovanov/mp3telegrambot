@@ -1,0 +1,150 @@
+name: Validate Current Dub Quality V4 Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-dub-quality-v4-current-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Finalize health and lint surface
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          quality_path = Path('tools/voxcpm2/dub_quality_v4.py')
+          quality = quality_path.read_text(encoding='utf-8')
+          quality = quality.replace('from typing import Any, Callable', 'from typing import Any')
+          quality_path.write_text(quality, encoding='utf-8')
+
+          health_path = Path('handlers/dub_health.py')
+          health = health_path.read_text(encoding='utf-8')
+          pattern = r'''    guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard\.py"\n.*?    checks\.append\(_check\("VoxCPM2 hardened wrapper", wrapper_ok, wrapper_detail\)\)\n'''
+          replacement = '''    guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard_v4.py"\n    quality_policy_path = repo / "tools" / "voxcpm2" / "dub_quality_v4.py"\n    quality_renderer_path = repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"\n    quality_master_path = repo / "tools" / "voxcpm2" / "master_quality_v4.py"\n    quality_ok = all(\n        path.is_file()\n        for path in (guard_path, quality_policy_path, quality_renderer_path, quality_master_path)\n    )\n    quality_detail = (\n        f"guard={guard_path}; policy={quality_policy_path}; "\n        f"renderer={quality_renderer_path}; master={quality_master_path}"\n    )\n    checks.append(_check("NoChew Quality v4", quality_ok, quality_detail))\n'''
+          health, count = re.subn(pattern, replacement, health, count=1, flags=re.S)
+          if count != 1:
+              raise RuntimeError(f'health block expected once, got {count}')
+          health = health.replace(
+              'Оба режима требуют зелёные semantic guard, wrapper, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.',
+              'Оба режима требуют зелёные NoChew Quality v4, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.',
+          )
+          health_path.write_text(health, encoding='utf-8')
+
+          ci_path = Path('.github/workflows/dub-studio-checks.yml')
+          ci = ci_path.read_text(encoding='utf-8')
+          if 'tests/test_dub_quality_v4.py' not in ci:
+              ci = re.sub(
+                  r'(?m)^(\s*)tests/test_dub_modes\.py$',
+                  lambda match: match.group(0) + '\n' + match.group(1) + 'tests/test_dub_quality_v4.py',
+                  ci,
+              )
+          ci_path.write_text(ci, encoding='utf-8')
+          '@ | python -
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Final gate
+        id: gate
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/dub_quality_v4.py `
+            tools/voxcpm2/semantic_tts_guard_v4.py `
+            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
+            tools/voxcpm2/master_quality_v4.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            handlers/dub_health.py 2>&1 | Tee-Object dub-quality-v4.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          python -m pytest -q `
+            tests/test_dub_quality_v4.py `
+            tests/test_generic_project_runtime.py `
+            tests/test_generic_direct_runtime.py `
+            tests/test_generic_gemini_runtime.py `
+            tests/test_semantic_tts_guard.py `
+            tests/test_dub_modes.py `
+            tests/test_dub_wizard.py `
+            tests/test_dub_worker.py `
+            tests/test_mode_navigation.py 2>&1 | Tee-Object -Append dub-quality-v4.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          @'
+          from pathlib import Path
+          import json
+          gemini = Path('tools/voxcpm2/generic_gemini_runtime.py').read_text(encoding='utf-8')
+          direct = Path('tools/voxcpm2/generic_direct_checked_runtime.py').read_text(encoding='utf-8')
+          guard = Path('tools/voxcpm2/semantic_tts_guard_v4.py').read_text(encoding='utf-8')
+          master = Path('tools/voxcpm2/master_quality_v4.py').read_text(encoding='utf-8')
+          assert 'legacy_semantic_guard.install = _disable_legacy_guard_install' in gemini
+          assert 'legacy_semantic_guard.install = _disable_legacy_guard_install' in direct
+          assert 'semantic_tts_guard_v4.install()' in gemini
+          assert 'semantic_tts_guard_v4.install()' in direct
+          assert 'env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)' in guard
+          assert 'whole_mix_loudnorm": False' in master
+          recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          assert recipe['actions']['render_gemini']['module'] == 'tools.voxcpm2.generic_gemini_runtime'
+          assert recipe['actions']['render_direct']['module'] == 'tools.voxcpm2.generic_direct_checked_runtime'
+          '@ | python - 2>&1 | Tee-Object -Append dub-quality-v4.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          python -m ruff check `
+            tools/voxcpm2/dub_quality_v4.py `
+            tools/voxcpm2/semantic_tts_guard_v4.py `
+            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
+            tools/voxcpm2/master_quality_v4.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            handlers/dub_health.py `
+            tests/test_dub_quality_v4.py 2>&1 | Tee-Object -Append dub-quality-v4.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check 2>&1 | Tee-Object -Append dub-quality-v4.log
+          exit $LASTEXITCODE
+
+      - name: Publish and remove workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Status = if ('${{ steps.gate.outcome }}' -eq 'success') { 'PASS' } else { 'FAIL' }
+          $Lines = @(
+            '# Dub Studio Quality v4 validation',
+            '',
+            "- Result: **$Status**",
+            '- Source: ${{ github.sha }}',
+            '- Compile/focused tests/contracts/Ruff: ${{ steps.gate.outcome }}',
+            '- Physical VoxCPM2 A/B render remains local-only.'
+          )
+          if ($Status -eq 'FAIL' -and (Test-Path dub-quality-v4.log)) {
+            $Lines += ''; $Lines += '```text'; $Lines += (Get-Content dub-quality-v4.log -Tail 220); $Lines += '```'
+          }
+          $Lines | Set-Content docs/dub_quality_v4_validation_latest.md -Encoding utf8
+          Remove-Item .github/workflows/validate-dub-quality-v4-current-once.yml -Force
+          git add -A
+          git commit -m "Validate current Dub Studio Quality v4: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          if ($Status -ne 'PASS') { exit 1 }
