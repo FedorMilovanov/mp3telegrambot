@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from tools.voxcpm2.generic_direct_checked_runtime import build_direct_segments_safe
+from tools.voxcpm2.generic_direct_checked_runtime import (
+    build_direct_segments_safe,
+    preserve_user_tts_text,
+)
 from tools.voxcpm2.generic_direct_runtime import (
     _build_direct_segments,
     group_srt_cues,
@@ -66,3 +69,9 @@ def test_checked_entrypoint_keeps_last_cue_inside_video() -> None:
     assert segments[0]["end"] <= 5.0
     assert subtitles[0].end <= 5.0
     assert segments[0]["text"] == "Финал."
+    assert segments[0]["text_policy"] == "verbatim_user_srt"
+
+
+def test_ready_srt_tts_policy_keeps_final_punctuation_verbatim() -> None:
+    source = "…Именно так… — не менять!"
+    assert preserve_user_tts_text(source) == source
