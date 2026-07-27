@@ -4,7 +4,7 @@
   "title": "Джон Пайпер — Четыре Признака Принадлежности Христу",
   "speaker": "Джон Пайпер",
   "source_url": "https://youtube.com/shorts/Z20Py4yQhYQ",
-  "description": "Первый миграционный production-рецепт Dub Studio. Полный CPU NoChew-рендер и точечная замена Псалом 16 → Псалом 15.",
+  "description": "Первый миграционный production-рецепт Dub Studio. Полный CPU NoChew-рендер и точечная замена Псалом 16 → Псалом 15. По результату прослушивания постоянный оригинал снижен до 18%.",
   "work_root": "C:\\AI-Archive\\John-Piper-Short-Z20Py4yQhYQ-FINAL",
   "actions": {
     "render": {
@@ -13,7 +13,7 @@
       "runner": "powershell",
       "script": "tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-FINAL-CPU.ps1",
       "parameters": {
-        "OriginalLevel": 0.25
+        "OriginalLevel": 0.18
       }
     },
     "repair_psalm15": {
@@ -22,7 +22,7 @@
       "runner": "powershell",
       "script": "tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-Repair-Psalm15-CPU.ps1",
       "parameters": {
-        "OriginalLevel": 0.25
+        "OriginalLevel": 0.18
       }
     }
   },
