@@ -57,8 +57,8 @@ def test_quality_v4_entrypoints_disable_legacy_prompt_guard() -> None:
     direct = Path("tools/voxcpm2/generic_direct_checked_runtime.py").read_text(
         encoding="utf-8"
     )
-    assert "legacy_semantic_guard.install = lambda: None" in gemini
-    assert "legacy_semantic_guard.install = lambda: None" in direct
+    assert "legacy_semantic_guard.install = _disable_legacy_guard_install" in gemini
+    assert "legacy_semantic_guard.install = _disable_legacy_guard_install" in direct
     assert "semantic_tts_guard_v4.install()" in gemini
     assert "semantic_tts_guard_v4.install()" in direct
 
