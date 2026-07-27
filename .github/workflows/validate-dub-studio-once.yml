@@ -20,7 +20,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -159,30 +158,30 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           $Passed = ('${{ steps.deps.outcome }}' -eq 'success' -and '${{ steps.compile.outcome }}' -eq 'success' -and '${{ steps.contract.outcome }}' -eq 'success' -and '${{ steps.tests.outcome }}' -eq 'success' -and '${{ steps.imports.outcome }}' -eq 'success' -and '${{ steps.ruff.outcome }}' -eq 'success')
           $Status = if ($Passed) { 'PASS' } else { 'FAIL' }
-          $Report = @"
-          # Dub Studio Windows validation
-
-          - Result: **$Status**
-          - Source commit: `${{ github.sha }}`
-          - Dependencies: `${{ steps.deps.outcome }}`
-          - Compile + recipe JSON: `${{ steps.compile.outcome }}`
-          - Mode/worker contract: `${{ steps.contract.outcome }}`
-          - Focused tests: `${{ steps.tests.outcome }}`
-          - Runtime imports: `${{ steps.imports.outcome }}`
-          - Ruff: `${{ steps.ruff.outcome }}`
-          - Physical YouTube/Gemini/VoxCPM2 render: local-only; verify with `/dubcheck` and one real project per mode.
-          "@
+          $Lines = @(
+            '# Dub Studio Windows validation',
+            '',
+            "- Result: **$Status**",
+            '- Source commit: ${{ github.sha }}',
+            '- Dependencies: ${{ steps.deps.outcome }}',
+            '- Compile + recipe JSON: ${{ steps.compile.outcome }}',
+            '- Mode/worker contract: ${{ steps.contract.outcome }}',
+            '- Focused tests: ${{ steps.tests.outcome }}',
+            '- Runtime imports: ${{ steps.imports.outcome }}',
+            '- Ruff: ${{ steps.ruff.outcome }}',
+            '- Physical YouTube/Gemini/VoxCPM2 render: local-only; verify with /dubcheck and one real project per mode.'
+          )
           if (-not $Passed) {
             foreach ($Name in @('dub-validation-compile.log','dub-validation-contract.log','dub-validation-tests.log','dub-validation-imports.log','dub-validation-ruff.log')) {
               if (Test-Path $Name) {
-                $Report += "`n`n## $Name`n```text`n"
-                $Report += (Get-Content $Name -Tail 100 | Out-String)
-                $Report += "`n```"
+                $Lines += ''
+                $Lines += "## $Name"
+                $Lines += (Get-Content $Name -Tail 100)
               }
             }
           }
           New-Item -ItemType Directory -Force docs | Out-Null
-          $Report | Set-Content docs/dub_studio_validation_latest.md -Encoding utf8
+          $Lines | Set-Content docs/dub_studio_validation_latest.md -Encoding utf8
           Remove-Item .github/workflows/validate-dub-studio-once.yml -Force
           git add docs/dub_studio_validation_latest.md .github/workflows/validate-dub-studio-once.yml
           git commit -m "Record Dub Studio Windows validation: $Status"
