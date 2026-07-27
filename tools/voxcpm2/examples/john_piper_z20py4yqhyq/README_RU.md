@@ -1,70 +1,97 @@
 # John Piper SHORTS — VoxCPM2 CPU FINAL
 
-Готовый прямой производственный запуск для ролика **Four Marks You Belong to Christ | John Piper Clip**:
+Прямой производственный запуск для ролика **Four Marks You Belong to Christ | John Piper Clip**.
+
+Здесь **John Piper — исходный спикер**, а **VoxCPM2 — наша модель синтеза**. Сторонний Piper TTS не используется.
+
+## Production-профиль
 
 - источник: `https://youtube.com/shorts/Z20Py4yQhYQ`;
-- движок: **VoxCPM2**;
-- устройство: **только CPU**;
+- фактическая длительность и конец таймлайна: `62.514` секунды;
+- устройство: только CPU;
 - голос: zero-shot clone Джона Пайпера из самого ролика;
-- перевод: литературный русский;
+- перевод: буквальный литературный русский;
 - монтаж: 5 смысловых блоков с индивидуальными задержками;
-- английский оригинал: постоянно 25%, без sidechain и без динамического приглушения;
+- LocDiT: 16 шагов;
+- CFG: 1.80;
+- кандидаты: два на блок, третий только при подозрительном результате;
+- NoChew: контроль речеподобного повторения в хвосте;
+- английский оригинал: постоянно 25%, без sidechain и ducking;
 - русский голос: 100%;
 - master: `-14 LUFS`, `-1 dBTP`;
-- видео копируется без повторного кодирования.
+- AAC: 320 кбит/с, 48 кГц;
+- видеопоток копируется без повторного кодирования.
+
+## Чистая архитектура
+
+Production-путь не содержит ZIP, Base64 и вложенных PowerShell-launcher-ов:
+
+```text
+Run-John-Piper-FINAL-CPU.ps1
+    ├── voxcpm2_cpu_shorts_production.py
+    ├── master_constant_mix.py
+    ├── segments_ru_final.json
+    ├── subtitles_ru_final.srt
+    └── translation_ru.txt
+```
+
+Постоянный Windows CI запрещает появление `package.part*.b64`, встроенных ZIP и `*-Inner.ps1`, рекурсивно компилирует Python, разбирает каждый PowerShell-файл и запускает regression-тесты.
 
 ## Почему только CPU
 
-RTX 3060 в реальной VoxCPM2-генерации повторяемо создаёт `nvlddmkm Event ID 153` и с BF16, и с FP16. Runner принудительно задаёт `CUDA_VISIBLE_DEVICES=-1` и перед рендером проверяет, что PyTorch не видит CUDA.
+RTX 3060 в реальной VoxCPM2-генерации повторяемо создавала `nvlddmkm Event ID 153` и в BF16, и в FP16. Runner до импорта модели задаёт:
+
+```text
+CUDA_VISIBLE_DEVICES=-1
+```
+
+и прекращает работу, если PyTorch неожиданно видит CUDA.
 
 ## Голосовой профиль
 
-Используется та же удачная схема, что и для John MacArthur:
+Используется принятая схема John MacArthur:
 
 1. исходный Shorts скачивается один раз;
-2. создаётся extended-референс длительностью 24 секунды;
-3. создаётся composite-референс из двух участков речи общей длительностью около 22 секунд;
+2. создаётся extended-reference длительностью 24 секунды;
+3. создаётся composite-reference из двух участков речи общей длительностью около 22 секунд;
 4. VoxCPM2 переносит тембр и манеру речи на русский текст без fine-tune весов;
-5. NoChew-детектор отсеивает или обрезает речеподобные хвосты после пауз;
-6. короткие реплики не растягиваются ради заполнения таймкода.
+5. NoChew отсеивает или аккуратно обрезает речеподобные хвосты после пауз;
+6. короткие удачные реплики не замедляются ради заполнения таймкода.
 
-## Профиль качества
+## Возобновление после остановки
+
+После каждого завершённого смыслового блока сохраняются:
 
 ```text
-CPU only
-Segments: 5
-LocDiT steps: 16
-CFG: 1.80
-Candidates: 2 на сегмент; третий только при подозрительном результате
-NoChew tail-restart detector
-Intermediate audio: 24-bit / 48 kHz
-Original English: constant 25%
-Russian voice: 100%
-Final loudness: -14 LUFS
-True peak: -1 dBTP
-AAC: 320 kbps / 48 kHz
+segment_work\checkpoints\segment_XX.json
+segment_work\segments_fitted\XX_*_fitted.wav
 ```
+
+Checkpoint привязан к тексту блока, его таймингу, задержке, reference-профилю, Steps, CFG и seed. При повторном запуске совпадающие завершённые блоки используются повторно. Если работа остановилась на четвёртом блоке, следующий запуск продолжит с четвёртого, а первые три не будут заново вычисляться.
+
+Сырые кандидаты удаляются после успешной сборки, но fitted WAV и checkpoints сохраняются. Изменение текста конкретного блока автоматически делает checkpoint этого блока недействительным; остальные блоки остаются пригодными.
 
 ## Одна команда
 
-Обычный PowerShell; запуск от администратора не требуется:
+Обычный PowerShell; права администратора не требуются:
 
 ```powershell
 cd "C:\Users\Fedor\Projects\mp3telegrambot"; git pull origin main; Set-ExecutionPolicy -Scope Process Bypass -Force; .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1
 ```
 
-Runner до синтеза сам проверяет:
+До загрузки модели runner проверяет:
 
-- наличие CPU Python и VoxCPM2;
+- CPU Python и VoxCPM2;
 - отсутствие доступной CUDA;
 - FFmpeg и FFprobe;
-- синтаксис обоих Python-модулей;
-- корректность JSON сегментов;
-- наличие перевода и субтитров.
+- компиляцию обоих Python-модулей;
+- ровно пять сегментов;
+- соответствие конца таймлайна фактической длительности видео;
+- перевод и оба файла субтитров.
 
-## Итог
+## Итоговый файл
 
-Главный файл для загрузки:
+Загружать на канал:
 
 ```text
 C:\AI-Archive\John-Piper-Short-Z20Py4yQhYQ-FINAL\output\John_Piper_Russian_Dub_FINAL_UPLOAD.mp4
@@ -81,9 +108,7 @@ John_Piper_FINAL.manifest.json
 John_Piper_Russian_Dub_FINAL_UPLOAD.master.json
 ```
 
-Исходное видео сохраняется и при повторном запуске не скачивается заново. Синтез голоса запускается заново, чтобы старые промежуточные WAV не были ошибочно приняты за новый результат.
-
-Сохранить все кандидаты и диагностические WAV:
+Сохранить также сырые кандидаты и диагностические WAV:
 
 ```powershell
 .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1 -KeepDiagnostics
@@ -95,9 +120,16 @@ John_Piper_Russian_Dub_FINAL_UPLOAD.master.json
 .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1 -OriginalLevel 0.22
 ```
 
-## Проверка production-runner
+## Проверка
 
-Windows validation passed: PowerShell parser, Python compile, five-segment JSON, and legacy-layer absence.
+Финальная Windows-валидация прошла успешно:
 
-Windows duration-fix validation passed: source/timeline end 62.514 s, PowerShell parser, Python compile, SRT bounds.
-
+- embedded ZIP/Base64/inner launcher отсутствуют;
+- все Python-файлы компилируются;
+- все PowerShell-launcher-ы разбираются без ошибок;
+- lightweight VoxCPM2 regression-тесты проходят;
+- Ruff fatal checks проходят;
+- Python 3.11 и 3.13 safety checks проходят;
+- Windows runtime safety checks проходят;
+- конец source, segments и SRT согласован на `62.514` секунды;
+- checkpoints и их сохранение после очистки покрыты regression-тестом.
