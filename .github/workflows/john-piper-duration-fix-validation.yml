@@ -1,0 +1,82 @@
+name: John Piper Duration Fix Validation
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/john-piper-duration-fix-validation.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate direct runner and timeline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
+          $runner = Join-Path $root "Run-John-Piper-FINAL-CPU.ps1"
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($runner, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            throw "PowerShell parser failed"
+          }
+          python -m py_compile (Join-Path $root "voxcpm2_cpu_shorts_production.py") (Join-Path $root "master_constant_mix.py")
+          if ($LASTEXITCODE -ne 0) { throw "Python compile failed" }
+          @'
+          import json, pathlib, re
+          root = pathlib.Path(r"tools/voxcpm2/examples/john_piper_z20py4yqhyq")
+          segments = json.loads((root / "segments_ru_final.json").read_text(encoding="utf-8-sig"))
+          assert len(segments) == 5
+          assert abs(float(segments[-1]["end"]) - 62.514) < 0.001
+          previous = 0.0
+          for segment in segments:
+              start = float(segment["start"])
+              end = float(segment["end"])
+              assert start >= previous - 0.001
+              assert end > start
+              assert end <= 62.514 + 0.001
+              previous = end
+          pattern = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})")
+          for name in ("subtitles_ru_final.srt", "source_subtitles_en.srt"):
+              values = []
+              for match in pattern.finditer((root / name).read_text(encoding="utf-8-sig")):
+                  h, m, s, ms = map(int, match.groups())
+                  values.append(h * 3600 + m * 60 + s + ms / 1000)
+              assert values
+              assert max(values) <= 62.514 + 0.001, (name, max(values))
+          for legacy in list(root.glob("package.part*.b64")) + [root / "Run-John-Piper-FINAL-CPU-Inner.ps1"]:
+              assert not legacy.exists(), legacy
+          print("JOHN PIPER DURATION FIX VALIDATION PASSED")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Timeline validation failed" }
+
+      - name: Record success and remove one-time workflow
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $readme = "tools/voxcpm2/examples/john_piper_z20py4yqhyq/README_RU.md"
+          $text = Get-Content -LiteralPath $readme -Raw -Encoding utf8
+          $marker = "Windows duration-fix validation passed: source/timeline end 62.514 s, PowerShell parser, Python compile, SRT bounds."
+          if ($text -match "Windows duration-fix validation passed:.*") {
+            $text = [regex]::Replace($text, "Windows duration-fix validation passed:.*", $marker)
+          } else {
+            $text = $text.TrimEnd() + "`r`n`r`n" + $marker + "`r`n"
+          }
+          Set-Content -LiteralPath $readme -Value $text -Encoding utf8
+          Remove-Item -LiteralPath ".github/workflows/john-piper-duration-fix-validation.yml" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- $readme ".github/workflows/john-piper-duration-fix-validation.yml"
+          git commit -m "Record successful John Piper duration-fix validation"
+          git push origin HEAD:main
