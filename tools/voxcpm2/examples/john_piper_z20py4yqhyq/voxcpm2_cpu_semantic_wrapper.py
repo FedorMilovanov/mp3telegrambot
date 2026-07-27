@@ -63,10 +63,7 @@ def _install_voxcpm_patch(prompt_texts: dict[str, str]) -> None:
 
         original_generate = model.generate
         parameters = _parameters(original_generate)
-        accepts_kwargs = _accepts_kwargs(parameters)
-
-        def supports(name: str) -> bool:
-            return name in parameters or accepts_kwargs
+        has_prompt_api = "prompt_wav_path" in parameters or "prompt_text" in parameters
 
         def hardened_generate(*args2: Any, **kwargs2: Any) -> Any:
             reference = str(
@@ -86,20 +83,19 @@ def _install_voxcpm_patch(prompt_texts: dict[str, str]) -> None:
             values["retry_badcase_max_times"] = 3
             values["retry_badcase_ratio_threshold"] = 4.8
 
-            # New VoxCPM2 accepts a transcript-conditioned prompt. Keep the same
-            # audio as both prompt and reference when the installed API supports
-            # both; this follows the cloning path without breaking the older local
-            # archive API that only knows reference_wav_path.
-            if supports("prompt_wav_path") or supports("prompt_text"):
-                if supports("prompt_wav_path"):
+            # Select the API only from explicit signature parameters. A legacy
+            # build may expose **kwargs while still understanding only
+            # reference_wav_path; treating **kwargs as the new API breaks it.
+            if has_prompt_api:
+                if "prompt_wav_path" in parameters:
                     values["prompt_wav_path"] = reference
-                if supports("prompt_text"):
+                if "prompt_text" in parameters:
                     values["prompt_text"] = prompt_texts[profile]
-                if supports("reference_wav_path"):
+                if "reference_wav_path" in parameters:
                     values["reference_wav_path"] = reference
             else:
                 values["reference_wav_path"] = reference
-                if supports("reference_text"):
+                if "reference_text" in parameters:
                     values["reference_text"] = prompt_texts[profile]
 
             log(f"{profile}: prompt transcript + retry_badcase + denoise=False")
