@@ -1,0 +1,162 @@
+Dub Studio Windows diagnostic
+imports=failure
+verifier=failure
+source_commit=d20a81e2973afa7805dca2b38e39ab607a75c4c2
+
+=== IMPORT LOG ===
+Traceback (most recent call last):
+  File "D:\a\mp3telegrambot\mp3telegrambot\services\__init__.py", line 28, in <module>
+    print(
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f9e0' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "D:\a\mp3telegrambot\mp3telegrambot\services\__init__.py", line 36, in <module>
+    print(f"\u26a0\ufe0f Gemini policy/route \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u044b: {_gemini_route_error}")
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1: character maps to <undefined>
+
+=== VERIFIER LOG TAIL ===
+........................................................................ [  5%]
+......................s................................................. [ 10%]
+........................................................................ [ 15%]
+................F..F.................................................... [ 20%]
+...........s.....F...................................................... [ 25%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+....................................................s................... [ 57%]
+........................................................................ [ 62%]
+........................................................................ [ 67%]
+........................................................................ [ 72%]
+........................................................................ [ 77%]
+........................................................................ [ 83%]
+........................................................................ [ 88%]
+........................................................................ [ 93%]
+........................................................................ [ 98%]
+...................                                                      [100%]
+================================== FAILURES ===================================
+_____________________ test_ytdlp_no_double_cookie_sources _____________________
+
+tmp_path = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_ytdlp_no_double_cookie_so0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C6B783B290>
+
+    def test_ytdlp_no_double_cookie_sources(tmp_path, monkeypatch):
+        """cookies.txt + yt-dlp.conf \u0441 --cookies-from-browser \u043d\u0435 \u0441\u043c\u0435\u0448\u0438\u0432\u0430\u044e\u0442\u0441\u044f."""
+        import services.ffmpeg as ff
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        # \u0421\u043e\u0437\u0434\u0430\u0451\u043c \u0440\u0435\u0430\u043b\u044c\u043d\u044b\u0439 Firefox cookie-store: \u0442\u043e\u043b\u044c\u043a\u043e \u0442\u043e\u0433\u0434\u0430 \u043a\u043e\u043d\u0444 \u0441 browser-cookies
+        # \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0442\u044c \u0431\u0435\u0437 cookies.txt.
+        prof = tmp_path / ".mozilla" / "firefox" / "abc.default-release"
+        prof.mkdir(parents=True)
+        (prof / "cookies.sqlite").write_bytes(b"sqlite")
+        (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
+        ck = tmp_path / "cookies.txt"
+        ck.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+        monkeypatch.setattr(ff, "COOKIES_FILE", ck)
+        args = ff._build_ytdlp_base_args()
+        joined = " ".join(args)
+        assert "--cookies " + str(ck) in joined or str(ck) in joined
+        assert "--config-location" not in joined  # \u043a\u043e\u043d\u0444 \u0441 \u043a\u0443\u043a\u0430\u043c\u0438 \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d
+        # \u0431\u0435\u0437 cookies.txt \u043a\u043e\u043d\u0444 \u0441\u043d\u043e\u0432\u0430 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0435\u0442\u0441\u044f, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442
+        monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+        args2 = " ".join(ff._build_ytdlp_base_args())
+>       assert "--config-location" in args2
+E       AssertionError: assert '--config-location' in 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\python.exe -m yt_dlp --no-config --sleep-interval 2 --quiet --js-runtimes node --remote-components ejs:github --concurrent-fragments 4 --format-sort ext:mp4:m4a'
+
+D:\a\mp3telegrambot\mp3telegrambot\tests\test_livedub_qa.py:624: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  services.ffmpeg:ffmpeg.py:214 yt-dlp.conf \u043f\u0440\u043e\u0441\u0438\u0442 --cookies-from-browser, \u043d\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044c cookies \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u2014 \u043f\u0440\u043e\u043f\u0443\u0441\u043a\u0430\u044e \u043a\u043e\u043d\u0444\u0438\u0433; \u043f\u043e\u043b\u043e\u0436\u0438\u0442\u0435 cookies.txt \u0438\u043b\u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u0442\u0435 YTDLP_COOKIES_FROM_BROWSER\nWARNING  services.ffmpeg:ffmpeg.py:214 yt-dlp.conf \u043f\u0440\u043e\u0441\u0438\u0442 --cookies-from-browser, \u043d\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044c cookies \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u2014 \u043f\u0440\u043e\u043f\u0443\u0441\u043a\u0430\u044e \u043a\u043e\u043d\u0444\u0438\u0433; \u043f\u043e\u043b\u043e\u0436\u0438\u0442\u0435 cookies.txt \u0438\u043b\u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u0442\u0435 YTDLP_COOKIES_FROM_BROWSER\nWARNING  services.ffmpeg:ffmpeg.py:238 \u26a0\ufe0f \u041d\u0435\u0442 cookies \u2014 YouTube \u043c\u043e\u0436\u0435\u0442 \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0437\u0430\u043f\u0440\u043e\u0441\u044b
+________ test_ytdlp_env_browser_cookie_source_can_override_dead_config ________
+
+tmp_path = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_ytdlp_env_browser_cookie_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C6B77D0950>
+
+    def test_ytdlp_env_browser_cookie_source_can_override_dead_config(tmp_path, monkeypatch):
+        import services.ffmpeg as ff
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        dead_home = tmp_path / "dead_home"
+        monkeypatch.setenv("APPDATA", str(dead_home))
+        good_prof = tmp_path / "profiles" / "ff"
+        good_prof.mkdir(parents=True)
+        (good_prof / "cookies.sqlite").write_bytes(b"sqlite")
+        (tmp_path / "yt-dlp.conf").write_text("--cookies-from-browser firefox", encoding="utf-8")
+        monkeypatch.setattr(ff, "COOKIES_FILE", tmp_path / "missing.txt")
+        monkeypatch.setenv("YTDLP_COOKIES_FROM_BROWSER", f"firefox:{good_prof}")
+        joined = " ".join(ff._build_ytdlp_base_args())
+        assert "--config-location" not in joined
+>       assert "--cookies-from-browser" in joined and str(good_prof) in joined
+E       AssertionError: assert ('--cookies-from-browser' in 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\python.exe -m yt_dlp --no-config --sleep-interval 2 --quiet --js-runtimes node --remote-components ejs:github --concurrent-fragments 4 --format-sort ext:mp4:m4a')
+
+D:\a\mp3telegrambot\mp3telegrambot\tests\test_livedub_qa.py:666: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  services.ffmpeg:ffmpeg.py:214 yt-dlp.conf \u043f\u0440\u043e\u0441\u0438\u0442 --cookies-from-browser, \u043d\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044c cookies \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u2014 \u043f\u0440\u043e\u043f\u0443\u0441\u043a\u0430\u044e \u043a\u043e\u043d\u0444\u0438\u0433; \u043f\u043e\u043b\u043e\u0436\u0438\u0442\u0435 cookies.txt \u0438\u043b\u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u0442\u0435 YTDLP_COOKIES_FROM_BROWSER\nWARNING  services.ffmpeg:ffmpeg.py:234 \u26a0\ufe0f YTDLP_COOKIES_FROM_BROWSER=firefox:C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-0\\test_ytdlp_env_browser_cookie_0\\profiles\\ff \u0437\u0430\u0434\u0430\u043d, \u043d\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044c cookies \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d
+_____________________ test_db_backup_creates_and_rotates ______________________
+
+tmp_path = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_db_backup_creates_and_rot0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C6B792CB90>
+
+    def test_db_backup_creates_and_rotates(tmp_path, monkeypatch):
+        import core.database as db
+        import core.globals as g
+        test_db = tmp_path / "bot.db"
+        monkeypatch.setattr(db, "DB_PATH", test_db)
+        monkeypatch.setattr(g, "DB_PATH", test_db)
+        db.db_init()
+        db.db_set_audio_file_id("v1", "fid")
+        out = db.db_backup()
+        assert out and Path(out).exists()
+        assert db.db_backup() == ""  # \u043e\u0434\u043d\u0430 \u043a\u043e\u043f\u0438\u044f \u0432 \u0441\u0443\u0442\u043a\u0438
+        import sqlite3
+        row = sqlite3.connect(out).execute(
+            "SELECT audio_file_id FROM video_cache WHERE video_id=?", ("v1",)).fetchone()
+        assert row and row[0] == "fid"  # \u043a\u043e\u043f\u0438\u044f \u0432\u0430\u043b\u0438\u0434\u043d\u0430 \u0438 \u043f\u043e\u043b\u043d\u0430
+        # \u0440\u043e\u0442\u0430\u0446\u0438\u044f: \u0441\u0442\u0430\u0440\u044b\u0435 \u043a\u043e\u043f\u0438\u0438 \u0443\u0434\u0430\u043b\u044f\u044e\u0442\u0441\u044f
+        for d in ("20200101", "20200102", "20200103"):
+            (tmp_path / f"bot.db.bak.{d}").write_bytes(b"x")
+        db_today = Path(out)
+>       db_today.unlink()
+
+tests\test_livedub_qa.py:1514: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_db_backup_creates_and_rot0/bot.db.bak.20260727')
+missing_ok = False
+
+    def unlink(self, missing_ok=False):
+        """
+        Remove this file or link.
+        If the path is a directory, use rmdir() instead.
+        """
+        try:
+>           os.unlink(self)
+E           PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-0\\test_db_backup_creates_and_rot0\\bot.db.bak.20260727'
+
+C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\pathlib.py:1147: PermissionError
+=========================== short test summary info ===========================
+FAILED tests/test_livedub_qa.py::test_ytdlp_no_double_cookie_sources - AssertionError: assert '--config-location' in 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\python.exe -m yt_dlp --no-config --sleep-interval 2 --quiet --js-runtimes node --remote-components ejs:github --concurrent-fragments 4 --format-sort ext:mp4:m4a'
+FAILED tests/test_livedub_qa.py::test_ytdlp_env_browser_cookie_source_can_override_dead_config - AssertionError: assert ('--cookies-from-browser' in 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\python.exe -m yt_dlp --no-config --sleep-interval 2 --quiet --js-runtimes node --remote-components ejs:github --concurrent-fragments 4 --format-sort ext:mp4:m4a')
+FAILED tests/test_livedub_qa.py::test_db_backup_creates_and_rotates - PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-0\\test_db_backup_creates_and_rot0\\bot.db.bak.20260727'
+
+=== compileall ===
+$ C:\hostedtoolcache\windows\Python\3.11.9\x64\python.exe -m compileall -q .
+
+=== pytest ===
+$ C:\hostedtoolcache\windows\Python\3.11.9\x64\python.exe -m pytest -q
+
+[FAIL] pytest failed with exit code 1
+
+=== SUMMARY ===
+[OK] compileall
+[FAIL] pytest
