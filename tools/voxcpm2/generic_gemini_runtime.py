@@ -3,16 +3,65 @@
 """Checked entrypoint for Gemini MAX Dub Studio production."""
 from __future__ import annotations
 
+import html
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from tools.voxcpm2 import generic_project_runtime as production
+from tools.voxcpm2 import generic_short_production as pipeline
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_NON_SPEECH_RE = re.compile(
+    r"^\[(?:music|applause|laughter|laughs?|cheering|silence|inaudible|"
+    r"crosstalk|noise|sighs?|gasps?|instrumental)\]$",
+    flags=re.I,
+)
 
 
 def _require_file(path: Path, label: str) -> None:
     if not path.is_file() or path.stat().st_size <= 0:
         raise RuntimeError(f"Gemini MAX не создал обязательный результат: {label} ({path}).")
+
+
+def clean_manual_caption_line(value: str) -> str:
+    """Remove VTT markup but preserve meaningful bracketed source text."""
+    text = html.unescape(_TAG_RE.sub("", str(value or ""))).replace("&nbsp;", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    if _NON_SPEECH_RE.fullmatch(text):
+        return ""
+    return text
+
+
+def parse_creator_vtt_preserving_text(path: Path) -> list[pipeline.Cue]:
+    lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    cues: list[pipeline.Cue] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        if "-->" not in line:
+            index += 1
+            continue
+        left, right = line.split("-->", 1)
+        try:
+            start = pipeline.parse_timestamp(left)
+            end = pipeline.parse_timestamp(right.strip().split()[0])
+        except ValueError:
+            index += 1
+            continue
+        index += 1
+        payload: list[str] = []
+        while index < len(lines) and lines[index].strip():
+            cleaned = clean_manual_caption_line(lines[index])
+            if cleaned and cleaned not in payload:
+                payload.append(cleaned)
+            index += 1
+        text = " ".join(payload).strip()
+        if text and end > start:
+            cues.append(pipeline.Cue(start, end, text))
+        index += 1
+    return cues
 
 
 def validate_completed_outputs(root: Path) -> dict[str, Any]:
@@ -42,6 +91,7 @@ def validate_completed_outputs(root: Path) -> dict[str, Any]:
 
 
 def main() -> None:
+    production.parse_manual_vtt = parse_creator_vtt_preserving_text
     production.main()
     root = production.project_root(production.current_project_id())
     validate_completed_outputs(root)
