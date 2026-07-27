@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "project_id": "john_piper_z20py4yqhyq",
+  "speaker": "John Piper",
+  "engine": "VoxCPM2",
+  "device": "cpu",
+  "source_url": "https://youtube.com/shorts/Z20Py4yQhYQ",
+  "segments": "segments_ru_final.json",
+  "translation": "translation_ru.txt",
+  "subtitles_ru": "subtitles_ru_final.srt",
+  "subtitles_en": "source_subtitles_en.srt",
+  "steps": 16,
+  "cfg": 1.8,
+  "original_level": 0.18
+}
