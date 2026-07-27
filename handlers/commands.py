@@ -88,14 +88,16 @@ async def start(update, context):
                 "/comparevariants A B [n] — сравнить prompt variants\n"
                 "/archivequalityfile [md|json] [n] — export качества архива\n"
                 "/qualityrecords [n|all n] — записи на ручную проверку\n"
-                "/promptrecommend [n] — лучший prompt variant"
+                "/promptrecommend [n] — лучший prompt variant\n"
+                "/dub &lt;url&gt; — VoxCPM2 production из утверждённого перевода"
             )
         text = (
             f"🎵 <b>Media Audio Converter</b>\n\n"
             f"👑 <b>VIP-доступ активен — без ограничений!</b>\n\n"
             f"<b>Как пользоваться:</b>\n"
             f"• Отправьте ссылку на видео или плейлист\n"
-            f"• Получите MP3 128kbps + обложка\n\n"
+            f"• Получите MP3 128kbps + обложка\n"
+            f"• <code>/dub URL</code> — production-дубляж из уже утверждённого перевода\n\n"
             f"<b>AI-анализ каждого видео:</b>\n"
             f"🧠 AI: {ai_status}\n"
             f"📌 Тема и описание\n"
@@ -145,6 +147,8 @@ async def help_command(update, context):
         f"/start — Приветствие\n"
         f"/help  — Справка\n"
         f"/mode — 🌐 Режим: RUS / ENG Full / ENG Quick\n"
+        f"/dub &lt;URL&gt; — 🎬 VoxCPM2-дубляж из готового перевода\n"
+        f"/dub <URL> — 🎬 VoxCPM2-дубляж из готового перевода\n"
         f"/archive — Последние публикации\n"
         f"/search <текст> — Поиск по архиву\n"
         f"/cut — ✂️ Вырезать сегмент из видео\n"
@@ -152,7 +156,10 @@ async def help_command(update, context):
         f"🇬🇧 ENG-режимы (для англоязычных видео):\n"
         f"• ENG Full — анализ + видео с «Живыми голосами» Яндекса + проверка точности перевода\n"
         f"• ENG Quick — только переведённое видео, максимально быстро\n"
-        f"🔑 Для стабильных «Живых голосов» нужен VOT_API_TOKEN (или YANDEX_OAUTH_TOKEN) в .env"
+        f"🔑 Для стабильных «Живых голосов» нужен VOT_API_TOKEN (или YANDEX_OAUTH_TOKEN) в .env\n\n"
+        f"🎬 <b>Production /dub:</b> пришлите ссылку или ответьте командой на видео, "
+        f"затем ответом отправьте уже проверенный TXT, MD, DOCX или текст. "
+        f"Бот не переводит и не переписывает утверждённую редакцию."
     )
 
 

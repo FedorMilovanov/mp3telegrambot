@@ -37,6 +37,10 @@ from handlers.commands import (
 from handlers.callbacks import handle_callback, settings_command
 from handlers.commands import status_command  # round 32
 from handlers.mode_command import mode_command, handle_mode_callback
+from handlers.dub_production import (
+    dub_command, handle_dub_callback,
+    handle_dub_translation_document, handle_dub_translation_text,
+)
 
 import asyncio
 import logging
@@ -780,6 +784,7 @@ async def run_bot_async():
     app.add_handler(CommandHandler("segmentfile", segmentfile_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("lastpages",  lastpages_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("mode",       mode_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("dub",        dub_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("search",     search_archive_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("author",     author_archive_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("scripture",  scripture_archive_command, filters=_MSG_ONLY))
@@ -792,9 +797,22 @@ async def run_bot_async():
     # FIX 2026-06-10: filters.TEXT матчит И edited_message (update.message=None
     # -> AttributeError в handle_message). Реагируем только на новые сообщения:
     # редактирование старой ссылки не должно перезапускать обработку видео.
+    # Approved-translation production replies run before the legacy URL handler.
+    # Unrelated messages pass through to group 1 unchanged.
     app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
+        filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+        handle_dub_translation_text,
+    ), group=0)
+    app.add_handler(MessageHandler(
+        filters.Document.ALL & filters.UpdateType.MESSAGE,
+        handle_dub_translation_document,
+    ), group=0)
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message),
+        group=1,
+    )
     app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
+    app.add_handler(CallbackQueryHandler(handle_dub_callback, pattern="^dub:"))
     app.add_handler(CallbackQueryHandler(handle_callback))
     # AUDIT R30: последовательная викторина продвигается по ответам пользователя.
     from services.quiz_sessions import handle_quiz_poll_answer
@@ -890,10 +908,11 @@ async def run_bot_async():
             logger.warning("set_my_commands(default) failed: %s", _e)
 
         # VIP/Admin видят расширенное меню с /resetcache и /settings
-        for admin_id in ADMIN_IDS:
+        for admin_id in sorted(set(ADMIN_IDS) | set(WHITELIST_IDS)):
             try:
                 vip_commands = default_commands + [
                     BotCommand("settings",   "⚙️ Настройки бота"),
+                    BotCommand("dub",        "🎬 Дубляж из готового перевода"),
                     BotCommand("status",     "🩺 Здоровье бота"),
                     BotCommand("disk",       "💾 Место на диске"),
                     BotCommand("archive",    "📚 Последние страницы"),
