@@ -39,7 +39,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          python -m py_compile tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py 2>&1 | Tee-Object ci-compile.log
+          python -m py_compile tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py handlers/dub_quickstart.py services/dub_studio_runtime.py 2>&1 | Tee-Object ci-compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q tools/voxcpm2 handlers services bot_new.py 2>&1 | Tee-Object -Append ci-compile.log
           exit $LASTEXITCODE
@@ -67,12 +67,12 @@ jobs:
             exit 1
           }
 
-      - name: Import Telegram delivery integration
+      - name: Import Telegram control and delivery integration
         id: imports
         continue-on-error: true
         shell: pwsh
         run: |
-          python -c "import handlers.dub_delivery, services.dub_studio_runtime; print('Dub delivery imports: OK')" 2>&1 | Tee-Object ci-imports.log
+          python -c "import handlers.dub_delivery, handlers.dub_quickstart, services.dub_studio_runtime; print('Dub quickstart/delivery imports: OK')" 2>&1 | Tee-Object ci-imports.log
           exit $LASTEXITCODE
 
       - name: Run focused regression tests
@@ -88,7 +88,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py 2>&1 | Tee-Object ci-ruff.log
+          python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py handlers/dub_quickstart.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py 2>&1 | Tee-Object ci-ruff.log
           exit $LASTEXITCODE
 
       - name: Patch cleanliness
@@ -119,8 +119,8 @@ jobs:
           - Russian speech starts 420 ms later; render windows are shortened by the same
             amount so the final phrase is not clipped beyond the source duration.
           - John Piper Dub Studio render and repair recipes were migrated from 25% to 18% original.
-          - Added /dubsend delivery: the primary upload-ready MP4 and documents are sent
-            through Telegram; /dubsend all also includes the Russian-only video.
+          - Added one-command /dubstart recipe launch and /dubsend delivery; /dubsend all
+            also includes the Russian-only video.
           - Windows focused gate passed: compile, recipe/CLI contract, imports, regression
             tests, changed-surface ruff and git diff check.
           "@
