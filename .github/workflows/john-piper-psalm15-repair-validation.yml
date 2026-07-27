@@ -1,0 +1,44 @@
+name: John Piper Psalm 15 Repair Validation
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-Repair-Psalm15-CPU.ps1"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/segments_ru_final.json"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/subtitles_ru_final.srt"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/translation_ru.txt"
+      - ".github/workflows/john-piper-psalm15-repair-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell and validate repair data
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = "tools\voxcpm2\examples\john_piper_z20py4yqhyq"
+          $script = Join-Path $dir "Run-John-Piper-Repair-Psalm15-CPU.ps1"
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            throw "Psalm 15 repair PowerShell parse failed."
+          }
+
+          python -m py_compile (Join-Path $dir "voxcpm2_cpu_shorts_production.py") (Join-Path $dir "master_constant_mix.py")
+
+          $segments = @(Get-Content (Join-Path $dir "segments_ru_final.json") -Raw -Encoding utf8 | ConvertFrom-Json)
+          $segment = @($segments | Where-Object { [int]$_.id -eq 2 })
+          if ($segment.Count -ne 1) { throw "Expected one segment id=2." }
+          if ([string]$segment[0].text -notmatch "пятнадцатом псалме") { throw "Psalm number is not corrected." }
+          if ((Get-Content (Join-Path $dir "subtitles_ru_final.srt") -Raw -Encoding utf8) -notmatch "пятнадцатом псалме") { throw "SRT is not corrected." }
+          if ((Get-Content (Join-Path $dir "translation_ru.txt") -Raw -Encoding utf8) -notmatch "пятнадцатом псалме") { throw "Translation is not corrected." }
+
+          Write-Host "John Piper Psalm 15 repair validation PASSED" -ForegroundColor Green
