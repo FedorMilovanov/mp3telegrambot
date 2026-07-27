@@ -20,6 +20,7 @@ from services.dub_studio import DubStore, studio_root, utc_now
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _GENERIC_RECIPE = "generic_short_v1"
 _RANGE_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
+_ACTIVE_JOB_STATES = {"queued", "running", "cancel_requested"}
 
 
 def _short(value: str, limit: int = 180) -> str:
@@ -50,6 +51,16 @@ def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[s
     if str(project.get("recipe_id")) != _GENERIC_RECIPE:
         raise RuntimeError("Аудиоремонт поддерживается только универсальным Dub Studio.")
     return project
+
+
+def _ensure_repair_slot(store: DubStore, project_id: str) -> None:
+    """Do not overwrite the request file of an already queued/running job."""
+    for job in store.recent_jobs(project_id, limit=8):
+        if str(job.get("status") or "").lower() in _ACTIVE_JOB_STATES:
+            raise RuntimeError(
+                f"У проекта уже выполняется задание #{job['id']}. "
+                "Дождитесь завершения или остановите его через /dubcancel."
+            )
 
 
 def _project_root(project_id: str) -> Path:
@@ -199,6 +210,7 @@ async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         selected = parse_segment_selector("".join(args[1:]), [int(item["id"]) for item in segments])
+        _ensure_repair_slot(store, project_id)
         request_path = _write_repair_request(
             project,
             segments,
@@ -238,6 +250,7 @@ def register_dub_audio_repair_handlers(application: Any) -> None:
 
 
 __all__ = [
+    "_ensure_repair_slot",
     "dubfix_command",
     "dubsegments_command",
     "load_repair_segments",
