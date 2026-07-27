@@ -64,3 +64,68 @@ def test_retry_reuses_good_checkpoints_and_drops_bad_ones(tmp_path: Path) -> Non
     good = json.loads((checkpoints / "segment_01.json").read_text(encoding="utf-8"))
     assert good["signature"]["base_seed"] == 200
     assert not (checkpoints / "segment_02.json").exists()
+
+
+def test_voxcpm_wrapper_supports_old_and_new_reference_apis(monkeypatch) -> None:
+    import sys
+    import types
+
+    from tools.voxcpm2.examples.john_piper_z20py4yqhyq import voxcpm2_cpu_semantic_wrapper as wrapper
+
+    for api in ("old", "new"):
+        calls: list[dict] = []
+
+        class Model:
+            if api == "old":
+                def generate(
+                    self,
+                    *,
+                    text,
+                    reference_wav_path,
+                    cfg_value,
+                    normalize,
+                    denoise,
+                    retry_badcase=False,
+                    retry_badcase_max_times=0,
+                    retry_badcase_ratio_threshold=0,
+                ):
+                    calls.append({"reference": reference_wav_path, "prompt": None, "retry": retry_badcase})
+                    return [0]
+            else:
+                def generate(
+                    self,
+                    *,
+                    text,
+                    prompt_wav_path,
+                    prompt_text,
+                    cfg_value,
+                    normalize,
+                    denoise,
+                    retry_badcase=False,
+                    retry_badcase_max_times=0,
+                    retry_badcase_ratio_threshold=0,
+                ):
+                    calls.append({"reference": prompt_wav_path, "prompt": prompt_text, "retry": retry_badcase})
+                    return [0]
+
+        class FakeVoxCPM:
+            @staticmethod
+            def from_pretrained(*args, load_denoiser=False, **kwargs):
+                return Model()
+
+        fake_module = types.ModuleType("voxcpm")
+        fake_module.VoxCPM = FakeVoxCPM
+        monkeypatch.setitem(sys.modules, "voxcpm", fake_module)
+        wrapper._install_voxcpm_patch({"extended": "English prompt", "composite": "Other prompt"})
+        model = FakeVoxCPM.from_pretrained("fake", load_denoiser=False)
+        model.generate(
+            text="Русский текст",
+            reference_wav_path="extended.wav",
+            cfg_value=1.8,
+            normalize=True,
+            denoise=False,
+            retry_badcase=False,
+        )
+        assert calls[-1]["reference"] == "extended.wav"
+        assert calls[-1]["retry"] is True
+        assert calls[-1]["prompt"] == ("English prompt" if api == "new" else None)
