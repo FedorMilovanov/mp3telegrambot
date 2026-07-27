@@ -75,13 +75,18 @@ def _install_voxcpm_patch(prompt_texts: dict[str, str]) -> None:
                 parameters = inspect.signature(original_generate).parameters
             except (TypeError, ValueError):
                 parameters = {}
-            if "prompt_wav_path" in parameters or any(
-                item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values()
-            ):
+
+            # Prefer the documented prompt API only when the installed model
+            # exposes it explicitly. Older local VoxCPM2 builds accept
+            # reference_wav_path (sometimes behind **kwargs); changing that
+            # blindly would break the working archive installation.
+            if "prompt_wav_path" in parameters or "prompt_text" in parameters:
                 values["prompt_wav_path"] = reference
                 values["prompt_text"] = prompt_texts[profile]
             else:
                 values["reference_wav_path"] = reference
+                if "reference_text" in parameters:
+                    values["reference_text"] = prompt_texts[profile]
             log(f"{profile}: prompt transcript + retry_badcase + denoise={denoiser_loaded}")
             return original_generate(*args2, **_filter_kwargs(original_generate, values))
 
