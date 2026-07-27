@@ -16,7 +16,9 @@ EXAMPLE = (
     / "examples"
     / "john_piper_z20py4yqhyq"
 )
-PAYLOAD = EXAMPLE / "John_Piper_VoxCPM2_CPU_FINAL.zip"
+PARTS = tuple(EXAMPLE / f"package.part{index:02d}.b64" for index in range(1, 8))
+EXPECTED_ENCODED_LENGTH = 26336
+EXPECTED_PART_LENGTHS = (4096, 4096, 4096, 4096, 4096, 4096, 1760)
 EXPECTED_SHA256 = "e5247345d451cd00805d9157cf279a19aad6ee2ca9935a0167ee7b38fda9294f"
 EXPECTED_FILES = {
     "README_RU.md",
@@ -30,9 +32,16 @@ EXPECTED_FILES = {
 }
 
 
+def _encoded_package() -> str:
+    chunks = tuple(path.read_text(encoding="ascii").strip() for path in PARTS)
+    assert tuple(map(len, chunks)) == EXPECTED_PART_LENGTHS
+    encoded = "".join(chunks)
+    assert len(encoded) == EXPECTED_ENCODED_LENGTH
+    return encoded
+
+
 def _decoded_package() -> bytes:
-    encoded = PAYLOAD.read_text(encoding="utf-8").strip()
-    return base64.b64decode(encoded, validate=True)
+    return base64.b64decode(_encoded_package(), validate=True)
 
 
 def test_embedded_package_hash_and_members() -> None:
