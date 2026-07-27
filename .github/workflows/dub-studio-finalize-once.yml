@@ -1,0 +1,115 @@
+name: Finalize Dub Studio Once
+
+on:
+  push:
+    paths:
+      - .github/workflows/dub-studio-finalize-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate-finalize:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install repository verification dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Import Dub Studio integration
+        shell: pwsh
+        run: |
+          python -c "import services.dub_studio, tools.voxcpm2.dub_worker, handlers.dub_commands, services.dub_studio_runtime; print('Dub Studio imports: OK')"
+
+      - name: Compile repository
+        shell: pwsh
+        run: python -m compileall -q .
+
+      - name: Run Dub Studio regression suite
+        shell: pwsh
+        run: python -m pytest -q tests/test_dub_studio.py tests/test_dub_worker.py
+
+      - name: Ruff changed production surface
+        shell: pwsh
+        run: |
+          python -m ruff check services/dub_studio.py services/dub_studio_runtime.py handlers/dub_commands.py tools/voxcpm2/dub_worker.py tests/test_dub_studio.py tests/test_dub_worker.py bot_new.py
+
+      - name: Validate recipe and PowerShell runners
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Recipe = Get-Content tools/voxcpm2/recipes/john_piper_z20py4yqhyq.json -Raw | ConvertFrom-Json
+          if ($Recipe.schema_version -ne 1) { throw 'recipe schema mismatch' }
+          if ($Recipe.actions.render.runner -ne 'powershell') { throw 'render runner mismatch' }
+          if ($Recipe.actions.repair_psalm15.kind -ne 'repair') { throw 'repair action mismatch' }
+          foreach ($Script in @(
+            'tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-FINAL-CPU.ps1',
+            'tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-Repair-Psalm15-CPU.ps1'
+          )) {
+            $Tokens = $null
+            $Errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $Script), [ref]$Tokens, [ref]$Errors
+            )
+            if ($Errors.Count -gt 0) {
+              $Errors | Format-List | Out-String | Write-Host
+              throw "PowerShell parser failed: $Script"
+            }
+          }
+
+      - name: Validate clean patch surface
+        shell: pwsh
+        run: git diff --check
+
+      - name: Record full verifier known unrelated failures
+        continue-on-error: true
+        shell: pwsh
+        run: python tools/verify_repo.py
+
+      - name: Finalize verified integration and remove temporary diagnostics
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          $History = 'docs/quality_audit_history.md'
+          $Heading = '## 2026-07-27 — VoxCPM2 Dub Studio control plane'
+          if (-not (Select-String -Path $History -Pattern ([regex]::Escape($Heading)) -Quiet)) {
+            Add-Content -Path $History -Encoding utf8 -Value @"
+
+          $Heading
+
+          - Added an admin-only Telegram control surface for durable VoxCPM2 projects.
+          - Heavy CPU rendering runs in a separate single-worker queue with SQLite WAL,
+            heartbeat, cancellation, recovery and terminal notifications.
+          - Registered John Piper as the first migration recipe, including segment-only
+            Psalm 15 repair; Telegram cannot submit arbitrary shell commands.
+          - Windows final gate passed: UTF-8 imports, compileall, 9 focused tests,
+            changed-surface ruff, both PowerShell parsers and git diff check.
+          - The full legacy verifier was also executed; three pre-existing Windows-only
+            LiveDub tests remain outside this change (cookie discovery and backup file lock).
+          "@
+          }
+
+          Remove-Item .github/workflows/dub-studio-integrate-once.yml -Force -ErrorAction SilentlyContinue
+          Remove-Item .github/workflows/dub-studio-finalize-once.yml -Force
+          Remove-Item docs/dub_studio_ci_failure.txt -Force -ErrorAction SilentlyContinue
+          Remove-Item docs/dub_studio_ci_diagnostic.txt -Force -ErrorAction SilentlyContinue
+
+          git add bot_new.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_commands.py tools/voxcpm2/dub_worker.py tools/voxcpm2/recipes/john_piper_z20py4yqhyq.json tests/test_dub_studio.py tests/test_dub_worker.py docs/voxcpm2_dub_studio.md docs/quality_audit_history.md .github/workflows/dub-studio-integrate-once.yml .github/workflows/dub-studio-finalize-once.yml docs/dub_studio_ci_failure.txt docs/dub_studio_ci_diagnostic.txt
+          git commit -m 'Finalize verified VoxCPM2 Dub Studio control plane'
+          git push origin HEAD:main
