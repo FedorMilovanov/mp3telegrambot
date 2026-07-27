@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Checked direct-SRT entrypoint with strict source-duration timing."""
+from __future__ import annotations
+
+from typing import Any
+
+from tools.voxcpm2 import generic_direct_runtime as production
+from tools.voxcpm2 import generic_short_production as pipeline
+
+
+def build_direct_segments_safe(
+    groups: list[dict[str, Any]],
+    *,
+    delay_ms: int,
+    duration: float,
+) -> tuple[list[dict[str, Any]], list[pipeline.Cue]]:
+    delay = max(0, int(delay_ms)) / 1000.0
+    segments: list[dict[str, Any]] = []
+    subtitles: list[pipeline.Cue] = []
+
+    for index, group in enumerate(groups, start=1):
+        start = max(0.0, float(group["start"]))
+        source_end = min(float(duration), float(group["end"]))
+        if start >= duration or source_end <= start:
+            raise RuntimeError(f"Реплика #{index} не имеет окна внутри видео.")
+
+        slot = source_end - start
+        # Preserve 420 ms whenever possible. For a cue at the very end, reduce
+        # only the delay and spend every available millisecond on speech.
+        effective_delay = min(delay, max(0.0, slot - 0.35))
+        effective_delay_ms = int(round(effective_delay * 1000.0))
+        render_end = min(source_end - effective_delay, duration)
+        if render_end <= start:
+            render_end = min(source_end, duration)
+        if render_end <= start:
+            raise RuntimeError(f"Реплика #{index} не помещается до конца видео.")
+
+        profile = "composite" if index == len(groups) or index % 4 == 0 else "extended"
+        text = str(group["source"]).strip()
+        segments.append(
+            {
+                "id": index,
+                "start": round(start, 3),
+                "end": round(render_end, 3),
+                "start_delay_ms": effective_delay_ms,
+                "reference_profile": profile,
+                "tail_guard": 0.36 if profile == "extended" else 0.42,
+                "text": text,
+                "source_end": round(source_end, 3),
+                "source": text,
+            }
+        )
+        subtitle_start = min(duration, start + effective_delay)
+        subtitles.append(pipeline.Cue(subtitle_start, source_end, text))
+
+    return segments, subtitles
+
+
+def main() -> None:
+    production._build_direct_segments = build_direct_segments_safe
+    production.main()
+
+
+if __name__ == "__main__":
+    main()
