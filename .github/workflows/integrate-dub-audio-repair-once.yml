@@ -1,0 +1,114 @@
+name: Integrate Dub Audio Repair Once
+on:
+  push:
+    paths:
+      - '.github/workflows/integrate-dub-audio-repair-once.yml'
+permissions:
+  contents: write
+jobs:
+  integrate-and-validate:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Integrate repair controls
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          runtime_path = Path("services/dub_studio_runtime.py")
+          runtime = runtime_path.read_text(encoding="utf-8")
+          runtime = runtime.replace(
+              '    elif action == "render_custom":\n',
+              '''    elif action == "repair_audio":\n        text = (\n            "✅ <b>Аудиоремонт Dub Studio завершён</b>\\n\\n"\n            f"Проект: <code>{html.escape(project_id)}</code>\\n"\n            "Перевод, заголовок и субтитры использованы повторно — Gemini не запускался. "\n            "Отправляю обновлённый MP4 и аудиоматериалы.\\n\\n"\n            f"Проверить реплики: <code>/dubsegments {html.escape(project_id)}</code>"\n        )\n    elif action == "render_custom":\n''',
+              1,
+          )
+          runtime = runtime.replace(
+              '        from handlers.dub_commands import register_dub_handlers\n',
+              '        from handlers.dub_audio_repair import register_dub_audio_repair_handlers\n        from handlers.dub_commands import register_dub_handlers\n',
+              1,
+          )
+          runtime = runtime.replace(
+              '            register_dub_handlers(application)\n            register_dub_delivery_handlers(application)\n',
+              '            register_dub_handlers(application)\n            register_dub_audio_repair_handlers(application)\n            register_dub_delivery_handlers(application)\n',
+              1,
+          )
+          runtime = runtime.replace(
+              'logger.info("🎙 Dub Studio runtime: Gemini MAX + direct SRT + delivery + worker enabled")',
+              'logger.info("🎙 Dub Studio runtime: Gemini MAX + direct SRT + audio repair + delivery + worker enabled")',
+              1,
+          )
+          runtime_path.write_text(runtime, encoding="utf-8")
+
+          commands_path = Path("handlers/dub_commands.py")
+          commands = commands_path.read_text(encoding="utf-8")
+          commands = commands.replace(
+              '''def _direct_srt_path(project: dict[str, Any]) -> Path:\n    from services.dub_studio import studio_root\n\n    return (\n        studio_root()\n        / "projects"\n        / str(project["id"])\n        / "input"\n        / "ready_translation.srt"\n    ).resolve()\n''',
+              '''def _direct_srt_path(project: dict[str, Any]) -> Path:\n    from services.dub_studio import studio_root\n\n    return (\n        studio_root()\n        / "projects"\n        / str(project["id"])\n        / "input"\n        / "ready_translation.srt"\n    ).resolve()\n\n\ndef _audio_segments_path(project: dict[str, Any]) -> Path:\n    from services.dub_studio import studio_root\n\n    return (\n        studio_root()\n        / "projects"\n        / str(project["id"])\n        / "segments_ru_final.json"\n    ).resolve()\n''',
+              1,
+          )
+          commands = commands.replace(
+              '''    else:\n        rows.append([InlineKeyboardButton("📦 Файлы", callback_data=f"dub|files|{project_id}")])\n    if str(project["status"]) in {"queued", "rendering", "cancelling"}:\n''',
+              '''    else:\n        rows.append([InlineKeyboardButton("📦 Файлы", callback_data=f"dub|files|{project_id}")])\n    if (\n        str(project.get("recipe_id")) == _GENERIC_RECIPE\n        and _audio_segments_path(project).is_file()\n        and can_render\n    ):\n        rows.append(\n            [InlineKeyboardButton("🎚 Реплики и аудиоремонт", callback_data=f"dub|audio|{project_id}")]\n        )\n    if str(project["status"]) in {"queued", "rendering", "cancelling"}:\n''',
+              1,
+          )
+          commands = commands.replace(
+              '        "<code>/dubfiles [ID]</code> — результаты\\n"\n',
+              '        "<code>/dubfiles [ID]</code> — результаты\\n"\n        "<code>/dubsegments [ID]</code> — список реплик и таймингов\\n"\n        "<code>/dubfix ID 2,4-5</code> — заменить только выбранный звук\\n"\n',
+              1,
+          )
+          commands = commands.replace(
+              '''        elif action == "files":\n            await query.edit_message_text(_outputs_text(project), parse_mode="HTML")\n        elif action == "repairs":\n''',
+              '''        elif action == "files":\n            await query.edit_message_text(_outputs_text(project), parse_mode="HTML")\n        elif action == "audio":\n            if not _audio_segments_path(project).is_file():\n                raise RuntimeError("Проект ещё не имеет готовых аудиореплик.")\n            await query.edit_message_text(\n                "\\n".join(\n                    [\n                        "🎚 <b>Реплики и аудиоремонт</b>",\n                        "",\n                        f"Показать номера: <code>/dubsegments {html.escape(project_id)}</code>",\n                        f"Заменить выбранные: <code>/dubfix {html.escape(project_id)} 2,4-5</code>",\n                        f"Пересобрать весь звук без Gemini: <code>/dubfix {html.escape(project_id)} all</code>",\n                        "",\n                        "Перевод, название и субтитры не создаются заново.",\n                    ]\n                ),\n                parse_mode="HTML",\n            )\n        elif action == "repairs":\n''',
+              1,
+          )
+          commands_path.write_text(commands, encoding="utf-8")
+
+          test_path = Path("tests/test_dub_audio_repair_integration.py")
+          test_path.write_text(
+              '''from __future__ import annotations\n\nfrom pathlib import Path\n\n\ndef test_audio_repair_handlers_are_registered_and_notified() -> None:\n    runtime = Path("services/dub_studio_runtime.py").read_text(encoding="utf-8")\n    commands = Path("handlers/dub_commands.py").read_text(encoding="utf-8")\n    assert "register_dub_audio_repair_handlers(application)" in runtime\n    assert 'action == "repair_audio"' in runtime\n    assert "Gemini не запускался" in runtime\n    assert 'callback_data=f"dub|audio|{project_id}"' in commands\n    assert "/dubsegments" in commands\n    assert "/dubfix" in commands\n\n\ndef test_audio_repair_recipe_is_utility_not_generic_repair_button() -> None:\n    recipe = Path("tools/voxcpm2/recipes/generic_short_v1.json").read_text(encoding="utf-8")\n    assert '"repair_audio"' in recipe\n    assert '"kind": "utility"' in recipe\n    assert "generic_audio_repair_runtime" in recipe\n''',
+              encoding="utf-8",
+          )
+          '@ | python -
+      - name: Focused integration gate
+        id: gate
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m py_compile handlers/dub_audio_repair.py handlers/dub_commands.py services/dub_studio_runtime.py tools/voxcpm2/generic_audio_repair_runtime.py tests/test_dub_audio_repair.py tests/test_dub_audio_repair_integration.py 2>&1 | Tee-Object dub-audio-repair.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_dub_audio_repair.py tests/test_dub_audio_repair_integration.py tests/test_dub_worker.py tests/test_dub_modes.py 2>&1 | Tee-Object -Append dub-audio-repair.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check handlers/dub_audio_repair.py handlers/dub_commands.py services/dub_studio_runtime.py tools/voxcpm2/generic_audio_repair_runtime.py tests/test_dub_audio_repair.py tests/test_dub_audio_repair_integration.py 2>&1 | Tee-Object -Append dub-audio-repair.log
+          exit $LASTEXITCODE
+      - name: Publish result and remove workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Status = if ('${{ steps.gate.outcome }}' -eq 'success') { 'PASS' } else { 'FAIL' }
+          if ($Status -eq 'FAIL') { git reset --hard HEAD }
+          Remove-Item .github/workflows/integrate-dub-audio-repair-once.yml -Force
+          $Lines = @('# Dub Studio audio-only repair validation','',"- Result: **$Status**",'- /dubsegments and /dubfix; no Gemini rerun.',"- Compile/tests/Ruff: ${{ steps.gate.outcome }}")
+          if ($Status -eq 'FAIL' -and (Test-Path dub-audio-repair.log)) { $Lines += ''; $Lines += (Get-Content dub-audio-repair.log -Tail 220) }
+          $Lines | Set-Content docs/dub_studio_audio_repair_validation.md -Encoding utf8
+          git add -A
+          git commit -m "Record Dub Studio audio repair validation: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
