@@ -5,8 +5,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_direct_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import semantic_tts_guard as legacy_semantic_guard
+from tools.voxcpm2 import semantic_tts_guard_v4
 
 _MIN_QA_WINDOW = 0.35
 
@@ -74,12 +77,12 @@ def preserve_user_tts_text(value: str) -> str:
 
 
 def main() -> None:
-    # The semantic guard still verifies the generated audio with Whisper and
-    # retries failed candidates. Only its editorial punctuation sanitizer is
-    # disabled in the final-user-SRT process.
-    from tools.voxcpm2 import semantic_tts_guard
-
-    semantic_tts_guard.sanitize_tts_text = preserve_user_tts_text
+    # Disable only the obsolete prompt-continuation installer. Quality v4 still
+    # verifies the generated speech with Whisper and retries failed segments.
+    legacy_semantic_guard.install = lambda: None
+    legacy_semantic_guard.sanitize_tts_text = preserve_user_tts_text
+    dub_quality_v4.install_direct_quality(production, pipeline)
+    semantic_tts_guard_v4.install()
     production._build_direct_segments = build_direct_segments_safe
     production.main()
 
