@@ -18,6 +18,7 @@ _INSTALLED = False
 _LOCK = threading.Lock()
 _ORIGINAL_BUILD = None
 _ORIGINAL_START = None
+_GENERIC_RECIPE = "generic_short_v1"
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -103,59 +104,87 @@ def ensure_worker_running() -> bool:
         return False
 
 
-async def _notify_generic_success(application: Any, store: Any, event: dict[str, Any], project: dict[str, Any]) -> bool:
+async def _notify_generic_success(
+    application: Any,
+    store: Any,
+    event: dict[str, Any],
+    project: dict[str, Any],
+) -> bool:
+    """Send one mode-specific completion message and dynamic manifest files."""
     from handlers.dub_delivery import send_project_outputs
 
     job = store.get_job(int(event["job_id"])) if event.get("job_id") else None
     action = str((job or {}).get("action") or "")
     project_id = str(project["id"])
     chat_id = int(event["owner_chat_id"])
+
     if action == "prepare_custom":
         text = (
-            "✅ <b>Расшифровка и шаблон готовы</b>\n\n"
+            "✅ <b>Старый этап подготовки завершён</b>\n\n"
             f"Проект: <code>{html.escape(project_id)}</code>\n\n"
-            "Ниже бот отправит точную исходную расшифровку, SRT и шаблон. "
-            "Заполните строки <code>RU:</code>, затем используйте:\n"
-            f"<code>/dubtranslation {html.escape(project_id)}</code>"
+            "Этот legacy-проект использует прежний шаблонный режим. Для новых роликов "
+            "откройте <code>/dub</code> и выберите «Мой готовый перевод — SRT»."
         )
         await application.bot.send_message(
             chat_id=chat_id,
             text=text,
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(
-                    "✍️ Загрузить мой перевод",
-                    callback_data=f"dubwiz|translation|{project_id}",
-                )
-            ]]),
+            reply_markup=InlineKeyboardMarkup(
+                [[
+                    InlineKeyboardButton(
+                        "📎 Продолжить старый проект",
+                        callback_data=f"dubwiz|translation|{project_id}",
+                    )
+                ]]
+            ),
         )
-        sent, failures = await send_project_outputs(application.bot, chat_id, project)
+        _sent, failures = await send_project_outputs(application.bot, chat_id, project)
         if failures:
             await application.bot.send_message(
                 chat_id=chat_id,
                 text="⚠️ Не все подготовительные файлы отправились:\n" + "\n".join(failures[:6]),
             )
-        return sent > 0
-    if action in {"render_gemini", "render_custom", "render"}:
+        return True
+
+    if action in {"render_gemini", "render"}:
         text = (
-            "✅ <b>Русский дубляж готов</b>\n\n"
+            "✅ <b>Gemini MAX: русский дубляж готов</b>\n\n"
             f"Проект: <code>{html.escape(project_id)}</code>\n"
+            "Перевод прошёл полный многоступенчатый контроль. "
             "Отправляю основной MP4, перевод и субтитры.\n\n"
-            f"Версия только с русским голосом: <code>/dubsend {html.escape(project_id)} all</code>"
+            f"Версия только с русским голосом: "
+            f"<code>/dubsend {html.escape(project_id)} all</code>"
         )
-        await application.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-        sent, failures = await send_project_outputs(application.bot, chat_id, project)
-        if failures:
-            await application.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "⚠️ Не все результаты отправились:\n"
-                    + "\n".join(failures[:6])
-                    + f"\n\nПовторить: /dubsend {project_id}"
-                ),
-            )
-        return sent > 0
-    return False
+    elif action == "render_direct":
+        text = (
+            "✅ <b>Ролик с вашим готовым SRT готов</b>\n\n"
+            f"Проект: <code>{html.escape(project_id)}</code>\n"
+            "Русский текст использован без проверки и переписывания Gemini. "
+            "Отправляю основной MP4 и сопутствующие файлы.\n\n"
+            f"Версия только с русским голосом: "
+            f"<code>/dubsend {html.escape(project_id)} all</code>"
+        )
+    elif action == "render_custom":
+        text = (
+            "✅ <b>Legacy-ролик с пользовательским переводом готов</b>\n\n"
+            f"Проект: <code>{html.escape(project_id)}</code>\n"
+            "Отправляю основной MP4 и сопутствующие файлы."
+        )
+    else:
+        return False
+
+    await application.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    _sent, failures = await send_project_outputs(application.bot, chat_id, project)
+    if failures:
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "⚠️ Не все результаты отправились:\n"
+                + "\n".join(failures[:6])
+                + f"\n\nПовторить: /dubsend {project_id}"
+            ),
+        )
+    return True
 
 
 async def _notification_loop(application: Any) -> None:
@@ -169,11 +198,20 @@ async def _notification_loop(application: Any) -> None:
                 project_id = str(event["project_id"])
                 project = store.get_project(project_id)
                 try:
-                    if event_type == "job_succeeded" and str(project.get("recipe_id")) == "generic_short_v1":
-                        delivered = await _notify_generic_success(application, store, event, project)
+                    if (
+                        event_type == "job_succeeded"
+                        and str(project.get("recipe_id")) == _GENERIC_RECIPE
+                    ):
+                        delivered = await _notify_generic_success(
+                            application,
+                            store,
+                            event,
+                            project,
+                        )
                         if delivered:
                             store.mark_event_delivered(int(event["id"]))
                             continue
+
                     icon = {
                         "job_succeeded": "✅",
                         "job_failed": "❌",
@@ -182,8 +220,15 @@ async def _notification_loop(application: Any) -> None:
                     title = str(event.get("project_title") or project_id)
                     message = str(event.get("message") or "")
                     extra = ""
-                    if str(project.get("recipe_id")) == "generic_short_v1" and event_type == "job_failed":
-                        extra = "\nПроверьте точный этап: <code>/dubstatus " + html.escape(project_id) + "</code>"
+                    if (
+                        str(project.get("recipe_id")) == _GENERIC_RECIPE
+                        and event_type == "job_failed"
+                    ):
+                        extra = (
+                            "\nПроверьте точный этап: <code>/dubstatus "
+                            + html.escape(project_id)
+                            + "</code>"
+                        )
                     text = (
                         f"{icon} <b>Dub Studio</b>\n\n"
                         f"{html.escape(title)}\n"
@@ -199,7 +244,11 @@ async def _notification_loop(application: Any) -> None:
                         parse_mode="HTML",
                     )
                 except Exception as exc:
-                    logger.warning("Dub Studio notification failed for event %s: %s", event["id"], exc)
+                    logger.warning(
+                        "Dub Studio notification failed for event %s: %s",
+                        event["id"],
+                        exc,
+                    )
                     continue
                 store.mark_event_delivered(int(event["id"]))
         except asyncio.CancelledError:
@@ -210,7 +259,6 @@ async def _notification_loop(application: Any) -> None:
 
 
 def install_dub_studio_runtime() -> None:
-    """Patch PTB construction before main.run_bot_async builds the Application."""
     global _INSTALLED, _ORIGINAL_BUILD, _ORIGINAL_START
     if _INSTALLED or not enabled():
         return
@@ -247,7 +295,9 @@ def install_dub_studio_runtime() -> None:
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info("🎙 Dub Studio runtime: wizard + delivery + worker + notifications enabled")
+        logger.info(
+            "🎙 Dub Studio runtime: Gemini MAX + direct SRT + delivery + worker enabled"
+        )
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]
