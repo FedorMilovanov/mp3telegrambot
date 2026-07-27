@@ -123,7 +123,8 @@ async def _notification_loop(application: Any) -> None:
                     f"<code>{html.escape(project_id)}</code>\n\n"
                     f"{html.escape(message[:1200])}\n\n"
                     f"<code>/dubstatus {html.escape(project_id)}</code>\n"
-                    f"<code>/dubfiles {html.escape(project_id)}</code>"
+                    f"<code>/dubfiles {html.escape(project_id)}</code>\n"
+                    f"<code>/dubsend {html.escape(project_id)}</code>"
                 )
                 try:
                     await application.bot.send_message(
@@ -152,6 +153,7 @@ def install_dub_studio_runtime() -> None:
             return
         from telegram.ext import Application, ApplicationBuilder
         from handlers.dub_commands import register_dub_handlers
+        from handlers.dub_delivery import register_dub_delivery_handlers
 
         _ORIGINAL_BUILD = ApplicationBuilder.build
         _ORIGINAL_START = Application.start
@@ -159,6 +161,7 @@ def install_dub_studio_runtime() -> None:
         def build_with_dub(self: Any) -> Any:
             application = _ORIGINAL_BUILD(self)
             register_dub_handlers(application)
+            register_dub_delivery_handlers(application)
             return application
 
         async def start_with_dub(self: Any) -> None:
@@ -174,7 +177,7 @@ def install_dub_studio_runtime() -> None:
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info("🎙 Dub Studio runtime: handlers + worker + notifications enabled")
+        logger.info("🎙 Dub Studio runtime: handlers + delivery + worker + notifications enabled")
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]
