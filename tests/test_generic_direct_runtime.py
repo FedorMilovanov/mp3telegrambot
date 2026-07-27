@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from tools.voxcpm2.generic_direct_checked_runtime import build_direct_segments_safe
 from tools.voxcpm2.generic_direct_runtime import (
     _build_direct_segments,
     group_srt_cues,
@@ -58,9 +59,9 @@ def test_direct_segments_apply_420ms_delay_without_rewriting() -> None:
     assert subtitles[0].text == "Точный текст."
 
 
-def test_last_cue_reduces_delay_only_when_video_would_cut_it_off() -> None:
+def test_checked_entrypoint_keeps_last_cue_inside_video() -> None:
     groups = [{"id": 1, "start": 4.8, "end": 5.0, "source": "Финал."}]
-    segments, subtitles = _build_direct_segments(groups, delay_ms=420, duration=5.0)
+    segments, subtitles = build_direct_segments_safe(groups, delay_ms=420, duration=5.0)
     assert segments[0]["start_delay_ms"] < 420
     assert segments[0]["end"] <= 5.0
     assert subtitles[0].end <= 5.0
