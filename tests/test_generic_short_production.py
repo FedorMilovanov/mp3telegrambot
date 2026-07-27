@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.voxcpm2.dub_worker import build_command
 from tools.voxcpm2.generic_short_production import (
     Cue,
     clean_caption_text,
@@ -85,3 +86,13 @@ def test_write_srt_uses_millisecond_timestamps(tmp_path: Path) -> None:
     text = output.read_text(encoding="utf-8")
     assert "00:00:00,420 --> 00:00:03,250" in text
     assert "Русский текст" in text
+
+
+def test_registered_recipe_uses_eighteen_percent_and_large_delay() -> None:
+    command, spec = build_command("short_tnliocegylk", "render")
+    joined = " ".join(command)
+    assert spec["runner"] == "python_module"
+    assert "tools.voxcpm2.generic_short_production" in joined
+    assert "-OriginalLevel 0.18" in joined
+    assert "-RussianDelayMs 420" in joined
+    assert "-VideoId tNlIoCeGyLk" in joined
