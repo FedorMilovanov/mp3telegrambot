@@ -24,7 +24,7 @@ from services.dub_studio import (
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-tree-cancel-v2"
+_WORKER_RUNTIME = "dub-worker-tree-cancel-v3"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
