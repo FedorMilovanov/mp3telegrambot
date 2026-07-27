@@ -18,6 +18,8 @@ jobs:
       - name: Reconstruct and parse package launchers
         shell: pwsh
         run: |
+          $result = Join-Path $env:RUNNER_TEMP "john-piper-parse-result.txt"
+          "" | Set-Content -LiteralPath $result
           $example = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
           $parts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File | Sort-Object Name)
           $encoded = ($parts | ForEach-Object { (Get-Content -LiteralPath $_.FullName -Raw).Trim() }) -join ""
@@ -36,13 +38,22 @@ jobs:
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
             if ($errors.Count -eq 0) {
-              Write-Host "OK: $path"
+              "OK|$path" | Add-Content -LiteralPath $result
               continue
             }
             $failed = $true
-            Write-Host "FAILED: $path"
             foreach ($item in $errors) {
-              Write-Host "LINE=$($item.Extent.StartLineNumber) COLUMN=$($item.Extent.StartColumnNumber) MESSAGE=$($item.Message) TEXT=$($item.Extent.Text)"
+              "FAILED|$path|LINE=$($item.Extent.StartLineNumber)|COLUMN=$($item.Extent.StartColumnNumber)|MESSAGE=$($item.Message)|TEXT=$($item.Extent.Text)" | Add-Content -LiteralPath $result
             }
           }
+          Get-Content -LiteralPath $result
+          "JOHN_PIPER_PARSE_RESULT=$result" | Out-File -FilePath $env:GITHUB_ENV -Append
           if ($failed) { throw "Package launcher parse failed" }
+
+      - name: Upload parser result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: john-piper-parser-result
+          path: ${{ runner.temp }}/john-piper-parse-result.txt
+          if-no-files-found: error
