@@ -38,32 +38,30 @@ jobs:
               anchor = 'try:\n    from services.restart_state_runtime import install_restart_state_runtime\n'
               if anchor not in text:
                   raise SystemExit('bot_new.py integration anchor not found')
-              block = '''try:
-              \x20   from services.dub_studio_runtime import install_dub_studio_runtime
-
-              \x20   install_dub_studio_runtime()
-              except Exception as _dub_studio_error:
-              \x20   print(f"⚠️ VoxCPM2 Dub Studio не установлена: {_dub_studio_error}")
-
-              '''
+              block = (
+                  'try:\n'
+                  '    from services.dub_studio_runtime import install_dub_studio_runtime\n\n'
+                  '    install_dub_studio_runtime()\n'
+                  'except Exception as _dub_studio_error:\n'
+                  '    print(f"⚠️ VoxCPM2 Dub Studio не установлена: {_dub_studio_error}")\n\n'
+              )
               text = text.replace(anchor, block + anchor, 1)
               path.write_text(text, encoding='utf-8')
 
           history = Path('docs/quality_audit_history.md')
-          entry = '''
-
-          ## 2026-07-27 — VoxCPM2 Dub Studio control plane
-
-          - Added an admin-only Telegram control surface for durable VoxCPM2 projects.
-          - Heavy CPU rendering now runs in a separate single-worker queue with SQLite WAL,
-            heartbeat, cancellation, recovery and terminal notifications.
-          - Registered John Piper as the first migration recipe, including segment-only
-            Psalm 15 repair; arbitrary Telegram-provided shell commands are not accepted.
-          - Added regression tests for state transitions, queue exclusivity, command
-            allow-listing and progress parsing.
-          '''.rstrip() + '\n'
+          heading = '## 2026-07-27 — VoxCPM2 Dub Studio control plane'
+          entry = (
+              '\n\n' + heading + '\n\n'
+              '- Added an admin-only Telegram control surface for durable VoxCPM2 projects.\n'
+              '- Heavy CPU rendering now runs in a separate single-worker queue with SQLite WAL,\n'
+              '  heartbeat, cancellation, recovery and terminal notifications.\n'
+              '- Registered John Piper as the first migration recipe, including segment-only\n'
+              '  Psalm 15 repair; arbitrary Telegram-provided shell commands are not accepted.\n'
+              '- Added regression tests for state transitions, queue exclusivity, command\n'
+              '  allow-listing and progress parsing.\n'
+          )
           current = history.read_text(encoding='utf-8') if history.exists() else '# Quality audit history\n'
-          if '2026-07-27 — VoxCPM2 Dub Studio control plane' not in current:
+          if heading not in current:
               history.write_text(current.rstrip() + entry, encoding='utf-8')
 
       - name: Validate registered recipe and PowerShell runners
