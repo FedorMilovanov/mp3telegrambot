@@ -282,13 +282,23 @@ async def _read_translation_document(message: Any, context: ContextTypes.DEFAULT
             from docx import Document
         except ImportError as exc:
             raise DubProjectError("Для DOCX установите зависимости: pip install -r requirements.txt") from exc
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+        from docx.oxml.table import CT_Tbl
+        from docx.oxml.text.paragraph import CT_P
         doc = Document(str(target))
-        blocks: list[str] = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
-        for table in doc.tables:
-            for row in table.rows:
-                values = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                if values:
-                    blocks.append(" | ".join(values))
+        blocks: list[str] = []
+        for child in doc.element.body.iterchildren():
+            if isinstance(child, CT_P):
+                value = Paragraph(child, doc).text.strip()
+                if value:
+                    blocks.append(value)
+            elif isinstance(child, CT_Tbl):
+                table = Table(child, doc)
+                for row in table.rows:
+                    values = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if values:
+                        blocks.append(" | ".join(values))
         return "\n\n".join(blocks)
 
     text = await asyncio.get_running_loop().run_in_executor(None, read)

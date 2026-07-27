@@ -306,10 +306,15 @@ def attach_approved_translation(
         manifest = load_project(project_id)
         revision = int((manifest.get("translation") or {}).get("revision") or 0) + 1
         editorial = project_dir(project_id) / "editorial"
-        translation_path = editorial / "translation_ru_approved.txt"
-        units_path = editorial / "translation_units.json"
+        revisions = editorial / "revisions"
+        translation_path = revisions / f"translation_ru_r{revision:03d}.txt"
+        units_path = revisions / f"translation_units_r{revision:03d}.json"
+        current_translation = editorial / "translation_ru_approved.txt"
+        current_units = editorial / "translation_units.json"
         _atomic_write_text(translation_path, normalized + "\n")
         _atomic_write_json(units_path, units)
+        _atomic_write_text(current_translation, normalized + "\n")
+        _atomic_write_json(current_units, units)
 
         manifest["translation"] = {
             "state": "approved",
@@ -322,6 +327,8 @@ def attach_approved_translation(
             "original_filename": str(original_filename or "telegram-message"),
             "display_text_path": str(translation_path),
             "units_path": str(units_path),
+            "current_display_text_path": str(current_translation),
+            "current_units_path": str(current_units),
             "character_count": len(normalized),
             "word_count": len(re.findall(r"\S+", normalized)),
             "unit_count": len(units),

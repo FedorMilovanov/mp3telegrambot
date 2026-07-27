@@ -187,7 +187,9 @@ def run_project_preflight(project_id: str, *, repo_root: Path | None = None) -> 
         else:
             if not isinstance(units, list) or not units:
                 blocking.append("В переводе не найдено ни одной редакционной единицы.")
-            elif any(not str(item.get("display_text") or "").strip() for item in units if isinstance(item, dict)):
+            elif any(not isinstance(item, dict) for item in units):
+                blocking.append("Файл редакционных единиц содержит запись неверного типа.")
+            elif any(not str(item.get("display_text") or "").strip() for item in units):
                 blocking.append("Одна из редакционных единиц перевода пуста.")
 
     required_tools = [name for name in ("ffmpeg", "ffprobe") if not shutil.which(name)]

@@ -908,7 +908,7 @@ async def run_bot_async():
             logger.warning("set_my_commands(default) failed: %s", _e)
 
         # VIP/Admin видят расширенное меню с /resetcache и /settings
-        for admin_id in ADMIN_IDS:
+        for admin_id in sorted(set(ADMIN_IDS) | set(WHITELIST_IDS)):
             try:
                 vip_commands = default_commands + [
                     BotCommand("settings",   "⚙️ Настройки бота"),
