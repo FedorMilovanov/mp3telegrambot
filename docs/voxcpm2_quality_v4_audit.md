@@ -143,3 +143,14 @@ For the same Piper clip:
 
 A physical VoxCPM2 A/B rerender remains a local Windows test because the model archive and CPU
 environment are stored on the user's machine.
+
+## Quality v4.1 hardening
+
+The v4.1 follow-up closes four gaps discovered during the final code-to-audio audit:
+
+- a single long caption cue is split even when it has no sentence punctuation, without changing word order;
+- Gemini render windows are local and cannot overrun or overlap after the Russian delay is applied;
+- final QA rejects late onset, clipped endings and isolated pre-speech chirps in addition to semantic/acoustic failure;
+- checkpoints are invalidated when text, either reference WAV, renderer code, CFG, steps or cache length changes.
+
+The detached worker runtime is versioned as `dub-worker-quality-v4.1`, so an idle pre-v4.1 worker is replaced after update instead of being treated as current.

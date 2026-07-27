@@ -9,7 +9,7 @@ from typing import Any
 from services.dub_studio import DubStore
 from tools.voxcpm2 import dub_worker as worker
 
-_RUNTIME_VERSION = "dub-worker-tree-cancel-v3"
+_RUNTIME_VERSION = "dub-worker-quality-v4.1"
 _ORIGINAL_REGISTER = DubStore.register_worker
 _ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
 _ORIGINAL_FINISH_JOB = DubStore.finish_job

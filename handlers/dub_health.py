@@ -25,7 +25,7 @@ from services.dub_studio import (
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-tree-cancel-v3"
+_WORKER_RUNTIME = "dub-worker-quality-v4.1"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -94,18 +94,52 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(_check("Recipe-actions", False, str(exc)))
 
     repo = Path(__file__).resolve().parents[1]
-    quality_paths = (
-        repo / "tools" / "voxcpm2" / "dub_quality_v4.py",
-        repo / "tools" / "voxcpm2" / "semantic_tts_guard_v4.py",
-        repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py",
-        repo / "tools" / "voxcpm2" / "master_quality_v4.py",
+    quality_policy_path = repo / "tools" / "voxcpm2" / "dub_quality_v4.py"
+    quality_guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard_v4.py"
+    quality_renderer_path = repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"
+    quality_master_path = repo / "tools" / "voxcpm2" / "master_quality_v4.py"
+    gemini_entry_path = repo / "tools" / "voxcpm2" / "generic_gemini_runtime.py"
+    direct_entry_path = repo / "tools" / "voxcpm2" / "generic_direct_checked_runtime.py"
+    contract_files = (
+        quality_policy_path, quality_guard_path, quality_renderer_path,
+        quality_master_path, gemini_entry_path, direct_entry_path,
     )
-    quality_ok = all(path.is_file() and path.stat().st_size > 0 for path in quality_paths)
+    contract_text = {
+        path: path.read_text(encoding="utf-8") if path.is_file() else ""
+        for path in contract_files
+    }
+    quality_ok = bool(
+        all(contract_text.values())
+        and "production._build_render_segments = build_render_segments_v4"
+        in contract_text[quality_policy_path]
+        and "local-window-v4.1" in contract_text[quality_policy_path]
+        and '_GUARD_VERSION = "semantic-tts-guard-v4.1"'
+        in contract_text[quality_guard_path]
+        and "verify_timeline_v4" in contract_text[quality_guard_path]
+        and "pipeline_signature" in contract_text[quality_guard_path]
+        and 'env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)'
+        in contract_text[quality_guard_path]
+        and '_QUALITY_VERSION = "voxcpm2-quality-v4.1"'
+        in contract_text[quality_renderer_path]
+        and "nested retry remains disabled" in contract_text[quality_renderer_path]
+        and '"whole_mix_loudnorm": False' in contract_text[quality_master_path]
+        and "alimiter=limit=0.985:level=false" in contract_text[quality_master_path]
+        and "semantic_tts_guard_v4.install()" in contract_text[gemini_entry_path]
+        and "semantic_tts_guard_v4.install()" in contract_text[direct_entry_path]
+        and "legacy_semantic_guard.install = _disable_legacy_guard_install"
+        in contract_text[gemini_entry_path]
+        and "legacy_semantic_guard.install = _disable_legacy_guard_install"
+        in contract_text[direct_entry_path]
+    )
     checks.append(
         _check(
-            "NoChew Quality v4",
+            "NoChew Quality v4.1",
             quality_ok,
-            "; ".join(str(path) for path in quality_paths),
+            (
+                "local windows + caption coverage; reference-only renderer; "
+                "semantic/timing/chirp QA; signed checkpoints; exact-gain master; "
+                "Gemini MAX + ready SRT entrypoints"
+            ),
         )
     )
 
@@ -231,7 +265,7 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Оба режима требуют зелёные NoChew Quality v4, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Оба режима требуют зелёные NoChew Quality v4.1, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
             "Только Gemini MAX дополнительно требует рабочие Gemini keys; готовый SRT не отправляется на перевод или редактуру.",
         ]
     )

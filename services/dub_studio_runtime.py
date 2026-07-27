@@ -19,7 +19,7 @@ _LOCK = threading.Lock()
 _ORIGINAL_BUILD = None
 _ORIGINAL_START = None
 _GENERIC_RECIPE = "generic_short_v1"
-_WORKER_RUNTIME = "dub-worker-tree-cancel-v3"
+_WORKER_RUNTIME = "dub-worker-quality-v4.1"
 
 
 def _flag(name: str, default: bool) -> bool:
