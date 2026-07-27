@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Quality v4.1 entrypoint around the proven reference-only NoChew renderer.
+"""Quality v4.2 entrypoint around the proven reference-only NoChew renderer.
 
 It deliberately does not patch VoxCPM.generate. The underlying renderer keeps
 its original min_len=2, retry_badcase=False and requested CFG. This adapter
@@ -18,7 +18,9 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
-_QUALITY_VERSION = "voxcpm2-quality-v4.1"
+from tools.voxcpm2.activity_quality import sustained_activity_index
+
+_QUALITY_VERSION = "voxcpm2-quality-v4.2"
 
 
 def log(message: str) -> None:
@@ -38,15 +40,7 @@ def _frame_rms(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, np.nd
 
 
 def _sustained_activity(active: np.ndarray, *, from_start: bool) -> int | None:
-    if not len(active):
-        return None
-    indices = range(len(active)) if from_start else range(len(active) - 1, -1, -1)
-    for index in indices:
-        left = max(0, index - 2)
-        right = min(len(active), index + 3)
-        if active[index] and int(np.count_nonzero(active[left:right])) >= 3:
-            return int(index)
-    return None
+    return sustained_activity_index(active, reverse=not from_start)
 
 
 def _activity_bounds(samples: np.ndarray, sample_rate: int) -> tuple[int, int] | None:
@@ -176,6 +170,6 @@ if __name__ == "__main__":
     except Exception as exc:
         import traceback
 
-        print(f"ОШИБКА QUALITY V4.1: {exc}", file=sys.stderr)
+        print(f"ОШИБКА QUALITY V4.2: {exc}", file=sys.stderr)
         traceback.print_exc()
         raise SystemExit(1)
