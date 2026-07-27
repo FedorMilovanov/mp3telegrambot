@@ -27,47 +27,70 @@ jobs:
           cache: pip
 
       - name: Install verification dependencies
+        id: deps
+        continue-on-error: true
         shell: pwsh
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install -r requirements-dev.txt 2>&1 | Tee-Object ci-deps.log
 
       - name: Compile production modules and repository
+        id: compile
+        continue-on-error: true
         shell: pwsh
         run: |
-          python -m py_compile tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py
-          python -m compileall -q tools/voxcpm2 handlers services bot_new.py
+          python -m py_compile tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py 2>&1 | Tee-Object ci-compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q tools/voxcpm2 handlers services bot_new.py 2>&1 | Tee-Object -Append ci-compile.log
+          exit $LASTEXITCODE
 
-      - name: Validate recipe contract
+      - name: Validate recipe and command contract
+        id: contract
+        continue-on-error: true
         shell: pwsh
         run: |
-          $Recipe = Get-Content tools/voxcpm2/recipes/short_tnliocegylk.json -Raw | ConvertFrom-Json
-          if ($Recipe.id -ne 'short_tnliocegylk') { throw 'recipe id mismatch' }
-          if ($Recipe.source_url -ne 'https://youtube.com/shorts/tNlIoCeGyLk') { throw 'source mismatch' }
-          if ([double]$Recipe.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'original level mismatch' }
-          if ([int]$Recipe.actions.render.parameters.RussianDelayMs -ne 420) { throw 'russian delay mismatch' }
-          $Piper = Get-Content tools/voxcpm2/recipes/john_piper_z20py4yqhyq.json -Raw | ConvertFrom-Json
-          if ([double]$Piper.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'Piper render mix not migrated' }
-          if ([double]$Piper.actions.repair_psalm15.parameters.OriginalLevel -ne 0.18) { throw 'Piper repair mix not migrated' }
-          python -m tools.voxcpm2.generic_short_production --help | Out-Null
-          python -c "from tools.voxcpm2.dub_worker import build_command; c,s=build_command('short_tnliocegylk','render'); assert '-OriginalLevel' in c and '0.18' in c and '-RussianDelayMs' in c and '420' in c; print('recipe command: OK')"
+          try {
+            $Recipe = Get-Content tools/voxcpm2/recipes/short_tnliocegylk.json -Raw | ConvertFrom-Json
+            if ($Recipe.id -ne 'short_tnliocegylk') { throw 'recipe id mismatch' }
+            if ($Recipe.source_url -ne 'https://youtube.com/shorts/tNlIoCeGyLk') { throw 'source mismatch' }
+            if ([double]$Recipe.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'original level mismatch' }
+            if ([int]$Recipe.actions.render.parameters.RussianDelayMs -ne 420) { throw 'russian delay mismatch' }
+            $Piper = Get-Content tools/voxcpm2/recipes/john_piper_z20py4yqhyq.json -Raw | ConvertFrom-Json
+            if ([double]$Piper.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'Piper render mix not migrated' }
+            if ([double]$Piper.actions.repair_psalm15.parameters.OriginalLevel -ne 0.18) { throw 'Piper repair mix not migrated' }
+            python -m tools.voxcpm2.generic_short_production --help | Out-File ci-contract.log -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python -c "from tools.voxcpm2.dub_worker import build_command; c,s=build_command('short_tnliocegylk','render'); assert '-OriginalLevel' in c and '0.18' in c and '-RussianDelayMs' in c and '420' in c; print('recipe command: OK')" 2>&1 | Tee-Object -Append ci-contract.log
+            exit $LASTEXITCODE
+          } catch {
+            $_ | Out-String | Set-Content ci-contract.log -Encoding utf8
+            exit 1
+          }
 
       - name: Import Telegram delivery integration
+        id: imports
+        continue-on-error: true
         shell: pwsh
-        run: |
-          python -c "import handlers.dub_delivery, services.dub_studio_runtime; print('Dub delivery imports: OK')"
+        run: python -c "import handlers.dub_delivery, services.dub_studio_runtime; print('Dub delivery imports: OK')" 2>&1 | Tee-Object ci-imports.log
 
       - name: Run focused regression tests
+        id: tests
+        continue-on-error: true
         shell: pwsh
-        run: python -m pytest -q tests/test_generic_short_production.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py
+        run: python -m pytest -q tests/test_generic_short_production.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py 2>&1 | Tee-Object ci-tests.log
 
       - name: Ruff changed surface
+        id: ruff
+        continue-on-error: true
         shell: pwsh
-        run: python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py
+        run: python -m ruff check tools/voxcpm2/generic_short_production.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_short_production.py tests/test_dub_delivery.py 2>&1 | Tee-Object ci-ruff.log
 
       - name: Patch cleanliness
+        id: diff
+        continue-on-error: true
         shell: pwsh
-        run: git diff --check
+        run: git diff --check 2>&1 | Tee-Object ci-diff.log
 
       - name: Finalize verified recipe
+        if: steps.deps.outcome == 'success' && steps.compile.outcome == 'success' && steps.contract.outcome == 'success' && steps.imports.outcome == 'success' && steps.tests.outcome == 'success' && steps.ruff.outcome == 'success' && steps.diff.outcome == 'success'
         shell: pwsh
         run: |
           git config user.name 'github-actions[bot]'
@@ -92,7 +115,36 @@ jobs:
             tests, changed-surface ruff and git diff check.
           "@
           }
+          Remove-Item docs/tnliocegylk_ci_failure.txt -Force -ErrorAction SilentlyContinue
           Remove-Item .github/workflows/validate-short-tnliocegylk-once.yml -Force
-          git add docs/quality_audit_history.md .github/workflows/validate-short-tnliocegylk-once.yml
+          git add docs/quality_audit_history.md docs/tnliocegylk_ci_failure.txt .github/workflows/validate-short-tnliocegylk-once.yml
           git commit -m 'Record verified tNlIoCeGyLk dubbing recipe'
+          git push origin HEAD:main
+
+      - name: Record exact validation failure
+        if: always() && !(steps.deps.outcome == 'success' && steps.compile.outcome == 'success' && steps.contract.outcome == 'success' && steps.imports.outcome == 'success' && steps.tests.outcome == 'success' && steps.ruff.outcome == 'success' && steps.diff.outcome == 'success')
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Report = @"
+          tNlIoCeGyLk Windows validation failed.
+          deps=${{ steps.deps.outcome }}
+          compile=${{ steps.compile.outcome }}
+          contract=${{ steps.contract.outcome }}
+          imports=${{ steps.imports.outcome }}
+          tests=${{ steps.tests.outcome }}
+          ruff=${{ steps.ruff.outcome }}
+          diff=${{ steps.diff.outcome }}
+          source_commit=${{ github.sha }}
+          "@
+          foreach ($Name in @('ci-compile.log','ci-contract.log','ci-imports.log','ci-tests.log','ci-ruff.log','ci-diff.log')) {
+            if (Test-Path $Name) {
+              $Report += "`n`n=== $Name ===`n"
+              $Report += (Get-Content $Name -Tail 120 | Out-String)
+            }
+          }
+          $Report | Set-Content docs/tnliocegylk_ci_failure.txt -Encoding utf8
+          git add docs/tnliocegylk_ci_failure.txt
+          git commit -m 'Record tNlIoCeGyLk Windows validation failure'
           git push origin HEAD:main
