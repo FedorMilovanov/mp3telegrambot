@@ -7,10 +7,15 @@ on:
       - 'handlers/mode_command.py'
       - 'handlers/commands.py'
       - 'main.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/semantic_tts_guard.py'
+      - 'tools/voxcpm2/dub_quality_v4.py'
+      - 'tools/voxcpm2/semantic_tts_guard*.py'
+      - 'tools/voxcpm2/voxcpm2_quality_v4_renderer.py'
+      - 'tools/voxcpm2/master_quality_v4.py'
       - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
@@ -24,16 +29,22 @@ on:
       - 'handlers/mode_command.py'
       - 'handlers/commands.py'
       - 'main.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/semantic_tts_guard.py'
+      - 'tools/voxcpm2/dub_quality_v4.py'
+      - 'tools/voxcpm2/semantic_tts_guard*.py'
+      - 'tools/voxcpm2/voxcpm2_quality_v4_renderer.py'
+      - 'tools/voxcpm2/master_quality_v4.py'
       - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
       - 'tests/test_mode_navigation.py'
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_tts_guard.py'
+      - '.github/workflows/dub-studio-checks.yml'
 
 jobs:
   focused-dub-studio:
@@ -60,7 +71,11 @@ jobs:
             tools/voxcpm2/generic_direct_checked_runtime.py `
             tools/voxcpm2/generic_gemini_runtime.py `
             tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/dub_quality_v4.py `
             tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/semantic_tts_guard_v4.py `
+            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
+            tools/voxcpm2/master_quality_v4.py `
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py `
             tools/voxcpm2/dub_worker.py `
             tools/voxcpm2/dub_worker_hardened.py `
@@ -91,6 +106,7 @@ jobs:
       - name: Focused regression tests
         run: >-
           python -m pytest -q
+          tests/test_dub_quality_v4.py
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
           tests/test_semantic_tts_guard.py
@@ -107,7 +123,11 @@ jobs:
           tools/voxcpm2/generic_direct_runtime.py
           tools/voxcpm2/generic_direct_checked_runtime.py
           tools/voxcpm2/generic_gemini_runtime.py
+          tools/voxcpm2/dub_quality_v4.py
           tools/voxcpm2/semantic_tts_guard.py
+          tools/voxcpm2/semantic_tts_guard_v4.py
+          tools/voxcpm2/voxcpm2_quality_v4_renderer.py
+          tools/voxcpm2/master_quality_v4.py
           tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py
           tools/voxcpm2/dub_worker_hardened.py
           handlers/dub_wizard.py
@@ -115,6 +135,7 @@ jobs:
           handlers/dub_health.py
           handlers/mode_command.py
           services/dub_studio_runtime.py
+          tests/test_dub_quality_v4.py
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
           tests/test_semantic_tts_guard.py
