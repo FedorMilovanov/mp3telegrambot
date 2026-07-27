@@ -1,8 +1,8 @@
 [
   {
     "id": 1,
-    "start": 0.24,
-    "end": 18.8,
+    "start": 0.233,
+    "end": 18.272,
     "start_delay_ms": 220,
     "reference_profile": "extended",
     "tail_guard": 0.4,
@@ -10,8 +10,8 @@
   },
   {
     "id": 2,
-    "start": 18.8,
-    "end": 30.32,
+    "start": 18.272,
+    "end": 29.469,
     "start_delay_ms": 160,
     "reference_profile": "extended",
     "tail_guard": 0.34,
@@ -19,8 +19,8 @@
   },
   {
     "id": 3,
-    "start": 30.32,
-    "end": 39.92,
+    "start": 29.469,
+    "end": 38.799,
     "start_delay_ms": 100,
     "reference_profile": "extended",
     "tail_guard": 0.3,
@@ -28,8 +28,8 @@
   },
   {
     "id": 4,
-    "start": 39.92,
-    "end": 52.559,
+    "start": 38.799,
+    "end": 51.083,
     "start_delay_ms": 70,
     "reference_profile": "extended",
     "tail_guard": 0.34,
@@ -37,8 +37,8 @@
   },
   {
     "id": 5,
-    "start": 52.559,
-    "end": 64.32,
+    "start": 51.083,
+    "end": 62.514,
     "start_delay_ms": 40,
     "reference_profile": "composite",
     "tail_guard": 0.42,
