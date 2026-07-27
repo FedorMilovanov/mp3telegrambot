@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Extract and run one-time migration
+      - name: Materialize direct production files
         shell: pwsh
         run: |
           $Workflow = Get-Content -LiteralPath ".github/workflows/materialize-voxcpm2-direct-pipeline.yml" -Raw
@@ -101,13 +101,17 @@ jobs:
             }
           }
 
-      - name: Commit direct files
+      - name: Commit validated production files
         shell: pwsh
         run: |
-          Remove-Item -LiteralPath ".github/workflows/run-direct-pipeline-migration.yml" -Force
+          # The temporary migration must never modify workflow files with GITHUB_TOKEN.
+          # Restore them before committing; they are removed later through the repository API.
+          git restore --source=HEAD --staged --worktree -- .github/workflows
           Remove-Item -LiteralPath ".materialize-trigger" -Force -ErrorAction SilentlyContinue
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          git status --short
           git commit -m "Replace embedded John Piper package with direct CPU pipeline"
           git push origin HEAD:${{ github.head_ref }}
