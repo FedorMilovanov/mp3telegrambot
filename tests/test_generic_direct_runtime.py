@@ -62,14 +62,17 @@ def test_direct_segments_apply_420ms_delay_without_rewriting() -> None:
     assert subtitles[0].text == "Точный текст."
 
 
-def test_checked_entrypoint_keeps_last_cue_inside_video() -> None:
+def test_checked_entrypoint_expands_sub_350ms_final_cue() -> None:
     groups = [{"id": 1, "start": 4.8, "end": 5.0, "source": "Финал."}]
     segments, subtitles = build_direct_segments_safe(groups, delay_ms=420, duration=5.0)
-    assert segments[0]["start_delay_ms"] < 420
-    assert segments[0]["end"] <= 5.0
-    assert subtitles[0].end <= 5.0
+    assert segments[0]["start_delay_ms"] == 0
+    assert segments[0]["start"] == 4.65
+    assert segments[0]["end"] == 5.0
+    assert subtitles[0].start == 4.65
+    assert subtitles[0].end == 5.0
     assert segments[0]["text"] == "Финал."
     assert segments[0]["text_policy"] == "verbatim_user_srt"
+    assert segments[0]["timing_window_expanded"] is True
 
 
 def test_ready_srt_tts_policy_keeps_final_punctuation_verbatim() -> None:
