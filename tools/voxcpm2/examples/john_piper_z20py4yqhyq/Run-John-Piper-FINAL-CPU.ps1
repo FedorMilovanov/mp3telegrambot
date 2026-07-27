@@ -31,8 +31,11 @@ if ($Parts.Count -ne 7) {
 }
 
 $PartNames = @($Parts | ForEach-Object { $_.Name })
-$ExpectedNames = 1..7 | ForEach-Object { "package.part{0:D2}.b64" -f $_ }
-if ((Compare-Object -ReferenceObject $ExpectedNames -DifferenceObject $PartNames).Count -gt 0) {
+$ExpectedNames = @(1..7 | ForEach-Object { "package.part{0:D2}.b64" -f $_ })
+$NameDifferences = @(
+    Compare-Object -ReferenceObject $ExpectedNames -DifferenceObject $PartNames
+)
+if ($NameDifferences.Count -gt 0) {
     throw "Набор частей production-пакета неполный или имеет неверные имена."
 }
 
