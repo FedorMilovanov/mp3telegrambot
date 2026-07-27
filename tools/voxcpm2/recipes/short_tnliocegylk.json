@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "short_tnliocegylk",
+  "title": "Short tNlIoCeGyLk — Премиальный Русский Дубляж",
+  "speaker": "Определяется из исходного ролика",
+  "source_url": "https://youtube.com/shorts/tNlIoCeGyLk",
+  "description": "Один production-job: загрузка, captions/Whisper, двухпроходный буквально-литературный перевод, VoxCPM2 CPU NoChew, русский delay 420 мс и постоянный оригинал 18%.",
+  "work_root": "C:\\AI-Archive\\Short-tNlIoCeGyLk-Russian-Dub",
+  "actions": {
+    "render": {
+      "kind": "render",
+      "label": "Подготовить перевод и сделать финальный дубляж",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_short_production",
+      "parameters": {
+        "SourceUrl": "https://youtube.com/shorts/tNlIoCeGyLk",
+        "VideoId": "tNlIoCeGyLk",
+        "WorkRoot": "C:\\AI-Archive\\Short-tNlIoCeGyLk-Russian-Dub",
+        "OriginalLevel": 0.18,
+        "RussianDelayMs": 420,
+        "Threads": 10,
+        "Steps": 16,
+        "Cfg": 1.8,
+        "WhisperModel": "large-v3"
+      }
+    }
+  },
+  "outputs": {
+    "mixed": {
+      "label": "Финальный upload-ready MP4 — оригинал 18%",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_Russian_Dub_FINAL_UPLOAD.mp4",
+      "required": true,
+      "primary": true,
+      "actions": ["render"]
+    },
+    "russian_only": {
+      "label": "Чистая русская версия",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_Russian_Dub_FINAL_RUSSIAN_ONLY.mp4",
+      "required": true,
+      "actions": ["render"]
+    },
+    "russian_subtitles": {
+      "label": "Русские субтитры",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_Russian_Dub_FINAL.srt",
+      "required": true,
+      "actions": ["render"]
+    },
+    "english_subtitles": {
+      "label": "Точная английская расшифровка",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_Source_English.srt",
+      "required": true,
+      "actions": ["render"]
+    },
+    "translation": {
+      "label": "Итоговый русский перевод",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_Russian_Translation.txt",
+      "required": true,
+      "actions": ["render"]
+    },
+    "manifest": {
+      "label": "Production manifest",
+      "path": "{work_root}\\output\\tNlIoCeGyLk_FINAL.manifest.json",
+      "required": true,
+      "actions": ["render"]
+    }
+  }
+}
