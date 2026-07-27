@@ -218,8 +218,14 @@ def _build_direct_segments(
     for index, group in enumerate(groups, start=1):
         start = max(0.0, float(group["start"]))
         source_end = min(float(duration), float(group["end"]))
-        render_end = max(start + 0.55, source_end - delay)
-        render_end = min(render_end, max(start + 0.55, duration - delay))
+        max_delay = max(0.0, duration - start - 0.35)
+        effective_delay = min(delay, max_delay)
+        effective_delay_ms = int(round(effective_delay * 1000.0))
+        latest_render_end = max(start + 0.35, duration - effective_delay)
+        render_end = max(start + 0.35, source_end - effective_delay)
+        render_end = min(render_end, latest_render_end)
+        if render_end <= start:
+            raise RuntimeError(f"Реплика #{index} не помещается до конца видео.")
         profile = "composite" if index == len(groups) or index % 4 == 0 else "extended"
         text = str(group["source"]).strip()
 
@@ -228,7 +234,7 @@ def _build_direct_segments(
                 "id": index,
                 "start": round(start, 3),
                 "end": round(render_end, 3),
-                "start_delay_ms": int(delay_ms),
+                "start_delay_ms": effective_delay_ms,
                 "reference_profile": profile,
                 "tail_guard": 0.36 if profile == "extended" else 0.42,
                 "text": text,
@@ -236,7 +242,7 @@ def _build_direct_segments(
                 "source": text,
             }
         )
-        subtitle_start = min(duration, start + delay)
+        subtitle_start = min(duration, start + effective_delay)
         subtitle_end = max(subtitle_start + 0.05, source_end)
         subtitles.append(pipeline.Cue(subtitle_start, min(duration, subtitle_end), text))
 
@@ -388,7 +394,7 @@ def main() -> None:
         "translation_mode": "direct",
         "translation_model": "user",
         "translation_passes": 0,
-        "translation_rewritten": False,
+        "translation_rewritten": false,
         "original_level": float(request.get("original_level") or 0.18),
         "russian_delay_ms": delay_ms,
         "srt_cues": len(parsed_cues),
@@ -404,40 +410,12 @@ def main() -> None:
             "russian_timeline": str(russian_timeline),
         },
         "telegram_outputs": [
-            _telegram_entry(
-                named_mixed,
-                filename=named_mixed.name,
-                label="Готовый ролик: ваш SRT без изменений, оригинал 18%",
-                primary=True,
-                video=True,
-            ),
-            _telegram_entry(
-                named_russian,
-                filename=named_russian.name,
-                label="Версия только с русским голосом",
-                video=True,
-                send_default=False,
-            ),
-            _telegram_entry(
-                named_srt,
-                filename=named_srt.name,
-                label="Финальные русские субтитры с задержкой 420 мс",
-            ),
-            _telegram_entry(
-                named_original_srt,
-                filename=named_original_srt.name,
-                label="Ваш исходный готовый SRT",
-            ),
-            _telegram_entry(
-                named_translation,
-                filename=named_translation.name,
-                label="Ваш русский текст по речевым блокам",
-            ),
-            _telegram_entry(
-                qa_path,
-                filename=f"{russian_title} — технический отчёт.txt",
-                label="Технический отчёт без проверки перевода",
-            ),
+            _telegram_entry(named_mixed, filename=named_mixed.name, label="Готовый ролик: ваш SRT без изменений, оригинал 18%", primary=True, video=True),
+            _telegram_entry(named_russian, filename=named_russian.name, label="Версия только с русским голосом", video=True, send_default=False),
+            _telegram_entry(named_srt, filename=named_srt.name, label="Финальные русские субтитры с задержкой 420 мс"),
+            _telegram_entry(named_original_srt, filename=named_original_srt.name, label="Ваш исходный готовый SRT"),
+            _telegram_entry(named_translation, filename=named_translation.name, label="Ваш русский текст по речевым блокам"),
+            _telegram_entry(qa_path, filename=f"{russian_title} — технический отчёт.txt", label="Технический отчёт без проверки перевода"),
         ],
     }
     save_json(output_dir / "manifest.json", manifest)
