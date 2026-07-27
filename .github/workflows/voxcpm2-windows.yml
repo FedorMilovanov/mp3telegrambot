@@ -43,93 +43,70 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      - name: Reject embedded runtime packages
+        shell: pwsh
+        run: |
+          $Parts = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "package.part*.b64" -File -Recurse)
+          $EmbeddedZips = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.zip" -File -Recurse)
+          $InnerLaunchers = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*-Inner.ps1" -File -Recurse)
+          if ($Parts.Count -gt 0 -or $EmbeddedZips.Count -gt 0 -or $InnerLaunchers.Count -gt 0) {
+            $Parts + $EmbeddedZips + $InnerLaunchers | ForEach-Object { Write-Host $_.FullName }
+            throw "Embedded ZIP/Base64/nested launchers are forbidden in production."
+          }
+
       - name: Compile every VoxCPM2 Python tool
         shell: pwsh
         run: |
-          $scripts = Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File -Recurse
-          if (-not $scripts) {
-            throw "No VoxCPM2 Python tools found"
+          $Scripts = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File -Recurse)
+          if ($Scripts.Count -eq 0) {
+            throw "No VoxCPM2 Python tools found."
           }
-          foreach ($script in $scripts) {
-            Write-Host "Compiling $($script.FullName)"
-            python -m py_compile $script.FullName
+          foreach ($Script in $Scripts) {
+            Write-Host "Compiling $($Script.FullName)"
+            python -m py_compile $Script.FullName
             if ($LASTEXITCODE -ne 0) {
-              throw "Python compile failed: $($script.FullName)"
+              throw "Python compile failed: $($Script.FullName)"
             }
           }
-
-      - name: Reconstruct John Piper embedded production package
-        shell: pwsh
-        run: |
-          $example = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
-          $parts = @(
-            Get-ChildItem -LiteralPath $example -File -Filter "package.part*.b64" |
-              Sort-Object Name
-          )
-          if ($parts.Count -ne 7) {
-            throw "Expected 7 John Piper package parts, found $($parts.Count)"
-          }
-          $encoded = ($parts | ForEach-Object {
-            (Get-Content -LiteralPath $_.FullName -Raw).Trim()
-          }) -join ""
-          if ($encoded.Length -ne 26336) {
-            throw "Unexpected John Piper Base64 length: $($encoded.Length)"
-          }
-          $zipPath = Join-Path $env:RUNNER_TEMP "john-piper-package.zip"
-          [IO.File]::WriteAllBytes($zipPath, [Convert]::FromBase64String($encoded))
-          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne "e5247345d451cd00805d9157cf279a19aad6ee2ca9935a0167ee7b38fda9294f") {
-            throw "John Piper package SHA256 mismatch: $hash"
-          }
-          $extractPath = Join-Path $env:RUNNER_TEMP "john-piper-package"
-          Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath -Force
-          "JOHN_PIPER_PACKAGE_DIR=$extractPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Parse every VoxCPM2 PowerShell launcher
         shell: pwsh
         run: |
-          $failed = $false
-          $scripts = @(
-            Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.ps1" -File -Recurse
-          )
-          $embeddedScripts = @(
-            Get-ChildItem -LiteralPath $env:JOHN_PIPER_PACKAGE_DIR -Filter "*.ps1" -File -Recurse
-          )
-          $scripts = @($scripts + $embeddedScripts)
-
-          if (-not $scripts) {
-            throw "No VoxCPM2 PowerShell launchers found"
+          $Failed = $false
+          $Scripts = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.ps1" -File -Recurse)
+          if ($Scripts.Count -eq 0) {
+            throw "No VoxCPM2 PowerShell launchers found."
           }
 
-          foreach ($script in $scripts) {
-            $tokens = $null
-            $parseErrors = $null
+          foreach ($Script in $Scripts) {
+            $Tokens = $null
+            $ParseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
-              $script.FullName,
-              [ref]$tokens,
-              [ref]$parseErrors
+              $Script.FullName,
+              [ref]$Tokens,
+              [ref]$ParseErrors
             )
 
-            if ($parseErrors.Count -gt 0) {
-              $failed = $true
-              Write-Host "PowerShell parse failed: $($script.FullName)" -ForegroundColor Red
-              foreach ($errorItem in $parseErrors) {
+            if ($ParseErrors.Count -gt 0) {
+              $Failed = $true
+              Write-Host "PowerShell parse failed: $($Script.FullName)" -ForegroundColor Red
+              foreach ($ErrorItem in $ParseErrors) {
                 Write-Host (
                   "Line {0}, column {1}: {2}`n{3}" -f
-                  $errorItem.Extent.StartLineNumber,
-                  $errorItem.Extent.StartColumnNumber,
-                  $errorItem.Message,
-                  $errorItem.Extent.Text
+                  $ErrorItem.Extent.StartLineNumber,
+                  $ErrorItem.Extent.StartColumnNumber,
+                  $ErrorItem.Message,
+                  $ErrorItem.Extent.Text
                 ) -ForegroundColor Red
               }
             }
             else {
-              Write-Host "PowerShell OK: $($script.FullName)" -ForegroundColor Green
+              Write-Host "PowerShell OK: $($Script.FullName)" -ForegroundColor Green
             }
           }
 
-          if ($failed) {
-            throw "One or more VoxCPM2 launchers contain parse errors"
+          if ($Failed) {
+            throw "One or more VoxCPM2 launchers contain parse errors."
           }
 
       - name: Run lightweight VoxCPM2 tests
