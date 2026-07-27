@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Checked direct-SRT entrypoint with strict source-duration timing."""
+"""Checked direct-SRT entrypoint with strict timing and verbatim TTS text."""
 from __future__ import annotations
 
 from typing import Any
@@ -49,6 +49,7 @@ def build_direct_segments_safe(
                 "text": text,
                 "source_end": round(source_end, 3),
                 "source": text,
+                "text_policy": "verbatim_user_srt",
             }
         )
         subtitle_start = min(duration, start + effective_delay)
@@ -57,7 +58,18 @@ def build_direct_segments_safe(
     return segments, subtitles
 
 
+def preserve_user_tts_text(value: str) -> str:
+    """Do not edit punctuation or wording from the user's final SRT."""
+    return str(value or "").strip()
+
+
 def main() -> None:
+    # The semantic guard still verifies the generated audio with Whisper and
+    # retries failed candidates. Only its editorial punctuation sanitizer is
+    # disabled in the final-user-SRT process.
+    from tools.voxcpm2 import semantic_tts_guard
+
+    semantic_tts_guard.sanitize_tts_text = preserve_user_tts_text
     production._build_direct_segments = build_direct_segments_safe
     production.main()
 
