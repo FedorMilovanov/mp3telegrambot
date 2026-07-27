@@ -19,7 +19,9 @@ def test_worker_builds_only_registered_command(monkeypatch: pytest.MonkeyPatch) 
     assert script.suffix.lower() == ".ps1"
     assert "tools" in script.parts
     assert spec["kind"] == "repair"
-    assert "25" in " ".join(command)
+    joined = " ".join(command)
+    assert "-OriginalLevel 0.18" in joined
+    assert "0.25" not in joined
 
 
 def test_worker_rejects_invalid_recipe_action(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -37,4 +39,4 @@ def test_progress_parser_understands_segments_and_master() -> None:
         "=== 5. Постоянный микс и финальный master ===",
         progress,
     )
-    assert stage
+    assert stage == "5. Постоянный микс и финальный master"
