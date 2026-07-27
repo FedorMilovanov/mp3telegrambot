@@ -1,0 +1,80 @@
+name: Run Direct Pipeline Migration
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/materialize-voxcpm2-direct-pipeline.yml"
+      - ".github/workflows/run-direct-pipeline-migration.yml"
+      - ".materialize-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract and run one-time migration
+        shell: pwsh
+        run: |
+          $Workflow = Get-Content -LiteralPath ".github/workflows/materialize-voxcpm2-direct-pipeline.yml" -Raw
+          $Match = [regex]::Match(
+            $Workflow,
+            "(?s)          @'\r?\n(.*?)\r?\n          '@ \| Set-Content -LiteralPath \.materialize_direct_pipeline\.py"
+          )
+          if (-not $Match.Success) {
+            throw "Could not extract the materialization program."
+          }
+          $Lines = $Match.Groups[1].Value -split "\r?\n"
+          $Dedented = $Lines | ForEach-Object {
+            if ($_.StartsWith("          ")) { $_.Substring(10) } else { $_ }
+          }
+          $Dedented -join "`n" | Set-Content -LiteralPath ".materialize_direct_pipeline.py" -Encoding utf8
+          python .materialize_direct_pipeline.py
+          if ($LASTEXITCODE -ne 0) { throw "Materialization failed" }
+          Remove-Item -LiteralPath .materialize_direct_pipeline.py -Force
+
+      - name: Validate generated direct pipeline
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/production/segmented_voice_clone.py `
+            tools/voxcpm2/production/master_constant_mix.py
+          if ($LASTEXITCODE -ne 0) { throw "Python compile failed" }
+
+          $Scripts = @(Get-ChildItem -LiteralPath tools/voxcpm2 -Filter "*.ps1" -File -Recurse)
+          foreach ($Script in $Scripts) {
+            $Tokens = $null
+            $Errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $Script.FullName,
+              [ref]$Tokens,
+              [ref]$Errors
+            )
+            if ($Errors.Count -gt 0) {
+              $Errors | Format-List
+              throw "PowerShell parse failed: $($Script.FullName)"
+            }
+          }
+
+      - name: Commit direct files
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath ".github/workflows/run-direct-pipeline-migration.yml" -Force
+          Remove-Item -LiteralPath ".materialize-trigger" -Force -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace embedded John Piper package with direct CPU pipeline"
+          git push origin HEAD:${{ github.head_ref }}
