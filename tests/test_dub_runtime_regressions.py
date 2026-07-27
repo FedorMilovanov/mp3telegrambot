@@ -24,4 +24,4 @@ def test_title_standard_fixes_christian_woman_and_adds_speaker() -> None:
 
 def test_title_standard_preserves_known_mixed_case_words() -> None:
     result = standardize_russian_title("как YouTube и AI меняют мир")
-    assert result == "Как YouTube И AI Меняют Мир"
+    assert result == "Как YouTube и AI Меняют Мир"
