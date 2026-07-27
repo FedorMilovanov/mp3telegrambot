@@ -16,9 +16,10 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
+from tools.voxcpm2.activity_quality import sustained_activity_index
 from tools.voxcpm2 import semantic_tts_guard as legacy
 
-_GUARD_VERSION = "semantic-tts-guard-v4.1"
+_GUARD_VERSION = "semantic-tts-guard-v4.2"
 _SYNTH_NAME = "voxcpm2_cpu_shorts_production.py"
 _MASTER_NAME = "master_constant_mix.py"
 _QUALITY_RENDERER = "voxcpm2_quality_v4_renderer.py"
@@ -113,13 +114,93 @@ def _frame_rms(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, np.nd
 
 
 def _sustained_index(active: np.ndarray, *, reverse: bool = False) -> int | None:
-    indices = range(len(active) - 1, -1, -1) if reverse else range(len(active))
-    for index in indices:
-        left = max(0, index - 2)
-        right = min(len(active), index + 3)
-        if active[index] and int(np.count_nonzero(active[left:right])) >= 3:
-            return int(index)
-    return None
+    return sustained_activity_index(active, reverse=reverse)
+
+
+def _pre_speech_artifact(
+    audio: np.ndarray,
+    sample_rate: int,
+    speech_start: int,
+    speech_rms: float,
+) -> dict[str, Any]:
+    """Detect a short click/chirp separated from the sustained sentence."""
+    pre_end = max(0, int(speech_start) - int(sample_rate * 0.012))
+    pre = np.asarray(audio[:pre_end], dtype=np.float32)
+    pre_peak = float(np.max(np.abs(pre))) if len(pre) else 0.0
+    pre_step = float(np.max(np.abs(np.diff(pre)))) if len(pre) > 1 else 0.0
+    pre_rms = math.sqrt(float(np.mean(pre**2)) + 1e-12) if len(pre) else 0.0
+    pre_zcr = (
+        float(np.mean(np.signbit(pre[1:]) != np.signbit(pre[:-1])))
+        if len(pre) > 1
+        else 0.0
+    )
+    bursts: list[dict[str, Any]] = []
+    isolated = False
+
+    frame = max(8, int(sample_rate * 0.002))
+    hop = max(4, int(sample_rate * 0.001))
+    if len(pre) >= frame:
+        starts = np.arange(0, max(1, len(pre) - frame + 1), hop, dtype=np.int64)
+        levels = np.asarray(
+            [math.sqrt(float(np.mean(pre[start : start + frame] ** 2)) + 1e-12) for start in starts],
+            dtype=np.float64,
+        )
+        active = levels >= max(0.0035, float(speech_rms) * 0.06)
+        run_start: int | None = None
+        runs: list[tuple[int, int]] = []
+        for index, value in enumerate(active):
+            if value and run_start is None:
+                run_start = index
+            if run_start is not None and (not value or index == len(active) - 1):
+                run_end = index if not value else index + 1
+                runs.append((run_start, run_end))
+                run_start = None
+
+        for left, right in runs:
+            sample_start = int(starts[left])
+            sample_end = min(len(pre), int(starts[right - 1]) + frame)
+            chunk = pre[sample_start:sample_end]
+            duration_ms = (sample_end - sample_start) * 1000.0 / sample_rate
+            gap_ms = (speech_start - sample_end) * 1000.0 / sample_rate
+            peak = float(np.max(np.abs(chunk))) if len(chunk) else 0.0
+            max_step = float(np.max(np.abs(np.diff(chunk)))) if len(chunk) > 1 else 0.0
+            zcr = (
+                float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
+                if len(chunk) > 1
+                else 0.0
+            )
+            rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12) if len(chunk) else 0.0
+            suspicious = bool(
+                gap_ms >= 18.0
+                and duration_ms <= 75.0
+                and (
+                    (max_step > 0.075 and peak > 0.055)
+                    or (zcr > 0.18 and rms > max(0.004, float(speech_rms) * 0.045))
+                    or peak > max(0.14, float(speech_rms) * 1.70)
+                )
+            )
+            bursts.append(
+                {
+                    "start_ms": round(sample_start * 1000.0 / sample_rate, 3),
+                    "duration_ms": round(duration_ms, 3),
+                    "gap_to_speech_ms": round(gap_ms, 3),
+                    "peak": round(peak, 6),
+                    "max_step": round(max_step, 6),
+                    "zcr": round(zcr, 6),
+                    "rms": round(rms, 6),
+                    "suspicious": suspicious,
+                }
+            )
+            isolated = isolated or suspicious
+
+    return {
+        "isolated": isolated,
+        "pre_peak": pre_peak,
+        "pre_max_step": pre_step,
+        "pre_rms": pre_rms,
+        "pre_zcr": pre_zcr,
+        "bursts": bursts,
+    }
 
 
 def measure_timing_quality(
@@ -148,19 +229,12 @@ def measure_timing_quality(
     onset_ms = speech_start * 1000.0 / sample_rate
     trailing_ms = (len(audio) - speech_end) * 1000.0 / sample_rate
 
-    pre_end = max(0, speech_start - int(sample_rate * 0.012))
-    pre = audio[:pre_end]
-    pre_peak = float(np.max(np.abs(pre))) if len(pre) else 0.0
-    pre_step = float(np.max(np.abs(np.diff(pre)))) if len(pre) > 1 else 0.0
     speech_probe = audio[speech_start : min(len(audio), speech_start + int(sample_rate * 0.30))]
     speech_rms = math.sqrt(float(np.mean(speech_probe**2)) + 1e-12) if len(speech_probe) else 0.0
-    isolated_artifact = bool(
-        len(pre)
-        and (
-            (pre_step > 0.30 and pre_peak > 0.12)
-            or (onset_ms >= 90.0 and pre_peak > max(0.18, speech_rms * 3.2))
-        )
-    )
+    artifact = _pre_speech_artifact(audio, sample_rate, speech_start, speech_rms)
+    pre_peak = float(artifact["pre_peak"])
+    pre_step = float(artifact["pre_max_step"])
+    isolated_artifact = bool(artifact["isolated"])
     passed = bool(
         onset_ms <= float(max_onset_ms)
         and trailing_ms >= float(min_trailing_ms)
@@ -176,6 +250,9 @@ def measure_timing_quality(
         "pre_max_step": round(pre_step, 6),
         "speech_probe_rms": round(speech_rms, 6),
         "isolated_start_artifact": isolated_artifact,
+        "pre_speech_bursts": artifact["bursts"],
+        "pre_rms": round(float(artifact["pre_rms"]), 6),
+        "pre_zcr": round(float(artifact["pre_zcr"]), 6),
     }
 
 
@@ -304,7 +381,7 @@ def _run_quality_synth(command: Sequence[str], *args: Any, **kwargs: Any) -> Any
         encoding="utf-8",
     )
     raise RuntimeError(
-        "VoxCPM2 Quality v4.1 не прошёл проверку после "
+        "VoxCPM2 Quality v4.2 не прошёл проверку после "
         f"{max_rounds} раундов. Сегменты: {last_report.get('failed_segment_ids', [])}."
     )
 
@@ -359,7 +436,7 @@ def install() -> None:
             if hasattr(module, "subprocess"):
                 setattr(module, "subprocess", proxy)
         _INSTALLED = True
-        log("Quality v4.1 guard installed for Gemini MAX and ready SRT")
+        log("Quality v4.2 guard installed for Gemini MAX and ready SRT")
 
 
 __all__ = [

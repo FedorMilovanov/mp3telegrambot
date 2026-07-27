@@ -19,6 +19,8 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
+from tools.voxcpm2.activity_quality import sustained_activity_index
+
 _SENTENCE_END_RE = re.compile(r"[.!?…][\s\"'»”)]*$")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
 _MIN_GROUP_SECONDS = 1.35
@@ -302,13 +304,7 @@ def _frame_activity(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, 
 
 
 def _sustained_index(active: np.ndarray, *, reverse: bool = False) -> int | None:
-    indices = range(len(active) - 1, -1, -1) if reverse else range(len(active))
-    for index in indices:
-        left = max(0, index - 2)
-        right = min(len(active), index + 3)
-        if active[index] and int(np.count_nonzero(active[left:right])) >= 3:
-            return int(index)
-    return None
+    return sustained_activity_index(active, reverse=reverse)
 
 
 def _edge_trim(samples: np.ndarray, sample_rate: int) -> np.ndarray:

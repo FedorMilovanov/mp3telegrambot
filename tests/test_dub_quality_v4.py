@@ -100,6 +100,39 @@ def test_edge_trim_skips_isolated_chirp_and_stabilizes_preroll() -> None:
     assert 0.65 < len(trimmed) / sample_rate < 1.05
 
 
+def test_edge_trim_rejects_thirty_ms_chirp_before_real_speech() -> None:
+    sample_rate = 16000
+    audio = np.zeros(sample_rate * 2, dtype=np.float32)
+    chirp_start = int(sample_rate * 0.10)
+    chirp_time = np.arange(int(sample_rate * 0.03), dtype=np.float32) / sample_rate
+    audio[chirp_start : chirp_start + len(chirp_time)] = 0.25 * np.sin(2 * np.pi * 3500 * chirp_time)
+    speech_start = int(sample_rate * 0.55)
+    speech_time = np.arange(int(sample_rate * 0.70), dtype=np.float32) / sample_rate
+    audio[speech_start : speech_start + len(speech_time)] = 0.12 * np.sin(2 * np.pi * 180 * speech_time)
+
+    trimmed, report = trim_candidate_edges(audio, sample_rate)
+
+    assert report["trimmed_leading"] > 0.40
+    assert len(trimmed) / sample_rate < 1.05
+
+
+def test_timing_qa_rejects_thirty_ms_chirp_before_real_speech() -> None:
+    sample_rate = 16000
+    audio = np.zeros(sample_rate, dtype=np.float32)
+    chirp_start = int(sample_rate * 0.02)
+    chirp_time = np.arange(int(sample_rate * 0.03), dtype=np.float32) / sample_rate
+    audio[chirp_start : chirp_start + len(chirp_time)] = 0.30 * np.sin(2 * np.pi * 3500 * chirp_time)
+    speech_start = int(sample_rate * 0.12)
+    speech_time = np.arange(int(sample_rate * 0.70), dtype=np.float32) / sample_rate
+    audio[speech_start : speech_start + len(speech_time)] = 0.12 * np.sin(2 * np.pi * 180 * speech_time)
+
+    result = measure_timing_quality(audio, sample_rate)
+
+    assert result["passed"] is False
+    assert result["isolated_start_artifact"] is True
+    assert any(item["suspicious"] for item in result["pre_speech_bursts"])
+
+
 def test_timing_qa_accepts_stable_onset_and_rejects_late_onset() -> None:
     sample_rate = 16000
     stable = np.zeros(sample_rate, dtype=np.float32)
