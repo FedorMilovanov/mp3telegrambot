@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local environment preflight for both Dub Studio production modes."""
+"""Local environment preflight for all Dub Studio production actions."""
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +25,7 @@ from services.dub_studio import (
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-quality-v4.1"
+_WORKER_RUNTIME = "dub-worker-quality-v4.2"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -72,8 +72,10 @@ def collect_dub_health() -> list[dict[str, Any]]:
         recipe = load_recipe("generic_short_v1")
         gemini, _ = build_command(recipe.recipe_id, "render_gemini")
         direct, _ = build_command(recipe.recipe_id, "render_direct")
+        repair, repair_spec = build_command(recipe.recipe_id, "repair_audio")
         gemini_text = " ".join(gemini)
         direct_text = " ".join(direct)
+        repair_text = " ".join(repair)
         checks.append(
             _check(
                 "Recipe: Gemini MAX",
@@ -90,6 +92,14 @@ def collect_dub_health() -> list[dict[str, Any]]:
                 direct_text,
             )
         )
+        checks.append(
+            _check(
+                "Recipe: аудиоремонт без Gemini",
+                "tools.voxcpm2.generic_audio_repair_runtime" in repair_text
+                and str(repair_spec.get("kind") or "") == "utility",
+                repair_text,
+            )
+        )
     except Exception as exc:
         checks.append(_check("Recipe-actions", False, str(exc)))
 
@@ -100,9 +110,17 @@ def collect_dub_health() -> list[dict[str, Any]]:
     quality_master_path = repo / "tools" / "voxcpm2" / "master_quality_v4.py"
     gemini_entry_path = repo / "tools" / "voxcpm2" / "generic_gemini_runtime.py"
     direct_entry_path = repo / "tools" / "voxcpm2" / "generic_direct_checked_runtime.py"
+    audio_repair_entry_path = repo / "tools" / "voxcpm2" / "generic_audio_repair_runtime.py"
+    activity_quality_path = repo / "tools" / "voxcpm2" / "activity_quality.py"
     contract_files = (
-        quality_policy_path, quality_guard_path, quality_renderer_path,
-        quality_master_path, gemini_entry_path, direct_entry_path,
+        quality_policy_path,
+        quality_guard_path,
+        quality_renderer_path,
+        quality_master_path,
+        gemini_entry_path,
+        direct_entry_path,
+        audio_repair_entry_path,
+        activity_quality_path,
     )
     contract_text = {
         path: path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -113,13 +131,13 @@ def collect_dub_health() -> list[dict[str, Any]]:
         and "production._build_render_segments = build_render_segments_v4"
         in contract_text[quality_policy_path]
         and "local-window-v4.1" in contract_text[quality_policy_path]
-        and '_GUARD_VERSION = "semantic-tts-guard-v4.1"'
+        and '_GUARD_VERSION = "semantic-tts-guard-v4.2"'
         in contract_text[quality_guard_path]
         and "verify_timeline_v4" in contract_text[quality_guard_path]
         and "pipeline_signature" in contract_text[quality_guard_path]
         and 'env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)'
         in contract_text[quality_guard_path]
-        and '_QUALITY_VERSION = "voxcpm2-quality-v4.1"'
+        and '_QUALITY_VERSION = "voxcpm2-quality-v4.2"'
         in contract_text[quality_renderer_path]
         and "nested retry remains disabled" in contract_text[quality_renderer_path]
         and '"whole_mix_loudnorm": False' in contract_text[quality_master_path]
@@ -130,15 +148,19 @@ def collect_dub_health() -> list[dict[str, Any]]:
         in contract_text[gemini_entry_path]
         and "legacy_semantic_guard.install = _disable_legacy_guard_install"
         in contract_text[direct_entry_path]
+        and "sustained_activity_index" in contract_text[activity_quality_path]
+        and "translate_groups_max" not in contract_text[audio_repair_entry_path]
+        and '"gemini_called": False' in contract_text[audio_repair_entry_path]
+        and "semantic_tts_guard_v4.install()" in contract_text[audio_repair_entry_path]
     )
     checks.append(
         _check(
-            "NoChew Quality v4.1",
+            "NoChew Quality v4.2 + аудиоремонт",
             quality_ok,
             (
                 "local windows + caption coverage; reference-only renderer; "
                 "semantic/timing/chirp QA; signed checkpoints; exact-gain master; "
-                "Gemini MAX + ready SRT entrypoints"
+                "Gemini MAX + ready SRT + audio-only repair entrypoints"
             ),
         )
     )
@@ -265,8 +287,8 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Оба режима требуют зелёные NoChew Quality v4.1, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
-            "Только Gemini MAX дополнительно требует рабочие Gemini keys; готовый SRT не отправляется на перевод или редактуру.",
+            "Все действия требуют зелёные NoChew Quality v4.2, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт не отправляются на перевод или редактуру.",
         ]
     )
     await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
