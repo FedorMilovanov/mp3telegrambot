@@ -45,6 +45,36 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Materialization failed" }
           Remove-Item -LiteralPath .materialize_direct_pipeline.py -Force
 
+          @'
+          from pathlib import Path
+          import re
+
+          path = Path("tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-FINAL-CPU.ps1")
+          text = path.read_text(encoding="utf-8-sig")
+          rules = [
+              (
+                  r'(?ms)^    Write-Host \(\r?\n\s*"Zero-shot voice clone, как у МакАртура: "\r?\n\s*\+ "B extended \+ C composite\."\r?\n\s*\) -ForegroundColor Yellow$',
+                  '    Write-Host "Zero-shot voice clone: B extended + C composite." -ForegroundColor Yellow',
+              ),
+              (
+                  r'(?ms)^    Write-Host \(\r?\n\s*"CPU only \| Steps=\$Steps \| CFG=\$Cfg \| "\r?\n\s*\+ "5 смысловых блоков \| NoChew \| multi-candidate"\r?\n\s*\) -ForegroundColor Yellow$',
+                  '    Write-Host "CPU only | Steps=$Steps | CFG=$Cfg | 5 блоков | NoChew | multi-candidate" -ForegroundColor Yellow',
+              ),
+              (
+                  r'(?ms)^    Write-Host \(\r?\n\s*"Русский голос: 100%; оригинал постоянно: "\r?\n\s*\+ \(\$OriginalLevel \* 100\)\.ToString\("0\.0"\)\r?\n\s*\+ "%; master -14 LUFS / -1 dBTP\."\r?\n\s*\) -ForegroundColor Yellow$',
+                  '    $OriginalPercent = ($OriginalLevel * 100).ToString("0.0")\n    Write-Host "Русский голос: 100%; оригинал: $OriginalPercent%; master -14 LUFS / -1 dBTP." -ForegroundColor Yellow',
+              ),
+          ]
+          for pattern, replacement in rules:
+              text, count = re.subn(pattern, replacement, text)
+              if count != 1:
+                  raise SystemExit(f"Launcher normalization matched {count} times: {pattern}")
+          path.write_text(text, encoding="utf-8")
+          '@ | Set-Content -LiteralPath .normalize_launcher.py -Encoding utf8
+          python .normalize_launcher.py
+          if ($LASTEXITCODE -ne 0) { throw "Launcher normalization failed" }
+          Remove-Item -LiteralPath .normalize_launcher.py -Force
+
       - name: Validate generated direct pipeline
         shell: pwsh
         run: |
@@ -63,7 +93,10 @@ jobs:
               [ref]$Errors
             )
             if ($Errors.Count -gt 0) {
-              $Errors | Format-List
+              Write-Host "PowerShell parse failed: $($Script.FullName)" -ForegroundColor Red
+              foreach ($ErrorItem in $Errors) {
+                Write-Host "Line $($ErrorItem.Extent.StartLineNumber): $($ErrorItem.Message)" -ForegroundColor Red
+              }
               throw "PowerShell parse failed: $($Script.FullName)"
             }
           }
