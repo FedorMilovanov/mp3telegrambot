@@ -1,61 +1,59 @@
 # VoxCPM2 tools
 
-Experimental dubbing tools. VoxCPM2 synthesis is CPU-only on the current machine. The damaged RTX 3060 is permitted only for an isolated NVENC encode after a valid CPU/video-copy master already exists.
+Production dubbing tools for local VoxCPM2 voice transfer and Russian Shorts assembly.
 
-## Documentation
+## Current runtime contract
 
-- [`docs/voxcpm2/CURRENT_STATE.md`](../../docs/voxcpm2/CURRENT_STATE.md) — exact current review, ENG25 mix, block delays and NVENC trial.
-- [`docs/voxcpm2/PRODUCTION_RUNBOOK.md`](../../docs/voxcpm2/PRODUCTION_RUNBOOK.md) — repeatable production and remaster workflow.
-- [`docs/voxcpm2/README.md`](../../docs/voxcpm2/README.md) — full operational handbook and research notes.
-- [`docs/voxcpm2/HANDOFF_FOR_AI.md`](../../docs/voxcpm2/HANDOFF_FOR_AI.md) — compact context for another AI/developer.
-- [`docs/voxcpm2/EXPERIMENT_LOG.md`](../../docs/voxcpm2/EXPERIMENT_LOG.md) — append-only run history and exact failures.
-- [`docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`](../../docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md) — reference selection and A/B policy.
-- [`docs/voxcpm2/INTEGRATION_PLAN.md`](../../docs/voxcpm2/INTEGRATION_PLAN.md) — path from laboratory scripts to LiveDub.
-- [`docs/voxcpm2/QUALITY_RESEARCH_2026-07-26.md`](../../docs/voxcpm2/QUALITY_RESEARCH_2026-07-26.md) — primary-source quality sweep.
-- [`docs/voxcpm2/MODEL_COMPARISON_2026-07-26.md`](../../docs/voxcpm2/MODEL_COMPARISON_2026-07-26.md) — model comparison.
-- [`docs/voxcpm2/SOURCES.md`](../../docs/voxcpm2/SOURCES.md) — curated primary-source index.
-
-## Current completed-render correction
-
-Owner listening review established two required changes:
+VoxCPM2 synthesis is **CPU-only** on the current machine.
 
 ```text
-Original English: leave at 25% = linear gain 0.25
-Russian timing: move four blocks later by 220,160,100,40 ms
+CUDA_VISIBLE_DEVICES=-1
+torch.cuda.is_available() == False
 ```
 
-Do not rerun VoxCPM2. Use the completed Russian timeline.
+The RTX 3060 produced repeatable `nvlddmkm Event ID 153` during real VoxCPM2 BF16 and FP16 model workloads. The one-off CUDA probes and their launchers have been removed from the working tree. The preserved technical conclusion is in [`docs/voxcpm2/CUDA_RTX3060_POSTMORTEM_2026-07-27.md`](../../docs/voxcpm2/CUDA_RTX3060_POSTMORTEM_2026-07-27.md).
 
-## Delayed ENG25 remaster with RTX 3060 NVENC trial
+## John Piper Shorts — ready production command
+
+Source: `Four Marks You Belong to Christ | John Piper Clip`.
+
+The package follows the accepted John MacArthur scheme:
+
+- zero-shot cloning from the speaker's own source audio;
+- extended and composite reference profiles;
+- five literal Russian semantic blocks;
+- LocDiT 16 / CFG 1.80;
+- multi-candidate selection and NoChew tail-restart detection;
+- no slowdown of short successful candidates;
+- constant original English background at 18%;
+- final master at -14 LUFS / -1 dBTP;
+- video stream copy.
 
 Run from the repository root:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-
-.\tools\voxcpm2\windows\Remaster-MacArthur-Delayed-NVENC.ps1 `
-    -RepoRoot (Get-Location).Path `
-    -PackageDir "C:\AI-Archive\MacArthur_Shorts_VoxCPM2_CPU_FINAL" `
-    -WorkRoot "C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL" `
-    -OriginalGain 0.25 `
-    -DelayMs 220,160,100,40 `
-    -OpenOutput
+.\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1
 ```
 
-The tool creates a CPU/video-copy reference first and only then attempts NVENC:
+Or in one line, including the repository update:
+
+```powershell
+cd "C:\Users\Fedor\Projects\mp3telegrambot"; git pull origin main; Set-ExecutionPolicy -Scope Process Bypass -Force; .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1
+```
+
+Upload-ready output:
 
 ```text
-MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4
-MacArthur_FINAL_ENG25_DELAYED_VIDEO_COPY.mp4
-MacArthur_FINAL_ENG25_DELAYED_NVENC.mp4
-MacArthur_FINAL_ENG25_DELAYED_NVENC.report.json
+C:\AI-Archive\John-Piper-Short-Z20Py4yQhYQ-FINAL\output\John_Piper_Russian_Dub_FINAL_UPLOAD.mp4
 ```
 
-The NVENC test uses software decode and CPU audio processing. It does not use NVDEC, CUDA filters, PyTorch CUDA or VoxCPM2 CUDA.
+Full example documentation:
+[`examples/john_piper_z20py4yqhyq/README_RU.md`](examples/john_piper_z20py4yqhyq/README_RU.md).
 
-## Full CPU production launcher
+## John MacArthur
 
-Use only when speech itself must be regenerated:
+The accepted MacArthur CPU workflow remains the reference implementation. Use the completed timeline for remaster-only changes; regenerate speech only when the Russian wording or selected voice candidate must change.
 
 ```powershell
 .\tools\voxcpm2\windows\Run-MacArthur-Final-CPU.ps1 `
@@ -67,68 +65,50 @@ Use only when speech itself must be regenerated:
     -OpenOutput
 ```
 
-Local paths:
+## Production quality rules
 
-```text
-C:\AI-Archive\VoxCPM2-CPU-TEST\.venv
-C:\AI-Archive\VoxCPM2-paused-RTX3060
-C:\AI-Archive\MacArthur-Short-RAaSAbPj-iw-FINAL
-```
+- reference-only voice cloning;
+- references are mono 16 kHz, filtered and loudness-normalized;
+- model remains loaded once per production run;
+- at least two candidates per semantic block;
+- third candidate only for suspicious restart, clipping, or severe underlength;
+- detect and trim short tail restarts only inside confirmed silence;
+- never slow a short successful candidate;
+- reject tempo correction above the configured safety limit;
+- intermediate speech uses 24-bit WAV;
+- final mixed and Russian-only results are both retained;
+- temporary candidate WAVs are deleted unless diagnostics are requested;
+- final manifest records source, engine, references, synthesis parameters and output paths.
 
-## Constant-gain remaster without timing changes
+## Main documentation
 
-```powershell
-.\tools\voxcpm2\windows\Remaster-MacArthur-Constant-Gain.ps1 `
-    -OriginalGain 0.25 `
-    -OpenOutput
-```
+- [`docs/voxcpm2/CUDA_RTX3060_POSTMORTEM_2026-07-27.md`](../../docs/voxcpm2/CUDA_RTX3060_POSTMORTEM_2026-07-27.md) — final CUDA decision;
+- [`docs/voxcpm2/CURRENT_STATE.md`](../../docs/voxcpm2/CURRENT_STATE.md) — operational state;
+- [`docs/voxcpm2/PRODUCTION_RUNBOOK.md`](../../docs/voxcpm2/PRODUCTION_RUNBOOK.md) — production and remaster workflow;
+- [`docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`](../../docs/voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md) — reference selection;
+- [`docs/voxcpm2/EXPERIMENT_LOG.md`](../../docs/voxcpm2/EXPERIMENT_LOG.md) — historical run log;
+- [`docs/voxcpm2/HANDOFF_FOR_AI.md`](../../docs/voxcpm2/HANDOFF_FOR_AI.md) — compact handoff context.
 
-## Safety
-
-VoxCPM2 must report:
-
-```text
-CUDA available: False
-```
-
-Never use the RTX 3060 for the expensive synthesis. During the NVENC-only trial, reject the GPU output when any of these occur:
-
-- `nvlddmkm` Event ID 14 or 153;
-- Display Event ID 4101;
-- driver reset, freeze or corruption;
-- FFmpeg NVENC failure.
-
-The CPU/video-copy master remains the fallback and should not be deleted.
-
-## Main files
+## Existing reusable tools
 
 ```text
 segmented_cpu_dub.py
-  Historical segmented engine retained for regression tests.
+  Historical segmented CPU engine retained for regression tests.
 
 validate_run.py
   Validates generated reports without importing torch.
 
 production_preflight.py
-  Fails before model loading when source, references, scripts, model, disk or CPU isolation are wrong.
-
-remaster_delayed_nvenc.py
-  Repositions completed Russian blocks, remasters with gain 0.25, creates a video-copy master and attempts isolated h264_nvenc.
+  Rejects missing source, references, scripts, model, disk space or CPU isolation.
 
 quality_sweep.py
-  Generates a compact CFG/steps sweep for one ending-sensitive phrase.
+  Generates a compact CFG/steps sweep for a selected phrase.
 
 windows/Run-MacArthur-Final-CPU.ps1
-  Self-contained CPU synthesis workflow.
+  Accepted MacArthur CPU production launcher.
 
-windows/Remaster-MacArthur-Constant-Gain.ps1
-  Rebuilds only the fixed-gain master.
-
-windows/Remaster-MacArthur-Delayed-NVENC.ps1
-  Current ENG25 timing correction and RTX 3060 NVENC trial.
-
-examples/macarthur_raasabpj_iw/segments_ru_final.json
-  Accepted four-block timing plan.
+examples/john_piper_z20py4yqhyq/Run-John-Piper-FINAL-CPU.ps1
+  Self-contained John Piper CPU production launcher.
 ```
 
 ## Tests and CI
@@ -143,4 +123,4 @@ python -m pytest `
     -q
 ```
 
-`.github/workflows/voxcpm2-windows.yml` compiles all VoxCPM2 Python tools, parses every PowerShell launcher through the PowerShell AST, runs lightweight tests and applies fatal Ruff checks.
+`.github/workflows/voxcpm2-windows.yml` compiles Python tools, parses PowerShell launchers through the PowerShell AST, runs lightweight tests and applies fatal Ruff checks.
