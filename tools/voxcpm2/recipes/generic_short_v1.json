@@ -11,7 +11,7 @@
       "kind": "render",
       "label": "Gemini MAX — полный автоматический рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_project_runtime",
+      "module": "tools.voxcpm2.generic_gemini_runtime",
       "parameters": {
         "Mode": "gemini"
       }
@@ -20,7 +20,7 @@
       "kind": "render",
       "label": "Gemini MAX — перевод, проверки и готовый ролик",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_project_runtime",
+      "module": "tools.voxcpm2.generic_gemini_runtime",
       "parameters": {
         "Mode": "gemini"
       }
