@@ -17,6 +17,7 @@ from tools.voxcpm2.generic_short_production import (
     validate_translation,
     write_srt,
 )
+from tools.voxcpm2.generic_short_runtime import install_runtime_adapters
 
 
 def test_parse_timestamp_supports_vtt_and_srt() -> None:
@@ -88,11 +89,21 @@ def test_write_srt_uses_millisecond_timestamps(tmp_path: Path) -> None:
     assert "Русский текст" in text
 
 
-def test_registered_recipe_uses_eighteen_percent_and_large_delay() -> None:
+def test_registered_recipe_uses_hardened_runtime_eighteen_percent_and_delay() -> None:
     command, spec = build_command("short_tnliocegylk", "render")
     joined = " ".join(command)
     assert spec["runner"] == "python_module"
-    assert "tools.voxcpm2.generic_short_production" in joined
+    assert "tools.voxcpm2.generic_short_runtime" in joined
     assert "-OriginalLevel 0.18" in joined
     assert "-RussianDelayMs 420" in joined
     assert "-VideoId tNlIoCeGyLk" in joined
+
+
+def test_runtime_adapters_replace_network_and_translation_routes() -> None:
+    import tools.voxcpm2.generic_short_production as production
+    import tools.voxcpm2.generic_short_runtime as runtime
+
+    install_runtime_adapters()
+    assert production.download_source is runtime.download_source
+    assert production.download_captions is runtime.download_captions
+    assert production.gemini_json is runtime.gemini_json
