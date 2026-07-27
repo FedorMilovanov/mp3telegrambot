@@ -7,7 +7,10 @@ import pytest
 
 from handlers.dub_audio_repair import _ensure_repair_slot, parse_segment_selector
 from tools.voxcpm2 import dub_worker
-from tools.voxcpm2.generic_audio_repair_runtime import prepare_repair_checkpoints
+from tools.voxcpm2.generic_audio_repair_runtime import (
+    _source_cues,
+    prepare_repair_checkpoints,
+)
 from tools.voxcpm2.semantic_tts_guard_v4 import _GUARD_VERSION
 
 
@@ -41,6 +44,62 @@ def test_finished_job_does_not_block_repair() -> None:
     _ensure_repair_slot(Store(), "dub-test")
 
 
+def test_ready_srt_full_repair_recovers_source_cues_from_segments(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "segments_ru_final.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": 1,
+                    "start": 1.2,
+                    "original_srt_start": 1.1,
+                    "end": 3.4,
+                    "source_end": 3.8,
+                    "source": "Первая реплика.",
+                },
+                {
+                    "id": 2,
+                    "start": 4.0,
+                    "end": 6.5,
+                    "source_end": 6.8,
+                    "text": "Вторая реплика.",
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    cues = _source_cues(tmp_path)
+
+    assert [(cue.start, cue.end, cue.text) for cue in cues] == [
+        (1.1, 3.8, "Первая реплика."),
+        (4.0, 6.8, "Вторая реплика."),
+    ]
+
+
+def test_source_groups_remain_preferred_for_gemini_projects(tmp_path: Path) -> None:
+    (tmp_path / "source_groups.json").write_text(
+        json.dumps(
+            [{"id": 1, "start": 0.5, "end": 2.0, "source": "Original speech."}]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "segments_ru_final.json").write_text(
+        json.dumps(
+            [{"id": 1, "start": 9.0, "end": 10.0, "source": "Fallback."}]
+        ),
+        encoding="utf-8",
+    )
+
+    cues = _source_cues(tmp_path)
+
+    assert [(cue.start, cue.end, cue.text) for cue in cues] == [
+        (0.5, 2.0, "Original speech.")
+    ]
+
+
 def _checkpoint(root: Path, segment_id: int, seed: int = 100) -> Path:
     path = root / "checkpoints" / f"segment_{segment_id:02d}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +114,9 @@ def _checkpoint(root: Path, segment_id: int, seed: int = 100) -> Path:
     return path
 
 
-def test_partial_repair_retargets_good_checkpoints_and_deletes_selected(tmp_path: Path) -> None:
+def test_partial_repair_retargets_good_checkpoints_and_deletes_selected(
+    tmp_path: Path,
+) -> None:
     for segment_id in (1, 2, 3):
         _checkpoint(tmp_path, segment_id)
     (tmp_path / "semantic_guard.marker.json").write_text(
@@ -72,13 +133,17 @@ def test_partial_repair_retargets_good_checkpoints_and_deletes_selected(tmp_path
     )
 
     for segment_id in (1, 3):
-        payload = json.loads((tmp_path / "checkpoints" / f"segment_{segment_id:02d}.json").read_text())
+        payload = json.loads(
+            (tmp_path / "checkpoints" / f"segment_{segment_id:02d}.json").read_text()
+        )
         assert payload["signature"]["base_seed"] == 200
     assert not (tmp_path / "checkpoints" / "segment_02.json").exists()
     assert not list((tmp_path / "attempts").glob("02_*"))
 
 
-def test_legacy_project_requires_full_quality_upgrade_before_partial_repair(tmp_path: Path) -> None:
+def test_legacy_project_requires_full_quality_upgrade_before_partial_repair(
+    tmp_path: Path,
+) -> None:
     _checkpoint(tmp_path, 1)
     with pytest.raises(RuntimeError, match="полного Quality"):
         prepare_repair_checkpoints(
@@ -111,7 +176,9 @@ def test_recipe_routes_audio_repair_without_gemini() -> None:
     command, spec = dub_worker.build_command("generic_short_v1", "repair_audio")
     assert spec["module"] == "tools.voxcpm2.generic_audio_repair_runtime"
     assert "tools.voxcpm2.generic_audio_repair_runtime" in " ".join(command)
-    source = Path("tools/voxcpm2/generic_audio_repair_runtime.py").read_text(encoding="utf-8")
+    source = Path("tools/voxcpm2/generic_audio_repair_runtime.py").read_text(
+        encoding="utf-8"
+    )
     assert "translate_groups_max" not in source
     assert "gemini_json" not in source
     assert '"gemini_called": False' in source
