@@ -172,6 +172,14 @@ async def _notify_generic_success(
             "Отправляю основной MP4 и сопутствующие файлы.\n\n"
             f"Версия только с русским голосом: <code>/dubsend {html.escape(project_id)} all</code>"
         )
+    elif action == "repair_audio":
+        text = (
+            "✅ <b>Аудиоремонт Dub Studio завершён</b>\n\n"
+            f"Проект: <code>{html.escape(project_id)}</code>\n"
+            "Перевод, заголовок и субтитры использованы повторно — Gemini не запускался. "
+            "Отправляю обновлённый MP4 и аудиоматериалы.\n\n"
+            f"Проверить реплики: <code>/dubsegments {html.escape(project_id)}</code>"
+        )
     elif action == "render_custom":
         text = (
             "✅ <b>Legacy-ролик с пользовательским переводом готов</b>\n\n"
@@ -244,6 +252,7 @@ def install_dub_studio_runtime() -> None:
         if _INSTALLED:
             return
         from telegram.ext import Application, ApplicationBuilder
+        from handlers.dub_audio_repair import register_dub_audio_repair_handlers
         from handlers.dub_commands import register_dub_handlers
         from handlers.dub_delivery import register_dub_delivery_handlers
         from handlers.dub_health import register_dub_health_handler
@@ -258,6 +267,7 @@ def install_dub_studio_runtime() -> None:
             register_dub_wizard_handlers(application)
             register_dub_health_handler(application)
             register_dub_handlers(application)
+            register_dub_audio_repair_handlers(application)
             register_dub_delivery_handlers(application)
             register_dub_quickstart_handler(application)
             return application
@@ -272,7 +282,7 @@ def install_dub_studio_runtime() -> None:
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info("🎙 Dub Studio runtime: Gemini MAX + direct SRT + delivery + worker enabled")
+        logger.info("🎙 Dub Studio runtime: Gemini MAX + direct SRT + audio repair + delivery + worker enabled")
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]

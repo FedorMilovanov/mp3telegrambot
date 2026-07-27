@@ -70,6 +70,17 @@ def _direct_srt_path(project: dict[str, Any]) -> Path:
     ).resolve()
 
 
+def _audio_segments_path(project: dict[str, Any]) -> Path:
+    from services.dub_studio import studio_root
+
+    return (
+        studio_root()
+        / "projects"
+        / str(project["id"])
+        / "segments_ru_final.json"
+    ).resolve()
+
+
 def _render_label(project: dict[str, Any]) -> str:
     return "Повторить SRT-рендер" if _mode(project) == "direct" else "Повторить Gemini"
 
@@ -160,6 +171,14 @@ def _project_card(
         )
     else:
         rows.append([InlineKeyboardButton("📦 Файлы", callback_data=f"dub|files|{project_id}")])
+    if (
+        str(project.get("recipe_id")) == _GENERIC_RECIPE
+        and _audio_segments_path(project).is_file()
+        and can_render
+    ):
+        rows.append(
+            [InlineKeyboardButton("🎚 Реплики и аудиоремонт", callback_data=f"dub|audio|{project_id}")]
+        )
     if str(project["status"]) in {"queued", "rendering", "cancelling"}:
         rows.append([InlineKeyboardButton("🛑 Отменить", callback_data=f"dub|cancel|{project_id}")])
     return "\n".join(lines), InlineKeyboardMarkup(rows)
@@ -219,6 +238,8 @@ async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "<code>/dubrun [ID]</code> — повторить правильный режим проекта\n"
         "<code>/dubsrt [ID]</code> — загрузить готовый SRT\n"
         "<code>/dubfiles [ID]</code> — результаты\n"
+        "<code>/dubsegments [ID]</code> — список реплик и таймингов\n"
+        "<code>/dubfix ID 2,4-5</code> — заменить только выбранный звук\n"
         "<code>/dubcancel [ID]</code> — остановить задание\n"
         "<code>/dubworker</code> — состояние worker"
     )
@@ -486,6 +507,23 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text(f"🛑 Запрошена остановка задания #{job['id']}.")
         elif action == "files":
             await query.edit_message_text(_outputs_text(project), parse_mode="HTML")
+        elif action == "audio":
+            if not _audio_segments_path(project).is_file():
+                raise RuntimeError("Проект ещё не имеет готовых аудиореплик.")
+            await query.edit_message_text(
+                "\n".join(
+                    [
+                        "🎚 <b>Реплики и аудиоремонт</b>",
+                        "",
+                        f"Показать номера: <code>/dubsegments {html.escape(project_id)}</code>",
+                        f"Заменить выбранные: <code>/dubfix {html.escape(project_id)} 2,4-5</code>",
+                        f"Пересобрать весь звук без Gemini: <code>/dubfix {html.escape(project_id)} all</code>",
+                        "",
+                        "Перевод, название и субтитры не создаются заново.",
+                    ]
+                ),
+                parse_mode="HTML",
+            )
         elif action == "repairs":
             recipe = load_recipe(str(project["recipe_id"]))
             rows = [
