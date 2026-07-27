@@ -1,0 +1,190 @@
+name: Validate Dub Studio Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-dub-studio-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        id: deps
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-dev.txt 2>&1 | Tee-Object dub-validation-deps.log
+          exit $LASTEXITCODE
+
+      - name: Compile all Dub Studio production files
+        id: compile
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/generic_short_runtime.py `
+            tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py `
+            tools/voxcpm2/dub_worker.py `
+            tools/voxcpm2/dub_worker_hardened.py `
+            handlers/dub_wizard.py `
+            handlers/dub_commands.py `
+            handlers/dub_delivery.py `
+            handlers/dub_health.py `
+            services/dub_studio.py `
+            services/dub_studio_runtime.py 2>&1 | Tee-Object dub-validation-compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
+          exit $LASTEXITCODE
+
+      - name: Validate mode and worker contracts
+        id: contract
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          from handlers.dub_commands import _default_render_action
+          from handlers.dub_wizard import _request_payload
+          from tools.voxcpm2.dub_worker import build_command
+          from tools.voxcpm2.generic_direct_checked_runtime import preserve_user_tts_text
+
+          gemini, gemini_spec = build_command('generic_short_v1', 'render_gemini')
+          direct, direct_spec = build_command('generic_short_v1', 'render_direct')
+          gemini_text = ' '.join(gemini)
+          direct_text = ' '.join(direct)
+          assert 'tools.voxcpm2.generic_gemini_runtime' in gemini_text
+          assert 'tools.voxcpm2.generic_direct_checked_runtime' in direct_text
+          assert '-Mode gemini' in gemini_text
+          assert '-Mode direct' in direct_text
+          assert gemini_spec['kind'] == direct_spec['kind'] == 'render'
+          assert _default_render_action({'recipe_id':'generic_short_v1','metadata':{'translation_mode':'gemini'}}) == 'render_gemini'
+          assert _default_render_action({'recipe_id':'generic_short_v1','metadata':{'translation_mode':'direct'}}) == 'render_direct'
+          for mode in ('gemini', 'direct'):
+              request = _request_payload('tNlIoCeGyLk', 'https://youtube.com/watch?v=tNlIoCeGyLk', mode)
+              assert request['original_level'] == 0.18
+              assert request['russian_delay_ms'] == 420
+          sample = '…Именно так… — не менять!'
+          assert preserve_user_tts_text(sample) == sample
+          print('Gemini/direct/worker contracts: OK')
+          '@ | python - 2>&1 | Tee-Object dub-validation-contract.log
+          exit $LASTEXITCODE
+
+      - name: Run focused regression suite
+        id: tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pytest -q `
+            tests/test_generic_direct_runtime.py `
+            tests/test_generic_gemini_runtime.py `
+            tests/test_semantic_tts_guard.py `
+            tests/test_dub_modes.py `
+            tests/test_dub_wizard.py `
+            tests/test_dub_delivery.py `
+            tests/test_dub_studio.py `
+            tests/test_dub_worker.py 2>&1 | Tee-Object dub-validation-tests.log
+          exit $LASTEXITCODE
+
+      - name: Import Telegram runtime
+        id: imports
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          import handlers.dub_wizard
+          import handlers.dub_commands
+          import handlers.dub_delivery
+          import handlers.dub_health
+          import services.dub_studio_runtime
+          import tools.voxcpm2.generic_direct_checked_runtime
+          import tools.voxcpm2.generic_gemini_runtime
+          import tools.voxcpm2.semantic_tts_guard
+          print('All focused runtime imports: OK')
+          '@ | python - 2>&1 | Tee-Object dub-validation-imports.log
+          exit $LASTEXITCODE
+
+      - name: Ruff changed surface
+        id: ruff
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m ruff check `
+            tools/voxcpm2/generic_short_runtime.py `
+            tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_direct_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
+            tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py `
+            tools/voxcpm2/dub_worker_hardened.py `
+            handlers/dub_wizard.py `
+            handlers/dub_commands.py `
+            handlers/dub_delivery.py `
+            handlers/dub_health.py `
+            services/dub_studio_runtime.py `
+            tests/test_generic_direct_runtime.py `
+            tests/test_generic_gemini_runtime.py `
+            tests/test_semantic_tts_guard.py `
+            tests/test_dub_modes.py `
+            tests/test_dub_worker.py 2>&1 | Tee-Object dub-validation-ruff.log
+          exit $LASTEXITCODE
+
+      - name: Record result and remove one-time workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Passed = ('${{ steps.deps.outcome }}' -eq 'success' -and '${{ steps.compile.outcome }}' -eq 'success' -and '${{ steps.contract.outcome }}' -eq 'success' -and '${{ steps.tests.outcome }}' -eq 'success' -and '${{ steps.imports.outcome }}' -eq 'success' -and '${{ steps.ruff.outcome }}' -eq 'success')
+          $Status = if ($Passed) { 'PASS' } else { 'FAIL' }
+          $Report = @"
+          # Dub Studio Windows validation
+
+          - Result: **$Status**
+          - Source commit: `${{ github.sha }}`
+          - Dependencies: `${{ steps.deps.outcome }}`
+          - Compile + recipe JSON: `${{ steps.compile.outcome }}`
+          - Mode/worker contract: `${{ steps.contract.outcome }}`
+          - Focused tests: `${{ steps.tests.outcome }}`
+          - Runtime imports: `${{ steps.imports.outcome }}`
+          - Ruff: `${{ steps.ruff.outcome }}`
+          - Physical YouTube/Gemini/VoxCPM2 render: local-only; verify with `/dubcheck` and one real project per mode.
+          "@
+          if (-not $Passed) {
+            foreach ($Name in @('dub-validation-compile.log','dub-validation-contract.log','dub-validation-tests.log','dub-validation-imports.log','dub-validation-ruff.log')) {
+              if (Test-Path $Name) {
+                $Report += "`n`n## $Name`n```text`n"
+                $Report += (Get-Content $Name -Tail 100 | Out-String)
+                $Report += "`n```"
+              }
+            }
+          }
+          New-Item -ItemType Directory -Force docs | Out-Null
+          $Report | Set-Content docs/dub_studio_validation_latest.md -Encoding utf8
+          Remove-Item .github/workflows/validate-dub-studio-once.yml -Force
+          git add docs/dub_studio_validation_latest.md .github/workflows/validate-dub-studio-once.yml
+          git commit -m "Record Dub Studio Windows validation: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
