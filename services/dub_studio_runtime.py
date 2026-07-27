@@ -96,10 +96,7 @@ def ensure_worker_running() -> bool:
         "--root",
         str(root),
     ]
-    kwargs: dict[str, Any] = {
-        "cwd": str(repo_root()),
-        "env": dict(os.environ),
-    }
+    kwargs: dict[str, Any] = {"cwd": str(repo_root()), "env": dict(os.environ)}
     kwargs["env"].setdefault("PYTHONUTF8", "1")
     kwargs["env"].setdefault("PYTHONIOENCODING", "utf-8")
     if os.name == "nt":
@@ -129,7 +126,6 @@ async def _notify_generic_success(
     event: dict[str, Any],
     project: dict[str, Any],
 ) -> bool:
-    """Send one mode-specific completion message and the dynamic manifest files."""
     from handlers.dub_delivery import send_project_outputs
 
     job = store.get_job(int(event["job_id"])) if event.get("job_id") else None
@@ -149,12 +145,7 @@ async def _notify_generic_success(
             text=text,
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
-                [[
-                    InlineKeyboardButton(
-                        "📎 Продолжить старый проект",
-                        callback_data=f"dubwiz|translation|{project_id}",
-                    )
-                ]]
+                [[InlineKeyboardButton("📎 Продолжить старый проект", callback_data=f"dubwiz|translation|{project_id}")]]
             ),
         )
         _sent, failures = await send_project_outputs(application.bot, chat_id, project)
@@ -171,8 +162,7 @@ async def _notify_generic_success(
             f"Проект: <code>{html.escape(project_id)}</code>\n"
             "Перевод прошёл полный многоступенчатый контроль. "
             "Отправляю основной MP4, перевод и субтитры.\n\n"
-            f"Версия только с русским голосом: "
-            f"<code>/dubsend {html.escape(project_id)} all</code>"
+            f"Версия только с русским голосом: <code>/dubsend {html.escape(project_id)} all</code>"
         )
     elif action == "render_direct":
         text = (
@@ -180,8 +170,7 @@ async def _notify_generic_success(
             f"Проект: <code>{html.escape(project_id)}</code>\n"
             "Русский текст использован без проверки и переписывания Gemini. "
             "Отправляю основной MP4 и сопутствующие файлы.\n\n"
-            f"Версия только с русским голосом: "
-            f"<code>/dubsend {html.escape(project_id)} all</code>"
+            f"Версия только с русским голосом: <code>/dubsend {html.escape(project_id)} all</code>"
         )
     elif action == "render_custom":
         text = (
@@ -197,11 +186,7 @@ async def _notify_generic_success(
     if failures:
         await application.bot.send_message(
             chat_id=chat_id,
-            text=(
-                "⚠️ Не все результаты отправились:\n"
-                + "\n".join(failures[:6])
-                + f"\n\nПовторить: /dubsend {project_id}"
-            ),
+            text="⚠️ Не все результаты отправились:\n" + "\n".join(failures[:6]) + f"\n\nПовторить: /dubsend {project_id}",
         )
     return True
 
@@ -221,6 +206,7 @@ async def _notification_loop(application: Any) -> None:
                         delivered = await _notify_generic_success(application, store, event, project)
                         if delivered:
                             store.mark_event_delivered(int(event["id"]))
+                            ensure_worker_running()
                             continue
                     icon = {"job_succeeded": "✅", "job_failed": "❌", "job_cancelled": "🚫"}.get(event_type, "ℹ️")
                     title = str(event.get("project_title") or project_id)
@@ -242,6 +228,7 @@ async def _notification_loop(application: Any) -> None:
                     logger.warning("Dub Studio notification failed for event %s: %s", event["id"], exc)
                     continue
                 store.mark_event_delivered(int(event["id"]))
+                ensure_worker_running()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -259,6 +246,7 @@ def install_dub_studio_runtime() -> None:
         from telegram.ext import Application, ApplicationBuilder
         from handlers.dub_commands import register_dub_handlers
         from handlers.dub_delivery import register_dub_delivery_handlers
+        from handlers.dub_health import register_dub_health_handler
         from handlers.dub_quickstart import register_dub_quickstart_handler
         from handlers.dub_wizard import register_dub_wizard_handlers
 
@@ -268,6 +256,7 @@ def install_dub_studio_runtime() -> None:
         def build_with_dub(self: Any) -> Any:
             application = _ORIGINAL_BUILD(self)
             register_dub_wizard_handlers(application)
+            register_dub_health_handler(application)
             register_dub_handlers(application)
             register_dub_delivery_handlers(application)
             register_dub_quickstart_handler(application)
