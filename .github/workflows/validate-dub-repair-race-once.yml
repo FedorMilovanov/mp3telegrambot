@@ -1,0 +1,50 @@
+name: Validate Dub Repair Race Once
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-dub-repair-race-once.yml'
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Race regression gate
+        id: gate
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile handlers/dub_audio_repair.py tests/test_dub_audio_repair.py 2>&1 | Tee-Object dub-repair-race.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_dub_audio_repair.py tests/test_dub_audio_repair_integration.py tests/test_dub_quality_v4.py 2>&1 | Tee-Object -Append dub-repair-race.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check handlers/dub_audio_repair.py tests/test_dub_audio_repair.py 2>&1 | Tee-Object -Append dub-repair-race.log
+          exit $LASTEXITCODE
+      - name: Publish result and remove workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Status = if ('${{ steps.gate.outcome }}' -eq 'success') { 'PASS' } else { 'FAIL' }
+          Remove-Item .github/workflows/validate-dub-repair-race-once.yml -Force
+          $Lines = @('# Dub Studio repair race validation','',"- Result: **$Status**",'- A queued/running job blocks request overwrite and deletion.',"- Compile/tests/Ruff: ${{ steps.gate.outcome }}")
+          if ($Status -eq 'FAIL' -and (Test-Path dub-repair-race.log)) { $Lines += ''; $Lines += (Get-Content dub-repair-race.log -Tail 180) }
+          $Lines | Set-Content docs/dub_studio_repair_race_validation.md -Encoding utf8
+          git add -A
+          git commit -m "Record Dub Studio repair race validation: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
