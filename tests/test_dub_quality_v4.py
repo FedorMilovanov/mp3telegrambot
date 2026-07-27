@@ -8,6 +8,8 @@ import numpy as np
 from tools.voxcpm2.dub_quality_v4 import group_cues_v4, group_ready_srt_v4
 from tools.voxcpm2.voxcpm2_quality_v4_renderer import trim_candidate_edges
 
+# Validation-only branch marker; production content is already in main.
+
 
 def _cue(start: float, end: float, text: str):
     return SimpleNamespace(start=start, end=end, text=text)
