@@ -67,7 +67,7 @@ def test_hardened_worker_installs_tree_cancel_and_version_marker(tmp_path: Path)
         assert DubStore.register_worker is hardened_worker._register_versioned_worker
         assert DubStore.worker_heartbeat is hardened_worker._heartbeat_versioned_worker
         assert DubStore.finish_job is hardened_worker._finish_job_with_root_cause
-        assert hardened_worker._RUNTIME_VERSION == "dub-worker-tree-cancel-v2"
+        assert hardened_worker._RUNTIME_VERSION == "dub-worker-tree-cancel-v3"
 
         store = DubStore(tmp_path)
         store.register_worker(
