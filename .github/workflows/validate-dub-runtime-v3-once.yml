@@ -1,0 +1,51 @@
+name: Validate Dub Runtime V3 Once
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-dub-runtime-v3-once.yml'
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install
+        run: python -m pip install -r requirements-dev.txt
+      - name: Final runtime v3 gate
+        id: gate
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile tools/voxcpm2/generic_short_runtime.py tools/voxcpm2/semantic_tts_guard.py tools/voxcpm2/voxcpm2_cpu_semantic_wrapper.py tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py tools/voxcpm2/dub_worker_hardened.py services/dub_studio_runtime.py handlers/dub_health.py 2>&1 | Tee-Object dub-runtime-v3.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_generic_project_runtime.py tests/test_semantic_tts_guard.py tests/test_dub_worker.py tests/test_dub_modes.py 2>&1 | Tee-Object -Append dub-runtime-v3.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check tools/voxcpm2/generic_short_runtime.py tools/voxcpm2/voxcpm2_cpu_semantic_wrapper.py tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py tools/voxcpm2/dub_worker_hardened.py services/dub_studio_runtime.py handlers/dub_health.py tests/test_generic_project_runtime.py tests/test_semantic_tts_guard.py tests/test_dub_worker.py 2>&1 | Tee-Object -Append dub-runtime-v3.log
+          exit $LASTEXITCODE
+      - name: Publish result and remove one-time workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Status = if ('${{ steps.gate.outcome }}' -eq 'success') { 'PASS' } else { 'FAIL' }
+          $Lines = @('# Dub Studio runtime v3 validation','',"- Result: **$Status**",'- Source: ${{ github.sha }}',"- Compile/tests/Ruff: ${{ steps.gate.outcome }}",'- Physical VoxCPM2 media render remains local-only.')
+          if ($Status -eq 'FAIL' -and (Test-Path dub-runtime-v3.log)) { $Lines += ''; $Lines += (Get-Content dub-runtime-v3.log -Tail 200) }
+          $Lines | Set-Content docs/dub_studio_runtime_v3_validation_latest.md -Encoding utf8
+          Remove-Item .github/workflows/validate-dub-runtime-v3-once.yml -Force
+          git add docs/dub_studio_runtime_v3_validation_latest.md .github/workflows/validate-dub-runtime-v3-once.yml
+          git commit -m "Record Dub Studio runtime v3 validation: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
