@@ -28,6 +28,10 @@ def _require_file(path: Path, label: str) -> None:
         raise RuntimeError(f"Gemini MAX не создал обязательный результат: {label} ({path}).")
 
 
+def _disable_legacy_guard_install() -> None:
+    """Quality v4 replaces only the obsolete prompt-continuation installer."""
+
+
 def clean_manual_caption_line(value: str) -> str:
     """Remove VTT markup but preserve meaningful bracketed source text."""
     text = html.unescape(_TAG_RE.sub("", str(value or ""))).replace("&nbsp;", " ")
@@ -96,7 +100,7 @@ def validate_completed_outputs(root: Path) -> dict[str, Any]:
 def main() -> None:
     # Keep the old guard importable for historical tests, but do not let its
     # prompt-continuation wrapper replace the proven reference-only NoChew flow.
-    legacy_semantic_guard.install = lambda: None
+    legacy_semantic_guard.install = _disable_legacy_guard_install
     dub_quality_v4.install_gemini_quality(production, pipeline)
     production.parse_manual_vtt = parse_creator_vtt_preserving_text
     semantic_tts_guard_v4.install()
