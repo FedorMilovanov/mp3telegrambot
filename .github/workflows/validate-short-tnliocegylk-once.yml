@@ -1,0 +1,90 @@
+name: Validate tNlIoCeGyLk Dub Once
+
+on:
+  push:
+    paths:
+      - .github/workflows/validate-short-tnliocegylk-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install verification dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile production module and repository
+        shell: pwsh
+        run: |
+          python -m py_compile tools/voxcpm2/generic_short_production.py
+          python -m compileall -q tools/voxcpm2 handlers services bot_new.py
+
+      - name: Validate recipe contract
+        shell: pwsh
+        run: |
+          $Recipe = Get-Content tools/voxcpm2/recipes/short_tnliocegylk.json -Raw | ConvertFrom-Json
+          if ($Recipe.id -ne 'short_tnliocegylk') { throw 'recipe id mismatch' }
+          if ($Recipe.source_url -ne 'https://youtube.com/shorts/tNlIoCeGyLk') { throw 'source mismatch' }
+          if ([double]$Recipe.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'original level mismatch' }
+          if ([int]$Recipe.actions.render.parameters.RussianDelayMs -ne 420) { throw 'russian delay mismatch' }
+          $Piper = Get-Content tools/voxcpm2/recipes/john_piper_z20py4yqhyq.json -Raw | ConvertFrom-Json
+          if ([double]$Piper.actions.render.parameters.OriginalLevel -ne 0.18) { throw 'Piper render mix not migrated' }
+          if ([double]$Piper.actions.repair_psalm15.parameters.OriginalLevel -ne 0.18) { throw 'Piper repair mix not migrated' }
+          python -m tools.voxcpm2.generic_short_production --help | Out-Null
+
+      - name: Run focused regression tests
+        shell: pwsh
+        run: python -m pytest -q tests/test_generic_short_production.py tests/test_dub_studio.py tests/test_dub_worker.py
+
+      - name: Ruff changed surface
+        shell: pwsh
+        run: python -m ruff check tools/voxcpm2/generic_short_production.py tests/test_generic_short_production.py
+
+      - name: Patch cleanliness
+        shell: pwsh
+        run: git diff --check
+
+      - name: Finalize verified recipe
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $History = 'docs/quality_audit_history.md'
+          $Heading = '## 2026-07-27 — tNlIoCeGyLk premium Dub Studio recipe'
+          if (-not (Select-String -Path $History -Pattern ([regex]::Escape($Heading)) -Quiet)) {
+            Add-Content -Path $History -Encoding utf8 -Value @"
+
+          $Heading
+
+          - Added a one-action Shorts pipeline: source download, captions with Whisper fallback,
+            two-pass literal-literary Russian translation, semantic length compression,
+            voice-reference construction, VoxCPM2 CPU NoChew and final mastering.
+          - Operator mix decision is encoded as a constant 18% original track.
+          - Russian speech starts 420 ms later; render windows are shortened by the same
+            amount so the final phrase is not clipped beyond the source duration.
+          - John Piper Dub Studio render and repair recipes were migrated from 25% to 18% original.
+          - Windows focused gate passed: compile, recipe contract, CLI, regression tests,
+            changed-surface ruff and git diff check.
+          "@
+          }
+          Remove-Item .github/workflows/validate-short-tnliocegylk-once.yml -Force
+          git add docs/quality_audit_history.md .github/workflows/validate-short-tnliocegylk-once.yml
+          git commit -m 'Record verified tNlIoCeGyLk dubbing recipe'
+          git push origin HEAD:main
