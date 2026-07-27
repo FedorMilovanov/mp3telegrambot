@@ -1,0 +1,48 @@
+name: John Piper Package Parser
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/**"
+      - ".github/workflows/john-piper-parser.yml"
+
+jobs:
+  parse:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct and parse package launchers
+        shell: pwsh
+        run: |
+          $example = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
+          $parts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File | Sort-Object Name)
+          $encoded = ($parts | ForEach-Object { (Get-Content -LiteralPath $_.FullName -Raw).Trim() }) -join ""
+          $zip = Join-Path $env:RUNNER_TEMP "john-piper.zip"
+          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($encoded))
+          $dir = Join-Path $env:RUNNER_TEMP "john-piper"
+          Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+
+          $scripts = @(
+            (Join-Path $example "Run-John-Piper-FINAL-CPU.ps1"),
+            (Join-Path $dir "Run-John-Piper-FINAL-CPU-Inner.ps1")
+          )
+          $failed = $false
+          foreach ($path in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -eq 0) {
+              Write-Host "OK: $path"
+              continue
+            }
+            $failed = $true
+            Write-Host "FAILED: $path"
+            foreach ($item in $errors) {
+              Write-Host "LINE=$($item.Extent.StartLineNumber) COLUMN=$($item.Extent.StartColumnNumber) MESSAGE=$($item.Message) TEXT=$($item.Extent.Text)"
+            }
+          }
+          if ($failed) { throw "Package launcher parse failed" }
