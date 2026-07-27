@@ -217,7 +217,7 @@ print("VoxCPM2 CPU environment: OK")
     Remove-Item -LiteralPath $RefA, $RefB -Force -ErrorAction SilentlyContinue
 
     Write-Host "=== 4. Синтез русского голоса VoxCPM2 ===" -ForegroundColor Cyan
-    Write-Host ("CPU only | Steps={0} | CFG={1} | 5 блоков | NoChew | multi-candidate" -f $Steps, $Cfg) -ForegroundColor Yellow
+    Write-Host ("CPU only | Steps={0} | CFG={1} | 5 блоков | NoChew | multi-candidate | resume checkpoints" -f $Steps, $Cfg) -ForegroundColor Yellow
 
     $DurationArg = Get-InvariantNumber -Value $SourceDuration
     & $Python $SynthScript `
@@ -256,7 +256,7 @@ print("VoxCPM2 CPU environment: OK")
     Copy-Item -LiteralPath $EnglishSrt -Destination $FinalSourceSrt -Force
 
     $ManifestPayload = [ordered]@{
-        schema_version = 3
+        schema_version = 4
         source_url = $Url
         source_video = $SourceVideo
         source_duration_seconds = [math]::Round($SourceDuration, 4)
@@ -266,6 +266,7 @@ print("VoxCPM2 CPU environment: OK")
         device = "cpu"
         cuda_visible_devices = "-1"
         voice_mode = "zero-shot reference cloning"
+        resume_mode = "per-segment checkpoints"
         reference_extended = $ExtendedReference
         reference_composite = $CompositeReference
         locdit_steps = $Steps
@@ -281,17 +282,12 @@ print("VoxCPM2 CPU environment: OK")
     $ManifestPayload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Manifest -Encoding utf8
 
     if (-not $KeepDiagnostics) {
-        Write-Host "=== 6. Очистка тяжёлых временных кандидатов ===" -ForegroundColor Cyan
-        $TempDirectories = @(
-            (Join-Path $SegmentWorkDir "attempts"),
-            (Join-Path $SegmentWorkDir "segments_clean"),
-            (Join-Path $SegmentWorkDir "segments_fitted")
-        )
-        foreach ($TempDir in $TempDirectories) {
-            if (Test-Path -LiteralPath $TempDir) {
-                Remove-Item -LiteralPath $TempDir -Recurse -Force
-            }
+        Write-Host "=== 6. Очистка только сырых кандидатов ===" -ForegroundColor Cyan
+        $AttemptsDir = Join-Path $SegmentWorkDir "attempts"
+        if (Test-Path -LiteralPath $AttemptsDir) {
+            Remove-Item -LiteralPath $AttemptsDir -Recurse -Force
         }
+        Write-Host "Fitted WAV и checkpoints сохранены для быстрого продолжения." -ForegroundColor DarkGray
 
         $TempFiles = @(
             (Join-Path $MasterWorkDir "constant_mix_unmastered.wav"),
