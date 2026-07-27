@@ -1,0 +1,160 @@
+name: Install Universal Dub Studio Once
+
+on:
+  push:
+    paths:
+      - .github/workflows/install-universal-dub-studio-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  install-and-validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        id: deps
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-dev.txt 2>&1 | Tee-Object ci-universal-deps.log
+          exit $LASTEXITCODE
+
+      - name: Extract implementation bundle
+        id: extract
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          import shutil
+          import tarfile
+          from pathlib import Path
+
+          archive = Path('.github/dub_impl.tar.gz')
+          temp = Path('.runtime-universal-dub-install')
+          if temp.exists():
+              shutil.rmtree(temp)
+          temp.mkdir(parents=True)
+          with tarfile.open(archive, 'r:gz') as handle:
+              handle.extractall(temp)
+          mapping = {
+              'generic_project_runtime.py': Path('tools/voxcpm2/generic_project_runtime.py'),
+              'dub_wizard.py': Path('handlers/dub_wizard.py'),
+              'dub_delivery.py': Path('handlers/dub_delivery.py'),
+              'dub_studio_runtime.py': Path('services/dub_studio_runtime.py'),
+              'generic_short_v1.json': Path('tools/voxcpm2/recipes/generic_short_v1.json'),
+              'test_generic_project_runtime.py': Path('tests/test_generic_project_runtime.py'),
+              'test_dub_wizard.py': Path('tests/test_dub_wizard.py'),
+          }
+          for source_name, destination in mapping.items():
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(temp / source_name, destination)
+          shutil.rmtree(temp)
+          print('bundle extracted:', len(mapping), 'files')
+          '@ | python - 2>&1 | Tee-Object ci-universal-extract.log
+          exit $LASTEXITCODE
+
+      - name: Compile and validate recipe
+        id: compile
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile tools/voxcpm2/generic_project_runtime.py handlers/dub_wizard.py handlers/dub_delivery.py services/dub_studio_runtime.py 2>&1 | Tee-Object ci-universal-compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q tools/voxcpm2 handlers services bot_new.py 2>&1 | Tee-Object -Append ci-universal-compile.log
+          exit $LASTEXITCODE
+
+      - name: Validate runtime contract
+        id: contract
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+          from tools.voxcpm2.dub_worker import build_command
+          from tools.voxcpm2.generic_project_runtime import choose_caption_track
+          from handlers.dub_wizard import _extract_youtube_video_id
+
+          recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          assert recipe['actions']['render_gemini']['module'] == 'tools.voxcpm2.generic_project_runtime'
+          assert recipe['actions']['prepare_custom']['parameters']['PrepareOnly'] is True
+          command, _ = build_command('generic_short_v1', 'render_gemini')
+          assert 'tools.voxcpm2.generic_project_runtime' in ' '.join(command)
+          assert choose_caption_track({'subtitles': {'en': [{}]}, 'automatic_captions': {'en': [{}]}}) == ('manual', 'en')
+          assert _extract_youtube_video_id('https://youtube.com/shorts/tNlIoCeGyLk?si=x')[0] == 'tNlIoCeGyLk'
+          print('universal Dub Studio contract: OK')
+          '@ | python - 2>&1 | Tee-Object ci-universal-contract.log
+          exit $LASTEXITCODE
+
+      - name: Run focused tests
+        id: tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_generic_project_runtime.py tests/test_dub_wizard.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py 2>&1 | Tee-Object ci-universal-tests.log
+          exit $LASTEXITCODE
+
+      - name: Ruff changed surface
+        id: ruff
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m ruff check tools/voxcpm2/generic_project_runtime.py handlers/dub_wizard.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_project_runtime.py tests/test_dub_wizard.py 2>&1 | Tee-Object ci-universal-ruff.log
+          exit $LASTEXITCODE
+
+      - name: Publish successful implementation
+        if: steps.deps.outcome == 'success' && steps.extract.outcome == 'success' && steps.compile.outcome == 'success' && steps.contract.outcome == 'success' && steps.tests.outcome == 'success' && steps.ruff.outcome == 'success'
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          Remove-Item .github/dub_impl.tar.gz -Force
+          Remove-Item .github/workflows/install-universal-dub-studio-once.yml -Force
+          Remove-Item docs/universal_dub_ci_failure.txt -Force -ErrorAction SilentlyContinue
+          git add tools/voxcpm2/generic_project_runtime.py tools/voxcpm2/recipes/generic_short_v1.json handlers/dub_wizard.py handlers/dub_delivery.py services/dub_studio_runtime.py tests/test_generic_project_runtime.py tests/test_dub_wizard.py .github/dub_impl.tar.gz .github/workflows/install-universal-dub-studio-once.yml docs/universal_dub_ci_failure.txt
+          git commit -m 'Add universal menu-driven Dub Studio production'
+          git push origin HEAD:main
+
+      - name: Record exact failure
+        if: always() && !(steps.deps.outcome == 'success' && steps.extract.outcome == 'success' && steps.compile.outcome == 'success' && steps.contract.outcome == 'success' && steps.tests.outcome == 'success' && steps.ruff.outcome == 'success')
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Report = @"
+          Universal Dub Studio Windows gate failed.
+          deps=${{ steps.deps.outcome }}
+          extract=${{ steps.extract.outcome }}
+          compile=${{ steps.compile.outcome }}
+          contract=${{ steps.contract.outcome }}
+          tests=${{ steps.tests.outcome }}
+          ruff=${{ steps.ruff.outcome }}
+          source_commit=${{ github.sha }}
+          "@
+          foreach ($Name in @('ci-universal-deps.log','ci-universal-extract.log','ci-universal-compile.log','ci-universal-contract.log','ci-universal-tests.log','ci-universal-ruff.log')) {
+            if (Test-Path $Name) {
+              $Report += "`n`n=== $Name ===`n"
+              $Report += (Get-Content $Name -Tail 180 | Out-String)
+            }
+          }
+          $Report | Set-Content docs/universal_dub_ci_failure.txt -Encoding utf8
+          git add docs/universal_dub_ci_failure.txt
+          git commit -m 'Record universal Dub Studio Windows gate failure'
+          git push origin HEAD:main
