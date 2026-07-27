@@ -1,0 +1,92 @@
+name: Dub Studio Checks
+
+on:
+  push:
+    paths:
+      - 'handlers/dub_*.py'
+      - 'services/dub_studio*.py'
+      - 'tools/voxcpm2/dub_worker*.py'
+      - 'tools/voxcpm2/generic_*.py'
+      - 'tools/voxcpm2/recipes/*.json'
+      - 'tests/test_dub*.py'
+      - 'tests/test_generic_*.py'
+      - '.github/workflows/dub-studio-checks.yml'
+  pull_request:
+    paths:
+      - 'handlers/dub_*.py'
+      - 'services/dub_studio*.py'
+      - 'tools/voxcpm2/dub_worker*.py'
+      - 'tools/voxcpm2/generic_*.py'
+      - 'tools/voxcpm2/recipes/*.json'
+      - 'tests/test_dub*.py'
+      - 'tests/test_generic_*.py'
+
+jobs:
+  focused-dub-studio:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile production surface
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/generic_direct_runtime.py `
+            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/dub_worker.py `
+            tools/voxcpm2/dub_worker_hardened.py `
+            handlers/dub_wizard.py `
+            handlers/dub_commands.py `
+            handlers/dub_delivery.py `
+            services/dub_studio.py `
+            services/dub_studio_runtime.py
+          python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
+      - name: Validate recipe actions
+        shell: pwsh
+        run: |
+          @'
+          from tools.voxcpm2.dub_worker import build_command
+
+          gemini, _ = build_command('generic_short_v1', 'render_gemini')
+          direct, _ = build_command('generic_short_v1', 'render_direct')
+          assert 'tools.voxcpm2.generic_gemini_runtime' in ' '.join(gemini)
+          assert 'tools.voxcpm2.generic_direct_runtime' in ' '.join(direct)
+          assert '-Mode gemini' in ' '.join(gemini)
+          assert '-Mode direct' in ' '.join(direct)
+          print('Recipe actions are separated: OK')
+          '@ | python -
+      - name: Focused regression tests
+        run: >-
+          python -m pytest -q
+          tests/test_generic_direct_runtime.py
+          tests/test_generic_gemini_runtime.py
+          tests/test_dub_modes.py
+          tests/test_dub_wizard.py
+          tests/test_dub_delivery.py
+          tests/test_dub_studio.py
+          tests/test_dub_worker.py
+      - name: Ruff changed surface
+        run: >-
+          python -m ruff check
+          tools/voxcpm2/generic_direct_runtime.py
+          tools/voxcpm2/generic_gemini_runtime.py
+          tools/voxcpm2/dub_worker_hardened.py
+          handlers/dub_wizard.py
+          handlers/dub_commands.py
+          services/dub_studio_runtime.py
+          tests/test_generic_direct_runtime.py
+          tests/test_generic_gemini_runtime.py
+          tests/test_dub_modes.py
+      - name: Whitespace integrity
+        run: git diff --check
