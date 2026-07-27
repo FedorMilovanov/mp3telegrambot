@@ -19,6 +19,7 @@ _LOCK = threading.Lock()
 _ORIGINAL_BUILD = None
 _ORIGINAL_START = None
 _GENERIC_RECIPE = "generic_short_v1"
+_WORKER_RUNTIME = "dub-worker-tree-cancel-v2"
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -64,8 +65,26 @@ def ensure_worker_running() -> bool:
 
     store = DubStore()
     worker = store.latest_worker()
-    if worker_is_fresh(worker) and _pid_running(int(worker.get("pid") or 0)):
+    worker_pid = int((worker or {}).get("pid") or 0)
+    worker_details = (worker or {}).get("details") or {}
+    fresh_running = worker_is_fresh(worker) and _pid_running(worker_pid)
+    if fresh_running and worker_details.get("runtime") == _WORKER_RUNTIME:
         return True
+    if fresh_running and str((worker or {}).get("status") or "") == "busy":
+        logger.info("Legacy Dub Studio worker is busy; upgrade deferred until the job finishes")
+        return True
+    if fresh_running and os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(worker_pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception as exc:
+            logger.warning("Could not replace legacy Dub Studio worker: %s", exc)
 
     root = studio_root()
     root.mkdir(parents=True, exist_ok=True)
@@ -73,7 +92,7 @@ def ensure_worker_running() -> bool:
     command = [
         sys.executable,
         "-m",
-        "tools.voxcpm2.dub_worker",
+        "tools.voxcpm2.dub_worker_hardened",
         "--root",
         str(root),
     ]
@@ -110,7 +129,7 @@ async def _notify_generic_success(
     event: dict[str, Any],
     project: dict[str, Any],
 ) -> bool:
-    """Send one mode-specific completion message and dynamic manifest files."""
+    """Send one mode-specific completion message and the dynamic manifest files."""
     from handlers.dub_delivery import send_project_outputs
 
     job = store.get_job(int(event["job_id"])) if event.get("job_id") else None
@@ -198,37 +217,17 @@ async def _notification_loop(application: Any) -> None:
                 project_id = str(event["project_id"])
                 project = store.get_project(project_id)
                 try:
-                    if (
-                        event_type == "job_succeeded"
-                        and str(project.get("recipe_id")) == _GENERIC_RECIPE
-                    ):
-                        delivered = await _notify_generic_success(
-                            application,
-                            store,
-                            event,
-                            project,
-                        )
+                    if event_type == "job_succeeded" and str(project.get("recipe_id")) == _GENERIC_RECIPE:
+                        delivered = await _notify_generic_success(application, store, event, project)
                         if delivered:
                             store.mark_event_delivered(int(event["id"]))
                             continue
-
-                    icon = {
-                        "job_succeeded": "✅",
-                        "job_failed": "❌",
-                        "job_cancelled": "🚫",
-                    }.get(event_type, "ℹ️")
+                    icon = {"job_succeeded": "✅", "job_failed": "❌", "job_cancelled": "🚫"}.get(event_type, "ℹ️")
                     title = str(event.get("project_title") or project_id)
                     message = str(event.get("message") or "")
                     extra = ""
-                    if (
-                        str(project.get("recipe_id")) == _GENERIC_RECIPE
-                        and event_type == "job_failed"
-                    ):
-                        extra = (
-                            "\nПроверьте точный этап: <code>/dubstatus "
-                            + html.escape(project_id)
-                            + "</code>"
-                        )
+                    if str(project.get("recipe_id")) == _GENERIC_RECIPE and event_type == "job_failed":
+                        extra = "\nПроверьте точный этап: <code>/dubstatus " + html.escape(project_id) + "</code>"
                     text = (
                         f"{icon} <b>Dub Studio</b>\n\n"
                         f"{html.escape(title)}\n"
@@ -238,17 +237,9 @@ async def _notification_loop(application: Any) -> None:
                         f"<code>/dubfiles {html.escape(project_id)}</code>\n"
                         f"<code>/dubsend {html.escape(project_id)}</code>"
                     )
-                    await application.bot.send_message(
-                        chat_id=int(event["owner_chat_id"]),
-                        text=text,
-                        parse_mode="HTML",
-                    )
+                    await application.bot.send_message(chat_id=int(event["owner_chat_id"]), text=text, parse_mode="HTML")
                 except Exception as exc:
-                    logger.warning(
-                        "Dub Studio notification failed for event %s: %s",
-                        event["id"],
-                        exc,
-                    )
+                    logger.warning("Dub Studio notification failed for event %s: %s", event["id"], exc)
                     continue
                 store.mark_event_delivered(int(event["id"]))
         except asyncio.CancelledError:
@@ -285,19 +276,14 @@ def install_dub_studio_runtime() -> None:
         async def start_with_dub(self: Any) -> None:
             await _ORIGINAL_START(self)
             if not self.bot_data.get("dub_studio_notification_task"):
-                task = self.create_task(
-                    _notification_loop(self),
-                    name="dub-studio-notifications",
-                )
+                task = self.create_task(_notification_loop(self), name="dub-studio-notifications")
                 self.bot_data["dub_studio_notification_task"] = task
 
         ApplicationBuilder.build = build_with_dub
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info(
-            "🎙 Dub Studio runtime: Gemini MAX + direct SRT + delivery + worker enabled"
-        )
+        logger.info("🎙 Dub Studio runtime: Gemini MAX + direct SRT + delivery + worker enabled")
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]
