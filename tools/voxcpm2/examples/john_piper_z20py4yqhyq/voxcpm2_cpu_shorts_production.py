@@ -454,6 +454,11 @@ def main() -> None:
     parser.add_argument("--cache-length", type=int, default=4096)
     parser.add_argument("--video-duration", type=float, required=True)
     parser.add_argument("--base-seed", type=int, default=2026072600)
+    parser.add_argument(
+        "--force-segments",
+        action="store_true",
+        help="Ignore valid segment checkpoints and regenerate every segment.",
+    )
     args = parser.parse_args()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -494,9 +499,11 @@ def main() -> None:
     attempts_dir = work_dir / "attempts"
     clean_dir = work_dir / "segments_clean"
     fitted_dir = work_dir / "segments_fitted"
+    checkpoints_dir = work_dir / "checkpoints"
     attempts_dir.mkdir(parents=True, exist_ok=True)
     clean_dir.mkdir(parents=True, exist_ok=True)
     fitted_dir.mkdir(parents=True, exist_ok=True)
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     model_path = discover_model(Path(args.archive_root).resolve())
@@ -551,6 +558,42 @@ def main() -> None:
         max_len = max(24, int(math.ceil(desired_steps * 1.40)))
         profile = str(segment["reference_profile"])
         reference = references[profile]
+        clean_path = clean_dir / f"{segment_id:02d}_{profile}_clean.wav"
+        fitted_path = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
+        checkpoint_path = checkpoints_dir / f"segment_{segment_id:02d}.json"
+        signature = {
+            "text": str(segment["text"]),
+            "start": float(segment["start"]),
+            "end": float(segment["end"]),
+            "tail_guard": tail_guard,
+            "start_delay_ms": int(segment.get("start_delay_ms", 0)),
+            "reference_profile": profile,
+            "steps": int(args.steps),
+            "cfg": float(args.cfg),
+            "base_seed": int(args.base_seed),
+        }
+
+        if not args.force_segments and checkpoint_path.is_file() and fitted_path.is_file():
+            try:
+                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                checkpoint = None
+            if isinstance(checkpoint, dict) and checkpoint.get("signature") == signature:
+                saved_report = checkpoint.get("report")
+                if isinstance(saved_report, dict):
+                    fitted_segments.append((segment, fitted_path))
+                    report_segments.append(saved_report)
+                    total_synthesis += sum(
+                        float(item.get("synthesis_seconds", 0.0))
+                        for item in saved_report.get("attempts", [])
+                        if isinstance(item, dict)
+                    )
+                    log("")
+                    log(
+                        f"[{position}/{len(segments)}] #{segment_id} "
+                        f"восстановлен из checkpoint; повторный CPU-синтез не нужен"
+                    )
+                    continue
 
         log("")
         log(
@@ -658,8 +701,6 @@ def main() -> None:
             selected["tail_info"],
         )
 
-        clean_path = clean_dir / f"{segment_id:02d}_{profile}_clean.wav"
-        fitted_path = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
         sf.write(
             str(clean_path),
             clean_samples,
@@ -681,8 +722,7 @@ def main() -> None:
             )
 
         fitted_segments.append((segment, fitted_path))
-        report_segments.append(
-            {
+        segment_report = {
                 **segment,
                 "reference_path": str(reference),
                 "selected_attempt": int(selected["attempt"]),
@@ -730,6 +770,14 @@ def main() -> None:
                 "clean_path": str(clean_path),
                 "fitted_path": str(fitted_path),
             }
+        report_segments.append(segment_report)
+        checkpoint_path.write_text(
+            json.dumps(
+                {"signature": signature, "report": segment_report},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
         )
 
         log(
