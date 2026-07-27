@@ -34,6 +34,13 @@
         "Mode": "direct"
       }
     },
+    "repair_audio": {
+      "kind": "utility",
+      "label": "Аудиоремонт без повторного перевода",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_audio_repair_runtime",
+      "parameters": {}
+    },
     "prepare_custom": {
       "kind": "prepare",
       "label": "Legacy: подготовить старый шаблон перевода",
