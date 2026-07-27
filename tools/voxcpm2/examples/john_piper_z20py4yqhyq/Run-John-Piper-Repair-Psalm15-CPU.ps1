@@ -110,7 +110,7 @@ New-Item -ItemType Directory -Force -Path $RepairRoot, $RepairWork, $RepairMaste
 $RepairPayload = @($Segment)
 ConvertTo-Json -InputObject $RepairPayload -Depth 10 | Set-Content -LiteralPath $RepairJson -Encoding utf8
 
-$RepairCheck = Get-Content -LiteralPath $RepairJson -Raw -Encoding utf8 | ConvertFrom-Json
+$RepairCheck = Get-Content -LiteralPath $RepairJson -Raw -Encoding utf8 | ConvertFrom-Json -NoEnumerate
 if ($RepairCheck -isnot [System.Array] -or @($RepairCheck).Count -ne 1) {
     throw "Временный JSON ремонта должен содержать массив из одного сегмента."
 }
