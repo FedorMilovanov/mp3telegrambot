@@ -794,7 +794,9 @@ async def run_bot_async():
     # редактирование старой ссылки не должно перезапускать обработку видео.
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
-    app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern="^set_mode:"))
+    app.add_handler(CallbackQueryHandler(
+        handle_mode_callback, pattern=r"^(?:set_mode:|mode_menu:)"
+    ))
     app.add_handler(CallbackQueryHandler(handle_callback))
     # AUDIT R30: последовательная викторина продвигается по ответам пользователя.
     from services.quiz_sessions import handle_quiz_poll_answer
@@ -879,7 +881,7 @@ async def run_bot_async():
         default_commands = [
             BotCommand("start", "▶️ Главная"),
             BotCommand("help",  "ℹ️ Справка"),
-            BotCommand("mode",  "🌐 Режим: RUS / ENG + живой перевод"),
+            BotCommand("mode",  "🎛 Все режимы обработки и дубляжа"),
         ]
         try:
             await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
@@ -893,6 +895,8 @@ async def run_bot_async():
         for admin_id in ADMIN_IDS:
             try:
                 vip_commands = default_commands + [
+                    BotCommand("dub",        "🎙 Дубляж: Gemini MAX / готовый SRT"),
+                    BotCommand("dubcheck",   "🩺 Проверить Dub Studio"),
                     BotCommand("settings",   "⚙️ Настройки бота"),
                     BotCommand("status",     "🩺 Здоровье бота"),
                     BotCommand("disk",       "💾 Место на диске"),

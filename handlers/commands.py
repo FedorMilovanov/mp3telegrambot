@@ -65,6 +65,16 @@ from pathlib import Path  # FIX #9
 
 logger = logging.getLogger(__name__)
 
+
+def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home")]]
+    if is_admin:
+        rows[0].append(
+            InlineKeyboardButton("🎙 Дубляж видео", callback_data="dubwiz|home|show")
+        )
+    return InlineKeyboardMarkup(rows)
+
+
 async def start(update, context):
     user_id   = update.effective_user.id
     is_vip    = user_id in WHITELIST_IDS
@@ -76,6 +86,9 @@ async def start(update, context):
         if is_admin:
             admin_section = (
                 "\n\n🔧 <b>Команды администратора:</b>\n"
+                "/mode — все режимы обработки и дубляжа\n"
+                "/dub — дубляж: Gemini MAX или готовый SRT\n"
+                "/dubcheck — проверить готовность Dub Studio\n"
                 "/resetcache &lt;url или video_id&gt;\n"
                 "/resetcache all — очистить весь кэш\n"
                 "/metrics [hours] — Gemini метрики\n"
@@ -109,11 +122,16 @@ async def start(update, context):
             f"<b>Команды:</b>\n"
             f"/start — эта панель\n"
             f"/help — краткая справка\n"
-            f"/settings — настройки функций бота"
+            f"/settings — настройки функций бота\n"
+            f"/mode — все режимы обработки и дубляжа"
             f"{admin_section}\n\n"
             f"🪪 Ваш Telegram ID: <code>{user_id}</code>"
         )
-        await update.message.reply_text(text, parse_mode="HTML")
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=_start_keyboard(is_admin),
+        )
     else:
         limit_line = f"📵 Лимит: {DAILY_LIMIT} видео/день | ⏳ 1 запрос/мин"
         await update.message.reply_text(
@@ -124,7 +142,8 @@ async def start(update, context):
             f"📋 Плейлисты до {MAX_PLAYLIST_SIZE} видео\n"
             f"{limit_line}\n\n"
             f"🪪 Ваш Telegram ID: <code>{user_id}</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=_start_keyboard(is_admin),
         )
 
 
@@ -144,7 +163,7 @@ async def help_command(update, context):
         f"🔒 Ваши лимиты: {limit_line}\n\n"
         f"/start — Приветствие\n"
         f"/help  — Справка\n"
-        f"/mode — 🌐 Режим: RUS / ENG Full / ENG Quick\n"
+        f"/mode — 🎛 Все режимы: анализ, LiveDub и дубляж\n"
         f"/archive — Последние публикации\n"
         f"/search <текст> — Поиск по архиву\n"
         f"/cut — ✂️ Вырезать сегмент из видео\n"

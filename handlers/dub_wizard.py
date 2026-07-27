@@ -95,13 +95,19 @@ def _home_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📂 Мои проекты", callback_data="dubwiz|projects|list"),
                 InlineKeyboardButton("⚙️ Worker", callback_data="dubwiz|worker|status"),
             ],
+            [
+                InlineKeyboardButton("🎛 Все режимы бота", callback_data="mode_menu:home")
+            ],
         ]
     )
 
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Назад", callback_data="dubwiz|home|show")]]
+        [[
+            InlineKeyboardButton("↩️ Dub Studio", callback_data="dubwiz|home|show"),
+            InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home"),
+        ]]
     )
 
 
@@ -114,7 +120,10 @@ def _srt_keyboard(project_id: str) -> InlineKeyboardMarkup:
                     callback_data=f"dubwiz|srt|{project_id}",
                 )
             ],
-            [InlineKeyboardButton("↩️ В меню", callback_data="dubwiz|home|show")],
+            [
+                InlineKeyboardButton("↩️ Dub Studio", callback_data="dubwiz|home|show"),
+                InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home"),
+            ],
         ]
     )
 
