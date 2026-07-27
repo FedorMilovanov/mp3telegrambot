@@ -86,9 +86,6 @@ async def start(update, context):
         if is_admin:
             admin_section = (
                 "\n\n🔧 <b>Команды администратора:</b>\n"
-                "/mode — все режимы обработки и дубляжа\n"
-                "/dub — дубляж: Gemini MAX или готовый SRT\n"
-                "/dubcheck — проверить готовность Dub Studio\n"
                 "/resetcache &lt;url или video_id&gt;\n"
                 "/resetcache all — очистить весь кэш\n"
                 "/metrics [hours] — Gemini метрики\n"
