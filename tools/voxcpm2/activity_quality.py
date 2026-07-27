@@ -12,36 +12,47 @@ def sustained_activity_index(
     active: Any,
     *,
     reverse: bool = False,
-    window_frames: int = 14,
+    window_frames: int = 16,
     minimum_active_frames: int = 7,
+    maximum_gap_frames: int = 2,
 ) -> int | None:
-    """Return the first/last genuinely sustained activity frame.
+    """Return the first/last genuinely connected speech-activity frame.
 
     VoxCPM2 can emit a 20–40 ms reference-tail chirp before the requested
-    sentence. A local ``3 of 5`` rule treats that chirp as speech. Requiring
-    activity density across a longer forward/backward window rejects the chirp
-    while retaining normal short words and plosive onsets through preroll.
+    sentence. Counting active frames alone can join that chirp to real speech
+    across a silent gap. This helper requires the first seven active frames to
+    form one connected cluster, allowing only short natural speech gaps.
     """
     values = np.asarray(active, dtype=bool).reshape(-1)
     if not len(values):
         return None
 
-    window_frames = max(5, int(window_frames))
-    minimum_active_frames = max(3, int(minimum_active_frames))
-    indices = range(len(values) - 1, -1, -1) if reverse else range(len(values))
+    window_frames = max(7, int(window_frames))
+    minimum_active_frames = max(4, int(minimum_active_frames))
+    maximum_gap_frames = max(0, int(maximum_gap_frames))
 
-    for index in indices:
+    if reverse:
+        reversed_index = sustained_activity_index(
+            values[::-1],
+            window_frames=window_frames,
+            minimum_active_frames=minimum_active_frames,
+            maximum_gap_frames=maximum_gap_frames,
+        )
+        return None if reversed_index is None else len(values) - 1 - reversed_index
+
+    for index in range(len(values)):
         if not values[index]:
             continue
-        if reverse:
-            left = max(0, index - window_frames + 1)
-            right = index + 1
-        else:
-            left = index
-            right = min(len(values), index + window_frames)
-        width = right - left
-        required = min(width, minimum_active_frames)
-        if width >= 3 and int(np.count_nonzero(values[left:right])) >= required:
+        window = values[index : min(len(values), index + window_frames)]
+        positions = np.flatnonzero(window)
+        if len(positions) < minimum_active_frames:
+            continue
+        connected = positions[:minimum_active_frames]
+        if len(connected) == 1:
+            return int(index)
+        # A difference of 1 means contiguous frames. Allow at most the requested
+        # number of silent frames between successive activity frames.
+        if int(np.max(np.diff(connected))) <= maximum_gap_frames + 1:
             return int(index)
     return None
 
