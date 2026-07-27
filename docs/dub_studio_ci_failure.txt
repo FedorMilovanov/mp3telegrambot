@@ -1,7 +1,0 @@
-Dub Studio Windows integration failed.
-deps=success
-patch=success
-powershell=success
-imports=failure
-verifier=failure
-source_commit=14dd86f8e9ee0eefd3d023c89ceda220e51cef62

@@ -879,3 +879,15 @@ Fixes:
 - **Устаревшая, но валидная ссылка**: «Читать также» ведёт на слаг `…-05-27`
   (более ранняя публикация той же проповеди). Страница на Telegraph существует —
   ссылка не битая; «устаревшесть» — следствие перепубликации, не баг рендера.
+
+## 2026-07-27 — VoxCPM2 Dub Studio control plane
+
+- Added an admin-only Telegram control surface for durable VoxCPM2 projects.
+- Heavy CPU rendering runs in a separate single-worker queue with SQLite WAL,
+  heartbeat, cancellation, recovery and terminal notifications.
+- Registered John Piper as the first migration recipe, including segment-only
+  Psalm 15 repair; Telegram cannot submit arbitrary shell commands.
+- Windows final gate passed: UTF-8 imports, compileall, 9 focused tests,
+  changed-surface ruff, both PowerShell parsers and git diff check.
+- The full legacy verifier was also executed; three pre-existing Windows-only
+  LiveDub tests remain outside this change (cookie discovery and backup file lock).
