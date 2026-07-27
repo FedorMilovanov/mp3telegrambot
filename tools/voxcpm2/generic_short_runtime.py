@@ -3,7 +3,8 @@
 """Production runtime adapters for the generic Shorts dubbing pipeline.
 
 Keeps the core pipeline deterministic while reusing the bot's hardened yt-dlp
-configuration and Gemini client pool/high-thinking policy.
+configuration and Gemini client pool/high-thinking policy. Also installs the
+semantic VoxCPM2 guard shared by Gemini MAX and ready-SRT modes.
 """
 from __future__ import annotations
 
@@ -169,6 +170,13 @@ def install_runtime_adapters() -> None:
     pipeline.download_source = download_source
     pipeline.download_captions = download_captions
     pipeline.gemini_json = gemini_json
+
+    # Install after project/direct modules have imported their normal subprocess
+    # reference. The guard patches only the VoxCPM2 synthesis command and leaves
+    # source download, FFmpeg mastering and all mode routing untouched.
+    from tools.voxcpm2.semantic_tts_guard import install as install_semantic_tts_guard
+
+    install_semantic_tts_guard()
 
 
 def main() -> None:
