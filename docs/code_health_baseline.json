@@ -1,5 +1,5 @@
 {
-  "files_scanned": 98,
+  "files_scanned": 102,
   "source_title_registry_entries": 198,
   "structured_block_normalizer": true,
   "top_files": [
@@ -65,7 +65,7 @@
     }
   ],
   "total_postprocess_markers": 253,
-  "total_regex_markers": 676,
+  "total_regex_markers": 681,
   "typed_source_cards": true,
   "typo_replacements": 50
 }
