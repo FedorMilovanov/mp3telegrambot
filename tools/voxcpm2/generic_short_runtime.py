@@ -16,22 +16,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core.text_utils import title_case_fragment
 import tools.voxcpm2.generic_short_production as pipeline
 
 _TITLE_PROMPT_MARKER = "Ты создаёшь имя готового русского видеофайла"
-_TITLE_WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё]+")
 _JOHN_PIPER_RE = re.compile(r"\b(?:john\s+piper|джон\s+пайпер)\b", re.IGNORECASE)
 
 
-def _capitalize_title_word(match: re.Match[str]) -> str:
-    word = match.group(0)
-    if word.isupper() or any(char.isupper() for char in word[1:]):
-        return word
-    return word[:1].upper() + word[1:].lower()
-
-
 def standardize_russian_title(value: str, *, context: str = "") -> str:
-    """Apply the Dub Studio filename title standard deterministically."""
+    """Apply the same title casing already used by Shorts and Clips."""
     title = re.sub(r"\s+", " ", str(value or "")).strip(" .—–-")
     title = re.sub(r"\bJohn\s+Piper\b", "Джон Пайпер", title, flags=re.IGNORECASE)
     title = re.sub(
@@ -48,8 +41,7 @@ def standardize_russian_title(value: str, *, context: str = "") -> str:
         title = re.sub(r"(?:\s+-\s+)?Джон\s+Пайпер\s*$", "", title, flags=re.IGNORECASE).strip(" .—–-")
         title = f"{title} - Джон Пайпер" if title else "Джон Пайпер"
 
-    title = _TITLE_WORD_RE.sub(_capitalize_title_word, title)
-    return re.sub(r"\s+", " ", title).strip()
+    return title_case_fragment(re.sub(r"\s+", " ", title).strip())
 
 
 def _standardize_title_payload(payload: Any, prompt: str) -> Any:
