@@ -9,8 +9,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import semantic_tts_guard as legacy_semantic_guard
+from tools.voxcpm2 import semantic_tts_guard_v4
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _NON_SPEECH_RE = re.compile(
@@ -91,11 +94,16 @@ def validate_completed_outputs(root: Path) -> dict[str, Any]:
 
 
 def main() -> None:
+    # Keep the old guard importable for historical tests, but do not let its
+    # prompt-continuation wrapper replace the proven reference-only NoChew flow.
+    legacy_semantic_guard.install = lambda: None
+    dub_quality_v4.install_gemini_quality(production, pipeline)
     production.parse_manual_vtt = parse_creator_vtt_preserving_text
+    semantic_tts_guard_v4.install()
     production.main()
     root = production.project_root(production.current_project_id())
     validate_completed_outputs(root)
-    production.log("=== GEMINI MAX OUTPUT CONTRACT: OK ===")
+    production.log("=== GEMINI MAX QUALITY V4 OUTPUT CONTRACT: OK ===")
 
 
 if __name__ == "__main__":
