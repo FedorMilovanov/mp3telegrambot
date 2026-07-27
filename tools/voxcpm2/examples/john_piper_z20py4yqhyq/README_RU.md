@@ -99,3 +99,5 @@ John_Piper_Russian_Dub_FINAL_UPLOAD.master.json
 
 Windows validation passed: PowerShell parser, Python compile, five-segment JSON, and legacy-layer absence.
 
+Windows duration-fix validation passed: source/timeline end 62.514 s, PowerShell parser, Python compile, SRT bounds.
+
