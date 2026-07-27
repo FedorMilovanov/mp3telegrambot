@@ -44,14 +44,40 @@ def test_progress_parser_understands_segments_and_master() -> None:
     assert stage == "5. Постоянный микс и финальный master"
 
 
-def test_hardened_worker_installs_tree_cancel_and_version_marker() -> None:
+def test_hardened_worker_installs_tree_cancel_and_version_marker(tmp_path: Path) -> None:
     original_terminate = worker._terminate_process
     original_register = DubStore.register_worker
+    original_heartbeat = DubStore.worker_heartbeat
     try:
         hardened_worker.install_hardening()
         assert worker._terminate_process is hardened_worker._terminate_process_tree
         assert DubStore.register_worker is hardened_worker._register_versioned_worker
+        assert DubStore.worker_heartbeat is hardened_worker._heartbeat_versioned_worker
         assert hardened_worker._RUNTIME_VERSION == "dub-worker-tree-cancel-v2"
+
+        store = DubStore(tmp_path)
+        store.register_worker(
+            "worker-test",
+            pid=123,
+            status="idle",
+            details={"python": "python.exe"},
+        )
+        assert store.latest_worker()["details"]["runtime"] == hardened_worker._RUNTIME_VERSION
+
+        store.worker_heartbeat("worker-test", status="idle")
+        idle = store.latest_worker()
+        assert idle["details"]["runtime"] == hardened_worker._RUNTIME_VERSION
+
+        store.worker_heartbeat(
+            "worker-test",
+            status="busy",
+            current_job_id=7,
+            details={"stage": "synthesis"},
+        )
+        busy = store.latest_worker()
+        assert busy["details"]["runtime"] == hardened_worker._RUNTIME_VERSION
+        assert busy["details"]["stage"] == "synthesis"
     finally:
         worker._terminate_process = original_terminate
         DubStore.register_worker = original_register
+        DubStore.worker_heartbeat = original_heartbeat
