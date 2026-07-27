@@ -1,59 +1,109 @@
-name: John Piper Package Parser
+name: John Piper Direct Runner CI
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/**"
+      - ".github/workflows/john-piper-parser.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/**"
       - ".github/workflows/john-piper-parser.yml"
 
+permissions:
+  contents: read
+
 jobs:
-  parse:
+  validate:
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct and parse package launchers
+      - name: Validate direct production files
         shell: pwsh
         run: |
-          $result = Join-Path $env:RUNNER_TEMP "john-piper-parse-result.txt"
-          "" | Set-Content -LiteralPath $result
-          $example = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
-          $parts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File | Sort-Object Name)
-          $encoded = ($parts | ForEach-Object { (Get-Content -LiteralPath $_.FullName -Raw).Trim() }) -join ""
-          $zip = Join-Path $env:RUNNER_TEMP "john-piper.zip"
-          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($encoded))
-          $dir = Join-Path $env:RUNNER_TEMP "john-piper"
-          Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          $ErrorActionPreference = "Stop"
+          Set-StrictMode -Version Latest
 
-          $scripts = @(
-            (Join-Path $example "Run-John-Piper-FINAL-CPU.ps1"),
-            (Join-Path $dir "Run-John-Piper-FINAL-CPU-Inner.ps1")
+          $example = Join-Path $PWD "tools\voxcpm2\examples\john_piper_z20py4yqhyq"
+          $runner = Join-Path $example "Run-John-Piper-FINAL-CPU.ps1"
+          $synth = Join-Path $example "voxcpm2_cpu_shorts_production.py"
+          $master = Join-Path $example "master_constant_mix.py"
+          $segments = Join-Path $example "segments_ru_final.json"
+
+          $required = @(
+              $runner,
+              $synth,
+              $master,
+              $segments,
+              (Join-Path $example "translation_ru.txt"),
+              (Join-Path $example "subtitles_ru_final.srt"),
+              (Join-Path $example "source_subtitles_en.srt"),
+              (Join-Path $example "README_RU.md")
           )
-          $failed = $false
-          foreach ($path in $scripts) {
-            $tokens = $null
-            $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
-            if ($errors.Count -eq 0) {
-              "OK|$path" | Add-Content -LiteralPath $result
-              continue
-            }
-            $failed = $true
-            foreach ($item in $errors) {
-              "FAILED|$path|LINE=$($item.Extent.StartLineNumber)|COLUMN=$($item.Extent.StartColumnNumber)|MESSAGE=$($item.Message)|TEXT=$($item.Extent.Text)" | Add-Content -LiteralPath $result
-            }
+          foreach ($path in $required) {
+              if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                  throw "Missing required direct-runner file: $path"
+              }
           }
-          Get-Content -LiteralPath $result
-          "JOHN_PIPER_PARSE_RESULT=$result" | Out-File -FilePath $env:GITHUB_ENV -Append
-          if ($failed) { throw "Package launcher parse failed" }
 
-      - name: Upload parser result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: john-piper-parser-result
-          path: ${{ runner.temp }}/john-piper-parse-result.txt
-          if-no-files-found: error
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $runner,
+              [ref]$tokens,
+              [ref]$parseErrors
+          )
+          if ($parseErrors.Count -gt 0) {
+              $parseErrors | Format-List
+              throw "PowerShell runner parse failed."
+          }
+          Write-Host "PowerShell parser: OK"
+
+          python -m py_compile $synth $master
+          if ($LASTEXITCODE -ne 0) {
+              throw "Python compile failed."
+          }
+          Write-Host "Python compile: OK"
+
+          @'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+segments = json.loads(path.read_text(encoding="utf-8-sig"))
+if not isinstance(segments, list) or not segments:
+    raise SystemExit("segments_ru_final.json must be a non-empty list")
+previous_end = 0.0
+for index, item in enumerate(segments, 1):
+    start = float(item["start"])
+    end = float(item["end"])
+    text = str(item["text"]).strip()
+    if start < previous_end - 0.001:
+        raise SystemExit(f"segment {index} overlaps the previous segment")
+    if end <= start:
+        raise SystemExit(f"segment {index} has invalid duration")
+    if not text:
+        raise SystemExit(f"segment {index} has empty text")
+    previous_end = end
+if previous_end > 65.0:
+    raise SystemExit(f"timeline ends too late: {previous_end}")
+print(f"segments JSON: OK ({len(segments)} segments, end={previous_end:.3f}s)")
+'@ | python - $segments
+          if ($LASTEXITCODE -ne 0) {
+              throw "Segments validation failed."
+          }
+
+          $legacyParts = @(Get-ChildItem -LiteralPath $example -Filter "package.part*.b64" -File)
+          if ($legacyParts.Count -ne 0) {
+              throw "Legacy Base64 package parts are still present."
+          }
+          if (Test-Path -LiteralPath (Join-Path $example "Run-John-Piper-FINAL-CPU-Inner.ps1")) {
+              throw "Legacy inner PowerShell launcher is still present."
+          }
+          Write-Host "Legacy package layers: absent"
