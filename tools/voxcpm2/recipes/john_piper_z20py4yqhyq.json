@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "id": "john_piper_z20py4yqhyq",
+  "title": "Джон Пайпер — Четыре Признака Принадлежности Христу",
+  "speaker": "Джон Пайпер",
+  "source_url": "https://youtube.com/shorts/Z20Py4yQhYQ",
+  "description": "Первый миграционный production-рецепт Dub Studio. Полный CPU NoChew-рендер и точечная замена Псалом 16 → Псалом 15.",
+  "work_root": "C:\\AI-Archive\\John-Piper-Short-Z20Py4yQhYQ-FINAL",
+  "actions": {
+    "render": {
+      "kind": "render",
+      "label": "Полный CPU-рендер",
+      "runner": "powershell",
+      "script": "tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-FINAL-CPU.ps1",
+      "parameters": {
+        "OriginalLevel": 0.25
+      }
+    },
+    "repair_psalm15": {
+      "kind": "repair",
+      "label": "Исправить: Псалом 15",
+      "runner": "powershell",
+      "script": "tools/voxcpm2/examples/john_piper_z20py4yqhyq/Run-John-Piper-Repair-Psalm15-CPU.ps1",
+      "parameters": {
+        "OriginalLevel": 0.25
+      }
+    }
+  },
+  "outputs": {
+    "mixed_render": {
+      "label": "Финальный upload-ready MP4",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_FINAL_UPLOAD.mp4",
+      "required": true,
+      "primary": true,
+      "actions": ["render"]
+    },
+    "russian_only_render": {
+      "label": "Чистая русская версия",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_FINAL_RUSSIAN_ONLY.mp4",
+      "required": true,
+      "actions": ["render"]
+    },
+    "subtitles_render": {
+      "label": "Русские субтитры",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_FINAL.srt",
+      "required": true,
+      "actions": ["render"]
+    },
+    "mixed_fixed": {
+      "label": "Исправленный upload-ready MP4 (Псалом 15)",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_FINAL_UPLOAD_PSALM15_FIXED.mp4",
+      "required": true,
+      "primary": true,
+      "actions": ["repair_psalm15"]
+    },
+    "russian_only_fixed": {
+      "label": "Исправленная чистая русская версия",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_FINAL_RUSSIAN_ONLY_PSALM15_FIXED.mp4",
+      "required": true,
+      "actions": ["repair_psalm15"]
+    },
+    "russian_timeline_fixed": {
+      "label": "Исправленная русская WAV-дорожка",
+      "path": "{work_root}\\audio\\john_piper_ru_final_timeline_PSALM15_FIXED.wav",
+      "required": true,
+      "actions": ["repair_psalm15"]
+    },
+    "subtitles_fixed": {
+      "label": "Исправленные русские субтитры",
+      "path": "{work_root}\\output\\John_Piper_Russian_Dub_PSALM15_FIXED.srt",
+      "required": true,
+      "actions": ["repair_psalm15"]
+    },
+    "translation_fixed": {
+      "label": "Исправленный русский перевод",
+      "path": "{work_root}\\output\\John_Piper_Russian_Translation_PSALM15_FIXED.txt",
+      "required": true,
+      "actions": ["repair_psalm15"]
+    }
+  }
+}
