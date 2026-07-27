@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import importlib.util
 import os
 import shutil
 import sys
@@ -56,6 +57,28 @@ def collect_dub_health() -> list[dict[str, Any]]:
         )
     except Exception as exc:
         checks.append(_check("Recipe-actions", False, str(exc)))
+
+    repo = Path(__file__).resolve().parents[1]
+    guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard.py"
+    wrapper_path = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+        / "voxcpm2_cpu_semantic_wrapper.py"
+    )
+    checks.append(_check("Semantic TTS guard", guard_path.is_file(), str(guard_path)))
+    checks.append(_check("VoxCPM2 hardened wrapper", wrapper_path.is_file(), str(wrapper_path)))
+    whisper_available = importlib.util.find_spec("faster_whisper") is not None
+    qa_model = os.getenv("DUB_TTS_QA_MODEL", "small").strip() or "small"
+    checks.append(
+        _check(
+            "Whisper semantic QA",
+            whisper_available,
+            f"faster-whisper={'есть' if whisper_available else 'не найден'}; model={qa_model}",
+        )
+    )
 
     for binary in ("ffmpeg", "ffprobe"):
         found = shutil.which(binary)
@@ -161,8 +184,8 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Gemini MAX требует зелёные Recipe, FFmpeg, CPU Python, archive, keys, storage и worker.",
-            "Готовый SRT не требует Gemini keys, но остальные локальные проверки обязательны.",
+            "Оба режима требуют зелёные semantic guard, wrapper, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Только Gemini MAX дополнительно требует рабочие Gemini keys; готовый SRT не отправляется на перевод или редактуру.",
         ]
     )
     await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
