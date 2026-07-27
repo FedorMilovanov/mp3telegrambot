@@ -94,7 +94,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
 
     repo = Path(__file__).resolve().parents[1]
     guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard.py"
-    wrapper_path = (
+    wrapper_entry_path = repo / "tools" / "voxcpm2" / "voxcpm2_cpu_semantic_wrapper.py"
+    wrapper_implementation_path = (
         repo
         / "tools"
         / "voxcpm2"
@@ -102,8 +103,10 @@ def collect_dub_health() -> list[dict[str, Any]]:
         / "john_piper_z20py4yqhyq"
         / "voxcpm2_cpu_semantic_wrapper.py"
     )
+    wrapper_ok = wrapper_entry_path.is_file() and wrapper_implementation_path.is_file()
+    wrapper_detail = f"entry={wrapper_entry_path}; implementation={wrapper_implementation_path}"
     checks.append(_check("Semantic TTS guard", guard_path.is_file(), str(guard_path)))
-    checks.append(_check("VoxCPM2 hardened wrapper", wrapper_path.is_file(), str(wrapper_path)))
+    checks.append(_check("VoxCPM2 hardened wrapper", wrapper_ok, wrapper_detail))
     whisper_available = importlib.util.find_spec("faster_whisper") is not None
     qa_model = os.getenv("DUB_TTS_QA_MODEL", "small").strip() or "small"
     checks.append(
