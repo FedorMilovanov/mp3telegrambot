@@ -205,6 +205,13 @@ except Exception as _runtime_hardening_error:
     print(f"⚠️ Project runtime hardening не установлен: {_runtime_hardening_error}")
 
 try:
+    from services.dub_studio_runtime import install_dub_studio_runtime
+
+    install_dub_studio_runtime()
+except Exception as _dub_studio_error:
+    print(f"⚠️ VoxCPM2 Dub Studio не установлена: {_dub_studio_error}")
+
+try:
     from services.restart_state_runtime import install_restart_state_runtime
 
     install_restart_state_runtime(_main_module)
