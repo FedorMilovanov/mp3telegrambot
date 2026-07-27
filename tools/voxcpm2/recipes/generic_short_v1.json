@@ -4,12 +4,12 @@
   "title": "Универсальный дубляж YouTube — мастер",
   "speaker": "Определяется из исходного ролика",
   "source_url": "",
-  "description": "Меню для любого YouTube-ролика: ручные captions прежде auto/Whisper, Gemini MAX или пользовательский перевод, VoxCPM2 CPU NoChew, русский delay 420 мс, оригинал 18%, русские имена и доставка в Telegram.",
+  "description": "Два раздельных режима для любого YouTube-ролика: Gemini MAX с приоритетом ручных captions и многоступенчатым переводом; либо готовый русский SRT без проверки и переписывания Gemini. VoxCPM2 CPU NoChew, задержка русского 420 мс, оригинал 18%, русские имена файлов и доставка в Telegram.",
   "work_root": "C:\\AI-Archive\\MP3Bot-Dub-Studio",
   "actions": {
     "render": {
       "kind": "render",
-      "label": "Полный автоматический Gemini MAX",
+      "label": "Gemini MAX — полный автоматический рендер",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
       "parameters": {
@@ -18,16 +18,25 @@
     },
     "render_gemini": {
       "kind": "render",
-      "label": "Gemini MAX — перевод и финальный ролик",
+      "label": "Gemini MAX — перевод, проверки и готовый ролик",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
       "parameters": {
         "Mode": "gemini"
       }
     },
+    "render_direct": {
+      "kind": "render",
+      "label": "Мой готовый SRT — озвучить без изменений",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_direct_runtime",
+      "parameters": {
+        "Mode": "direct"
+      }
+    },
     "prepare_custom": {
       "kind": "prepare",
-      "label": "Подготовить расшифровку для моего перевода",
+      "label": "Legacy: подготовить старый шаблон перевода",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
       "parameters": {
@@ -37,7 +46,7 @@
     },
     "render_custom": {
       "kind": "render",
-      "label": "Сделать ролик с моим переводом",
+      "label": "Legacy: сделать ролик со старым пользовательским переводом",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
       "parameters": {
