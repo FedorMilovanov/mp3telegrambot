@@ -94,3 +94,8 @@ John_Piper_Russian_Dub_FINAL_UPLOAD.master.json
 ```powershell
 .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1 -OriginalLevel 0.22
 ```
+
+## Проверка production-runner
+
+Windows validation passed: PowerShell parser, Python compile, five-segment JSON, and legacy-layer absence.
+
