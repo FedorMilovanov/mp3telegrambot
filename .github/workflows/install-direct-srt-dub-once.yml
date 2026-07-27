@@ -1,0 +1,137 @@
+name: Install Direct SRT Dub Once
+
+on:
+  push:
+    paths:
+      - .github/workflows/install-direct-srt-dub-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  install-and-validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Assemble and install checksummed bundle
+        shell: pwsh
+        run: |
+          @'
+          import base64
+          import hashlib
+          import shutil
+          import tarfile
+          from pathlib import Path
+
+          parts = [Path(f'.github/direct_srt_bundle.part{i:02d}') for i in range(3)]
+          encoded = ''.join(path.read_text(encoding='utf-8').strip() for path in parts)
+          archive_bytes = base64.b64decode(encoded, validate=True)
+          actual = hashlib.sha256(archive_bytes).hexdigest()
+          expected = 'ce493c6af83813844928275dd77411de8ab0dff92509a197b6a5a17d1eb60f89'
+          if actual != expected:
+              raise RuntimeError(f'bundle SHA-256 mismatch: {actual} != {expected}')
+
+          archive = Path('.github/direct_srt_bundle.tar.gz')
+          archive.write_bytes(archive_bytes)
+          temp = Path('.runtime-direct-srt-install')
+          if temp.exists():
+              shutil.rmtree(temp)
+          temp.mkdir(parents=True)
+          with tarfile.open(archive, 'r:gz') as handle:
+              handle.extractall(temp)
+
+          wanted = {
+              'generic_direct_runtime.py': Path('tools/voxcpm2/generic_direct_runtime.py'),
+              'dub_wizard.py': Path('handlers/dub_wizard.py'),
+              'dub_studio_runtime.py': Path('services/dub_studio_runtime.py'),
+              'generic_short_v1.json': Path('tools/voxcpm2/recipes/generic_short_v1.json'),
+              'recipes_generic_short_v1.json': Path('tools/voxcpm2/recipes/generic_short_v1.json'),
+              'test_generic_direct_runtime.py': Path('tests/test_generic_direct_runtime.py'),
+          }
+          installed = set()
+          for source in temp.rglob('*'):
+              if not source.is_file() or source.name not in wanted:
+                  continue
+              destination = wanted[source.name]
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(source, destination)
+              installed.add(str(destination))
+          required = {
+              'tools/voxcpm2/generic_direct_runtime.py',
+              'handlers/dub_wizard.py',
+              'services/dub_studio_runtime.py',
+              'tools/voxcpm2/recipes/generic_short_v1.json',
+              'tests/test_generic_direct_runtime.py',
+          }
+          if installed != required:
+              raise RuntimeError(f'installed files mismatch: got={sorted(installed)} expected={sorted(required)}')
+          shutil.rmtree(temp)
+          archive.unlink(missing_ok=True)
+          print('Direct SRT bundle installed; SHA-256:', actual)
+          '@ | python -
+
+      - name: Compile and validate recipe contract
+        shell: pwsh
+        run: |
+          python -m py_compile tools/voxcpm2/generic_direct_runtime.py handlers/dub_wizard.py services/dub_studio_runtime.py
+          python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
+          python -m compileall -q tools/voxcpm2 handlers services bot_new.py
+          @'
+          import json
+          from pathlib import Path
+          from tools.voxcpm2.dub_worker import build_command
+          from tools.voxcpm2.generic_direct_runtime import parse_srt_text
+
+          recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          action = recipe['actions']['render_direct']
+          assert action['module'] == 'tools.voxcpm2.generic_direct_runtime'
+          command, spec = build_command('generic_short_v1', 'render_direct')
+          assert 'tools.voxcpm2.generic_direct_runtime' in ' '.join(command)
+          assert spec['kind'] == 'render'
+          sample = '1\n00:00:00,000 --> 00:00:02,000\nЭто мой окончательный перевод.\n'
+          cues = parse_srt_text(sample)
+          assert len(cues) == 1
+          assert cues[0].text == 'Это мой окончательный перевод.'
+          print('Direct SRT recipe/worker contract: OK')
+          '@ | python -
+
+      - name: Run focused tests
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_generic_direct_runtime.py tests/test_dub_wizard.py tests/test_dub_delivery.py tests/test_dub_studio.py tests/test_dub_worker.py
+
+      - name: Ruff changed surface
+        shell: pwsh
+        run: |
+          python -m ruff check tools/voxcpm2/generic_direct_runtime.py handlers/dub_wizard.py services/dub_studio_runtime.py tests/test_generic_direct_runtime.py
+          git diff --check
+
+      - name: Publish production files and clean staging
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          Remove-Item .github/direct_srt_bundle.part00 -Force
+          Remove-Item .github/direct_srt_bundle.part01 -Force
+          Remove-Item .github/direct_srt_bundle.part02 -Force
+          Remove-Item .github/workflows/install-direct-srt-dub-once.yml -Force
+          git add tools/voxcpm2/generic_direct_runtime.py handlers/dub_wizard.py services/dub_studio_runtime.py tools/voxcpm2/recipes/generic_short_v1.json tests/test_generic_direct_runtime.py .github/direct_srt_bundle.part00 .github/direct_srt_bundle.part01 .github/direct_srt_bundle.part02 .github/workflows/install-direct-srt-dub-once.yml
+          git commit -m 'Replace custom translation workflow with direct SRT dubbing'
+          git push origin HEAD:main
