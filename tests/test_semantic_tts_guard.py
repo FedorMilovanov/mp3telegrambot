@@ -93,6 +93,32 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
 
         return OldModel
 
+    if api == "legacy_kwargs":
+        class LegacyKwargsModel:
+            def generate(
+                self,
+                *,
+                text,
+                reference_wav_path,
+                cfg_value,
+                normalize,
+                denoise,
+                retry_badcase=False,
+                **kwargs,
+            ):
+                assert "prompt_wav_path" not in kwargs
+                assert "prompt_text" not in kwargs
+                calls.append(
+                    {
+                        "reference": reference_wav_path,
+                        "prompt": None,
+                        "retry": retry_badcase,
+                    }
+                )
+                return [0]
+
+        return LegacyKwargsModel
+
     class NewModel:
         def generate(
             self,
@@ -128,13 +154,13 @@ def _fake_voxcpm_class(model_class: type) -> type:
     return FakeVoxCPM
 
 
-def test_voxcpm_wrapper_supports_old_and_new_reference_apis(monkeypatch) -> None:
+def test_voxcpm_wrapper_supports_old_new_and_legacy_kwargs_apis(monkeypatch) -> None:
     import sys
     import types
 
     from tools.voxcpm2.examples.john_piper_z20py4yqhyq import voxcpm2_cpu_semantic_wrapper as wrapper
 
-    for api in ("old", "new"):
+    for api in ("old", "legacy_kwargs", "new"):
         calls: list[dict[str, Any]] = []
         fake_voxcpm = _fake_voxcpm_class(_model_class(api, calls))
 
