@@ -59,6 +59,7 @@ jobs:
             handlers/dub_wizard.py `
             handlers/dub_commands.py `
             handlers/dub_delivery.py `
+            handlers/dub_health.py `
             services/dub_studio.py `
             services/dub_studio_runtime.py
           python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
@@ -99,6 +100,7 @@ jobs:
           tools/voxcpm2/dub_worker_hardened.py
           handlers/dub_wizard.py
           handlers/dub_commands.py
+          handlers/dub_health.py
           services/dub_studio_runtime.py
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
