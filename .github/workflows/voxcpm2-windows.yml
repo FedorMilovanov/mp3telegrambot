@@ -7,12 +7,14 @@ on:
     paths:
       - "tools/voxcpm2/**"
       - "tests/test_voxcpm2_*.py"
+      - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "tools/voxcpm2/**"
       - "tests/test_voxcpm2_*.py"
+      - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
 
 concurrency:
@@ -41,23 +43,59 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
-      - name: Compile VoxCPM2 Python tools
+      - name: Compile every VoxCPM2 Python tool
         shell: pwsh
         run: |
-          Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File |
-            ForEach-Object {
-              Write-Host "Compiling $($_.FullName)"
-              python -m py_compile $_.FullName
-              if ($LASTEXITCODE -ne 0) {
-                throw "Python compile failed: $($_.FullName)"
-              }
+          $scripts = Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File -Recurse
+          if (-not $scripts) {
+            throw "No VoxCPM2 Python tools found"
+          }
+          foreach ($script in $scripts) {
+            Write-Host "Compiling $($script.FullName)"
+            python -m py_compile $script.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "Python compile failed: $($script.FullName)"
             }
+          }
+
+      - name: Reconstruct John Piper embedded production package
+        shell: pwsh
+        run: |
+          $example = "tools/voxcpm2/examples/john_piper_z20py4yqhyq"
+          $parts = @(
+            Get-ChildItem -LiteralPath $example -File -Filter "package.part*.b64" |
+              Sort-Object Name
+          )
+          if ($parts.Count -ne 7) {
+            throw "Expected 7 John Piper package parts, found $($parts.Count)"
+          }
+          $encoded = ($parts | ForEach-Object {
+            (Get-Content -LiteralPath $_.FullName -Raw).Trim()
+          }) -join ""
+          if ($encoded.Length -ne 26336) {
+            throw "Unexpected John Piper Base64 length: $($encoded.Length)"
+          }
+          $zipPath = Join-Path $env:RUNNER_TEMP "john-piper-package.zip"
+          [IO.File]::WriteAllBytes($zipPath, [Convert]::FromBase64String($encoded))
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "e5247345d451cd00805d9157cf279a19aad6ee2ca9935a0167ee7b38fda9294f") {
+            throw "John Piper package SHA256 mismatch: $hash"
+          }
+          $extractPath = Join-Path $env:RUNNER_TEMP "john-piper-package"
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath -Force
+          "JOHN_PIPER_PACKAGE_DIR=$extractPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Parse every VoxCPM2 PowerShell launcher
         shell: pwsh
         run: |
           $failed = $false
-          $scripts = Get-ChildItem -LiteralPath "tools/voxcpm2/windows" -Filter "*.ps1" -File
+          $scripts = @(
+            Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.ps1" -File -Recurse
+          )
+          $embeddedScripts = @(
+            Get-ChildItem -LiteralPath $env:JOHN_PIPER_PACKAGE_DIR -Filter "*.ps1" -File -Recurse
+          )
+          $scripts = @($scripts + $embeddedScripts)
 
           if (-not $scripts) {
             throw "No VoxCPM2 PowerShell launchers found"
@@ -77,15 +115,16 @@ jobs:
               Write-Host "PowerShell parse failed: $($script.FullName)" -ForegroundColor Red
               foreach ($errorItem in $parseErrors) {
                 Write-Host (
-                  "Line {0}, column {1}: {2}" -f
+                  "Line {0}, column {1}: {2}`n{3}" -f
                   $errorItem.Extent.StartLineNumber,
                   $errorItem.Extent.StartColumnNumber,
-                  $errorItem.Message
+                  $errorItem.Message,
+                  $errorItem.Extent.Text
                 ) -ForegroundColor Red
               }
             }
             else {
-              Write-Host "PowerShell OK: $($script.Name)" -ForegroundColor Green
+              Write-Host "PowerShell OK: $($script.FullName)" -ForegroundColor Green
             }
           }
 
@@ -103,6 +142,7 @@ jobs:
           tests/test_voxcpm2_diagnostic_pack.py
           tests/test_voxcpm2_remaster_delayed_nvenc.py
           tests/test_voxcpm2_cuda_probation_probe.py
+          tests/test_john_piper_voxcpm2_package.py
 
       - name: Ruff fatal checks
         shell: pwsh
@@ -115,3 +155,4 @@ jobs:
           tests/test_voxcpm2_diagnostic_pack.py
           tests/test_voxcpm2_remaster_delayed_nvenc.py
           tests/test_voxcpm2_cuda_probation_probe.py
+          tests/test_john_piper_voxcpm2_package.py
