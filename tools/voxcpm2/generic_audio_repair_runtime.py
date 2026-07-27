@@ -41,7 +41,11 @@ def _load_segments(path: Path) -> list[dict[str, Any]]:
         raise RuntimeError("segments_ru_final.json пуст или повреждён.")
     result = [dict(item) for item in payload if isinstance(item, dict)]
     ids = [int(item.get("id") or 0) for item in result]
-    if len(result) != len(payload) or any(value <= 0 for value in ids) or len(ids) != len(set(ids)):
+    if (
+        len(result) != len(payload)
+        or any(value <= 0 for value in ids)
+        or len(ids) != len(set(ids))
+    ):
         raise RuntimeError("segments_ru_final.json содержит некорректные ID.")
     return sorted(result, key=lambda item: int(item["id"]))
 
@@ -66,12 +70,20 @@ def _read_marker(work_dir: Path) -> dict[str, Any]:
 
 
 def _current_guard_version() -> str:
-    return str(getattr(semantic_tts_guard_v4, "_GUARD_VERSION", "semantic-tts-guard-v4.2"))
+    return str(
+        getattr(
+            semantic_tts_guard_v4,
+            "_GUARD_VERSION",
+            "semantic-tts-guard-v4.2",
+        )
+    )
 
 
 def _delete_segment_files(work_dir: Path, segment_ids: set[int]) -> None:
     for segment_id in segment_ids:
-        (work_dir / "checkpoints" / f"segment_{segment_id:02d}.json").unlink(missing_ok=True)
+        (work_dir / "checkpoints" / f"segment_{segment_id:02d}.json").unlink(
+            missing_ok=True
+        )
         for directory in ("segments_clean", "segments_fitted", "attempts"):
             root = work_dir / directory
             if not root.is_dir():
@@ -109,30 +121,77 @@ def prepare_repair_checkpoints(
     _delete_segment_files(work_dir, selected_ids)
 
 
-def _source_cues(root: Path) -> list[pipeline.Cue]:
+def _source_cues_from_groups(root: Path) -> list[pipeline.Cue]:
     groups_path = root / "source_groups.json"
-    if groups_path.is_file():
-        payload = json.loads(groups_path.read_text(encoding="utf-8-sig"))
-        if isinstance(payload, list):
-            cues = [
-                pipeline.Cue(
-                    float(item["start"]),
-                    float(item["end"]),
-                    str(item.get("source") or item.get("english") or "").strip(),
-                )
-                for item in payload
-                if isinstance(item, dict)
-                and float(item.get("end") or 0.0) > float(item.get("start") or 0.0)
-                and str(item.get("source") or item.get("english") or "").strip()
-            ]
-            if cues:
-                return cues
-    raise RuntimeError("Не найден source_groups.json для безопасной пересборки voice reference.")
+    if not groups_path.is_file():
+        return []
+    payload = json.loads(groups_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, list):
+        return []
+    return [
+        pipeline.Cue(
+            float(item["start"]),
+            float(item["end"]),
+            str(item.get("source") or item.get("english") or "").strip(),
+        )
+        for item in payload
+        if isinstance(item, dict)
+        and float(item.get("end") or 0.0) > float(item.get("start") or 0.0)
+        and str(item.get("source") or item.get("english") or "").strip()
+    ]
 
 
-def _rebuild_references(root: Path, source: Path, duration: float) -> tuple[Path, Path]:
+def _source_cues_from_segments(root: Path) -> list[pipeline.Cue]:
+    """Recover source-speech windows for ready-SRT projects.
+
+    Direct SRT production stores the original cue end in ``source_end`` and the
+    original start in ``original_srt_start`` (or ``start`` for older projects).
+    These are the same source windows previously used to build voice references.
+    """
+    segments_path = root / "segments_ru_final.json"
+    if not segments_path.is_file():
+        return []
+    payload = json.loads(segments_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, list):
+        return []
+
+    cues: list[pipeline.Cue] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        start = float(
+            item.get("original_srt_start", item.get("start", 0.0)) or 0.0
+        )
+        end = float(item.get("source_end", item.get("end", 0.0)) or 0.0)
+        text = str(item.get("source") or item.get("text") or "").strip()
+        if end > start and text:
+            cues.append(pipeline.Cue(start, end, text))
+    return cues
+
+
+def _source_cues(root: Path) -> list[pipeline.Cue]:
+    cues = _source_cues_from_groups(root)
+    if cues:
+        return cues
+    cues = _source_cues_from_segments(root)
+    if cues:
+        return cues
+    raise RuntimeError(
+        "Не удалось восстановить интервалы source speech: отсутствуют пригодные "
+        "source_groups.json и segments_ru_final.json."
+    )
+
+
+def _rebuild_references(
+    root: Path,
+    source: Path,
+    duration: float,
+) -> tuple[Path, Path]:
     cues = _source_cues(root)
-    extended_intervals, composite_intervals = pipeline.reference_intervals(cues, duration)
+    extended_intervals, composite_intervals = pipeline.reference_intervals(
+        cues,
+        duration,
+    )
     reference_dir = root / "references"
     reference_dir.mkdir(parents=True, exist_ok=True)
     extended = reference_dir / "extended_reference.wav"
@@ -156,11 +215,17 @@ def _existing_references(root: Path) -> tuple[Path, Path]:
     extended = root / "references" / "extended_reference.wav"
     composite = root / "references" / "composite_reference.wav"
     if not extended.is_file() or not composite.is_file():
-        raise RuntimeError("Не найдены голосовые референсы; используйте полный аудиоремонт all.")
+        raise RuntimeError(
+            "Не найдены голосовые референсы; используйте полный аудиоремонт all."
+        )
     return extended, composite
 
 
-def _repair_seed(request: dict[str, Any], marker: dict[str, Any], manifest: dict[str, Any]) -> int:
+def _repair_seed(
+    request: dict[str, Any],
+    marker: dict[str, Any],
+    manifest: dict[str, Any],
+) -> int:
     initial = int(request.get("base_seed") or 2026072800)
     previous = int(marker.get("base_seed") or initial)
     history = manifest.get("audio_repairs")
@@ -168,8 +233,16 @@ def _repair_seed(request: dict[str, Any], marker: dict[str, Any], manifest: dict
     return max(initial, previous) + max(1, repair_index) * 100_000
 
 
-def _refresh_named_outputs(manifest: dict[str, Any], stable_mixed: Path, stable_russian: Path) -> None:
-    outputs = manifest.get("outputs") if isinstance(manifest.get("outputs"), dict) else {}
+def _refresh_named_outputs(
+    manifest: dict[str, Any],
+    stable_mixed: Path,
+    stable_russian: Path,
+) -> None:
+    outputs = (
+        manifest.get("outputs")
+        if isinstance(manifest.get("outputs"), dict)
+        else {}
+    )
     pairs = (
         (outputs.get("mixed"), stable_mixed),
         (outputs.get("russian_only"), stable_russian),
@@ -220,13 +293,18 @@ def main() -> None:
     request = production.load_request(root)
     repair_path = root / "input" / "audio_repair.json"
     repair = _load_object(repair_path, "audio_repair.json")
-    if int(repair.get("schema_version") or 0) != 1 or str(repair.get("project_id")) != project_id:
+    if (
+        int(repair.get("schema_version") or 0) != 1
+        or str(repair.get("project_id")) != project_id
+    ):
         raise RuntimeError("Некорректный запрос аудиоремонта.")
 
     segments_path = root / "segments_ru_final.json"
     segments = _load_segments(segments_path)
     if str(repair.get("segments_sha256") or "") != _sha256(segments_path):
-        raise RuntimeError("Реплики проекта изменились после команды /dubfix; создайте запрос заново.")
+        raise RuntimeError(
+            "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
+        )
     all_ids = {int(item["id"]) for item in segments}
     selected_ids = sorted({int(value) for value in repair.get("segment_ids") or []})
     selected_set = set(selected_ids)
@@ -262,17 +340,39 @@ def main() -> None:
 
     if repair_all:
         log("=== AUDIO REPAIR: REBUILD QUALITY REFERENCES ===")
-        extended_reference, composite_reference = _rebuild_references(root, source, duration)
+        extended_reference, composite_reference = _rebuild_references(
+            root,
+            source,
+            duration,
+        )
     else:
         extended_reference, composite_reference = _existing_references(root)
 
-    cpu_venv = Path(str(request.get("cpu_venv") or r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
-    cpu_python = cpu_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    cpu_venv = Path(
+        str(request.get("cpu_venv") or r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
+    )
+    cpu_python = cpu_venv / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
     if not cpu_python.is_file():
         raise RuntimeError(f"CPU Python не найден: {cpu_python}")
     repo = Path(__file__).resolve().parents[2]
-    synth_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "voxcpm2_cpu_shorts_production.py"
-    master_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
+    synth_script = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+        / "voxcpm2_cpu_shorts_production.py"
+    )
+    master_script = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+        / "master_constant_mix.py"
+    )
     if not synth_script.is_file() or not master_script.is_file():
         raise RuntimeError("Production NoChew renderer/master не найдены.")
 
@@ -306,12 +406,22 @@ def main() -> None:
     )
 
     log("=== AUDIO REPAIR: VOXCPM2 QUALITY ===")
-    log(f"Проект={project_id}; selected={selected_ids}; all={repair_all}; seed={base_seed}")
+    log(
+        f"Проект={project_id}; selected={selected_ids}; "
+        f"all={repair_all}; seed={base_seed}"
+    )
     synth = [
         str(cpu_python),
         str(synth_script),
         "--archive-root",
-        str(Path(str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")).resolve()),
+        str(
+            Path(
+                str(
+                    request.get("vox_archive")
+                    or r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
+                )
+            ).resolve()
+        ),
         "--extended-reference",
         str(extended_reference),
         "--composite-reference",
@@ -335,9 +445,16 @@ def main() -> None:
         "--base-seed",
         str(base_seed),
     ]
-    result = production.subprocess.run(synth, cwd=str(repo), env=env, check=False)
+    result = production.subprocess.run(
+        synth,
+        cwd=str(repo),
+        env=env,
+        check=False,
+    )
     if result.returncode != 0:
-        raise RuntimeError(f"Аудиоремонт VoxCPM2 завершился с кодом {result.returncode}.")
+        raise RuntimeError(
+            f"Аудиоремонт VoxCPM2 завершился с кодом {result.returncode}."
+        )
 
     log("=== AUDIO REPAIR: QUALITY MASTER ===")
     master = [
@@ -362,9 +479,16 @@ def main() -> None:
         "--target-tp",
         "-1.0",
     ]
-    result = production.subprocess.run(master, cwd=str(repo), env=env, check=False)
+    result = production.subprocess.run(
+        master,
+        cwd=str(repo),
+        env=env,
+        check=False,
+    )
     if result.returncode != 0:
-        raise RuntimeError(f"Аудиоремонт master завершился с кодом {result.returncode}.")
+        raise RuntimeError(
+            f"Аудиоремонт master завершился с кодом {result.returncode}."
+        )
 
     _refresh_named_outputs(manifest, stable_mixed, stable_russian)
     report_path = output_dir / "audio_repair_report.json"
