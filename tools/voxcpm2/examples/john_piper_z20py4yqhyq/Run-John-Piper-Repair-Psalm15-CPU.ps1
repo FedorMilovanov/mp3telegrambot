@@ -97,17 +97,23 @@ Assert-LastExitCode -Stage "Проверка CPU-окружения"
 Assert-LastExitCode -Stage "Синтаксическая проверка Python"
 
 $Segments = @(Get-Content -LiteralPath $SegmentsJson -Raw -Encoding utf8 | ConvertFrom-Json)
-$Segment = @($Segments | Where-Object { [int]$_.id -eq 2 })
-if ($Segment.Count -ne 1) {
+$SegmentMatches = @($Segments | Where-Object { [int]$_.id -eq 2 })
+if ($SegmentMatches.Count -ne 1) {
     throw "В segments_ru_final.json должен быть ровно один сегмент с id=2."
 }
-$Segment = $Segment[0]
+$Segment = $SegmentMatches[0]
 if ([string]$Segment.text -notmatch "пятнадцатом псалме") {
     throw "Сегмент №2 ещё не исправлен на 'пятнадцатом псалме'. Выполните git pull origin main."
 }
 
 New-Item -ItemType Directory -Force -Path $RepairRoot, $RepairWork, $RepairMaster, $OutputDir | Out-Null
-@($Segment) | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $RepairJson -Encoding utf8
+$RepairPayload = @($Segment)
+ConvertTo-Json -InputObject $RepairPayload -Depth 10 | Set-Content -LiteralPath $RepairJson -Encoding utf8
+
+$RepairCheck = Get-Content -LiteralPath $RepairJson -Raw -Encoding utf8 | ConvertFrom-Json
+if ($RepairCheck -isnot [System.Array] -or @($RepairCheck).Count -ne 1) {
+    throw "Временный JSON ремонта должен содержать массив из одного сегмента."
+}
 
 $VideoDurationText = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $SourceVideo
 Assert-LastExitCode -Stage "Чтение длительности видео"
