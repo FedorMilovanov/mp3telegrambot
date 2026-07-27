@@ -94,20 +94,21 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(_check("Recipe-actions", False, str(exc)))
 
     repo = Path(__file__).resolve().parents[1]
-    guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard.py"
-    wrapper_entry_path = repo / "tools" / "voxcpm2" / "voxcpm2_cpu_semantic_wrapper.py"
-    wrapper_implementation_path = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "voxcpm2_cpu_semantic_wrapper.py"
+    quality_paths = (
+        repo / "tools" / "voxcpm2" / "dub_quality_v4.py",
+        repo / "tools" / "voxcpm2" / "semantic_tts_guard_v4.py",
+        repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py",
+        repo / "tools" / "voxcpm2" / "master_quality_v4.py",
     )
-    wrapper_ok = wrapper_entry_path.is_file() and wrapper_implementation_path.is_file()
-    wrapper_detail = f"entry={wrapper_entry_path}; implementation={wrapper_implementation_path}"
-    checks.append(_check("Semantic TTS guard", guard_path.is_file(), str(guard_path)))
-    checks.append(_check("VoxCPM2 hardened wrapper", wrapper_ok, wrapper_detail))
+    quality_ok = all(path.is_file() and path.stat().st_size > 0 for path in quality_paths)
+    checks.append(
+        _check(
+            "NoChew Quality v4",
+            quality_ok,
+            "; ".join(str(path) for path in quality_paths),
+        )
+    )
+
     whisper_available = importlib.util.find_spec("faster_whisper") is not None
     qa_model = os.getenv("DUB_TTS_QA_MODEL", "small").strip() or "small"
     checks.append(
@@ -115,6 +116,14 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Whisper semantic QA",
             whisper_available,
             f"faster-whisper={'есть' if whisper_available else 'не найден'}; model={qa_model}",
+        )
+    )
+    soundfile_available = importlib.util.find_spec("soundfile") is not None
+    checks.append(
+        _check(
+            "SoundFile WAV I/O",
+            soundfile_available,
+            "soundfile есть" if soundfile_available else "soundfile не найден; установите requirements.txt",
         )
     )
 
@@ -222,7 +231,7 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Оба режима требуют зелёные semantic guard, wrapper, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Оба режима требуют зелёные NoChew Quality v4, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
             "Только Gemini MAX дополнительно требует рабочие Gemini keys; готовый SRT не отправляется на перевод или редактуру.",
         ]
     )
