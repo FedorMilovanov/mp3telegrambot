@@ -154,6 +154,7 @@ def install_dub_studio_runtime() -> None:
         from telegram.ext import Application, ApplicationBuilder
         from handlers.dub_commands import register_dub_handlers
         from handlers.dub_delivery import register_dub_delivery_handlers
+        from handlers.dub_quickstart import register_dub_quickstart_handler
 
         _ORIGINAL_BUILD = ApplicationBuilder.build
         _ORIGINAL_START = Application.start
@@ -162,6 +163,7 @@ def install_dub_studio_runtime() -> None:
             application = _ORIGINAL_BUILD(self)
             register_dub_handlers(application)
             register_dub_delivery_handlers(application)
+            register_dub_quickstart_handler(application)
             return application
 
         async def start_with_dub(self: Any) -> None:
@@ -177,7 +179,7 @@ def install_dub_studio_runtime() -> None:
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info("🎙 Dub Studio runtime: handlers + delivery + worker + notifications enabled")
+        logger.info("🎙 Dub Studio runtime: handlers + quickstart + delivery + worker + notifications enabled")
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]
