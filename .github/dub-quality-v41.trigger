@@ -1,0 +1,2 @@
+source=8dfc0df9ab26782e32a6fbb7a77bef6afe30648f
+purpose=validate-publish-health-worker-contract
