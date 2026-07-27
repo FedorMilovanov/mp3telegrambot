@@ -101,6 +101,51 @@ def ensure_worker_running() -> bool:
         return False
 
 
+async def _notify_generic_success(application: Any, store: Any, event: dict[str, Any], project: dict[str, Any]) -> bool:
+    from handlers.dub_delivery import send_project_outputs
+
+    job = store.get_job(int(event["job_id"])) if event.get("job_id") else None
+    action = str((job or {}).get("action") or "")
+    project_id = str(project["id"])
+    chat_id = int(event["owner_chat_id"])
+    if action == "prepare_custom":
+        text = (
+            "✅ <b>Расшифровка и шаблон готовы</b>\n\n"
+            f"Проект: <code>{html.escape(project_id)}</code>\n\n"
+            "Ниже бот отправит точную исходную расшифровку, SRT и шаблон. "
+            "Заполните строки <code>RU:</code>, затем используйте:\n"
+            f"<code>/dubtranslation {html.escape(project_id)}</code>"
+        )
+        await application.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        sent, failures = await send_project_outputs(application.bot, chat_id, project)
+        if failures:
+            await application.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Не все подготовительные файлы отправились:\n" + "\n".join(failures[:6]),
+            )
+        return sent > 0
+    if action in {"render_gemini", "render_custom", "render"}:
+        text = (
+            "✅ <b>Русский дубляж готов</b>\n\n"
+            f"Проект: <code>{html.escape(project_id)}</code>\n"
+            "Отправляю основной MP4, перевод и субтитры.\n\n"
+            f"Версия только с русским голосом: <code>/dubsend {html.escape(project_id)} all</code>"
+        )
+        await application.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        sent, failures = await send_project_outputs(application.bot, chat_id, project)
+        if failures:
+            await application.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "⚠️ Не все результаты отправились:\n"
+                    + "\n".join(failures[:6])
+                    + f"\n\nПовторить: /dubsend {project_id}"
+                ),
+            )
+        return sent > 0
+    return False
+
+
 async def _notification_loop(application: Any) -> None:
     from services.dub_studio import DubStore
 
@@ -109,24 +154,33 @@ async def _notification_loop(application: Any) -> None:
         try:
             for event in store.undelivered_terminal_events(limit=20):
                 event_type = str(event["event_type"])
-                icon = {
-                    "job_succeeded": "✅",
-                    "job_failed": "❌",
-                    "job_cancelled": "🚫",
-                }.get(event_type, "ℹ️")
                 project_id = str(event["project_id"])
-                title = str(event.get("project_title") or project_id)
-                message = str(event.get("message") or "")
-                text = (
-                    f"{icon} <b>Dub Studio</b>\n\n"
-                    f"{html.escape(title)}\n"
-                    f"<code>{html.escape(project_id)}</code>\n\n"
-                    f"{html.escape(message[:1200])}\n\n"
-                    f"<code>/dubstatus {html.escape(project_id)}</code>\n"
-                    f"<code>/dubfiles {html.escape(project_id)}</code>\n"
-                    f"<code>/dubsend {html.escape(project_id)}</code>"
-                )
+                project = store.get_project(project_id)
                 try:
+                    if event_type == "job_succeeded" and str(project.get("recipe_id")) == "generic_short_v1":
+                        delivered = await _notify_generic_success(application, store, event, project)
+                        if delivered:
+                            store.mark_event_delivered(int(event["id"]))
+                            continue
+                    icon = {
+                        "job_succeeded": "✅",
+                        "job_failed": "❌",
+                        "job_cancelled": "🚫",
+                    }.get(event_type, "ℹ️")
+                    title = str(event.get("project_title") or project_id)
+                    message = str(event.get("message") or "")
+                    extra = ""
+                    if str(project.get("recipe_id")) == "generic_short_v1" and event_type == "job_failed":
+                        extra = "\nПроверьте точный этап: <code>/dubstatus " + html.escape(project_id) + "</code>"
+                    text = (
+                        f"{icon} <b>Dub Studio</b>\n\n"
+                        f"{html.escape(title)}\n"
+                        f"<code>{html.escape(project_id)}</code>\n\n"
+                        f"{html.escape(message[:1200])}{extra}\n\n"
+                        f"<code>/dubstatus {html.escape(project_id)}</code>\n"
+                        f"<code>/dubfiles {html.escape(project_id)}</code>\n"
+                        f"<code>/dubsend {html.escape(project_id)}</code>"
+                    )
                     await application.bot.send_message(
                         chat_id=int(event["owner_chat_id"]),
                         text=text,
@@ -155,12 +209,14 @@ def install_dub_studio_runtime() -> None:
         from handlers.dub_commands import register_dub_handlers
         from handlers.dub_delivery import register_dub_delivery_handlers
         from handlers.dub_quickstart import register_dub_quickstart_handler
+        from handlers.dub_wizard import register_dub_wizard_handlers
 
         _ORIGINAL_BUILD = ApplicationBuilder.build
         _ORIGINAL_START = Application.start
 
         def build_with_dub(self: Any) -> Any:
             application = _ORIGINAL_BUILD(self)
+            register_dub_wizard_handlers(application)
             register_dub_handlers(application)
             register_dub_delivery_handlers(application)
             register_dub_quickstart_handler(application)
@@ -179,7 +235,7 @@ def install_dub_studio_runtime() -> None:
         Application.start = start_with_dub
         ensure_worker_running()
         _INSTALLED = True
-        logger.info("🎙 Dub Studio runtime: handlers + quickstart + delivery + worker + notifications enabled")
+        logger.info("🎙 Dub Studio runtime: wizard + delivery + worker + notifications enabled")
 
 
 __all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]

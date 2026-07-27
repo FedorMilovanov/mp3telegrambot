@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "generic_short_v1",
+  "title": "Универсальный дубляж YouTube — мастер",
+  "speaker": "Определяется из исходного ролика",
+  "source_url": "",
+  "description": "Меню для любого YouTube-ролика: ручные captions прежде auto/Whisper, Gemini MAX или пользовательский перевод, VoxCPM2 CPU NoChew, русский delay 420 мс, оригинал 18%, русские имена и доставка в Telegram.",
+  "work_root": "C:\\AI-Archive\\MP3Bot-Dub-Studio",
+  "actions": {
+    "render": {
+      "kind": "render",
+      "label": "Полный автоматический Gemini MAX",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_project_runtime",
+      "parameters": {
+        "Mode": "gemini"
+      }
+    },
+    "render_gemini": {
+      "kind": "render",
+      "label": "Gemini MAX — перевод и финальный ролик",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_project_runtime",
+      "parameters": {
+        "Mode": "gemini"
+      }
+    },
+    "prepare_custom": {
+      "kind": "prepare",
+      "label": "Подготовить расшифровку для моего перевода",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_project_runtime",
+      "parameters": {
+        "Mode": "custom",
+        "PrepareOnly": true
+      }
+    },
+    "render_custom": {
+      "kind": "render",
+      "label": "Сделать ролик с моим переводом",
+      "runner": "python_module",
+      "module": "tools.voxcpm2.generic_project_runtime",
+      "parameters": {
+        "Mode": "custom"
+      }
+    }
+  },
+  "outputs": {}
+}
