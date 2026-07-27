@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from core.dub_projects import (
     load_project,
     project_dir,
     project_marker,
+    split_translation_units,
 )
 
 
@@ -42,11 +44,14 @@ def test_approved_translation_is_locked_and_versioned(project_root: Path) -> Non
     )
 
     translation = saved["translation"]
+    assert saved["schema_version"] == 2
     assert translation["state"] == "approved"
     assert translation["locked"] is True
     assert translation["origin"] == "approved_external"
     assert translation["revision"] == 1
     assert translation["unit_count"] == 2
+    assert translation["units_sha256"]
+    assert translation["contract_sha256"]
     assert saved["policy"]["rewrite_translation"] is False
     assert saved["policy"]["auto_shorten_translation"] is False
     assert saved["policy"]["synthesis_engine"] == "VoxCPM2"
@@ -56,9 +61,24 @@ def test_approved_translation_is_locked_and_versioned(project_root: Path) -> Non
     assert Path(translation["display_text_path"]).read_text(encoding="utf-8").strip() == expected
     assert translation["sha256"] == hashlib.sha256(expected.encode("utf-8")).hexdigest()
 
-    units_path = Path(translation["units_path"])
-    assert units_path.is_file()
+    units = json.loads(Path(translation["units_path"]).read_text(encoding="utf-8"))
+    assert [unit["id"] for unit in units] == ["TU-0001", "TU-0002"]
+    assert all(unit["display_text"] == unit["spoken_text"] for unit in units)
     assert (project_dir(project_id) / "events.jsonl").is_file()
+
+
+def test_explicit_translation_unit_ids_are_preserved() -> None:
+    units = split_translation_units(
+        "TU-007: Седьмой утверждённый блок.\n\n[12]\nДвенадцатый блок."
+    )
+    assert [item["id"] for item in units] == ["TU-0007", "TU-0012"]
+    assert units[0]["display_text"] == "Седьмой утверждённый блок."
+    assert units[1]["display_text"] == "Двенадцатый блок."
+
+
+def test_duplicate_explicit_translation_unit_is_rejected() -> None:
+    with pytest.raises(DubProjectError, match="повторяется"):
+        split_translation_units("[3]\nПервый блок.\n\nTU-003\nВторой блок.")
 
 
 def test_replacing_translation_creates_new_revision(project_root: Path) -> None:
@@ -81,6 +101,7 @@ def test_replacing_translation_creates_new_revision(project_root: Path) -> None:
     assert first["translation"]["sha256"] != second["translation"]["sha256"]
     assert second["production"]["ready"] is False
     assert second["production"]["stage"] == "preflight_pending"
+    assert "preflight" not in second
 
 
 def test_project_marker_and_owner_guard(project_root: Path) -> None:
@@ -119,6 +140,25 @@ def test_source_file_is_hashed_and_cancel_is_durable(project_root: Path, tmp_pat
     cancelled = cancel_project(project_id, cancelled_by_user_id=1)
     assert cancelled["status"] == "cancelled"
     assert load_project(project_id)["production"]["stage"] == "cancelled"
+    with pytest.raises(DubProjectError, match="статусе cancelled"):
+        attach_approved_translation(
+            project_id,
+            text="Новый утверждённый перевод после отмены запрещён.",
+            approved_by_user_id=1,
+        )
+
+
+def test_translation_owner_is_checked_inside_store(project_root: Path) -> None:
+    project_id = create_project(
+        owner_user_id=10,
+        source={"kind": "url", "url": "https://example.test/owner"},
+    )["project_id"]
+    with pytest.raises(DubProjectError, match="владелец"):
+        attach_approved_translation(
+            project_id,
+            text="Достаточно длинный, но не владельцем утверждённый перевод.",
+            approved_by_user_id=11,
+        )
 
 
 def test_short_or_empty_translation_is_rejected(project_root: Path) -> None:
