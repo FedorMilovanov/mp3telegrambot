@@ -11,6 +11,8 @@ import sys
 import threading
 from typing import Any
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 logger = logging.getLogger(__name__)
 _INSTALLED = False
 _LOCK = threading.Lock()
@@ -116,7 +118,17 @@ async def _notify_generic_success(application: Any, store: Any, event: dict[str,
             "Заполните строки <code>RU:</code>, затем используйте:\n"
             f"<code>/dubtranslation {html.escape(project_id)}</code>"
         )
-        await application.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "✍️ Загрузить мой перевод",
+                    callback_data=f"dubwiz|translation|{project_id}",
+                )
+            ]]),
+        )
         sent, failures = await send_project_outputs(application.bot, chat_id, project)
         if failures:
             await application.bot.send_message(

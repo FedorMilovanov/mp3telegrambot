@@ -197,7 +197,14 @@ async def handle_dub_wizard_callback(update: Update, context: ContextTypes.DEFAU
         await dubworker_command(update, context)
         return
     if action == "translation":
-        await _begin_translation_upload(update, context, value)
+        try:
+            await _begin_translation_upload(update, context, value)
+        except Exception as exc:
+            await query.message.reply_text(
+                "⚠️ " + html.escape(_short(str(exc), 900)),
+                parse_mode="HTML",
+            )
+        return
 
 
 async def _create_generic_project(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, mode: str) -> None:
@@ -348,7 +355,7 @@ async def handle_dub_wizard_document(update: Update, context: ContextTypes.DEFAU
     suffix = Path(document.file_name or "translation.txt").suffix.casefold()
     if suffix not in {".txt", ".md", ".json"}:
         await update.effective_message.reply_text("Нужен файл TXT, MD или JSON.")
-        return
+        raise ApplicationHandlerStop
     try:
         telegram_file = await context.bot.get_file(document.file_id)
         payload = await telegram_file.download_as_bytearray()
