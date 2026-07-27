@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from handlers.dub_audio_repair import parse_segment_selector
+from handlers.dub_audio_repair import _ensure_repair_slot, parse_segment_selector
 from tools.voxcpm2 import dub_worker
 from tools.voxcpm2.generic_audio_repair_runtime import prepare_repair_checkpoints
 from tools.voxcpm2.semantic_tts_guard_v4 import _GUARD_VERSION
@@ -18,6 +18,27 @@ def test_segment_selector_accepts_lists_ranges_and_all() -> None:
     assert parse_segment_selector("все", available) == available
     with pytest.raises(ValueError, match="нет реплик"):
         parse_segment_selector("6", available)
+
+
+def test_active_job_blocks_a_second_repair_request() -> None:
+    class Store:
+        @staticmethod
+        def recent_jobs(project_id: str, limit: int = 8):
+            assert project_id == "dub-test"
+            assert limit == 8
+            return [{"id": 17, "status": "running"}]
+
+    with pytest.raises(RuntimeError, match="задание #17"):
+        _ensure_repair_slot(Store(), "dub-test")
+
+
+def test_finished_job_does_not_block_repair() -> None:
+    class Store:
+        @staticmethod
+        def recent_jobs(project_id: str, limit: int = 8):
+            return [{"id": 16, "status": "succeeded"}]
+
+    _ensure_repair_slot(Store(), "dub-test")
 
 
 def _checkpoint(root: Path, segment_id: int, seed: int = 100) -> Path:
