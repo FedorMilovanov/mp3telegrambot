@@ -42,6 +42,7 @@ jobs:
         run: |
           python -m py_compile `
             tools/voxcpm2/generic_direct_runtime.py `
+            tools/voxcpm2/generic_direct_checked_runtime.py `
             tools/voxcpm2/generic_gemini_runtime.py `
             tools/voxcpm2/generic_project_runtime.py `
             tools/voxcpm2/dub_worker.py `
@@ -61,7 +62,7 @@ jobs:
           gemini, _ = build_command('generic_short_v1', 'render_gemini')
           direct, _ = build_command('generic_short_v1', 'render_direct')
           assert 'tools.voxcpm2.generic_gemini_runtime' in ' '.join(gemini)
-          assert 'tools.voxcpm2.generic_direct_runtime' in ' '.join(direct)
+          assert 'tools.voxcpm2.generic_direct_checked_runtime' in ' '.join(direct)
           assert '-Mode gemini' in ' '.join(gemini)
           assert '-Mode direct' in ' '.join(direct)
           print('Recipe actions are separated: OK')
@@ -80,6 +81,7 @@ jobs:
         run: >-
           python -m ruff check
           tools/voxcpm2/generic_direct_runtime.py
+          tools/voxcpm2/generic_direct_checked_runtime.py
           tools/voxcpm2/generic_gemini_runtime.py
           tools/voxcpm2/dub_worker_hardened.py
           handlers/dub_wizard.py
