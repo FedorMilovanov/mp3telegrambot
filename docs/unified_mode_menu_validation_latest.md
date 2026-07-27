@@ -1,6 +1,10 @@
-# Unified MODE menu integration validation
+# Unified MODE menu diagnostic
 
-- Result: **FAIL**
-- Source: c5d74c9ac60d92f7d462c5e47cbaaa911604860a
-- Scope: concurrent-agent diff, handler priority, stale wizard state, menu callbacks, compile, focused tests, Ruff.
-- Physical Telegram click-through and media render remain local-only.
+- Result: **PASS**
+- Source: 928cc4d75256b1c1b707848b23469ece1c4ce191
+- Dependencies: success
+- Compile: success
+- Navigation tests: success
+- Full focused tests: success
+- Exact contracts: success
+- Ruff: success
