@@ -7,9 +7,12 @@ on:
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
+      - 'tools/voxcpm2/semantic_tts_guard.py'
+      - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
       - 'tests/test_generic_*.py'
+      - 'tests/test_semantic_tts_guard.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
@@ -17,9 +20,12 @@ on:
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
+      - 'tools/voxcpm2/semantic_tts_guard.py'
+      - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
       - 'tests/test_generic_*.py'
+      - 'tests/test_semantic_tts_guard.py'
 
 jobs:
   focused-dub-studio:
@@ -41,10 +47,13 @@ jobs:
         shell: pwsh
         run: |
           python -m py_compile `
+            tools/voxcpm2/generic_short_runtime.py `
             tools/voxcpm2/generic_direct_runtime.py `
             tools/voxcpm2/generic_direct_checked_runtime.py `
             tools/voxcpm2/generic_gemini_runtime.py `
             tools/voxcpm2/generic_project_runtime.py `
+            tools/voxcpm2/semantic_tts_guard.py `
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py `
             tools/voxcpm2/dub_worker.py `
             tools/voxcpm2/dub_worker_hardened.py `
             handlers/dub_wizard.py `
@@ -72,6 +81,7 @@ jobs:
           python -m pytest -q
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
+          tests/test_semantic_tts_guard.py
           tests/test_dub_modes.py
           tests/test_dub_wizard.py
           tests/test_dub_delivery.py
@@ -80,15 +90,19 @@ jobs:
       - name: Ruff changed surface
         run: >-
           python -m ruff check
+          tools/voxcpm2/generic_short_runtime.py
           tools/voxcpm2/generic_direct_runtime.py
           tools/voxcpm2/generic_direct_checked_runtime.py
           tools/voxcpm2/generic_gemini_runtime.py
+          tools/voxcpm2/semantic_tts_guard.py
+          tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py
           tools/voxcpm2/dub_worker_hardened.py
           handlers/dub_wizard.py
           handlers/dub_commands.py
           services/dub_studio_runtime.py
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
+          tests/test_semantic_tts_guard.py
           tests/test_dub_modes.py
       - name: Whitespace integrity
         run: git diff --check
