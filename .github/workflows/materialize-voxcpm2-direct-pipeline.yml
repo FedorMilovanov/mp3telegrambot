@@ -1,0 +1,405 @@
+name: Materialize VoxCPM2 Direct Pipeline
+
+on:
+  push:
+    branches: ["refactor/voxcpm2-direct-pipeline"]
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/voxcpm2-direct-pipeline
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Materialize direct production files
+        shell: pwsh
+        run: |
+          @'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import json
+          import re
+          import shutil
+          import zipfile
+          from pathlib import Path
+
+          root = Path.cwd()
+          example = root / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+          production = root / "tools" / "voxcpm2" / "production"
+          production.mkdir(parents=True, exist_ok=True)
+
+          parts = sorted(example.glob("package.part*.b64"))
+          if [p.name for p in parts] != [f"package.part{i:02d}.b64" for i in range(1, 8)]:
+              raise SystemExit("John Piper package parts are incomplete")
+          encoded = "".join(p.read_text(encoding="ascii").strip() for p in parts)
+          if len(encoded) != 26336:
+              raise SystemExit(f"Unexpected package Base64 length: {len(encoded)}")
+          package = base64.b64decode(encoded, validate=True)
+          expected_hash = "e5247345d451cd00805d9157cf279a19aad6ee2ca9935a0167ee7b38fda9294f"
+          if hashlib.sha256(package).hexdigest() != expected_hash:
+              raise SystemExit("John Piper package hash mismatch")
+
+          unpacked = root / ".materialized-john-piper"
+          if unpacked.exists():
+              shutil.rmtree(unpacked)
+          unpacked.mkdir()
+          zip_path = unpacked / "package.zip"
+          zip_path.write_bytes(package)
+          with zipfile.ZipFile(zip_path) as archive:
+              if archive.testzip() is not None:
+                  raise SystemExit("Package ZIP CRC failed")
+              archive.extractall(unpacked)
+
+          synth_source = unpacked / "voxcpm2_cpu_shorts_production.py"
+          master_source = unpacked / "master_constant_mix.py"
+          launcher_source = unpacked / "Run-John-Piper-FINAL-CPU-Inner.ps1"
+          for required in (synth_source, master_source, launcher_source):
+              if not required.is_file():
+                  raise SystemExit(f"Missing materialized file: {required}")
+
+          synth = synth_source.read_text(encoding="utf-8-sig")
+          synth = synth.replace(
+              '    parser.add_argument("--base-seed", type=int, default=2026072600)\n',
+              '    parser.add_argument("--base-seed", type=int, default=2026072600)\n'
+              '    parser.add_argument(\n'
+              '        "--force-segments",\n'
+              '        action="store_true",\n'
+              '        help="Ignore valid segment checkpoints and regenerate every segment.",\n'
+              '    )\n',
+          )
+          synth = synth.replace(
+              '    fitted_dir = work_dir / "segments_fitted"\n'
+              '    attempts_dir.mkdir(parents=True, exist_ok=True)\n'
+              '    clean_dir.mkdir(parents=True, exist_ok=True)\n'
+              '    fitted_dir.mkdir(parents=True, exist_ok=True)\n',
+              '    fitted_dir = work_dir / "segments_fitted"\n'
+              '    checkpoints_dir = work_dir / "checkpoints"\n'
+              '    attempts_dir.mkdir(parents=True, exist_ok=True)\n'
+              '    clean_dir.mkdir(parents=True, exist_ok=True)\n'
+              '    fitted_dir.mkdir(parents=True, exist_ok=True)\n'
+              '    checkpoints_dir.mkdir(parents=True, exist_ok=True)\n',
+          )
+          loop_anchor = '''        profile = str(segment["reference_profile"])
+                  reference = references[profile]
+
+                  log("")
+          '''
+          loop_replacement = '''        profile = str(segment["reference_profile"])
+                  reference = references[profile]
+                  clean_path = clean_dir / f"{segment_id:02d}_{profile}_clean.wav"
+                  fitted_path = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
+                  checkpoint_path = checkpoints_dir / f"segment_{segment_id:02d}.json"
+                  signature = {
+                      "text": str(segment["text"]),
+                      "start": float(segment["start"]),
+                      "end": float(segment["end"]),
+                      "tail_guard": tail_guard,
+                      "start_delay_ms": int(segment.get("start_delay_ms", 0)),
+                      "reference_profile": profile,
+                      "steps": int(args.steps),
+                      "cfg": float(args.cfg),
+                      "base_seed": int(args.base_seed),
+                  }
+
+                  if not args.force_segments and checkpoint_path.is_file() and fitted_path.is_file():
+                      try:
+                          checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                      except (OSError, json.JSONDecodeError):
+                          checkpoint = None
+                      if isinstance(checkpoint, dict) and checkpoint.get("signature") == signature:
+                          saved_report = checkpoint.get("report")
+                          if isinstance(saved_report, dict):
+                              fitted_segments.append((segment, fitted_path))
+                              report_segments.append(saved_report)
+                              total_synthesis += sum(
+                                  float(item.get("synthesis_seconds", 0.0))
+                                  for item in saved_report.get("attempts", [])
+                                  if isinstance(item, dict)
+                              )
+                              log("")
+                              log(
+                                  f"[{position}/{len(segments)}] #{segment_id} "
+                                  f"восстановлен из checkpoint; повторный CPU-синтез не нужен"
+                              )
+                              continue
+
+                  log("")
+          '''
+          if loop_anchor not in synth:
+              raise SystemExit("Could not locate synthesis loop anchor")
+          synth = synth.replace(loop_anchor, loop_replacement)
+          synth = synth.replace(
+              '        clean_path = clean_dir / f"{segment_id:02d}_{profile}_clean.wav"\n'
+              '        fitted_path = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"\n'
+              '        sf.write(\n',
+              '        sf.write(\n',
+          )
+          report_anchor = '''        fitted_segments.append((segment, fitted_path))
+                  report_segments.append(
+                      {
+                          **segment,
+          '''
+          report_replacement = '''        fitted_segments.append((segment, fitted_path))
+                  segment_report = {
+                          **segment,
+          '''
+          if report_anchor not in synth:
+              raise SystemExit("Could not locate segment report anchor")
+          synth = synth.replace(report_anchor, report_replacement)
+          report_end = '''                "fitted_path": str(fitted_path),
+                      }
+                  )
+
+                  log(
+          '''
+          report_end_replacement = '''                "fitted_path": str(fitted_path),
+                      }
+                  report_segments.append(segment_report)
+                  checkpoint_path.write_text(
+                      json.dumps(
+                          {"signature": signature, "report": segment_report},
+                          ensure_ascii=False,
+                          indent=2,
+                      ),
+                      encoding="utf-8",
+                  )
+
+                  log(
+          '''
+          if report_end not in synth:
+              raise SystemExit("Could not locate segment report end")
+          synth = synth.replace(report_end, report_end_replacement)
+          compile(synth, "segmented_voice_clone.py", "exec")
+          (production / "segmented_voice_clone.py").write_text(synth, encoding="utf-8")
+
+          master = master_source.read_text(encoding="utf-8-sig")
+          compile(master, "master_constant_mix.py", "exec")
+          (production / "master_constant_mix.py").write_text(master, encoding="utf-8")
+
+          launcher = launcher_source.read_text(encoding="utf-8-sig")
+          launcher = launcher.replace(
+              '$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path\n'
+              '$SynthScript = Join-Path $ScriptDir "voxcpm2_cpu_shorts_production.py"\n'
+              '$MasterScript = Join-Path $ScriptDir "master_constant_mix.py"\n',
+              '$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path\n'
+              '$VoxRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)\n'
+              '$ProductionDir = Join-Path $VoxRoot "production"\n'
+              '$SynthScript = Join-Path $ProductionDir "segmented_voice_clone.py"\n'
+              '$MasterScript = Join-Path $ProductionDir "master_constant_mix.py"\n',
+          )
+          launcher = launcher.replace(
+              '''    Write-Host (
+                      "Zero-shot voice clone, как у МакАртура: "
+                      + "B extended + C composite."
+                  ) -ForegroundColor Yellow''',
+              '    Write-Host "Zero-shot voice clone: B extended + C composite." -ForegroundColor Yellow',
+          )
+          launcher = launcher.replace(
+              '''    Write-Host (
+                      "CPU only | Steps=$Steps | CFG=$Cfg | "
+                      + "5 смысловых блоков | NoChew | multi-candidate"
+                  ) -ForegroundColor Yellow''',
+              '    Write-Host "CPU only | Steps=$Steps | CFG=$Cfg | 5 блоков | NoChew | multi-candidate" -ForegroundColor Yellow',
+          )
+          launcher = launcher.replace(
+              '''    Write-Host (
+                      "Русский голос: 100%; оригинал постоянно: "
+                      + ($OriginalLevel * 100).ToString("0.0")
+                      + "%; master -14 LUFS / -1 dBTP."
+                  ) -ForegroundColor Yellow''',
+              '    $OriginalPercent = ($OriginalLevel * 100).ToString("0.0")\n'
+              '    Write-Host "Русский голос: 100%; оригинал: $OriginalPercent%; master -14 LUFS / -1 dBTP." -ForegroundColor Yellow',
+          )
+          launcher = launcher.replace(
+              '''        foreach ($TempDir in @(
+                          (Join-Path $SegmentWorkDir "attempts"),
+                          (Join-Path $SegmentWorkDir "segments_clean"),
+                          (Join-Path $SegmentWorkDir "segments_fitted")
+                      )) {''',
+              '''        foreach ($TempDir in @(
+                          (Join-Path $SegmentWorkDir "attempts")
+                      )) {''',
+          )
+          example_launcher = example / "Run-John-Piper-FINAL-CPU.ps1"
+          example_launcher.write_text(launcher, encoding="utf-8")
+
+          project = {
+              "schema_version": 1,
+              "project_id": "john_piper_z20py4yqhyq",
+              "speaker": "John Piper",
+              "engine": "VoxCPM2",
+              "device": "cpu",
+              "source_url": "https://youtube.com/shorts/Z20Py4yQhYQ",
+              "segments": "segments_ru_final.json",
+              "translation": "translation_ru.txt",
+              "subtitles_ru": "subtitles_ru_final.srt",
+              "subtitles_en": "source_subtitles_en.srt",
+              "steps": 16,
+              "cfg": 1.8,
+              "original_level": 0.18,
+          }
+          (example / "project.json").write_text(
+              json.dumps(project, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          readme = '''# John Piper SHORTS — VoxCPM2 CPU
+
+          Прямой production-конвейер без ZIP, Base64 и вложенных launchers.
+
+          - John Piper — исходный спикер.
+          - VoxCPM2 — модель синтеза.
+          - CPU only; CUDA скрыта до импорта torch.
+          - Zero-shot voice clone из исходного ролика.
+          - Пять смысловых блоков, NoChew и multi-candidate selection.
+          - Каждый завершённый блок сохраняет checkpoint: после остановки повторно синтезируются только незавершённые блоки.
+          - Постоянный английский оригинал 18%, master -14 LUFS / -1 dBTP.
+
+          ## Запуск
+
+          ```powershell
+          cd "C:\\Users\\Fedor\\Projects\\mp3telegrambot"
+          git pull origin main
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\\tools\\voxcpm2\\examples\\john_piper_z20py4yqhyq\\Run-John-Piper-FINAL-CPU.ps1
+          ```
+
+          Итоговый файл:
+
+          ```text
+          C:\\AI-Archive\\John-Piper-Short-Z20Py4yQhYQ-FINAL\\output\\John_Piper_Russian_Dub_FINAL_UPLOAD.mp4
+          ```
+          '''
+          example.joinpath("README_RU.md").write_text(
+              "\n".join(line[10:] if line.startswith("          ") else line for line in readme.splitlines()) + "\n",
+              encoding="utf-8",
+          )
+
+          test_file = root / "tests" / "test_john_piper_voxcpm2_package.py"
+          test_file.write_text('''from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          EXAMPLE = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+          PRODUCTION = ROOT / "tools" / "voxcpm2" / "production"
+
+          def test_direct_pipeline_has_no_embedded_package() -> None:
+              assert not list(EXAMPLE.glob("package.part*.b64"))
+              assert not (EXAMPLE / "John_Piper_VoxCPM2_CPU_FINAL.zip").exists()
+              assert not (EXAMPLE / "Run-John-Piper-FINAL-CPU-Inner.ps1").exists()
+
+          def test_direct_python_modules_compile() -> None:
+              for path in (
+                  PRODUCTION / "segmented_voice_clone.py",
+                  PRODUCTION / "master_constant_mix.py",
+              ):
+                  compile(path.read_text(encoding="utf-8"), str(path), "exec")
+
+          def test_john_piper_recipe_and_segments() -> None:
+              project = json.loads((EXAMPLE / "project.json").read_text(encoding="utf-8"))
+              assert project["engine"] == "VoxCPM2"
+              assert project["device"] == "cpu"
+              segments = json.loads((EXAMPLE / "segments_ru_final.json").read_text(encoding="utf-8"))
+              assert len(segments) == 5
+              assert segments[0]["start"] == 0.24
+              assert segments[-1]["end"] == 64.32
+              assert [item["start_delay_ms"] for item in segments] == [220, 160, 100, 70, 40]
+              previous_end = 0.0
+              for segment in segments:
+                  assert segment["start"] >= previous_end
+                  assert segment["end"] > segment["start"]
+                  assert segment["text"].strip()
+                  previous_end = segment["end"]
+          '''.replace("          ", ""), encoding="utf-8")
+
+          workflow = root / ".github" / "workflows" / "voxcpm2-windows.yml"
+          workflow_text = workflow.read_text(encoding="utf-8")
+          workflow_text = re.sub(
+              r'\n      - name: Reconstruct John Piper embedded production package.*?\n      - name: Parse every VoxCPM2 PowerShell launcher',
+              '\n      - name: Parse every VoxCPM2 PowerShell launcher',
+              workflow_text,
+              flags=re.S,
+          )
+          workflow_text = re.sub(
+              r'\n          \$embeddedScripts = @\(.*?\n          \$scripts = @\(\$scripts \+ \$embeddedScripts\)\n',
+              '\n',
+              workflow_text,
+              flags=re.S,
+          )
+          workflow.write_text(workflow_text, encoding="utf-8")
+
+          for obsolete in [
+              *parts,
+              example / "PACKAGE_FORMAT.md",
+              example / "PACKAGE_SHA256.txt",
+              root / ".github" / "workflows" / "john-piper-parser.yml",
+              root / "docs" / "voxcpm2" / "john-piper-inner-parser-result.txt",
+              root / ".github" / "workflows" / "materialize-voxcpm2-direct-pipeline.yml",
+          ]:
+              obsolete.unlink(missing_ok=True)
+
+          for clutter_name in [
+              "ABOUT.txt", "CPU_ONLY", "DO_NOT_USE_PIPER_TTS.txt", "FINAL_COMMAND.txt",
+              "FINAL_OUTPUT_NAME.txt", "FINAL_STATUS.md", "NO_CUDA.txt", "ONE_COMMAND.md",
+              "OUTPUTS.md", "PRODUCTION_READY.txt", "README_COMMAND.md", "README_FIRST.txt",
+              "READY", "RUN_COMMAND.txt", "SCHEME.md", "SOURCE.txt", "START_HERE.txt",
+              "TRANSLATION_POLICY.md", "UPLOAD_TARGET.txt", "VOICE.txt", "VOICE_CLONE_NOTE.md",
+          ]:
+              (example / clutter_name).unlink(missing_ok=True)
+
+          shutil.rmtree(unpacked, ignore_errors=True)
+          print("Direct VoxCPM2 production files materialized successfully")
+          '@ | Set-Content -LiteralPath .materialize_direct_pipeline.py -Encoding utf8
+
+          python .materialize_direct_pipeline.py
+          if ($LASTEXITCODE -ne 0) { throw "Materialization failed" }
+          Remove-Item -LiteralPath .materialize_direct_pipeline.py -Force
+
+      - name: Validate direct production files
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            tools/voxcpm2/production/segmented_voice_clone.py `
+            tools/voxcpm2/production/master_constant_mix.py
+          if ($LASTEXITCODE -ne 0) { throw "Python compile failed" }
+
+          $scripts = @(Get-ChildItem -LiteralPath tools/voxcpm2 -Filter "*.ps1" -File -Recurse)
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List
+              throw "PowerShell parse failed: $($script.FullName)"
+            }
+          }
+
+          python -c "import json,pathlib; p=pathlib.Path('tools/voxcpm2/examples/john_piper_z20py4yqhyq'); json.loads((p/'project.json').read_text(encoding='utf-8')); json.loads((p/'segments_ru_final.json').read_text(encoding='utf-8'))"
+          if ($LASTEXITCODE -ne 0) { throw "Project JSON validation failed" }
+
+      - name: Commit direct pipeline
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace embedded John Piper package with direct CPU pipeline"
+          git push origin HEAD:refactor/voxcpm2-direct-pipeline
