@@ -1,59 +1,74 @@
 # John Piper SHORTS — VoxCPM2 CPU FINAL
 
-Это готовый однокомандный производственный пакет для ролика **Four Marks You Belong to Christ | John Piper Clip**.
+Готовый однокомандный производственный пакет для ролика:
 
-Здесь John Piper — проповедник и исходный спикер. Синтез выполняет наша локальная **VoxCPM2**, а не TTS-проект Piper.
+- **Four Marks You Belong to Christ | John Piper Clip**
+- источник: `https://youtube.com/shorts/Z20Py4yQhYQ`
+- движок: **VoxCPM2**
+- устройство: **только CPU**
+- голос: zero-shot clone Джона Пайпера из самого ролика
+- перевод: буквальный литературный русский
+- монтаж: 5 смысловых блоков с индивидуальными задержками
+- оригинальный английский звук: постоянные 18%
+- русский голос: 100%
+- master: `-14 LUFS`, `-1 dBTP`
+- видео: без повторного кодирования
 
-## Производственная схема
+## Почему только CPU
 
-- источник: `https://youtube.com/shorts/Z20Py4yQhYQ`;
-- устройство: только CPU;
-- голос: zero-shot clone Джона Пайпера из самого ролика;
-- перевод: буквальный литературный русский без расширительного пересказа;
-- 5 смысловых блоков, выровненных по исходной речи;
-- два reference-профиля: extended 24 секунды и composite около 22 секунд;
-- LocDiT: 16 шагов, CFG 1.80;
-- 2 кандидата на блок, третий только при подозрительном результате;
-- NoChew-проверка хвостового повторения;
-- короткие удачные кандидаты не замедляются;
-- индивидуальные задержки блоков: 220 / 160 / 100 / 70 / 40 мс;
-- русский голос 100%, постоянный английский фон 18%;
-- master: -14 LUFS, LRA 9, -1 dBTP;
-- AAC 320 кбит/с, 48 кГц;
-- видеопоток копируется без повторного кодирования.
+RTX 3060 в реальной VoxCPM2-нагрузке дала повторяемые `nvlddmkm Event ID 153`
+и в BF16, и в FP16. Этот launcher принудительно устанавливает
+`CUDA_VISIBLE_DEVICES=-1` и проверяет, что выбранный PyTorch не видит CUDA.
 
-## Почему CPU
+## Что означает «клонирование»
 
-На этой RTX 3060 реальные прогоны VoxCPM2 вызывали повторяемые `nvlddmkm Event ID 153` как в BF16, так и в FP16. Launcher принудительно задаёт `CUDA_VISIBLE_DEVICES=-1` и прекращает работу, если выбранный PyTorch неожиданно видит CUDA.
+Это та же схема, что использовалась для John MacArthur:
+
+1. исходный Shorts скачивается;
+2. из голоса спикера создаются два чистых reference-профиля:
+   - `B_extended_24s.wav`;
+   - `C_composite_21s.wav`;
+3. VoxCPM2 переносит голос, тембр и манеру речи на русский текст;
+4. отдельный fine-tune или обучение весов не выполняется.
+
+## Профиль качества
+
+```text
+CPU only
+Reference mode: reference-only
+Segments: 5
+LocDiT steps: 16
+CFG: 1.80
+Candidates: 2 на сегмент; третий только при подозрительном результате
+NoChew tail-restart detector
+Короткие кандидаты никогда не замедляются
+Смысловые задержки: 220 / 160 / 100 / 70 / 40 мс
+Intermediate audio: 24-bit / 48 kHz
+Original English: constant 18%
+Russian voice: 100%
+Final loudness: -14 LUFS
+True peak: -1 dBTP
+AAC: 320 kbps / 48 kHz
+```
 
 ## Одна команда
 
-Откройте PowerShell и выполните:
+PowerShell **от имени администратора**:
 
 ```powershell
-cd "C:\Users\Fedor\Projects\mp3telegrambot"; git pull origin main; Set-ExecutionPolicy -Scope Process Bypass -Force; .\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1
+cd "C:\Users\Fedor\Projects\mp3telegrambot"; git pull origin main; Set-ExecutionPolicy -Scope Process Bypass -Force; .\tools\voxcpm2\john_piper_shorts\Run-John-Piper-FINAL-CPU.ps1
 ```
 
-Launcher сам:
+## Итог
 
-1. проверит существующее CPU-окружение VoxCPM2;
-2. скачает исходный Shorts;
-3. извлечёт и очистит голосовые референсы Джона Пайпера;
-4. синтезирует пять русских блоков;
-5. выберет лучшие кандидаты и подгонит только слишком длинные;
-6. соберёт постоянный оригинальный фон и русский master;
-7. удалит тяжёлые промежуточные WAV;
-8. откроет папку с готовым результатом.
-
-## Итоговый файл
-
-Загружать на канал:
+Главный файл для загрузки:
 
 ```text
-C:\AI-Archive\John-Piper-Short-Z20Py4yQhYQ-FINAL\output\John_Piper_Russian_Dub_FINAL_UPLOAD.mp4
+C:\AI-Archive\John-Piper-Short-Z20Py4yQhYQ-FINAL\output\
+John_Piper_Russian_Dub_FINAL_UPLOAD.mp4
 ```
 
-Рядом будут:
+Рядом создаются:
 
 ```text
 John_Piper_Russian_Dub_FINAL_RUSSIAN_ONLY.mp4
@@ -63,22 +78,19 @@ John_Piper_Source_English.srt
 John_Piper_FINAL.manifest.json
 ```
 
-Для сохранения всех кандидатов и диагностических WAV:
+## Повторный запуск
+
+Исходное видео сохраняется и повторно не скачивается. Финальный синтез выполняется
+заново, чтобы не принять старые промежуточные WAV за новый результат.
+
+Для сохранения всех кандидатов и временных WAV:
 
 ```powershell
-.\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1 -KeepDiagnostics
+.\tools\voxcpm2\john_piper_shorts\Run-John-Piper-FINAL-CPU.ps1 -KeepDiagnostics
 ```
 
-Для другого постоянного уровня английского оригинала:
+Для изменения постоянной громкости оригинала:
 
 ```powershell
-.\tools\voxcpm2\examples\john_piper_z20py4yqhyq\Run-John-Piper-FINAL-CPU.ps1 -OriginalLevel 0.15
+.\tools\voxcpm2\john_piper_shorts\Run-John-Piper-FINAL-CPU.ps1 -OriginalLevel 0.15
 ```
-
-## Контрольные материалы
-
-- `source_subtitles_en.srt` — присланные автоматические английские субтитры;
-- `translation_ru.txt` — полный буквальный литературный перевод;
-- `segments_ru_final.json` — производственный текст, тайминг и задержки;
-- `subtitles_ru_final.srt` — русские субтитры;
-- `youtube_metadata_ru.md` — заголовок, описание и закреплённый комментарий.
