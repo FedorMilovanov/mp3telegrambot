@@ -11,6 +11,7 @@ from tools.voxcpm2 import dub_worker as worker
 
 _RUNTIME_VERSION = "dub-worker-tree-cancel-v2"
 _ORIGINAL_REGISTER = DubStore.register_worker
+_ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
 _ORIGINAL_TERMINATE = worker._terminate_process
 
 
@@ -45,6 +46,12 @@ def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
             pass
 
 
+def _versioned_details(details: dict[str, Any] | None) -> dict[str, Any]:
+    payload = dict(details or {})
+    payload["runtime"] = _RUNTIME_VERSION
+    return payload
+
+
 def _register_versioned_worker(
     self: DubStore,
     worker_id: str,
@@ -54,21 +61,38 @@ def _register_versioned_worker(
     current_job_id: int | None = None,
     details: dict[str, Any] | None = None,
 ) -> None:
-    payload = dict(details or {})
-    payload["runtime"] = _RUNTIME_VERSION
     _ORIGINAL_REGISTER(
         self,
         worker_id,
         pid=pid,
         status=status,
         current_job_id=current_job_id,
-        details=payload,
+        details=_versioned_details(details),
+    )
+
+
+def _heartbeat_versioned_worker(
+    self: DubStore,
+    worker_id: str,
+    *,
+    status: str,
+    current_job_id: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Keep the runtime marker through idle and busy heartbeat replacements."""
+    _ORIGINAL_HEARTBEAT(
+        self,
+        worker_id,
+        status=status,
+        current_job_id=current_job_id,
+        details=_versioned_details(details),
     )
 
 
 def install_hardening() -> None:
     worker._terminate_process = _terminate_process_tree
     DubStore.register_worker = _register_versioned_worker
+    DubStore.worker_heartbeat = _heartbeat_versioned_worker
 
 
 def main() -> None:
