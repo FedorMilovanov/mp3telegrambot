@@ -134,8 +134,11 @@ print("VoxCPM2 CPU environment: OK")
     & $Python -m py_compile $SynthScript $MasterScript
     Assert-LastExitCode -Stage "Синтаксическая проверка Python"
 
-    & $Python -c "import json,pathlib; json.loads(pathlib.Path(r'$SegmentsJson').read_text(encoding='utf-8-sig')); print('segments JSON: OK')"
-    Assert-LastExitCode -Stage "Проверка segments JSON"
+    $Segments = Get-Content -LiteralPath $SegmentsJson -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($null -eq $Segments -or $Segments.Count -ne 5) {
+        throw "segments JSON должен содержать ровно 5 блоков."
+    }
+    Write-Host "segments JSON: OK"
 
     Write-Host "=== 2. Получение исходного Shorts ===" -ForegroundColor Cyan
     if (-not (Test-Path -LiteralPath $SourceVideo -PathType Leaf)) {
@@ -163,10 +166,18 @@ print("VoxCPM2 CPU environment: OK")
         $SourceDurationText.Trim(),
         [Globalization.CultureInfo]::InvariantCulture
     )
-    if ($SourceDuration -lt 63.0) {
-        throw "Исходный ролик подозрительно короткий: $SourceDuration сек."
+    if ($SourceDuration -lt 55.0 -or $SourceDuration -gt 70.0) {
+        throw "Длительность исходного ролика вне ожидаемого диапазона 55–70 сек.: $SourceDuration сек."
     }
+
+    $TimelineEnd = [double]$Segments[-1].end
+    $TimelineDifference = [math]::Abs($TimelineEnd - $SourceDuration)
+    if ($TimelineDifference -gt 0.350) {
+        throw "Таймлайн дубляжа заканчивается на $TimelineEnd сек., а видео — на $SourceDuration сек. Разница $TimelineDifference сек.; синтез отменён, чтобы не обрезать финальную фразу."
+    }
+
     Write-Host ("Длительность источника: {0:0.000} сек." -f $SourceDuration)
+    Write-Host ("Конец таймлайна: {0:0.000} сек.; расхождение: {1:0.000} сек." -f $TimelineEnd, $TimelineDifference) -ForegroundColor Green
 
     Write-Host "=== 3. Голосовой профиль Джона Пайпера ===" -ForegroundColor Cyan
     Write-Host "Zero-shot clone: extended 24 c + composite 21 c, как в удачном пайплайне МакАртура." -ForegroundColor Yellow
@@ -245,10 +256,12 @@ print("VoxCPM2 CPU environment: OK")
     Copy-Item -LiteralPath $EnglishSrt -Destination $FinalSourceSrt -Force
 
     $ManifestPayload = [ordered]@{
-        schema_version = 2
+        schema_version = 3
         source_url = $Url
         source_video = $SourceVideo
         source_duration_seconds = [math]::Round($SourceDuration, 4)
+        timeline_end_seconds = [math]::Round($TimelineEnd, 4)
+        timeline_difference_seconds = [math]::Round($TimelineDifference, 4)
         engine = "VoxCPM2"
         device = "cpu"
         cuda_visible_devices = "-1"
