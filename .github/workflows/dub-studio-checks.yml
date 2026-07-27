@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - 'handlers/dub_*.py'
+      - 'handlers/mode_command.py'
+      - 'handlers/commands.py'
+      - 'main.py'
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
@@ -11,12 +14,16 @@ on:
       - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
+      - 'tests/test_mode_navigation.py'
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_tts_guard.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
       - 'handlers/dub_*.py'
+      - 'handlers/mode_command.py'
+      - 'handlers/commands.py'
+      - 'main.py'
       - 'services/dub_studio*.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/generic_*.py'
@@ -24,6 +31,7 @@ on:
       - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_dub*.py'
+      - 'tests/test_mode_navigation.py'
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_tts_guard.py'
 
@@ -60,8 +68,11 @@ jobs:
             handlers/dub_commands.py `
             handlers/dub_delivery.py `
             handlers/dub_health.py `
+            handlers/mode_command.py `
+            handlers/commands.py `
             services/dub_studio.py `
-            services/dub_studio_runtime.py
+            services/dub_studio_runtime.py `
+            main.py
           python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
       - name: Validate recipe actions
         shell: pwsh
@@ -84,6 +95,7 @@ jobs:
           tests/test_generic_gemini_runtime.py
           tests/test_semantic_tts_guard.py
           tests/test_dub_modes.py
+          tests/test_mode_navigation.py
           tests/test_dub_wizard.py
           tests/test_dub_delivery.py
           tests/test_dub_studio.py
@@ -101,10 +113,12 @@ jobs:
           handlers/dub_wizard.py
           handlers/dub_commands.py
           handlers/dub_health.py
+          handlers/mode_command.py
           services/dub_studio_runtime.py
           tests/test_generic_direct_runtime.py
           tests/test_generic_gemini_runtime.py
           tests/test_semantic_tts_guard.py
           tests/test_dub_modes.py
+          tests/test_mode_navigation.py
       - name: Whitespace integrity
         run: git diff --check
