@@ -30,15 +30,11 @@ def build_direct_segments_safe(
         if original_start >= duration or source_end <= original_start:
             raise RuntimeError(f"Реплика #{index} не имеет окна внутри видео.")
 
-        # A sub-300 ms final cue cannot pass acoustic/semantic QA. Expand only
-        # its technical window backwards; the approved words and order stay intact.
         start = original_start
         if source_end - start < _MIN_QA_WINDOW:
             start = max(0.0, source_end - _MIN_QA_WINDOW)
 
         slot = source_end - start
-        # Preserve 420 ms whenever possible. Near the end reduce only the delay
-        # and spend every available millisecond on the approved speech.
         effective_delay = min(delay, max(0.0, slot - _MIN_QA_WINDOW))
         effective_delay_ms = int(round(effective_delay * 1000.0))
         render_end = min(source_end - effective_delay, duration)
@@ -76,10 +72,12 @@ def preserve_user_tts_text(value: str) -> str:
     return str(value or "").strip()
 
 
+def _disable_legacy_guard_install() -> None:
+    """Quality v4 replaces only the obsolete prompt-continuation installer."""
+
+
 def main() -> None:
-    # Disable only the obsolete prompt-continuation installer. Quality v4 still
-    # verifies the generated speech with Whisper and retries failed segments.
-    legacy_semantic_guard.install = lambda: None
+    legacy_semantic_guard.install = _disable_legacy_guard_install
     legacy_semantic_guard.sanitize_tts_text = preserve_user_tts_text
     dub_quality_v4.install_direct_quality(production, pipeline)
     semantic_tts_guard_v4.install()
