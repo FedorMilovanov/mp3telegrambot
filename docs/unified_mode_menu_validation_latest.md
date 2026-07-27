@@ -1,10 +1,10 @@
-# Unified MODE menu diagnostic
+# Unified MODE menu final integration
 
 - Result: **PASS**
-- Source: 928cc4d75256b1c1b707848b23469ece1c4ce191
+- Source: 11858229ba67c6793be221262aca8a8f471531b7
 - Dependencies: success
 - Compile: success
-- Navigation tests: success
-- Full focused tests: success
-- Exact contracts: success
+- Focused tests: success
+- Exact menu/runtime contracts: success
 - Ruff: success
+- Open conflicting PR #49: closed as superseded.

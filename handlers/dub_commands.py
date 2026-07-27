@@ -520,7 +520,6 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 def register_dub_handlers(application: Any) -> None:
     if application.bot_data.get("dub_studio_handlers_registered"):
         return
-    application.add_handler(CommandHandler("dub", dub_command, filters=_MSG_ONLY))
     application.add_handler(CommandHandler("dubnew", dubnew_command, filters=_MSG_ONLY))
     application.add_handler(CommandHandler("dublist", dublist_command, filters=_MSG_ONLY))
     application.add_handler(CommandHandler("dubstatus", dubstatus_command, filters=_MSG_ONLY))

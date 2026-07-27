@@ -76,6 +76,9 @@ def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
 
 
 async def start(update, context):
+    # /start is a hard navigation reset: the next ordinary link must not be
+    # consumed by a half-finished Dub Studio wizard.
+    context.user_data.pop("dub_universal_wizard", None)
     user_id   = update.effective_user.id
     is_vip    = user_id in WHITELIST_IDS
     is_admin  = user_id in ADMIN_IDS

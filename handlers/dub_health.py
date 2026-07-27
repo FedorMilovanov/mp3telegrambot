@@ -2,6 +2,7 @@
 """Local environment preflight for both Dub Studio production modes."""
 from __future__ import annotations
 
+import asyncio
 import html
 import importlib.util
 import os
@@ -204,7 +205,7 @@ async def _admin(update: Update) -> bool:
 async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
-    checks = collect_dub_health()
+    checks = await asyncio.to_thread(collect_dub_health)
     passed = sum(1 for item in checks if item["ok"])
     lines = [
         "🩺 <b>Dub Studio — локальная проверка</b>",

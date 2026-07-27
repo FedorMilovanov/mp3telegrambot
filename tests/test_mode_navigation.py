@@ -104,3 +104,17 @@ def test_main_routes_mode_callbacks_before_global_callback() -> None:
     assert mode_route in source
     assert source.index(mode_route) < source.index(global_route)
     assert 'BotCommand("dub",        "🎙 Дубляж: Gemini MAX / готовый SRT")' in source
+
+def test_dub_command_has_one_owner_and_start_cancels_wizard() -> None:
+    wizard = Path("handlers/dub_wizard.py").read_text(encoding="utf-8")
+    commands = Path("handlers/dub_commands.py").read_text(encoding="utf-8")
+    start_commands = Path("handlers/commands.py").read_text(encoding="utf-8")
+    assert wizard.count('CommandHandler("dub", dub_home_command') == 1
+    assert 'CommandHandler("dub", dub_command' not in commands
+    assert 'context.user_data.pop("dub_universal_wizard", None)' in start_commands
+
+
+def test_dubcheck_does_not_block_telegram_event_loop() -> None:
+    source = Path("handlers/dub_health.py").read_text(encoding="utf-8")
+    assert "checks = await asyncio.to_thread(collect_dub_health)" in source
+
