@@ -1,0 +1,50 @@
+name: Validate Dub SRT Repair Pass Once
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-dub-srt-repair-pass-once.yml'
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      DUB_STUDIO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Final compile, tests and Ruff
+        id: gate
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m py_compile handlers/dub_health.py handlers/dub_audio_repair.py services/dub_studio_runtime.py tools/voxcpm2/dub_worker_hardened.py tools/voxcpm2/generic_audio_repair_runtime.py tests/test_dub_quality_v42_runtime_contracts.py tests/test_dub_audio_repair.py tests/test_dub_worker.py 2>&1 | Tee-Object dub-srt-repair-pass.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_dub_quality_v42_runtime_contracts.py tests/test_dub_audio_repair.py tests/test_dub_audio_repair_integration.py tests/test_dub_quality_v4.py tests/test_dub_modes.py tests/test_dub_worker.py tests/test_generic_direct_runtime.py tests/test_generic_gemini_runtime.py 2>&1 | Tee-Object -Append dub-srt-repair-pass.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check handlers/dub_health.py handlers/dub_audio_repair.py services/dub_studio_runtime.py tools/voxcpm2/dub_worker_hardened.py tools/voxcpm2/generic_audio_repair_runtime.py tests/test_dub_quality_v42_runtime_contracts.py tests/test_dub_audio_repair.py tests/test_dub_worker.py 2>&1 | Tee-Object -Append dub-srt-repair-pass.log
+          exit $LASTEXITCODE
+      - name: Record result and remove workflow
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $Status = if ('${{ steps.gate.outcome }}' -eq 'success') { 'PASS' } else { 'FAIL' }
+          Remove-Item .github/workflows/validate-dub-srt-repair-pass-once.yml -Force
+          $Lines = @('# Dub Studio SRT repair final revalidation','',"- Result: **$Status**",'- Quality v4.2 worker, dubcheck 14/14 and ready-SRT full repair fallback.',"- Compile/tests/Ruff: ${{ steps.gate.outcome }}")
+          if ($Status -eq 'FAIL' -and (Test-Path dub-srt-repair-pass.log)) { $Lines += ''; $Lines += (Get-Content dub-srt-repair-pass.log -Tail 240) }
+          $Lines | Set-Content docs/dub_studio_srt_repair_final_revalidation.md -Encoding utf8
+          git add -A
+          git commit -m "Record Dub Studio SRT repair revalidation: $Status"
+          git pull --rebase origin main
+          git push origin HEAD:main
