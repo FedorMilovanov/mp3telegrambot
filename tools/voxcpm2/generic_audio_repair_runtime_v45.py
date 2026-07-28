@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Professional audio-only repair entrypoint v4.6."""
+"""Professional audio-only repair entrypoint v4.7."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import legacy_segment_migration_v45
 from tools.voxcpm2 import professional_audio_qa_v45
 from tools.voxcpm2 import professional_audio_v45
-from tools.voxcpm2 import semantic_tts_guard_v46
+from tools.voxcpm2 import semantic_tts_guard_v47
 
 
 def _ensure_focused_rounds() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
     _ensure_focused_rounds()
     professional_audio_v45.install()
     professional_audio_qa_v45.install()
-    semantic_tts_guard_v46.install()
+    semantic_tts_guard_v47.install()
     legacy_segment_migration_v45.migrate(root, request)
     log_path = bootstrap.install_repair_diagnostics(root)
     production.log(f"AUDIO REPAIR child log: {log_path}")
