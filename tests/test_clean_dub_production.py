@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_segment_normalizer as normalizer
 from tools.voxcpm2 import generic_short_production as pipeline
 
 
@@ -69,6 +70,20 @@ def test_clean_segmentation_caps_windows_at_54_seconds() -> None:
     assert grouped_words == original_words
 
 
+def test_tiny_one_word_segment_merges_without_word_loss() -> None:
+    items = [
+        {"id": 1, "start": 0.0, "source_end": 2.0, "text": "Первая фраза", "source": "one"},
+        {"id": 2, "start": 2.0, "source_end": 2.7, "text": "Да", "source": "yes"},
+        {"id": 3, "start": 2.7, "source_end": 5.0, "text": "Последняя фраза", "source": "last"},
+    ]
+    before = normalizer._tokens(items)
+    merged = normalizer._merge_tiny(items)
+    assert len(merged) == 2
+    assert normalizer._tokens(merged) == before
+    assert merged[0]["text"] == "Первая фраза Да"
+    assert float(merged[0]["source_end"]) - float(merged[0]["start"]) <= 5.4
+
+
 def test_global_delay_does_not_shorten_each_middle_window() -> None:
     groups = [
         {"id": 1, "start": 0.0, "end": 4.0, "source": "First source phrase."},
@@ -105,6 +120,7 @@ def test_clean_repair_requires_clean_baseline_for_selective_work() -> None:
     ).read_text(encoding="utf-8")
     assert "Выборочный ремонт разрешён только после успешного чистого baseline" in source
     assert "force_fresh=repair_all" in source
+    assert "clean_segment_normalizer.normalize" in source
     assert "semantic_tts_guard_v47" not in source
     assert "semantic_tts_guard_v46" not in source
     assert "professional_audio_v45.install" not in source
