@@ -37,16 +37,16 @@
     },
     "prepare_custom": {
       "kind": "prepare",
-      "label": "Legacy: подготовить старый шаблон перевода",
+      "label": "Подготовить шаблон пользовательского перевода",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_project_runtime",
+      "module": "tools.voxcpm2.generic_clean_custom_runtime",
       "parameters": {"Mode": "custom", "PrepareOnly": true}
     },
     "render_custom": {
       "kind": "render",
-      "label": "Legacy: сделать ролик со старым пользовательским переводом",
+      "label": "Пользовательский перевод — чистый прямой рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_project_runtime",
+      "module": "tools.voxcpm2.generic_clean_custom_runtime",
       "parameters": {"Mode": "custom"}
     }
   },
