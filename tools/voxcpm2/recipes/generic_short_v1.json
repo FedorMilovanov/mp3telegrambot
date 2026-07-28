@@ -1,38 +1,38 @@
 {
   "schema_version": 1,
   "id": "generic_short_v1",
-  "title": "Универсальный дубляж YouTube — мастер",
+  "title": "Универсальный дубляж YouTube — чистый мастер",
   "speaker": "Определяется из исходного ролика",
   "source_url": "",
-  "description": "Gemini MAX или готовый русский SRT. Professional Audio v4.5: спокойный голосовой референс, короткие реплики, единый глобальный сдвиг русского, контроль внутренних пауз, обрывов и завышенного регистра; оригинал 18%.",
+  "description": "Clean Direct Production: топовый Gemini MAX перевод, короткие естественные реплики до 5.4 сек., автоматический отбор спокойных чистых фрагментов голоса с прозрачным отчётом, прямой запуск того же NoChew renderer/master, что и из PowerShell, независимый QA после рендера; оригинал 18%.",
   "work_root": "C:\\AI-Archive\\MP3Bot-Dub-Studio",
   "actions": {
     "render": {
       "kind": "render",
-      "label": "Gemini MAX — полный автоматический рендер",
+      "label": "Gemini MAX — чистый прямой полный рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_gemini_runtime_v45",
+      "module": "tools.voxcpm2.generic_clean_gemini_runtime",
       "parameters": {"Mode": "gemini"}
     },
     "render_gemini": {
       "kind": "render",
-      "label": "Gemini MAX — перевод, проверки и готовый ролик",
+      "label": "Gemini MAX — перевод, чистый клон и готовый ролик",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_gemini_runtime_v45",
+      "module": "tools.voxcpm2.generic_clean_gemini_runtime",
       "parameters": {"Mode": "gemini"}
     },
     "render_direct": {
       "kind": "render",
-      "label": "Мой готовый SRT — озвучить без изменений",
+      "label": "Мой готовый SRT — чистый прямой рендер без изменений",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_direct_checked_runtime_v45",
+      "module": "tools.voxcpm2.generic_clean_direct_runtime",
       "parameters": {"Mode": "direct"}
     },
     "repair_audio": {
       "kind": "utility",
-      "label": "Профессиональный аудиоремонт без повторного перевода",
+      "label": "Чистый прямой аудиоремонт без повторного перевода",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_audio_repair_runtime_v45",
+      "module": "tools.voxcpm2.generic_clean_audio_repair_runtime",
       "parameters": {}
     },
     "prepare_custom": {
