@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Rhetoric-preserving Russian translation for expressive spoken dubbing.
 
-This is a preparation-stage editor, not a TTS wrapper.  It keeps factual and
+This is a preparation-stage editor, not a TTS wrapper. It keeps factual and
 theological fidelity while preserving the discourse devices that make a sermon
 sound alive: repetition, direct address, questions, contrast, escalation,
 climax, cadence and natural breathing points.
@@ -34,10 +34,21 @@ def _gemini(prompt: str, model_name: str) -> Any:
 def translate_groups(
     groups: list[dict[str, Any]],
     *,
+    metadata: dict[str, Any] | None = None,
+    caption_origin: str = "",
     model_name: str,
 ) -> list[dict[str, Any]]:
     """Three editorial passes, then duration-aware compression only where needed."""
     source_json = _payload(groups)
+    context = {
+        "video_title": str((metadata or {}).get("title") or ""),
+        "channel": str(
+            (metadata or {}).get("uploader")
+            or (metadata or {}).get("channel")
+            or ""
+        ),
+        "caption_origin": str(caption_origin or ""),
+    }
     draft_prompt = f"""
 Ты — первоклассный переводчик живой англоязычной проповеди для профессионального русского дубляжа.
 
@@ -59,6 +70,9 @@ def translate_groups(
 Верни только JSON:
 {{"segments":[{{"id":1,"russian":"..."}}]}}
 
+КОНТЕКСТ РОЛИКА:
+{json.dumps(context, ensure_ascii=False)}
+
 ИСХОДНАЯ РЕЧЬ:
 {source_json}
 """.strip()
@@ -78,6 +92,9 @@ def translate_groups(
 Не украшай текст от себя. Не удаляй смысловые повторы ради краткости. Сохрани ID один к одному.
 Верни только JSON:
 {{"segments":[{{"id":1,"russian":"..."}}]}}
+
+КОНТЕКСТ:
+{json.dumps(context, ensure_ascii=False)}
 
 ОРИГИНАЛ:
 {source_json}
@@ -113,13 +130,17 @@ def translate_groups(
     overloaded: list[dict[str, Any]] = []
     for source, translated in zip(groups, final, strict=True):
         seconds = max(1.0, float(source["end"]) - float(source["start"]))
-        rate = len(re.findall(r"\w+", translated["russian"], flags=re.UNICODE)) / seconds
+        rate = len(
+            re.findall(r"\w+", translated["russian"], flags=re.UNICODE)
+        ) / seconds
         if rate > _MAX_WORDS_PER_SECOND:
             overloaded.append(
                 {
                     "id": int(source["id"]),
                     "seconds": round(seconds, 3),
-                    "english": str(source.get("english") or source.get("source") or ""),
+                    "english": str(
+                        source.get("english") or source.get("source") or ""
+                    ),
                     "russian": translated["russian"],
                     "words_per_second": round(rate, 3),
                 }
