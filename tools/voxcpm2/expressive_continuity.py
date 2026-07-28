@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Source-guided expressive continuity for clean Dub Studio production.
 
-The renderer still synthesizes short, stable phrases.  This module analyses the
+The renderer still synthesizes short, stable phrases. This module analyses the
 corresponding source-speech windows, builds a smoothed emotional/prosodic arc,
 and writes short VoxCPM2 style-control instructions into the segment metadata.
 It never changes the Russian text and never wraps or patches the renderer.
@@ -51,7 +51,11 @@ def _window(item: dict[str, Any], duration: float) -> tuple[float, float]:
 
 def _robust_z(values: list[float], valid: list[bool]) -> list[float]:
     usable = np.asarray(
-        [value for value, keep in zip(values, valid, strict=True) if keep and math.isfinite(value)],
+        [
+            value
+            for value, keep in zip(values, valid, strict=True)
+            if keep and math.isfinite(value)
+        ],
         dtype=np.float64,
     )
     if len(usable) < 2:
@@ -92,19 +96,27 @@ def _style(score: float, rate_z: float, text: str) -> tuple[str, str]:
     punctuation = str(text or "")
     if score <= -0.72:
         tier = "reflective"
-        instruction = "calm and reflective, sincere, slightly slower, natural connected phrasing"
+        instruction = (
+            "calm and reflective, sincere, slightly slower, natural connected phrasing"
+        )
     elif score <= -0.12:
         tier = "warm"
         instruction = "warm and sincere, gently expressive, natural pace and pauses"
     elif score <= 0.48:
         tier = "earnest"
-        instruction = "earnest and conversational, clearly shaped emphasis, natural rhythm"
+        instruction = (
+            "earnest and conversational, clearly shaped emphasis, natural rhythm"
+        )
     elif score <= 1.08:
         tier = "emphatic"
-        instruction = "firm and emphatic, controlled intensity, clear stress, do not shout"
+        instruction = (
+            "firm and emphatic, controlled intensity, clear stress, do not shout"
+        )
     else:
         tier = "passionate"
-        instruction = "passionate and urgent but controlled, strong emphasis, never shout"
+        instruction = (
+            "passionate and urgent but controlled, strong emphasis, never shout"
+        )
 
     if rate_z <= -0.85 and "slightly slower" not in instruction:
         instruction += ", slightly slower"
@@ -159,12 +171,20 @@ def plan_segments(
                     "start": round(start, 3),
                     "end": round(end, 3),
                     "speech_rate": round(speech_rate, 4),
-                    **{key: round(_number(value), 5) for key, value in pitch.items()},
-                    **{key: round(_number(value), 5) for key, value in activity.items()},
+                    **{
+                        key: round(_number(value), 5)
+                        for key, value in pitch.items()
+                    },
+                    **{
+                        key: round(_number(value), 5)
+                        for key, value in activity.items()
+                    },
                 }
             )
             rms_values.append(_number(activity.get("rms_dbfs"), -60.0))
-            pitch_values.append(_number(pitch.get("f0_p90") or pitch.get("f0_median"), 0.0))
+            pitch_values.append(
+                _number(pitch.get("f0_p90") or pitch.get("f0_median"), 0.0)
+            )
             rate_values.append(speech_rate)
             pitch_valid.append(valid_pitch)
 
@@ -194,7 +214,11 @@ def plan_segments(
     report_segments: list[dict[str, Any]] = []
     for index, (item, score) in enumerate(zip(segments, scores, strict=True)):
         updated = dict(item)
-        tier, instruction = _style(score, rate_z[index], str(item.get("text") or ""))
+        tier, instruction = _style(
+            score,
+            rate_z[index],
+            str(item.get("text") or ""),
+        )
         updated.update(
             {
                 "style_instruction": instruction,
@@ -217,7 +241,9 @@ def plan_segments(
         )
 
     if [str(item.get("text") or "") for item in result] != original_text:
-        raise RuntimeError("План эмоциональности изменил русский текст; операция остановлена.")
+        raise RuntimeError(
+            "План эмоциональности изменил русский текст; операция остановлена."
+        )
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -241,4 +267,33 @@ def plan_segments(
     return result
 
 
-__all__ = ["POLICY", "plan_segments"]
+def plan_json(
+    *,
+    source: Path,
+    segments_path: Path,
+    duration: float,
+    report_path: Path,
+) -> list[dict[str, Any]]:
+    """Plan expression and atomically replace the segment JSON metadata."""
+    payload = json.loads(segments_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError("segments_ru_final.json пуст или повреждён.")
+    segments = [dict(item) for item in payload if isinstance(item, dict)]
+    if len(segments) != len(payload):
+        raise RuntimeError("segments_ru_final.json содержит повреждённые записи.")
+    planned = plan_segments(
+        source=source,
+        segments=segments,
+        duration=duration,
+        report_path=report_path,
+    )
+    temporary = segments_path.with_suffix(segments_path.suffix + ".expression.tmp")
+    temporary.write_text(
+        json.dumps(planned, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary.replace(segments_path)
+    return planned
+
+
+__all__ = ["POLICY", "plan_json", "plan_segments"]
