@@ -5,18 +5,102 @@
 The production runtime writes ``output/manifest.json`` only after the final master.
 A project may therefore already contain source.mp4, translated segments, subtitles and
 other reusable work while lacking the manifest because the original render failed at
-or before mastering.  Audio repair must be able to salvage that work without calling
+or before mastering. Audio repair must be able to salvage that work without calling
 translation or title generation again.
 """
 from __future__ import annotations
 
+from collections import deque
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from services.dub_studio import utc_now
 from tools.voxcpm2 import generic_audio_repair_runtime as repair_runtime
 from tools.voxcpm2 import generic_project_runtime as production
+from tools.voxcpm2 import semantic_tts_guard_v4
+
+
+class RepairSubprocessDiagnostics:
+    """Tee child output and raise with its real final error instead of only code 1."""
+
+    def __init__(self, real: Any, log_path: Path) -> None:
+        self._real = real
+        self._log_path = log_path
+
+    @staticmethod
+    def _label(command: Any) -> str:
+        parts = [str(part) for part in command] if isinstance(command, (list, tuple)) else [str(command)]
+        if len(parts) > 1:
+            return Path(parts[1]).name
+        return Path(parts[0]).name if parts else "unknown"
+
+    @staticmethod
+    def _result_tail(result: Any) -> str:
+        text = "\n".join(
+            value for value in (str(getattr(result, "stdout", "") or ""), str(getattr(result, "stderr", "") or "")) if value
+        )
+        return text[-12000:].strip()
+
+    def run(self, command: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        # The Quality guard invokes this path with cwd/env/check only. Preserve
+        # compatibility for any unusual explicit pipe/timeout call by delegating,
+        # while still turning a non-zero result into an exact diagnostic.
+        unsupported = {"stdout", "stderr", "capture_output", "input", "timeout"}.intersection(kwargs)
+        if args or unsupported:
+            result = self._real.run(command, *args, **kwargs)
+            if int(getattr(result, "returncode", 1)) != 0:
+                tail = self._result_tail(result)
+                raise RuntimeError(
+                    f"Дочерний этап {self._label(command)} завершился с кодом "
+                    f"{result.returncode}." + (f"\n\n{tail}" if tail else "")
+                )
+            return result
+
+        call_kwargs = dict(kwargs)
+        call_kwargs.pop("check", None)
+        call_kwargs.pop("text", None)
+        call_kwargs.pop("encoding", None)
+        call_kwargs.pop("errors", None)
+
+        self._log_path.parent.mkdir(parents=True, exist_ok=True)
+        label = self._label(command)
+        tail_lines: deque[str] = deque(maxlen=260)
+        with self._log_path.open("a", encoding="utf-8", errors="replace") as log_file:
+            header = f"\n=== CHILD START: {label} ===\n"
+            print(header.rstrip(), flush=True)
+            log_file.write(header)
+            log_file.flush()
+            proc = self._real.Popen(
+                command,
+                stdout=self._real.PIPE,
+                stderr=self._real.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                **call_kwargs,
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                log_file.write(line)
+                log_file.flush()
+                tail_lines.append(line)
+            return_code = int(proc.wait())
+            footer = f"=== CHILD END: {label}; code={return_code} ===\n"
+            print(footer.rstrip(), flush=True)
+            log_file.write(footer)
+            log_file.flush()
+
+        tail = "".join(tail_lines)[-12000:].strip()
+        if return_code != 0:
+            raise RuntimeError(
+                f"Дочерний этап {label} завершился с кодом {return_code}. "
+                f"Полный журнал: {self._log_path}"
+                + (f"\n\nПоследние строки дочернего процесса:\n{tail}" if tail else "")
+            )
+        return subprocess.CompletedProcess(command, return_code, stdout=tail, stderr="")
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -187,11 +271,24 @@ def ensure_repair_manifest(
     return manifest
 
 
+def install_repair_diagnostics(root: Path) -> Path:
+    log_path = root / "output" / "audio_repair_child.log"
+    current = semantic_tts_guard_v4._REAL_SUBPROCESS
+    if not isinstance(current, RepairSubprocessDiagnostics):
+        semantic_tts_guard_v4._REAL_SUBPROCESS = RepairSubprocessDiagnostics(
+            current,
+            log_path,
+        )
+    return log_path
+
+
 def main() -> None:
     project_id = production.current_project_id()
     root = production.project_root(project_id)
     request = production.load_request(root)
     ensure_repair_manifest(root, request, project_id)
+    log_path = install_repair_diagnostics(root)
+    production.log(f"AUDIO REPAIR child log: {log_path}")
     repair_runtime.main()
 
 
