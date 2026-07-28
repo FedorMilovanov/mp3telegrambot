@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Rhetoric-preserving Russian translation for expressive spoken dubbing.
+
+This is a preparation-stage editor, not a TTS wrapper.  It keeps factual and
+theological fidelity while preserving the discourse devices that make a sermon
+sound alive: repetition, direct address, questions, contrast, escalation,
+climax, cadence and natural breathing points.
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+from tools.voxcpm2 import generic_short_production as pipeline
+
+POLICY = "expressive-spoken-translation-v1"
+_MAX_WORDS_PER_SECOND = 3.05
+
+
+def _payload(groups: list[dict[str, Any]]) -> str:
+    return json.dumps(groups, ensure_ascii=False, indent=2)
+
+
+def _validate(value: Any, groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return pipeline.validate_translation(value, groups)
+
+
+def _gemini(prompt: str, model_name: str) -> Any:
+    return pipeline.gemini_json(prompt, model_name=model_name)
+
+
+def translate_groups(
+    groups: list[dict[str, Any]],
+    *,
+    model_name: str,
+) -> list[dict[str, Any]]:
+    """Three editorial passes, then duration-aware compression only where needed."""
+    source_json = _payload(groups)
+    draft_prompt = f"""
+Ты — первоклассный переводчик живой англоязычной проповеди для профессионального русского дубляжа.
+
+Переведи весь фрагмент как ЕДИНУЮ развивающуюся устную речь, но верни каждый исходный ID отдельно.
+
+Обязательные правила точности:
+1. Сохрани каждое утверждение, отрицание, условие, причину, вывод, число, имя, библейскую ссылку и богословский термин.
+2. Ничего не добавляй, не объясняй, не толкуй и не усиливай сверх оригинала.
+3. Не смягчай резкость автора и не превращай её в крикливость.
+
+Обязательные правила живой речи:
+4. Сохрани намеренные повторы, анафоры, параллельные конструкции, прямое обращение, риторические вопросы, контрасты и нарастание к кульминации. Не заменяй их сухим пересказом.
+5. Перестрой английский порядок слов в естественную разговорно-ораторскую русскую фразу.
+6. Пунктуацией обозначай реальные смысловые паузы, повороты и ударения. Не дроби речь запятыми механически и не добавляй ремарок в скобках.
+7. Каждая реплика должна естественно продолжать предыдущую и подготавливать следующую; не начинай каждый ID как новый дикторский абзац.
+8. Сохрани ID один к одному. Не объединяй и не дроби блоки.
+9. Учитывай start/end: текст должен произноситься без скороговорки, но сокращать смысл запрещено.
+
+Верни только JSON:
+{{"segments":[{{"id":1,"russian":"..."}}]}}
+
+ИСХОДНАЯ РЕЧЬ:
+{source_json}
+""".strip()
+    draft = _validate(_gemini(draft_prompt, model_name), groups)
+
+    fidelity_prompt = f"""
+Ты — старший двуязычный редактор богословского дубляжа. Построчно сверь русский черновик с английской речью, одновременно читая соседние ID как единый контекст.
+
+Исправляй только реальные ошибки:
+- пропущенная или добавленная мысль;
+- неверное отрицание, причинность, условие, число, имя, ссылка или термин;
+- ослабленный либо чрезмерно усиленный тон;
+- калька и неестественный русский синтаксис;
+- потерянный намеренный повтор, вопрос, контраст, обращение или ступень риторического нарастания;
+- фраза, которая звучит как письменный перевод, а не живая речь.
+
+Не украшай текст от себя. Не удаляй смысловые повторы ради краткости. Сохрани ID один к одному.
+Верни только JSON:
+{{"segments":[{{"id":1,"russian":"..."}}]}}
+
+ОРИГИНАЛ:
+{source_json}
+
+ЧЕРНОВИК:
+{json.dumps(draft, ensure_ascii=False, indent=2)}
+""".strip()
+    faithful = _validate(_gemini(fidelity_prompt, model_name), groups)
+
+    performance_prompt = f"""
+Ты — режиссёр русской речевой записи и финальный литературный редактор. Сделай последнюю правку текста для живого мужского голоса, не меняя фактов и смысла.
+
+Проверяй весь фрагмент как одно выступление:
+1. Реплики должны соединяться в непрерывную мысль, а не звучать как независимые карточки.
+2. Оставь сильные повторы, вопросы, обращения, контрасты и кульминацию там, где они есть в оригинале.
+3. Расставь естественные смысловые паузы и удобные места дыхания средствами обычной русской пунктуации.
+4. Убери канцелярит, книжную кальку, лишние местоимения и искусственные вводные слова.
+5. Не добавляй эмоциональных прилагательных, ремарок, междометий и указаний актёру.
+6. Не превращай речь в телеграфные обрубки и не делай все предложения одинаковой длины.
+7. Сохрани ID один к одному и каждую исходную мысль.
+
+Верни только JSON:
+{{"segments":[{{"id":1,"russian":"..."}}]}}
+
+ОРИГИНАЛ:
+{source_json}
+
+ПРОВЕРЕННЫЙ ПЕРЕВОД:
+{json.dumps(faithful, ensure_ascii=False, indent=2)}
+""".strip()
+    final = _validate(_gemini(performance_prompt, model_name), groups)
+
+    overloaded: list[dict[str, Any]] = []
+    for source, translated in zip(groups, final, strict=True):
+        seconds = max(1.0, float(source["end"]) - float(source["start"]))
+        rate = len(re.findall(r"\w+", translated["russian"], flags=re.UNICODE)) / seconds
+        if rate > _MAX_WORDS_PER_SECOND:
+            overloaded.append(
+                {
+                    "id": int(source["id"]),
+                    "seconds": round(seconds, 3),
+                    "english": str(source.get("english") or source.get("source") or ""),
+                    "russian": translated["russian"],
+                    "words_per_second": round(rate, 3),
+                }
+            )
+
+    if overloaded:
+        compression_prompt = f"""
+Ты — редактор произносимости. Сократи ТОЛЬКО перегруженные русские реплики до естественного темпа не выше примерно {_MAX_WORDS_PER_SECOND:.2f} слова в секунду.
+
+Запрещено удалять:
+- любое утверждение, отрицание, условие, причину или вывод;
+- имя, число, ссылку и термин;
+- намеренный риторический повтор;
+- вопрос, прямое обращение, контраст или кульминационный поворот.
+
+Убирай только кальку, дублирующее служебное слово, тяжёлый оборот или русскую словесную избыточность. Не превращай фразу в конспект или телеграфный стиль.
+Верни только JSON для перечисленных ID:
+{{"segments":[{{"id":1,"russian":"..."}}]}}
+
+ПЕРЕГРУЖЕННЫЕ РЕПЛИКИ:
+{json.dumps(overloaded, ensure_ascii=False, indent=2)}
+""".strip()
+        compact_payload = _gemini(compression_prompt, model_name)
+        compact_list = (
+            compact_payload.get("segments")
+            if isinstance(compact_payload, dict)
+            else compact_payload
+        )
+        compact_by_id = {
+            int(item["id"]): re.sub(
+                r"\s+",
+                " ",
+                str(item.get("russian") or ""),
+            ).strip()
+            for item in compact_list or []
+            if isinstance(item, dict)
+            and str(item.get("id", "")).isdigit()
+            and str(item.get("russian") or "").strip()
+        }
+        expected_overloaded = {int(item["id"]) for item in overloaded}
+        if set(compact_by_id) != expected_overloaded:
+            raise RuntimeError(
+                "Редактор произносимости вернул неполный набор перегруженных ID."
+            )
+        for item in final:
+            if int(item["id"]) in compact_by_id:
+                item["russian"] = compact_by_id[int(item["id"])]
+
+    return final
+
+
+__all__ = ["POLICY", "translate_groups"]
