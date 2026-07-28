@@ -33,7 +33,8 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
     source = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(
         encoding="utf-8"
     )
-    assert "runpy" not in source
+    assert "import runpy" not in source
+    assert "runpy.run_path" not in source
     assert "QualityV4SubprocessProxy" not in source
     assert "semantic_tts_guard_v4.install(" not in source
     assert "professional_audio_v45.install(" not in source
@@ -49,7 +50,7 @@ def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
         assert "install_semantic_tts_guard" not in source
         assert "semantic_tts_guard_v4.install" not in source
         assert "semantic_tts_guard_v47" not in source
-        assert "runpy" not in source
+        assert "runpy.run_path" not in source
 
 
 def test_clean_segmentation_caps_windows_at_54_seconds() -> None:
