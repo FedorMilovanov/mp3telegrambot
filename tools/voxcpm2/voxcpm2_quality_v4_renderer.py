@@ -15,7 +15,7 @@ import re
 import runpy
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # This file is executed by the separate VoxCPM CPU interpreter as a script, not
 # as ``python -m``. In that mode Python adds tools/voxcpm2 to sys.path but may
@@ -39,6 +39,27 @@ _ATTEMPT_LINE_RE = re.compile(r"^attempt\s+(\d+):", flags=re.I)
 
 def log(message: str) -> None:
     print(f"[VOXCPM2-QUALITY-V4] {message}", flush=True)
+
+
+def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., Any]:
+    value = namespace.get(name)
+    if not callable(value):
+        raise RuntimeError(
+            f"Исходный NoChew renderer не экспортирует обязательную функцию {name!r}."
+        )
+    return value
+
+
+def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
+    """Return the globals actually used by functions loaded with runpy.
+
+    ``runpy.run_path`` may return a dictionary distinct from ``function.__globals__``.
+    Mutating only the returned dictionary can therefore look successful while the
+    executed renderer continues using its original unpatched hooks.
+    """
+    main_hook = _required_callable(namespace, "main")
+    globals_dict = getattr(main_hook, "__globals__", None)
+    return globals_dict if isinstance(globals_dict, dict) else namespace
 
 
 def _emit_progress(progress: int, stage: str, message: str) -> None:
@@ -158,10 +179,12 @@ def main() -> None:
         raise RuntimeError(f"Исходный NoChew renderer не найден: {original}")
 
     namespace = runpy.run_path(str(original), run_name="voxcpm2_quality_v4_base")
-    original_score = namespace["candidate_score"]
-    original_fit = namespace["fit_without_slowdown"]
-    original_log = namespace["log"]
-    original_set_seed = namespace["set_seed"]
+    base_main = _required_callable(namespace, "main")
+    base_globals = _execution_globals(namespace)
+    original_score = _required_callable(base_globals, "candidate_score")
+    original_fit = _required_callable(base_globals, "fit_without_slowdown")
+    original_log = _required_callable(base_globals, "log")
+    original_set_seed = _required_callable(base_globals, "set_seed")
     progress_state = {"position": 0, "total": 0, "attempt": 0}
 
     def quality_score(candidate: dict[str, Any], speech_slot: float) -> float:
@@ -241,12 +264,14 @@ def main() -> None:
             _emit_progress(progress, stage, "CPU выполняет VoxCPM2-синтез; процесс может молчать несколько минут")
         original_set_seed(seed, torch_module)
 
-    namespace["candidate_score"] = quality_score
-    namespace["fit_without_slowdown"] = quality_fit
-    namespace["log"] = progress_log
-    namespace["set_seed"] = progress_set_seed
+    # Patch the dictionary actually referenced by loaded functions. Assigning to
+    # the dictionary returned by runpy alone is insufficient on supported CPython.
+    base_globals["candidate_score"] = quality_score
+    base_globals["fit_without_slowdown"] = quality_fit
+    base_globals["log"] = progress_log
+    base_globals["set_seed"] = progress_set_seed
     log("reference-only NoChew; requested CFG preserved; nested retry remains disabled")
-    namespace["main"]()
+    base_main()
 
 
 if __name__ == "__main__":
