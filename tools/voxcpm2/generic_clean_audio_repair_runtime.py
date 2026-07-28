@@ -167,10 +167,12 @@ def main() -> None:
             reference_dir=root / "references",
         )
     else:
-        if (
-            marker.get("policy") != clean.POLICY
-            or marker.get("expression_policy") != expressive_continuity.POLICY
-        ):
+        expression_ready = bool(segments) and all(
+            str(item.get("expression_policy") or "")
+            == expressive_continuity.POLICY
+            for item in segments
+        )
+        if marker.get("policy") != clean.POLICY or not expression_ready:
             raise RuntimeError(
                 "Выборочный ремонт разрешён только после успешного clean expressive "
                 "baseline. Сначала выполните /dubfix PROJECT_ID all."
