@@ -167,10 +167,13 @@ def main() -> None:
             reference_dir=root / "references",
         )
     else:
-        if marker.get("policy") != clean.POLICY:
+        if (
+            marker.get("policy") != clean.POLICY
+            or marker.get("expression_policy") != expressive_continuity.POLICY
+        ):
             raise RuntimeError(
-                "Выборочный ремонт разрешён только после успешного чистого baseline. "
-                "Сначала выполните /dubfix PROJECT_ID all."
+                "Выборочный ремонт разрешён только после успешного clean expressive "
+                "baseline. Сначала выполните /dubfix PROJECT_ID all."
             )
         extended, composite = _existing_references(root)
         semantic_tts_guard_v4._retarget(
@@ -184,13 +187,27 @@ def main() -> None:
             f"=== CLEAN AUDIO REPAIR: ONLY {selected_ids}; DIRECT NEW SEED {seed} ==="
         )
 
-    expressive_continuity.plan_json(
+    planned = expressive_continuity.plan_json(
         source=source,
         segments_path=segments_path,
         duration=duration,
         report_path=output_dir / "expressive_continuity.json",
     )
-    production.log("source-guided emotional arc prepared; translation reused verbatim")
+    expressive_built = False
+    if repair_all:
+        expressive_built = expressive_continuity.build_controlled_expressive_reference(
+            source=source,
+            segments=planned,
+            output=composite,
+        )
+    production.log(
+        "source-guided emotional arc prepared; translation reused verbatim; "
+        + (
+            "controlled expressive reference active"
+            if expressive_built or not repair_all
+            else "safe calm-reference fallback active"
+        )
+    )
 
     runtime_request = dict(request)
     runtime_request["base_seed"] = seed
@@ -230,6 +247,7 @@ def main() -> None:
             "russian_only_video": str(stable_russian),
             "qa_report": str(timeline.with_suffix(".clean_qa.json")),
             "expression_report": str(output_dir / "expressive_continuity.json"),
+            "controlled_expressive_reference": bool(expressive_built or not repair_all),
         },
     )
     _update_manifest(
