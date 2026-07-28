@@ -18,13 +18,13 @@ def test_recipe_routes_only_to_clean_production() -> None:
         )
     )
     actions = recipe["actions"]
+    assert actions["render"]["module"] == "tools.voxcpm2.generic_clean_gemini_runtime"
     assert actions["render_gemini"]["module"] == "tools.voxcpm2.generic_clean_gemini_runtime"
     assert actions["render_direct"]["module"] == "tools.voxcpm2.generic_clean_direct_runtime"
     assert actions["repair_audio"]["module"] == "tools.voxcpm2.generic_clean_audio_repair_runtime"
-    production_modules = " ".join(
-        actions[name]["module"]
-        for name in ("render", "render_gemini", "render_direct", "repair_audio")
-    )
+    assert actions["prepare_custom"]["module"] == "tools.voxcpm2.generic_clean_custom_runtime"
+    assert actions["render_custom"]["module"] == "tools.voxcpm2.generic_clean_custom_runtime"
+    production_modules = " ".join(spec["module"] for spec in actions.values())
     assert "_v45" not in production_modules
     assert "_v46" not in production_modules
     assert "_v47" not in production_modules
@@ -45,7 +45,11 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
 
 
 def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
-    for name in ("generic_clean_gemini_runtime.py", "generic_clean_direct_runtime.py"):
+    for name in (
+        "generic_clean_gemini_runtime.py",
+        "generic_clean_direct_runtime.py",
+        "generic_clean_custom_runtime.py",
+    ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
         assert "install_runtime_adapters = _install_clean_runtime_adapters" in source
         assert "install_semantic_tts_guard" not in source
