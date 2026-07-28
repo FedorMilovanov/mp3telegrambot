@@ -11,6 +11,16 @@ from tools.voxcpm2 import generic_gemini_runtime as checked
 from tools.voxcpm2 import generic_project_runtime as production
 
 
+def _install_clean_runtime_adapters() -> None:
+    """Keep hardened download/Gemini routing, but never install a TTS guard."""
+    hardened = production.hardened
+    hardened.pipeline.download_source = hardened.download_source
+    hardened.pipeline.download_captions = hardened.download_captions
+    hardened.pipeline.gemini_json = hardened.gemini_json
+    hardened._install_project_title_standard()
+    production.log("clean adapters: yt-dlp + Gemini pool; TTS guard disabled")
+
+
 def _run_clean_voxcpm_and_master(
     *,
     root: Path,
@@ -42,8 +52,8 @@ def _run_clean_voxcpm_and_master(
 
 
 def main() -> None:
-    # Only preparation functions are selected here. The renderer itself is never
-    # wrapped or patched: clean.render_and_master launches the proven script.
+    # Preparation may be configured, but the renderer itself is never wrapped.
+    production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
     production.pipeline.group_cues = clean.group_source_cues
     production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text
     production._build_render_segments = clean.build_render_segments
