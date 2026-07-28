@@ -7,6 +7,7 @@ from tools.voxcpm2 import generic_audio_repair_runtime as repair_runtime
 from tools.voxcpm2 import generic_audio_repair_runtime_bootstrap as bootstrap
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import legacy_segment_migration_v45
+from tools.voxcpm2 import professional_audio_qa_v45
 from tools.voxcpm2 import professional_audio_v45
 
 
@@ -16,6 +17,7 @@ def main() -> None:
     request = production.load_request(root)
     bootstrap.ensure_repair_manifest(root, request, project_id)
     professional_audio_v45.install()
+    professional_audio_qa_v45.install()
     legacy_segment_migration_v45.migrate(root, request)
     log_path = bootstrap.install_repair_diagnostics(root)
     production.log(f"AUDIO REPAIR child log: {log_path}")
