@@ -7,7 +7,7 @@ import os
 import runpy
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import soundfile as sf
@@ -21,6 +21,16 @@ def _flag(name: str) -> str:
     except ValueError:
         return ""
     return sys.argv[index + 1] if index + 1 < len(sys.argv) else ""
+
+
+def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., Any]:
+    """Resolve the stable renderer hook with a useful contract error."""
+    value = namespace.get(name)
+    if not callable(value):
+        raise RuntimeError(
+            f"Legacy VoxCPM2 renderer contract is missing callable {name!r}."
+        )
+    return value
 
 
 def _profile(path: str) -> dict[str, float]:
@@ -55,8 +65,15 @@ legacy_path = Path(os.environ.get("VOXCPM_LEGACY_RENDERER", "")).resolve()
 if not legacy_path.is_file():
     raise RuntimeError(f"Legacy renderer не найден: {legacy_path}")
 legacy = runpy.run_path(str(legacy_path), run_name="voxcpm2_professional_legacy")
-legacy_score = legacy["candidate_score"]
-legacy_fit = legacy["fit_without_slowdown"]
+legacy_score = _required_callable(legacy, "candidate_score")
+legacy_fit = _required_callable(legacy, "fit_without_slowdown")
+legacy_main = _required_callable(legacy, "main")
+
+# Quality v4 wraps these hooks before calling our main(). They must therefore be
+# present in this adapter namespace and later forwarded into the true renderer.
+log = _required_callable(legacy, "log")
+set_seed = _required_callable(legacy, "set_seed")
+
 references = {
     "extended": _profile(_flag("--extended-reference")),
     "composite": _profile(_flag("--composite-reference")),
@@ -150,6 +167,13 @@ def fit_without_slowdown(
 
 
 def main() -> None:
+    """Forward every hook patched by Quality v4 into the true renderer."""
     legacy["candidate_score"] = globals()["candidate_score"]
     legacy["fit_without_slowdown"] = globals()["fit_without_slowdown"]
-    legacy["main"]()
+    legacy["log"] = globals()["log"]
+    legacy["set_seed"] = globals()["set_seed"]
+    legacy_main()
+
+
+if __name__ == "__main__":
+    main()
