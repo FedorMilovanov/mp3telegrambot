@@ -223,16 +223,29 @@ async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             request_path.unlink(missing_ok=True)
             raise
 
-        selected_text = "все" if len(selected) == len(segments) else ", ".join(map(str, selected))
+        full_repair = len(selected) == len(segments)
+        selected_text = "все" if full_repair else ", ".join(map(str, selected))
+        details = (
+            [
+                "Старые TTS checkpoints и rescue-marker будут удалены.",
+                "Референсы голоса будут заново выбраны из спокойных чистых фрагментов.",
+                "Весь звук будет создан прямым NoChew renderer без wrapper-цепочки.",
+            ]
+            if full_repair
+            else [
+                "Выбранные реплики получают новый seed.",
+                "Остальные берутся из успешного clean checkpoint baseline.",
+            ]
+        )
         await update.effective_message.reply_text(
             "\n".join(
                 [
-                    f"🩹 <b>Аудиоремонт поставлен в очередь: #{job['id']}</b>",
+                    f"🩹 <b>Чистый аудиоремонт поставлен в очередь: #{job['id']}</b>",
                     f"Проект: <code>{html.escape(project_id)}</code>",
                     f"Реплики: <code>{html.escape(selected_text)}</code>",
                     "",
                     "Gemini, перевод и заголовок повторно не запускаются.",
-                    "Выбранные реплики получают новые seed; остальные берутся из проверенных checkpoint-ов.",
+                    *details,
                 ]
             ),
             parse_mode="HTML",
