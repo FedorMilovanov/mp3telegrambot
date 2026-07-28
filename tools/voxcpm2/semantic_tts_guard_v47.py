@@ -50,7 +50,17 @@ def _load_segments(path: Path) -> list[dict[str, Any]]:
         payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return []
-    return [dict(item) for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+    if not isinstance(payload, list):
+        return []
+    return [dict(item) for item in payload if isinstance(item, dict)]
+
+
+def _marker_failed_ids(marker: dict[str, Any]) -> set[int]:
+    return {
+        int(value)
+        for value in marker.get("failed_segment_ids", [])
+        if str(value).isdigit()
+    }
 
 
 def _prompt_leak_ids(report: dict[str, Any]) -> set[int]:
@@ -77,9 +87,26 @@ def _prompt_leak_ids(report: dict[str, Any]) -> set[int]:
         similarity = float(semantic.get("sequence_similarity") or 0.0)
         foreign = bool(semantic.get("foreign_language"))
         non_russian_script = bool(_FOREIGN_SCRIPT_RE.search(heard))
-        if foreign or non_russian_script or (heard and recall <= 0.05 and similarity <= 0.05):
+        if (
+            foreign
+            or non_russian_script
+            or (heard and recall <= 0.05 and similarity <= 0.05)
+        ):
             result.add(segment_id)
     return result
+
+
+def _rescue_ids(
+    report: dict[str, Any],
+    marker: dict[str, Any],
+) -> set[int]:
+    leaks = _prompt_leak_ids(report)
+    if leaks:
+        return leaks
+    state = str(marker.get("state") or "")
+    if state.startswith("partial_semantic_rescue"):
+        return _marker_failed_ids(marker)
+    return set()
 
 
 def _prompt_texts(
@@ -88,7 +115,10 @@ def _prompt_texts(
 ) -> Path:
     destination = guard_dir / "reference_prompt_texts_v47.json"
     existing = _load_json(destination)
-    if all(str(existing.get(name) or "").strip() for name in ("extended", "composite")):
+    if all(
+        str(existing.get(name) or "").strip()
+        for name in ("extended", "composite")
+    ):
         return destination
 
     payload: dict[str, str] = {}
@@ -97,11 +127,15 @@ def _prompt_texts(
         ("composite", "--composite-reference"),
     ):
         reference = Path(legacy._flag_value(command, flag)).resolve()
-        heard, _language, _probability = legacy._transcribe(reference, language="en")
+        heard, _language, _probability = legacy._transcribe(
+            reference,
+            language="en",
+        )
         heard = str(heard or "").strip()
         if not heard:
             raise RuntimeError(
-                f"Whisper не распознал {profile} voice reference для semantic rescue."
+                f"Whisper не распознал {profile} voice reference "
+                "для semantic rescue."
             )
         payload[profile] = heard
 
@@ -131,16 +165,20 @@ def _adapt_rescue_segments(
             continue
 
         current = str(item.get("reference_profile") or "extended")
-        if rescue_round == 1:
+        if rescue_round % 2 == 1:
             profile = "composite" if current == "extended" else "extended"
         else:
             profile = "extended" if current == "composite" else "composite"
         item["reference_profile"] = profile
-        item["tail_guard"] = min(float(item.get("tail_guard") or 0.18), 0.12)
+        item["tail_guard"] = max(
+            float(item.get("tail_guard") or 0.18),
+            0.24,
+        )
         adaptations = list(item.get("qa_adaptations") or [])
         adaptations.extend(
             [
                 "semantic_prompt_transcript",
+                "forced_silent_tail",
                 f"rescue_reference:{profile}",
                 f"rescue_round:{rescue_round}",
             ]
@@ -156,7 +194,7 @@ def _adapt_rescue_segments(
         )
         log(
             f"semantic rescue round {rescue_round}: IDs {sorted(failed)}; "
-            "слова сохранены, reference переключён, speech room увеличен"
+            "слова сохранены, reference переключён, tail_guard >= 240 ms"
         )
 
 
@@ -166,7 +204,22 @@ def _find_original_renderer(command: Sequence[str]) -> Path:
             path = Path(str(part)).resolve()
             if path.is_file():
                 return path
-    raise RuntimeError("Не найден исходный NoChew renderer для semantic rescue.")
+    raise RuntimeError(
+        "Не найден исходный NoChew renderer для semantic rescue."
+    )
+
+
+def _resume_seed(work_dir: Path, marker: dict[str, Any], command: Sequence[str]) -> int:
+    checkpoint_seed = int(focused._checkpoint_base_seed(work_dir) or 0)
+    if checkpoint_seed > 0:
+        return checkpoint_seed
+    try:
+        marker_seed = int(marker.get("base_seed") or 0)
+    except (TypeError, ValueError):
+        marker_seed = 0
+    if marker_seed > 0:
+        return marker_seed
+    return int(legacy._flag_value(command, "--base-seed")) + 500_000
 
 
 def _run_prompt_rescue(
@@ -175,18 +228,21 @@ def _run_prompt_rescue(
     **kwargs: Any,
 ) -> Any:
     original_command = [str(part) for part in command]
-    work_dir = Path(legacy._flag_value(original_command, "--work-dir")).resolve()
-    timeline = Path(legacy._flag_value(original_command, "--output")).resolve()
+    work_dir = Path(
+        legacy._flag_value(original_command, "--work-dir")
+    ).resolve()
+    timeline = Path(
+        legacy._flag_value(original_command, "--output")
+    ).resolve()
     source_segments = Path(
         legacy._flag_value(original_command, "--segments-json")
     ).resolve()
-    marker_path = work_dir / "semantic_guard.marker.json"
-    marker = _load_json(marker_path)
+    marker = _load_json(work_dir / "semantic_guard.marker.json")
     report = _load_json(timeline.with_suffix(".semantic_qa.json"))
-    failed_ids = _prompt_leak_ids(report)
+    failed_ids = _rescue_ids(report, marker)
     if not failed_ids:
         raise RuntimeError(
-            "Semantic rescue вызван без подтверждённого foreign prompt-leak."
+            "Semantic rescue вызван без подтверждённого persistent QA failure."
         )
 
     guard_dir = work_dir / "semantic_guard_v4"
@@ -194,16 +250,27 @@ def _run_prompt_rescue(
     guarded_segments = guard_dir / "segments_guarded.json"
     segments = _load_segments(guarded_segments)
     if not segments:
-        segments = legacy._prepare_guarded_segments(source_segments, guarded_segments)
+        segments = legacy._prepare_guarded_segments(
+            source_segments,
+            guarded_segments,
+        )
     all_ids = {int(item["id"]) for item in segments}
 
-    professional_renderer = Path(base.__file__).resolve().parent / base._QUALITY_RENDERER
-    rescue_renderer = Path(__file__).resolve().parent / "voxcpm2_semantic_rescue_v47.py"
+    professional_renderer = (
+        Path(base.__file__).resolve().parent / base._QUALITY_RENDERER
+    )
+    rescue_renderer = (
+        Path(__file__).resolve().parent / "voxcpm2_semantic_rescue_v47.py"
+    )
     original_renderer = _find_original_renderer(original_command)
     if not professional_renderer.is_file():
-        raise RuntimeError(f"Не найден Professional renderer: {professional_renderer}")
+        raise RuntimeError(
+            f"Не найден Professional renderer: {professional_renderer}"
+        )
     if not rescue_renderer.is_file():
-        raise RuntimeError(f"Не найден semantic rescue renderer: {rescue_renderer}")
+        raise RuntimeError(
+            f"Не найден semantic rescue renderer: {rescue_renderer}"
+        )
 
     prompt_path = _prompt_texts(original_command, guard_dir)
     rewritten = list(original_command)
@@ -211,7 +278,11 @@ def _run_prompt_rescue(
         if Path(part).name.casefold() == base._SYNTH_NAME.casefold():
             rewritten[index] = str(rescue_renderer)
             break
-    legacy._replace_flag(rewritten, "--segments-json", str(guarded_segments))
+    legacy._replace_flag(
+        rewritten,
+        "--segments-json",
+        str(guarded_segments),
+    )
 
     env = dict(kwargs.get("env") or os.environ)
     env["VOXCPM_ORIGINAL_RENDERER"] = str(original_renderer)
@@ -220,13 +291,7 @@ def _run_prompt_rescue(
     env["VOXCPM_SEMANTIC_GUARD_VERSION"] = base._GUARD_VERSION
     kwargs["env"] = env
 
-    try:
-        resume_seed = int(marker.get("base_seed") or 0)
-    except (TypeError, ValueError):
-        resume_seed = 0
-    if resume_seed <= 0:
-        resume_seed = int(legacy._flag_value(original_command, "--base-seed")) + 500_000
-
+    resume_seed = _resume_seed(work_dir, marker, original_command)
     last_report = report
     last_report_path = timeline.with_suffix(".semantic_qa.json")
     for rescue_round in range(1, _RESCUE_ROUNDS + 1):
@@ -237,15 +302,25 @@ def _run_prompt_rescue(
             rescue_round=rescue_round,
         )
         round_seed = resume_seed + (rescue_round - 1) * 100_000
-        legacy._replace_flag(rewritten, "--base-seed", str(round_seed))
-        env["VOXCPM_RESCUE_CFG"] = "1.95" if rescue_round == 1 else "2.05"
+        legacy._replace_flag(
+            rewritten,
+            "--base-seed",
+            str(round_seed),
+        )
+        env["VOXCPM_RESCUE_CFG"] = (
+            "1.95" if rescue_round == 1 else "2.05"
+        )
         kwargs["env"] = env
 
         log(
             f"semantic rescue {rescue_round}/{_RESCUE_ROUNDS}; "
             f"только IDs {sorted(failed_ids)}; seed={round_seed}"
         )
-        result = base._REAL_SUBPROCESS.run(rewritten, *args, **kwargs)
+        result = base._REAL_SUBPROCESS.run(
+            rewritten,
+            *args,
+            **kwargs,
+        )
         if int(getattr(result, "returncode", 1)) != 0:
             return result
 
@@ -263,15 +338,22 @@ def _run_prompt_rescue(
                 state="complete_semantic_rescue",
                 base_seed=round_seed,
                 failed_ids=[],
-                pipeline_signature=str(marker.get("pipeline_signature") or ""),
+                pipeline_signature=str(
+                    marker.get("pipeline_signature") or ""
+                ),
                 report_path=last_report_path,
-                round_index=int(marker.get("completed_rounds") or 5) + rescue_round,
+                round_index=(
+                    int(marker.get("completed_rounds") or 5)
+                    + rescue_round
+                ),
             )
             timeline.with_suffix(".semantic_qa.json").write_text(
                 json.dumps(last_report, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            log("foreign prompt-leak устранён; все реплики прошли строгий QA")
+            log(
+                "foreign prompt-leak устранён; все реплики прошли строгий QA"
+            )
             return result
 
         failed_ids = {int(value) for value in failed}
@@ -287,9 +369,14 @@ def _run_prompt_rescue(
             state="partial_semantic_rescue",
             base_seed=next_seed,
             failed_ids=failed_ids,
-            pipeline_signature=str(marker.get("pipeline_signature") or ""),
+            pipeline_signature=str(
+                marker.get("pipeline_signature") or ""
+            ),
             report_path=last_report_path,
-            round_index=int(marker.get("completed_rounds") or 5) + rescue_round,
+            round_index=(
+                int(marker.get("completed_rounds") or 5)
+                + rescue_round
+            ),
         )
 
     final_report = timeline.with_suffix(".semantic_qa.json")
@@ -300,7 +387,8 @@ def _run_prompt_rescue(
     details = focused._failure_summary(last_report)
     raise RuntimeError(
         "Semantic prompt rescue не принял устойчивую русскую реплику после "
-        f"{_RESCUE_ROUNDS} специальных раундов. Сегменты: {sorted(failed_ids)}. "
+        f"{_RESCUE_ROUNDS} специальных раундов. "
+        f"Сегменты: {sorted(failed_ids)}. "
         f"Причины: {details}. Отчёт: {final_report}"
     )
 
@@ -311,22 +399,37 @@ def _run_quality_synth_v47(
     **kwargs: Any,
 ) -> Any:
     original_command = [str(part) for part in command]
-    work_dir = Path(legacy._flag_value(original_command, "--work-dir")).resolve()
-    timeline = Path(legacy._flag_value(original_command, "--output")).resolve()
+    work_dir = Path(
+        legacy._flag_value(original_command, "--work-dir")
+    ).resolve()
+    timeline = Path(
+        legacy._flag_value(original_command, "--output")
+    ).resolve()
     marker = _load_json(work_dir / "semantic_guard.marker.json")
     report = _load_json(timeline.with_suffix(".semantic_qa.json"))
-    completed = int(marker.get("completed_rounds") or 0)
+    try:
+        completed = int(marker.get("completed_rounds") or 0)
+    except (TypeError, ValueError):
+        completed = 0
 
-    if completed >= 5 and _prompt_leak_ids(report):
-        log("предыдущие 5 focused rounds уже исчерпаны; сразу запускаю semantic rescue")
+    state = str(marker.get("state") or "")
+    if (
+        (completed >= 5 and _prompt_leak_ids(report))
+        or state.startswith("partial_semantic_rescue")
+    ):
+        log(
+            "обычные focused rounds уже исчерпаны; "
+            "сразу запускаю semantic prompt rescue"
+        )
         return _run_prompt_rescue(command, *args, **kwargs)
 
     try:
         return _ORIGINAL_FOCUSED_RUN(command, *args, **kwargs)
     except RuntimeError:
         report = _load_json(timeline.with_suffix(".semantic_qa.json"))
-        if _prompt_leak_ids(report):
-            log("подтверждён foreign prompt-leak после focused QA")
+        marker = _load_json(work_dir / "semantic_guard.marker.json")
+        if _rescue_ids(report, marker):
+            log("подтверждён persistent foreign prompt-leak после focused QA")
             return _run_prompt_rescue(command, *args, **kwargs)
         raise
 
@@ -339,14 +442,16 @@ def install() -> None:
     base._run_quality_synth = _run_quality_synth_v47
     _INSTALLED = True
     log(
-        "installed direct resume into exact prompt-transcript rescue for persistent "
-        "foreign-language segments"
+        "installed direct resume into exact prompt-transcript rescue for "
+        "persistent foreign-language segments"
     )
 
 
 __all__ = [
     "_adapt_rescue_segments",
     "_prompt_leak_ids",
+    "_rescue_ids",
+    "_resume_seed",
     "_run_quality_synth_v47",
     "install",
 ]
