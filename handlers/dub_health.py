@@ -25,7 +25,7 @@ from services.dub_studio import (
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-quality-v4.2"
+_WORKER_RUNTIME = "dub-worker-quality-v4.3"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -140,6 +140,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
         and '_QUALITY_VERSION = "voxcpm2-quality-v4.2"'
         in contract_text[quality_renderer_path]
         and "nested retry remains disabled" in contract_text[quality_renderer_path]
+        and "DUB_PROGRESS " in contract_text[quality_renderer_path]
         and '"whole_mix_loudnorm": False' in contract_text[quality_master_path]
         and "alimiter=limit=0.985:level=false" in contract_text[quality_master_path]
         and "semantic_tts_guard_v4.install()" in contract_text[gemini_entry_path]
@@ -160,7 +161,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
             (
                 "local windows + caption coverage; reference-only renderer; "
                 "semantic/timing/chirp QA; signed checkpoints; exact-gain master; "
-                "Gemini MAX + ready SRT + audio-only repair entrypoints"
+                "structured live progress; Gemini MAX + ready SRT + audio-only repair entrypoints"
             ),
         )
     )
