@@ -39,13 +39,25 @@ def _run_clean_voxcpm_and_master(
         duration=duration,
         reference_dir=root / "references",
     )
-    expressive_continuity.plan_json(
+    planned = expressive_continuity.plan_json(
         source=source,
         segments_path=segments_json,
         duration=duration,
         report_path=root / "output" / "expressive_continuity.json",
     )
-    production.log("source-guided emotional arc prepared; Russian text preserved")
+    expressive_built = expressive_continuity.build_controlled_expressive_reference(
+        source=source,
+        segments=planned,
+        output=composite,
+    )
+    production.log(
+        "source-guided emotional arc prepared; Russian text preserved; "
+        + (
+            "controlled expressive reference active"
+            if expressive_built
+            else "safe calm-reference fallback active"
+        )
+    )
     return clean.render_and_master(
         root=root,
         request=request,
