@@ -4,41 +4,35 @@
   "title": "Универсальный дубляж YouTube — мастер",
   "speaker": "Определяется из исходного ролика",
   "source_url": "",
-  "description": "Два раздельных режима для любого YouTube-ролика: Gemini MAX с приоритетом ручных captions и многоступенчатым переводом; либо готовый русский SRT без проверки и переписывания Gemini. VoxCPM2 CPU NoChew, задержка русского 420 мс, оригинал 18%, русские имена файлов и доставка в Telegram.",
+  "description": "Gemini MAX или готовый русский SRT. Professional Audio v4.5: спокойный голосовой референс, короткие реплики, единый глобальный сдвиг русского, контроль внутренних пауз, обрывов и завышенного регистра; оригинал 18%.",
   "work_root": "C:\\AI-Archive\\MP3Bot-Dub-Studio",
   "actions": {
     "render": {
       "kind": "render",
       "label": "Gemini MAX — полный автоматический рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_gemini_runtime",
-      "parameters": {
-        "Mode": "gemini"
-      }
+      "module": "tools.voxcpm2.generic_gemini_runtime_v45",
+      "parameters": {"Mode": "gemini"}
     },
     "render_gemini": {
       "kind": "render",
       "label": "Gemini MAX — перевод, проверки и готовый ролик",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_gemini_runtime",
-      "parameters": {
-        "Mode": "gemini"
-      }
+      "module": "tools.voxcpm2.generic_gemini_runtime_v45",
+      "parameters": {"Mode": "gemini"}
     },
     "render_direct": {
       "kind": "render",
       "label": "Мой готовый SRT — озвучить без изменений",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_direct_checked_runtime",
-      "parameters": {
-        "Mode": "direct"
-      }
+      "module": "tools.voxcpm2.generic_direct_checked_runtime_v45",
+      "parameters": {"Mode": "direct"}
     },
     "repair_audio": {
       "kind": "utility",
-      "label": "Аудиоремонт без повторного перевода",
+      "label": "Профессиональный аудиоремонт без повторного перевода",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_audio_repair_runtime_bootstrap",
+      "module": "tools.voxcpm2.generic_audio_repair_runtime_v45",
       "parameters": {}
     },
     "prepare_custom": {
@@ -46,19 +40,14 @@
       "label": "Legacy: подготовить старый шаблон перевода",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
-      "parameters": {
-        "Mode": "custom",
-        "PrepareOnly": true
-      }
+      "parameters": {"Mode": "custom", "PrepareOnly": true}
     },
     "render_custom": {
       "kind": "render",
       "label": "Legacy: сделать ролик со старым пользовательским переводом",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_project_runtime",
-      "parameters": {
-        "Mode": "custom"
-      }
+      "parameters": {"Mode": "custom"}
     }
   },
   "outputs": {}
