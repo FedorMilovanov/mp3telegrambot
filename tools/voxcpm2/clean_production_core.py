@@ -3,18 +3,19 @@
 """Clean production core for Dub Studio.
 
 The bot and a manual PowerShell launch use the same NoChew renderer and master.
-This module never replaces subprocess, never uses runpy, and never patches
-VoxCPM internals. It prepares short phrases and calm references, launches the
-renderer directly, and runs an independent post-render QA gate.
+This module never replaces subprocess and never patches VoxCPM internals. It
+prepares short phrases and calm references, launches the renderer directly, and
+runs an independent post-render QA gate.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -163,6 +164,14 @@ def build_calm_references(
     return extended, composite
 
 
+def _number(item: dict[str, Any], key: str, default: float) -> float:
+    value = item.get(key, default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def _validate_reference_report(path: Path, profile: str) -> None:
     if not path.is_file():
         raise RuntimeError(f"Не создан отчёт отбора {profile} voice reference.")
@@ -174,9 +183,9 @@ def _validate_reference_report(path: Path, profile: str) -> None:
         item
         for item in selected
         if isinstance(item, dict)
-        and float(item.get("voiced_ratio") or 0.0) >= 0.16
-        and float(item.get("active_ratio") or 0.0) >= 0.25
-        and float(item.get("max_internal_gap") or 99.0) <= 0.85
+        and _number(item, "voiced_ratio", 0.0) >= 0.16
+        and _number(item, "active_ratio", 0.0) >= 0.25
+        and _number(item, "max_internal_gap", 99.0) <= 0.85
     ]
     if not usable:
         raise RuntimeError(
@@ -247,9 +256,7 @@ def _failure_summary(report: dict[str, Any]) -> str:
             )
         continuity = item.get("continuity_v45")
         if isinstance(continuity, dict) and not continuity.get("passed", True):
-            parts.append(
-                f"пауза={continuity.get('max_internal_gap')}s"
-            )
+            parts.append(f"пауза={continuity.get('max_internal_gap')}s")
         voice = item.get("voice_match_v45")
         if isinstance(voice, dict) and not voice.get("passed", True):
             parts.append(
@@ -257,6 +264,26 @@ def _failure_summary(report: dict[str, Any]) -> str:
             )
         result.append(f"#{segment_id}: " + ", ".join(parts or ["QA failure"]))
     return "; ".join(result)
+
+
+def _read_clean_marker(work_dir: Path) -> dict[str, Any]:
+    path = work_dir / "clean_production.marker.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _remove_render_state(work_dir: Path) -> None:
+    for directory_name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
+        target = work_dir / directory_name
+        if target.is_dir():
+            shutil.rmtree(target)
+    for marker in ("semantic_guard.marker.json", "clean_production.marker.json"):
+        (work_dir / marker).unlink(missing_ok=True)
 
 
 def render_and_master(
@@ -279,7 +306,7 @@ def render_and_master(
     segment_work = root / "segment_work"
     master_work = root / "master_work"
     audio_dir = root / "audio"
-    for directory in (segment_work, master_work, audio_dir):
+    for directory in (segment_work, master_work, audio_dir, root / "output"):
         directory.mkdir(parents=True, exist_ok=True)
 
     segments = json.loads(segments_json.read_text(encoding="utf-8-sig"))
@@ -291,17 +318,13 @@ def render_and_master(
         encoding="utf-8",
     )
 
+    existing_checkpoints = any((segment_work / "checkpoints").glob("segment_*.json"))
+    marker = _read_clean_marker(segment_work)
+    if existing_checkpoints and marker.get("policy") != POLICY:
+        log("обнаружены checkpoints старой цепочки; выполняю безопасный fresh render")
+        force_fresh = True
     if force_fresh:
-        for directory_name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
-            shutil_target = segment_work / directory_name
-            if shutil_target.is_dir():
-                import shutil
-                shutil.rmtree(shutil_target)
-        for marker in (
-            "semantic_guard.marker.json",
-            "clean_production.marker.json",
-        ):
-            (segment_work / marker).unlink(missing_ok=True)
+        _remove_render_state(segment_work)
 
     threads = max(1, int(request.get("threads") or 10))
     steps = max(1, int(request.get("steps") or 16))
