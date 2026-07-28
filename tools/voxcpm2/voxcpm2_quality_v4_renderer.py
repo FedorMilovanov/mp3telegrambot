@@ -8,8 +8,10 @@ scores unstable starts and normalizes candidate edge silence before timeline fit
 """
 from __future__ import annotations
 
+import json
 import math
 import os
+import re
 import runpy
 import sys
 from pathlib import Path
@@ -30,10 +32,23 @@ import soundfile as sf
 from tools.voxcpm2.activity_quality import sustained_activity_index
 
 _QUALITY_VERSION = "voxcpm2-quality-v4.2"
+_PROGRESS_PREFIX = "DUB_PROGRESS "
+_SEGMENT_LINE_RE = re.compile(r"^\[(\d+)\s*/\s*(\d+)\]")
+_ATTEMPT_LINE_RE = re.compile(r"^attempt\s+(\d+):", flags=re.I)
 
 
 def log(message: str) -> None:
     print(f"[VOXCPM2-QUALITY-V4] {message}", flush=True)
+
+
+def _emit_progress(progress: int, stage: str, message: str) -> None:
+    """Emit a machine-readable progress line while remaining human-readable."""
+    payload = {
+        "progress": max(0, min(int(progress), 99)),
+        "stage": str(stage)[:160],
+        "message": str(message)[:800],
+    }
+    print(_PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=False), flush=True)
 
 
 def _frame_rms(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, np.ndarray, int]:
@@ -145,6 +160,9 @@ def main() -> None:
     namespace = runpy.run_path(str(original), run_name="voxcpm2_quality_v4_base")
     original_score = namespace["candidate_score"]
     original_fit = namespace["fit_without_slowdown"]
+    original_log = namespace["log"]
+    original_set_seed = namespace["set_seed"]
+    progress_state = {"position": 0, "total": 0, "attempt": 0}
 
     def quality_score(candidate: dict[str, Any], speech_slot: float) -> float:
         return float(original_score(candidate, speech_slot)) + _initial_artifact_score(candidate)
@@ -165,8 +183,68 @@ def main() -> None:
         report["quality_version"] = _QUALITY_VERSION
         return report
 
+    def progress_log(message: str) -> None:
+        original_log(message)
+        text = str(message or "").strip()
+        lowered = text.casefold()
+        if "voxcpm2 final production cpu render" in lowered:
+            _emit_progress(6, "Загрузка VoxCPM2", "Локальная модель загружается в память CPU")
+            return
+        if "модель загружена за" in lowered:
+            _emit_progress(10, "VoxCPM2 загружен", text)
+            return
+
+        segment_match = _SEGMENT_LINE_RE.match(text)
+        if segment_match:
+            position = max(1, int(segment_match.group(1)))
+            total = max(position, int(segment_match.group(2)))
+            progress_state.update(position=position, total=total, attempt=0)
+            restored = "checkpoint" in lowered
+            fraction = position / total if restored else (position - 1) / total
+            progress = 10 + round(fraction * 78)
+            stage = f"Реплика {position}/{total}"
+            detail = "готова из checkpoint" if restored else "подготовка вариантов голоса"
+            _emit_progress(progress, stage, f"{stage}: {detail}")
+            return
+
+        attempt_match = _ATTEMPT_LINE_RE.match(text)
+        if attempt_match and progress_state["total"]:
+            attempt = max(1, int(attempt_match.group(1)))
+            progress_state["attempt"] = attempt
+            position = int(progress_state["position"])
+            total = int(progress_state["total"])
+            fraction = ((position - 1) + min(attempt, 3) / 3.0 * 0.82) / total
+            progress = 10 + round(fraction * 78)
+            stage = f"Реплика {position}/{total}, вариант {attempt} готов"
+            _emit_progress(progress, stage, text)
+            return
+
+        if lowered.startswith("выбран attempt") and progress_state["total"]:
+            position = int(progress_state["position"])
+            total = int(progress_state["total"])
+            progress = 10 + round(position / total * 78)
+            stage = f"Реплика {position}/{total} прошла локальную обработку"
+            _emit_progress(progress, stage, text)
+            return
+        if "final synthesis готов" in lowered:
+            _emit_progress(92, "Русская дорожка собрана", "Переход к акустической QA и master")
+
+    def progress_set_seed(seed: int, torch_module: Any) -> None:
+        progress_state["attempt"] = int(progress_state.get("attempt") or 0) + 1
+        position = int(progress_state.get("position") or 0)
+        total = int(progress_state.get("total") or 0)
+        attempt = int(progress_state["attempt"])
+        if position > 0 and total > 0:
+            fraction = ((position - 1) + min(attempt, 3) / 3.0 * 0.42) / total
+            progress = 10 + round(fraction * 78)
+            stage = f"Реплика {position}/{total}, генерация варианта {attempt}"
+            _emit_progress(progress, stage, "CPU выполняет VoxCPM2-синтез; процесс может молчать несколько минут")
+        original_set_seed(seed, torch_module)
+
     namespace["candidate_score"] = quality_score
     namespace["fit_without_slowdown"] = quality_fit
+    namespace["log"] = progress_log
+    namespace["set_seed"] = progress_set_seed
     log("reference-only NoChew; requested CFG preserved; nested retry remains disabled")
     namespace["main"]()
 
