@@ -4,8 +4,8 @@
 
 The normal Professional Audio renderer remains the source of timing, candidate
 selection and checkpoint logic. This wrapper only adds the exact transcript of
-the English voice reference to VoxCPM's prompt API and enables its internal
-bad-case retry for segments that repeatedly failed strict Russian ASR QA.
+the English voice reference to VoxCPM's prompt API, enables its internal bad-case
+retry and appends a deterministic silent tail before final timing fit.
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ import runpy
 import sys
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -128,13 +130,20 @@ def _install_semantic_patch(prompt_texts: dict[str, str]) -> None:
                 f"{profile}: exact English prompt transcript + Russian target; "
                 f"cfg={values['cfg_value']:.2f}; retry_badcase=4"
             )
-            return original_generate(
+            generated = original_generate(
                 *args2,
                 **_filter_kwargs(original_generate, values),
             )
+            audio = np.asarray(generated, dtype=np.float32).reshape(-1)
+            sample_rate = int(model.tts_model.sample_rate)
+            tail = np.zeros(max(1, int(sample_rate * 0.160)), dtype=np.float32)
+            return np.concatenate([audio, tail])
 
         model.generate = rescued_generate
-        log("локальная CPU-модель загружена; semantic prompt rescue активирован")
+        log(
+            "локальная CPU-модель загружена; semantic prompt rescue и "
+            "160 ms silent tail активированы"
+        )
         return model
 
     VoxCPM.from_pretrained = rescued_from_pretrained
