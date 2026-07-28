@@ -26,6 +26,7 @@ from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _WORKER_RUNTIME = "dub-worker-quality-v4.3"
+_CLEAN_POLICY = "clean-direct-production-v1"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -65,6 +66,10 @@ def _worker_snapshot_with_repair() -> dict[str, Any] | None:
     return worker
 
 
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
 def collect_dub_health() -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
 
@@ -79,7 +84,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(
             _check(
                 "Recipe: Gemini MAX",
-                "tools.voxcpm2.generic_gemini_runtime" in gemini_text
+                "tools.voxcpm2.generic_clean_gemini_runtime" in gemini_text
                 and "-Mode gemini" in gemini_text,
                 gemini_text,
             )
@@ -87,15 +92,15 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(
             _check(
                 "Recipe: готовый SRT",
-                "tools.voxcpm2.generic_direct_checked_runtime" in direct_text
+                "tools.voxcpm2.generic_clean_direct_runtime" in direct_text
                 and "-Mode direct" in direct_text,
                 direct_text,
             )
         )
         checks.append(
             _check(
-                "Recipe: аудиоремонт без Gemini",
-                "tools.voxcpm2.generic_audio_repair_runtime" in repair_text
+                "Recipe: чистый аудиоремонт",
+                "tools.voxcpm2.generic_clean_audio_repair_runtime" in repair_text
                 and str(repair_spec.get("kind") or "") == "utility",
                 repair_text,
             )
@@ -104,64 +109,88 @@ def collect_dub_health() -> list[dict[str, Any]]:
         checks.append(_check("Recipe-actions", False, str(exc)))
 
     repo = Path(__file__).resolve().parents[1]
-    quality_policy_path = repo / "tools" / "voxcpm2" / "dub_quality_v4.py"
-    quality_guard_path = repo / "tools" / "voxcpm2" / "semantic_tts_guard_v4.py"
-    quality_renderer_path = repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"
-    quality_master_path = repo / "tools" / "voxcpm2" / "master_quality_v4.py"
-    gemini_entry_path = repo / "tools" / "voxcpm2" / "generic_gemini_runtime.py"
-    direct_entry_path = repo / "tools" / "voxcpm2" / "generic_direct_checked_runtime.py"
-    audio_repair_entry_path = repo / "tools" / "voxcpm2" / "generic_audio_repair_runtime.py"
-    activity_quality_path = repo / "tools" / "voxcpm2" / "activity_quality.py"
-    contract_files = (
-        quality_policy_path,
-        quality_guard_path,
-        quality_renderer_path,
-        quality_master_path,
-        gemini_entry_path,
-        direct_entry_path,
-        audio_repair_entry_path,
-        activity_quality_path,
+    clean_core_path = repo / "tools" / "voxcpm2" / "clean_production_core.py"
+    clean_normalizer_path = repo / "tools" / "voxcpm2" / "clean_segment_normalizer.py"
+    clean_gemini_path = repo / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
+    clean_direct_path = repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py"
+    clean_custom_path = repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py"
+    clean_repair_path = repo / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py"
+    reference_policy_path = repo / "tools" / "voxcpm2" / "professional_audio_v45.py"
+    qa_path = repo / "tools" / "voxcpm2" / "professional_audio_qa_v45.py"
+    renderer_path = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+        / "voxcpm2_cpu_shorts_production.py"
     )
-    contract_text = {
-        path: path.read_text(encoding="utf-8") if path.is_file() else ""
-        for path in contract_files
-    }
+    master_path = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+        / "master_constant_mix.py"
+    )
+    contract_files = (
+        clean_core_path,
+        clean_normalizer_path,
+        clean_gemini_path,
+        clean_direct_path,
+        clean_custom_path,
+        clean_repair_path,
+        reference_policy_path,
+        qa_path,
+        renderer_path,
+        master_path,
+    )
+    contract_text = {path: _read(path) for path in contract_files}
+    core = contract_text[clean_core_path]
+    normalizer = contract_text[clean_normalizer_path]
+    gemini_entry = contract_text[clean_gemini_path]
+    direct_entry = contract_text[clean_direct_path]
+    custom_entry = contract_text[clean_custom_path]
+    repair_entry = contract_text[clean_repair_path]
+    reference_policy = contract_text[reference_policy_path]
+    qa_contract = contract_text[qa_path]
+
     quality_ok = bool(
         all(contract_text.values())
-        and "production._build_render_segments = build_render_segments_v4"
-        in contract_text[quality_policy_path]
-        and "local-window-v4.1" in contract_text[quality_policy_path]
-        and '_GUARD_VERSION = "semantic-tts-guard-v4.2"'
-        in contract_text[quality_guard_path]
-        and "verify_timeline_v4" in contract_text[quality_guard_path]
-        and "pipeline_signature" in contract_text[quality_guard_path]
-        and 'env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)'
-        in contract_text[quality_guard_path]
-        and '_QUALITY_VERSION = "voxcpm2-quality-v4.2"'
-        in contract_text[quality_renderer_path]
-        and "nested retry remains disabled" in contract_text[quality_renderer_path]
-        and "DUB_PROGRESS " in contract_text[quality_renderer_path]
-        and '"whole_mix_loudnorm": False' in contract_text[quality_master_path]
-        and "alimiter=limit=0.985:level=false" in contract_text[quality_master_path]
-        and "semantic_tts_guard_v4.install()" in contract_text[gemini_entry_path]
-        and "semantic_tts_guard_v4.install()" in contract_text[direct_entry_path]
-        and "legacy_semantic_guard.install = _disable_legacy_guard_install"
-        in contract_text[gemini_entry_path]
-        and "legacy_semantic_guard.install = _disable_legacy_guard_install"
-        in contract_text[direct_entry_path]
-        and "sustained_activity_index" in contract_text[activity_quality_path]
-        and "translate_groups_max" not in contract_text[audio_repair_entry_path]
-        and '"gemini_called": False' in contract_text[audio_repair_entry_path]
-        and "semantic_tts_guard_v4.install()" in contract_text[audio_repair_entry_path]
+        and f'POLICY = "{_CLEAN_POLICY}"' in core
+        and "voxcpm2_cpu_shorts_production.py" in core
+        and "master_constant_mix.py" in core
+        and "subprocess.run(command" in core
+        and "professional_audio_qa_v45.verify_timeline_v45" in core
+        and '"wrapper_count": 0' in core
+        and "semantic_tts_guard_v4.install(" not in core
+        and "professional_audio_v45.install(" not in core
+        and "VOXCPM_ORIGINAL_RENDERER" in core
+        and "env.pop(key, None)" in core
+        and "build_reference_v45" in reference_policy
+        and "reference calm windows" in reference_policy
+        and "voice_match_v45" in qa_contract
+        and "continuity_v45" in qa_contract
+        and "TTS guard disabled" in gemini_entry
+        and "TTS guard disabled" in direct_entry
+        and "TTS guard disabled" in custom_entry
+        and "install_runtime_adapters = _install_clean_runtime_adapters" in gemini_entry
+        and "install_runtime_adapters = _install_clean_runtime_adapters" in direct_entry
+        and "install_runtime_adapters = _install_clean_runtime_adapters" in custom_entry
+        and "force_fresh=repair_all" in repair_entry
+        and "translation_reused\": True" in repair_entry
+        and "gemini_called\": False" in repair_entry
+        and "Russian tokens preserved" in normalizer
+        and "semantic_tts_guard_v47" not in repair_entry
+        and "semantic_tts_guard_v46" not in repair_entry
     )
     checks.append(
         _check(
-            "NoChew Quality v4.2 + аудиоремонт",
+            "Clean Direct NoChew + независимый QA",
             quality_ok,
             (
-                "local windows + caption coverage; reference-only renderer; "
-                "semantic/timing/chirp QA; signed checkpoints; exact-gain master; "
-                "structured live progress; Gemini MAX + ready SRT + audio-only repair entrypoints"
+                "короткие окна <=5.4с; спокойные voice references; прямой PowerShell-equivalent "
+                "renderer/master; wrapper_count=0; один прицельный повтор; -16 LUFS/-1.5 dBTP"
             ),
         )
     )
@@ -288,7 +317,7 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Все действия требуют зелёные NoChew Quality v4.2, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Все действия требуют зелёные Clean Direct NoChew, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
             "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт не отправляются на перевод или редактуру.",
         ]
     )
