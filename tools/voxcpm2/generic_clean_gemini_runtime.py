@@ -76,7 +76,7 @@ def main() -> None:
     # Preparation may be configured, but the renderer itself is never wrapped.
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
     production.pipeline.group_cues = clean.group_source_cues
-    production.pipeline.translate_groups = expressive_translation.translate_groups
+    production.translate_groups_max = expressive_translation.translate_groups
     production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text
     production._build_render_segments = clean.build_render_segments
     production._run_voxcpm_and_master = _run_clean_voxcpm_and_master
