@@ -139,6 +139,7 @@ def main() -> None:
     if repair_all_requested:
         clean_segment_normalizer.normalize(root, request, duration=duration)
         repair, segments = _reload_repair_and_segments(repair_path, segments_path)
+        manifest = legacy_repair._load_object(manifest_path, "manifest.json")
 
     all_ids = {int(item["id"]) for item in segments}
     selected_ids = sorted({int(value) for value in repair.get("segment_ids") or []})
