@@ -56,18 +56,22 @@ def test_deepest_error_line_prefers_final_exception() -> None:
     assert hardened_worker._deepest_error_line(error) == "ModuleNotFoundError: No module named 'broken_dependency'"
 
 
-def test_hardened_worker_installs_tree_cancel_and_version_marker(tmp_path: Path) -> None:
+def test_hardened_worker_installs_tree_cancel_progress_and_version_marker(tmp_path: Path) -> None:
     original_terminate = worker._terminate_process
+    original_progress_parser = worker._progress_from_line
     original_register = DubStore.register_worker
     original_heartbeat = DubStore.worker_heartbeat
+    original_update_progress = DubStore.update_job_progress
     original_finish_job = DubStore.finish_job
     try:
         hardened_worker.install_hardening()
         assert worker._terminate_process is hardened_worker._terminate_process_tree
+        assert worker._progress_from_line is hardened_worker._progress_from_line_v43
         assert DubStore.register_worker is hardened_worker._register_versioned_worker
         assert DubStore.worker_heartbeat is hardened_worker._heartbeat_versioned_worker
+        assert DubStore.update_job_progress is hardened_worker._update_progress_with_milestones
         assert DubStore.finish_job is hardened_worker._finish_job_with_root_cause
-        assert hardened_worker._RUNTIME_VERSION == "dub-worker-quality-v4.2"
+        assert hardened_worker._RUNTIME_VERSION == "dub-worker-quality-v4.3"
 
         store = DubStore(tmp_path)
         store.register_worker(
@@ -93,6 +97,8 @@ def test_hardened_worker_installs_tree_cancel_and_version_marker(tmp_path: Path)
         assert busy["details"]["stage"] == "synthesis"
     finally:
         worker._terminate_process = original_terminate
+        worker._progress_from_line = original_progress_parser
         DubStore.register_worker = original_register
         DubStore.worker_heartbeat = original_heartbeat
+        DubStore.update_job_progress = original_update_progress
         DubStore.finish_job = original_finish_job
