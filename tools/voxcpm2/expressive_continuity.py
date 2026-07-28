@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 """Source-guided expressive continuity for clean Dub Studio production.
 
-The renderer still synthesizes short, stable phrases. This module analyses the
-corresponding source-speech windows, builds a smoothed emotional/prosodic arc,
-and writes short VoxCPM2 style-control instructions into the segment metadata.
-It never changes the Russian text and never wraps or patches the renderer.
+Short synthesis windows remain for timing stability.  This module analyses the
+matching source-speech windows, builds a smoothed emotional/prosodic arc, assigns
+either a calm or controlled-expressive real voice reference, and writes a fully
+transparent report.  It never changes the Russian text and never wraps VoxCPM.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import soundfile as sf
 
 from tools.voxcpm2 import professional_audio_v45 as audio_policy
 
@@ -80,7 +81,7 @@ def _smooth(values: list[float]) -> list[float]:
         first.append(previous * 0.22 + value * 0.56 + following * 0.22)
 
     # Preserve a real emotional build, but prevent adjacent segments from jumping
-    # from reflective to passionate merely because of one noisy local estimate.
+    # from reflective to passionate because of one noisy local estimate.
     limited = [first[0]]
     for value in first[1:]:
         limited.append(max(limited[-1] - 0.72, min(limited[-1] + 0.72, value)))
@@ -125,6 +126,11 @@ def _style(score: float, rate_z: float, text: str) -> tuple[str, str]:
     if "?" in punctuation and tier in {"warm", "earnest"}:
         instruction += ", genuine questioning intonation"
     return tier, instruction
+
+
+def _reference_profile(tier: str) -> str:
+    """Use real expressive source delivery only for the stronger arc sections."""
+    return "composite" if tier in {"emphatic", "passionate"} else "extended"
 
 
 def plan_segments(
@@ -219,8 +225,10 @@ def plan_segments(
             rate_z[index],
             str(item.get("text") or ""),
         )
+        profile = _reference_profile(tier)
         updated.update(
             {
+                "reference_profile": profile,
                 "style_instruction": instruction,
                 "expression_tier": tier,
                 "expression_score": round(float(score), 5),
@@ -235,6 +243,7 @@ def plan_segments(
                 "tier": tier,
                 "score": round(float(score), 5),
                 "raw_score": round(float(raw_scores[index]), 5),
+                "reference_profile": profile,
                 "style_instruction": instruction,
                 "source_prosody": metrics[index],
             }
@@ -256,6 +265,7 @@ def plan_segments(
                     "Short synthesis windows are retained for stability.",
                     "Expression is derived from source F0, energy and speaking rate.",
                     "Adjacent scores are smoothed and limited to prevent robotic jumps.",
+                    "Strong arc sections use a controlled expressive real voice reference.",
                     "Russian text is not changed.",
                 ],
             },
@@ -296,4 +306,204 @@ def plan_json(
     return planned
 
 
-__all__ = ["POLICY", "plan_json", "plan_segments"]
+def _trim_active(clip: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Trim only outer silence, never internal rhetorical pauses."""
+    audio = np.asarray(clip, dtype=np.float32).reshape(-1)
+    frame = max(160, int(sample_rate * 0.020))
+    hop = max(80, int(sample_rate * 0.010))
+    if len(audio) < frame:
+        return audio
+    starts = list(range(0, len(audio) - frame + 1, hop))
+    levels = np.asarray(
+        [math.sqrt(float(np.mean(audio[start : start + frame] ** 2)) + 1e-12) for start in starts],
+        dtype=np.float64,
+    )
+    threshold = max(10 ** (-43.0 / 20.0), float(np.percentile(levels, 35)) * 1.45)
+    active = np.where(levels >= threshold)[0]
+    if not len(active):
+        return audio
+    left = max(0, starts[int(active[0])] - int(sample_rate * 0.045))
+    right = min(
+        len(audio),
+        starts[int(active[-1])] + frame + int(sample_rate * 0.070),
+    )
+    return audio[left:right]
+
+
+def _expressive_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    voiced = [
+        _number((item.get("source_prosody") or {}).get("f0_median"))
+        for item in segments
+        if _number((item.get("source_prosody") or {}).get("voiced_ratio")) >= 0.12
+        and _number((item.get("source_prosody") or {}).get("f0_median")) >= 55.0
+    ]
+    p90_values = [
+        _number((item.get("source_prosody") or {}).get("f0_p90"))
+        for item in segments
+        if _number((item.get("source_prosody") or {}).get("voiced_ratio")) >= 0.12
+        and _number((item.get("source_prosody") or {}).get("f0_p90")) >= 60.0
+    ]
+    rms_values = [
+        _number((item.get("source_prosody") or {}).get("rms_dbfs"), -60.0)
+        for item in segments
+    ]
+    median_f0 = float(np.median(voiced)) if voiced else 120.0
+    median_p90 = float(np.median(p90_values)) if p90_values else median_f0 * 1.30
+    median_rms = float(np.median(rms_values)) if rms_values else -24.0
+
+    result: list[dict[str, Any]] = []
+    for item in segments:
+        metrics = item.get("source_prosody") or {}
+        start = _number(metrics.get("start"), _number(item.get("start")))
+        end = _number(metrics.get("end"), _number(item.get("source_end", item.get("end"))))
+        expression = _number(item.get("expression_score"))
+        f0 = _number(metrics.get("f0_median"))
+        p90 = _number(metrics.get("f0_p90"))
+        voiced_ratio = _number(metrics.get("voiced_ratio"))
+        active_ratio = _number(metrics.get("active_ratio"))
+        internal_gap = _number(metrics.get("max_internal_gap"), 99.0)
+        rms = _number(metrics.get("rms_dbfs"), -60.0)
+        span = end - start
+        safe = bool(
+            0.20 <= expression <= 1.35
+            and span >= 1.15
+            and voiced_ratio >= 0.16
+            and active_ratio >= 0.30
+            and internal_gap <= 0.75
+            and 55.0 <= f0 <= median_f0 * 1.30
+            and 60.0 <= p90 <= median_p90 * 1.40
+            and rms <= median_rms + 8.0
+        )
+        if not safe:
+            continue
+        # Aim for engaged/emphatic delivery near 0.72, not the loudest moment.
+        selection_score = (
+            abs(expression - 0.72) * 42.0
+            + max(0.0, f0 / max(1.0, median_f0) - 1.12) * 20.0
+            + internal_gap * 12.0
+            + abs(active_ratio - 0.72) * 15.0
+        )
+        result.append(
+            {
+                "id": int(item.get("id") or 0),
+                "start": start,
+                "end": end,
+                "expression_score": expression,
+                "selection_score": selection_score,
+                "metrics": dict(metrics),
+            }
+        )
+    return sorted(result, key=lambda item: (item["selection_score"], item["start"]))
+
+
+def build_controlled_expressive_reference(
+    *,
+    source: Path,
+    segments: list[dict[str, Any]],
+    output: Path,
+    target_seconds: float = 7.0,
+) -> bool:
+    """Overwrite composite with engaged source delivery while rejecting shouting."""
+    candidates = _expressive_candidates(segments)
+    if not candidates:
+        return False
+
+    selected: list[dict[str, Any]] = []
+    accumulated = 0.0
+    for candidate in candidates:
+        if any(
+            min(candidate["end"], existing["end"])
+            - max(candidate["start"], existing["start"])
+            > 0.25
+            for existing in selected
+        ):
+            continue
+        selected.append(candidate)
+        accumulated += min(3.4, candidate["end"] - candidate["start"])
+        if accumulated >= max(4.8, float(target_seconds)):
+            break
+    if accumulated < 3.2:
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="dub-expressive-ref-") as temp_raw:
+        decoded = Path(temp_raw) / "source.wav"
+        samples, sample_rate = audio_policy._decode(source, decoded)
+        audio = np.asarray(samples, dtype=np.float32).reshape(-1)
+        sample_rate = int(sample_rate)
+        parts: list[np.ndarray] = []
+        actual_selected: list[dict[str, Any]] = []
+        total = 0.0
+        for candidate in selected:
+            if total >= float(target_seconds):
+                break
+            start = max(0.0, float(candidate["start"]))
+            end = min(float(candidate["end"]), start + 3.4)
+            clip = audio[int(start * sample_rate) : int(end * sample_rate)]
+            clip = _trim_active(clip, sample_rate)
+            remaining = int(max(0.0, float(target_seconds) - total) * sample_rate)
+            if remaining <= 0:
+                break
+            clip = clip[:remaining]
+            if len(clip) < int(sample_rate * 0.85):
+                continue
+            parts.append(clip)
+            duration = len(clip) / sample_rate
+            total += duration
+            actual_selected.append(
+                {
+                    "id": candidate["id"],
+                    "start": round(start, 3),
+                    "end": round(start + duration, 3),
+                    "expression_score": round(candidate["expression_score"], 5),
+                    "selection_score": round(candidate["selection_score"], 5),
+                    **{
+                        key: round(_number(value), 5)
+                        for key, value in candidate["metrics"].items()
+                    },
+                }
+            )
+
+        if not parts or total < 3.2:
+            return False
+        combined = audio_policy.dub_quality_v4._crossfade(parts, sample_rate)
+        combined = combined[: int(float(target_seconds) * sample_rate)]
+        rms = math.sqrt(float(np.mean(combined**2)) + 1e-12)
+        peak = float(np.max(np.abs(combined))) + 1e-12
+        gain = min(
+            10 ** (-24.0 / 20.0) / max(rms, 1e-9),
+            10 ** (-3.0 / 20.0) / peak,
+            10 ** (5.0 / 20.0),
+        )
+        combined = np.clip(combined * gain, -0.999, 0.999).astype(np.float32)
+        fade = min(int(sample_rate * 0.025), len(combined) // 8)
+        if fade > 1:
+            ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
+            combined[:fade] *= ramp
+            combined[-fade:] *= ramp[::-1]
+
+        output.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(output, combined, sample_rate, subtype="PCM_24")
+
+    output.with_suffix(".selection.json").write_text(
+        json.dumps(
+            {
+                "policy": POLICY,
+                "profile": "controlled_expressive",
+                "purpose": "real source prosody for emphatic arc sections; shouting rejected",
+                "selected": actual_selected,
+                "duration_seconds": round(len(combined) / sample_rate, 4),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return True
+
+
+__all__ = [
+    "POLICY",
+    "build_controlled_expressive_reference",
+    "plan_json",
+    "plan_segments",
+]
