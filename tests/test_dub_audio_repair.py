@@ -11,6 +11,10 @@ from tools.voxcpm2.generic_audio_repair_runtime import (
     _source_cues,
     prepare_repair_checkpoints,
 )
+from tools.voxcpm2.generic_audio_repair_runtime_bootstrap import (
+    build_recovered_manifest,
+    ensure_repair_manifest,
+)
 from tools.voxcpm2.semantic_tts_guard_v4 import _GUARD_VERSION
 
 
@@ -100,6 +104,56 @@ def test_source_groups_remain_preferred_for_gemini_projects(tmp_path: Path) -> N
     ]
 
 
+def test_missing_manifest_is_recovered_from_reusable_project_files(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "source").mkdir()
+    (tmp_path / "source" / "source.mp4").write_bytes(b"video")
+    (tmp_path / "segments_ru_final.json").write_text(
+        json.dumps([{"id": 1, "start": 0.0, "end": 2.0, "text": "Текст"}]),
+        encoding="utf-8",
+    )
+    (tmp_path / "russian_title.txt").write_text(
+        "Сила и Достоинство Благочестивой Женщины - Джон Пайпер\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "russian_subtitles.srt").write_text("1\n", encoding="utf-8")
+    (output / "russian_translation.txt").write_text("Текст\n", encoding="utf-8")
+    request = {
+        "video_id": "z20py4yqhyq",
+        "source_url": "https://youtu.be/z20py4yqhyq",
+        "translation_mode": "gemini",
+        "original_level": 0.18,
+    }
+
+    manifest = ensure_repair_manifest(tmp_path, request, "dub-330e0f949c")
+    saved = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+
+    assert manifest == saved
+    assert saved["manifest_recovered"] is True
+    assert saved["translation_reused"] is True
+    assert saved["gemini_called"] is False
+    assert saved["segments"] == 1
+    assert saved["outputs"]["mixed"].endswith("— русский дубляж.mp4")
+    assert len(saved["telegram_outputs"]) == 4
+
+
+def test_manifest_recovery_rejects_project_without_finished_segments(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "source").mkdir()
+    (tmp_path / "source" / "source.mp4").write_bytes(b"video")
+
+    with pytest.raises(RuntimeError, match="используйте /dubrun"):
+        build_recovered_manifest(
+            tmp_path,
+            {"video_id": "z20py4yqhyq"},
+            "dub-330e0f949c",
+        )
+
+
 def _checkpoint(root: Path, segment_id: int, seed: int = 100) -> Path:
     path = root / "checkpoints" / f"segment_{segment_id:02d}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -174,11 +228,17 @@ def test_full_repair_invalidates_all_audio_checkpoints(tmp_path: Path) -> None:
 
 def test_recipe_routes_audio_repair_without_gemini() -> None:
     command, spec = dub_worker.build_command("generic_short_v1", "repair_audio")
-    assert spec["module"] == "tools.voxcpm2.generic_audio_repair_runtime"
-    assert "tools.voxcpm2.generic_audio_repair_runtime" in " ".join(command)
+    assert spec["module"] == "tools.voxcpm2.generic_audio_repair_runtime_bootstrap"
+    assert "tools.voxcpm2.generic_audio_repair_runtime_bootstrap" in " ".join(command)
     source = Path("tools/voxcpm2/generic_audio_repair_runtime.py").read_text(
         encoding="utf-8"
     )
+    bootstrap = Path(
+        "tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py"
+    ).read_text(encoding="utf-8")
     assert "translate_groups_max" not in source
     assert "gemini_json" not in source
+    assert "translate_groups_max" not in bootstrap
+    assert "gemini_json" not in bootstrap
     assert '"gemini_called": False' in source
+    assert '"gemini_called": False' in bootstrap
