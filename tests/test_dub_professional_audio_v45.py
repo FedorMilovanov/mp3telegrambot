@@ -51,33 +51,70 @@ def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
     segments_path.write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
     digest = hashlib.sha256(segments_path.read_bytes()).hexdigest()
     (tmp_path / "input" / "audio_repair.json").write_text(
-        json.dumps({"repair_all": True, "segment_ids": [1, 2], "segments_sha256": digest}),
+        json.dumps(
+            {
+                "repair_all": True,
+                "segment_ids": [1, 2],
+                "segments_sha256": digest,
+            }
+        ),
         encoding="utf-8",
     )
-    (tmp_path / "output" / "manifest.json").write_text(json.dumps({"segments": 2}), encoding="utf-8")
+    (tmp_path / "output" / "manifest.json").write_text(
+        json.dumps({"segments": 2}),
+        encoding="utf-8",
+    )
 
-    assert legacy_segment_migration_v45.migrate(tmp_path, {"russian_delay_ms": 420})
+    assert legacy_segment_migration_v45.migrate(
+        tmp_path,
+        {"russian_delay_ms": 420},
+    )
     migrated = json.loads(segments_path.read_text(encoding="utf-8"))
     assert len(migrated) > len(old)
-    assert " ".join(item["text"] for item in old).split() == " ".join(item["text"] for item in migrated).split()
-    assert max(float(item["end"]) - float(item["start"]) for item in migrated) <= 5.6
-    assert all(item["quality_timing"] == "global-delay-v4.5" for item in migrated)
+    assert " ".join(item["text"] for item in old).split() == " ".join(
+        item["text"] for item in migrated
+    ).split()
+    assert max(
+        float(item["end"]) - float(item["start"])
+        for item in migrated
+    ) <= 5.6
+    assert all(
+        item["quality_timing"] == "global-delay-v4.5"
+        for item in migrated
+    )
     assert (tmp_path / "segments_ru_final.pre_v45.json").is_file()
 
 
 def test_professional_recipe_and_master_are_selected() -> None:
-    recipe = Path("tools/voxcpm2/recipes/generic_short_v1.json").read_text(encoding="utf-8")
+    recipe = Path("tools/voxcpm2/recipes/generic_short_v1.json").read_text(
+        encoding="utf-8"
+    )
     assert "generic_gemini_runtime_v45" in recipe
     assert "generic_direct_checked_runtime_v45" in recipe
     assert "generic_audio_repair_runtime_v45" in recipe
-    master = Path("tools/voxcpm2/master_quality_v45.py").read_text(encoding="utf-8")
+    master = Path("tools/voxcpm2/master_quality_v45.py").read_text(
+        encoding="utf-8"
+    )
     assert '_replace("--target-i", "-16.0")' in master
     assert '_replace("--target-tp", "-1.5")' in master
 
 
-def test_renderer_rejects_pause_cutoff_and_pitch_drift_contracts() -> None:
-    adapter = Path("tools/voxcpm2/voxcpm2_professional_adapter_v45.py").read_text(encoding="utf-8")
+def test_renderer_uses_safe_retry_for_bad_voice_candidates() -> None:
+    adapter = Path(
+        "tools/voxcpm2/voxcpm2_professional_adapter_v45.py"
+    ).read_text(encoding="utf-8")
     assert "max_internal_gap" in adapter
     assert "f0_median_ratio" in adapter
     assert "cut_risk" in adapter
-    assert 'candidate.setdefault("tail_info", {})["suspicious"] = True' in adapter
+    assert 'candidate["clipping_ratio"] = max(measured_clipping, 0.000501)' in adapter
+    assert 'tail_info"]["suspicious"] = True' not in adapter
+
+
+def test_release_gate_checks_voice_register_and_continuity() -> None:
+    qa = Path("tools/voxcpm2/professional_audio_qa_v45.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'check["continuity_v45"]' in qa
+    assert 'check["voice_match_v45"]' in qa
+    assert "median_ratio <= 1.25" in qa
+    assert "p90_ratio <= 1.35" in qa
