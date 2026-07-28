@@ -38,7 +38,7 @@
       "kind": "utility",
       "label": "Аудиоремонт без повторного перевода",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_audio_repair_runtime",
+      "module": "tools.voxcpm2.generic_audio_repair_runtime_bootstrap",
       "parameters": {}
     },
     "prepare_custom": {
