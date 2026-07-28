@@ -33,6 +33,12 @@ def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., An
     return value
 
 
+def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
+    main_hook = _required_callable(namespace, "main")
+    globals_dict = getattr(main_hook, "__globals__", None)
+    return globals_dict if isinstance(globals_dict, dict) else namespace
+
+
 def _profile(path: str) -> dict[str, float]:
     samples, sr = sf.read(path, dtype="float32")
     if np.asarray(samples).ndim > 1:
@@ -61,18 +67,20 @@ def _edge(samples: np.ndarray, sr: int) -> dict[str, Any]:
     return {"trailing_ms": trailing, "cut_risk": trailing < 35 and peak > 0.018}
 
 
-legacy_path = Path(os.environ.get("VOXCPM_LEGACY_RENDERER", "")).resolve()
-if not legacy_path.is_file():
-    raise RuntimeError(f"Legacy renderer не найден: {legacy_path}")
-legacy = runpy.run_path(str(legacy_path), run_name="voxcpm2_professional_legacy")
-legacy_score = _required_callable(legacy, "candidate_score")
-legacy_fit = _required_callable(legacy, "fit_without_slowdown")
-legacy_main = _required_callable(legacy, "main")
+legacy_namespace = runpy.run_path(
+    str(Path(os.environ.get("VOXCPM_LEGACY_RENDERER", "")).resolve()),
+    run_name="voxcpm2_professional_legacy",
+)
+legacy_main = _required_callable(legacy_namespace, "main")
+legacy_globals = _execution_globals(legacy_namespace)
+legacy_score = _required_callable(legacy_globals, "candidate_score")
+legacy_fit = _required_callable(legacy_globals, "fit_without_slowdown")
 
 # Quality v4 wraps these hooks before calling our main(). They must therefore be
-# present in this adapter namespace and later forwarded into the true renderer.
-log = _required_callable(legacy, "log")
-set_seed = _required_callable(legacy, "set_seed")
+# present in this adapter's real execution globals and later forwarded into the
+# true legacy renderer globals.
+log = _required_callable(legacy_globals, "log")
+set_seed = _required_callable(legacy_globals, "set_seed")
 
 references = {
     "extended": _profile(_flag("--extended-reference")),
@@ -168,10 +176,11 @@ def fit_without_slowdown(
 
 def main() -> None:
     """Forward every hook patched by Quality v4 into the true renderer."""
-    legacy["candidate_score"] = globals()["candidate_score"]
-    legacy["fit_without_slowdown"] = globals()["fit_without_slowdown"]
-    legacy["log"] = globals()["log"]
-    legacy["set_seed"] = globals()["set_seed"]
+    current_globals = globals()
+    legacy_globals["candidate_score"] = current_globals["candidate_score"]
+    legacy_globals["fit_without_slowdown"] = current_globals["fit_without_slowdown"]
+    legacy_globals["log"] = current_globals["log"]
+    legacy_globals["set_seed"] = current_globals["set_seed"]
     legacy_main()
 
 
