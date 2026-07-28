@@ -42,6 +42,16 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
     assert '"wrapper_count": 0' in source
 
 
+def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
+    for name in ("generic_clean_gemini_runtime.py", "generic_clean_direct_runtime.py"):
+        source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+        assert "install_runtime_adapters = _install_clean_runtime_adapters" in source
+        assert "install_semantic_tts_guard" not in source
+        assert "semantic_tts_guard_v4.install" not in source
+        assert "semantic_tts_guard_v47" not in source
+        assert "runpy" not in source
+
+
 def test_clean_segmentation_caps_windows_at_54_seconds() -> None:
     cues = [
         pipeline.Cue(
