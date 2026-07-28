@@ -15,6 +15,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# This file is executed by the separate VoxCPM CPU interpreter as a script, not
+# as ``python -m``. In that mode Python adds tools/voxcpm2 to sys.path but may
+# omit the repository root, so absolute ``tools.voxcpm2`` imports fail before
+# the model is even loaded. Make the file entrypoint independent of cwd and of
+# any caller-specific PYTHONPATH.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import numpy as np
 import soundfile as sf
 
