@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_gemini_runtime as checked
 from tools.voxcpm2 import generic_project_runtime as production
 
@@ -38,6 +39,13 @@ def _run_clean_voxcpm_and_master(
         duration=duration,
         reference_dir=root / "references",
     )
+    expressive_continuity.plan_json(
+        source=source,
+        segments_path=segments_json,
+        duration=duration,
+        report_path=root / "output" / "expressive_continuity.json",
+    )
+    production.log("source-guided emotional arc prepared; Russian text preserved")
     return clean.render_and_master(
         root=root,
         request=request,
