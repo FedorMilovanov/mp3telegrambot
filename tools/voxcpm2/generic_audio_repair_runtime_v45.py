@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Professional audio-only repair entrypoint v4.5."""
+from __future__ import annotations
+
+from tools.voxcpm2 import generic_audio_repair_runtime as repair_runtime
+from tools.voxcpm2 import generic_audio_repair_runtime_bootstrap as bootstrap
+from tools.voxcpm2 import generic_project_runtime as production
+from tools.voxcpm2 import professional_audio_v45
+
+
+def main() -> None:
+    project_id = production.current_project_id()
+    root = production.project_root(project_id)
+    request = production.load_request(root)
+    bootstrap.ensure_repair_manifest(root, request, project_id)
+    professional_audio_v45.install()
+    professional_audio_v45.migrate_legacy_audio_repair(root, request)
+    log_path = bootstrap.install_repair_diagnostics(root)
+    production.log(f"AUDIO REPAIR child log: {log_path}")
+    repair_runtime.main()
+
+
+if __name__ == "__main__":
+    main()
