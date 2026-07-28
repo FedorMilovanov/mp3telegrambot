@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import logging
 import os
 import subprocess
@@ -19,7 +20,7 @@ _LOCK = threading.Lock()
 _ORIGINAL_BUILD = None
 _ORIGINAL_START = None
 _GENERIC_RECIPE = "generic_short_v1"
-_WORKER_RUNTIME = "dub-worker-quality-v4.2"
+_WORKER_RUNTIME = "dub-worker-quality-v4.3"
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -199,17 +200,81 @@ async def _notify_generic_success(
     return True
 
 
+def _undelivered_notification_events(store: Any, limit: int = 20) -> list[dict[str, Any]]:
+    """Read terminal events plus sparse durable progress milestones."""
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.*, p.owner_chat_id, p.title AS project_title
+            FROM dub_events e
+            JOIN dub_projects p ON p.id=e.project_id
+            WHERE e.delivered_at=''
+              AND (
+                e.event_type IN ('job_succeeded','job_failed','job_cancelled')
+                OR e.event_type LIKE 'job_progress_%'
+              )
+            ORDER BY e.id LIMIT ?
+            """,
+            (max(1, min(int(limit), 100)),),
+        ).fetchall()
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            payload = json.loads(str(item.pop("payload_json", "{}") or "{}"))
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        item["payload"] = payload if isinstance(payload, dict) else {}
+        result.append(item)
+    return result
+
+
+async def _notify_progress_milestone(
+    application: Any,
+    store: Any,
+    event: dict[str, Any],
+    project: dict[str, Any],
+) -> None:
+    # If the bot was offline until after completion, do not replay stale progress
+    # immediately before the terminal success/failure notification.
+    if str(project.get("status") or "") not in {"queued", "rendering", "cancelling"}:
+        store.mark_event_delivered(int(event["id"]))
+        return
+    payload = event.get("payload") or {}
+    progress = max(0, min(int(payload.get("progress") or project.get("progress") or 0), 99))
+    stage = str(payload.get("stage") or project.get("stage") or "CPU-рендер")
+    project_id = str(project["id"])
+    title = str(event.get("project_title") or project_id)
+    text = (
+        f"⚙️ <b>Dub Studio — {progress}%</b>\n\n"
+        f"{html.escape(title)}\n"
+        f"<code>{html.escape(project_id)}</code>\n\n"
+        f"Этап: <code>{html.escape(stage[:180])}</code>\n"
+        "CPU-рендер продолжается; это контрольный рубеж, а не оценка по времени.\n\n"
+        f"<code>/dubstatus {html.escape(project_id)}</code>"
+    )
+    await application.bot.send_message(
+        chat_id=int(event["owner_chat_id"]),
+        text=text,
+        parse_mode="HTML",
+    )
+    store.mark_event_delivered(int(event["id"]))
+
+
 async def _notification_loop(application: Any) -> None:
     from services.dub_studio import DubStore
 
     store = DubStore()
     while True:
         try:
-            for event in store.undelivered_terminal_events(limit=20):
+            for event in _undelivered_notification_events(store, limit=20):
                 event_type = str(event["event_type"])
                 project_id = str(event["project_id"])
                 project = store.get_project(project_id)
                 try:
+                    if event_type.startswith("job_progress_"):
+                        await _notify_progress_milestone(application, store, event, project)
+                        continue
                     if event_type == "job_succeeded" and str(project.get("recipe_id")) == _GENERIC_RECIPE:
                         delivered = await _notify_generic_success(application, store, event, project)
                         if delivered:
