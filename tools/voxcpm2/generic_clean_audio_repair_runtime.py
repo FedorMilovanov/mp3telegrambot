@@ -10,6 +10,7 @@ from typing import Any
 
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_segment_normalizer
 from tools.voxcpm2 import generic_audio_repair_runtime as legacy_repair
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -90,6 +91,19 @@ def _update_manifest(
     production.save_json(path, manifest)
 
 
+def _reload_repair_and_segments(
+    repair_path: Path,
+    segments_path: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    repair = legacy_repair._load_object(repair_path, "audio_repair.json")
+    segments = legacy_repair._load_segments(segments_path)
+    if str(repair.get("segments_sha256") or "") != legacy_repair._sha256(segments_path):
+        raise RuntimeError(
+            "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
+        )
+    return repair, segments
+
+
 def main() -> None:
     pipeline.configure_utf8()
     project_id = production.current_project_id()
@@ -103,18 +117,28 @@ def main() -> None:
     ):
         raise RuntimeError("Некорректный запрос аудиоремонта.")
 
-    # Full repair may convert a historical long-window project once. This is a
-    # data migration only; no TTS wrapper or rescue mode is installed.
-    if bool(repair.get("repair_all")):
+    repair_all_requested = bool(repair.get("repair_all"))
+    if repair_all_requested:
         legacy_segment_migration_v45.migrate(root, request)
-        repair = legacy_repair._load_object(repair_path, "audio_repair.json")
 
     segments_path = root / "segments_ru_final.json"
-    segments = legacy_repair._load_segments(segments_path)
-    if str(repair.get("segments_sha256") or "") != legacy_repair._sha256(segments_path):
-        raise RuntimeError(
-            "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
-        )
+    repair, segments = _reload_repair_and_segments(repair_path, segments_path)
+
+    source = root / "source" / "source.mp4"
+    if not source.is_file():
+        raise RuntimeError("Не найден локальный source.mp4 проекта.")
+    output_dir = root / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_dir / "manifest.json"
+    manifest = legacy_repair._load_object(manifest_path, "manifest.json")
+    duration = pipeline.ffprobe_duration(source)
+
+    # Normalize only a full historical repair. The helper updates both the
+    # segment JSON and audio_repair hash while preserving the exact Russian token
+    # stream. A selective repair never edits text or timing.
+    if repair_all_requested:
+        clean_segment_normalizer.normalize(root, request, duration=duration)
+        repair, segments = _reload_repair_and_segments(repair_path, segments_path)
 
     all_ids = {int(item["id"]) for item in segments}
     selected_ids = sorted({int(value) for value in repair.get("segment_ids") or []})
@@ -125,14 +149,6 @@ def main() -> None:
     if repair_all != (selected_set == all_ids):
         raise RuntimeError("Флаг repair_all не соответствует выбранным репликам.")
 
-    source = root / "source" / "source.mp4"
-    if not source.is_file():
-        raise RuntimeError("Не найден локальный source.mp4 проекта.")
-    output_dir = root / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = output_dir / "manifest.json"
-    manifest = legacy_repair._load_object(manifest_path, "manifest.json")
-    duration = pipeline.ffprobe_duration(source)
     segment_work = root / "segment_work"
     marker = _clean_marker(segment_work)
     seed = _next_seed(request, marker, manifest)
@@ -192,6 +208,7 @@ def main() -> None:
             "segment_ids": selected_ids,
             "base_seed": seed,
             "production_policy": clean.POLICY,
+            "segment_policy": clean_segment_normalizer.POLICY,
             "renderer_mode": "direct-powershell-equivalent",
             "translation_reused": True,
             "gemini_called": False,
