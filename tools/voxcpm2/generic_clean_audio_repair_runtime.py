@@ -11,6 +11,7 @@ from typing import Any
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_segment_normalizer
+from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_audio_repair_runtime as legacy_repair
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -79,6 +80,7 @@ def _update_manifest(
             "segment_ids": selected_ids,
             "base_seed": int(seed),
             "production_policy": clean.POLICY,
+            "expression_policy": expressive_continuity.POLICY,
             "report": str(report_path),
             "translation_reused": True,
             "gemini_called": False,
@@ -87,6 +89,7 @@ def _update_manifest(
     manifest["phase"] = "completed"
     manifest["audio_quality_guard"] = clean.POLICY
     manifest["audio_production"] = "direct-powershell-equivalent"
+    manifest["expression_policy"] = expressive_continuity.POLICY
     manifest["audio_repairs"] = repairs[-30:]
     production.save_json(path, manifest)
 
@@ -181,6 +184,14 @@ def main() -> None:
             f"=== CLEAN AUDIO REPAIR: ONLY {selected_ids}; DIRECT NEW SEED {seed} ==="
         )
 
+    expressive_continuity.plan_json(
+        source=source,
+        segments_path=segments_path,
+        duration=duration,
+        report_path=output_dir / "expressive_continuity.json",
+    )
+    production.log("source-guided emotional arc prepared; translation reused verbatim")
+
     runtime_request = dict(request)
     runtime_request["base_seed"] = seed
     stable_mixed = output_dir / "final_upload.mp4"
@@ -203,13 +214,14 @@ def main() -> None:
     production.save_json(
         report_path,
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
             "base_seed": seed,
             "production_policy": clean.POLICY,
             "segment_policy": clean_segment_normalizer.POLICY,
+            "expression_policy": expressive_continuity.POLICY,
             "renderer_mode": "direct-powershell-equivalent",
             "translation_reused": True,
             "gemini_called": False,
@@ -217,6 +229,7 @@ def main() -> None:
             "mixed_video": str(stable_mixed),
             "russian_only_video": str(stable_russian),
             "qa_report": str(timeline.with_suffix(".clean_qa.json")),
+            "expression_report": str(output_dir / "expressive_continuity.json"),
         },
     )
     _update_manifest(
