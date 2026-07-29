@@ -12,6 +12,8 @@ on:
       - "tools/voxcpm2/dub_worker.py"
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/generic_short_runtime.py"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/generic_project_runtime/**"
       - "tools/voxcpm2/strict_translation_payload.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
       - "tools/voxcpm2/direct_source_prosody.py"
@@ -49,6 +51,7 @@ on:
       - "tests/test_repair_segment_input_contract.py"
       - "tests/test_clean_repair_request_contract.py"
       - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_generic_project_runtime_contract.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
       - "tests/test_clean_request_settings.py"
@@ -82,6 +85,7 @@ on:
       - "tests/test_expressive_dub_policy.py"
       - "tests/test_clean_dub_production.py"
       - "tests/test_clean_dub_health_contract.py"
+      - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-clean-expressive-check.yml"
   workflow_dispatch:
 
@@ -115,6 +119,8 @@ jobs:
             tools/voxcpm2/dub_worker.py \
             tools/voxcpm2/dub_worker_hardened.py \
             tools/voxcpm2/generic_short_runtime.py \
+            tools/voxcpm2/generic_project_runtime.py \
+            tools/voxcpm2/generic_project_runtime/__init__.py \
             tools/voxcpm2/strict_translation_payload.py \
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_timbre_analysis.py \
@@ -167,6 +173,7 @@ jobs:
             tests/test_repair_segment_input_contract.py \
             tests/test_clean_repair_request_contract.py \
             tests/test_dub_audio_repair_handler_contract.py \
+            tests/test_generic_project_runtime_contract.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
             tests/test_clean_request_settings.py \
@@ -199,4 +206,5 @@ jobs:
             tests/test_polling_reliability_runtime.py \
             tests/test_expressive_dub_policy.py \
             tests/test_clean_dub_production.py \
-            tests/test_clean_dub_health_contract.py
+            tests/test_clean_dub_health_contract.py \
+            tests/test_dub_health_supplemental_contract.py
