@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from telegram.error import BadRequest
 
+from handlers.dub_commands import _read_log_tail, _safe_edit
 from services.dub_studio import DubStore, list_recipes, load_recipe
 
 
@@ -104,3 +107,20 @@ def test_recipe_catalog_has_unique_ids() -> None:
     ids = [item.recipe_id for item in recipes]
     assert len(ids) == len(set(ids))
     assert "john_piper_z20py4yqhyq" in ids
+
+
+def test_noop_status_refresh_is_not_an_error() -> None:
+    class Query:
+        async def edit_message_text(self, *_args, **_kwargs):
+            raise BadRequest("Message is not modified: specified new message content")
+
+    assert asyncio.run(_safe_edit(Query(), "unchanged")) is False
+
+
+def test_log_tail_reads_only_latest_lines(tmp_path: Path) -> None:
+    log = tmp_path / "job.log"
+    log.write_text("\n".join(f"line {index}" for index in range(120)), encoding="utf-8")
+    tail = _read_log_tail(log)
+    assert "line 119" in tail
+    assert "line 0\n" not in tail
+    assert len(tail.splitlines()) == 80
