@@ -20,7 +20,7 @@ from services.dub_studio import DubStore, load_recipe, studio_root, worker_is_fr
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-quality-v4.3"
+_WORKER_RUNTIME = "dub-worker-quality-v4.4"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -91,7 +91,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "direct": repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py",
         "custom": repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py",
         "repair": repo / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py",
-        "progress": repo / "services" / "dub_progress_updates.py",
+        "runtime": repo / "services" / "dub_studio_runtime.py",
+        "worker": repo / "tools" / "voxcpm2" / "dub_worker_hardened.py",
         "title": repo / "services" / "dub_title_policy.py",
     }
     text = {name: _read(path) for name, path in paths.items()}
@@ -173,8 +174,16 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "MASTER_TP = -1.5" in text["core"]
         ),
         "editable-progress": (
-            "edit_message_text" in text["progress"]
-            and "dub_progress_message_v1" in text["progress"]
+            "edit_message_text" in text["runtime"]
+            and "dub_progress_message_v1" in text["runtime"]
+            and "_finalize_progress_card" in text["runtime"]
+            and "dub_progress_updates" not in text["runtime"]
+        ),
+        "worker-v44": (
+            'dub-worker-quality-v4.4' in text["runtime"]
+            and 'dub-worker-quality-v4.4' in text["worker"]
+            and "_progress_from_line_v44" in text["worker"]
+            and "return current, \"\"" in text["worker"]
         ),
         "single-title-policy": "install_dub_title_policy" in text["title"],
     }
@@ -235,7 +244,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
                 quality_detail
                 + "; direct 16→48k; fingerprinted refs/model; official retry_badcase; "
                 "F0/voiced candidate gate; expression-aware QA; no afftdn; editable progress; "
-                "-16 LUFS/-1.5 dBTP"
+                "worker v4.4; -16 LUFS/-1.5 dBTP"
             ),
         )
     )
