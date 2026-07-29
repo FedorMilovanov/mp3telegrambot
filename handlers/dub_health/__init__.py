@@ -37,6 +37,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "repair_main": voxcpm / "generic_clean_audio_repair_runtime" / "__main__.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
         "request_settings": voxcpm / "clean_request_settings.py",
+        "normalizer": voxcpm / "clean_segment_normalizer.py",
+        "migration": voxcpm / "legacy_segment_migration_v45.py",
     }
     text = {
         name: path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -60,12 +62,22 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and 'payload["settings_delay_source"] = delay_source'
             in text["request_settings"]
         ),
+        "canonical-repair-delay": (
+            "clean_request_settings.russian_delay_ms(request)"
+            in text["normalizer"]
+            and "clean_request_settings.russian_delay_ms(request)"
+            in text["migration"]
+            and 'request.get("russian_delay_ms") or 420' not in text["normalizer"]
+            and 'request.get("russian_delay_ms") or 420' not in text["migration"]
+        ),
         "facades-fingerprinted": (
             '"tools/voxcpm2/final_media_qa/__init__.py"'
             in text["runtime_contract"]
             and '"tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py"'
             in text["runtime_contract"]
             and '"tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py"'
+            in text["runtime_contract"]
+            and '"tools/voxcpm2/legacy_segment_migration_v45.py"'
             in text["runtime_contract"]
         ),
         "strict-runtime-numbers": (
@@ -79,8 +91,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         return False, "facade-контракты не прошли: " + ", ".join(failed)
     return True, (
         "post-AAC original-bed v2 zero-safe/short-clip; final report v6; "
-        "repair manifest uses segment-proven delay; compatibility facades fingerprinted; "
-        "strict bool/fraction runtime settings"
+        "repair manifest uses segment-proven delay; migration/normalizer preserve 0 ms; "
+        "compatibility facades and migration fingerprinted; strict bool/fraction settings"
     )
 
 
