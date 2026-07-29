@@ -24,6 +24,7 @@ on:
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
+      - "handlers/dub_commands.py"
       - "handlers/dub_health.py"
       - "handlers/dub_wizard.py"
       - "tests/test_clean_reference_transport.py"
@@ -45,6 +46,7 @@ on:
       - "tests/test_final_media_qa.py"
       - "tests/test_master_loudnorm_contract.py"
       - "tests/test_gemini_translation_quality.py"
+      - "tests/test_dub_studio.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_runtime_progress.py"
       - "tests/test_polling_reliability_runtime.py"
@@ -101,6 +103,7 @@ jobs:
             tools/voxcpm2/generic_clean_direct_runtime.py \
             tools/voxcpm2/generic_clean_custom_runtime.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
+            handlers/dub_commands.py \
             handlers/dub_health.py \
             handlers/dub_wizard.py
       - name: Run focused contracts
@@ -125,6 +128,7 @@ jobs:
             tests/test_final_media_qa.py \
             tests/test_master_loudnorm_contract.py \
             tests/test_gemini_translation_quality.py \
+            tests/test_dub_studio.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_runtime_progress.py \
             tests/test_polling_reliability_runtime.py \
