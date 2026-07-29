@@ -8,16 +8,31 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import soundfile as sf
 
 from tools.voxcpm2 import expressive_continuity
+from tools.voxcpm2.direct_timbre_analysis import spectral_envelope, spectral_similarity
 
 MIN_REFERENCE_SECONDS = 5.0
 MAX_REFERENCE_SECONDS = 30.0
 REPORT_DURATION_TOLERANCE = 0.08
+MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55
 
 
-def _valid_expressive_reference(output: Path) -> tuple[bool, str]:
+def _read_mono(path: Path) -> tuple[np.ndarray, int]:
+    samples, sample_rate = sf.read(str(path), dtype="float32")
+    audio = np.asarray(samples, dtype=np.float32)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    return audio.reshape(-1), int(sample_rate)
+
+
+def _valid_expressive_reference(
+    output: Path,
+    *,
+    identity_reference: Path | None,
+) -> tuple[bool, str]:
     report_path = output.with_suffix(".selection.json")
     if not output.is_file() or output.stat().st_size <= 0:
         return False, "expressive WAV не создан"
@@ -47,7 +62,37 @@ def _valid_expressive_reference(output: Path) -> tuple[bool, str]:
             f"expressive report duration={reported_duration:.3f}s, "
             f"WAV={duration:.3f}s"
         )
-    return True, f"controlled expressive {duration:.3f}s"
+
+    identity_similarity: float | None = None
+    if identity_reference is not None:
+        if not identity_reference.is_file():
+            return False, "не найден calm identity-reference"
+        try:
+            expressive_audio, expressive_sr = _read_mono(output)
+            identity_audio, identity_sr = _read_mono(identity_reference)
+            identity_similarity = spectral_similarity(
+                spectral_envelope(expressive_audio, expressive_sr),
+                spectral_envelope(identity_audio, identity_sr),
+            )
+        except Exception as exc:
+            return False, f"не рассчитано identity-сходство: {exc}"
+        if identity_similarity < MIN_IDENTITY_SPECTRAL_SIMILARITY:
+            return False, (
+                f"identity spectral similarity={identity_similarity:.4f} < "
+                f"{MIN_IDENTITY_SPECTRAL_SIMILARITY:.2f}"
+            )
+        payload["identity_reference"] = str(identity_reference)
+        payload["identity_spectral_similarity"] = round(identity_similarity, 6)
+        payload["identity_spectral_floor"] = MIN_IDENTITY_SPECTRAL_SIMILARITY
+        report_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    detail = f"controlled expressive {duration:.3f}s"
+    if identity_similarity is not None:
+        detail += f"; identity similarity={identity_similarity:.4f}"
+    return True, detail
 
 
 def _restore(
@@ -66,6 +111,7 @@ def build_or_keep_calm(
     source: Path,
     segments: list[dict[str, Any]],
     output: Path,
+    identity_reference: Path | None = None,
     target_seconds: float = 7.0,
 ) -> tuple[bool, str]:
     """Replace calm composite only when the expressive result is release-safe."""
@@ -94,7 +140,10 @@ def build_or_keep_calm(
                 report_path=report_path,
             )
             return False, "safe calm-reference fallback: expressive windows not found"
-        valid, detail = _valid_expressive_reference(output)
+        valid, detail = _valid_expressive_reference(
+            output,
+            identity_reference=identity_reference,
+        )
         if valid:
             return True, detail
         _restore(
@@ -119,6 +168,7 @@ def build_or_keep_calm(
 
 __all__ = [
     "MAX_REFERENCE_SECONDS",
+    "MIN_IDENTITY_SPECTRAL_SIMILARITY",
     "MIN_REFERENCE_SECONDS",
     "REPORT_DURATION_TOLERANCE",
     "build_or_keep_calm",
