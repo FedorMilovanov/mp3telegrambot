@@ -25,6 +25,7 @@ _RENDER_MODULES = (
     "tools/voxcpm2/clean_source_download.py",
     "tools/voxcpm2/clean_request_settings.py",
     "tools/voxcpm2/clean_segment_normalizer.py",
+    "tools/voxcpm2/legacy_segment_migration_v45.py",
     "tools/voxcpm2/clean_production_core.py",
     "tools/voxcpm2/continuous_reference_policy.py",
     "tools/voxcpm2/controlled_reference_gate.py",
