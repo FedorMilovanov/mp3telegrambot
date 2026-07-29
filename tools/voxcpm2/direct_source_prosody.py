@@ -40,6 +40,18 @@ def _log_distance(ratio: float) -> float:
     return abs(math.log2(max(0.35, min(2.85, ratio))))
 
 
+def _penalize_unavailable_candidate(
+    result: dict[str, Any],
+    reason: str,
+) -> float:
+    result.update(
+        available=False,
+        penalty=MAX_PENALTY,
+        reason=reason,
+    )
+    return MAX_PENALTY
+
+
 def source_prosody_penalty(
     candidate: dict[str, Any],
     segment: dict[str, Any],
@@ -66,32 +78,35 @@ def source_prosody_penalty(
     if not isinstance(target, dict):
         result["reason"] = "source_prosody отсутствует"
         return 0.0
-    if not isinstance(pitch, dict) or not isinstance(activity, dict):
-        result["reason"] = "candidate pitch/activity отсутствуют"
-        return 0.0
 
     target_voiced = _positive(target.get("voiced_ratio"), low=0.12, high=1.0)
     target_median = _positive(target.get("f0_median"), low=55.0, high=350.0)
     target_p90 = _positive(target.get("f0_p90"), low=60.0, high=420.0)
     target_active = _positive(target.get("active_ratio"), low=0.05, high=1.0)
     target_gap = _positive(target.get("max_internal_gap"), low=0.0, high=6.0)
+    if any(value is None for value in (target_voiced, target_median, target_p90)):
+        result["reason"] = "невалидные source F0/voiced метрики"
+        return 0.0
+
+    if not isinstance(pitch, dict) or not isinstance(activity, dict):
+        return _penalize_unavailable_candidate(
+            result,
+            "candidate pitch/activity отсутствуют",
+        )
+
     candidate_voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
     candidate_median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
     candidate_p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
     candidate_active = _positive(activity.get("active_ratio"), low=0.0, high=1.0)
     candidate_gap = _positive(activity.get("max_internal_gap"), low=0.0, high=10.0)
-
-    essential = (
-        target_voiced,
-        target_median,
-        target_p90,
-        candidate_voiced,
-        candidate_median,
-        candidate_p90,
-    )
-    if any(value is None for value in essential):
-        result["reason"] = "невалидные F0/voiced метрики"
-        return 0.0
+    if any(
+        value is None
+        for value in (candidate_voiced, candidate_median, candidate_p90)
+    ):
+        return _penalize_unavailable_candidate(
+            result,
+            "невалидные candidate F0/voiced метрики",
+        )
 
     median_ratio = _ratio(float(candidate_median), float(target_median))
     p90_ratio = _ratio(float(candidate_p90), float(target_p90))
