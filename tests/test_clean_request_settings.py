@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tools.voxcpm2 import clean_request_settings as settings
+from tools.voxcpm2 import clean_segment_normalizer as normalizer
 from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair
 from tools.voxcpm2 import generic_clean_direct_runtime as direct
 
@@ -128,6 +129,47 @@ def test_audio_repair_manifest_uses_delay_proven_by_segments(monkeypatch, tmp_pa
         "Готовый ролик: оригинал 0%, русский без задержки",
         "Финальные русские субтитры без задержки",
     ]
+
+
+def test_full_repair_normalizer_preserves_zero_delay(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    (root / "input").mkdir(parents=True)
+    (root / "output").mkdir(parents=True)
+    (root / "segments_ru_final.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": 1,
+                    "start": 0.0,
+                    "end": 2.0,
+                    "source_end": 2.0,
+                    "start_delay_ms": 420,
+                    "text": "Нулевая задержка.",
+                    "source": "Zero delay.",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (root / "input" / "audio_repair.json").write_text(
+        json.dumps({"repair_all": True, "segment_ids": [1]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer.production, "log", lambda _message: None)
+
+    normalizer.normalize(root, {"russian_delay_ms": 0}, duration=5.0)
+
+    segments = json.loads(
+        (root / "segments_ru_final.json").read_text(encoding="utf-8")
+    )
+    assert [item["start_delay_ms"] for item in segments] == [0]
+    assert "00:00:00,000 --> 00:00:02,000" in (
+        root / "output" / "russian_subtitles.srt"
+    ).read_text(encoding="utf-8")
+    source = Path(normalizer.__file__).read_text(encoding="utf-8")
+    assert "clean_request_settings.russian_delay_ms(request)" in source
+    assert 'request.get("russian_delay_ms") or 420' not in source
 
 
 def test_repair_facade_preserves_runtime_helpers() -> None:
