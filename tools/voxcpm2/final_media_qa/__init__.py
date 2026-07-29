@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Zero-safe facade for the final Dub Studio media QA.
 
-The historical implementation remains in ``final_media_qa.py``.  A package wins
+The historical implementation remains in ``final_media_qa.py``. A package wins
 module resolution over a sibling ``.py`` file, so production imports enter here.
 We load the proven implementation under a private name and replace only the
 original-bed regression edge cases: an explicit zero/near-zero source bed and
@@ -28,10 +28,17 @@ if _SPEC is None or _SPEC.loader is None:
 _legacy = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_legacy)
 
-# Re-export the stable public surface first; overridden names are assigned below.
-for _name in getattr(_legacy, "__all__", ()):  # pragma: no branch - fixed module
-    globals()[_name] = getattr(_legacy, _name)
+# Preserve the complete historical module surface, including private helpers
+# used by focused tests and diagnostics. Overridden names are assigned below.
+for _name in dir(_legacy):
+    if not _name.startswith("__"):
+        globals().setdefault(_name, getattr(_legacy, _name))
 
+_legacy_verify_final_file = _legacy.verify_final_file
+_legacy_verify_original_bed = _legacy.verify_original_bed
+_legacy_verify_final_outputs = _legacy.verify_final_outputs
+
+LEGACY_ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"
 ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v2"
 ORIGINAL_ABSOLUTE_MODE_MAX_LEVEL = float(_legacy.ORIGINAL_LEVEL_TOLERANCE)
 ORIGINAL_LOCAL_ABSOLUTE_SPREAD = float(_legacy.ORIGINAL_LEVEL_TOLERANCE)
@@ -98,6 +105,8 @@ def estimate_original_bed(
         field="expected_original_level",
         limits=(0.0, 1.0),
     )
+    if isinstance(sample_rate, bool):
+        raise RuntimeError("sample_rate original-bed QA не может быть bool")
     sample_rate = int(sample_rate)
     if sample_rate <= 0:
         raise RuntimeError("sample_rate original-bed QA должен быть > 0")
@@ -245,6 +254,41 @@ def estimate_original_bed(
     return result
 
 
+def verify_final_file(
+    path: Path,
+    *,
+    source_duration: float,
+    target_i: float,
+    target_lra: float,
+    target_tp: float,
+) -> dict[str, Any]:
+    """Delegate while preserving public monkeypatch hooks."""
+    _legacy.probe_media = probe_media
+    _legacy.measure_loudness = measure_loudness
+    return _legacy_verify_final_file(
+        path,
+        source_duration=source_duration,
+        target_i=target_i,
+        target_lra=target_lra,
+        target_tp=target_tp,
+    )
+
+
+def verify_original_bed(
+    *,
+    source_duration: float,
+    mixed_video: Path,
+    russian_only_video: Path,
+) -> dict[str, Any]:
+    _legacy.ORIGINAL_BED_POLICY = ORIGINAL_BED_POLICY
+    _legacy.estimate_original_bed = estimate_original_bed
+    return _legacy_verify_original_bed(
+        source_duration=source_duration,
+        mixed_video=mixed_video,
+        russian_only_video=russian_only_video,
+    )
+
+
 def _upgrade_report(path: Path, report: dict[str, Any] | None = None) -> dict[str, Any] | None:
     payload = report
     if payload is None:
@@ -280,8 +324,14 @@ def verify_final_outputs(
     target_tp: float,
     report_path: Path,
 ) -> dict[str, Any]:
+    # Keep legacy orchestration intact, but route all public hooks through this
+    # facade so tests and diagnostics can still monkeypatch the documented API.
+    _legacy.ORIGINAL_BED_POLICY = ORIGINAL_BED_POLICY
+    _legacy.estimate_original_bed = estimate_original_bed
+    _legacy.verify_final_file = verify_final_file
+    _legacy.verify_original_bed = verify_original_bed
     try:
-        report = _legacy.verify_final_outputs(
+        report = _legacy_verify_final_outputs(
             source_duration=source_duration,
             mixed_video=mixed_video,
             russian_only_video=russian_only_video,
@@ -299,23 +349,21 @@ def verify_final_outputs(
     return upgraded
 
 
-# The legacy verification functions resolve these globals at call time.
+# Ensure direct callers of legacy verification resolve the new estimator.
 _legacy.ORIGINAL_BED_POLICY = ORIGINAL_BED_POLICY
 _legacy.estimate_original_bed = estimate_original_bed
-
-verify_original_bed = _legacy.verify_original_bed
-verify_final_file = _legacy.verify_final_file
-measure_loudness = _legacy.measure_loudness
-probe_media = _legacy.probe_media
 
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
     | {
+        "LEGACY_ORIGINAL_BED_POLICY",
         "ORIGINAL_ABSOLUTE_MODE_MAX_LEVEL",
         "ORIGINAL_BED_POLICY",
         "ORIGINAL_LOCAL_ABSOLUTE_SPREAD",
         "REPORT_SCHEMA",
         "estimate_original_bed",
+        "verify_final_file",
         "verify_final_outputs",
+        "verify_original_bed",
     }
 )
