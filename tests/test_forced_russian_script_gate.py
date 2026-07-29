@@ -60,6 +60,28 @@ def test_empty_auto_text_with_probable_foreign_language_is_not_rescued(
     assert result["passed"] is False
 
 
+def test_empty_auto_text_with_unknown_language_may_use_forced_retry(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _patch_forced_pass(monkeypatch)
+    result = qa._forced_russian_fallback(
+        tmp_path / "clip.wav",
+        TARGET,
+        {
+            "passed": False,
+            "heard": "",
+            "language": "",
+            "language_probability": 0.90,
+            "foreign_language": False,
+        },
+    )
+    assert result["forced_russian_eligible"] is True
+    assert result["forced_russian_block_reason"] == ""
+    assert result["forced_russian_rescued"] is True
+    assert result["passed"] is True
+
+
 def test_empty_auto_text_detected_as_russian_may_use_forced_retry(
     monkeypatch,
     tmp_path: Path,
