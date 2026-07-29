@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """One Russian title policy for Shorts, Clips, LiveDub and Dub Studio.
 
-Significant words use project Title Case. Russian conjunctions, particles and
-prepositions stay lowercase everywhere except at the beginning. The policy is
-also applied when old Dub Studio rows, progress events and manifest filenames
-are displayed, so historical projects do not need another render merely to fix
-typography.
+Significant Russian words use project Title Case. Russian conjunctions,
+particles and prepositions stay lowercase everywhere except at the beginning.
+English title casing and non-title Russian normalization remain owned by the
+existing core formatter. Historical Dub Studio rows, progress events and
+manifest filenames are normalized without another render.
 """
 from __future__ import annotations
 
 import re
-import sys
 import threading
 from pathlib import Path
 from types import ModuleType
@@ -92,11 +91,10 @@ def _capitalize(word: str) -> str:
 
 
 def canonical_media_title(value: Any) -> str:
-    """Return the canonical Russian media-title casing.
+    """Return canonical Russian media-title casing.
 
-    Service words are tested before acronym/proper-case preservation. This is
-    crucial for one-letter uppercase tokens: ``И`` is a conjunction, not an
-    acronym, unless it is the first word of the title.
+    Service words are tested before acronym/proper-case preservation. Thus an
+    internal uppercase ``И`` is a conjunction, not a one-letter acronym.
     """
     text = re.sub(r"\s+", " ", str(value or "")).strip(" .—–-")
     text = re.sub(r"\s+[—–-]\s+", " - ", text)
@@ -159,24 +157,23 @@ def install_voxcpm_title_policy(runtime_module: ModuleType) -> None:
 
 
 def _patch_core_title_case() -> None:
-    """Replace old imported Shorts/Clips formatters with the canonical function."""
+    """Fix only the aggressive Russian branch used by Shorts/Clips titles."""
     try:
         import core.text_utils as text_utils
     except Exception:
         return
 
-    old = getattr(text_utils, "title_case_fragment", None)
-    if old is canonical_media_title:
+    original = getattr(text_utils, "sentence_case_russian_title", None)
+    if not callable(original) or getattr(original, "_canonical_media_title", False):
         return
-    text_utils.title_case_fragment = canonical_media_title
-    for module in list(sys.modules.values()):
-        if module is None:
-            continue
-        try:
-            if getattr(module, "title_case_fragment", None) is old:
-                setattr(module, "title_case_fragment", canonical_media_title)
-        except Exception:
-            continue
+
+    def wrapped(value: str, aggressive_title_case: bool = False) -> str:
+        if aggressive_title_case and _CYRILLIC_RE.search(str(value or "")):
+            return canonical_media_title(value)
+        return original(value, aggressive_title_case=aggressive_title_case)
+
+    wrapped._canonical_media_title = True  # type: ignore[attr-defined]
+    text_utils.sentence_case_russian_title = wrapped
 
 
 def _patch_dub_store() -> None:
@@ -283,7 +280,7 @@ def _patch_health() -> None:
             and all("install_voxcpm_title_policy" in source for source in route_sources)
             and all("force_fresh=True" in source for source in route_sources)
             and "runtime._undelivered_notification_events = wrapped" in own_source
-            and "text_utils.title_case_fragment = canonical_media_title" in own_source
+            and "text_utils.sentence_case_russian_title = wrapped" in own_source
         )
         for item in checks:
             if item.get("label") == "Clean Expressive NoChew + независимый QA":
@@ -309,7 +306,7 @@ def _patch_livedub() -> None:
 
 
 def install_dub_title_policy() -> None:
-    """Install one title function across all loaded bot surfaces."""
+    """Install one Russian title rule across all loaded bot surfaces."""
     global _INSTALLED
     if _INSTALLED:
         return
