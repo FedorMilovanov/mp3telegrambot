@@ -44,6 +44,7 @@ on:
       - "tests/test_numeric_semantic_targets.py"
       - "tests/test_expression_aware_voice_qa.py"
       - "tests/test_final_media_qa.py"
+      - "tests/test_original_bed_alignment.py"
       - "tests/test_master_loudnorm_contract.py"
       - "tests/test_gemini_translation_quality.py"
       - "tests/test_dub_studio.py"
@@ -126,6 +127,7 @@ jobs:
             tests/test_numeric_semantic_targets.py \
             tests/test_expression_aware_voice_qa.py \
             tests/test_final_media_qa.py \
+            tests/test_original_bed_alignment.py \
             tests/test_master_loudnorm_contract.py \
             tests/test_gemini_translation_quality.py \
             tests/test_dub_studio.py \
