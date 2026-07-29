@@ -69,6 +69,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "reference_gate": voxcpm / "controlled_reference_gate.py",
         "numeric": voxcpm / "russian_spoken_numbers.py",
         "translation": voxcpm / "expressive_translation.py",
+        "gemini_runtime": voxcpm / "generic_short_runtime.py",
         "reference": voxcpm / "professional_audio_v45.py",
         "qa": voxcpm / "professional_audio_qa_v45.py",
         "io": voxcpm / "direct_max_quality_io.py",
@@ -102,7 +103,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "def sampled_sha256_file(" in text["runtime_contract"]
             and '"sampled-begin-middle-end-v1"' in text["runtime_contract"]
             and 'root.rglob("*.py")' in text["runtime_contract"]
-            and 'def _setting(' in text["runtime_contract"]
+            and "def _setting(" in text["runtime_contract"]
             and '_setting(request, "base_seed", 2026072800)' in text["runtime_contract"]
             and 'request.get("base_seed") or' not in text["runtime_contract"]
             and '"release_complete": False' in text["core"]
@@ -213,10 +214,19 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "def _smooth(" in text["expression"]
             and "build_controlled_expressive_reference" in text["expression"]
         ),
-        "translation": (
-            'POLICY = "expressive-spoken-translation-v1"' in text["translation"]
+        "translation-v2-bounded-gemini": (
+            'POLICY = "expressive-spoken-translation-v2"' in text["translation"]
+            and '_PROGRESS_PREFIX = "DUB_PROGRESS "' in text["translation"]
+            and "перевод 1/3" in text["translation"]
+            and "сверка 2/3" in text["translation"]
+            and "редактура 3/3" in text["translation"]
             and "намеренные повторы" in text["translation"]
             and "риторические вопросы" in text["translation"]
+            and "DUB_GEMINI_REQUEST_TIMEOUT_SEC" in text["gemini_runtime"]
+            and "DUB_GEMINI_PASS_TIMEOUT_SEC" in text["gemini_runtime"]
+            and "types.HttpOptions(timeout=" in text["gemini_runtime"]
+            and "time.monotonic() + pass_timeout" in text["gemini_runtime"]
+            and "пробую следующий" in text["gemini_runtime"]
             and "production.translate_groups_max = expressive_translation.translate_groups"
             in text["gemini"]
         ),
@@ -316,9 +326,9 @@ def collect_dub_health() -> list[dict[str, Any]]:
             + "; runtime v2 sampled model/package fingerprints; direct v3 16→48k; "
             "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
             "fail-closed timing and voice/timbre evidence; calm+expressive identity; "
-            "retry_badcase; fixed-original master; final AAC BS.1770+PTS; "
-            "limiter level-off/latency-compensated; editable progress; worker v4.4; "
-            "-16 LUFS/-1.5 dBTP",
+            "Gemini passes 1/3–3/3 with bounded key failover; retry_badcase; "
+            "fixed-original master; final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
+            "editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
         )
     )
 
