@@ -51,10 +51,11 @@ def _run_clean_voxcpm_and_master(
         duration=duration,
         report_path=root / "output" / "expressive_continuity.json",
     )
-    expressive_built, reference_detail = controlled_reference_gate.build_or_keep_calm(
+    _expressive_built, reference_detail = controlled_reference_gate.build_or_keep_calm(
         source=source,
         segments=planned,
         output=composite,
+        identity_reference=extended,
     )
     production.log(
         "source-guided emotional arc prepared; Russian text preserved; "
@@ -75,7 +76,6 @@ def _run_clean_voxcpm_and_master(
 
 
 def main() -> None:
-    # Preparation may be configured, but the renderer itself is never wrapped.
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
     production.pipeline.group_cues = clean.group_source_cues
     production.translate_groups_max = expressive_translation.translate_groups
