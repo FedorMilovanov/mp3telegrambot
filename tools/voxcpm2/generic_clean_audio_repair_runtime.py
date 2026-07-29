@@ -11,6 +11,7 @@ from typing import Any
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_segment_normalizer
+from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import direct_max_quality_io
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_audio_repair_runtime as legacy_repair
@@ -173,8 +174,6 @@ def main() -> None:
     manifest = legacy_repair._load_object(manifest_path, "manifest.json")
     duration = pipeline.ffprobe_duration(source)
 
-    # A full historical repair may normalize timing while preserving every token.
-    # A selective repair never edits text or timing.
     if repair_all_requested:
         clean_segment_normalizer.normalize(root, request, duration=duration)
         repair, segments = _reload_repair_and_segments(repair_path, segments_path)
@@ -207,10 +206,7 @@ def main() -> None:
             str(item.get("expression_policy") or "") == expressive_continuity.POLICY
             for item in segments
         )
-        renderer_ready, renderer_detail = _renderer_baseline_ready(
-            segment_work,
-            all_ids,
-        )
+        renderer_ready, renderer_detail = _renderer_baseline_ready(segment_work, all_ids)
         if (
             marker.get("policy") != clean.POLICY
             or not expression_ready
@@ -241,19 +237,16 @@ def main() -> None:
         report_path=output_dir / "expressive_continuity.json",
     )
     expressive_built = False
+    reference_detail = "existing controlled/calm reference reused"
     if repair_all:
-        expressive_built = expressive_continuity.build_controlled_expressive_reference(
+        expressive_built, reference_detail = controlled_reference_gate.build_or_keep_calm(
             source=source,
             segments=planned,
             output=composite,
         )
     production.log(
         "source-guided emotional arc prepared; translation reused verbatim; "
-        + (
-            "controlled expressive reference active"
-            if expressive_built or not repair_all
-            else "safe calm-reference fallback active"
-        )
+        + reference_detail
     )
 
     runtime_request = dict(request)
@@ -297,6 +290,7 @@ def main() -> None:
             "final_media_qa": str(root / "master_work" / "final_media_verification.json"),
             "expression_report": str(output_dir / "expressive_continuity.json"),
             "controlled_expressive_reference": bool(expressive_built or not repair_all),
+            "reference_detail": reference_detail,
         },
     )
     _update_manifest(
