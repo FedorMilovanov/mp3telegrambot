@@ -7,11 +7,14 @@ on:
       - "bot_new.py"
       - "services/dub_title_policy.py"
       - "services/dub_progress_updates.py"
+      - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py"
       - "tools/voxcpm2/expressive_*.py"
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_health.py"
+      - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_progress_updates.py"
       - "tests/test_expressive_dub_policy.py"
@@ -41,6 +44,11 @@ jobs:
             bot_new.py \
             services/dub_title_policy.py \
             services/dub_progress_updates.py \
+            tools/voxcpm2/direct_max_quality_io.py \
+            tools/voxcpm2/direct_max_quality_analysis.py \
+            tools/voxcpm2/direct_max_quality_render.py \
+            tools/voxcpm2/direct_max_quality_cli.py \
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
             tools/voxcpm2/generic_clean_gemini_runtime.py \
@@ -51,6 +59,7 @@ jobs:
       - name: Run focused contracts
         run: |
           pytest -q \
+            tests/test_direct_max_quality_renderer.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_progress_updates.py \
             tests/test_expressive_dub_policy.py \
