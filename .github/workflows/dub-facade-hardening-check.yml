@@ -16,8 +16,10 @@ on:
       - "tools/voxcpm2/final_media_qa/**"
       - "tools/voxcpm2/clean_request_settings.py"
       - "tools/voxcpm2/clean_source_download.py"
+      - "tools/voxcpm2/clean_source_download/**"
       - "tools/voxcpm2/clean_segment_normalizer.py"
       - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
       - "handlers/dub_audio_repair.py"
       - "handlers/dub_audio_repair/**"
       - "handlers/dub_wizard.py"
@@ -32,11 +34,13 @@ on:
       - "tests/test_clean_request_settings.py"
       - "tests/test_zero_delay_legacy_migration.py"
       - "tests/test_clean_source_download.py"
+      - "tests/test_source_identity_pre_network.py"
       - "tests/test_dub_source_identity.py"
       - "tests/test_dub_wizard_request_writer.py"
       - "tests/test_generic_project_runtime_contract.py"
       - "tests/test_dub_audio_repair_handler_contract.py"
       - "tests/test_dubfix_error_propagation.py"
+      - "tests/test_clean_master_child_process_contract.py"
       - "tests/test_original_bed_alignment.py"
       - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-facade-hardening-check.yml"
@@ -77,8 +81,10 @@ jobs:
             tools/voxcpm2/final_media_qa/__init__.py \
             tools/voxcpm2/clean_request_settings.py \
             tools/voxcpm2/clean_source_download.py \
+            tools/voxcpm2/clean_source_download/__init__.py \
             tools/voxcpm2/clean_segment_normalizer.py \
             tools/voxcpm2/legacy_segment_migration_v45.py \
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             handlers/dub_audio_repair.py \
             handlers/dub_audio_repair/__init__.py \
             handlers/dub_wizard.py \
@@ -96,10 +102,12 @@ jobs:
             tests/test_clean_request_settings.py \
             tests/test_zero_delay_legacy_migration.py \
             tests/test_clean_source_download.py \
+            tests/test_source_identity_pre_network.py \
             tests/test_dub_source_identity.py \
             tests/test_dub_wizard_request_writer.py \
             tests/test_generic_project_runtime_contract.py \
             tests/test_dub_audio_repair_handler_contract.py \
             tests/test_dubfix_error_propagation.py \
+            tests/test_clean_master_child_process_contract.py \
             tests/test_original_bed_alignment.py \
             tests/test_dub_health_supplemental_contract.py
