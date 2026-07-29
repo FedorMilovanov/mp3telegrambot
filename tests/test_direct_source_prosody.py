@@ -75,7 +75,7 @@ def test_neutral_candidate_loses_to_matching_emphatic_candidate() -> None:
     assert neutral_penalty > 15.0
 
 
-def test_source_prosody_ranking_is_soft_and_bounded() -> None:
+def test_invalid_candidate_prosody_gets_maximum_soft_penalty() -> None:
     candidate = _candidate(
         median=420.0,
         p90=500.0,
@@ -84,9 +84,21 @@ def test_source_prosody_ranking_is_soft_and_bounded() -> None:
         gap=9.0,
     )
     penalty = source_prosody_penalty(candidate, _segment(tier="passionate"))
+    report = candidate["source_prosody_match"]
     assert math.isfinite(penalty)
-    assert 0.0 <= penalty <= MAX_PENALTY
-    assert candidate["source_prosody_match"]["available"] is False
+    assert penalty == MAX_PENALTY
+    assert report["available"] is False
+    assert report["penalty"] == MAX_PENALTY
+    assert report["reason"] == "невалидные candidate F0/voiced метрики"
+
+
+def test_missing_candidate_pitch_activity_gets_maximum_soft_penalty() -> None:
+    candidate: dict = {}
+    penalty = source_prosody_penalty(candidate, _segment())
+    report = candidate["source_prosody_match"]
+    assert penalty == MAX_PENALTY
+    assert report["available"] is False
+    assert report["reason"] == "candidate pitch/activity отсутствуют"
 
 
 def test_missing_source_prosody_is_neutral_not_fabricated() -> None:
@@ -116,4 +128,6 @@ def test_nonfinite_source_metrics_do_not_poison_score() -> None:
     )
     penalty = source_prosody_penalty(candidate, segment)
     assert penalty == 0.0
-    assert candidate["source_prosody_match"]["available"] is False
+    report = candidate["source_prosody_match"]
+    assert report["available"] is False
+    assert report["reason"] == "невалидные source F0/voiced метрики"
