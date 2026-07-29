@@ -28,8 +28,9 @@ def fit_without_slowdown(clean_path: Path, fitted_path: Path, target_duration: f
     else:
         tempo = 1.0
         tempo_filters = []
+    # Tonal filtering is performed once on the assembled Russian timeline. Doing
+    # it again per segment unnecessarily thins low male fundamentals.
     filters = tempo_filters + [
-        "highpass=f=40",
         "afade=t=in:st=0:d=0.008",
         f"apad=pad_dur={target_duration:.6f}",
         f"atrim=duration={target_duration:.6f}",
