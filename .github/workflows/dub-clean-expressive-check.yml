@@ -7,6 +7,7 @@ on:
       - "bot_new.py"
       - "services/dub_title_policy.py"
       - "services/dub_studio_runtime.py"
+      - "services/polling_reliability_runtime.py"
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/generic_short_runtime.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
@@ -46,6 +47,7 @@ on:
       - "tests/test_gemini_translation_quality.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_runtime_progress.py"
+      - "tests/test_polling_reliability_runtime.py"
       - "tests/test_expressive_dub_policy.py"
       - "tests/test_clean_dub_production.py"
       - "tests/test_clean_dub_health_contract.py"
@@ -73,6 +75,7 @@ jobs:
             bot_new.py \
             services/dub_title_policy.py \
             services/dub_studio_runtime.py \
+            services/polling_reliability_runtime.py \
             tools/voxcpm2/dub_worker_hardened.py \
             tools/voxcpm2/generic_short_runtime.py \
             tools/voxcpm2/direct_max_quality_io.py \
@@ -122,6 +125,7 @@ jobs:
             tests/test_gemini_translation_quality.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_runtime_progress.py \
+            tests/test_polling_reliability_runtime.py \
             tests/test_expressive_dub_policy.py \
             tests/test_clean_dub_production.py \
             tests/test_clean_dub_health_contract.py
