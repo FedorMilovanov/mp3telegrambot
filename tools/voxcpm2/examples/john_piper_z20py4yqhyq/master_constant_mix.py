@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Direct constant-level Dub master with post-AAC delivery verification."""
 from __future__ import annotations
 
 import argparse
@@ -11,30 +12,51 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2.final_media_qa import verify_final_outputs
+
 
 def run(
     command: list[str],
     *,
     capture: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
+    process = subprocess.run(
         command,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
-    if proc.returncode != 0:
-        tail = ""
-        if capture:
-            tail = (proc.stderr or proc.stdout or "")[-6000:]
+    if process.returncode != 0:
+        tail = (process.stderr or process.stdout or "")[-6000:] if capture else ""
         raise RuntimeError(
             "Команда завершилась с ошибкой:\n"
             + " ".join(command)
             + ("\n\n" + tail if tail else "")
         )
-    return proc
+    return process
+
+
+def probe_duration(path: Path) -> float:
+    process = run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture=True,
+    )
+    duration = float((process.stdout or "").strip())
+    if duration <= 0:
+        raise RuntimeError(f"Нулевая длительность: {path}")
+    return duration
 
 
 def parse_loudnorm(stderr: str) -> dict[str, str]:
@@ -95,9 +117,9 @@ def two_pass_master(
         f"measured_thresh={measured['input_thresh']}:"
         f"offset={measured['target_offset']}:"
         "linear=true:print_format=summary,"
+        "aresample=48000,"
         "alimiter=limit=0.985"
     )
-
     run(
         [
             "ffmpeg",
@@ -118,7 +140,6 @@ def two_pass_master(
             str(output_wav),
         ]
     )
-
     return {
         "target_i": target_i,
         "target_lra": target_lra,
@@ -128,9 +149,58 @@ def two_pass_master(
     }
 
 
+def encode_upload_mp4(
+    *,
+    source: Path,
+    audio: Path,
+    output: Path,
+    source_duration: float,
+) -> None:
+    # Explicit duration avoids -shortest trimming the last video frames because
+    # AAC packet duration/priming differs slightly from the PCM master.
+    run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-i",
+            str(audio),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-af",
+            "apad=pad_dur=2",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "320k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-metadata:s:a:0",
+            "language=rus",
+            "-movflags",
+            "+faststart",
+            "-t",
+            f"{source_duration:.6f}",
+            str(output),
+        ]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Constant-level English/Russian mix and two-pass master."
+        description=(
+            "Constant-level English/Russian mix, two-pass master and final AAC QA."
+        )
     )
     parser.add_argument("--source-video", required=True)
     parser.add_argument("--russian-wav", required=True)
@@ -143,12 +213,12 @@ def main() -> None:
     parser.add_argument("--target-tp", type=float, default=-1.0)
     args = parser.parse_args()
 
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("FFmpeg не найден в PATH.")
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise RuntimeError("FFmpeg/ffprobe не найдены в PATH.")
 
     source = Path(args.source_video).resolve()
     russian = Path(args.russian_wav).resolve()
@@ -166,15 +236,14 @@ def main() -> None:
     work_dir.mkdir(parents=True, exist_ok=True)
     mixed_video.parent.mkdir(parents=True, exist_ok=True)
     russian_only_video.parent.mkdir(parents=True, exist_ok=True)
+    source_duration = probe_duration(source)
 
     raw_mix = work_dir / "constant_mix_unmastered.wav"
     mastered_mix = work_dir / "constant_mix_mastered.wav"
     mastered_russian = work_dir / "russian_only_mastered.wav"
-
     original_level = f"{args.original_level:.6f}"
 
-    # No sidechain, no speech-triggered ducking:
-    # the original remains at one constant percentage for the whole Short.
+    # The original remains at one constant percentage; no pumping or sidechain.
     mix_filter = (
         f"[0:a]volume={original_level}[original];"
         "[1:a]volume=1.0[russian];"
@@ -183,12 +252,7 @@ def main() -> None:
         "highpass=f=35,"
         "alimiter=limit=0.985[mix]"
     )
-
-    print(
-        f"Создаю постоянный микс: оригинал = "
-        f"{args.original_level * 100:.1f}%..."
-    )
-
+    print(f"Создаю постоянный микс: оригинал = {args.original_level * 100:.1f}%...")
     run(
         [
             "ffmpeg",
@@ -222,7 +286,6 @@ def main() -> None:
         target_lra=float(args.target_lra),
         target_tp=float(args.target_tp),
     )
-
     print("Двухпроходный loudness-master Russian-only версии...")
     russian_master = two_pass_master(
         russian,
@@ -233,47 +296,36 @@ def main() -> None:
     )
 
     print("Собираю upload-ready MP4...")
-    for audio, output in (
-        (mastered_mix, mixed_video),
-        (mastered_russian, russian_only_video),
-    ):
-        run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-i",
-                str(source),
-                "-i",
-                str(audio),
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0",
-                "-c:v",
-                "copy",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "320k",
-                "-ar",
-                "48000",
-                "-ac",
-                "2",
-                "-metadata:s:a:0",
-                "language=rus",
-                "-movflags",
-                "+faststart",
-                "-shortest",
-                str(output),
-            ]
-        )
+    encode_upload_mp4(
+        source=source,
+        audio=mastered_mix,
+        output=mixed_video,
+        source_duration=source_duration,
+    )
+    encode_upload_mp4(
+        source=source,
+        audio=mastered_russian,
+        output=russian_only_video,
+        source_duration=source_duration,
+    )
+
+    print("Проверяю уже закодированные AAC-дорожки...")
+    verification_path = work_dir / "final_media_verification.json"
+    final_verification = verify_final_outputs(
+        source_duration=source_duration,
+        mixed_video=mixed_video,
+        russian_only_video=russian_only_video,
+        target_i=float(args.target_i),
+        target_lra=float(args.target_lra),
+        target_tp=float(args.target_tp),
+        report_path=verification_path,
+    )
 
     report = {
+        "schema_version": "direct-master-with-final-aac-qa-v2",
         "original_level": float(args.original_level),
         "sidechain": False,
+        "source_duration": source_duration,
         "target": {
             "integrated_lufs": float(args.target_i),
             "lra": float(args.target_lra),
@@ -283,6 +335,8 @@ def main() -> None:
         "russian_master": russian_master,
         "mixed_video": str(mixed_video),
         "russian_only_video": str(russian_only_video),
+        "final_media_verification": final_verification,
+        "final_media_verification_path": str(verification_path),
     }
     report_path = mixed_video.with_suffix(".master.json")
     report_path.write_text(
@@ -291,10 +345,11 @@ def main() -> None:
     )
 
     print("")
-    print("=== MASTER ГОТОВ ===")
+    print("=== MASTER И FINAL AAC-QA ГОТОВЫ ===")
     print(f"Mixed: {mixed_video}")
     print(f"Russian-only: {russian_only_video}")
     print(f"Отчёт: {report_path}")
+    print(f"AAC-QA: {verification_path}")
 
 
 if __name__ == "__main__":
@@ -302,6 +357,7 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         import traceback
+
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         traceback.print_exc()
         raise SystemExit(1)
