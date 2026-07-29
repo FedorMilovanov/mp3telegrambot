@@ -4,8 +4,8 @@
 
 The semantic/timing gate remains independent from the renderer. Voice-register
 limits are profile- and source-prosody-aware. A failed auto-language Whisper
-reading receives one forced-Russian diagnostic pass, but confidently foreign
-audio can never be rescued by that pass.
+reading receives one forced-Russian diagnostic pass, but foreign language or
+foreign-script evidence can never be rescued by that pass.
 """
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ from tools.voxcpm2.direct_max_quality_analysis import (
 
 POLICY = "clean-expression-aware-qa-v3"
 VOICE_EVIDENCE_POLICY = "fail-closed-reference-f0-v1"
+SEMANTIC_RESCUE_POLICY = "forced-russian-script-gate-v2"
+_RUSSIAN_FAMILY = {"ru", "uk", "be"}
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -110,13 +112,71 @@ def _voice_limits(
     }
 
 
+def _script_evidence(value: str) -> dict[str, Any]:
+    letters = [char for char in str(value or "") if char.isalpha()]
+    cyrillic = [
+        char
+        for char in letters
+        if "\u0400" <= char <= "\u052f"
+    ]
+    latin = [
+        char
+        for char in letters
+        if ("a" <= char.casefold() <= "z")
+    ]
+    total = len(letters)
+    return {
+        "letters": total,
+        "cyrillic_letters": len(cyrillic),
+        "latin_letters": len(latin),
+        "other_script_letters": max(0, total - len(cyrillic) - len(latin)),
+        "cyrillic_ratio": round(len(cyrillic) / max(1, total), 6),
+        "latin_ratio_unicode": round(len(latin) / max(1, total), 6),
+    }
+
+
+def _forced_russian_eligibility(
+    auto_semantic: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any]]:
+    """Return whether a forced-Russian ASR retry may affect release status."""
+    language = str(auto_semantic.get("language") or "").casefold()
+    probability = _number(auto_semantic.get("language_probability"), 0.0)
+    script = _script_evidence(str(auto_semantic.get("heard") or ""))
+    cyrillic_ratio = float(script["cyrillic_ratio"])
+
+    if bool(auto_semantic.get("foreign_language")):
+        return False, "confident_foreign_language", script
+
+    if int(script["letters"]) > 0 and cyrillic_ratio < 0.55:
+        return False, "foreign_script", script
+
+    if (
+        int(script["letters"]) == 0
+        and language
+        and language not in _RUSSIAN_FAMILY
+        and probability >= 0.35
+    ):
+        return False, "empty_auto_foreign_language", script
+
+    if (
+        language
+        and language not in _RUSSIAN_FAMILY
+        and probability >= 0.55
+        and cyrillic_ratio < 0.80
+    ):
+        return False, "probable_foreign_language", script
+
+    return True, "", script
+
+
 def _forced_russian_fallback(
     clip: Path,
     target: str,
     auto_semantic: dict[str, Any],
 ) -> dict[str, Any]:
-    """Retry ASR in Russian, without overriding confident foreign detection."""
+    """Retry ASR in Russian without laundering foreign audio into a pass."""
     auto = dict(auto_semantic)
+    eligible, block_reason, script = _forced_russian_eligibility(auto)
     heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(
         clip,
         language="ru",
@@ -127,17 +187,20 @@ def _forced_russian_fallback(
         language,
         probability,
     )
-    confident_foreign = bool(auto.get("foreign_language"))
-    rescued = bool(forced.get("passed") and not confident_foreign)
+    rescued = bool(forced.get("passed") and eligible)
     selected = forced if rescued else auto
     merged = dict(selected)
     merged.update(
         {
             "passed": rescued,
+            "semantic_rescue_policy": SEMANTIC_RESCUE_POLICY,
             "auto_language": auto,
+            "auto_script_evidence": script,
             "forced_russian": forced,
+            "forced_russian_eligible": eligible,
             "forced_russian_rescued": rescued,
-            "confident_foreign_block": confident_foreign,
+            "forced_russian_block_reason": block_reason,
+            "confident_foreign_block": bool(auto.get("foreign_language")),
         }
     )
     return merged
@@ -342,8 +405,9 @@ def verify_timeline_v45(
     )
     report["professional_audio_policy"] = POLICY
     report["semantic_asr_policy"] = (
-        "auto-language + conservative forced-Russian fallback"
+        "auto-language + forced-Russian retry with foreign-script gate"
     )
+    report["semantic_rescue_policy"] = SEMANTIC_RESCUE_POLICY
     report["voice_evidence_policy"] = VOICE_EVIDENCE_POLICY
     report["passed"] = not result
     report["failed_segment_ids"] = result
