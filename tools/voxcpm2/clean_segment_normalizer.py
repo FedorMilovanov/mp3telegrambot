@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import clean_production_core as strict_core
 from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -43,18 +44,60 @@ def _sha256(path: Path) -> str:
 
 
 def _window(item: dict[str, Any], delay: float, duration: float) -> tuple[float, float]:
+    segment_id = int(item["id"])
+    start_raw = (
+        item.get("original_srt_start")
+        if item.get("original_srt_start") is not None
+        else item.get("start", 0.0)
+    )
     start = max(
         0.0,
-        float(item.get("original_srt_start", item.get("start", 0.0)) or 0.0),
+        strict_core._finite(start_raw, field=f"legacy segment[{segment_id}].start"),
     )
-    source_end = float(item.get("source_end", 0.0) or 0.0)
+    source_end = strict_core._finite(
+        item.get("source_end", 0.0),
+        field=f"legacy segment[{segment_id}].source_end",
+    )
     if source_end <= start:
-        source_end = float(item.get("end", start) or start) + max(
-            delay,
-            int(item.get("start_delay_ms", 0) or 0) / 1000.0,
+        render_end = strict_core._finite(
+            item.get("end", start),
+            field=f"legacy segment[{segment_id}].end",
         )
+        old_delay_ms = strict_core._strict_int(
+            item.get("start_delay_ms", 0),
+            field=f"legacy segment[{segment_id}].start_delay_ms",
+            low=0,
+            high=1500,
+        )
+        source_end = render_end + max(delay, old_delay_ms / 1000.0)
     source_end = min(float(duration), max(start + 0.35, source_end))
     return start, source_end
+
+
+def _validate_original(payload: list[Any]) -> list[dict[str, Any]]:
+    original: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for position, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                f"legacy segment[{position}] должен быть JSON-объектом, "
+                f"получено {type(item).__name__}."
+            )
+        copied = dict(item)
+        segment_id = strict_core._strict_int(
+            copied.get("id"),
+            field=f"legacy segment[{position}].id",
+            low=1,
+            high=2**31 - 1,
+        )
+        if segment_id in seen:
+            raise RuntimeError(f"Повторный legacy segment ID={segment_id}.")
+        seen.add(segment_id)
+        copied["id"] = segment_id
+        if not str(copied.get("text") or "").strip():
+            raise RuntimeError(f"Legacy segment #{segment_id} не содержит текста.")
+        original.append(copied)
+    return original
 
 
 def _split_long(
@@ -64,7 +107,7 @@ def _split_long(
     duration: float,
 ) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    for original_index, item in enumerate(items, start=1):
+    for item in items:
         start, source_end = _window(item, delay, duration)
         window = source_end - start
         text = str(item.get("text") or "").strip()
@@ -73,6 +116,8 @@ def _split_long(
             window,
             max_seconds=MAX_SECONDS,
         )
+        if not parts:
+            raise RuntimeError(f"Legacy segment #{item['id']} не удалось разделить.")
         weights = [_words(part) for part in parts]
         total = sum(weights)
         cursor = start
@@ -88,7 +133,7 @@ def _split_long(
                     "start": cursor,
                     "source_end": part_end,
                     "text": part,
-                    "normalized_from_segment": int(item.get("id") or original_index),
+                    "normalized_from_segment": int(item["id"]),
                 }
             )
             cursor = part_end
@@ -160,31 +205,42 @@ def normalize(
     if not repair.get("repair_all"):
         return False
 
-    original = [dict(item) for item in payload if isinstance(item, dict)]
-    if len(original) != len(payload):
-        raise RuntimeError("Список реплик содержит повреждённые элементы.")
+    duration_value = strict_core._finite(duration, field="video_duration")
+    if duration_value <= 0.0:
+        raise RuntimeError("video_duration должен быть > 0.")
+    original = _validate_original(payload)
     original_tokens = _tokens(original)
     delay_ms = clean_request_settings.russian_delay_ms(request)
     delay = delay_ms / 1000.0
+    original_windows = [_window(item, delay, duration_value) for item in original]
 
     normalized = _merge_tiny(
-        _split_long(original, delay=delay, duration=float(duration))
+        _split_long(original, delay=delay, duration=duration_value)
     )
     normalized_tokens = _tokens(normalized)
     if original_tokens != normalized_tokens:
         raise RuntimeError("Чистая нормализация изменила русский текст; операция остановлена.")
 
-    changed = len(normalized) != len(original) or any(
-        abs(float(new["start"]) - float(old.get("start", 0.0))) > 0.001
-        or abs(float(new["source_end"]) - float(old.get("source_end", old.get("end", 0.0)))) > 0.001
-        or str(new.get("text") or "") != str(old.get("text") or "")
-        for new, old in zip(normalized, original)
-    )
+    changed = len(normalized) != len(original)
+    if not changed:
+        for new, old, (old_start, old_source_end) in zip(
+            normalized,
+            original,
+            original_windows,
+            strict=True,
+        ):
+            if (
+                abs(float(new["start"]) - old_start) > 0.001
+                or abs(float(new["source_end"]) - old_source_end) > 0.001
+                or str(new.get("text") or "") != str(old.get("text") or "")
+            ):
+                changed = True
+                break
 
     for index, item in enumerate(normalized, start=1):
         start = float(item["start"])
-        source_end = min(float(duration), float(item["source_end"]))
-        render_end = min(source_end, max(start + 0.35, float(duration) - delay))
+        source_end = min(duration_value, float(item["source_end"]))
+        render_end = min(source_end, max(start + 0.35, duration_value - delay))
         profile = "composite" if index == len(normalized) or index % 5 == 0 else "extended"
         item.update(
             {
@@ -200,11 +256,12 @@ def normalize(
             }
         )
 
+    strict_core._mark_and_validate_segments(normalized, duration_value)
     backup = root / "segments_ru_final.pre_clean.json"
     if changed and not backup.exists():
         shutil.copy2(segments_path, backup)
     segments_path.write_text(
-        json.dumps(normalized, ensure_ascii=False, indent=2),
+        json.dumps(normalized, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
     repair.update(
@@ -213,14 +270,14 @@ def normalize(
         clean_segment_policy=POLICY,
     )
     repair_path.write_text(
-        json.dumps(repair, ensure_ascii=False, indent=2),
+        json.dumps(repair, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
 
     subtitle_cues = [
         pipeline.Cue(
-            min(float(duration), float(item["start"]) + delay),
-            min(float(duration), float(item["source_end"]) + delay),
+            min(duration_value, float(item["start"]) + delay),
+            min(duration_value, float(item["source_end"]) + delay),
             str(item.get("text") or "").strip(),
         )
         for item in normalized
