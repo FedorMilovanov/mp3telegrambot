@@ -18,7 +18,8 @@ atomically; already-fixed work was not replayed.
    hard timbre gate fails closed.
 3. **Missing F0/reference evidence was treated as a normal ratio.** Final voice
    QA silently substituted ratio `1.0` when a requested reference profile or
-   pitch estimate was absent. QA policy v4 now requires a real requested
+   pitch estimate was absent. QA v3 now includes the separately versioned
+   `fail-closed-reference-f0-v1` evidence policy and requires a real requested
    reference profile plus valid reference and candidate F0 evidence.
 4. **Timeline limiter defect was found concurrently.** The parallel agent fixed
    `alimiter` auto-level and latency compensation before this auditor wrote the
