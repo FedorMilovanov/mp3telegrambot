@@ -74,6 +74,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "qa": voxcpm / "professional_audio_qa_v45.py",
         "io": voxcpm / "direct_max_quality_io.py",
         "analysis": voxcpm / "direct_max_quality_analysis.py",
+        "prosody": voxcpm / "direct_source_prosody.py",
         "timbre": voxcpm / "direct_timbre_analysis.py",
         "render": voxcpm / "direct_max_quality_render.py",
         "cli": voxcpm / "direct_max_quality_cli.py",
@@ -94,7 +95,16 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         return False, "не найдены: " + ", ".join(missing)
 
     renderer_text = "\n".join(
-        text[name] for name in ("io", "analysis", "timbre", "render", "cli", "stable_cli")
+        text[name]
+        for name in (
+            "io",
+            "analysis",
+            "prosody",
+            "timbre",
+            "render",
+            "cli",
+            "stable_cli",
+        )
     )
     route_names = ("gemini", "direct", "custom", "repair")
     contracts = {
@@ -106,6 +116,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "def _setting(" in text["runtime_contract"]
             and '_setting(request, "base_seed", 2026072800)' in text["runtime_contract"]
             and 'request.get("base_seed") or' not in text["runtime_contract"]
+            and '"tools/voxcpm2/direct_source_prosody.py"'
+            in text["runtime_contract"]
             and '"release_complete": False' in text["core"]
             and "release_complete=True" in text["core"]
             and "direct_cli_runtime.marker.json" in text["stable_cli"]
@@ -135,6 +147,16 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
             and "MAX_TIMBRE_PENALTY" in text["timbre"]
             and "not np.isfinite(candidate).all()" in text["timbre"]
+        ),
+        "source-prosody-ranking": (
+            'POLICY = "source-prosody-candidate-ranking-v1"' in text["prosody"]
+            and "def source_prosody_penalty(" in text["prosody"]
+            and "source_prosody_penalty(candidate, segment)" in text["cli"]
+            and '"expression": expression_signature' in text["cli"]
+            and '"selected_base_score"' in text["cli"]
+            and '"selected_source_prosody_match"' in text["cli"]
+            and '"schema_version": "5.1-direct-source-prosody"' in text["cli"]
+            and "srcF0×=" in text["cli"]
         ),
         "continuous-first-reference": (
             'POLICY = "continuous-clean-reference-v2"' in text["continuous_reference"]
@@ -226,6 +248,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "DUB_GEMINI_PASS_TIMEOUT_SEC" in text["gemini_runtime"]
             and "types.HttpOptions(timeout=" in text["gemini_runtime"]
             and "time.monotonic() + pass_timeout" in text["gemini_runtime"]
+            and "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in text["gemini_runtime"]
+            and "load_dotenv(override=False)" in text["gemini_runtime"]
             and "пробую следующий" in text["gemini_runtime"]
             and "production.translate_groups_max = expressive_translation.translate_groups"
             in text["gemini"]
@@ -247,6 +271,13 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "calibrate_russian_gain" in text["master"]
             and "verify_final_outputs" in text["master"]
             and "final_media_verification.json" in text["master"]
+            and 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"'
+            in text["media_qa"]
+            and "def estimate_original_bed(" in text["media_qa"]
+            and "def _estimate_alignment_lag(" in text["media_qa"]
+            and "alignment_lag_ms" in text["media_qa"]
+            and "local_spread_db" in text["media_qa"]
+            and '"schema_version": "dub-final-media-qa-v5"' in text["media_qa"]
             and "Отчёт сохранён" in text["media_qa"]
             and "container_duration_delta_seconds" in text["media_qa"]
             and "audio_duration_delta_seconds" in text["media_qa"]
@@ -325,9 +356,10 @@ def collect_dub_health() -> list[dict[str, Any]]:
             quality_detail
             + "; runtime v2 sampled model/package fingerprints; direct v3 16→48k; "
             "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
-            "fail-closed timing and voice/timbre evidence; calm+expressive identity; "
-            "Gemini passes 1/3–3/3 with bounded key failover; retry_badcase; "
-            "fixed-original master; final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
+            "fail-closed voice/timbre hard gates + source-prosody candidate ranking; "
+            "calm+expressive identity; Gemini passes 1/3–3/3 with bounded key failover; "
+            "fixed-original master + aligned post-AAC 18% regression; "
+            "final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
             "editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
         )
     )
