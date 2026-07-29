@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Transactional release gate for the controlled expressive voice reference."""
+"""Transactional release gate for calm and controlled expressive references."""
 from __future__ import annotations
 
 import json
+import math
 import shutil
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ MIN_REFERENCE_SECONDS = 5.0
 MAX_REFERENCE_SECONDS = 30.0
 REPORT_DURATION_TOLERANCE = 0.08
 MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55
+IDENTITY_POLICY = "calm-and-expressive-identity-v2"
 
 
 def _read_mono(path: Path) -> tuple[np.ndarray, int]:
@@ -25,7 +27,102 @@ def _read_mono(path: Path) -> tuple[np.ndarray, int]:
     audio = np.asarray(samples, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
-    return audio.reshape(-1), int(sample_rate)
+    audio = audio.reshape(-1)
+    if sample_rate <= 0 or not len(audio) or not np.isfinite(audio).all():
+        raise RuntimeError(f"Некорректный voice reference: {path}")
+    return audio, int(sample_rate)
+
+
+def _identity_similarity(
+    candidate: Path,
+    identity_reference: Path | None,
+) -> tuple[bool, str, float | None]:
+    if identity_reference is None:
+        return True, "identity-reference не задан", None
+    if not identity_reference.is_file():
+        return False, "не найден calm identity-reference", None
+    try:
+        candidate_audio, candidate_sr = _read_mono(candidate)
+        identity_audio, identity_sr = _read_mono(identity_reference)
+        similarity = float(
+            spectral_similarity(
+                spectral_envelope(candidate_audio, candidate_sr),
+                spectral_envelope(identity_audio, identity_sr),
+            )
+        )
+    except Exception as exc:
+        return False, f"не рассчитано identity-сходство: {exc}", None
+    if not math.isfinite(similarity):
+        return False, "identity-сходство не является конечным числом", None
+    if similarity < MIN_IDENTITY_SPECTRAL_SIMILARITY:
+        return False, (
+            f"identity spectral similarity={similarity:.4f} < "
+            f"{MIN_IDENTITY_SPECTRAL_SIMILARITY:.2f}"
+        ), similarity
+    return True, f"identity similarity={similarity:.4f}", similarity
+
+
+def _stamp_identity(
+    report_path: Path,
+    payload: dict[str, Any],
+    *,
+    identity_reference: Path | None,
+    similarity: float | None,
+) -> None:
+    payload["identity_policy"] = IDENTITY_POLICY
+    if identity_reference is not None:
+        payload["identity_reference"] = str(identity_reference)
+    if similarity is not None:
+        payload["identity_spectral_similarity"] = round(similarity, 6)
+        payload["identity_spectral_floor"] = MIN_IDENTITY_SPECTRAL_SIMILARITY
+    report_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _valid_calm_reference(
+    output: Path,
+    *,
+    identity_reference: Path | None,
+) -> tuple[bool, str]:
+    report_path = output.with_suffix(".selection.json")
+    if not output.is_file() or output.stat().st_size <= 0:
+        return False, "calm composite WAV не создан"
+    if not report_path.is_file():
+        return False, "нет calm composite selection report"
+    try:
+        info = sf.info(str(output))
+        duration = float(info.duration)
+        payload = json.loads(report_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        return False, f"не читается calm composite: {exc}"
+    if not math.isfinite(duration):
+        return False, "calm composite duration не является конечным числом"
+    if not MIN_REFERENCE_SECONDS <= duration <= MAX_REFERENCE_SECONDS:
+        return False, (
+            f"calm duration={duration:.3f}s вне "
+            f"{MIN_REFERENCE_SECONDS:.1f}..{MAX_REFERENCE_SECONDS:.1f}s"
+        )
+    if not isinstance(payload, dict):
+        return False, "calm report не является объектом"
+    selected = payload.get("selected")
+    if not isinstance(selected, list) or not selected:
+        return False, "calm report не содержит selected windows"
+
+    identity_ok, identity_detail, similarity = _identity_similarity(
+        output,
+        identity_reference,
+    )
+    if not identity_ok:
+        return False, identity_detail
+    _stamp_identity(
+        report_path,
+        payload,
+        identity_reference=identity_reference,
+        similarity=similarity,
+    )
+    return True, f"calm composite {duration:.3f}s; {identity_detail}"
 
 
 def _valid_expressive_reference(
@@ -44,6 +141,8 @@ def _valid_expressive_reference(
         payload = json.loads(report_path.read_text(encoding="utf-8-sig"))
     except Exception as exc:
         return False, f"не читается expressive reference: {exc}"
+    if not math.isfinite(duration):
+        return False, "expressive duration не является конечным числом"
     if not MIN_REFERENCE_SECONDS <= duration <= MAX_REFERENCE_SECONDS:
         return False, (
             f"expressive duration={duration:.3f}s вне "
@@ -56,43 +155,31 @@ def _valid_expressive_reference(
     selected = payload.get("selected")
     if not isinstance(selected, list) or not selected:
         return False, "expressive report не содержит selected windows"
-    reported_duration = float(payload.get("duration_seconds") or 0.0)
+    try:
+        reported_duration = float(payload.get("duration_seconds") or 0.0)
+    except (TypeError, ValueError):
+        return False, "expressive report содержит некорректную duration"
+    if not math.isfinite(reported_duration):
+        return False, "expressive report duration не является конечным числом"
     if abs(reported_duration - duration) > REPORT_DURATION_TOLERANCE:
         return False, (
             f"expressive report duration={reported_duration:.3f}s, "
             f"WAV={duration:.3f}s"
         )
 
-    identity_similarity: float | None = None
-    if identity_reference is not None:
-        if not identity_reference.is_file():
-            return False, "не найден calm identity-reference"
-        try:
-            expressive_audio, expressive_sr = _read_mono(output)
-            identity_audio, identity_sr = _read_mono(identity_reference)
-            identity_similarity = spectral_similarity(
-                spectral_envelope(expressive_audio, expressive_sr),
-                spectral_envelope(identity_audio, identity_sr),
-            )
-        except Exception as exc:
-            return False, f"не рассчитано identity-сходство: {exc}"
-        if identity_similarity < MIN_IDENTITY_SPECTRAL_SIMILARITY:
-            return False, (
-                f"identity spectral similarity={identity_similarity:.4f} < "
-                f"{MIN_IDENTITY_SPECTRAL_SIMILARITY:.2f}"
-            )
-        payload["identity_reference"] = str(identity_reference)
-        payload["identity_spectral_similarity"] = round(identity_similarity, 6)
-        payload["identity_spectral_floor"] = MIN_IDENTITY_SPECTRAL_SIMILARITY
-        report_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-    detail = f"controlled expressive {duration:.3f}s"
-    if identity_similarity is not None:
-        detail += f"; identity similarity={identity_similarity:.4f}"
-    return True, detail
+    identity_ok, identity_detail, similarity = _identity_similarity(
+        output,
+        identity_reference,
+    )
+    if not identity_ok:
+        return False, identity_detail
+    _stamp_identity(
+        report_path,
+        payload,
+        identity_reference=identity_reference,
+        similarity=similarity,
+    )
+    return True, f"controlled expressive {duration:.3f}s; {identity_detail}"
 
 
 def _restore(
@@ -114,12 +201,14 @@ def build_or_keep_calm(
     identity_reference: Path | None = None,
     target_seconds: float = 7.0,
 ) -> tuple[bool, str]:
-    """Replace calm composite only when the expressive result is release-safe."""
+    """Replace calm composite only when both calm and expressive identity are safe."""
     report_path = output.with_suffix(".selection.json")
-    if not output.is_file() or not report_path.is_file():
-        raise RuntimeError(
-            "Перед expressive-отбором отсутствует транзакционный calm composite."
-        )
+    valid_calm, calm_detail = _valid_calm_reference(
+        output,
+        identity_reference=identity_reference,
+    )
+    if not valid_calm:
+        raise RuntimeError("Calm composite identity gate не принят: " + calm_detail)
 
     backup_wav = output.with_suffix(output.suffix + ".calm-backup")
     backup_report = report_path.with_suffix(report_path.suffix + ".calm-backup")
@@ -139,7 +228,7 @@ def build_or_keep_calm(
                 output=output,
                 report_path=report_path,
             )
-            return False, "safe calm-reference fallback: expressive windows not found"
+            return False, "safe calm-reference fallback: " + calm_detail
         valid, detail = _valid_expressive_reference(
             output,
             identity_reference=identity_reference,
@@ -167,6 +256,7 @@ def build_or_keep_calm(
 
 
 __all__ = [
+    "IDENTITY_POLICY",
     "MAX_REFERENCE_SECONDS",
     "MIN_IDENTITY_SPECTRAL_SIMILARITY",
     "MIN_REFERENCE_SECONDS",
