@@ -4,11 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - "bot_new.py"
+      - "services/dub_title_policy.py"
       - "tools/voxcpm2/expressive_*.py"
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_health.py"
+      - "tests/test_dub_title_policy.py"
       - "tests/test_expressive_dub_policy.py"
       - "tests/test_clean_dub_production.py"
       - "tests/test_clean_dub_health_contract.py"
@@ -33,6 +36,8 @@ jobs:
       - name: Compile expressive production modules
         run: |
           python -m py_compile \
+            bot_new.py \
+            services/dub_title_policy.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
             tools/voxcpm2/generic_clean_gemini_runtime.py \
@@ -43,6 +48,7 @@ jobs:
       - name: Run focused contracts
         run: |
           pytest -q \
+            tests/test_dub_title_policy.py \
             tests/test_expressive_dub_policy.py \
             tests/test_clean_dub_production.py \
             tests/test_clean_dub_health_contract.py
