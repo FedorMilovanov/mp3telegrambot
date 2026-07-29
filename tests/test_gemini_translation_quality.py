@@ -49,12 +49,15 @@ def test_translation_keeps_high_thinking_and_bounded_network_calls() -> None:
     assert 'DUB_GEMINI_REQUEST_TIMEOUT_SEC' in runtime
     assert 'DUB_GEMINI_PASS_TIMEOUT_SEC' in runtime
     assert "time.monotonic() + pass_timeout" in runtime
+    assert "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in runtime
+    assert "load_dotenv(override=False)" in runtime
     assert "temperature=" not in gemini_section
     assert "top_p=" not in gemini_section
     assert "top_k=" not in gemini_section
 
 
 def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
+    monkeypatch.setattr(generic_short_runtime, "_load_dotenv_for_manual_run", lambda: None)
     monkeypatch.setenv("GEMINI_API_KEY", "key-one")
     monkeypatch.setenv("GEMINI_API_KEY_2", "key-two")
     monkeypatch.delenv("GEMINI_API_KEY_3", raising=False)
@@ -104,6 +107,42 @@ def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
     assert any("завершён ключом 2/2" in line for line in logs)
 
 
+def test_gemini_does_not_start_key_beyond_pass_budget(monkeypatch) -> None:
+    created: list[str] = []
+    closed: list[str] = []
+    monotonic_values = iter([0.0, 0.0, 0.0, 40.0, 40.0])
+
+    class FailingModels:
+        def generate_content(self, **_kwargs):
+            raise TimeoutError("first key consumed forty seconds")
+
+    class FakeClient:
+        models = FailingModels()
+
+        def __init__(self, key: str) -> None:
+            self.key = key
+
+        def close(self) -> None:
+            closed.append(self.key)
+
+    def fake_client(key: str, _timeout_ms: int):
+        created.append(key)
+        return FakeClient(key)
+
+    monkeypatch.setattr(generic_short_runtime, "_translation_keys", lambda: ["key-one", "key-two"])
+    monkeypatch.setattr(generic_short_runtime, "_translation_timeouts", lambda: (60.0, 60.0))
+    monkeypatch.setattr(generic_short_runtime, "_translation_client", fake_client)
+    monkeypatch.setattr(generic_short_runtime, "_generation_config", lambda _model: object())
+    monkeypatch.setattr(generic_short_runtime.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(generic_short_runtime.pipeline, "log", lambda _line: None)
+
+    with pytest.raises(RuntimeError, match="остаток общего лимита"):
+        generic_short_runtime.gemini_json("prompt", model_name="gemini-3.6-flash")
+
+    assert created == ["key-one"]
+    assert closed == ["key-one"]
+
+
 def test_translation_timeout_environment_is_bounded(monkeypatch) -> None:
     monkeypatch.setenv("DUB_GEMINI_REQUEST_TIMEOUT_SEC", "1")
     monkeypatch.setenv("DUB_GEMINI_PASS_TIMEOUT_SEC", "10")
@@ -118,7 +157,25 @@ def test_translation_timeout_environment_is_bounded(monkeypatch) -> None:
     assert pass_timeout == 300.0
 
 
+def test_translation_keys_load_dotenv_without_overriding_env(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    def fake_load() -> None:
+        calls.append(True)
+        monkeypatch.setenv("GEMINI_API_KEY_2", "from-dotenv")
+
+    monkeypatch.setattr(generic_short_runtime, "_load_dotenv_for_manual_run", fake_load)
+    monkeypatch.setenv("GEMINI_API_KEY", "already-present")
+    monkeypatch.delenv("GEMINI_API_KEY_2", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY_3", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY_4", raising=False)
+
+    assert generic_short_runtime._translation_keys() == ["already-present", "from-dotenv"]
+    assert calls == [True]
+
+
 def test_gemini_request_requires_a_real_key(monkeypatch) -> None:
+    monkeypatch.setattr(generic_short_runtime, "_load_dotenv_for_manual_run", lambda: None)
     for name in generic_short_runtime._GEMINI_KEY_NAMES:
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
