@@ -18,6 +18,7 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "controlled_reference_gate.py" in source
     assert "russian_spoken_numbers.py" in source
     assert "expressive_translation.py" in source
+    assert "direct_source_prosody.py" in source
     assert "direct_timbre_analysis.py" in source
     assert "final_media_qa.py" in source
     assert 'POLICY = "clean-runtime-contract-v2"' in source
@@ -25,6 +26,14 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert '"sampled-begin-middle-end-v1"' in source
     assert 'root.rglob("*.py")' in source
     assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
+    assert '"tools/voxcpm2/direct_source_prosody.py"' in source
+    assert 'POLICY = "source-prosody-candidate-ranking-v1"' in source
+    assert 'source-prosody-ranking' in source
+    assert 'source_prosody_penalty(candidate, segment)' in source
+    assert '"expression": expression_signature' in source
+    assert '"selected_source_prosody_match"' in source
+    assert '"schema_version": "5.1-direct-source-prosody"' in source
+    assert 'srcF0×=' in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source
     assert 'POLICY = "expressive-spoken-translation-v2"' in source
     assert 'translation-v2-bounded-gemini' in source
@@ -32,6 +41,8 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert 'DUB_GEMINI_PASS_TIMEOUT_SEC' in source
     assert 'types.HttpOptions(timeout=' in source
     assert 'time.monotonic() + pass_timeout' in source
+    assert 'remaining < _MIN_REQUEST_TIMEOUT_SECONDS' in source
+    assert 'load_dotenv(override=False)' in source
     assert 'перевод 1/3' in source
     assert 'сверка 2/3' in source
     assert 'редактура 3/3' in source
@@ -54,6 +65,12 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "fixed-original-post-russian-master-v1" in source
     assert '"post_mix_loudnorm": False' in source
     assert '"post_mix_limiter": False' in source
+    assert 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"' in source
+    assert 'def estimate_original_bed(' in source
+    assert 'def _estimate_alignment_lag(' in source
+    assert 'alignment_lag_ms' in source
+    assert 'local_spread_db' in source
+    assert '"schema_version": "dub-final-media-qa-v5"' in source
     assert "verify_final_outputs" in source
     assert "final_media_verification.json" in source
     assert "Clean Expressive NoChew + независимый QA" in source
