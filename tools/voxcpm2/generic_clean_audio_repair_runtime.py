@@ -11,6 +11,7 @@ from typing import Any
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_segment_normalizer
+from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import direct_max_quality_io
 from tools.voxcpm2 import expressive_continuity
@@ -117,6 +118,7 @@ def _update_manifest(
             "base_seed": int(seed),
             "production_policy": clean.POLICY,
             "renderer_policy": direct_max_quality_io.POLICY,
+            "reference_policy": continuous_reference_policy.POLICY,
             "expression_policy": expressive_continuity.POLICY,
             "report": str(report_path),
             "translation_reused": True,
@@ -127,6 +129,7 @@ def _update_manifest(
     manifest["audio_quality_guard"] = clean.POLICY
     manifest["audio_production"] = "direct-powershell-equivalent"
     manifest["renderer_policy"] = direct_max_quality_io.POLICY
+    manifest["reference_policy"] = continuous_reference_policy.POLICY
     manifest["expression_policy"] = expressive_continuity.POLICY
     manifest["audio_repairs"] = repairs[-30:]
     production.save_json(path, manifest)
@@ -195,7 +198,7 @@ def main() -> None:
     if repair_all:
         production.log("=== CLEAN AUDIO REPAIR: FRESH REFERENCES + FRESH RENDER ===")
         cues = legacy_repair._source_cues(root)
-        extended, composite = clean.build_calm_references(
+        extended, composite = continuous_reference_policy.build_calm_references(
             source=source,
             cues=cues,
             duration=duration,
@@ -272,13 +275,14 @@ def main() -> None:
     production.save_json(
         report_path,
         {
-            "schema_version": 4,
+            "schema_version": 5,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
             "base_seed": seed,
             "production_policy": clean.POLICY,
             "renderer_policy": direct_max_quality_io.POLICY,
+            "reference_policy": continuous_reference_policy.POLICY,
             "segment_policy": clean_segment_normalizer.POLICY,
             "expression_policy": expressive_continuity.POLICY,
             "renderer_mode": "direct-powershell-equivalent",
