@@ -30,7 +30,8 @@ _legacy_quality_contract = _legacy._quality_contract
 
 
 def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
-    voxcpm = Path(repo) / "tools" / "voxcpm2"
+    repo = Path(repo)
+    voxcpm = repo / "tools" / "voxcpm2"
     paths = {
         "zero_safe_qa": voxcpm / "final_media_qa" / "__init__.py",
         "repair_facade": voxcpm / "generic_clean_audio_repair_runtime" / "__init__.py",
@@ -39,6 +40,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "request_settings": voxcpm / "clean_request_settings.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "migration": voxcpm / "legacy_segment_migration_v45.py",
+        "source_download": voxcpm / "clean_source_download.py",
+        "wizard_facade": repo / "handlers" / "dub_wizard" / "__init__.py",
     }
     text = {
         name: path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -70,6 +73,18 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and 'request.get("russian_delay_ms") or 420' not in text["normalizer"]
             and 'request.get("russian_delay_ms") or 420' not in text["migration"]
         ),
+        "canonical-source-identity": (
+            'for prefix in ("www.", "m.", "music.")' in text["source_download"]
+            and 'host == "youtube-nocookie.com"' in text["source_download"]
+            and "канонической ссылкой на один YouTube-ролик"
+            in text["source_download"]
+            and "def _project_request_video_id(" in text["source_download"]
+            and "Project request и скачиваемый YouTube-ролик имеют разные video ID"
+            in text["source_download"]
+            and "clean_source_download._url_video_id(raw)" in text["wizard_facade"]
+            and "_legacy._extract_youtube_video_id = _extract_youtube_video_id"
+            in text["wizard_facade"]
+        ),
         "facades-fingerprinted": (
             '"tools/voxcpm2/final_media_qa/__init__.py"'
             in text["runtime_contract"]
@@ -78,6 +93,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and '"tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py"'
             in text["runtime_contract"]
             and '"tools/voxcpm2/legacy_segment_migration_v45.py"'
+            in text["runtime_contract"]
+            and '"tools/voxcpm2/clean_source_download.py"'
             in text["runtime_contract"]
         ),
         "strict-runtime-numbers": (
@@ -92,6 +109,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
     return True, (
         "post-AAC original-bed v2 zero-safe/short-clip; final report v6; "
         "repair manifest uses segment-proven delay; migration/normalizer preserve 0 ms; "
+        "wizard/download share canonical URL+metadata+request identity; "
         "compatibility facades and migration fingerprinted; strict bool/fraction settings"
     )
 
