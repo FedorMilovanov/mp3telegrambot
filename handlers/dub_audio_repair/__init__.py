@@ -4,17 +4,19 @@
 
 The established Telegram UI remains in ``handlers/dub_audio_repair.py``. This
 package preserves it while making segment loading and request writing strict,
-and serializing concurrent ``/dubfix`` commands so one request file cannot be
-silently overwritten by two queued jobs.
+and serializing concurrent ``/dubfix`` commands in-process and across bot
+processes so one request file cannot be overwritten by two queued jobs.
 """
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import importlib.util
 import json
 import os
 from pathlib import Path
-from typing import Any
+import time
+from typing import Any, Iterator
 
 from tools.voxcpm2 import clean_production_core as strict_core
 
@@ -34,6 +36,58 @@ for _name in dir(_legacy):
 
 _legacy_dubfix_command = _legacy.dubfix_command
 _DUBFIX_LOCK = asyncio.Lock()
+_DUBFIX_PROCESS_LOCK_STALE_SECONDS = 30 * 60
+
+
+def _process_lock_path() -> Path:
+    root = Path(_legacy.studio_root()).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root / ".dubfix.request.lock"
+
+
+@contextmanager
+def _dubfix_process_lock() -> Iterator[Path]:
+    """Hold an atomic cross-process lock for request-write + enqueue."""
+    path = _process_lock_path()
+    descriptor: int | None = None
+    for attempt in range(2):
+        try:
+            descriptor = os.open(
+                path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            break
+        except FileExistsError as exc:
+            try:
+                age = max(0.0, time.time() - path.stat().st_mtime)
+            except FileNotFoundError:
+                continue
+            if age > _DUBFIX_PROCESS_LOCK_STALE_SECONDS and attempt == 0:
+                path.unlink(missing_ok=True)
+                continue
+            raise RuntimeError(
+                "Другой процесс уже создаёт /dubfix request; повторите команду после завершения."
+            ) from exc
+    if descriptor is None:
+        raise RuntimeError("Не удалось захватить межпроцессный /dubfix lock.")
+    try:
+        payload = json.dumps(
+            {
+                "pid": os.getpid(),
+                "acquired_unix": time.time(),
+            },
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+        yield path
+    finally:
+        try:
+            os.close(descriptor)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 def _strict_ids(values: Any, *, field: str) -> list[int]:
@@ -175,7 +229,14 @@ def _write_repair_request(
 
 async def dubfix_command(update: Any, context: Any) -> None:
     async with _DUBFIX_LOCK:
-        await _legacy_dubfix_command(update, context)
+        try:
+            with _dubfix_process_lock():
+                await _legacy_dubfix_command(update, context)
+        except RuntimeError as exc:
+            message = getattr(update, "effective_message", None)
+            if message is None:
+                raise
+            await message.reply_text(f"⚠️ {exc}")
 
 
 # Legacy callbacks resolve these globals at execution/registration time.
@@ -188,6 +249,7 @@ dubsegments_command = _legacy.dubsegments_command
 parse_segment_selector = _legacy.parse_segment_selector
 
 __all__ = [
+    "_dubfix_process_lock",
     "_write_repair_request",
     "dubfix_command",
     "dubsegments_command",
