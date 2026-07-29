@@ -182,7 +182,7 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         if autocorrelation[0] <= 1e-9:
             continue
         lag = lag_lo + int(
-            np.argmax(autorrelation[lag_lo : lag_hi + 1])
+            np.argmax(autocorrelation[lag_lo : lag_hi + 1])
         )
         if autocorrelation[lag] / autocorrelation[0] >= 0.30:
             values.append(sample_rate / lag)
