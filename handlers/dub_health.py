@@ -62,6 +62,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     example = voxcpm / "examples" / "john_piper_z20py4yqhyq"
     paths = {
         "core": voxcpm / "clean_production_core.py",
+        "runtime_contract": voxcpm / "clean_runtime_contract.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "expression": voxcpm / "expressive_continuity.py",
         "continuous_reference": voxcpm / "continuous_reference_policy.py",
@@ -96,6 +97,18 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     )
     route_names = ("gemini", "direct", "custom", "repair")
     contracts = {
+        "runtime-contract-v2": (
+            'POLICY = "clean-runtime-contract-v2"' in text["runtime_contract"]
+            and "def sampled_sha256_file(" in text["runtime_contract"]
+            and '"sampled-begin-middle-end-v1"' in text["runtime_contract"]
+            and 'root.rglob("*.py")' in text["runtime_contract"]
+            and 'def _setting(' in text["runtime_contract"]
+            and '_setting(request, "base_seed", 2026072800)' in text["runtime_contract"]
+            and 'request.get("base_seed") or' not in text["runtime_contract"]
+            and '"release_complete": False' in text["core"]
+            and "release_complete=True" in text["core"]
+            and "direct_cli_runtime.marker.json" in text["stable_cli"]
+        ),
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
             "EXPECTED_ENCODE_SR = 16000" in text["io"]
@@ -105,6 +118,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "fingerprints": (
             '"reference_sha256"' in text["cli"]
             and '"model_config_sha256"' in text["cli"]
+            and "render_contract_sha256" in text["core"]
+            and "release_contract_sha256" in text["core"]
         ),
         "retry-badcase": (
             '"retry_badcase": True' in text["render"]
@@ -112,9 +127,13 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         ),
         "voice-and-timbre": (
             "candidate_hard_ok" in text["cli"]
+            and "_finite_voice_metric" in text["analysis"]
+            and "math.isfinite(value)" in text["analysis"]
             and "voiced_ratio" in text["analysis"]
             and "spectral_similarity" in text["analysis"]
             and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
+            and "MAX_TIMBRE_PENALTY" in text["timbre"]
+            and "not np.isfinite(candidate).all()" in text["timbre"]
         ),
         "continuous-first-reference": (
             'POLICY = "continuous-clean-reference-v2"' in text["continuous_reference"]
@@ -153,6 +172,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "Эффективное пересечение" in text["io"]
             and "MAX_SECONDS = 5.4" in text["core"]
             and "Russian tokens preserved" in text["normalizer"]
+            and "afade=t=in" in text["render"]
+            and "afade=t=out" in text["render"]
         ),
         "clean-reference": (
             "REFERENCE_TAIL_SILENCE = 0.0" in text["io"]
@@ -160,6 +181,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "afftdn" not in text["reference"]
             and '"denoise": False' in text["continuous_reference"]
             and '"spectral_filter": False' in text["continuous_reference"]
+            and "pre-model-reference-hard-floor-v1" in text["analysis"]
         ),
         "QA-v3": (
             'POLICY = "clean-expression-aware-qa-v3"' in text["qa"]
@@ -205,10 +227,14 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "force_fresh=repair_all" in text["repair"]
             and 'gemini_called": False' in text["repair"]
         ),
-        "final-AAC-QA": (
+        "fixed-original-final-AAC-QA": (
             "linear=true" in text["master"]
             and "10.0 ** (float(target_tp) / 20.0)" in text["master"]
             and "level=false:latency=true" in text["master"]
+            and "fixed-original-post-russian-master-v1" in text["master"]
+            and '"post_mix_loudnorm": False' in text["master"]
+            and '"post_mix_limiter": False' in text["master"]
+            and "calibrate_russian_gain" in text["master"]
             and "verify_final_outputs" in text["master"]
             and "final_media_verification.json" in text["master"]
             and "Отчёт сохранён" in text["media_qa"]
@@ -287,11 +313,12 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             quality_detail
-            + "; direct v3 16→48k; continuous-first v2 hard-floor reference; "
-            "exact numeric/date anchors; fail-closed timing; calm+expressive identity; "
-            "fingerprints; retry_badcase; F0/voiced+timbre; QA auto+forced-RU foreign block; "
-            "final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
-            "editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
+            + "; runtime v2 sampled model/package fingerprints; direct v3 16→48k; "
+            "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
+            "fail-closed timing and voice/timbre evidence; calm+expressive identity; "
+            "retry_badcase; fixed-original master; final AAC BS.1770+PTS; "
+            "limiter level-off/latency-compensated; editable progress; worker v4.4; "
+            "-16 LUFS/-1.5 dBTP",
         )
     )
 
