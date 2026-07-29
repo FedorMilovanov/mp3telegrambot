@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from tools.voxcpm2 import professional_audio_qa_v45 as qa
 from tools.voxcpm2 import russian_spoken_numbers as numbers
 
@@ -27,6 +29,16 @@ def test_numeric_text_normalizes_percent_currency_and_decimal() -> None:
     )
 
 
+def test_date_is_consumed_before_decimal_normalization() -> None:
+    assert numbers.normalize_numeric_text("Встреча 29.07.2026.") == (
+        "Встреча двадцать девятого июля две тысячи двадцать шестого года."
+    )
+    groups = numbers.numeric_anchor_groups("Встреча 29.07.2026.")
+    assert len(groups) == 1
+    assert any("двадцать девятого июля" in variant for variant in groups[0])
+    assert any("двадцать девять июля" in variant for variant in groups[0])
+
+
 def test_correct_spoken_number_rescues_numeric_target() -> None:
     spoken, result = qa._numeric_semantic_target(
         "У нас 3 книги.",
@@ -35,17 +47,30 @@ def test_correct_spoken_number_rescues_numeric_target() -> None:
     assert spoken == "У нас три книги."
     assert result["passed"] is True
     assert result["numeric_normalization_rescued"] is True
+    assert result["numeric_anchors_passed"] is True
     assert result["numeric_target_original"] == "У нас 3 книги."
 
 
-def test_wrong_spoken_number_does_not_pass() -> None:
+def test_wrong_spoken_number_does_not_pass_despite_fuzzy_similarity() -> None:
     spoken, result = qa._numeric_semantic_target(
         "У нас 3 книги.",
         _auto("у нас пять книг"),
     )
     assert spoken == "У нас три книги."
+    assert result["sequence_similarity"] > 0.54
+    assert result["numeric_anchors_passed"] is False
     assert result["passed"] is False
     assert result["numeric_normalization_rescued"] is False
+
+
+def test_one_day_date_change_does_not_pass_high_string_similarity() -> None:
+    _spoken, result = qa._numeric_semantic_target(
+        "Встреча 29.07.2026.",
+        _auto("встреча двадцать восьмого июля две тысячи двадцать шестого года"),
+    )
+    assert result["sequence_similarity"] > 0.80
+    assert result["numeric_anchors_passed"] is False
+    assert result["passed"] is False
 
 
 def test_foreign_audio_is_not_rescued_by_numeric_target() -> None:
@@ -55,6 +80,29 @@ def test_foreign_audio_is_not_rescued_by_numeric_target() -> None:
     )
     assert result["passed"] is False
     assert result["foreign_language"] is True
+
+
+def test_forced_russian_cannot_change_numeric_value(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    target = "У нас три книги."
+    groups = numbers.numeric_anchor_groups("У нас 3 книги.")
+    monkeypatch.setattr(
+        qa.semantic_tts_guard_v4.legacy,
+        "_transcribe",
+        lambda _clip, *, language=None: ("у нас пять книг", "ru", 0.99),
+    )
+    result = qa._forced_russian_fallback(
+        tmp_path / "clip.wav",
+        target,
+        _auto("у нас пять книг"),
+        numeric_anchor_groups=groups,
+    )
+    assert result["forced_russian"]["sequence_similarity"] > 0.54
+    assert result["forced_russian"]["numeric_anchors_passed"] is False
+    assert result["forced_russian_rescued"] is False
+    assert result["passed"] is False
 
 
 def test_text_without_numbers_keeps_original_semantic_object() -> None:
