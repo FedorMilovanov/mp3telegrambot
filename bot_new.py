@@ -126,7 +126,6 @@ try:
 except Exception as _livedub_audio_error:
     print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
 
-# Patch cache helpers before any later runtime captures or uses them.
 try:
     from services.livedub_audio_cache_recovery import install_livedub_audio_cache_recovery
 
@@ -134,9 +133,6 @@ try:
 except Exception as _audio_cache_recovery_error:
     print(f"⚠️ Self-recovery кэша двух MP3 LiveDub не установлен: {_audio_cache_recovery_error}")
 
-# Install clean-track selection and conversion postconditions first. Exact VOT
-# provenance then overrides only the heuristic track choice. Transactional layers
-# remain the final local/cached send implementations before dedupe/deep-audit.
 try:
     from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
 
@@ -152,18 +148,14 @@ except Exception as _ru_provenance_error:
     print(f"⚠️ Provenance чистой RU-дорожки LiveDub не установлен: {_ru_provenance_error}")
 
 try:
-    from services.livedub_new_delivery_atomicity import (
-        install_livedub_new_delivery_atomicity,
-    )
+    from services.livedub_new_delivery_atomicity import install_livedub_new_delivery_atomicity
 
     install_livedub_new_delivery_atomicity()
 except Exception as _new_atomicity_error:
     print(f"⚠️ Transactional отправка новых MP3 LiveDub не установлена: {_new_atomicity_error}")
 
 try:
-    from services.livedub_cached_delivery_atomicity import (
-        install_livedub_cached_delivery_atomicity,
-    )
+    from services.livedub_cached_delivery_atomicity import install_livedub_cached_delivery_atomicity
 
     install_livedub_cached_delivery_atomicity()
 except Exception as _cached_atomicity_error:
@@ -217,13 +209,6 @@ try:
     install_dub_title_policy()
 except Exception as _dub_title_error:
     print(f"⚠️ Единая политика русских названий не установлена: {_dub_title_error}")
-
-try:
-    from services.dub_progress_updates import install_dub_progress_updates
-
-    install_dub_progress_updates()
-except Exception as _dub_progress_error:
-    print(f"⚠️ Обновляемое сообщение прогресса Dub Studio не установлено: {_dub_progress_error}")
 
 try:
     from services.restart_state_runtime import install_restart_state_runtime
