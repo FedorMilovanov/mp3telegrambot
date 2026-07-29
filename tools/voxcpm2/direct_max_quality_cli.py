@@ -51,9 +51,35 @@ from tools.voxcpm2.direct_max_quality_render import (
 )
 
 
+def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
+    parts: list[str] = []
+    for item in candidates:
+        voice = item.get("voice_match") or {}
+        duration_ratio = float(item.get("duration") or 0.0) / max(0.1, speech_slot)
+        parts.append(
+            "attempt {attempt}: score={score:.2f}, duration×={duration:.3f}, "
+            "voiced={voiced:.3f}, active={active:.3f}, gap={gap:.3f}, "
+            "F0×={median:.3f}/{p90:.3f}, clip={clip:.6f}, tail_restart={tail}".format(
+                attempt=int(item.get("attempt") or 0),
+                score=float(item.get("score") or 0.0),
+                duration=duration_ratio,
+                voiced=float((item.get("pitch") or {}).get("voiced_ratio") or 0.0),
+                active=float((item.get("activity") or {}).get("active_ratio") or 0.0),
+                gap=float((item.get("activity") or {}).get("max_internal_gap") or 0.0),
+                median=float(voice.get("f0_median_ratio") or 0.0),
+                p90=float(voice.get("f0_p90_ratio") or 0.0),
+                clip=float(item.get("clipping_ratio") or 0.0),
+                tail=bool((item.get("tail_info") or {}).get("suspicious")),
+            )
+        )
+    return "; ".join(parts)
+
+
 def main() -> None:
     configure_utf8()
-    parser = argparse.ArgumentParser(description="Direct maximum-quality VoxCPM2 CPU renderer.")
+    parser = argparse.ArgumentParser(
+        description="Direct maximum-quality VoxCPM2 CPU renderer."
+    )
     parser.add_argument("--archive-root", required=True)
     parser.add_argument("--extended-reference", required=True)
     parser.add_argument("--composite-reference", required=True)
@@ -108,7 +134,14 @@ def main() -> None:
     fitted_dir = work_dir / "segments_fitted"
     checkpoints_dir = work_dir / "checkpoints"
     guarded_dir = work_dir / "references_guarded"
-    for directory in (attempts_dir, clean_dir, fitted_dir, checkpoints_dir, guarded_dir, output.parent):
+    for directory in (
+        attempts_dir,
+        clean_dir,
+        fitted_dir,
+        checkpoints_dir,
+        guarded_dir,
+        output.parent,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
     references: dict[str, Path] = {}
@@ -140,6 +173,7 @@ def main() -> None:
     log(f"Base Steps: {args.steps}; Base CFG: {args.cfg}")
     log("Reference-only cloning; 2 candidates always, 3rd on quality warning")
     log("Candidate selection uses duration + artifacts + voiced ratio + F0 match")
+    log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
 
     load_started = time.perf_counter()
@@ -164,7 +198,11 @@ def main() -> None:
             f"encoder={encode_sr}, decoder={output_sr}; "
             f"ожидалось {EXPECTED_ENCODE_SR}->{EXPECTED_OUTPUT_SR}."
         )
-    seconds_per_step = int(model.tts_model.patch_size) * int(model.tts_model.chunk_size) / encode_sr
+    seconds_per_step = (
+        int(model.tts_model.patch_size)
+        * int(model.tts_model.chunk_size)
+        / encode_sr
+    )
     log(f"AudioVAE: {encode_sr} Hz encode -> {output_sr} Hz decode")
     log(f"KV cache: {cache_length}; model step ≈ {seconds_per_step:.3f} сек.")
     log(f"Модель загружена за {time.perf_counter() - load_started:.1f} сек.")
@@ -201,12 +239,21 @@ def main() -> None:
             "base_seed": int(args.base_seed),
         }
 
-        if not args.force_segments and checkpoint_path.is_file() and fitted_path.is_file():
+        if (
+            not args.force_segments
+            and checkpoint_path.is_file()
+            and fitted_path.is_file()
+        ):
             try:
-                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                checkpoint = json.loads(
+                    checkpoint_path.read_text(encoding="utf-8")
+                )
             except (OSError, json.JSONDecodeError):
                 checkpoint = None
-            if isinstance(checkpoint, dict) and checkpoint.get("signature") == signature:
+            if (
+                isinstance(checkpoint, dict)
+                and checkpoint.get("signature") == signature
+            ):
                 saved_report = checkpoint.get("report")
                 if isinstance(saved_report, dict):
                     fitted_segments.append((segment, fitted_path))
@@ -216,30 +263,53 @@ def main() -> None:
                         for item in saved_report.get("attempts", [])
                         if isinstance(item, dict)
                     )
-                    log(f"[{position}/{len(segments)}] #{segment_id} восстановлен из fingerprinted checkpoint")
+                    log(
+                        f"[{position}/{len(segments)}] #{segment_id} "
+                        "восстановлен из fingerprinted checkpoint"
+                    )
                     continue
 
         log("")
         log(
             f"[{position}/{len(segments)}] #{segment_id} {profile.upper()} / "
-            f"{target_duration:.2f} сек. / delay={int(segment.get('start_delay_ms', 0))} ms"
+            f"{target_duration:.2f} сек. / "
+            f"delay={int(segment.get('start_delay_ms', 0))} ms"
         )
         log(f"Текст: {segment['text']}")
 
         candidates: list[dict[str, Any]] = []
         for attempt_index in range(1, 4):
             if attempt_index == 3:
-                best_so_far = min(candidates, key=lambda item: float(item["score"]))
-                if candidate_hard_ok(best_so_far, speech_slot) and float(best_so_far["score"]) < 85.0:
+                best_so_far = min(
+                    candidates,
+                    key=lambda item: float(item["score"]),
+                )
+                if (
+                    candidate_hard_ok(best_so_far, speech_slot)
+                    and float(best_so_far["score"]) < 85.0
+                ):
                     break
             min_len = 2
-            if attempt_index == 3 and all(float(item["duration"]) < speech_slot * 0.48 for item in candidates):
+            if (
+                attempt_index == 3
+                and all(
+                    float(item["duration"]) < speech_slot * 0.48
+                    for item in candidates
+                )
+            ):
                 min_len = max(4, int(math.floor(desired_steps * 0.42)))
 
-            cfg_value, step_count = _generation_profile(attempt_index, float(args.cfg), max(1, int(args.steps)))
+            cfg_value, step_count = _generation_profile(
+                attempt_index,
+                float(args.cfg),
+                max(1, int(args.steps)),
+            )
             seed = int(args.base_seed) + segment_id * 100 + attempt_index
             set_seed(seed, torch)
-            raw_path = attempts_dir / f"{segment_id:02d}_{profile}_attempt{attempt_index}.wav"
+            raw_path = (
+                attempts_dir
+                / f"{segment_id:02d}_{profile}_attempt{attempt_index}.wav"
+            )
 
             started = time.perf_counter()
             with torch.inference_mode():
@@ -280,43 +350,64 @@ def main() -> None:
                 "activity": activity_stats(wav_np, sample_rate),
                 "synthesis_seconds": elapsed,
             }
-            candidate["score"] = candidate_score(candidate, speech_slot, reference_report)
+            candidate["score"] = candidate_score(
+                candidate,
+                speech_slot,
+                reference_report,
+            )
             candidates.append(candidate)
             voice = candidate["voice_match"]
             log(
                 f"attempt {attempt_index}: {candidate['duration']:.2f} сек.; "
-                f"score={candidate['score']:.2f}; voiced={candidate['pitch']['voiced_ratio']:.3f}; "
-                f"F0×={voice['f0_median_ratio']:.3f}/{voice['f0_p90_ratio']:.3f}; "
+                f"score={candidate['score']:.2f}; "
+                f"voiced={candidate['pitch']['voiced_ratio']:.3f}; "
+                f"F0×={voice['f0_median_ratio']:.3f}/"
+                f"{voice['f0_p90_ratio']:.3f}; "
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
-                f"cfg={cfg_value:.2f}; steps={step_count}; seed={seed}; CPU={elapsed:.1f}"
+                f"cfg={cfg_value:.2f}; steps={step_count}; "
+                f"seed={seed}; CPU={elapsed:.1f}"
             )
             del wav
             gc.collect()
 
-        acceptable = [item for item in candidates if candidate_hard_ok(item, speech_slot)]
-        selected = min(acceptable or candidates, key=lambda item: float(item["score"]))
-        selected_voice = selected["voice_match"]
-        duration_ratio = float(selected["duration"]) / max(0.1, speech_slot)
-        if (
-            float(selected["pitch"]["voiced_ratio"]) < 0.10
-            or duration_ratio < 0.32
-            or float(selected_voice["f0_median_ratio"]) > 1.85
-        ):
+        acceptable = [
+            item
+            for item in candidates
+            if candidate_hard_ok(item, speech_slot)
+        ]
+        if not acceptable:
+            diagnostics = _candidate_failure_summary(candidates, speech_slot)
+            for item in candidates:
+                item.pop("samples", None)
             raise RuntimeError(
-                f"Сегмент #{segment_id}: ни один прямой кандидат не содержит устойчивую речь нужного регистра. "
-                f"best voiced={selected['pitch']['voiced_ratio']:.3f}, "
-                f"duration×={duration_ratio:.3f}, F0×={selected_voice['f0_median_ratio']:.3f}."
+                f"Сегмент #{segment_id}: после {len(candidates)} прямых попыток "
+                "нет ни одного hard-quality кандидата; best-of-bad запрещён. "
+                f"{diagnostics}"
             )
+        selected = min(acceptable, key=lambda item: float(item["score"]))
 
         clean_samples, tail_trimmed, trim_time = clean_tail_restart(
-            selected["samples"], int(selected["sample_rate"]), selected["tail_info"]
+            selected["samples"],
+            int(selected["sample_rate"]),
+            selected["tail_info"],
         )
-        sf.write(str(clean_path), clean_samples, int(selected["sample_rate"]), subtype="PCM_24")
-        fit = fit_without_slowdown(clean_path, fitted_path, target_duration, tail_guard)
+        sf.write(
+            str(clean_path),
+            clean_samples,
+            int(selected["sample_rate"]),
+            subtype="PCM_24",
+        )
+        fit = fit_without_slowdown(
+            clean_path,
+            fitted_path,
+            target_duration,
+            tail_guard,
+        )
         if float(fit["tempo"]) > MAX_TEMPO:
             raise RuntimeError(
-                f"Сегмент #{segment_id}: для естественной речи требуется слишком сильное "
-                f"ускорение atempo={fit['tempo']:.3f}; предел={MAX_TEMPO:.2f}."
+                f"Сегмент #{segment_id}: для естественной речи требуется слишком "
+                f"сильное ускорение atempo={fit['tempo']:.3f}; "
+                f"предел={MAX_TEMPO:.2f}."
             )
 
         fitted_segments.append((segment, fitted_path))
@@ -328,16 +419,31 @@ def main() -> None:
             "selected_attempt": int(selected["attempt"]),
             "selected_seed": int(selected["seed"]),
             "selected_score": round(float(selected["score"]), 6),
-            "selected_voice_match": {key: round(float(value), 6) for key, value in selected["voice_match"].items()},
+            "selected_voice_match": {
+                key: round(float(value), 6)
+                for key, value in selected["voice_match"].items()
+            },
             "tail_trimmed": bool(tail_trimmed),
-            "tail_trim_time": round(float(trim_time), 6) if trim_time is not None else None,
+            "tail_trim_time": (
+                round(float(trim_time), 6)
+                if trim_time is not None
+                else None
+            ),
             "fit": {
-                key: round(float(value), 6) if isinstance(value, (int, float)) else value
+                key: (
+                    round(float(value), 6)
+                    if isinstance(value, (int, float))
+                    else value
+                )
                 for key, value in fit.items()
             },
             "attempts": [
                 {
-                    key: round(float(value), 6) if isinstance(value, (int, float)) else value
+                    key: (
+                        round(float(value), 6)
+                        if isinstance(value, (int, float))
+                        else value
+                    )
                     for key, value in {
                         "attempt": item["attempt"],
                         "seed": item["seed"],
@@ -352,7 +458,9 @@ def main() -> None:
                         **item["pitch"],
                         **item["activity"],
                         **item["voice_match"],
-                        "tail_restart": bool(item["tail_info"].get("suspicious")),
+                        "tail_restart": bool(
+                            item["tail_info"].get("suspicious")
+                        ),
                     }.items()
                 }
                 for item in candidates
@@ -360,7 +468,11 @@ def main() -> None:
         }
         report_segments.append(segment_report)
         checkpoint_path.write_text(
-            json.dumps({"signature": signature, "report": segment_report}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {"signature": signature, "report": segment_report},
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
         for item in candidates:
@@ -373,7 +485,11 @@ def main() -> None:
     report = {
         "schema_version": "5.0-direct-max-quality",
         "policy": POLICY,
-        "strategy": "direct reference-only VoxCPM2 + guarded references + multi-profile candidates + voiced/F0/artifact selection",
+        "strategy": (
+            "direct reference-only VoxCPM2 + guarded references + "
+            "multi-profile candidates + voiced/F0/artifact selection + "
+            "no best-of-bad fallback"
+        ),
         "model_path": str(model_path),
         "model_config_sha256": config_sha,
         "encode_sample_rate": encode_sr,
@@ -386,7 +502,10 @@ def main() -> None:
         "references": reference_reports,
         "segments": report_segments,
         "total_synthesis_seconds": round(total_synthesis, 3),
-        "references_paths": {key: str(value) for key, value in references.items()},
+        "references_paths": {
+            key: str(value)
+            for key, value in references.items()
+        },
         "output": str(output),
         "video_duration": float(args.video_duration),
         "final_audio_duration": final_duration,
@@ -399,7 +518,10 @@ def main() -> None:
         "cuda_available": bool(torch.cuda.is_available()),
     }
     report_path = output.with_suffix(".json")
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     log("")
     log("=== DIRECT MAX-QUALITY RENDER COMPLETE ===")
     log(f"Timeline: {output}")
