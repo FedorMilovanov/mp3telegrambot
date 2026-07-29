@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +14,15 @@ from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
+from tools.voxcpm2 import direct_max_quality_io as direct_io
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_direct_runtime as production
 
 
 _DIRECT_MARKER_POLICY = "direct-cli-runtime-marker-v1"
 _FAILURE_REPORT = "direct_renderer_failure.json"
+_LEGACY_RESUME_POLICY = "validated-late-prefix-after-tempo-policy-v1"
+_OLD_PREFERRED_MAX_TEMPO = 1.35
 
 
 def _install_clean_runtime_adapters() -> None:
@@ -55,14 +59,143 @@ def _build_clean_direct_segments(
     )
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def _read_json_value(path: Path) -> Any:
     if not path.is_file():
-        return {}
+        return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
-        return {}
+        return None
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    payload = _read_json_value(path)
     return payload if isinstance(payload, dict) else {}
+
+
+def _same_number(left: Any, right: Any, *, tolerance: float = 1e-6) -> bool:
+    try:
+        a = float(left)
+        b = float(right)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(a) and math.isfinite(b) and abs(a - b) <= tolerance
+
+
+def _expected_expression(segment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "policy": str(segment.get("expression_policy") or ""),
+        "tier": str(segment.get("expression_tier") or ""),
+        "score": segment.get("expression_score"),
+        "style_instruction": str(segment.get("style_instruction") or ""),
+        "source_prosody": segment.get("source_prosody") or {},
+    }
+
+
+def _legacy_checkpoint_prefix(
+    root: Path,
+    request: dict[str, Any],
+) -> list[int]:
+    """Validate the old successful prefix; the renderer rechecks full signatures.
+
+    Job #15 was produced before the early direct marker existed and failed only on
+    the final segment's 1.358/1.35 tempo boundary. The old wrapper therefore left
+    valid segment checkpoints but no runtime marker. We only adopt a contiguous
+    quality-passed prefix whose user text, timing, expression and render settings
+    still match the current project. The inner renderer remains authoritative and
+    will regenerate any item whose model/reference hashes do not match exactly.
+    """
+    segments_payload = _read_json_value(root / "segments_ru_final.json")
+    if not isinstance(segments_payload, list) or len(segments_payload) < 2:
+        return []
+    segments = {
+        int(item.get("id")): item
+        for item in segments_payload
+        if isinstance(item, dict) and str(item.get("id") or "").isdigit()
+    }
+    if len(segments) != len(segments_payload):
+        return []
+
+    segment_work = root / "segment_work"
+    checkpoint_dir = segment_work / "checkpoints"
+    fitted_dir = segment_work / "segments_fitted"
+    checkpoint_paths = sorted(checkpoint_dir.glob("segment_*.json"))
+    if not checkpoint_paths:
+        return []
+
+    steps = int(request["steps"]) if request.get("steps") is not None else 16
+    cfg = float(request["cfg"]) if request.get("cfg") is not None else 1.8
+    base_seed = (
+        int(request["base_seed"])
+        if request.get("base_seed") is not None
+        else 2026072800
+    )
+    accepted_ids: list[int] = []
+
+    for path in checkpoint_paths:
+        payload = _read_json(path)
+        signature = payload.get("signature")
+        report = payload.get("report")
+        if not isinstance(signature, dict) or not isinstance(report, dict):
+            return []
+        try:
+            segment_id = int(report.get("id"))
+        except (TypeError, ValueError, OverflowError):
+            return []
+        segment = segments.get(segment_id)
+        if not isinstance(segment, dict):
+            return []
+        profile = str(segment.get("reference_profile") or "")
+        fitted = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
+        if not fitted.is_file() or fitted.stat().st_size < 4096:
+            return []
+
+        fit = report.get("fit")
+        if (
+            report.get("renderer_policy") != direct_io.POLICY
+            or report.get("selected_raw_pitch_evidence_ok") is not True
+            or not isinstance(fit, dict)
+            or not _same_number(report.get("start"), segment.get("start"))
+            or not _same_number(report.get("end"), segment.get("end"))
+            or not _same_number(report.get("tail_guard"), segment.get("tail_guard"))
+            or float(fit.get("tempo") or 999.0) > _OLD_PREFERRED_MAX_TEMPO + 1e-6
+        ):
+            return []
+
+        expected_core = {
+            "policy": direct_io.POLICY,
+            "text": str(segment.get("text") or ""),
+            "start": float(segment["start"]),
+            "end": float(segment["end"]),
+            "tail_guard": float(segment["tail_guard"]),
+            "start_delay_ms": int(segment.get("start_delay_ms", 0)),
+            "reference_profile": profile,
+            "expression": _expected_expression(segment),
+            "steps": steps,
+            "cfg": cfg,
+            "base_seed": base_seed,
+        }
+        for key, expected in expected_core.items():
+            actual = signature.get(key)
+            if isinstance(expected, float):
+                if not _same_number(actual, expected):
+                    return []
+            elif actual != expected:
+                return []
+        if not str(signature.get("model_config_sha256") or ""):
+            return []
+        if not str(signature.get("reference_sha256") or ""):
+            return []
+        accepted_ids.append(segment_id)
+
+    accepted_ids = sorted(set(accepted_ids))
+    if not accepted_ids:
+        return []
+    if accepted_ids != list(range(1, accepted_ids[-1] + 1)):
+        return []
+    if accepted_ids[-1] >= len(segments_payload):
+        return []
+    return accepted_ids
 
 
 def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
@@ -70,11 +203,6 @@ def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
     segment_work = root / "segment_work"
     checkpoints = segment_work / "checkpoints"
     if not any(checkpoints.glob("segment_*.json")):
-        return
-
-    direct_marker_path = segment_work / "direct_cli_runtime.marker.json"
-    direct_marker = _read_json(direct_marker_path)
-    if not direct_marker:
         return
 
     repo = Path(__file__).resolve().parents[2]
@@ -94,8 +222,18 @@ def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
         "cache_length": 4096,
         "python_executable": str(cpu_python.resolve()),
     }
+
+    direct_marker_path = segment_work / "direct_cli_runtime.marker.json"
+    direct_marker = _read_json(direct_marker_path)
+    migration_ids: list[int] = []
     if direct_marker != expected_direct:
-        return
+        migration_ids = _legacy_checkpoint_prefix(root, request)
+        if not migration_ids:
+            return
+        direct_marker_path.write_text(
+            json.dumps(expected_direct, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
 
     marker = {
         "schema_version": 3,
@@ -107,12 +245,23 @@ def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
         "release_complete": False,
         "checkpoint_resume_provisional": True,
     }
+    if migration_ids:
+        marker.update(
+            checkpoint_resume_migration=_LEGACY_RESUME_POLICY,
+            adopted_checkpoint_ids=migration_ids,
+        )
     segment_work.mkdir(parents=True, exist_ok=True)
     (segment_work / "clean_production.marker.json").write_text(
         json.dumps(marker, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
-    production.log("совместимые fingerprinted checkpoints сохранены для продолжения")
+    if migration_ids:
+        production.log(
+            "восстановлен проверенный поздний checkpoint-prefix: "
+            f"1–{migration_ids[-1]}; renderer перепроверит полные signatures"
+        )
+    else:
+        production.log("совместимые fingerprinted checkpoints сохранены для продолжения")
 
 
 def _renderer_failure_detail(root: Path) -> str:
