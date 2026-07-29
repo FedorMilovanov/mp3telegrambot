@@ -19,6 +19,8 @@ on:
       - "tools/voxcpm2/final_media_qa.py"
       - "tools/voxcpm2/final_media_qa/**"
       - "tools/voxcpm2/generic_clean_audio_repair_runtime/**"
+      - "tools/voxcpm2/clean_runtime_contract/**"
+      - "tools/voxcpm2/clean_production_core/**"
       - "tools/voxcpm2/legacy_segment_migration_v45.py"
       - "tools/voxcpm2/continuous_reference_policy.py"
       - "tools/voxcpm2/controlled_reference_gate.py"
@@ -40,6 +42,8 @@ on:
       - "tests/test_clean_reference_transport.py"
       - "tests/test_clean_runtime_contract.py"
       - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_runtime_facades.py"
+      - "tests/test_clean_segment_contract.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
       - "tests/test_clean_request_settings.py"
@@ -121,11 +125,13 @@ jobs:
             tools/voxcpm2/professional_audio_v45.py \
             tools/voxcpm2/professional_audio_qa_v45.py \
             tools/voxcpm2/clean_runtime_contract.py \
+            tools/voxcpm2/clean_runtime_contract/__init__.py \
             tools/voxcpm2/clean_source_download.py \
             tools/voxcpm2/clean_request_settings.py \
             tools/voxcpm2/clean_segment_normalizer.py \
             tools/voxcpm2/legacy_segment_migration_v45.py \
             tools/voxcpm2/clean_production_core.py \
+            tools/voxcpm2/clean_production_core/__init__.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             tools/voxcpm2/expressive_continuity.py \
@@ -149,6 +155,8 @@ jobs:
             tests/test_clean_reference_transport.py \
             tests/test_clean_runtime_contract.py \
             tests/test_clean_runtime_setting_types.py \
+            tests/test_clean_runtime_facades.py \
+            tests/test_clean_segment_contract.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
             tests/test_clean_request_settings.py \
