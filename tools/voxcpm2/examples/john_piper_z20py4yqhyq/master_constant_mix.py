@@ -120,7 +120,7 @@ def two_pass_master(
         f"offset={measured['target_offset']}:"
         "linear=true:print_format=summary,"
         "aresample=48000,"
-        f"alimiter=limit={limiter_linear:.8f}:level=false"
+        f"alimiter=limit={limiter_linear:.8f}:level=false:latency=true"
     )
     run(
         [
@@ -148,6 +148,7 @@ def two_pass_master(
         "target_tp": target_tp,
         "limiter_linear": limiter_linear,
         "limiter_auto_level": False,
+        "limiter_latency_compensated": True,
         "first_pass": measured,
         "filter": second_filter,
     }
@@ -251,7 +252,7 @@ def main() -> None:
         "[original][russian]"
         "amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
         "highpass=f=35,"
-        "alimiter=limit=0.985:level=false[mix]"
+        "alimiter=limit=0.985:level=false:latency=true[mix]"
     )
     print(f"Создаю постоянный микс: оригинал = {args.original_level * 100:.1f}%...")
     run(
