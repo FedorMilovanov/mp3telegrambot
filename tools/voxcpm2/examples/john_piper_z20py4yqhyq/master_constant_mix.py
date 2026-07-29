@@ -246,11 +246,18 @@ def main() -> None:
     mastered_russian = work_dir / "russian_only_mastered.wav"
     original_level = f"{args.original_level:.6f}"
 
+    # The Russian timeline is authored to the exact video duration. `duration=first`
+    # used to stop the mix when the source audio stream ended, which could cut the
+    # final Russian phrase and leave only silence after the later `apad`. Reset both
+    # input PTS, keep the longest stream, then pad/trim to the video duration.
     mix_filter = (
-        f"[0:a]volume={original_level}[original];"
-        "[1:a]volume=1.0[russian];"
+        f"[0:a]asetpts=PTS-STARTPTS,volume={original_level}[original];"
+        "[1:a]asetpts=PTS-STARTPTS,volume=1.0[russian];"
         "[original][russian]"
-        "amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+        "amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
+        f"apad=pad_dur={source_duration:.6f},"
+        f"atrim=duration={source_duration:.6f},"
+        "asetpts=N/SR/TB,"
         "highpass=f=35,"
         "alimiter=limit=0.985:level=false:latency=true[mix]"
     )
@@ -324,10 +331,12 @@ def main() -> None:
     )
 
     report = {
-        "schema_version": "direct-master-with-final-aac-qa-v2",
+        "schema_version": "direct-master-with-final-aac-qa-v3",
         "original_level": float(args.original_level),
         "sidechain": False,
         "source_duration": source_duration,
+        "mix_duration_policy": "longest-then-exact-video-trim",
+        "input_pts_reset": True,
         "target": {
             "integrated_lufs": float(args.target_i),
             "lra": float(args.target_lra),
