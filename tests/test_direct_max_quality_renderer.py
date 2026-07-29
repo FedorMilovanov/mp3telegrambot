@@ -187,6 +187,7 @@ def test_bad_candidate_diagnostics_are_actionable() -> None:
     assert "duration×=" in summary
     assert "voiced=0.070" in summary
     assert "F0×=1.950/1.590" in summary
+    assert "srcProsody=n/a" in summary
 
 
 def test_generation_has_headroom_for_the_final_word() -> None:
@@ -233,20 +234,29 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     render = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py").read_text(encoding="utf-8")
     cli = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(encoding="utf-8")
     analysis = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_analysis.py").read_text(encoding="utf-8")
+    prosody = (ROOT / "tools" / "voxcpm2" / "direct_source_prosody.py").read_text(encoding="utf-8")
     timbre = (ROOT / "tools" / "voxcpm2" / "direct_timbre_analysis.py").read_text(encoding="utf-8")
     io = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_io.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
     ast.parse(cli)
     ast.parse(analysis)
-    combined = render + cli + analysis + timbre + io + stable
+    ast.parse(prosody)
+    combined = render + cli + analysis + prosody + timbre + io + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
     assert "alimiter=limit=0.985:level=false:latency=true" in render
     assert '"reference_sha256"' in cli
     assert '"model_config_sha256"' in cli
+    assert '"expression": expression_signature' in cli
+    assert "source_prosody_penalty(candidate, segment)" in cli
+    assert '"selected_base_score"' in cli
+    assert '"selected_source_prosody_match"' in cli
+    assert '"schema_version": "5.1-direct-source-prosody"' in cli
+    assert 'POLICY = "source-prosody-candidate-ranking-v1"' in prosody
     assert "candidate_hard_ok" in cli
     assert "candidate_hard_ok(best_so_far, speech_slot)" in cli
     assert "F0×=" in cli
+    assert "srcF0×=" in cli
     assert "spectral_similarity" in analysis
     assert "_finite_voice_metric" in analysis
     assert "AudioVAE:" in cli
