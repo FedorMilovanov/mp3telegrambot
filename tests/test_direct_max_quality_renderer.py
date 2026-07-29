@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from tools.voxcpm2.direct_max_quality_analysis import (
     candidate_hard_ok,
     candidate_score,
+    pitch_profile,
 )
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_ENCODE_SR,
@@ -13,6 +16,7 @@ from tools.voxcpm2.direct_max_quality_io import (
     POLICY,
     REFERENCE_TAIL_SILENCE,
 )
+from tools.voxcpm2.direct_max_quality_render import _generate
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +50,18 @@ def test_renderer_audio_contract_is_native_voxcpm2() -> None:
     assert MAX_TEMPO <= 1.35
 
 
+def test_48khz_pitch_diagnostic_keeps_male_f0() -> None:
+    sample_rate = 48_000
+    seconds = 1.2
+    frequency = 105.0
+    time = np.arange(int(sample_rate * seconds), dtype=np.float32) / sample_rate
+    samples = (0.20 * np.sin(2.0 * np.pi * frequency * time)).astype(np.float32)
+    profile = pitch_profile(samples, sample_rate)
+    assert profile["voiced_ratio"] > 0.50
+    assert 98.0 <= profile["f0_median"] <= 112.0
+    assert 98.0 <= profile["f0_p90"] <= 112.0
+
+
 def test_nonsense_high_register_candidate_cannot_win() -> None:
     reference = {"f0_median": 105.0, "f0_p90": 145.0}
     good = _candidate(
@@ -71,11 +87,52 @@ def test_nonsense_high_register_candidate_cannot_win() -> None:
     assert bad_score > good_score + 200
 
 
+def test_generation_has_headroom_for_the_final_word() -> None:
+    class FakeModel:
+        def __init__(self) -> None:
+            self.kwargs: dict = {}
+
+        def generate(
+            self,
+            *,
+            text,
+            reference_wav_path,
+            cfg_value,
+            inference_timesteps,
+            min_len,
+            max_len,
+            normalize,
+            denoise,
+            retry_badcase,
+            retry_badcase_max_times,
+            retry_badcase_ratio_threshold,
+            seed,
+        ):
+            self.kwargs = locals()
+            return np.zeros(16, dtype=np.float32)
+
+    model = FakeModel()
+    _generate(
+        model,
+        text="Он обязательно закончит последнее слово.",
+        reference=Path("reference.wav"),
+        cfg=1.8,
+        steps=16,
+        min_len=2,
+        max_len=40,
+        seed=7,
+    )
+    assert model.kwargs["max_len"] == 58
+    assert model.kwargs["retry_badcase"] is True
+    assert model.kwargs["retry_badcase_max_times"] == 2
+
+
 def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     render = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py").read_text(encoding="utf-8")
     cli = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(encoding="utf-8")
+    analysis = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_analysis.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
-    combined = render + cli + stable
+    combined = render + cli + analysis + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
     assert '"reference_sha256"' in cli
@@ -83,6 +140,7 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert "candidate_hard_ok" in cli
     assert "F0×=" in cli
     assert "AudioVAE:" in cli
+    assert "reshape(-1, factor).mean(axis=1)" in analysis
     assert "runpy.run_path" not in combined
     assert "semantic_tts_guard" not in combined
     assert "class _SubprocessProxy" not in combined
