@@ -8,6 +8,7 @@ from typing import Any
 
 from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
@@ -17,12 +18,16 @@ from tools.voxcpm2 import generic_direct_runtime as production
 def _install_clean_runtime_adapters() -> None:
     """Keep hardened download/title routing, but never install a TTS guard."""
     hardened = production.hardened
-    hardened.pipeline.download_source = hardened.download_source
+    hardened.download_source = clean_source_download.download_source
+    hardened.pipeline.download_source = clean_source_download.download_source
     hardened.pipeline.download_captions = hardened.download_captions
     hardened.pipeline.gemini_json = hardened.gemini_json
     install_voxcpm_title_policy(hardened)
     hardened._install_project_title_standard()
-    production.log("clean adapters: yt-dlp + canonical title route; TTS guard disabled")
+    production.log(
+        "clean adapters: verified yt-dlp source + canonical title route; "
+        "TTS guard disabled"
+    )
 
 
 def _run_clean_voxcpm_and_master(
