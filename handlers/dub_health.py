@@ -16,19 +16,11 @@ from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes, filters
 
 from core.database import ADMIN_IDS
-from services.dub_studio import (
-    DubStore,
-    load_recipe,
-    studio_root,
-    worker_is_fresh,
-)
+from services.dub_studio import DubStore, load_recipe, studio_root, worker_is_fresh
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _WORKER_RUNTIME = "dub-worker-quality-v4.3"
-_CLEAN_POLICY = "clean-direct-production-v1"
-_EXPRESSION_POLICY = "source-guided-expression-v1"
-_TRANSLATION_POLICY = "expressive-spoken-translation-v1"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -41,14 +33,12 @@ def _worker_is_current(worker: dict[str, Any] | None) -> bool:
 
 
 def _worker_snapshot_with_repair() -> dict[str, Any] | None:
-    """Replace an idle legacy worker and return the newly registered snapshot."""
     store = DubStore()
     worker = store.latest_worker()
     if _worker_is_current(worker):
         return worker
     if str((worker or {}).get("status") or "") == "busy":
         return worker
-
     try:
         from services.dub_studio_runtime import ensure_worker_running
 
@@ -57,9 +47,6 @@ def _worker_snapshot_with_repair() -> dict[str, Any] | None:
         requested = False
     if not requested:
         return worker
-
-    # The detached Windows worker normally registers immediately. Poll only
-    # during this explicit admin check so the returned report reflects repair.
     for _ in range(30):
         worker = store.latest_worker()
         if _worker_is_current(worker):
@@ -72,9 +59,131 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
+def _quality_contract(repo: Path) -> tuple[bool, str]:
+    paths = {
+        "core": repo / "tools" / "voxcpm2" / "clean_production_core.py",
+        "normalizer": repo / "tools" / "voxcpm2" / "clean_segment_normalizer.py",
+        "expression": repo / "tools" / "voxcpm2" / "expressive_continuity.py",
+        "translation": repo / "tools" / "voxcpm2" / "expressive_translation.py",
+        "reference": repo / "tools" / "voxcpm2" / "professional_audio_v45.py",
+        "qa": repo / "tools" / "voxcpm2" / "professional_audio_qa_v45.py",
+        "direct_io": repo / "tools" / "voxcpm2" / "direct_max_quality_io.py",
+        "direct_analysis": repo / "tools" / "voxcpm2" / "direct_max_quality_analysis.py",
+        "direct_render": repo / "tools" / "voxcpm2" / "direct_max_quality_render.py",
+        "direct_cli": repo / "tools" / "voxcpm2" / "direct_max_quality_cli.py",
+        "stable_cli": (
+            repo
+            / "tools"
+            / "voxcpm2"
+            / "examples"
+            / "john_piper_z20py4yqhyq"
+            / "voxcpm2_cpu_shorts_production.py"
+        ),
+        "master": (
+            repo
+            / "tools"
+            / "voxcpm2"
+            / "examples"
+            / "john_piper_z20py4yqhyq"
+            / "master_constant_mix.py"
+        ),
+        "gemini": repo / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py",
+        "direct": repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py",
+        "custom": repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py",
+        "repair": repo / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py",
+        "progress": repo / "services" / "dub_progress_updates.py",
+        "title": repo / "services" / "dub_title_policy.py",
+    }
+    text = {name: _read(path) for name, path in paths.items()}
+    if not all(text.values()):
+        missing = [name for name, value in text.items() if not value]
+        return False, "не найдены: " + ", ".join(missing)
+
+    combined_renderer = "\n".join(
+        text[name]
+        for name in ("direct_io", "direct_analysis", "direct_render", "direct_cli", "stable_cli")
+    )
+    checks = {
+        "direct-policy": 'POLICY = "voxcpm2-direct-max-quality-v2"' in text["direct_io"],
+        "native-16to48": (
+            "EXPECTED_ENCODE_SR = 16000" in text["direct_io"]
+            and "EXPECTED_OUTPUT_SR = 48000" in text["direct_io"]
+            and "AudioVAE:" in text["direct_cli"]
+        ),
+        "reference-fingerprint": '"reference_sha256"' in text["direct_cli"],
+        "model-fingerprint": '"model_config_sha256"' in text["direct_cli"],
+        "retry-badcase": (
+            '"retry_badcase": True' in text["direct_render"]
+            and '"retry_badcase_max_times": 2' in text["direct_render"]
+        ),
+        "candidate-F0": (
+            "candidate_hard_ok" in text["direct_cli"]
+            and "F0×=" in text["direct_cli"]
+            and "voiced_ratio" in text["direct_analysis"]
+        ),
+        "max-tempo": "MAX_TEMPO = 1.35" in text["direct_io"],
+        "no-reference-padding": "REFERENCE_TAIL_SILENCE = 0.0" in text["direct_io"],
+        "no-reference-denoise": (
+            '"denoise": False' in text["reference"]
+            and "afftdn" not in text["reference"]
+        ),
+        "adaptive-QA": (
+            'POLICY = "clean-expression-aware-qa-v2"' in text["qa"]
+            and "def _voice_limits(" in text["qa"]
+            and "continuity_v45" in text["qa"]
+        ),
+        "same-cli": (
+            "from tools.voxcpm2.direct_max_quality_cli import main" in text["stable_cli"]
+            and "voxcpm2_cpu_shorts_production.py" in text["core"]
+            and "subprocess.run(command" in text["core"]
+        ),
+        "no-wrapper": (
+            "runpy.run_path" not in combined_renderer
+            and "class _SubprocessProxy" not in combined_renderer
+            and "semantic_tts_guard" not in combined_renderer
+            and '"wrapper_count": 0' in text["core"]
+        ),
+        "short-windows": (
+            "MAX_SECONDS = 5.4" in text["core"]
+            and "Russian tokens preserved" in text["normalizer"]
+        ),
+        "expression": (
+            'POLICY = "source-guided-expression-v1"' in text["expression"]
+            and "def _smooth(" in text["expression"]
+            and "build_controlled_expressive_reference" in text["expression"]
+        ),
+        "translation": (
+            'POLICY = "expressive-spoken-translation-v1"' in text["translation"]
+            and "намеренные повторы" in text["translation"]
+            and "риторические вопросы" in text["translation"]
+            and "production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]
+        ),
+        "clean-entrypoints": (
+            "TTS guard disabled" in text["gemini"]
+            and "TTS guard disabled" in text["direct"]
+            and "TTS guard disabled" in text["custom"]
+            and "force_fresh=repair_all" in text["repair"]
+            and 'gemini_called": False' in text["repair"]
+        ),
+        "master": (
+            "linear=true" in text["master"]
+            and "pcm_s24le" in text["master"]
+            and '"wrapper_count": 0' in text["core"]
+            and "MASTER_I = -16.0" in text["core"]
+            and "MASTER_TP = -1.5" in text["core"]
+        ),
+        "editable-progress": (
+            "edit_message_text" in text["progress"]
+            and "dub_progress_message_v1" in text["progress"]
+        ),
+        "single-title-policy": "install_dub_title_policy" in text["title"],
+    }
+    failed = [name for name, ok in checks.items() if not ok]
+    return not failed, ("все контракты активны" if not failed else "не прошли: " + ", ".join(failed))
+
+
 def collect_dub_health() -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
-
     try:
         recipe = load_recipe("generic_short_v1")
         gemini, _ = build_command(recipe.recipe_id, "render_gemini")
@@ -108,108 +217,25 @@ def collect_dub_health() -> list[dict[str, Any]]:
             )
         )
     except Exception as exc:
-        checks.append(_check("Recipe-actions", False, str(exc)))
+        checks.extend(
+            [
+                _check("Recipe: Gemini MAX", False, str(exc)),
+                _check("Recipe: готовый SRT", False, str(exc)),
+                _check("Recipe: чистый аудиоремонт", False, str(exc)),
+            ]
+        )
 
     repo = Path(__file__).resolve().parents[1]
-    clean_core_path = repo / "tools" / "voxcpm2" / "clean_production_core.py"
-    clean_normalizer_path = repo / "tools" / "voxcpm2" / "clean_segment_normalizer.py"
-    expression_path = repo / "tools" / "voxcpm2" / "expressive_continuity.py"
-    translation_path = repo / "tools" / "voxcpm2" / "expressive_translation.py"
-    clean_gemini_path = repo / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
-    clean_direct_path = repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py"
-    clean_custom_path = repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py"
-    clean_repair_path = repo / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py"
-    reference_policy_path = repo / "tools" / "voxcpm2" / "professional_audio_v45.py"
-    qa_path = repo / "tools" / "voxcpm2" / "professional_audio_qa_v45.py"
-    renderer_path = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "voxcpm2_cpu_shorts_production.py"
-    )
-    master_path = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "master_constant_mix.py"
-    )
-    contract_files = (
-        clean_core_path,
-        clean_normalizer_path,
-        expression_path,
-        translation_path,
-        clean_gemini_path,
-        clean_direct_path,
-        clean_custom_path,
-        clean_repair_path,
-        reference_policy_path,
-        qa_path,
-        renderer_path,
-        master_path,
-    )
-    contract_text = {path: _read(path) for path in contract_files}
-    core = contract_text[clean_core_path]
-    normalizer = contract_text[clean_normalizer_path]
-    expression = contract_text[expression_path]
-    translation = contract_text[translation_path]
-    gemini_entry = contract_text[clean_gemini_path]
-    direct_entry = contract_text[clean_direct_path]
-    custom_entry = contract_text[clean_custom_path]
-    repair_entry = contract_text[clean_repair_path]
-    reference_policy = contract_text[reference_policy_path]
-    qa_contract = contract_text[qa_path]
-
-    quality_ok = bool(
-        all(contract_text.values())
-        and f'POLICY = "{_CLEAN_POLICY}"' in core
-        and "voxcpm2_cpu_shorts_production.py" in core
-        and "master_constant_mix.py" in core
-        and "subprocess.run(command" in core
-        and "professional_audio_qa_v45.verify_timeline_v45" in core
-        and '"wrapper_count": 0' in core
-        and "semantic_tts_guard_v4.install(" not in core
-        and "professional_audio_v45.install(" not in core
-        and "VOXCPM_ORIGINAL_RENDERER" in core
-        and "env.pop(key, None)" in core
-        and f'POLICY = "{_EXPRESSION_POLICY}"' in expression
-        and "def _smooth(" in expression
-        and "build_controlled_expressive_reference" in expression
-        and 'return "composite" if tier in {"emphatic", "passionate"}' in expression
-        and "shouting rejected" in expression
-        and f'POLICY = "{_TRANSLATION_POLICY}"' in translation
-        and "намеренные повторы" in translation
-        and "риторические вопросы" in translation
-        and "Не превращай фразу в конспект" in translation
-        and "production.translate_groups_max = expressive_translation.translate_groups" in gemini_entry
-        and "build_reference_v45" in reference_policy
-        and "reference calm windows" in reference_policy
-        and "voice_match_v45" in qa_contract
-        and "continuity_v45" in qa_contract
-        and "TTS guard disabled" in gemini_entry
-        and "TTS guard disabled" in direct_entry
-        and "TTS guard disabled" in custom_entry
-        and "install_runtime_adapters = _install_clean_runtime_adapters" in gemini_entry
-        and "install_runtime_adapters = _install_clean_runtime_adapters" in direct_entry
-        and "install_runtime_adapters = _install_clean_runtime_adapters" in custom_entry
-        and "force_fresh=repair_all" in repair_entry
-        and 'translation_reused": True' in repair_entry
-        and 'gemini_called": False' in repair_entry
-        and "Russian tokens preserved" in normalizer
-        and "semantic_tts_guard_v47" not in repair_entry
-        and "semantic_tts_guard_v46" not in repair_entry
-    )
+    quality_ok, quality_detail = _quality_contract(repo)
     checks.append(
         _check(
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             (
-                "короткие окна <=5.4с; source-guided плавная эмоциональная дуга; "
-                "спокойный + controlled-expressive реальные референсы; rhetoric-preserving "
-                "Gemini MAX; прямой renderer/master; wrapper_count=0; -16 LUFS/-1.5 dBTP"
+                quality_detail
+                + "; direct 16→48k; fingerprinted refs/model; official retry_badcase; "
+                "F0/voiced candidate gate; expression-aware QA; no afftdn; editable progress; "
+                "-16 LUFS/-1.5 dBTP"
             ),
         )
     )
@@ -228,37 +254,21 @@ def collect_dub_health() -> list[dict[str, Any]]:
         _check(
             "SoundFile WAV I/O",
             soundfile_available,
-            "soundfile есть" if soundfile_available else "soundfile не найден; установите requirements.txt",
+            "soundfile есть" if soundfile_available else "soundfile не найден",
         )
     )
-
     for binary in ("ffmpeg", "ffprobe"):
         found = shutil.which(binary)
         checks.append(_check(binary, bool(found), found or "не найден в PATH"))
 
-    cpu_venv = Path(
-        os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
-    )
+    cpu_venv = Path(os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
     cpu_python = cpu_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    checks.append(
-        _check(
-            "VoxCPM2 CPU Python",
-            cpu_python.is_file(),
-            str(cpu_python),
-        )
-    )
+    checks.append(_check("VoxCPM2 CPU Python", cpu_python.is_file(), str(cpu_python)))
 
-    archive = Path(
-        os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    )
+    archive = Path(os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060"))
     checks.append(_check("VoxCPM2 archive", archive.is_dir(), str(archive)))
 
-    gemini_names = (
-        "GEMINI_API_KEY",
-        "GEMINI_API_KEY_2",
-        "GEMINI_API_KEY_3",
-        "GEMINI_API_KEY_4",
-    )
+    gemini_names = ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4")
     available_keys = [name for name in gemini_names if os.getenv(name, "").strip()]
     checks.append(
         _check(
