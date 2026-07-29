@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_direct_runtime as production
@@ -17,8 +18,9 @@ def _install_clean_runtime_adapters() -> None:
     hardened.pipeline.download_source = hardened.download_source
     hardened.pipeline.download_captions = hardened.download_captions
     hardened.pipeline.gemini_json = hardened.gemini_json
+    install_voxcpm_title_policy(hardened)
     hardened._install_project_title_standard()
-    production.log("clean adapters: yt-dlp + title route; TTS guard disabled")
+    production.log("clean adapters: yt-dlp + canonical title route; TTS guard disabled")
 
 
 def _run_clean_voxcpm_and_master(
@@ -67,6 +69,7 @@ def _run_clean_voxcpm_and_master(
         composite_reference=composite,
         final_mixed=final_mixed,
         final_russian=final_russian,
+        force_fresh=True,
     )
 
 
