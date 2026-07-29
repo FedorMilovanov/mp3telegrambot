@@ -63,6 +63,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     paths = {
         "core": voxcpm / "clean_production_core.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
+        "source_download": voxcpm / "clean_source_download.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "expression": voxcpm / "expressive_continuity.py",
         "continuous_reference": voxcpm / "continuous_reference_policy.py",
@@ -107,6 +108,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         )
     )
     route_names = ("gemini", "direct", "custom", "repair")
+    source_route_names = ("gemini", "direct", "custom")
     contracts = {
         "runtime-contract-v2": (
             'POLICY = "clean-runtime-contract-v2"' in text["runtime_contract"]
@@ -118,9 +120,27 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and 'request.get("base_seed") or' not in text["runtime_contract"]
             and '"tools/voxcpm2/direct_source_prosody.py"'
             in text["runtime_contract"]
+            and '"tools/voxcpm2/clean_source_download.py"'
+            in text["runtime_contract"]
             and '"release_complete": False' in text["core"]
             and "release_complete=True" in text["core"]
             and "direct_cli_runtime.marker.json" in text["stable_cli"]
+        ),
+        "verified-source-cache": (
+            'POLICY = "clean-source-download-manifest-v1"' in text["source_download"]
+            and "def _url_video_id(" in text["source_download"]
+            and "def _sampled_sha256(" in text["source_download"]
+            and 'source.with_suffix(source.suffix + ".download.json")'
+            in text["source_download"]
+            and "YouTube URL и yt-dlp metadata указывают на разные ролики"
+            in text["source_download"]
+            and all(
+                "hardened.download_source = clean_source_download.download_source"
+                in text[name]
+                and "hardened.pipeline.download_source = clean_source_download.download_source"
+                in text[name]
+                for name in source_route_names
+            )
         ),
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
@@ -363,7 +383,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             quality_detail
-            + "; runtime v2 sampled model/package fingerprints; direct v3 16→48k; "
+            + "; verified YouTube ID + sampled source cache; "
+            "runtime v2 complete clean-path fingerprints; direct v3 16→48k; "
             "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
             "fail-closed raw pitch + voice/timbre gates + source-prosody ranking; "
             "calm+expressive identity; Gemini passes 1/3–3/3 with bounded key failover; "
