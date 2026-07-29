@@ -104,7 +104,12 @@ def _forced_russian_eligibility(
         return False, "confident_foreign_language", script
     if int(script["letters"]) > 0 and ratio < 0.55:
         return False, "foreign_script", script
-    if int(script["letters"]) == 0 and language not in _RUSSIAN_FAMILY and probability >= 0.35:
+    if (
+        int(script["letters"]) == 0
+        and language
+        and language not in _RUSSIAN_FAMILY
+        and probability >= 0.35
+    ):
         return False, "empty_auto_foreign_language", script
     if language and language not in _RUSSIAN_FAMILY and probability >= 0.55 and ratio < 0.80:
         return False, "probable_foreign_language", script
