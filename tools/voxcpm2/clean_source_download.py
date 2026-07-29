@@ -29,11 +29,12 @@ def _url_video_id(url: str) -> str:
         parsed = urlparse(str(url))
     except ValueError:
         return ""
+    if parsed.scheme.casefold() not in {"http", "https"}:
+        return ""
     host = str(parsed.hostname or "").casefold()
-    if host.startswith("www."):
-        host = host[4:]
-    if host.startswith("m."):
-        host = host[2:]
+    for prefix in ("www.", "m.", "music."):
+        if host.startswith(prefix):
+            host = host[len(prefix) :]
     candidate = ""
     parts = [part for part in parsed.path.split("/") if part]
     if host == "youtu.be" and parts:
@@ -46,6 +47,9 @@ def _url_video_id(url: str) -> str:
             "live",
             "embed",
         }:
+            candidate = parts[1]
+    elif host == "youtube-nocookie.com":
+        if len(parts) >= 2 and parts[0].casefold() == "embed":
             candidate = parts[1]
     candidate = candidate.strip()
     return candidate if _VIDEO_ID_RE.fullmatch(candidate) else ""
@@ -81,6 +85,12 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
 
 
 def _metadata(url: str) -> dict[str, Any]:
+    expected_id = _url_video_id(url)
+    if not expected_id:
+        raise RuntimeError(
+            "Источник должен быть канонической ссылкой на один YouTube-ролик "
+            "(watch, youtu.be, shorts, live или embed); playlist/channel/другой host запрещён."
+        )
     process = pipeline.run_checked(
         [
             *hardened._ytdlp_base(),
@@ -99,10 +109,9 @@ def _metadata(url: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("yt-dlp metadata не является JSON-объектом.")
     video_id = str(payload.get("id") or "").strip()
-    if not video_id:
-        raise RuntimeError("yt-dlp metadata не содержит video ID.")
-    expected_id = _url_video_id(url)
-    if expected_id and video_id != expected_id:
+    if not _VIDEO_ID_RE.fullmatch(video_id):
+        raise RuntimeError("yt-dlp metadata не содержит корректный YouTube video ID.")
+    if video_id != expected_id:
         raise RuntimeError(
             "YouTube URL и yt-dlp metadata указывают на разные ролики: "
             f"url={expected_id}, metadata={video_id}."
