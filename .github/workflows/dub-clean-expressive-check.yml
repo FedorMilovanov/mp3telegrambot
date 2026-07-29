@@ -6,12 +6,14 @@ on:
     paths:
       - "bot_new.py"
       - "services/dub_title_policy.py"
+      - "services/dub_progress_updates.py"
       - "tools/voxcpm2/expressive_*.py"
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_health.py"
       - "tests/test_dub_title_policy.py"
+      - "tests/test_dub_progress_updates.py"
       - "tests/test_expressive_dub_policy.py"
       - "tests/test_clean_dub_production.py"
       - "tests/test_clean_dub_health_contract.py"
@@ -38,6 +40,7 @@ jobs:
           python -m py_compile \
             bot_new.py \
             services/dub_title_policy.py \
+            services/dub_progress_updates.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
             tools/voxcpm2/generic_clean_gemini_runtime.py \
@@ -49,6 +52,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_dub_title_policy.py \
+            tests/test_dub_progress_updates.py \
             tests/test_expressive_dub_policy.py \
             tests/test_clean_dub_production.py \
             tests/test_clean_dub_health_contract.py
