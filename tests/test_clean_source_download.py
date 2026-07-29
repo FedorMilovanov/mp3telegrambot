@@ -100,6 +100,36 @@ def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> 
     assert source.read_bytes()[:8] == b"C" * 8
 
 
+def test_project_request_video_id_must_match_download(monkeypatch, tmp_path) -> None:
+    root = tmp_path / "project"
+    source = root / "source" / "source.mp4"
+    source.parent.mkdir(parents=True)
+    (root / "request.json").write_text(
+        json.dumps({"video_id": "ProjectId11"}),
+        encoding="utf-8",
+    )
+    downloads = 0
+
+    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
+
+    def fake_run(command, **_kwargs):
+        nonlocal downloads
+        if "--dump-single-json" in command:
+            return SimpleNamespace(
+                stdout=json.dumps({"id": "SourceId999"}),
+                returncode=0,
+            )
+        downloads += 1
+        raise AssertionError("video download must not begin after request mismatch")
+
+    monkeypatch.setattr(source_cache.pipeline, "run_checked", fake_run)
+    with pytest.raises(RuntimeError, match="Project request.*разные video ID"):
+        source_cache.download_source("https://youtu.be/SourceId999", source)
+    assert downloads == 0
+    assert not source.exists()
+
+
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
