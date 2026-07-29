@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,27 @@ MASTER = (
 )
 
 
+def _media(*, audio_duration: float = 59.04, container_duration: float = 59.04):
+    return {
+        "audio_codec_name": "aac",
+        "audio_sample_rate": 48_000,
+        "audio_channels": 2,
+        "audio_bit_rate": 320_000,
+        "audio_duration": audio_duration,
+        "video_codec_name": "h264",
+        "container_duration": container_duration,
+    }
+
+
+def _loudness(*, true_peak: float = -1.2, integrated: float = -15.8):
+    return {
+        "integrated_lufs": integrated,
+        "true_peak_dbtp": true_peak,
+        "lra_lu": 4.0,
+        "threshold_lufs": -26.0,
+    }
+
+
 def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     source = MASTER.read_text(encoding="utf-8")
     ast.parse(source)
@@ -30,31 +52,18 @@ def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     assert '"aac"' in source
     assert '"320k"' in source
     assert '"48000"' in source
+    assert "10.0 ** (float(target_tp) / 20.0)" in source
+    assert "alimiter=limit={limiter_linear:.8f}" in source
 
 
 def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
-    monkeypatch.setattr(
-        final_media_qa,
-        "probe_media",
-        lambda _path: {
-            "codec_name": "aac",
-            "sample_rate": 48_000,
-            "channels": 2,
-            "bit_rate": 320_000,
-            "duration": 59.04,
-        },
-    )
+    monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
     monkeypatch.setattr(
         final_media_qa,
         "measure_loudness",
-        lambda _path, **_kwargs: {
-            "integrated_lufs": -15.8,
-            "true_peak_dbtp": -1.2,
-            "lra_lu": 4.0,
-            "threshold_lufs": -26.0,
-        },
+        lambda _path, **_kwargs: _loudness(),
     )
     report = final_media_qa.verify_final_file(
         output,
@@ -64,72 +73,84 @@ def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Pa
         target_tp=-1.5,
     )
     assert report["passed"] is True
-    assert report["duration_delta_seconds"] == pytest.approx(0.04)
+    assert report["audio_duration_delta_seconds"] == pytest.approx(0.04)
+    assert report["container_duration_delta_seconds"] == pytest.approx(0.04)
 
 
-def test_final_media_qa_rejects_aac_true_peak_overshoot(monkeypatch, tmp_path: Path) -> None:
+def test_final_media_qa_reports_aac_true_peak_overshoot(monkeypatch, tmp_path: Path) -> None:
+    output = tmp_path / "result.mp4"
+    output.write_bytes(b"not-empty")
+    monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
+    monkeypatch.setattr(
+        final_media_qa,
+        "measure_loudness",
+        lambda _path, **_kwargs: _loudness(true_peak=-0.7, integrated=-16.0),
+    )
+    report = final_media_qa.verify_final_file(
+        output,
+        source_duration=59.0,
+        target_i=-16.0,
+        target_lra=8.0,
+        target_tp=-1.5,
+    )
+    assert report["passed"] is False
+    assert any("true peak" in item for item in report["failures"])
+
+
+def test_final_media_qa_checks_audio_and_container_duration(monkeypatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(
         final_media_qa,
         "probe_media",
-        lambda _path: {
-            "codec_name": "aac",
-            "sample_rate": 48_000,
-            "channels": 2,
-            "bit_rate": 320_000,
-            "duration": 59.0,
-        },
+        lambda _path: _media(audio_duration=58.5, container_duration=58.7),
     )
     monkeypatch.setattr(
         final_media_qa,
         "measure_loudness",
-        lambda _path, **_kwargs: {
-            "integrated_lufs": -16.0,
-            "true_peak_dbtp": -0.7,
-            "lra_lu": 4.0,
-            "threshold_lufs": -26.0,
-        },
+        lambda _path, **_kwargs: _loudness(integrated=-16.0),
     )
-    with pytest.raises(RuntimeError, match="true peak"):
-        final_media_qa.verify_final_file(
-            output,
+    report = final_media_qa.verify_final_file(
+        output,
+        source_duration=59.0,
+        target_i=-16.0,
+        target_lra=8.0,
+        target_tp=-1.5,
+    )
+    assert report["passed"] is False
+    assert any("audio duration delta" in item for item in report["failures"])
+    assert any("container duration delta" in item for item in report["failures"])
+
+
+def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path: Path) -> None:
+    mixed = tmp_path / "mixed.mp4"
+    russian = tmp_path / "russian.mp4"
+    mixed.write_bytes(b"not-empty")
+    russian.write_bytes(b"not-empty")
+    report_path = tmp_path / "final_media_verification.json"
+
+    monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
+
+    def measured(path: Path, **_kwargs):
+        return _loudness(
+            true_peak=-0.6 if Path(path).name == "mixed.mp4" else -1.3,
+            integrated=-16.0,
+        )
+
+    monkeypatch.setattr(final_media_qa, "measure_loudness", measured)
+    with pytest.raises(RuntimeError, match="Отчёт сохранён"):
+        final_media_qa.verify_final_outputs(
             source_duration=59.0,
+            mixed_video=mixed,
+            russian_only_video=russian,
             target_i=-16.0,
             target_lra=8.0,
             target_tp=-1.5,
+            report_path=report_path,
         )
 
-
-def test_final_media_qa_rejects_truncated_video(monkeypatch, tmp_path: Path) -> None:
-    output = tmp_path / "result.mp4"
-    output.write_bytes(b"not-empty")
-    monkeypatch.setattr(
-        final_media_qa,
-        "probe_media",
-        lambda _path: {
-            "codec_name": "aac",
-            "sample_rate": 48_000,
-            "channels": 2,
-            "bit_rate": 320_000,
-            "duration": 58.5,
-        },
-    )
-    monkeypatch.setattr(
-        final_media_qa,
-        "measure_loudness",
-        lambda _path, **_kwargs: {
-            "integrated_lufs": -16.0,
-            "true_peak_dbtp": -1.3,
-            "lra_lu": 4.0,
-            "threshold_lufs": -26.0,
-        },
-    )
-    with pytest.raises(RuntimeError, match="duration delta"):
-        final_media_qa.verify_final_file(
-            output,
-            source_duration=59.0,
-            target_i=-16.0,
-            target_lra=8.0,
-            target_tp=-1.5,
-        )
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["mixed"]["passed"] is False
+    assert payload["russian_only"]["passed"] is True
+    assert any("true peak" in item for item in payload["mixed"]["failures"])
