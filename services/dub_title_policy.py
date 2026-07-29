@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One Russian title policy for Shorts, LiveDub and Dub Studio.
+"""One Russian title policy for Shorts, Clips, LiveDub and Dub Studio.
 
 Significant words use project Title Case. Russian conjunctions, particles and
 prepositions stay lowercase everywhere except at the beginning. The policy is
@@ -10,6 +10,7 @@ typography.
 from __future__ import annotations
 
 import re
+import sys
 import threading
 from pathlib import Path
 from types import ModuleType
@@ -157,6 +158,27 @@ def install_voxcpm_title_policy(runtime_module: ModuleType) -> None:
     runtime_module.standardize_russian_title = wrapped
 
 
+def _patch_core_title_case() -> None:
+    """Replace old imported Shorts/Clips formatters with the canonical function."""
+    try:
+        import core.text_utils as text_utils
+    except Exception:
+        return
+
+    old = getattr(text_utils, "title_case_fragment", None)
+    if old is canonical_media_title:
+        return
+    text_utils.title_case_fragment = canonical_media_title
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        try:
+            if getattr(module, "title_case_fragment", None) is old:
+                setattr(module, "title_case_fragment", canonical_media_title)
+        except Exception:
+            continue
+
+
 def _patch_dub_store() -> None:
     from services.dub_studio import DubStore
 
@@ -261,6 +283,7 @@ def _patch_health() -> None:
             and all("install_voxcpm_title_policy" in source for source in route_sources)
             and all("force_fresh=True" in source for source in route_sources)
             and "runtime._undelivered_notification_events = wrapped" in own_source
+            and "text_utils.title_case_fragment = canonical_media_title" in own_source
         )
         for item in checks:
             if item.get("label") == "Clean Expressive NoChew + независимый QA":
@@ -286,13 +309,14 @@ def _patch_livedub() -> None:
 
 
 def install_dub_title_policy() -> None:
-    """Install display/delivery compatibility for current and historical projects."""
+    """Install one title function across all loaded bot surfaces."""
     global _INSTALLED
     if _INSTALLED:
         return
     with _INSTALL_LOCK:
         if _INSTALLED:
             return
+        _patch_core_title_case()
         _patch_dub_store()
         _patch_notifications()
         _patch_delivery()
