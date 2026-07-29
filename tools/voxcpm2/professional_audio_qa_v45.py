@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Final release gate for clean expressive direct production.
-
-The semantic/timing gate remains independent from the renderer. Voice-register
-limits are profile- and source-prosody-aware. Numeric text receives a
-value-preserving Russian spoken target because VoxCPM/wetext verbalizes digits.
-A failed auto-language Whisper reading may receive one forced-Russian diagnostic
-pass, but foreign language or foreign-script evidence can never be rescued.
-"""
+"""Independent semantic, timing, continuity and voice-evidence release gate."""
 from __future__ import annotations
 
 import json
@@ -23,16 +16,12 @@ import soundfile as sf
 from tools.voxcpm2 import professional_audio_v45 as policy
 from tools.voxcpm2 import russian_spoken_numbers
 from tools.voxcpm2 import semantic_tts_guard_v4
-from tools.voxcpm2.direct_max_quality_analysis import (
-    activity_stats,
-    pitch_profile,
-)
-
+from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
 POLICY = "clean-expression-aware-qa-v3"
 VOICE_EVIDENCE_POLICY = "fail-closed-reference-f0-v1"
 SEMANTIC_RESCUE_POLICY = "forced-russian-script-gate-v2"
-NUMERIC_SEMANTIC_POLICY = "wetext-aligned-numeric-target-v1"
+NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"
 _RUSSIAN_FAMILY = {"ru", "uk", "be"}
 
 
@@ -46,19 +35,17 @@ def _number(value: Any, default: float = 0.0) -> float:
 
 def _reference_profiles(timeline: Path) -> dict[str, dict[str, float]]:
     root = timeline.parent.parent
-    result: dict[str, dict[str, float]] = {}
+    profiles: dict[str, dict[str, float]] = {}
     for name in ("extended", "composite"):
         path = root / "references" / f"{name}_reference.wav"
         if not path.is_file():
             continue
-        samples, sample_rate = sf.read(path, dtype="float32")
-        if np.asarray(samples).ndim > 1:
-            samples = np.asarray(samples, dtype=np.float32).mean(axis=1)
-        result[name] = pitch_profile(
-            np.asarray(samples, dtype=np.float32),
-            int(sample_rate),
-        )
-    return result
+        samples, rate = sf.read(path, dtype="float32")
+        audio = np.asarray(samples, dtype=np.float32)
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        profiles[name] = pitch_profile(audio, int(rate))
+    return profiles
 
 
 def _voice_limits(
@@ -68,45 +55,21 @@ def _voice_limits(
     reference_median: float,
     reference_p90: float,
 ) -> dict[str, float]:
-    """Return strict but expression-aware ratio limits."""
     tier = str(item.get("expression_tier") or "")
     score = _number(item.get("expression_score"), 0.0)
-    expressive = (
-        profile_name == "composite"
-        or tier in {"emphatic", "passionate"}
-    )
-
-    max_median = 1.48 if expressive else 1.35
-    max_p90 = 1.58 if expressive else 1.45
-    min_median = 0.55 if expressive else 0.62
-    min_p90 = 0.50 if expressive else 0.56
-
+    expressive = profile_name == "composite" or tier in {"emphatic", "passionate"}
+    max_median, max_p90 = ((1.48, 1.58) if expressive else (1.35, 1.45))
+    min_median, min_p90 = ((0.55, 0.50) if expressive else (0.62, 0.56))
     source = item.get("source_prosody") or {}
-    source_median = _number(source.get("f0_median"), 0.0)
-    source_p90 = _number(source.get("f0_p90"), 0.0)
+    source_median = _number(source.get("f0_median"))
+    source_p90 = _number(source.get("f0_p90"))
     if reference_median > 1.0 and source_median > 1.0:
-        source_ratio = source_median / reference_median
-        max_median = max(
-            max_median,
-            min(1.58, source_ratio * 1.16 + 0.04),
-        )
+        max_median = max(max_median, min(1.58, source_median / reference_median * 1.16 + 0.04))
     if reference_p90 > 1.0 and source_p90 > 1.0:
-        source_ratio = source_p90 / reference_p90
-        max_p90 = max(
-            max_p90,
-            min(1.68, source_ratio * 1.16 + 0.05),
-        )
-
+        max_p90 = max(max_p90, min(1.68, source_p90 / reference_p90 * 1.16 + 0.05))
     if score > 0.0:
-        max_median = min(
-            1.58,
-            max_median + min(0.06, score * 0.03),
-        )
-        max_p90 = min(
-            1.68,
-            max_p90 + min(0.07, score * 0.035),
-        )
-
+        max_median = min(1.58, max_median + min(0.06, score * 0.03))
+        max_p90 = min(1.68, max_p90 + min(0.07, score * 0.035))
     return {
         "min_median_ratio": round(min_median, 6),
         "max_median_ratio": round(max_median, 6),
@@ -117,16 +80,8 @@ def _voice_limits(
 
 def _script_evidence(value: str) -> dict[str, Any]:
     letters = [char for char in str(value or "") if char.isalpha()]
-    cyrillic = [
-        char
-        for char in letters
-        if "\u0400" <= char <= "\u052f"
-    ]
-    latin = [
-        char
-        for char in letters
-        if "a" <= char.casefold() <= "z"
-    ]
+    cyrillic = [char for char in letters if "\u0400" <= char <= "\u052f"]
+    latin = [char for char in letters if "a" <= char.casefold() <= "z"]
     total = len(letters)
     return {
         "letters": total,
@@ -139,117 +94,117 @@ def _script_evidence(value: str) -> dict[str, Any]:
 
 
 def _forced_russian_eligibility(
-    auto_semantic: dict[str, Any],
+    semantic: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    """Return whether a forced-Russian ASR retry may affect release status."""
-    language = str(auto_semantic.get("language") or "").casefold()
-    probability = _number(auto_semantic.get("language_probability"), 0.0)
-    script = _script_evidence(str(auto_semantic.get("heard") or ""))
-    cyrillic_ratio = float(script["cyrillic_ratio"])
-
-    if bool(auto_semantic.get("foreign_language")):
+    language = str(semantic.get("language") or "").casefold()
+    probability = _number(semantic.get("language_probability"))
+    script = _script_evidence(str(semantic.get("heard") or ""))
+    ratio = float(script["cyrillic_ratio"])
+    if bool(semantic.get("foreign_language")):
         return False, "confident_foreign_language", script
-    if int(script["letters"]) > 0 and cyrillic_ratio < 0.55:
+    if int(script["letters"]) > 0 and ratio < 0.55:
         return False, "foreign_script", script
-    if (
-        int(script["letters"]) == 0
-        and language
-        and language not in _RUSSIAN_FAMILY
-        and probability >= 0.35
-    ):
+    if int(script["letters"]) == 0 and language not in _RUSSIAN_FAMILY and probability >= 0.35:
         return False, "empty_auto_foreign_language", script
-    if (
-        language
-        and language not in _RUSSIAN_FAMILY
-        and probability >= 0.55
-        and cyrillic_ratio < 0.80
-    ):
+    if language and language not in _RUSSIAN_FAMILY and probability >= 0.55 and ratio < 0.80:
         return False, "probable_foreign_language", script
     return True, "", script
+
+
+def _numeric_anchor_evidence(
+    groups: list[list[str]],
+    heard: str,
+) -> tuple[bool, list[dict[str, Any]]]:
+    normalized_heard = semantic_tts_guard_v4.legacy.normalize_asr_text(heard)
+    padded = f" {normalized_heard} "
+    details: list[dict[str, Any]] = []
+    for group in groups:
+        alternatives = [semantic_tts_guard_v4.legacy.normalize_asr_text(value) for value in group]
+        alternatives = [value for value in alternatives if value]
+        matched = next((value for value in alternatives if f" {value} " in padded), "")
+        details.append({"alternatives": alternatives, "matched": matched, "passed": bool(matched)})
+    return bool(groups and all(item["passed"] for item in details)), details
 
 
 def _numeric_semantic_target(
     target: str,
     auto_semantic: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    """Try the exact value-preserving spoken form used by text normalization."""
     original = str(target or "")
     spoken = russian_spoken_numbers.normalize_numeric_text(original)
-    if spoken == original:
+    groups = russian_spoken_numbers.numeric_anchor_groups(original)
+    if spoken == original and not groups:
         return original, dict(auto_semantic)
-
     compared = semantic_tts_guard_v4.legacy.compare_spoken_text(
         spoken,
         str(auto_semantic.get("heard") or ""),
         str(auto_semantic.get("language") or ""),
-        _number(auto_semantic.get("language_probability"), 0.0),
+        _number(auto_semantic.get("language_probability")),
     )
-    merged = dict(compared)
-    merged.update(
-        {
-            "numeric_semantic_policy": NUMERIC_SEMANTIC_POLICY,
-            "numeric_source_policy": russian_spoken_numbers.POLICY,
-            "numeric_target_original": original,
-            "numeric_target_spoken": spoken,
-            "numeric_normalization_rescued": bool(compared.get("passed")),
-            "original_target_semantic": dict(auto_semantic),
-        }
-    )
-    return spoken, merged
+    anchors_passed, evidence = _numeric_anchor_evidence(groups, str(auto_semantic.get("heard") or ""))
+    passed = bool(compared.get("passed") and anchors_passed)
+    return spoken, {
+        **compared,
+        "passed": passed,
+        "numeric_semantic_policy": NUMERIC_SEMANTIC_POLICY,
+        "numeric_source_policy": russian_spoken_numbers.POLICY,
+        "numeric_target_original": original,
+        "numeric_target_spoken": spoken,
+        "numeric_anchor_groups": groups,
+        "numeric_anchor_evidence": evidence,
+        "numeric_anchors_passed": anchors_passed,
+        "numeric_normalization_rescued": passed,
+        "original_target_semantic": dict(auto_semantic),
+    }
 
 
 def _forced_russian_fallback(
     clip: Path,
     target: str,
     auto_semantic: dict[str, Any],
+    *,
+    numeric_anchor_groups: list[list[str]] | None = None,
 ) -> dict[str, Any]:
-    """Retry ASR in Russian without laundering foreign audio into a pass."""
     auto = dict(auto_semantic)
     eligible, block_reason, script = _forced_russian_eligibility(auto)
-    heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(
-        clip,
-        language="ru",
-    )
-    forced = semantic_tts_guard_v4.legacy.compare_spoken_text(
-        target,
-        heard,
-        language,
-        probability,
-    )
+    heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(clip, language="ru")
+    forced = semantic_tts_guard_v4.legacy.compare_spoken_text(target, heard, language, probability)
+    groups = list(numeric_anchor_groups or [])
+    if groups:
+        anchors_passed, evidence = _numeric_anchor_evidence(groups, heard)
+        forced.update(
+            numeric_anchor_groups=groups,
+            numeric_anchor_evidence=evidence,
+            numeric_anchors_passed=anchors_passed,
+            passed=bool(forced.get("passed") and anchors_passed),
+        )
     rescued = bool(forced.get("passed") and eligible)
     selected = forced if rescued else auto
-    merged = dict(selected)
-    merged.update(
-        {
-            "passed": rescued,
-            "semantic_rescue_policy": SEMANTIC_RESCUE_POLICY,
-            "auto_language": auto,
-            "auto_script_evidence": script,
-            "forced_russian": forced,
-            "forced_russian_target": target,
-            "forced_russian_eligible": eligible,
-            "forced_russian_rescued": rescued,
-            "forced_russian_block_reason": block_reason,
-            "confident_foreign_block": bool(auto.get("foreign_language")),
-        }
-    )
-    return merged
+    return {
+        **selected,
+        "passed": rescued,
+        "semantic_rescue_policy": SEMANTIC_RESCUE_POLICY,
+        "auto_language": auto,
+        "auto_script_evidence": script,
+        "forced_russian": forced,
+        "forced_russian_target": target,
+        "forced_russian_eligible": eligible,
+        "forced_russian_rescued": rescued,
+        "forced_russian_block_reason": block_reason,
+        "confident_foreign_block": bool(auto.get("foreign_language")),
+    }
 
 
 def _base_semantic_acoustic_pass(check: dict[str, Any]) -> bool:
     acoustic = check.get("acoustic") or {}
     timing = check.get("timing") or {}
-    return bool(
-        acoustic.get("passed")
-        and (not timing or timing.get("passed"))
-    )
+    return bool(acoustic.get("passed") and (not timing or timing.get("passed")))
 
 
 def _pitch_valid(profile: dict[str, Any] | None) -> bool:
-    if not isinstance(profile, dict):
-        return False
     return bool(
-        _number(profile.get("voiced_ratio")) >= 0.12
+        isinstance(profile, dict)
+        and _number(profile.get("voiced_ratio")) >= 0.12
         and _number(profile.get("f0_median")) > 1.0
         and _number(profile.get("f0_p90")) > 1.0
     )
@@ -262,29 +217,18 @@ def _voice_evaluation(
     reference: dict[str, Any] | None,
     candidate: dict[str, Any],
 ) -> dict[str, Any]:
-    """Evaluate voice register and fail closed when evidence is unavailable."""
     reference_available = isinstance(reference, dict)
     reference_pitch_valid = _pitch_valid(reference)
     candidate_pitch_valid = _pitch_valid(candidate)
-
-    reference_median = _number(
-        (reference or {}).get("f0_median"),
-        0.0,
-    )
-    reference_p90 = _number(
-        (reference or {}).get("f0_p90"),
-        0.0,
-    )
-    candidate_median = _number(candidate.get("f0_median"), 0.0)
-    candidate_p90 = _number(candidate.get("f0_p90"), 0.0)
-
+    reference_median = _number((reference or {}).get("f0_median"))
+    reference_p90 = _number((reference or {}).get("f0_p90"))
+    candidate_median = _number(candidate.get("f0_median"))
+    candidate_p90 = _number(candidate.get("f0_p90"))
     if reference_pitch_valid and candidate_pitch_valid:
         median_ratio = candidate_median / reference_median
         p90_ratio = candidate_p90 / reference_p90
     else:
-        median_ratio = 0.0
-        p90_ratio = 0.0
-
+        median_ratio = p90_ratio = 0.0
     limits = _voice_limits(
         item,
         profile_name=profile_name,
@@ -295,15 +239,9 @@ def _voice_evaluation(
         reference_available
         and reference_pitch_valid
         and candidate_pitch_valid
-        and limits["min_median_ratio"]
-        <= median_ratio
-        <= limits["max_median_ratio"]
-        and limits["min_p90_ratio"]
-        <= p90_ratio
-        <= limits["max_p90_ratio"]
+        and limits["min_median_ratio"] <= median_ratio <= limits["max_median_ratio"]
+        and limits["min_p90_ratio"] <= p90_ratio <= limits["max_p90_ratio"]
     )
-
-    reason = ""
     if not reference_available:
         reason = "missing_reference_profile"
     elif not reference_pitch_valid:
@@ -312,14 +250,15 @@ def _voice_evaluation(
         reason = "invalid_candidate_pitch"
     elif not passed:
         reason = "pitch_ratio_out_of_range"
-
+    else:
+        reason = ""
     return {
         **candidate,
         "policy": POLICY,
         "voice_evidence_policy": VOICE_EVIDENCE_POLICY,
         "reference_profile": profile_name,
         "expression_tier": str(item.get("expression_tier") or ""),
-        "expression_score": _number(item.get("expression_score"), 0.0),
+        "expression_score": _number(item.get("expression_score")),
         "reference_available": reference_available,
         "reference_pitch_valid": reference_pitch_valid,
         "candidate_pitch_valid": candidate_pitch_valid,
@@ -338,122 +277,74 @@ def verify_timeline_v45(
     segments: list[dict[str, Any]],
     report_path: Path,
 ) -> tuple[list[int], dict[str, Any]]:
-    _failed, report = policy._ORIGINAL_VERIFY(
-        timeline,
-        segments,
-        report_path,
-    )
+    _failed, report = policy._ORIGINAL_VERIFY(timeline, segments, report_path)
     checks = {
         int(item.get("id")): item
         for item in report.get("segments", [])
-        if isinstance(item, dict)
-        and str(item.get("id", "")).isdigit()
+        if isinstance(item, dict) and str(item.get("id", "")).isdigit()
     }
     references = _reference_profiles(timeline)
-
-    with tempfile.TemporaryDirectory(
-        prefix="dub-expression-aware-qa-"
-    ) as temp_raw:
-        temp = Path(temp_raw)
+    with tempfile.TemporaryDirectory(prefix="dub-expression-aware-qa-") as raw:
+        temp = Path(raw)
         for item in segments:
             segment_id = int(item["id"])
-            delay = max(
-                0,
-                int(item.get("start_delay_ms", 0)),
-            ) / 1000.0
+            delay = max(0, int(item.get("start_delay_ms", 0))) / 1000.0
             start = float(item["start"]) + delay
-            duration = max(
-                0.35,
-                float(item["end"]) - float(item["start"]),
-            )
+            duration = max(0.35, float(item["end"]) - float(item["start"]))
             clip = temp / f"segment_{segment_id:03d}.wav"
-            semantic_tts_guard_v4.legacy._extract_clip(
-                timeline,
-                clip,
-                start,
-                duration,
-            )
-            samples, sample_rate = (
-                semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
-            )
+            semantic_tts_guard_v4.legacy._extract_clip(timeline, clip, start, duration)
+            samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
             audio = np.asarray(samples, dtype=np.float32)
-
-            check = checks.setdefault(
-                segment_id,
-                {"id": segment_id, "passed": True},
-            )
+            check = checks.setdefault(segment_id, {"id": segment_id, "passed": True})
             semantic = check.get("semantic")
             if isinstance(semantic, dict) and not semantic.get("passed"):
-                spoken_target, numeric_semantic = _numeric_semantic_target(
-                    str(item.get("text") or ""),
-                    semantic,
+                spoken, numeric = _numeric_semantic_target(str(item.get("text") or ""), semantic)
+                semantic = numeric if numeric.get("passed") else _forced_russian_fallback(
+                    clip,
+                    spoken,
+                    numeric,
+                    numeric_anchor_groups=numeric.get("numeric_anchor_groups"),
                 )
-                if numeric_semantic.get("passed"):
-                    semantic = numeric_semantic
-                else:
-                    semantic = _forced_russian_fallback(
-                        clip,
-                        spoken_target,
-                        numeric_semantic,
-                    )
                 check["semantic"] = semantic
-                check["passed"] = bool(
-                    _base_semantic_acoustic_pass(check)
-                    and semantic.get("passed")
-                )
+                check["passed"] = bool(_base_semantic_acoustic_pass(check) and semantic.get("passed"))
 
             activity = activity_stats(audio, int(sample_rate))
-            punctuation = bool(
-                re.search(r"[.!?…;:]", str(item.get("text") or ""))
-            )
+            punctuation = bool(re.search(r"[.!?…;:]", str(item.get("text") or "")))
             max_gap = 0.78 if punctuation else 0.58
             continuity_passed = bool(
-                activity["max_internal_gap"] <= max_gap
-                and activity["active_ratio"] >= 0.20
+                activity["max_internal_gap"] <= max_gap and activity["active_ratio"] >= 0.20
             )
-
-            profile_name = str(
-                item.get("reference_profile") or "extended"
-            )
-            candidate_pitch = pitch_profile(audio, int(sample_rate))
+            profile_name = str(item.get("reference_profile") or "extended")
             voice = _voice_evaluation(
                 item,
                 profile_name=profile_name,
                 reference=references.get(profile_name),
-                candidate=candidate_pitch,
+                candidate=pitch_profile(audio, int(sample_rate)),
             )
-
             check["continuity_v45"] = {
                 **activity,
                 "max_allowed_internal_gap": max_gap,
                 "passed": continuity_passed,
             }
             check["voice_match_v45"] = voice
-            check["passed"] = bool(
-                check.get("passed")
-                and continuity_passed
-                and voice.get("passed")
-            )
+            check["passed"] = bool(check.get("passed") and continuity_passed and voice.get("passed"))
 
     result = sorted(
-        int(segment_id)
-        for segment_id, check in checks.items()
-        if not bool(check.get("passed"))
+        int(segment_id) for segment_id, check in checks.items() if not bool(check.get("passed"))
     )
-    report["professional_audio_policy"] = POLICY
-    report["semantic_asr_policy"] = (
-        "original + value-preserving numeric spoken target + "
-        "forced-Russian retry with foreign-script gate"
+    report.update(
+        professional_audio_policy=POLICY,
+        semantic_asr_policy=(
+            "original + value-preserving numeric target with exact anchors + "
+            "forced-Russian retry with foreign-script gate"
+        ),
+        numeric_semantic_policy=NUMERIC_SEMANTIC_POLICY,
+        semantic_rescue_policy=SEMANTIC_RESCUE_POLICY,
+        voice_evidence_policy=VOICE_EVIDENCE_POLICY,
+        passed=not result,
+        failed_segment_ids=result,
     )
-    report["numeric_semantic_policy"] = NUMERIC_SEMANTIC_POLICY
-    report["semantic_rescue_policy"] = SEMANTIC_RESCUE_POLICY
-    report["voice_evidence_policy"] = VOICE_EVIDENCE_POLICY
-    report["passed"] = not result
-    report["failed_segment_ids"] = result
-    report_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return result, report
 
 
