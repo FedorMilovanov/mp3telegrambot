@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -107,10 +109,50 @@ def test_handler_writer_rejects_ambiguous_selection(
         )
 
 
-def test_concurrent_dubfix_commands_are_serialized(monkeypatch) -> None:
+def test_cross_process_lock_is_atomic_and_cleaned(monkeypatch, tmp_path: Path) -> None:
+    lock_path = tmp_path / ".dubfix.request.lock"
+    monkeypatch.setattr(handler, "_process_lock_path", lambda: lock_path)
+
+    with handler._dubfix_process_lock():
+        assert lock_path.is_file()
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert payload["pid"] == os.getpid()
+        with pytest.raises(RuntimeError, match="Другой процесс"):
+            with handler._dubfix_process_lock():
+                raise AssertionError("nested lock must not be acquired")
+    assert not lock_path.exists()
+
+    with pytest.raises(ValueError):
+        with handler._dubfix_process_lock():
+            raise ValueError("simulated command failure")
+    assert not lock_path.exists()
+
+
+def test_only_stale_process_lock_is_recovered(monkeypatch, tmp_path: Path) -> None:
+    lock_path = tmp_path / ".dubfix.request.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    old = time.time() - handler._DUBFIX_PROCESS_LOCK_STALE_SECONDS - 10
+    os.utime(lock_path, (old, old))
+    monkeypatch.setattr(handler, "_process_lock_path", lambda: lock_path)
+
+    with handler._dubfix_process_lock():
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert payload["pid"] == os.getpid()
+    assert not lock_path.exists()
+
+
+def test_concurrent_dubfix_commands_are_serialized(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     active = 0
     maximum_active = 0
     order: list[str] = []
+    monkeypatch.setattr(
+        handler,
+        "_process_lock_path",
+        lambda: tmp_path / ".dubfix.request.lock",
+    )
 
     async def fake_command(update, _context) -> None:
         nonlocal active, maximum_active
@@ -135,6 +177,7 @@ def test_concurrent_dubfix_commands_are_serialized(monkeypatch) -> None:
         ["start-a", "end-a", "start-b", "end-b"],
         ["start-b", "end-b", "start-a", "end-a"],
     )
+    assert not (tmp_path / ".dubfix.request.lock").exists()
 
 
 def test_handler_facade_patches_legacy_registration_target() -> None:
