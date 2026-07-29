@@ -34,6 +34,7 @@ _GEMINI_KEY_NAMES = (
 )
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 180.0
 _DEFAULT_PASS_TIMEOUT_SECONDS = 300.0
+_MIN_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 def standardize_russian_title(value: str, *, context: str = "") -> str:
@@ -228,7 +229,7 @@ def _translation_timeouts() -> tuple[float, float]:
     request_timeout = _bounded_env_seconds(
         "DUB_GEMINI_REQUEST_TIMEOUT_SEC",
         default=_DEFAULT_REQUEST_TIMEOUT_SECONDS,
-        minimum=30.0,
+        minimum=_MIN_REQUEST_TIMEOUT_SECONDS,
         maximum=600.0,
     )
     pass_timeout = _bounded_env_seconds(
@@ -240,7 +241,20 @@ def _translation_timeouts() -> tuple[float, float]:
     return request_timeout, max(request_timeout, pass_timeout)
 
 
+def _load_dotenv_for_manual_run() -> None:
+    """Load project keys for direct CLI use without overriding worker env."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    try:
+        load_dotenv(override=False)
+    except Exception:
+        return
+
+
 def _translation_keys() -> list[str]:
+    _load_dotenv_for_manual_run()
     values: list[str] = []
     for name in _GEMINI_KEY_NAMES:
         key = os.getenv(name, "").strip()
@@ -336,11 +350,14 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
 
     for index, api_key in enumerate(keys, start=1):
         remaining = deadline - time.monotonic()
-        if remaining < 1.0:
-            errors.append(f"общий лимит прохода {pass_timeout:.0f} сек. исчерпан")
+        if remaining < _MIN_REQUEST_TIMEOUT_SECONDS:
+            errors.append(
+                f"остаток общего лимита {max(0.0, remaining):.1f} сек. меньше "
+                f"минимального запроса {_MIN_REQUEST_TIMEOUT_SECONDS:.0f} сек."
+            )
             break
         effective_timeout = min(request_timeout, remaining)
-        timeout_ms = max(30_000, int(round(effective_timeout * 1000.0)))
+        timeout_ms = int(round(effective_timeout * 1000.0))
         client = _translation_client(api_key, timeout_ms)
         started = time.monotonic()
         pipeline.log(
