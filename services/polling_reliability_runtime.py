@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Keep Telegram commands across restarts and expose polling failures clearly.
+"""Keep recent Telegram commands across restarts and expose polling failures.
 
-The legacy startup passed ``drop_pending_updates=True`` to PTB.  A command sent
+The legacy startup passed ``drop_pending_updates=True`` to PTB. A command sent
 while the Windows bot was restarting was therefore deleted just before polling
-started, which looked exactly like a healthy bot ignoring ``/mode``.  This
-runtime keeps pending updates, drops only genuinely stale non-command messages,
-and logs command receipt plus getUpdates transport errors.
+started, which looked exactly like a healthy bot ignoring ``/mode``. This
+runtime keeps recent pending updates, drops stale non-command backlog quickly,
+and also prevents very old commands from executing unexpectedly after a long
+downtime.
 """
 from __future__ import annotations
 
@@ -22,12 +23,37 @@ _LOCK = threading.Lock()
 _INSTALLED = False
 
 
-def _max_stale_noncommand_age() -> int:
+def _bounded_env_seconds(
+    name: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = os.getenv(name)
     try:
-        value = int(os.getenv("BOT_PENDING_NONCOMMAND_MAX_AGE_SEC", "900").strip() or "900")
-    except ValueError:
-        value = 900
-    return max(60, min(value, 24 * 3600))
+        value = default if raw is None or not raw.strip() else int(raw.strip())
+    except (TypeError, ValueError, OverflowError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _max_stale_noncommand_age() -> int:
+    return _bounded_env_seconds(
+        "BOT_PENDING_NONCOMMAND_MAX_AGE_SEC",
+        default=900,
+        minimum=60,
+        maximum=24 * 3600,
+    )
+
+
+def _max_stale_command_age() -> int:
+    return _bounded_env_seconds(
+        "BOT_PENDING_COMMAND_MAX_AGE_SEC",
+        default=6 * 3600,
+        minimum=5 * 60,
+        maximum=24 * 3600,
+    )
 
 
 def _message_age_seconds(update: Any) -> float | None:
@@ -47,6 +73,19 @@ def _is_command(update: Any) -> bool:
     message = getattr(update, "effective_message", None)
     text = str(getattr(message, "text", "") or "").lstrip()
     return text.startswith("/")
+
+
+def _stale_pending_reason(update: Any) -> tuple[str | None, float | None]:
+    age = _message_age_seconds(update)
+    if age is None:
+        return None, None
+    if _is_command(update):
+        if age > _max_stale_command_age():
+            return "stale-command", age
+        return None, age
+    if age > _max_stale_noncommand_age():
+        return "stale-noncommand", age
+    return None, age
 
 
 def install_polling_reliability_runtime() -> None:
@@ -86,9 +125,10 @@ def install_polling_reliability_runtime() -> None:
 
                 kwargs["error_callback"] = polling_error_callback
                 logger.info(
-                    "📡 Polling reliability: pending commands preserved "
-                    "(drop_pending_updates %r → False)",
+                    "📡 Polling reliability: recent pending commands preserved "
+                    "(drop_pending_updates %r → False; command max age=%ss)",
                     requested_drop,
+                    _max_stale_command_age(),
                 )
                 return await original_start_polling(self, *args, **kwargs)
 
@@ -99,13 +139,14 @@ def install_polling_reliability_runtime() -> None:
 
             @functools.wraps(original_process_update)
             async def process_update_with_probe(self: Any, update: Any) -> None:
-                age = _message_age_seconds(update)
+                stale_reason, age = _stale_pending_reason(update)
                 command = _is_command(update)
-                if age is not None and age > _max_stale_noncommand_age() and not command:
+                if stale_reason is not None:
                     logger.warning(
-                        "🧹 Stale pending non-command update dropped: update_id=%s age=%.0fs",
+                        "🧹 Pending Telegram update dropped: type=%s update_id=%s age=%.0fs",
+                        stale_reason,
                         getattr(update, "update_id", "?"),
-                        age,
+                        age or 0.0,
                     )
                     return
 
@@ -129,7 +170,7 @@ def install_polling_reliability_runtime() -> None:
 
         _INSTALLED = True
         logger.info(
-            "📡 Polling reliability runtime: pending commands kept; stale non-command backlog guarded"
+            "📡 Polling reliability runtime: recent commands kept; stale backlog guarded"
         )
 
 
