@@ -87,8 +87,26 @@ def activity_stats(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
     }
 
 
-def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
+def _pitch_analysis_audio(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, int]:
+    """Return a cheap diagnostic copy without touching the native 48 kHz WAV.
+
+    Human F0 is below 300 Hz, so autocorrelation does not need the 48 kHz decoder
+    rate. VoxCPM2's 48 kHz output is reduced to approximately 16 kHz by block
+    averaging only for pitch analysis. The selected audio remains untouched.
+    """
     audio = _mono(samples)
+    rate = max(1, int(sample_rate))
+    if rate > 20_000:
+        factor = max(1, int(round(rate / EXPECTED_ENCODE_SR)))
+        usable = len(audio) - (len(audio) % factor)
+        if factor > 1 and usable >= factor * 320:
+            audio = audio[:usable].reshape(-1, factor).mean(axis=1).astype(np.float32)
+            rate = int(round(rate / factor))
+    return audio, rate
+
+
+def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
+    audio, sample_rate = _pitch_analysis_audio(samples, sample_rate)
     frame = max(320, int(sample_rate * 0.04))
     hop = max(160, int(sample_rate * 0.02))
     if len(audio) < frame:
