@@ -547,7 +547,7 @@ def _project_original_contract(mixed_video: Path) -> dict[str, Any]:
         "root": str(root),
         "request_path": str(request_path),
         "source_path": str(source),
-        "source": source,
+        "source": str(source),
         "expected_original_level": expected,
         "failures": failures,
     }
@@ -561,8 +561,9 @@ def verify_original_bed(
 ) -> dict[str, Any]:
     contract = _project_original_contract(mixed_video)
     if not contract.get("applicable") or not contract.get("passed"):
+        contract.pop("source", None)
         return contract
-    source = Path(contract.pop("source"))
+    source = Path(str(contract.pop("source")))
     try:
         source_audio = _decode_audio_mono(source, duration=source_duration)
         mixed_audio = _decode_audio_mono(mixed_video, duration=source_duration)
