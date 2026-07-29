@@ -26,6 +26,7 @@ on:
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_direct_timbre_analysis.py"
+      - "tests/test_dual_whisper_semantic_qa.py"
       - "tests/test_expression_aware_voice_qa.py"
       - "tests/test_final_media_qa.py"
       - "tests/test_gemini_translation_quality.py"
@@ -85,6 +86,7 @@ jobs:
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
             tests/test_direct_timbre_analysis.py \
+            tests/test_dual_whisper_semantic_qa.py \
             tests/test_expression_aware_voice_qa.py \
             tests/test_final_media_qa.py \
             tests/test_gemini_translation_quality.py \
