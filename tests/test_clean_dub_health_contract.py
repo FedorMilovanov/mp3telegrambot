@@ -11,7 +11,9 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_gemini_runtime" in source
     assert "tools.voxcpm2.generic_clean_direct_runtime" in source
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
-    assert "Clean Direct NoChew + независимый QA" in source
+    assert "expressive_continuity.py" in source
+    assert "expressive_translation.py" in source
+    assert "Clean Expressive NoChew + независимый QA" in source
     assert "NoChew Quality v4.2 + аудиоремонт" not in source
     assert "generic_direct_checked_runtime" not in source
     assert 'semantic_tts_guard_v4.install()" in contract_text' not in source
@@ -23,7 +25,7 @@ def test_dub_health_keeps_fourteen_logical_checks() -> None:
         "Recipe: Gemini MAX",
         "Recipe: готовый SRT",
         "Recipe: чистый аудиоремонт",
-        "Clean Direct NoChew + независимый QA",
+        "Clean Expressive NoChew + независимый QA",
         "Whisper semantic QA",
         "SoundFile WAV I/O",
         "VoxCPM2 CPU Python",
