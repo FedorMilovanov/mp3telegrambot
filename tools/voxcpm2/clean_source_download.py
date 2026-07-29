@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import generic_short_runtime as hardened
@@ -14,10 +16,39 @@ from tools.voxcpm2 import generic_short_runtime as hardened
 POLICY = "clean-source-download-manifest-v1"
 MIN_SOURCE_BYTES = 100_000
 _SAMPLE_BYTES = 256 * 1024
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 
 
 def _manifest_path(source: Path) -> Path:
     return source.with_suffix(source.suffix + ".download.json")
+
+
+def _url_video_id(url: str) -> str:
+    """Extract an ID only from canonical single-video YouTube URL shapes."""
+    try:
+        parsed = urlparse(str(url))
+    except ValueError:
+        return ""
+    host = str(parsed.hostname or "").casefold()
+    if host.startswith("www."):
+        host = host[4:]
+    if host.startswith("m."):
+        host = host[2:]
+    candidate = ""
+    parts = [part for part in parsed.path.split("/") if part]
+    if host == "youtu.be" and parts:
+        candidate = parts[0]
+    elif host == "youtube.com":
+        if parsed.path.rstrip("/") == "/watch":
+            candidate = str((parse_qs(parsed.query).get("v") or [""])[0])
+        elif len(parts) >= 2 and parts[0].casefold() in {
+            "shorts",
+            "live",
+            "embed",
+        }:
+            candidate = parts[1]
+    candidate = candidate.strip()
+    return candidate if _VIDEO_ID_RE.fullmatch(candidate) else ""
 
 
 def _sampled_sha256(path: Path, *, block_size: int = _SAMPLE_BYTES) -> str:
@@ -70,6 +101,12 @@ def _metadata(url: str) -> dict[str, Any]:
     video_id = str(payload.get("id") or "").strip()
     if not video_id:
         raise RuntimeError("yt-dlp metadata не содержит video ID.")
+    expected_id = _url_video_id(url)
+    if expected_id and video_id != expected_id:
+        raise RuntimeError(
+            "YouTube URL и yt-dlp metadata указывают на разные ролики: "
+            f"url={expected_id}, metadata={video_id}."
+        )
     return payload
 
 
