@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import strict_translation_payload
 
 POLICY = "expressive-spoken-translation-v2"
 _MAX_WORDS_PER_SECOND = 3.05
@@ -25,7 +26,7 @@ def _payload(groups: list[dict[str, Any]]) -> str:
 
 
 def _validate(value: Any, groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return pipeline.validate_translation(value, groups)
+    return strict_translation_payload.validate_full(value, groups)
 
 
 def _gemini(prompt: str, model_name: str) -> Any:
@@ -192,28 +193,14 @@ def translate_groups(
             "Gemini: произносимость",
             f"Gemini: сокращаю {len(overloaded)} перегруженных реплик без потери смысла.",
         )
-        compact_payload = _gemini(compression_prompt, model_name)
-        compact_list = (
-            compact_payload.get("segments")
-            if isinstance(compact_payload, dict)
-            else compact_payload
+        compact = strict_translation_payload.validate_subset(
+            _gemini(compression_prompt, model_name),
+            [item["id"] for item in overloaded],
         )
         compact_by_id = {
-            int(item["id"]): re.sub(
-                r"\s+",
-                " ",
-                str(item.get("russian") or ""),
-            ).strip()
-            for item in compact_list or []
-            if isinstance(item, dict)
-            and str(item.get("id", "")).isdigit()
-            and str(item.get("russian") or "").strip()
+            int(item["id"]): str(item["russian"])
+            for item in compact
         }
-        expected_overloaded = {int(item["id"]) for item in overloaded}
-        if set(compact_by_id) != expected_overloaded:
-            raise RuntimeError(
-                "Редактор произносимости вернул неполный набор перегруженных ID."
-            )
         for item in final:
             if int(item["id"]) in compact_by_id:
                 item["russian"] = compact_by_id[int(item["id"])]
