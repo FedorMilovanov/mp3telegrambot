@@ -53,6 +53,15 @@ def _candidate(
     }
 
 
+def _complete_voice_match(candidate: dict) -> dict:
+    candidate["voice_match"] = {
+        "f0_median_ratio": 1.0,
+        "f0_p90_ratio": 1.0,
+        "spectral_similarity": 0.90,
+    }
+    return candidate
+
+
 def test_renderer_audio_contract_is_native_voxcpm2() -> None:
     assert POLICY == "voxcpm2-direct-max-quality-v3"
     assert EXPECTED_ENCODE_SR == 16000
@@ -96,6 +105,67 @@ def test_nonsense_high_register_candidate_cannot_win() -> None:
     assert candidate_hard_ok(good, 3.6)
     assert not candidate_hard_ok(bad, 3.6)
     assert bad_score > good_score + 200
+
+
+def test_candidate_without_voice_match_cannot_pass_hard_gate() -> None:
+    candidate = _candidate(
+        duration=3.5,
+        voiced=0.62,
+        median=108.0,
+        p90=149.0,
+        active=0.76,
+        gap=0.10,
+    )
+    assert "voice_match" not in candidate
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+
+def test_partial_or_nonfinite_voice_match_cannot_pass_hard_gate() -> None:
+    candidate = _complete_voice_match(
+        _candidate(
+            duration=3.5,
+            voiced=0.62,
+            median=108.0,
+            p90=149.0,
+            active=0.76,
+            gap=0.10,
+        )
+    )
+    assert candidate_hard_ok(candidate, 3.6) is True
+
+    candidate["voice_match"].pop("spectral_similarity")
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+    candidate["voice_match"]["spectral_similarity"] = 0.90
+    candidate["voice_match"]["f0_median_ratio"] = float("nan")
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+    candidate["voice_match"]["f0_median_ratio"] = 1.0
+    candidate["voice_match"]["f0_p90_ratio"] = float("inf")
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+
+def test_nonfinite_candidate_core_metrics_cannot_pass_hard_gate() -> None:
+    candidate = _complete_voice_match(
+        _candidate(
+            duration=3.5,
+            voiced=0.62,
+            median=108.0,
+            p90=149.0,
+            active=0.76,
+            gap=0.10,
+        )
+    )
+    candidate["duration"] = float("nan")
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+    candidate["duration"] = 3.5
+    candidate["activity"]["active_ratio"] = float("inf")
+    assert candidate_hard_ok(candidate, 3.6) is False
+
+    candidate["activity"]["active_ratio"] = 0.76
+    assert candidate_hard_ok(candidate, float("nan")) is False
+    assert candidate_hard_ok(candidate, 0.0) is False
 
 
 def test_bad_candidate_diagnostics_are_actionable() -> None:
@@ -167,6 +237,7 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     io = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_io.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
     ast.parse(cli)
+    ast.parse(analysis)
     combined = render + cli + analysis + timbre + io + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
@@ -177,6 +248,7 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert "candidate_hard_ok(best_so_far, speech_slot)" in cli
     assert "F0×=" in cli
     assert "spectral_similarity" in analysis
+    assert "_finite_voice_metric" in analysis
     assert "AudioVAE:" in cli
     assert "Best-of-bad candidates are forbidden" in cli
     assert "if not acceptable:" in cli
