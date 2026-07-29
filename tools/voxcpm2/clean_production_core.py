@@ -5,7 +5,8 @@
 The bot and manual PowerShell launch share the same direct renderer and master.
 No subprocess proxy or VoxCPM monkeypatch is installed. Durable checkpoints are
 accepted only under a fingerprint of the actual renderer modules, model snapshot
-and CPU-venv VoxCPM runtime.
+and CPU-venv VoxCPM runtime. A baseline becomes release-complete only after the
+final encoded AAC files pass media QA.
 """
 from __future__ import annotations
 
@@ -310,6 +311,13 @@ def _read_clean_marker(work_dir: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _write_clean_marker(work_dir: Path, payload: dict[str, Any]) -> None:
+    (work_dir / "clean_production.marker.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+
+
 def _remove_render_state(work_dir: Path) -> None:
     for directory_name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
         target = work_dir / directory_name
@@ -395,9 +403,10 @@ def render_and_master(
     env = _environment(threads)
     all_ids = {int(item["id"]) for item in segments}
     last_report: dict[str, Any] = {}
+    accepted_seed: int | None = None
 
     for round_index in range(2):
-        round_seed = seed + round_index * 100_000
+        round_seed = seed + round_index * clean_runtime_contract.RETRY_SEED_OFFSET
         command = [
             str(cpu_python),
             str(renderer),
@@ -430,29 +439,27 @@ def render_and_master(
             report_path,
         )
         if not failed:
+            accepted_seed = round_seed
             timeline.with_suffix(".clean_qa.json").write_text(
                 json.dumps(last_report, ensure_ascii=False, indent=2, allow_nan=False),
                 encoding="utf-8",
             )
-            (segment_work / "clean_production.marker.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": 2,
-                        "policy": POLICY,
-                        "runtime_contract_policy": clean_runtime_contract.POLICY,
-                        "render_contract_sha256": fingerprints["render_contract_sha256"],
-                        "release_contract_sha256": fingerprints["release_contract_sha256"],
-                        "base_seed": round_seed,
-                        "renderer": str(renderer),
-                        "failed_segment_ids": [],
-                        "qa_policy": last_report.get("professional_audio_policy"),
-                        "numeric_semantic_policy": last_report.get("numeric_semantic_policy"),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                    allow_nan=False,
-                ),
-                encoding="utf-8",
+            _write_clean_marker(
+                segment_work,
+                {
+                    "schema_version": 3,
+                    "policy": POLICY,
+                    "runtime_contract_policy": clean_runtime_contract.POLICY,
+                    "render_contract_sha256": fingerprints["render_contract_sha256"],
+                    "release_contract_sha256": fingerprints["release_contract_sha256"],
+                    "base_seed": round_seed,
+                    "renderer": str(renderer),
+                    "failed_segment_ids": [],
+                    "qa_policy": last_report.get("professional_audio_policy"),
+                    "numeric_semantic_policy": last_report.get("numeric_semantic_policy"),
+                    "segment_qa_passed": True,
+                    "release_complete": False,
+                },
             )
             break
         if round_index == 0:
@@ -461,7 +468,7 @@ def render_and_master(
                 segment_work,
                 good_ids=all_ids - set(failed),
                 failed_ids=failed,
-                new_base_seed=seed + 100_000,
+                new_base_seed=seed + clean_runtime_contract.RETRY_SEED_OFFSET,
             )
             continue
         timeline.with_suffix(".clean_qa.json").write_text(
@@ -473,6 +480,9 @@ def render_and_master(
             f"прицельного повтора. Сегменты: {failed}. "
             f"Причины: {_failure_summary(last_report)}"
         )
+
+    if accepted_seed is None:
+        raise RuntimeError("Segment QA не создал принятого baseline.")
 
     master_command = [
         str(cpu_python),
@@ -491,14 +501,41 @@ def render_and_master(
     if result.returncode != 0:
         raise RuntimeError(f"Прямой master завершился с кодом {result.returncode}.")
 
+    final_media_qa = master_work / "final_media_verification.json"
+    if not final_media_qa.is_file():
+        raise RuntimeError("Master не создал final_media_verification.json.")
+    try:
+        final_verification = json.loads(final_media_qa.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Не читается final_media_verification.json.") from exc
+    if not isinstance(final_verification, dict) or final_verification.get("passed") is not True:
+        raise RuntimeError("Final encoded AAC media QA не принят.")
+    release_marker = _read_clean_marker(segment_work)
+    if (
+        release_marker.get("render_contract_sha256") != fingerprints["render_contract_sha256"]
+        or release_marker.get("release_contract_sha256")
+        != fingerprints["release_contract_sha256"]
+        or release_marker.get("segment_qa_passed") is not True
+    ):
+        raise RuntimeError("Segment marker изменился до завершения master.")
+    release_marker.update(
+        release_complete=True,
+        base_seed=accepted_seed,
+        final_media_qa=str(final_media_qa),
+        mixed_video=str(final_mixed),
+        russian_only_video=str(final_russian),
+    )
+    _write_clean_marker(segment_work, release_marker)
+
     (root / "output" / "clean_production_report.json").write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "policy": POLICY,
                 "runtime_contract_policy": clean_runtime_contract.POLICY,
                 "render_contract_sha256": fingerprints["render_contract_sha256"],
                 "release_contract_sha256": fingerprints["release_contract_sha256"],
+                "release_complete": True,
                 "renderer": str(renderer),
                 "master": str(master),
                 "wrapper_count": 0,
@@ -509,6 +546,7 @@ def render_and_master(
                     str(composite_reference.with_suffix(".selection.json")),
                 ],
                 "qa_report": str(timeline.with_suffix(".clean_qa.json")),
+                "final_media_qa": str(final_media_qa),
                 "fingerprints": fingerprints,
             },
             ensure_ascii=False,
