@@ -10,6 +10,7 @@ from typing import Any
 
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import clean_segment_normalizer
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
@@ -69,6 +70,35 @@ def _renderer_baseline_ready(
     return True, direct_max_quality_io.POLICY
 
 
+def _current_fingerprints(request: dict[str, Any]) -> dict[str, Any]:
+    repo = Path(__file__).resolve().parents[2]
+    archive = Path(
+        str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
+    ).resolve()
+    return clean_runtime_contract.build_fingerprints(
+        repo=repo,
+        archive=archive,
+        cpu_python=clean._cpu_python(request),
+    )
+
+
+def _fingerprinted_baseline_ready(
+    marker: dict[str, Any],
+    fingerprints: dict[str, Any],
+) -> tuple[bool, str]:
+    expected_render = str(fingerprints.get("render_contract_sha256") or "")
+    expected_release = str(fingerprints.get("release_contract_sha256") or "")
+    if marker.get("policy") != clean.POLICY:
+        return False, f"production-policy={marker.get('policy') or 'missing'}"
+    if marker.get("runtime_contract_policy") != clean_runtime_contract.POLICY:
+        return False, "runtime contract marker отсутствует или устарел"
+    if str(marker.get("render_contract_sha256") or "") != expected_render:
+        return False, "renderer/model/voxcpm fingerprint изменился"
+    if str(marker.get("release_contract_sha256") or "") != expected_release:
+        return False, "QA/master/reference release fingerprint изменился"
+    return True, "fingerprinted clean expressive baseline"
+
+
 def _next_seed(
     request: dict[str, Any],
     marker: dict[str, Any],
@@ -106,6 +136,7 @@ def _update_manifest(
     repair_all: bool,
     seed: int,
     report_path: Path,
+    marker: dict[str, Any],
 ) -> None:
     history = manifest.get("audio_repairs")
     repairs = list(history) if isinstance(history, list) else []
@@ -117,6 +148,9 @@ def _update_manifest(
             "segment_ids": selected_ids,
             "base_seed": int(seed),
             "production_policy": clean.POLICY,
+            "runtime_contract_policy": clean_runtime_contract.POLICY,
+            "render_contract_sha256": marker.get("render_contract_sha256"),
+            "release_contract_sha256": marker.get("release_contract_sha256"),
             "renderer_policy": direct_max_quality_io.POLICY,
             "reference_policy": continuous_reference_policy.POLICY,
             "expression_policy": expressive_continuity.POLICY,
@@ -127,6 +161,9 @@ def _update_manifest(
     )
     manifest["phase"] = "completed"
     manifest["audio_quality_guard"] = clean.POLICY
+    manifest["runtime_contract_policy"] = clean_runtime_contract.POLICY
+    manifest["render_contract_sha256"] = marker.get("render_contract_sha256")
+    manifest["release_contract_sha256"] = marker.get("release_contract_sha256")
     manifest["audio_production"] = "direct-powershell-equivalent"
     manifest["renderer_policy"] = direct_max_quality_io.POLICY
     manifest["reference_policy"] = continuous_reference_policy.POLICY
@@ -155,10 +192,7 @@ def main() -> None:
     request = production.load_request(root)
     repair_path = root / "input" / "audio_repair.json"
     repair = legacy_repair._load_object(repair_path, "audio_repair.json")
-    if (
-        int(repair.get("schema_version") or 0) != 1
-        or str(repair.get("project_id")) != project_id
-    ):
+    if int(repair.get("schema_version") or 0) != 1 or str(repair.get("project_id")) != project_id:
         raise RuntimeError("Некорректный запрос аудиоремонта.")
 
     repair_all_requested = bool(repair.get("repair_all"))
@@ -167,7 +201,6 @@ def main() -> None:
 
     segments_path = root / "segments_ru_final.json"
     repair, segments = _reload_repair_and_segments(repair_path, segments_path)
-
     source = root / "source" / "source.mp4"
     if not source.is_file():
         raise RuntimeError("Не найден локальный source.mp4 проекта.")
@@ -209,16 +242,17 @@ def main() -> None:
             str(item.get("expression_policy") or "") == expressive_continuity.POLICY
             for item in segments
         )
+        fingerprints = _current_fingerprints(request)
+        fingerprint_ready, fingerprint_detail = _fingerprinted_baseline_ready(
+            marker,
+            fingerprints,
+        )
         renderer_ready, renderer_detail = _renderer_baseline_ready(segment_work, all_ids)
-        if (
-            marker.get("policy") != clean.POLICY
-            or not expression_ready
-            or not renderer_ready
-        ):
+        if not expression_ready or not renderer_ready or not fingerprint_ready:
             raise RuntimeError(
                 "Выборочный ремонт разрешён только после успешного clean expressive "
                 f"baseline renderer {direct_max_quality_io.POLICY}. "
-                f"Текущее состояние: {renderer_detail}. "
+                f"Fingerprint: {fingerprint_detail}. Renderer: {renderer_detail}. "
                 "Сначала выполните /dubfix PROJECT_ID all."
             )
         extended, composite = _existing_references(root)
@@ -270,17 +304,28 @@ def main() -> None:
         force_fresh=repair_all,
     )
 
+    final_marker = _clean_marker(segment_work)
+    if (
+        final_marker.get("policy") != clean.POLICY
+        or not final_marker.get("render_contract_sha256")
+        or not final_marker.get("release_contract_sha256")
+    ):
+        raise RuntimeError("После ремонта не создан fingerprinted clean baseline marker.")
+
     legacy_repair._refresh_named_outputs(manifest, stable_mixed, stable_russian)
     report_path = output_dir / "audio_repair_report.json"
     production.save_json(
         report_path,
         {
-            "schema_version": 5,
+            "schema_version": 6,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
             "base_seed": seed,
             "production_policy": clean.POLICY,
+            "runtime_contract_policy": clean_runtime_contract.POLICY,
+            "render_contract_sha256": final_marker.get("render_contract_sha256"),
+            "release_contract_sha256": final_marker.get("release_contract_sha256"),
             "renderer_policy": direct_max_quality_io.POLICY,
             "reference_policy": continuous_reference_policy.POLICY,
             "segment_policy": clean_segment_normalizer.POLICY,
@@ -305,6 +350,7 @@ def main() -> None:
         repair_all=repair_all,
         seed=seed,
         report_path=report_path,
+        marker=final_marker,
     )
 
     last_request = repair_path.with_name("audio_repair.last.json")
