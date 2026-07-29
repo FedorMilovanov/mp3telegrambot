@@ -18,6 +18,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# This file is an executable entrypoint as well as an importable module. When
+# Python executes a file by absolute path, sys.path[0] is the file's directory,
+# not the repository root. Establish the package root explicitly before any
+# project import so the exact bot command works from every cwd and virtualenv.
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from tools.voxcpm2.final_media_qa import (
     TARGET_I_RANGE,
     TARGET_LRA_RANGE,
