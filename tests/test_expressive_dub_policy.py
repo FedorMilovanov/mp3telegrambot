@@ -104,7 +104,8 @@ def test_gemini_route_uses_rhetoric_preserving_translation() -> None:
     policy = (
         ROOT / "tools" / "voxcpm2" / "expressive_translation.py"
     ).read_text(encoding="utf-8")
-    assert "production.pipeline.translate_groups = expressive_translation.translate_groups" in route
+    assert "production.translate_groups_max = expressive_translation.translate_groups" in route
+    assert "metadata: dict[str, Any] | None" in policy
     assert "намеренные повторы" in policy
     assert "риторические вопросы" in policy
     assert "непрерывную мысль" in policy
