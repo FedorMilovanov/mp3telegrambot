@@ -150,12 +150,18 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         ),
         "source-prosody-ranking": (
             'POLICY = "source-prosody-candidate-ranking-v1"' in text["prosody"]
+            and "def candidate_pitch_evidence_ok(" in text["prosody"]
             and "def source_prosody_penalty(" in text["prosody"]
+            and "candidate_pitch_evidence_ok(best_so_far)" in text["cli"]
+            and "and candidate_pitch_evidence_ok(item)" in text["cli"]
             and "source_prosody_penalty(candidate, segment)" in text["cli"]
             and '"expression": expression_signature' in text["cli"]
+            and '"selected_raw_pitch_evidence_ok": True' in text["cli"]
             and '"selected_base_score"' in text["cli"]
             and '"selected_source_prosody_match"' in text["cli"]
-            and '"schema_version": "5.1-direct-source-prosody"' in text["cli"]
+            and '"schema_version": "5.2-direct-raw-pitch-source-prosody"'
+            in text["cli"]
+            and "rawPitch=" in text["cli"]
             and "srcF0×=" in text["cli"]
         ),
         "continuous-first-reference": (
@@ -356,7 +362,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
             quality_detail
             + "; runtime v2 sampled model/package fingerprints; direct v3 16→48k; "
             "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
-            "fail-closed voice/timbre hard gates + source-prosody candidate ranking; "
+            "fail-closed raw pitch + voice/timbre gates + source-prosody ranking; "
             "calm+expressive identity; Gemini passes 1/3–3/3 with bounded key failover; "
             "fixed-original master + aligned post-AAC 18% regression; "
             "final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
