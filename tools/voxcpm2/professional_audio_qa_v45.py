@@ -3,9 +3,9 @@
 """Final release gate for clean expressive direct production.
 
 The semantic/timing gate remains independent from the renderer. Voice-register
-limits are profile- and source-prosody-aware: a controlled expressive line may
-rise naturally, while near-unvoiced, semantically wrong or extreme-register
-outputs still fail hard.
+limits are profile- and source-prosody-aware. A failed auto-language Whisper
+reading receives one forced-Russian diagnostic pass, but confidently foreign
+audio can never be rescued by that pass.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from tools.voxcpm2 import semantic_tts_guard_v4
 from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
 
-POLICY = "clean-expression-aware-qa-v2"
+POLICY = "clean-expression-aware-qa-v3"
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -56,11 +56,7 @@ def _voice_limits(
     reference_median: float,
     reference_p90: float,
 ) -> dict[str, float]:
-    """Return strict but expression-aware ratio limits.
-
-    F0 is not timbre by itself, so this gate is deliberately used together with
-    semantic recall, voiced ratio, continuity and the renderer's candidate gate.
-    """
+    """Return strict but expression-aware ratio limits."""
     tier = str(item.get("expression_tier") or "")
     score = _number(item.get("expression_score"), 0.0)
     expressive = profile_name == "composite" or tier in {"emphatic", "passionate"}
@@ -70,9 +66,6 @@ def _voice_limits(
     min_median = 0.55 if expressive else 0.62
     min_p90 = 0.50 if expressive else 0.56
 
-    # The real source window says whether this line is itself a high-energy part
-    # of the arc. It may expand a limit modestly, never beyond the renderer's hard
-    # safety ceiling.
     source = item.get("source_prosody") or {}
     source_median = _number(source.get("f0_median"), 0.0)
     source_p90 = _number(source.get("f0_p90"), 0.0)
@@ -95,13 +88,54 @@ def _voice_limits(
     }
 
 
+def _forced_russian_fallback(
+    clip: Path,
+    target: str,
+    auto_semantic: dict[str, Any],
+) -> dict[str, Any]:
+    """Retry ASR in Russian, without overriding confident foreign detection."""
+    auto = dict(auto_semantic)
+    heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(
+        clip,
+        language="ru",
+    )
+    forced = semantic_tts_guard_v4.legacy.compare_spoken_text(
+        target,
+        heard,
+        language,
+        probability,
+    )
+    confident_foreign = bool(auto.get("foreign_language"))
+    rescued = bool(forced.get("passed") and not confident_foreign)
+    selected = forced if rescued else auto
+    merged = dict(selected)
+    merged.update(
+        {
+            "passed": rescued,
+            "auto_language": auto,
+            "forced_russian": forced,
+            "forced_russian_rescued": rescued,
+            "confident_foreign_block": confident_foreign,
+        }
+    )
+    return merged
+
+
+def _base_semantic_acoustic_pass(check: dict[str, Any]) -> bool:
+    acoustic = check.get("acoustic") or {}
+    timing = check.get("timing") or {}
+    return bool(
+        acoustic.get("passed")
+        and (not timing or timing.get("passed"))
+    )
+
+
 def verify_timeline_v45(
     timeline: Path,
     segments: list[dict[str, Any]],
     report_path: Path,
 ) -> tuple[list[int], dict[str, Any]]:
-    failed, report = policy._ORIGINAL_VERIFY(timeline, segments, report_path)
-    failed_ids = {int(value) for value in failed}
+    _failed, report = policy._ORIGINAL_VERIFY(timeline, segments, report_path)
     checks = {
         int(item.get("id")): item
         for item in report.get("segments", [])
@@ -117,9 +151,28 @@ def verify_timeline_v45(
             start = float(item["start"]) + delay
             duration = max(0.35, float(item["end"]) - float(item["start"]))
             clip = temp / f"segment_{segment_id:03d}.wav"
-            semantic_tts_guard_v4.legacy._extract_clip(timeline, clip, start, duration)
+            semantic_tts_guard_v4.legacy._extract_clip(
+                timeline,
+                clip,
+                start,
+                duration,
+            )
             samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
             audio = np.asarray(samples, dtype=np.float32)
+
+            check = checks.setdefault(segment_id, {"id": segment_id, "passed": True})
+            semantic = check.get("semantic")
+            if isinstance(semantic, dict) and not semantic.get("passed"):
+                semantic = _forced_russian_fallback(
+                    clip,
+                    str(item.get("text") or ""),
+                    semantic,
+                )
+                check["semantic"] = semantic
+                check["passed"] = bool(
+                    _base_semantic_acoustic_pass(check)
+                    and semantic.get("passed")
+                )
 
             activity = activity_stats(audio, int(sample_rate))
             punctuation = bool(re.search(r"[.!?…;:]", str(item.get("text") or "")))
@@ -152,11 +205,14 @@ def verify_timeline_v45(
             )
             voice_passed = bool(
                 _number(pitch.get("voiced_ratio")) >= 0.12
-                and limits["min_median_ratio"] <= median_ratio <= limits["max_median_ratio"]
-                and limits["min_p90_ratio"] <= p90_ratio <= limits["max_p90_ratio"]
+                and limits["min_median_ratio"]
+                <= median_ratio
+                <= limits["max_median_ratio"]
+                and limits["min_p90_ratio"]
+                <= p90_ratio
+                <= limits["max_p90_ratio"]
             )
 
-            check = checks.setdefault(segment_id, {"id": segment_id, "passed": True})
             check["continuity_v45"] = {
                 **activity,
                 "max_allowed_internal_gap": max_gap,
@@ -178,11 +234,14 @@ def verify_timeline_v45(
             check["passed"] = bool(
                 check.get("passed") and continuity_passed and voice_passed
             )
-            if not check["passed"]:
-                failed_ids.add(segment_id)
 
-    result = sorted(failed_ids)
+    result = sorted(
+        int(segment_id)
+        for segment_id, check in checks.items()
+        if not bool(check.get("passed"))
+    )
     report["professional_audio_policy"] = POLICY
+    report["semantic_asr_policy"] = "auto-language + conservative forced-Russian fallback"
     report["passed"] = not result
     report["failed_segment_ids"] = result
     report_path.write_text(
