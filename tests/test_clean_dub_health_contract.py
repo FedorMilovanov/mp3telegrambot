@@ -13,6 +13,7 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
     assert "generic_short_runtime.py" in source
     assert "clean_runtime_contract.py" in source
+    assert "clean_source_download.py" in source
     assert "expressive_continuity.py" in source
     assert "continuous_reference_policy.py" in source
     assert "controlled_reference_gate.py" in source
@@ -27,6 +28,13 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert 'root.rglob("*.py")' in source
     assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
     assert '"tools/voxcpm2/direct_source_prosody.py"' in source
+    assert '"tools/voxcpm2/clean_source_download.py"' in source
+    assert 'verified-source-cache' in source
+    assert 'POLICY = "clean-source-download-manifest-v1"' in source
+    assert 'def _url_video_id(' in source
+    assert 'def _sampled_sha256(' in source
+    assert 'hardened.download_source = clean_source_download.download_source' in source
+    assert 'hardened.pipeline.download_source = clean_source_download.download_source' in source
     assert 'POLICY = "source-prosody-candidate-ranking-v1"' in source
     assert 'source-prosody-ranking' in source
     assert 'def candidate_pitch_evidence_ok(' in source
