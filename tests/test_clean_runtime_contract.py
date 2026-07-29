@@ -156,6 +156,7 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert '"schema_version": 3' in source
     assert '"release_complete": False' in source
     assert "release_complete=True" in source
+    assert '"tools/voxcpm2/direct_source_prosody.py"' in contract_source
     assert 'request.get("cfg") or' not in contract_source
     assert 'request.get("threads") or' not in contract_source
     assert 'request.get("steps") or' not in contract_source
