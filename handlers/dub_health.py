@@ -20,7 +20,7 @@ from services.dub_studio import DubStore, load_recipe, studio_root, worker_is_fr
 from tools.voxcpm2.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-quality-v4.4"
+_WORKER_RUNTIME = "dub-worker-quality-v4.5"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -300,10 +300,13 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "_finalize_progress_card" in text["runtime"]
             and "dub_progress_updates" not in text["runtime"]
         ),
-        "worker-v44": (
-            'dub-worker-quality-v4.4' in text["runtime"]
-            and 'dub-worker-quality-v4.4' in text["worker"]
+        "worker-v45": (
+            'dub-worker-quality-v4.5' in text["runtime"]
+            and 'dub-worker-quality-v4.5' in text["worker"]
             and "_progress_from_line_v44" in text["worker"]
+            and "_recover_abandoned_with_terminal_events" in text["worker"]
+            and "_FINAL_JOB_STATES" in text["worker"]
+            and "status in _FINAL_JOB_STATES" in text["worker"]
             and 'return current, ""' in text["worker"]
         ),
         "single-title-policy": "install_dub_title_policy" in text["title"],
@@ -366,7 +369,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "calm+expressive identity; Gemini passes 1/3–3/3 with bounded key failover; "
             "fixed-original master + aligned post-AAC 18% regression; "
             "final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
-            "editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
+            "editable progress; worker v4.5 queue guards; -16 LUFS/-1.5 dBTP",
         )
     )
 
