@@ -11,6 +11,7 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_gemini_runtime" in source
     assert "tools.voxcpm2.generic_clean_direct_runtime" in source
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
+    assert "clean_runtime_contract.py" in source
     assert "expressive_continuity.py" in source
     assert "continuous_reference_policy.py" in source
     assert "controlled_reference_gate.py" in source
@@ -18,6 +19,12 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "expressive_translation.py" in source
     assert "direct_timbre_analysis.py" in source
     assert "final_media_qa.py" in source
+    assert 'POLICY = "clean-runtime-contract-v2"' in source
+    assert "sampled_sha256_file" in source
+    assert '"sampled-begin-middle-end-v1"' in source
+    assert 'root.rglob("*.py")' in source
+    assert 'request.get("base_seed") or' in source
+    assert 'request.get("base_seed") or\' not in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source
     assert 'POLICY: Final = "russian-spoken-numbers-v2"' in source
     assert 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in source
@@ -30,7 +37,14 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "identity_reference=extended" in source
     assert "numeric_anchors_passed" in source
     assert "MAX_START_DELAY_MS = 1500" in source
-    assert "spectral_similarity" in source
+    assert "_finite_voice_metric" in source
+    assert "MAX_TIMBRE_PENALTY" in source
+    assert "pre-model-reference-hard-floor-v1" in source
+    assert "afade=t=in" in source
+    assert "afade=t=out" in source
+    assert "fixed-original-post-russian-master-v1" in source
+    assert '"post_mix_loudnorm": False' in source
+    assert '"post_mix_limiter": False' in source
     assert "verify_final_outputs" in source
     assert "final_media_verification.json" in source
     assert "Clean Expressive NoChew + независимый QA" in source
