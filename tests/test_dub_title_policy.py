@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from services import dub_title_policy
 from services.dub_title_policy import (
     canonical_delivery_filename,
     canonical_media_title,
@@ -44,6 +45,17 @@ def test_historical_manifest_filename_is_fixed_without_rerender() -> None:
     )
 
 
+def test_core_patch_preserves_existing_english_title_case() -> None:
+    import core.text_utils as text_utils
+
+    dub_title_policy._patch_core_title_case()
+    assert text_utils.title_case_fragment("the power of grace") == "The Power of Grace"
+    assert (
+        text_utils.title_case_fragment("Сила И Достоинство")
+        == "Сила и Достоинство"
+    )
+
+
 def test_clean_full_routes_use_title_policy_and_fresh_baselines() -> None:
     for name in (
         "generic_clean_gemini_runtime.py",
@@ -66,7 +78,7 @@ def test_bot_installs_title_policy_after_dub_handlers() -> None:
 
 def test_title_policy_is_runtime_wide_and_health_checked() -> None:
     source = (ROOT / "services" / "dub_title_policy.py").read_text(encoding="utf-8")
-    assert "text_utils.title_case_fragment = canonical_media_title" in source
+    assert "text_utils.sentence_case_russian_title = wrapped" in source
     assert "DubStore._row_project = wrapped" in source
     assert "runtime._undelivered_notification_events = wrapped" in source
     assert "delivery.available_outputs = wrapped" in source
