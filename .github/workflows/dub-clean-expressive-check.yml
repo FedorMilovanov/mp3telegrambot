@@ -36,6 +36,7 @@ on:
       - "tests/test_clean_runtime_contract.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
+      - "tests/test_clean_request_settings.py"
       - "tests/test_creator_vtt_integrity.py"
       - "tests/test_strict_translation_payload.py"
       - "tests/test_continuous_reference_policy.py"
@@ -111,6 +112,7 @@ jobs:
             tools/voxcpm2/professional_audio_qa_v45.py \
             tools/voxcpm2/clean_runtime_contract.py \
             tools/voxcpm2/clean_source_download.py \
+            tools/voxcpm2/clean_request_settings.py \
             tools/voxcpm2/clean_production_core.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
@@ -132,6 +134,7 @@ jobs:
             tests/test_clean_runtime_contract.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
+            tests/test_clean_request_settings.py \
             tests/test_creator_vtt_integrity.py \
             tests/test_strict_translation_payload.py \
             tests/test_continuous_reference_policy.py \
