@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
 import subprocess
 import sys
@@ -26,6 +27,7 @@ EXPECTED_OUTPUT_SR = 48000
 # community advice and is therefore not forced in reference-only production.
 REFERENCE_TAIL_SILENCE = 0.0
 MAX_TEMPO = 1.35
+MAX_START_DELAY_MS = 1500
 
 
 def configure_utf8() -> None:
@@ -143,31 +145,98 @@ def discover_model(archive_root: Path) -> Path:
     raise RuntimeError("Локальный snapshot VoxCPM2 не найден.")
 
 
+def _finite_float(value: Any, *, field: str, segment_id: int) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Сегмент #{segment_id}: некорректное значение {field}={value!r}."
+        ) from exc
+    if not math.isfinite(result):
+        raise RuntimeError(
+            f"Сегмент #{segment_id}: {field} должен быть конечным числом."
+        )
+    return result
+
+
 def read_segments(path: Path) -> list[dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(payload, list) or not payload:
         raise RuntimeError("segments JSON должен содержать непустой список.")
+
     result: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
     previous_end = 0.0
+    previous_effective_end = 0.0
+
     for index, raw in enumerate(payload, start=1):
+        if not isinstance(raw, dict):
+            raise RuntimeError(f"Сегмент #{index} должен быть JSON-объектом.")
         item = dict(raw)
-        item["id"] = int(item.get("id", index))
-        item["start"] = float(item["start"])
-        item["end"] = float(item["end"])
+        try:
+            segment_id = int(item.get("id", index))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError(f"Некорректный ID сегмента #{index}.") from exc
+        if segment_id <= 0:
+            raise RuntimeError(f"ID сегмента должен быть положительным: {segment_id}.")
+        if segment_id in seen_ids:
+            raise RuntimeError(f"Повторяющийся ID сегмента: {segment_id}.")
+        seen_ids.add(segment_id)
+
+        start = _finite_float(item.get("start"), field="start", segment_id=segment_id)
+        end = _finite_float(item.get("end"), field="end", segment_id=segment_id)
+        tail_guard = _finite_float(
+            item.get("tail_guard", 0.22),
+            field="tail_guard",
+            segment_id=segment_id,
+        )
+        try:
+            start_delay_ms = int(item.get("start_delay_ms", 0))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError(
+                f"Сегмент #{segment_id}: некорректный start_delay_ms."
+            ) from exc
+
+        item["id"] = segment_id
+        item["start"] = start
+        item["end"] = end
         item["text"] = str(item.get("text") or "").strip()
-        item["tail_guard"] = float(item.get("tail_guard", 0.22))
-        item["start_delay_ms"] = int(item.get("start_delay_ms", 0))
-        item["reference_profile"] = str(item.get("reference_profile", "extended"))
-        if item["end"] <= item["start"]:
-            raise RuntimeError(f"Некорректный сегмент #{item['id']}.")
-        if item["start"] < previous_end - 0.001:
-            raise RuntimeError(f"Пересечение у сегмента #{item['id']}.")
+        item["tail_guard"] = tail_guard
+        item["start_delay_ms"] = start_delay_ms
+        item["reference_profile"] = str(
+            item.get("reference_profile", "extended")
+        )
+
+        if start < 0.0:
+            raise RuntimeError(f"Сегмент #{segment_id}: start не может быть отрицательным.")
+        if end <= start:
+            raise RuntimeError(f"Некорректный сегмент #{segment_id}.")
+        if tail_guard < 0.0:
+            raise RuntimeError(
+                f"Сегмент #{segment_id}: tail_guard не может быть отрицательным."
+            )
+        if not 0 <= start_delay_ms <= MAX_START_DELAY_MS:
+            raise RuntimeError(
+                f"Сегмент #{segment_id}: start_delay_ms должен быть в диапазоне "
+                f"0..{MAX_START_DELAY_MS}."
+            )
+        if start < previous_end - 0.001:
+            raise RuntimeError(f"Пересечение у сегмента #{segment_id}.")
+
+        effective_start = start + start_delay_ms / 1000.0
+        effective_end = end + start_delay_ms / 1000.0
+        if effective_start < previous_effective_end - 0.001:
+            raise RuntimeError(
+                f"Эффективное пересечение после delay у сегмента #{segment_id}."
+            )
         if not item["text"]:
-            raise RuntimeError(f"Пустой текст #{item['id']}.")
+            raise RuntimeError(f"Пустой текст #{segment_id}.")
         if item["reference_profile"] not in {"extended", "composite"}:
-            raise RuntimeError(f"Неизвестный reference_profile у #{item['id']}.")
+            raise RuntimeError(f"Неизвестный reference_profile у #{segment_id}.")
+
         result.append(item)
-        previous_end = item["end"]
+        previous_end = end
+        previous_effective_end = effective_end
     return result
 
 
