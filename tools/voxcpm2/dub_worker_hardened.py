@@ -13,7 +13,7 @@ from typing import Any
 from services.dub_studio import DubStore, utc_now
 from tools.voxcpm2 import dub_worker as worker
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.4"
+_RUNTIME_VERSION = "dub-worker-quality-v4.5"
 _PROGRESS_PREFIX = "DUB_PROGRESS "
 _QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
 _MILESTONES = (25, 50, 75, 90)
@@ -122,6 +122,7 @@ def _heartbeat_versioned_worker(
         return
     progress = max(1, min(int(payload.get("progress") or 1), 99))
     stage = str(payload.get("stage") or "CPU-рендер")[:160]
+    elapsed = float(payload.get("elapsed_seconds") or 0.0)
     self.update_job_progress(
         job_id,
         progress=progress,
@@ -129,7 +130,7 @@ def _heartbeat_versioned_worker(
         message=(
             f"{stage}: CPU-процесс активен; прошло {_elapsed_label(elapsed)}. "
             "Процент обновится на следующем подтверждённом шаге модели."
-        ) if (elapsed := float(payload.get("elapsed_seconds") or 0.0)) >= 0.0 else stage,
+        ),
     )
     _LAST_JOB_PULSE[job_id] = now
 
