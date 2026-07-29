@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 from pathlib import Path
 from typing import Any
@@ -36,48 +37,89 @@ def _clean_marker(work_dir: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _checkpoint_signature(work_dir: Path, segment_id: int) -> dict[str, Any]:
+def _checkpoint_payload(work_dir: Path, segment_id: int) -> dict[str, Any]:
     path = work_dir / "checkpoints" / f"segment_{segment_id:02d}.json"
-    if not path.is_file():
+    if not path.is_file() or path.stat().st_size <= 0:
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _finite_report_value(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def _checkpoint_ready(
+    work_dir: Path,
+    segment_id: int,
+) -> tuple[bool, str]:
+    payload = _checkpoint_payload(work_dir, segment_id)
     signature = payload.get("signature") if isinstance(payload, dict) else None
-    return signature if isinstance(signature, dict) else {}
+    report = payload.get("report") if isinstance(payload, dict) else None
+    if not isinstance(signature, dict) or not isinstance(report, dict):
+        return False, "checkpoint JSON неполон"
+    if str(signature.get("policy") or "") != direct_max_quality_io.POLICY:
+        return False, "устаревший renderer-policy"
+    if str(report.get("renderer_policy") or "") != direct_max_quality_io.POLICY:
+        return False, "report renderer-policy отсутствует или устарел"
+    if int(report.get("id") or 0) != segment_id:
+        return False, "report id не совпадает"
+    profile = str(signature.get("reference_profile") or "")
+    if profile not in {"extended", "composite"}:
+        return False, "reference_profile отсутствует"
+    selected_voice = report.get("selected_voice_match")
+    if not isinstance(selected_voice, dict) or not all(
+        _finite_report_value(selected_voice.get(key))
+        for key in ("f0_median_ratio", "f0_p90_ratio", "spectral_similarity")
+    ):
+        return False, "selected voice evidence неполон"
+    fit = report.get("fit")
+    if not isinstance(fit, dict) or not _finite_report_value(fit.get("fitted_duration")):
+        return False, "fit report неполон"
+    fitted = work_dir / "segments_fitted" / f"{segment_id:02d}_{profile}_fitted.wav"
+    if not fitted.is_file() or fitted.stat().st_size <= 0:
+        return False, "fitted WAV отсутствует или пуст"
+    return True, direct_max_quality_io.POLICY
 
 
 def _renderer_baseline_ready(
     work_dir: Path,
     segment_ids: set[int],
 ) -> tuple[bool, str]:
-    missing: list[int] = []
-    wrong: list[int] = []
+    failures: list[str] = []
     for segment_id in sorted(segment_ids):
-        signature = _checkpoint_signature(work_dir, segment_id)
-        if not signature:
-            missing.append(segment_id)
-        elif str(signature.get("policy") or "") != direct_max_quality_io.POLICY:
-            wrong.append(segment_id)
-    if missing:
-        return False, f"нет checkpoint: {missing[:12]}"
-    if wrong:
-        return False, (
-            f"устаревший renderer-policy у {wrong[:12]}; "
-            f"нужен {direct_max_quality_io.POLICY}"
-        )
+        ready, detail = _checkpoint_ready(work_dir, segment_id)
+        if not ready:
+            failures.append(f"#{segment_id}: {detail}")
+    if failures:
+        return False, "; ".join(failures[:12])
     return True, direct_max_quality_io.POLICY
+
+
+def _request_value(request: dict[str, Any], key: str, default: Any) -> Any:
+    return default if key not in request or request[key] is None else request[key]
 
 
 def _current_fingerprints(request: dict[str, Any]) -> dict[str, Any]:
     repo = Path(__file__).resolve().parents[2]
-    archive = Path(
-        str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    ).resolve()
+    archive_value = str(
+        _request_value(
+            request,
+            "vox_archive",
+            r"C:\AI-Archive\VoxCPM2-paused-RTX3060",
+        )
+    ).strip()
+    if not archive_value:
+        raise RuntimeError("vox_archive пуст в запросе аудиоремонта.")
     return clean_runtime_contract.build_fingerprints(
         repo=repo,
-        archive=archive,
+        archive=Path(archive_value).resolve(),
         cpu_python=clean._cpu_python(request),
     )
 
@@ -109,10 +151,14 @@ def _next_seed(
     manifest: dict[str, Any],
 ) -> int:
     try:
-        initial = int(request.get("base_seed") or 2026072800)
-        previous = int(marker.get("base_seed") or initial)
+        initial = int(_request_value(request, "base_seed", 2026072800))
+        previous = int(_request_value(marker, "base_seed", initial))
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("Некорректный base_seed для аудиоремонта.") from exc
+    if not 0 <= initial <= clean_runtime_contract.MAX_BASE_SEED:
+        raise RuntimeError("Исходный repair base_seed выходит за безопасный диапазон.")
+    if not 0 <= previous <= clean_runtime_contract.MAX_BASE_SEED:
+        raise RuntimeError("Marker base_seed выходит за безопасный диапазон.")
     history = manifest.get("audio_repairs")
     repair_index = len(history) + 1 if isinstance(history, list) else 1
     candidate = max(initial, previous) + max(1, repair_index) * clean_runtime_contract.RETRY_SEED_OFFSET
@@ -130,7 +176,7 @@ def _existing_references(root: Path) -> tuple[Path, Path]:
                 "Не найдены чистые voice references. Выполните /dubfix PROJECT_ID all."
             )
         report = path.with_suffix(".selection.json")
-        if not report.is_file():
+        if not report.is_file() or report.stat().st_size <= 0:
             raise RuntimeError(
                 "У voice reference нет отчёта чистого отбора. "
                 "Выполните полный ремонт all."
@@ -330,7 +376,7 @@ def main() -> None:
     production.save_json(
         report_path,
         {
-            "schema_version": 7,
+            "schema_version": 8,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
