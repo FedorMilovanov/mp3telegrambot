@@ -177,6 +177,47 @@ def test_first_terminal_result_wins_without_duplicate_event(tmp_path: Path) -> N
     assert terminal[0]["event_type"] == "job_succeeded"
 
 
+def test_late_progress_cannot_mutate_terminal_state(tmp_path: Path) -> None:
+    store = DubStore(tmp_path)
+    project = store.create_project(
+        "john_piper_z20py4yqhyq",
+        owner_user_id=41,
+        owner_chat_id=42,
+    )
+    queued = store.enqueue_job(project["id"], "repair_psalm15")
+    assert store.claim_next_job("worker-late") is not None
+    dub_worker_hardened._finish_job_with_root_cause(
+        store,
+        queued["id"],
+        status="succeeded",
+        result={"release": "stable"},
+    )
+
+    dub_worker_hardened._update_progress_with_milestones(
+        store,
+        queued["id"],
+        progress=77,
+        stage="late heartbeat",
+        message="must be ignored",
+    )
+
+    job = store.get_job(queued["id"])
+    current_project = store.get_project(project["id"])
+    assert job["status"] == "succeeded"
+    assert job["progress"] == 100
+    assert job["stage"] == "completed"
+    assert current_project["status"] == "done"
+    assert current_project["progress"] == 100
+    assert current_project["stage"] == "completed"
+    events = [
+        item
+        for item in store.undelivered_terminal_events(limit=50)
+        if int(item.get("job_id") or 0) == int(queued["id"])
+    ]
+    assert len(events) == 1
+    assert events[0]["event_type"] == "job_succeeded"
+
+
 def test_unknown_recipe_and_action_are_rejected(tmp_path: Path) -> None:
     store = DubStore(tmp_path)
     with pytest.raises((ValueError, FileNotFoundError)):
