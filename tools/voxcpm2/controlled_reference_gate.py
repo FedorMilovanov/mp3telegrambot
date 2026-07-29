@@ -50,6 +50,17 @@ def _valid_expressive_reference(output: Path) -> tuple[bool, str]:
     return True, f"controlled expressive {duration:.3f}s"
 
 
+def _restore(
+    *,
+    backup_wav: Path,
+    backup_report: Path,
+    output: Path,
+    report_path: Path,
+) -> None:
+    shutil.copy2(backup_wav, output)
+    shutil.copy2(backup_report, report_path)
+
+
 def build_or_keep_calm(
     *,
     source: Path,
@@ -76,16 +87,30 @@ def build_or_keep_calm(
             target_seconds=target_seconds,
         )
         if not built:
+            _restore(
+                backup_wav=backup_wav,
+                backup_report=backup_report,
+                output=output,
+                report_path=report_path,
+            )
             return False, "safe calm-reference fallback: expressive windows not found"
         valid, detail = _valid_expressive_reference(output)
         if valid:
             return True, detail
-        shutil.copy2(backup_wav, output)
-        shutil.copy2(backup_report, report_path)
+        _restore(
+            backup_wav=backup_wav,
+            backup_report=backup_report,
+            output=output,
+            report_path=report_path,
+        )
         return False, "safe calm-reference fallback: " + detail
     except Exception:
-        shutil.copy2(backup_wav, output)
-        shutil.copy2(backup_report, report_path)
+        _restore(
+            backup_wav=backup_wav,
+            backup_report=backup_report,
+            output=output,
+            report_path=report_path,
+        )
         raise
     finally:
         backup_wav.unlink(missing_ok=True)
