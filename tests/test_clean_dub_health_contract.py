@@ -14,15 +14,22 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "expressive_continuity.py" in source
     assert "continuous_reference_policy.py" in source
     assert "controlled_reference_gate.py" in source
+    assert "russian_spoken_numbers.py" in source
     assert "expressive_translation.py" in source
     assert "direct_timbre_analysis.py" in source
     assert "final_media_qa.py" in source
-    assert 'POLICY = "continuous-clean-reference-v1"' in source
+    assert 'POLICY = "continuous-clean-reference-v2"' in source
+    assert 'POLICY: Final = "russian-spoken-numbers-v2"' in source
+    assert 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in source
+    assert 'IDENTITY_POLICY = "calm-and-expressive-identity-v2"' in source
     assert '"single-continuous-window"' in source
     assert '"multi-window-fallback"' in source
+    assert "_report_has_usable_selection" in source
     assert "continuous_reference_policy.build_calm_references" in source
     assert "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in source
     assert "identity_reference=extended" in source
+    assert "numeric_anchors_passed" in source
+    assert "MAX_START_DELAY_MS = 1500" in source
     assert "spectral_similarity" in source
     assert "verify_final_outputs" in source
     assert "final_media_verification.json" in source
