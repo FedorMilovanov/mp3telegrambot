@@ -3,6 +3,7 @@
 """Fail-closed JSON contracts for Russian translation/editor passes."""
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Iterable
 
@@ -12,6 +13,10 @@ POLICY = "strict-translation-payload-v1"
 def _integer_id(value: Any, *, location: str) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{location}: bool нельзя использовать как ID.")
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        raise RuntimeError(f"{location}: ID должен быть целым числом, получено {value!r}.")
     try:
         result = int(value)
     except (TypeError, ValueError, OverflowError) as exc:
