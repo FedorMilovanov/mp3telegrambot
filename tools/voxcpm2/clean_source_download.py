@@ -84,6 +84,23 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
     return dict(payload) if isinstance(payload, dict) else None
 
 
+def _project_request_video_id(source: Path) -> str:
+    """Read the durable project identity when source uses the standard layout."""
+    request_path = Path(source).resolve().parent.parent / "request.json"
+    if not request_path.is_file():
+        return ""
+    try:
+        payload = json.loads(request_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Повреждён project request: {request_path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Project request не является JSON-объектом.")
+    expected = str(payload.get("video_id") or "").strip()
+    if not _VIDEO_ID_RE.fullmatch(expected):
+        raise RuntimeError("Project request не содержит корректный YouTube video ID.")
+    return expected
+
+
 def _metadata(url: str) -> dict[str, Any]:
     expected_id = _url_video_id(url)
     if not expected_id:
@@ -170,12 +187,18 @@ def _write_manifest(
 
 
 def download_source(url: str, source: Path) -> dict[str, Any]:
-    """Reuse source.mp4 only when its durable manifest proves the same video."""
+    """Reuse source.mp4 only when URL, request and cache prove one video."""
     source = Path(source)
     source.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = _manifest_path(source)
     metadata = _metadata(str(url))
     video_id = str(metadata["id"])
+    project_video_id = _project_request_video_id(source)
+    if project_video_id and video_id != project_video_id:
+        raise RuntimeError(
+            "Project request и скачиваемый YouTube-ролик имеют разные video ID: "
+            f"request={project_video_id}, source={video_id}."
+        )
     manifest = _read_manifest(manifest_path)
     if _cache_matches(source, manifest, video_id=video_id):
         pipeline.log(
