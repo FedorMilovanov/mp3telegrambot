@@ -4,8 +4,8 @@
 
 The proven repair implementation stays in the sibling ``.py`` module. This
 package shadows it for imports and ``python -m`` execution, preserving every
-legacy helper while validating repair scope, segments, checkpoints and seeds
-before execution and making manifest settings match rendered segments afterward.
+legacy helper while validating repair scope, hashes, segments, checkpoints and
+seeds before execution and making manifest settings match rendered segments.
 """
 from __future__ import annotations
 
@@ -117,6 +117,17 @@ def _segment_ids(path: Path) -> list[int]:
     return [int(item["id"]) for item in _load_segments(path)]
 
 
+def _validated_sha256(value: Any, *, field: str) -> str:
+    digest = str(value or "").strip().lower()
+    if len(digest) != 64:
+        raise RuntimeError(f"{field} должен быть SHA-256 из 64 hex-символов.")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise RuntimeError(f"{field} содержит не-hex символы.") from exc
+    return digest
+
+
 def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
     repair = _load_json_object(root / "input" / "audio_repair.json", "audio_repair.json")
     schema = strict_core._strict_int(
@@ -133,8 +144,20 @@ def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
     if not isinstance(repair_all, bool):
         raise RuntimeError("audio_repair.repair_all должен быть bool.")
 
+    segments_path = root / "segments_ru_final.json"
+    expected_sha = _validated_sha256(
+        repair.get("segments_sha256"),
+        field="audio_repair.segments_sha256",
+    )
+    actual_sha = _legacy.legacy_repair._sha256(segments_path)
+    if actual_sha != expected_sha:
+        raise RuntimeError(
+            "segments_ru_final.json изменился после создания repair request; "
+            "создайте /dubfix заново."
+        )
+
     selected = _strict_ids(repair.get("segment_ids"), field="audio_repair.segment_ids")
-    segments = _load_segments(root / "segments_ru_final.json")
+    segments = _load_segments(segments_path)
     all_ids = [int(item["id"]) for item in segments]
     selected_set = set(selected)
     all_set = set(all_ids)
@@ -160,6 +183,8 @@ def _next_seed(
     marker: dict[str, Any],
     manifest: dict[str, Any],
 ) -> int:
+    if not isinstance(request, dict) or not isinstance(marker, dict) or not isinstance(manifest, dict):
+        raise RuntimeError("Repair seed inputs должны быть JSON-объектами.")
     initial = strict_core._strict_int(
         _legacy._request_value(request, "base_seed", 2026072800),
         field="repair.base_seed",
@@ -173,7 +198,12 @@ def _next_seed(
         high=clean_runtime_contract.MAX_BASE_SEED,
     )
     history = manifest.get("audio_repairs")
-    repair_index = len(history) + 1 if isinstance(history, list) else 1
+    if history is None:
+        repair_index = 1
+    elif isinstance(history, list):
+        repair_index = len(history) + 1
+    else:
+        raise RuntimeError("manifest.audio_repairs должен быть списком.")
     candidate = max(initial, previous) + max(1, repair_index) * clean_runtime_contract.RETRY_SEED_OFFSET
     if not 0 <= candidate <= clean_runtime_contract.MAX_BASE_SEED:
         raise RuntimeError("Следующий repair seed выходит за безопасный диапазон.")
@@ -216,8 +246,7 @@ def _dominant_segment_delay(root: Path) -> int:
     the renderer, while every value still has to satisfy the clean 0..1500 ms
     contract.
     """
-    path = Path(root) / "segments_ru_final.json"
-    payload = _load_segments(path)
+    payload = _load_segments(Path(root) / "segments_ru_final.json")
     delays = [
         clean_request_settings.russian_delay_ms(
             {"russian_delay_ms": item.get("start_delay_ms")}
@@ -277,6 +306,7 @@ __all__ = sorted(
         "_next_seed",
         "_strict_ids",
         "_validate_repair_request",
+        "_validated_sha256",
         "_update_manifest",
         "main",
     }
