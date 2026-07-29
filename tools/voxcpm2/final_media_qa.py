@@ -3,9 +3,8 @@
 """Fail-closed QA for the final upload-ready Dub Studio MP4 files.
 
 The PCM master is not the delivery artifact. AAC encoding can change true peak,
-loudness and packet duration, so the finished MP4 is measured again with the
-same FFmpeg BS.1770/EBU-R128 implementation that produced the master. Reports
-are always written before a delivery failure is raised.
+loudness, packet duration and stream start time, so the finished MP4 is measured
+again. Reports are always written before a delivery failure is raised.
 """
 from __future__ import annotations
 
@@ -16,10 +15,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-
 LOUDNESS_TOLERANCE_LU = 0.9
 TRUE_PEAK_DELIVERY_CEILING_DBTP = -1.0
 DURATION_TOLERANCE_SECONDS = 0.10
+AV_START_TOLERANCE_SECONDS = 0.05
 EXPECTED_SAMPLE_RATE = 48_000
 EXPECTED_CHANNELS = 2
 EXPECTED_CODEC = "aac"
@@ -73,7 +72,7 @@ def probe_media(path: Path) -> dict[str, Any]:
             "-v",
             "error",
             "-show_entries",
-            "stream=index,codec_type,codec_name,sample_rate,channels,bit_rate,duration:format=duration",
+            "stream=index,codec_type,codec_name,sample_rate,channels,bit_rate,duration,start_time:format=duration,start_time",
             "-of",
             "json",
             str(path),
@@ -109,16 +108,22 @@ def probe_media(path: Path) -> dict[str, Any]:
     if not isinstance(format_payload, dict):
         raise RuntimeError(f"ffprobe не вернул длительность контейнера: {path}")
 
+    audio_start = _float(audio_stream.get("start_time"), field="audio_start_time")
+    video_start = _float(video_stream.get("start_time"), field="video_start_time")
     return {
         "audio_codec_name": str(audio_stream.get("codec_name") or "").casefold(),
         "audio_sample_rate": int(audio_stream.get("sample_rate") or 0),
         "audio_channels": int(audio_stream.get("channels") or 0),
         "audio_bit_rate": int(audio_stream.get("bit_rate") or 0),
-        "audio_duration": _float(
-            audio_stream.get("duration"),
-            field="audio_duration",
-        ),
+        "audio_duration": _float(audio_stream.get("duration"), field="audio_duration"),
+        "audio_start_time": audio_start,
         "video_codec_name": str(video_stream.get("codec_name") or "").casefold(),
+        "video_start_time": video_start,
+        "av_start_delta_seconds": abs(audio_start - video_start),
+        "container_start_time": _float(
+            format_payload.get("start_time"),
+            field="container_start_time",
+        ),
         "container_duration": _float(
             format_payload.get("duration"),
             field="container_duration",
@@ -143,10 +148,7 @@ def measure_loudness(
             "-map",
             "0:a:0",
             "-af",
-            (
-                f"loudnorm=I={target_i}:LRA={target_lra}:"
-                f"TP={target_tp}:print_format=json"
-            ),
+            f"loudnorm=I={target_i}:LRA={target_lra}:TP={target_tp}:print_format=json",
             "-f",
             "null",
             "-",
@@ -170,11 +172,13 @@ def _empty_report(path: Path, source_duration: float) -> dict[str, Any]:
         "source_duration": float(source_duration),
         "audio_duration_delta_seconds": None,
         "container_duration_delta_seconds": None,
+        "av_start_delta_seconds": None,
         "limits": {
             "integrated_target_lufs": None,
             "loudness_tolerance_lu": LOUDNESS_TOLERANCE_LU,
             "true_peak_delivery_ceiling_dbtp": TRUE_PEAK_DELIVERY_CEILING_DBTP,
             "duration_tolerance_seconds": DURATION_TOLERANCE_SECONDS,
+            "av_start_tolerance_seconds": AV_START_TOLERANCE_SECONDS,
             "sample_rate": EXPECTED_SAMPLE_RATE,
             "channels": EXPECTED_CHANNELS,
             "codec": EXPECTED_CODEC,
@@ -218,17 +222,15 @@ def verify_final_file(
     report["loudness"] = loudness
 
     audio_delta = abs(float(media["audio_duration"]) - float(source_duration))
-    container_delta = abs(
-        float(media["container_duration"]) - float(source_duration)
-    )
+    container_delta = abs(float(media["container_duration"]) - float(source_duration))
+    av_start_delta = float(media["av_start_delta_seconds"])
     report["audio_duration_delta_seconds"] = audio_delta
     report["container_duration_delta_seconds"] = container_delta
+    report["av_start_delta_seconds"] = av_start_delta
     failures: list[str] = report["failures"]
 
     if media["audio_codec_name"] != EXPECTED_CODEC:
-        failures.append(
-            f"codec={media['audio_codec_name'] or 'unknown'}, нужен AAC"
-        )
+        failures.append(f"codec={media['audio_codec_name'] or 'unknown'}, нужен AAC")
     if media["audio_sample_rate"] != EXPECTED_SAMPLE_RATE:
         failures.append(
             f"sample_rate={media['audio_sample_rate']}, нужен {EXPECTED_SAMPLE_RATE}"
@@ -239,13 +241,15 @@ def verify_final_file(
         failures.append("не определён codec видеопотока")
     if audio_delta > DURATION_TOLERANCE_SECONDS:
         failures.append(
-            f"audio duration delta={audio_delta:.3f}s > "
-            f"{DURATION_TOLERANCE_SECONDS:.2f}s"
+            f"audio duration delta={audio_delta:.3f}s > {DURATION_TOLERANCE_SECONDS:.2f}s"
         )
     if container_delta > DURATION_TOLERANCE_SECONDS:
         failures.append(
-            f"container duration delta={container_delta:.3f}s > "
-            f"{DURATION_TOLERANCE_SECONDS:.2f}s"
+            f"container duration delta={container_delta:.3f}s > {DURATION_TOLERANCE_SECONDS:.2f}s"
+        )
+    if av_start_delta > AV_START_TOLERANCE_SECONDS:
+        failures.append(
+            f"A/V start delta={av_start_delta:.3f}s > {AV_START_TOLERANCE_SECONDS:.2f}s"
         )
 
     loudness_error = abs(float(loudness["integrated_lufs"]) - float(target_i))
@@ -294,7 +298,7 @@ def verify_final_outputs(
         target_tp=target_tp,
     )
     report = {
-        "schema_version": "dub-final-media-qa-v2",
+        "schema_version": "dub-final-media-qa-v3",
         "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128",
         "passed": bool(mixed.get("passed") and russian_only.get("passed")),
         "mixed": mixed,
@@ -321,6 +325,7 @@ def verify_final_outputs(
 
 
 __all__ = [
+    "AV_START_TOLERANCE_SECONDS",
     "DURATION_TOLERANCE_SECONDS",
     "EXPECTED_CHANNELS",
     "EXPECTED_CODEC",
