@@ -33,8 +33,21 @@ def fit_without_slowdown(
     else:
         tempo = 1.0
         tempo_filters = []
+
+    # Fade around the real spoken material, before padding.  The previous 8 ms
+    # one-sided fade behaved almost like a hard edit: Russian phrases appeared
+    # abruptly and the fixed English bed seemed to jump between segments.  A
+    # short equal-purpose in/out envelope keeps consonants intact while making
+    # phrase boundaries perceptually continuous.
+    rendered_speech_duration = min(clean_duration / max(tempo, 1e-9), speech_slot)
+    fade_in = min(0.032, max(0.010, rendered_speech_duration * 0.10))
+    fade_out = min(0.060, max(0.018, rendered_speech_duration * 0.16))
+    fade_out_start = max(fade_in, rendered_speech_duration - fade_out)
+    fade_out = max(0.008, rendered_speech_duration - fade_out_start)
+
     filters = tempo_filters + [
-        "afade=t=in:st=0:d=0.008",
+        f"afade=t=in:st=0:d={fade_in:.6f}",
+        f"afade=t=out:st={fade_out_start:.6f}:d={fade_out:.6f}",
         f"apad=pad_dur={target_duration:.6f}",
         f"atrim=duration={target_duration:.6f}",
         "asetpts=N/SR/TB",
@@ -66,6 +79,10 @@ def fit_without_slowdown(
         "tail_guard": tail_guard,
         "tempo": tempo,
         "slowed_down": False,
+        "rendered_speech_duration": rendered_speech_duration,
+        "fade_in_seconds": fade_in,
+        "fade_out_start_seconds": fade_out_start,
+        "fade_out_seconds": fade_out,
         "fitted_duration": probe_duration(fitted_path),
     }
 
