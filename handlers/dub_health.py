@@ -64,6 +64,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "core": voxcpm / "clean_production_core.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "expression": voxcpm / "expressive_continuity.py",
+        "continuous_reference": voxcpm / "continuous_reference_policy.py",
         "reference_gate": voxcpm / "controlled_reference_gate.py",
         "translation": voxcpm / "expressive_translation.py",
         "reference": voxcpm / "professional_audio_v45.py",
@@ -114,6 +115,18 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "spectral_similarity" in text["analysis"]
             and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
         ),
+        "continuous-first-reference": (
+            'POLICY = "continuous-clean-reference-v1"' in text["continuous_reference"]
+            and '"single-continuous-window"' in text["continuous_reference"]
+            and '"multi-window-fallback"' in text["continuous_reference"]
+            and "MIN_SECONDS = 5.0" in text["continuous_reference"]
+            and "MAX_SECONDS = 10.0" in text["continuous_reference"]
+            and all(
+                "continuous_reference_policy.build_calm_references" in text[name]
+                and "clean.build_calm_references(" not in text[name]
+                for name in route_names
+            )
+        ),
         "transactional-reference-identity": (
             "MIN_REFERENCE_SECONDS = 5.0" in text["reference_gate"]
             and "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in text["reference_gate"]
@@ -135,6 +148,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             "REFERENCE_TAIL_SILENCE = 0.0" in text["io"]
             and '"denoise": False' in text["reference"]
             and "afftdn" not in text["reference"]
+            and '"denoise": False' in text["continuous_reference"]
+            and '"spectral_filter": False' in text["continuous_reference"]
         ),
         "QA-v3": (
             'POLICY = "clean-expression-aware-qa-v3"' in text["qa"]
@@ -153,6 +168,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "class _SubprocessProxy" not in renderer_text
             and "semantic_tts_guard" not in renderer_text
             and "controlled_reference_gate" not in renderer_text
+            and "continuous_reference_policy" not in renderer_text
             and '"wrapper_count": 0' in text["core"]
         ),
         "expression": (
@@ -256,10 +272,11 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             quality_detail
-            + "; direct v3 16→48k; fingerprints; retry_badcase; F0/voiced+timbre; "
-            "transactional expressive+identity gate; QA v3 auto+forced-RU with foreign block; "
-            "final AAC BS.1770+PTS; limiter level-off/latency-compensated; editable progress; "
-            "worker v4.4; -16 LUFS/-1.5 dBTP",
+            + "; direct v3 16→48k; continuous-first 5–10s reference; fingerprints; "
+            "retry_badcase; F0/voiced+timbre; transactional expressive+identity gate; "
+            "QA v3 auto+forced-RU with foreign block; final AAC BS.1770+PTS; "
+            "limiter level-off/latency-compensated; editable progress; worker v4.4; "
+            "-16 LUFS/-1.5 dBTP",
         )
     )
 
