@@ -12,10 +12,15 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_direct_runtime" in source
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
     assert "expressive_continuity.py" in source
+    assert "continuous_reference_policy.py" in source
     assert "controlled_reference_gate.py" in source
     assert "expressive_translation.py" in source
     assert "direct_timbre_analysis.py" in source
     assert "final_media_qa.py" in source
+    assert 'POLICY = "continuous-clean-reference-v1"' in source
+    assert '"single-continuous-window"' in source
+    assert '"multi-window-fallback"' in source
+    assert "continuous_reference_policy.build_calm_references" in source
     assert "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in source
     assert "identity_reference=extended" in source
     assert "spectral_similarity" in source
