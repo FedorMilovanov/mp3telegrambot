@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 import random
 from pathlib import Path
 from typing import Any
@@ -95,13 +96,17 @@ def _needs_normalization(text: str) -> bool:
 
 def _generate(model: Any, *, text: str, reference: Path, cfg: float, steps: int, min_len: int, max_len: int, seed: int) -> Any:
     parameters = inspect.signature(model.generate).parameters
+    # The segment planner already derived max_len from the target slot. Give the
+    # stop-token enough headroom to finish the last Russian word, while keeping a
+    # strict short-form ceiling against runaway generation.
+    generation_max_len = min(512, max(int(max_len), int(math.ceil(max_len * 1.45))))
     kwargs: dict[str, Any] = {
         "text": text,
         "reference_wav_path": str(reference),
         "cfg_value": float(cfg),
         "inference_timesteps": int(steps),
         "min_len": int(min_len),
-        "max_len": int(max_len),
+        "max_len": generation_max_len,
         "normalize": _needs_normalization(text),
         "denoise": False,
     }
