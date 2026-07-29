@@ -49,7 +49,10 @@ from tools.voxcpm2.direct_max_quality_render import (
     fit_without_slowdown,
     set_seed,
 )
-from tools.voxcpm2.direct_source_prosody import source_prosody_penalty
+from tools.voxcpm2.direct_source_prosody import (
+    candidate_pitch_evidence_ok,
+    source_prosody_penalty,
+)
 
 
 def _report_mapping(value: Any) -> dict[str, Any]:
@@ -85,7 +88,8 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
         parts.append(
             "attempt {attempt}: score={score:.2f}, base={base:.2f}, duration×={duration:.3f}, "
             "voiced={voiced:.3f}, active={active:.3f}, gap={gap:.3f}, "
-            "F0×={median:.3f}/{p90:.3f}, {source}, clip={clip:.6f}, tail_restart={tail}".format(
+            "F0×={median:.3f}/{p90:.3f}, rawPitch={raw_pitch}, {source}, "
+            "clip={clip:.6f}, tail_restart={tail}".format(
                 attempt=int(item.get("attempt") or 0),
                 score=float(item.get("score") or 0.0),
                 base=float(item.get("base_score") or item.get("score") or 0.0),
@@ -95,6 +99,7 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
                 gap=float((item.get("activity") or {}).get("max_internal_gap") or 0.0),
                 median=float(voice.get("f0_median_ratio") or 0.0),
                 p90=float(voice.get("f0_p90_ratio") or 0.0),
+                raw_pitch=candidate_pitch_evidence_ok(item),
                 source=source_detail,
                 clip=float(item.get("clipping_ratio") or 0.0),
                 tail=bool((item.get("tail_info") or {}).get("suspicious")),
@@ -201,8 +206,8 @@ def main() -> None:
     log(f"Base Steps: {args.steps}; Base CFG: {args.cfg}")
     log("Reference-only cloning; 2 candidates always, 3rd on quality warning")
     log(
-        "Candidate selection uses duration + artifacts + voice identity + "
-        "source-guided prosody"
+        "Candidate selection uses duration + artifacts + raw pitch + "
+        "voice identity + source-guided prosody"
     )
     log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
@@ -328,6 +333,7 @@ def main() -> None:
                 )
                 if (
                     candidate_hard_ok(best_so_far, speech_slot)
+                    and candidate_pitch_evidence_ok(best_so_far)
                     and float(best_so_far["score"]) < 85.0
                 ):
                     break
@@ -408,7 +414,7 @@ def main() -> None:
                 f"{prosody['f0_p90_ratio_to_source']:.3f}; "
                 f"srcPenalty={prosody['penalty']:.2f}; "
                 if prosody.get("available")
-                else "srcProsody=n/a; "
+                else f"srcProsody=n/a({prosody.get('reason')}); "
             )
             log(
                 f"attempt {attempt_index}: {candidate['duration']:.2f} сек.; "
@@ -416,6 +422,7 @@ def main() -> None:
                 f"voiced={candidate['pitch']['voiced_ratio']:.3f}; "
                 f"F0×={voice['f0_median_ratio']:.3f}/"
                 f"{voice['f0_p90_ratio']:.3f}; "
+                f"rawPitch={candidate_pitch_evidence_ok(candidate)}; "
                 f"{source_detail}"
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
                 f"cfg={cfg_value:.2f}; steps={step_count}; "
@@ -428,6 +435,7 @@ def main() -> None:
             item
             for item in candidates
             if candidate_hard_ok(item, speech_slot)
+            and candidate_pitch_evidence_ok(item)
         ]
         if not acceptable:
             diagnostics = _candidate_failure_summary(candidates, speech_slot)
@@ -472,6 +480,7 @@ def main() -> None:
             "reference_sha256": reference_report["sha256"],
             "selected_attempt": int(selected["attempt"]),
             "selected_seed": int(selected["seed"]),
+            "selected_raw_pitch_evidence_ok": True,
             "selected_base_score": round(float(selected["base_score"]), 6),
             "selected_score": round(float(selected["score"]), 6),
             "selected_voice_match": {
@@ -511,6 +520,7 @@ def main() -> None:
                         "duration": item["duration"],
                         "base_score": item["base_score"],
                         "score": item["score"],
+                        "raw_pitch_evidence_ok": candidate_pitch_evidence_ok(item),
                         "leading_silence": item["leading_silence"],
                         "trailing_silence": item["trailing_silence"],
                         "clipping_ratio": item["clipping_ratio"],
@@ -547,11 +557,11 @@ def main() -> None:
     build_timeline(fitted_segments, output, float(args.video_duration))
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.1-direct-source-prosody",
+        "schema_version": "5.2-direct-raw-pitch-source-prosody",
         "policy": POLICY,
         "strategy": (
             "direct reference-only VoxCPM2 + guarded references + "
-            "multi-profile candidates + voice/artifact hard gates + "
+            "multi-profile candidates + raw-pitch/voice/artifact hard gates + "
             "source-guided prosody soft ranking + no best-of-bad fallback"
         ),
         "model_path": str(model_path),
