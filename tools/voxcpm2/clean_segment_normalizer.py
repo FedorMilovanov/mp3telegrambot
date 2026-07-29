@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_v45
@@ -163,7 +164,7 @@ def normalize(
     if len(original) != len(payload):
         raise RuntimeError("Список реплик содержит повреждённые элементы.")
     original_tokens = _tokens(original)
-    delay_ms = max(0, int(request.get("russian_delay_ms") or 420))
+    delay_ms = clean_request_settings.russian_delay_ms(request)
     delay = delay_ms / 1000.0
 
     normalized = _merge_tiny(
