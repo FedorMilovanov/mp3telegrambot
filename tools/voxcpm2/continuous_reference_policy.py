@@ -5,7 +5,10 @@
 A single natural 5–10 second source span is preferred over a montage. The old
 multi-window builder remains an explicit fallback when captions do not expose a
 long enough continuous speech run or every continuous candidate fails the hard
-speech-quality floor. Both paths must pass the same release floor.
+speech-quality floor. Continuous windows use the stricter editorial floor. A
+fallback montage is judged by the actual assembled WAV against the renderer's
+pre-model release floor, not rejected merely because every individual source
+window misses the stricter continuous-window preference.
 """
 from __future__ import annotations
 
@@ -19,13 +22,17 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
+from tools.voxcpm2 import direct_max_quality_analysis as release_analysis
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_v45
 
 POLICY = "continuous-clean-reference-v2"
+FALLBACK_VALIDATION_POLICY = "assembled-reference-release-floor-v1"
 MIN_SECONDS = 5.0
 MAX_SECONDS = 10.0
 MERGE_GAP_SECONDS = 0.32
+
+# Strict preference floor for one uninterrupted natural source window.
 MIN_VOICED_RATIO = 0.16
 MIN_ACTIVE_RATIO = 0.25
 MAX_INTERNAL_GAP = 0.85
@@ -65,7 +72,7 @@ def _merged_runs(intervals: list[tuple[float, float]]) -> list[tuple[float, floa
         try:
             start = float(raw_start)
             end = float(raw_end)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not math.isfinite(start) or not math.isfinite(end):
             continue
@@ -101,18 +108,27 @@ def _window_score(samples: np.ndarray, sample_rate: int) -> tuple[float, dict[st
     return score, {**pitch, **activity}
 
 
-def _usable_stats(stats: dict[str, Any]) -> bool:
+def _finite_stats(stats: dict[str, Any]) -> tuple[float, float, float, float, float] | None:
     try:
-        voiced = float(stats.get("voiced_ratio") or 0.0)
-        active = float(stats.get("active_ratio") or 0.0)
-        gap = float(stats.get("max_internal_gap") or 99.0)
-        f0_median = float(stats.get("f0_median") or 0.0)
-        f0_p90 = float(stats.get("f0_p90") or 0.0)
-    except (TypeError, ValueError):
+        values = (
+            float(stats.get("voiced_ratio") or 0.0),
+            float(stats.get("active_ratio") or 0.0),
+            float(stats.get("max_internal_gap") or 99.0),
+            float(stats.get("f0_median") or 0.0),
+            float(stats.get("f0_p90") or 0.0),
+        )
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return values if all(math.isfinite(value) for value in values) else None
+
+
+def _usable_stats(stats: dict[str, Any]) -> bool:
+    values = _finite_stats(stats)
+    if values is None:
         return False
+    voiced, active, gap, f0_median, f0_p90 = values
     return bool(
-        all(math.isfinite(value) for value in (voiced, active, gap, f0_median, f0_p90))
-        and voiced >= MIN_VOICED_RATIO
+        voiced >= MIN_VOICED_RATIO
         and active >= MIN_ACTIVE_RATIO
         and gap <= MAX_INTERNAL_GAP
         and f0_median > 1.0
@@ -120,15 +136,94 @@ def _usable_stats(stats: dict[str, Any]) -> bool:
     )
 
 
-def _report_has_usable_selection(payload: Any) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    selected = payload.get("selected")
+def _report_has_selection(payload: Any) -> bool:
     return bool(
-        isinstance(selected, list)
-        and selected
-        and any(_usable_stats(item) for item in selected if isinstance(item, dict))
+        isinstance(payload, dict)
+        and isinstance(payload.get("selected"), list)
+        and payload.get("selected")
     )
+
+
+def _report_has_usable_selection(payload: Any) -> bool:
+    if not _report_has_selection(payload):
+        return False
+    return any(
+        _usable_stats(item)
+        for item in payload["selected"]
+        if isinstance(item, dict)
+    )
+
+
+def _assembled_reference_stats(path: Path) -> dict[str, float]:
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise RuntimeError("Fallback voice reference WAV не создан.")
+    samples, sample_rate = sf.read(path, dtype="float32")
+    audio = np.asarray(samples, dtype=np.float32)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    audio = audio.reshape(-1)
+    if sample_rate <= 0 or not len(audio) or not np.isfinite(audio).all():
+        raise RuntimeError("Fallback voice reference WAV повреждён.")
+    pitch = release_analysis.pitch_profile(audio, int(sample_rate))
+    activity = release_analysis.activity_stats(audio, int(sample_rate))
+    return {
+        "sample_rate": float(sample_rate),
+        "duration_seconds": float(len(audio) / sample_rate),
+        "peak": float(np.max(np.abs(audio))),
+        "clipping_ratio": float(release_analysis.clipping_ratio(audio)),
+        **{key: float(value) for key, value in pitch.items()},
+        **{key: float(value) for key, value in activity.items()},
+    }
+
+
+def _assembled_release_failures(stats: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    values = _finite_stats(stats)
+    if values is None:
+        return ["невалидные pitch/activity метрики"]
+    voiced, active, gap, f0_median, f0_p90 = values
+    peak = float(stats.get("peak") or 0.0)
+    clipping = float(stats.get("clipping_ratio") or 1.0)
+    duration = float(stats.get("duration_seconds") or 0.0)
+    if duration < 2.0:
+        failures.append(f"duration={duration:.3f}s < 2.0s")
+    if peak < release_analysis.MIN_REFERENCE_PEAK:
+        failures.append(
+            f"peak={peak:.6f} < {release_analysis.MIN_REFERENCE_PEAK:.3f}"
+        )
+    if clipping > release_analysis.MAX_REFERENCE_CLIPPING_RATIO:
+        failures.append(
+            "clipping_ratio="
+            f"{clipping:.6f} > {release_analysis.MAX_REFERENCE_CLIPPING_RATIO:.3f}"
+        )
+    if voiced < release_analysis.MIN_REFERENCE_VOICED_RATIO:
+        failures.append(
+            "voiced_ratio="
+            f"{voiced:.3f} < {release_analysis.MIN_REFERENCE_VOICED_RATIO:.2f}"
+        )
+    if active < release_analysis.MIN_REFERENCE_ACTIVE_RATIO:
+        failures.append(
+            "active_ratio="
+            f"{active:.3f} < {release_analysis.MIN_REFERENCE_ACTIVE_RATIO:.2f}"
+        )
+    if gap > release_analysis.MAX_REFERENCE_INTERNAL_GAP:
+        failures.append(
+            "max_internal_gap="
+            f"{gap:.3f} > {release_analysis.MAX_REFERENCE_INTERNAL_GAP:.2f}"
+        )
+    if f0_median <= 1.0 or f0_p90 <= 1.0:
+        failures.append(
+            f"pitch evidence missing (f0={f0_median:.2f}/{f0_p90:.2f})"
+        )
+    return failures
+
+
+def _rounded_stats(stats: dict[str, Any]) -> dict[str, float]:
+    return {
+        key: round(float(value), 6)
+        for key, value in stats.items()
+        if isinstance(value, (int, float)) and math.isfinite(float(value))
+    }
 
 
 def _candidate_windows(
@@ -217,25 +312,52 @@ def build_reference(
         fallback_path = output.with_suffix(".selection.json")
         if not fallback_path.is_file():
             raise RuntimeError("Fallback voice reference не создал selection report.")
-        payload = json.loads(fallback_path.read_text(encoding="utf-8-sig"))
-        if not _report_has_usable_selection(payload):
+        try:
+            payload = json.loads(fallback_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Fallback voice reference создал повреждённый selection report.") from exc
+        if not _report_has_selection(payload):
             output.unlink(missing_ok=True)
             fallback_path.unlink(missing_ok=True)
             raise RuntimeError(
-                f"Fallback voice reference {profile} не прошёл hard-quality floor."
+                f"Fallback voice reference {profile} не содержит выбранных окон."
             )
+
+        assembled_stats = _assembled_reference_stats(output)
+        failures = _assembled_release_failures(assembled_stats)
+        if failures:
+            output.unlink(missing_ok=True)
+            fallback_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Fallback voice reference {profile} не прошёл release floor: "
+                + "; ".join(failures)
+            )
+
         payload.update(
             {
                 "reference_policy": POLICY,
                 "reference_mode": "multi-window-fallback",
-                "fallback_reason": "no_continuous_candidate_passed_hard_floor",
+                "fallback_reason": "no_continuous_candidate_passed_strict_floor",
                 "profile_name": profile,
                 "denoise": False,
                 "spectral_filter": False,
+                "strict_window_floor_passed": _report_has_usable_selection(payload),
                 "hard_floor": {
                     "min_voiced_ratio": MIN_VOICED_RATIO,
                     "min_active_ratio": MIN_ACTIVE_RATIO,
                     "max_internal_gap": MAX_INTERNAL_GAP,
+                },
+                "fallback_validation": {
+                    "policy": FALLBACK_VALIDATION_POLICY,
+                    "assembled_reference_passed": True,
+                    "limits": {
+                        "min_peak": release_analysis.MIN_REFERENCE_PEAK,
+                        "max_clipping_ratio": release_analysis.MAX_REFERENCE_CLIPPING_RATIO,
+                        "min_voiced_ratio": release_analysis.MIN_REFERENCE_VOICED_RATIO,
+                        "min_active_ratio": release_analysis.MIN_REFERENCE_ACTIVE_RATIO,
+                        "max_internal_gap": release_analysis.MAX_REFERENCE_INTERNAL_GAP,
+                    },
+                    "assembled_reference": _rounded_stats(assembled_stats),
                 },
             }
         )
@@ -316,6 +438,7 @@ def build_calm_references(
 
 
 __all__ = [
+    "FALLBACK_VALIDATION_POLICY",
     "MAX_INTERNAL_GAP",
     "MAX_SECONDS",
     "MERGE_GAP_SECONDS",
