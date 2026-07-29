@@ -18,6 +18,7 @@ on:
       - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_health.py"
       - "tests/test_direct_max_quality_renderer.py"
+      - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_expression_aware_voice_qa.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_runtime_progress.py"
@@ -67,6 +68,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_direct_max_quality_renderer.py \
+            tests/test_direct_retry_checkpoint.py \
             tests/test_expression_aware_voice_qa.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_runtime_progress.py \
