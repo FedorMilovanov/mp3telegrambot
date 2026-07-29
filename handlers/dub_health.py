@@ -27,6 +27,8 @@ from tools.voxcpm2.dub_worker import build_command
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _WORKER_RUNTIME = "dub-worker-quality-v4.3"
 _CLEAN_POLICY = "clean-direct-production-v1"
+_EXPRESSION_POLICY = "source-guided-expression-v1"
+_TRANSLATION_POLICY = "expressive-spoken-translation-v1"
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -111,6 +113,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
     repo = Path(__file__).resolve().parents[1]
     clean_core_path = repo / "tools" / "voxcpm2" / "clean_production_core.py"
     clean_normalizer_path = repo / "tools" / "voxcpm2" / "clean_segment_normalizer.py"
+    expression_path = repo / "tools" / "voxcpm2" / "expressive_continuity.py"
+    translation_path = repo / "tools" / "voxcpm2" / "expressive_translation.py"
     clean_gemini_path = repo / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
     clean_direct_path = repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py"
     clean_custom_path = repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py"
@@ -136,6 +140,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
     contract_files = (
         clean_core_path,
         clean_normalizer_path,
+        expression_path,
+        translation_path,
         clean_gemini_path,
         clean_direct_path,
         clean_custom_path,
@@ -148,6 +154,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
     contract_text = {path: _read(path) for path in contract_files}
     core = contract_text[clean_core_path]
     normalizer = contract_text[clean_normalizer_path]
+    expression = contract_text[expression_path]
+    translation = contract_text[translation_path]
     gemini_entry = contract_text[clean_gemini_path]
     direct_entry = contract_text[clean_direct_path]
     custom_entry = contract_text[clean_custom_path]
@@ -167,6 +175,16 @@ def collect_dub_health() -> list[dict[str, Any]]:
         and "professional_audio_v45.install(" not in core
         and "VOXCPM_ORIGINAL_RENDERER" in core
         and "env.pop(key, None)" in core
+        and f'POLICY = "{_EXPRESSION_POLICY}"' in expression
+        and "def _smooth(" in expression
+        and "build_controlled_expressive_reference" in expression
+        and 'return "composite" if tier in {"emphatic", "passionate"}' in expression
+        and "shouting rejected" in expression
+        and f'POLICY = "{_TRANSLATION_POLICY}"' in translation
+        and "намеренные повторы" in translation
+        and "риторические вопросы" in translation
+        and "Не превращай фразу в конспект" in translation
+        and "production.translate_groups_max = expressive_translation.translate_groups" in gemini_entry
         and "build_reference_v45" in reference_policy
         and "reference calm windows" in reference_policy
         and "voice_match_v45" in qa_contract
@@ -178,19 +196,20 @@ def collect_dub_health() -> list[dict[str, Any]]:
         and "install_runtime_adapters = _install_clean_runtime_adapters" in direct_entry
         and "install_runtime_adapters = _install_clean_runtime_adapters" in custom_entry
         and "force_fresh=repair_all" in repair_entry
-        and "translation_reused\": True" in repair_entry
-        and "gemini_called\": False" in repair_entry
+        and 'translation_reused": True' in repair_entry
+        and 'gemini_called": False' in repair_entry
         and "Russian tokens preserved" in normalizer
         and "semantic_tts_guard_v47" not in repair_entry
         and "semantic_tts_guard_v46" not in repair_entry
     )
     checks.append(
         _check(
-            "Clean Direct NoChew + независимый QA",
+            "Clean Expressive NoChew + независимый QA",
             quality_ok,
             (
-                "короткие окна <=5.4с; спокойные voice references; прямой PowerShell-equivalent "
-                "renderer/master; wrapper_count=0; один прицельный повтор; -16 LUFS/-1.5 dBTP"
+                "короткие окна <=5.4с; source-guided плавная эмоциональная дуга; "
+                "спокойный + controlled-expressive реальные референсы; rhetoric-preserving "
+                "Gemini MAX; прямой renderer/master; wrapper_count=0; -16 LUFS/-1.5 dBTP"
             ),
         )
     )
@@ -317,7 +336,7 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Все действия требуют зелёные Clean Direct NoChew, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
+            "Все действия требуют зелёные Clean Expressive NoChew, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
             "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт не отправляются на перевод или редактуру.",
         ]
     )
