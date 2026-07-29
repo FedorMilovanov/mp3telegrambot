@@ -243,6 +243,7 @@ def main() -> None:
             source=source,
             segments=planned,
             output=composite,
+            identity_reference=extended,
         )
     production.log(
         "source-guided emotional arc prepared; translation reused verbatim; "
