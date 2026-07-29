@@ -29,10 +29,15 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert '"tools/voxcpm2/direct_source_prosody.py"' in source
     assert 'POLICY = "source-prosody-candidate-ranking-v1"' in source
     assert 'source-prosody-ranking' in source
+    assert 'def candidate_pitch_evidence_ok(' in source
+    assert 'candidate_pitch_evidence_ok(best_so_far)' in source
+    assert 'and candidate_pitch_evidence_ok(item)' in source
     assert 'source_prosody_penalty(candidate, segment)' in source
     assert '"expression": expression_signature' in source
+    assert '"selected_raw_pitch_evidence_ok": True' in source
     assert '"selected_source_prosody_match"' in source
-    assert '"schema_version": "5.1-direct-source-prosody"' in source
+    assert '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in source
+    assert 'rawPitch=' in source
     assert 'srcF0×=' in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source
     assert 'POLICY = "expressive-spoken-translation-v2"' in source
