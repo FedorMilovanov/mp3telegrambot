@@ -3,9 +3,10 @@
 """Final release gate for clean expressive direct production.
 
 The semantic/timing gate remains independent from the renderer. Voice-register
-limits are profile- and source-prosody-aware. A failed auto-language Whisper
-reading receives one forced-Russian diagnostic pass, but foreign language or
-foreign-script evidence can never be rescued by that pass.
+limits are profile- and source-prosody-aware. Numeric text receives a
+value-preserving Russian spoken target because VoxCPM/wetext verbalizes digits.
+A failed auto-language Whisper reading may receive one forced-Russian diagnostic
+pass, but foreign language or foreign-script evidence can never be rescued.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import numpy as np
 import soundfile as sf
 
 from tools.voxcpm2 import professional_audio_v45 as policy
+from tools.voxcpm2 import russian_spoken_numbers
 from tools.voxcpm2 import semantic_tts_guard_v4
 from tools.voxcpm2.direct_max_quality_analysis import (
     activity_stats,
@@ -30,6 +32,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
 POLICY = "clean-expression-aware-qa-v3"
 VOICE_EVIDENCE_POLICY = "fail-closed-reference-f0-v1"
 SEMANTIC_RESCUE_POLICY = "forced-russian-script-gate-v2"
+NUMERIC_SEMANTIC_POLICY = "wetext-aligned-numeric-target-v1"
 _RUSSIAN_FAMILY = {"ru", "uk", "be"}
 
 
@@ -122,7 +125,7 @@ def _script_evidence(value: str) -> dict[str, Any]:
     latin = [
         char
         for char in letters
-        if ("a" <= char.casefold() <= "z")
+        if "a" <= char.casefold() <= "z"
     ]
     total = len(letters)
     return {
@@ -146,10 +149,8 @@ def _forced_russian_eligibility(
 
     if bool(auto_semantic.get("foreign_language")):
         return False, "confident_foreign_language", script
-
     if int(script["letters"]) > 0 and cyrillic_ratio < 0.55:
         return False, "foreign_script", script
-
     if (
         int(script["letters"]) == 0
         and language
@@ -157,7 +158,6 @@ def _forced_russian_eligibility(
         and probability >= 0.35
     ):
         return False, "empty_auto_foreign_language", script
-
     if (
         language
         and language not in _RUSSIAN_FAMILY
@@ -165,8 +165,37 @@ def _forced_russian_eligibility(
         and cyrillic_ratio < 0.80
     ):
         return False, "probable_foreign_language", script
-
     return True, "", script
+
+
+def _numeric_semantic_target(
+    target: str,
+    auto_semantic: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Try the exact value-preserving spoken form used by text normalization."""
+    original = str(target or "")
+    spoken = russian_spoken_numbers.normalize_numeric_text(original)
+    if spoken == original:
+        return original, dict(auto_semantic)
+
+    compared = semantic_tts_guard_v4.legacy.compare_spoken_text(
+        spoken,
+        str(auto_semantic.get("heard") or ""),
+        str(auto_semantic.get("language") or ""),
+        _number(auto_semantic.get("language_probability"), 0.0),
+    )
+    merged = dict(compared)
+    merged.update(
+        {
+            "numeric_semantic_policy": NUMERIC_SEMANTIC_POLICY,
+            "numeric_source_policy": russian_spoken_numbers.POLICY,
+            "numeric_target_original": original,
+            "numeric_target_spoken": spoken,
+            "numeric_normalization_rescued": bool(compared.get("passed")),
+            "original_target_semantic": dict(auto_semantic),
+        }
+    )
+    return spoken, merged
 
 
 def _forced_russian_fallback(
@@ -197,6 +226,7 @@ def _forced_russian_fallback(
             "auto_language": auto,
             "auto_script_evidence": script,
             "forced_russian": forced,
+            "forced_russian_target": target,
             "forced_russian_eligible": eligible,
             "forced_russian_rescued": rescued,
             "forced_russian_block_reason": block_reason,
@@ -354,11 +384,18 @@ def verify_timeline_v45(
             )
             semantic = check.get("semantic")
             if isinstance(semantic, dict) and not semantic.get("passed"):
-                semantic = _forced_russian_fallback(
-                    clip,
+                spoken_target, numeric_semantic = _numeric_semantic_target(
                     str(item.get("text") or ""),
                     semantic,
                 )
+                if numeric_semantic.get("passed"):
+                    semantic = numeric_semantic
+                else:
+                    semantic = _forced_russian_fallback(
+                        clip,
+                        spoken_target,
+                        numeric_semantic,
+                    )
                 check["semantic"] = semantic
                 check["passed"] = bool(
                     _base_semantic_acoustic_pass(check)
@@ -405,8 +442,10 @@ def verify_timeline_v45(
     )
     report["professional_audio_policy"] = POLICY
     report["semantic_asr_policy"] = (
-        "auto-language + forced-Russian retry with foreign-script gate"
+        "original + value-preserving numeric spoken target + "
+        "forced-Russian retry with foreign-script gate"
     )
+    report["numeric_semantic_policy"] = NUMERIC_SEMANTIC_POLICY
     report["semantic_rescue_policy"] = SEMANTIC_RESCUE_POLICY
     report["voice_evidence_policy"] = VOICE_EVIDENCE_POLICY
     report["passed"] = not result
