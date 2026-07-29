@@ -11,6 +11,8 @@ from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair
 def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
     root = tmp_path / "project"
     (root / "input").mkdir(parents=True)
+    (root / "source").mkdir(parents=True)
+    (root / "source" / "source.mp4").write_bytes(b"source-placeholder")
     (root / "segments_ru_final.json").write_text(
         json.dumps(
             [
@@ -41,7 +43,11 @@ def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
     return root
 
 
-def test_valid_partial_and_full_repair_scopes_are_accepted(tmp_path: Path) -> None:
+def test_valid_partial_and_full_repair_scopes_are_accepted(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(repair._legacy.pipeline, "ffprobe_duration", lambda _path: 3.0)
     partial = _root(tmp_path / "partial", {})
     assert repair._validate_repair_request(partial, "project-1")["segment_ids"] == [1]
 
@@ -86,6 +92,32 @@ def test_ambiguous_repair_seed_fields_fail_closed(request: dict, marker: dict) -
         repair._next_seed(request, marker, {})
 
 
+def test_selective_repair_rejects_bad_timing_before_planner(tmp_path: Path) -> None:
+    root = _root(tmp_path, {})
+    segments_path = root / "segments_ru_final.json"
+    payload = json.loads(segments_path.read_text(encoding="utf-8"))
+    payload[0]["start"] = float("nan")
+    segments_path.write_text(
+        json.dumps(payload, ensure_ascii=False, allow_nan=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="конечным числом"):
+        repair._validate_repair_request(root, "project-1")
+
+
+def test_ambiguous_checkpoint_report_id_fails_closed(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    checkpoints = work / "checkpoints"
+    checkpoints.mkdir(parents=True)
+    (checkpoints / "segment_01.json").write_text(
+        json.dumps({"report": {"id": True}}),
+        encoding="utf-8",
+    )
+    ready, detail = repair._checkpoint_ready(work, 1)
+    assert ready is False
+    assert "bool" in detail
+
+
 def test_invalid_request_stops_before_legacy_main(monkeypatch, tmp_path: Path) -> None:
     root = _root(tmp_path, {"repair_all": "false"})
     calls = 0
@@ -103,6 +135,8 @@ def test_invalid_request_stops_before_legacy_main(monkeypatch, tmp_path: Path) -
     assert calls == 0
 
 
-def test_repair_facade_patches_legacy_seed_and_manifest_hooks() -> None:
+def test_repair_facade_patches_all_legacy_validation_hooks() -> None:
     assert repair._legacy._next_seed is repair._next_seed
+    assert repair._legacy._checkpoint_ready is repair._checkpoint_ready
     assert repair._legacy._update_manifest is repair._update_manifest
+    assert repair._legacy.legacy_repair._load_segments is repair._load_segments
