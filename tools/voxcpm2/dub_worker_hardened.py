@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardened Dub Studio worker entrypoint with process-tree cancellation."""
+"""Hardened Dub Studio worker entrypoint with exact progress stages."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from typing import Any
 from services.dub_studio import DubStore
 from tools.voxcpm2 import dub_worker as worker
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.3"
+_RUNTIME_VERSION = "dub-worker-quality-v4.4"
 _PROGRESS_PREFIX = "DUB_PROGRESS "
 _QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
 _MILESTONES = (25, 50, 75, 90)
@@ -21,7 +21,6 @@ _ORIGINAL_REGISTER = DubStore.register_worker
 _ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
 _ORIGINAL_UPDATE_JOB_PROGRESS = DubStore.update_job_progress
 _ORIGINAL_FINISH_JOB = DubStore.finish_job
-_ORIGINAL_PROGRESS_FROM_LINE = worker._progress_from_line
 _ORIGINAL_TERMINATE = worker._terminate_process
 _LAST_JOB_PULSE: dict[int, float] = {}
 
@@ -190,8 +189,12 @@ def _update_progress_with_milestones(
             conn.commit()
 
 
-def _progress_from_line_v43(line: str, current: int) -> tuple[int, str]:
+def _progress_from_line_v44(line: str, current: int) -> tuple[int, str]:
+    """Parse only explicit production signals, never traceback function names."""
     text = str(line or "").strip()
+    if not text:
+        return current, ""
+
     if text.startswith(_PROGRESS_PREFIX):
         try:
             payload = json.loads(text[len(_PROGRESS_PREFIX) :])
@@ -199,17 +202,63 @@ def _progress_from_line_v43(line: str, current: int) -> tuple[int, str]:
             payload = None
         if isinstance(payload, dict):
             progress = max(0, min(int(payload.get("progress") or current), 94))
-            stage = str(payload.get("stage") or payload.get("message") or "CPU-рендер")[:160]
+            stage = str(
+                payload.get("stage")
+                or payload.get("message")
+                or "CPU-рендер"
+            )[:160]
             return max(current, progress), stage
 
+    lowered = text.casefold()
     qa_round = _QA_ROUND_RE.search(text)
     if qa_round:
         index = max(1, int(qa_round.group(1)))
         total = max(index, int(qa_round.group(2)))
-        return max(current, 88), f"Акустическая QA: раунд {index}/{total}"
-    if "все реплики прошли акустическую" in text.casefold():
-        return max(current, 93), "Акустическая QA пройдена"
-    return _ORIGINAL_PROGRESS_FROM_LINE(line, current)
+        return max(current, 88), f"Независимая QA: раунд {index}/{total}"
+    if (
+        "все реплики прошли акустическую" in lowered
+        or "акустическая qa пройдена" in lowered
+    ):
+        return max(current, 93), "Независимая QA пройдена"
+    if (
+        "qa отклонил" in lowered
+        or "clean_qa" in lowered
+        or "независим" in lowered and "qa" in lowered
+    ):
+        return max(current, 88), "Независимая QA"
+
+    explicit_master = (
+        "создаю постоянный микс" in lowered
+        or "двухпроходный loudness-master" in lowered
+        or "собираю upload-ready" in lowered
+        or lowered.startswith("=== master")
+        or lowered.startswith("=== мастер")
+    )
+    if explicit_master:
+        return max(current, 94), "master"
+
+    stage_match = worker._STAGE_RE.match(text)
+    if stage_match:
+        stage = stage_match.group(1)[:160]
+        return max(current, 3), stage
+
+    segment = worker._SEGMENT_RE.search(text)
+    if segment:
+        index = max(1, int(segment.group(1)))
+        total = max(index, int(segment.group(2)))
+        return (
+            max(current, min(92, 8 + round(index / total * 78))),
+            f"segment {index}/{total}",
+        )
+
+    percentage = worker._PERCENT_RE.search(text)
+    if percentage:
+        value = max(0, min(int(percentage.group(1)), 100))
+        return max(current, min(94, 8 + round(value * 0.72))), "synthesis"
+
+    # In particular, lines such as ``clean.render_and_master(...)`` and
+    # ``master_constant_mix.py`` inside a traceback must not change the stage.
+    return current, ""
 
 
 def _deepest_error_line(error: str) -> str:
@@ -258,7 +307,7 @@ def _finish_job_with_root_cause(
 
 def install_hardening() -> None:
     worker._terminate_process = _terminate_process_tree
-    worker._progress_from_line = _progress_from_line_v43
+    worker._progress_from_line = _progress_from_line_v44
     DubStore.register_worker = _register_versioned_worker
     DubStore.worker_heartbeat = _heartbeat_versioned_worker
     DubStore.update_job_progress = _update_progress_with_milestones
