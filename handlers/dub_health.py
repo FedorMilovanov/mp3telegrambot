@@ -60,6 +60,13 @@ def _read(path: Path) -> str:
 
 
 def _quality_contract(repo: Path) -> tuple[bool, str]:
+    example = (
+        repo
+        / "tools"
+        / "voxcpm2"
+        / "examples"
+        / "john_piper_z20py4yqhyq"
+    )
     paths = {
         "core": repo / "tools" / "voxcpm2" / "clean_production_core.py",
         "normalizer": repo / "tools" / "voxcpm2" / "clean_segment_normalizer.py",
@@ -69,24 +76,12 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "qa": repo / "tools" / "voxcpm2" / "professional_audio_qa_v45.py",
         "direct_io": repo / "tools" / "voxcpm2" / "direct_max_quality_io.py",
         "direct_analysis": repo / "tools" / "voxcpm2" / "direct_max_quality_analysis.py",
+        "direct_timbre": repo / "tools" / "voxcpm2" / "direct_timbre_analysis.py",
         "direct_render": repo / "tools" / "voxcpm2" / "direct_max_quality_render.py",
         "direct_cli": repo / "tools" / "voxcpm2" / "direct_max_quality_cli.py",
-        "stable_cli": (
-            repo
-            / "tools"
-            / "voxcpm2"
-            / "examples"
-            / "john_piper_z20py4yqhyq"
-            / "voxcpm2_cpu_shorts_production.py"
-        ),
-        "master": (
-            repo
-            / "tools"
-            / "voxcpm2"
-            / "examples"
-            / "john_piper_z20py4yqhyq"
-            / "master_constant_mix.py"
-        ),
+        "final_media_qa": repo / "tools" / "voxcpm2" / "final_media_qa.py",
+        "stable_cli": example / "voxcpm2_cpu_shorts_production.py",
+        "master": example / "master_constant_mix.py",
         "gemini": repo / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py",
         "direct": repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py",
         "custom": repo / "tools" / "voxcpm2" / "generic_clean_custom_runtime.py",
@@ -102,7 +97,14 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
 
     combined_renderer = "\n".join(
         text[name]
-        for name in ("direct_io", "direct_analysis", "direct_render", "direct_cli", "stable_cli")
+        for name in (
+            "direct_io",
+            "direct_analysis",
+            "direct_timbre",
+            "direct_render",
+            "direct_cli",
+            "stable_cli",
+        )
     )
     checks = {
         "direct-policy": 'POLICY = "voxcpm2-direct-max-quality-v2"' in text["direct_io"],
@@ -117,10 +119,11 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             '"retry_badcase": True' in text["direct_render"]
             and '"retry_badcase_max_times": 2' in text["direct_render"]
         ),
-        "candidate-F0": (
+        "candidate-voice": (
             "candidate_hard_ok" in text["direct_cli"]
-            and "F0×=" in text["direct_cli"]
             and "voiced_ratio" in text["direct_analysis"]
+            and "spectral_similarity" in text["direct_analysis"]
+            and "HARD_SIMILARITY_FLOOR = 0.30" in text["direct_timbre"]
         ),
         "max-tempo": "MAX_TEMPO = 1.35" in text["direct_io"],
         "no-reference-padding": "REFERENCE_TAIL_SILENCE = 0.0" in text["direct_io"],
@@ -157,7 +160,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             'POLICY = "expressive-spoken-translation-v1"' in text["translation"]
             and "намеренные повторы" in text["translation"]
             and "риторические вопросы" in text["translation"]
-            and "production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]
+            and "production.translate_groups_max = expressive_translation.translate_groups"
+            in text["gemini"]
         ),
         "clean-entrypoints": (
             "TTS guard disabled" in text["gemini"]
@@ -166,10 +170,13 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "force_fresh=repair_all" in text["repair"]
             and 'gemini_called": False' in text["repair"]
         ),
-        "master": (
+        "master-and-delivery-QA": (
             "linear=true" in text["master"]
             and "pcm_s24le" in text["master"]
-            and '"wrapper_count": 0' in text["core"]
+            and "verify_final_outputs" in text["master"]
+            and "final_media_verification.json" in text["master"]
+            and "TRUE_PEAK_DELIVERY_CEILING_DBTP = -1.0" in text["final_media_qa"]
+            and "EXPECTED_SAMPLE_RATE = 48_000" in text["final_media_qa"]
             and "MASTER_I = -16.0" in text["core"]
             and "MASTER_TP = -1.5" in text["core"]
         ),
@@ -183,12 +190,16 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             'dub-worker-quality-v4.4' in text["runtime"]
             and 'dub-worker-quality-v4.4' in text["worker"]
             and "_progress_from_line_v44" in text["worker"]
-            and "return current, \"\"" in text["worker"]
+            and 'return current, ""' in text["worker"]
         ),
         "single-title-policy": "install_dub_title_policy" in text["title"],
     }
     failed = [name for name, ok in checks.items() if not ok]
-    return not failed, ("все контракты активны" if not failed else "не прошли: " + ", ".join(failed))
+    return not failed, (
+        "все контракты активны"
+        if not failed
+        else "не прошли: " + ", ".join(failed)
+    )
 
 
 def collect_dub_health() -> list[dict[str, Any]]:
@@ -242,9 +253,9 @@ def collect_dub_health() -> list[dict[str, Any]]:
             quality_ok,
             (
                 quality_detail
-                + "; direct 16→48k; fingerprinted refs/model; official retry_badcase; "
-                "F0/voiced candidate gate; expression-aware QA; no afftdn; editable progress; "
-                "worker v4.4; -16 LUFS/-1.5 dBTP"
+                + "; direct 16→48k; fingerprinted refs/model; retry_badcase; "
+                "F0/voiced+timbre candidate gate; expression-aware QA; final AAC "
+                "BS.1770 QA; editable progress; worker v4.4; -16 LUFS/-1.5 dBTP"
             ),
         )
     )
@@ -270,14 +281,27 @@ def collect_dub_health() -> list[dict[str, Any]]:
         found = shutil.which(binary)
         checks.append(_check(binary, bool(found), found or "не найден в PATH"))
 
-    cpu_venv = Path(os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
-    cpu_python = cpu_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    checks.append(_check("VoxCPM2 CPU Python", cpu_python.is_file(), str(cpu_python)))
+    cpu_venv = Path(
+        os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
+    )
+    cpu_python = cpu_venv / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+    checks.append(
+        _check("VoxCPM2 CPU Python", cpu_python.is_file(), str(cpu_python))
+    )
 
-    archive = Path(os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060"))
+    archive = Path(
+        os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
+    )
     checks.append(_check("VoxCPM2 archive", archive.is_dir(), str(archive)))
 
-    gemini_names = ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4")
+    gemini_names = (
+        "GEMINI_API_KEY",
+        "GEMINI_API_KEY_2",
+        "GEMINI_API_KEY_3",
+        "GEMINI_API_KEY_4",
+    )
     available_keys = [name for name in gemini_names if os.getenv(name, "").strip()]
     checks.append(
         _check(
@@ -307,7 +331,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
                 "Worker",
                 fresh and version_ok,
                 (
-                    f"status={(worker or {}).get('status')}; pid={(worker or {}).get('pid')}; "
+                    f"status={(worker or {}).get('status')}; "
+                    f"pid={(worker or {}).get('pid')}; "
                     f"runtime={details.get('runtime') or 'legacy'}"
                 ),
             )
@@ -331,11 +356,16 @@ async def _admin(update: Update) -> bool:
     if user and user.id in ADMIN_IDS:
         return True
     if update.effective_message:
-        await update.effective_message.reply_text("⛔ /dubcheck доступна только администратору.")
+        await update.effective_message.reply_text(
+            "⛔ /dubcheck доступна только администратору."
+        )
     return False
 
 
-async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def dubcheck_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
     if not await _admin(update):
         return
     checks = await asyncio.to_thread(collect_dub_health)
@@ -359,14 +389,23 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт не отправляются на перевод или редактуру.",
         ]
     )
-    await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
+    await update.effective_message.reply_text(
+        "\n".join(lines),
+        parse_mode="HTML",
+    )
 
 
 def register_dub_health_handler(application: Any) -> None:
     if application.bot_data.get("dub_studio_health_registered"):
         return
-    application.add_handler(CommandHandler("dubcheck", dubcheck_command, filters=_MSG_ONLY))
+    application.add_handler(
+        CommandHandler("dubcheck", dubcheck_command, filters=_MSG_ONLY)
+    )
     application.bot_data["dub_studio_health_registered"] = True
 
 
-__all__ = ["collect_dub_health", "dubcheck_command", "register_dub_health_handler"]
+__all__ = [
+    "collect_dub_health",
+    "dubcheck_command",
+    "register_dub_health_handler",
+]
