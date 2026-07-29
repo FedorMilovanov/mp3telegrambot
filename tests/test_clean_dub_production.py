@@ -42,6 +42,9 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
     assert "voxcpm2_cpu_shorts_production.py" in source
     assert "master_constant_mix.py" in source
     assert '"wrapper_count": 0' in source
+    assert "clean_runtime_contract.build_fingerprints" in source
+    assert '"release_complete": False' in source
+    assert "release_complete=True" in source
 
 
 def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
@@ -122,7 +125,10 @@ def test_clean_repair_requires_expressive_baseline_for_selective_work() -> None:
     source = (
         ROOT / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py"
     ).read_text(encoding="utf-8")
-    assert "clean expressive baseline" in source
+    assert "clean expressive " in source
+    assert "baseline renderer" in source
+    assert "fingerprinted release-complete clean expressive baseline" in source
+    assert "release_complete" in source
     assert "expression_ready" in source
     assert "force_fresh=repair_all" in source
     assert "clean_segment_normalizer.normalize" in source
