@@ -10,9 +10,11 @@ on:
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/generic_short_runtime.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/final_media_qa.py"
       - "tools/voxcpm2/professional_audio_v45.py"
       - "tools/voxcpm2/professional_audio_qa_v45.py"
       - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
       - "tools/voxcpm2/expressive_*.py"
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
@@ -23,6 +25,7 @@ on:
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_expression_aware_voice_qa.py"
+      - "tests/test_final_media_qa.py"
       - "tests/test_gemini_translation_quality.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_runtime_progress.py"
@@ -59,9 +62,11 @@ jobs:
             tools/voxcpm2/direct_max_quality_analysis.py \
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
+            tools/voxcpm2/final_media_qa.py \
             tools/voxcpm2/professional_audio_v45.py \
             tools/voxcpm2/professional_audio_qa_v45.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py \
+            tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
             tools/voxcpm2/generic_clean_gemini_runtime.py \
@@ -77,6 +82,7 @@ jobs:
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
             tests/test_expression_aware_voice_qa.py \
+            tests/test_final_media_qa.py \
             tests/test_gemini_translation_quality.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_runtime_progress.py \
