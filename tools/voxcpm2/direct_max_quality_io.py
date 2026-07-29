@@ -22,7 +22,9 @@ import numpy as np
 POLICY = "voxcpm2-direct-max-quality-v2"
 EXPECTED_ENCODE_SR = 16000
 EXPECTED_OUTPUT_SR = 48000
-REFERENCE_TAIL_SILENCE = 0.45
+# Official guidance favors clean trimmed edges. Silence padding is conflicting
+# community advice and is therefore not forced in reference-only production.
+REFERENCE_TAIL_SILENCE = 0.0
 MAX_TEMPO = 1.35
 
 
