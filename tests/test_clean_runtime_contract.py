@@ -150,6 +150,7 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
         "tools/voxcpm2/clean_source_download.py",
         "tools/voxcpm2/clean_request_settings.py",
         "tools/voxcpm2/clean_segment_normalizer.py",
+        "tools/voxcpm2/legacy_segment_migration_v45.py",
         "tools/voxcpm2/clean_production_core.py",
         "tools/voxcpm2/continuous_reference_policy.py",
         "tools/voxcpm2/controlled_reference_gate.py",
@@ -164,10 +165,13 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
         "tools/voxcpm2/generic_clean_direct_runtime.py",
         "tools/voxcpm2/generic_clean_custom_runtime.py",
         "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py",
         "tools/voxcpm2/direct_source_prosody.py",
         "tools/voxcpm2/direct_max_quality_cli.py",
     }
     assert required.issubset(set(contract._RENDER_MODULES))
+    assert "tools/voxcpm2/final_media_qa/__init__.py" in contract._RELEASE_MODULES
 
 
 def test_clean_core_requires_current_marker_fingerprints() -> None:
@@ -185,6 +189,7 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert '"tools/voxcpm2/clean_source_download.py"' in contract_source
     assert '"tools/voxcpm2/clean_request_settings.py"' in contract_source
     assert '"tools/voxcpm2/strict_translation_payload.py"' in contract_source
+    assert '"tools/voxcpm2/legacy_segment_migration_v45.py"' in contract_source
     assert 'request.get("cfg") or' not in contract_source
     assert 'request.get("threads") or' not in contract_source
     assert 'request.get("steps") or' not in contract_source
