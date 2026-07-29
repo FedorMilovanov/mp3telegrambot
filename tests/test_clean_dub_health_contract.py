@@ -78,6 +78,11 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert '"schema_version": "dub-final-media-qa-v5"' in source
     assert "verify_final_outputs" in source
     assert "final_media_verification.json" in source
+    assert 'worker-v45' in source
+    assert 'dub-worker-quality-v4.5' in source
+    assert '_recover_abandoned_with_terminal_events' in source
+    assert '_FINAL_JOB_STATES' in source
+    assert 'status in _FINAL_JOB_STATES' in source
     assert "Clean Expressive NoChew + независимый QA" in source
     assert "NoChew Quality v4.2 + аудиоремонт" not in source
     assert "generic_direct_checked_runtime" not in source
