@@ -23,8 +23,7 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "sampled_sha256_file" in source
     assert '"sampled-begin-middle-end-v1"' in source
     assert 'root.rglob("*.py")' in source
-    assert 'request.get("base_seed") or' in source
-    assert 'request.get("base_seed") or\' not in source
+    assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source
     assert 'POLICY: Final = "russian-spoken-numbers-v2"' in source
     assert 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in source
