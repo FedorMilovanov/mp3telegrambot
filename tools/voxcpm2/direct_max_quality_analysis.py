@@ -16,11 +16,18 @@ from tools.voxcpm2.direct_max_quality_io import (
     sha256_file,
 )
 from tools.voxcpm2.direct_timbre_analysis import (
+    BAND_EDGES_HZ,
     spectral_envelope,
     spectral_similarity,
     timbre_hard_ok,
     timbre_penalty,
 )
+
+MIN_REFERENCE_VOICED_RATIO = 0.12
+MIN_REFERENCE_ACTIVE_RATIO = 0.20
+MAX_REFERENCE_INTERNAL_GAP = 1.20
+MAX_REFERENCE_CLIPPING_RATIO = 0.005
+MIN_REFERENCE_PEAK = 0.001
 
 
 def _mono(samples: np.ndarray) -> np.ndarray:
@@ -332,6 +339,65 @@ def _read_reference_transport(
     return np.asarray(samples, dtype=np.float32), int(sample_rate), "resample-mono-only"
 
 
+def _reference_quality(
+    audio: np.ndarray,
+    sample_rate: int,
+    source: Path,
+) -> dict[str, Any]:
+    if not np.isfinite(audio).all():
+        raise RuntimeError(f"Voice reference содержит NaN/Inf: {source}")
+    peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
+    clip = clipping_ratio(audio) if len(audio) else 1.0
+    pitch = pitch_profile(audio, sample_rate)
+    activity = activity_stats(audio, sample_rate)
+    spectrum = spectral_envelope(audio, sample_rate)
+    failures: list[str] = []
+    if peak < MIN_REFERENCE_PEAK:
+        failures.append(f"peak={peak:.6f} < {MIN_REFERENCE_PEAK:.3f}")
+    if clip > MAX_REFERENCE_CLIPPING_RATIO:
+        failures.append(
+            f"clipping={clip:.6f} > {MAX_REFERENCE_CLIPPING_RATIO:.3f}"
+        )
+    if float(pitch["voiced_ratio"]) < MIN_REFERENCE_VOICED_RATIO:
+        failures.append(
+            f"voiced_ratio={pitch['voiced_ratio']:.3f} < {MIN_REFERENCE_VOICED_RATIO:.2f}"
+        )
+    if float(activity["active_ratio"]) < MIN_REFERENCE_ACTIVE_RATIO:
+        failures.append(
+            f"active_ratio={activity['active_ratio']:.3f} < {MIN_REFERENCE_ACTIVE_RATIO:.2f}"
+        )
+    if float(activity["max_internal_gap"]) > MAX_REFERENCE_INTERNAL_GAP:
+        failures.append(
+            f"max_internal_gap={activity['max_internal_gap']:.3f} > {MAX_REFERENCE_INTERNAL_GAP:.2f}"
+        )
+    if (
+        int(spectrum.get("frames") or 0) <= 0
+        or len(spectrum.get("bands") or []) != len(BAND_EDGES_HZ) - 1
+    ):
+        failures.append("нет валидного spectral envelope")
+    if failures:
+        raise RuntimeError(
+            f"Voice reference не прошёл pre-model hard-floor: {source}: "
+            + "; ".join(failures)
+        )
+    return {
+        "reference_quality_policy": "pre-model-reference-hard-floor-v1",
+        "peak": peak,
+        "clipping_ratio": clip,
+        "limits": {
+            "min_peak": MIN_REFERENCE_PEAK,
+            "max_clipping_ratio": MAX_REFERENCE_CLIPPING_RATIO,
+            "min_voiced_ratio": MIN_REFERENCE_VOICED_RATIO,
+            "min_active_ratio": MIN_REFERENCE_ACTIVE_RATIO,
+            "max_internal_gap": MAX_REFERENCE_INTERNAL_GAP,
+            "spectral_bands": len(BAND_EDGES_HZ) - 1,
+        },
+        "spectral_envelope": spectrum,
+        **pitch,
+        **activity,
+    }
+
+
 def prepare_reference(
     source: Path,
     output: Path,
@@ -354,6 +420,7 @@ def prepare_reference(
         raise RuntimeError(
             f"Voice reference длиннее 30 секунд после очистки: {source}"
         )
+    quality = _reference_quality(audio, sample_rate, source)
     fade = min(int(sample_rate * 0.025), len(audio) // 8)
     if fade > 1:
         ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
@@ -379,9 +446,7 @@ def prepare_reference(
         "transport": transport,
         "spectral_filter": False,
         "denoise": False,
-        "spectral_envelope": spectral_envelope(audio, sample_rate),
-        **pitch_profile(audio, sample_rate),
-        **activity_stats(audio, sample_rate),
+        **quality,
     }
 
 
