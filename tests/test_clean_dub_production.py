@@ -118,13 +118,15 @@ def test_clean_master_is_quieter_and_release_safe() -> None:
     assert clean.MASTER_TP == -1.5
 
 
-def test_clean_repair_requires_clean_baseline_for_selective_work() -> None:
+def test_clean_repair_requires_expressive_baseline_for_selective_work() -> None:
     source = (
         ROOT / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py"
     ).read_text(encoding="utf-8")
-    assert "Выборочный ремонт разрешён только после успешного чистого baseline" in source
+    assert "clean expressive baseline" in source
+    assert "expression_ready" in source
     assert "force_fresh=repair_all" in source
     assert "clean_segment_normalizer.normalize" in source
+    assert "build_controlled_expressive_reference" in source
     assert "semantic_tts_guard_v47" not in source
     assert "semantic_tts_guard_v46" not in source
     assert "professional_audio_v45.install" not in source
