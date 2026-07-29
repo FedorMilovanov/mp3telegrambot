@@ -4,8 +4,8 @@
 
 The proven repair implementation stays in the sibling ``.py`` module. This
 package shadows it for imports and ``python -m`` execution, preserving every
-legacy helper while validating repair scope/seeds before execution and making
-user-visible manifest settings match the rendered segments afterward.
+legacy helper while validating repair scope, segments, checkpoints and seeds
+before execution and making manifest settings match rendered segments afterward.
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 _legacy_update_manifest = _legacy._update_manifest
+_legacy_checkpoint_ready = _legacy._checkpoint_ready
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, Any]:
@@ -66,7 +67,7 @@ def _strict_ids(values: Any, *, field: str) -> list[int]:
     return result
 
 
-def _segment_ids(path: Path) -> list[int]:
+def _load_segments(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         raise RuntimeError(f"Не найден segments_ru_final.json: {path}")
     try:
@@ -75,15 +76,45 @@ def _segment_ids(path: Path) -> list[int]:
         raise RuntimeError(f"Повреждён segments_ru_final.json: {path}") from exc
     if not isinstance(payload, list) or not payload:
         raise RuntimeError("segments_ru_final.json пуст или не является списком.")
-    values: list[Any] = []
+
+    result: list[dict[str, Any]] = []
+    raw_ids: list[Any] = []
     for position, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
             raise RuntimeError(
                 f"segment[{position}] должен быть JSON-объектом, "
                 f"получено {type(item).__name__}."
             )
-        values.append(item.get("id"))
-    return _strict_ids(values, field="segments.id")
+        copied = dict(item)
+        raw_ids.append(copied.get("id"))
+        for field in ("start", "end"):
+            strict_core._finite(
+                copied.get(field),
+                field=f"segment[{position}].{field}",
+            )
+        if copied.get("source_end") is not None:
+            strict_core._finite(
+                copied.get("source_end"),
+                field=f"segment[{position}].source_end",
+            )
+        strict_core._strict_int(
+            copied.get("start_delay_ms", 0),
+            field=f"segment[{position}].start_delay_ms",
+            low=0,
+            high=1500,
+        )
+        if not str(copied.get("text") or "").strip():
+            raise RuntimeError(f"segment[{position}] не содержит текста.")
+        result.append(copied)
+
+    ids = _strict_ids(raw_ids, field="segments.id")
+    for item, segment_id in zip(result, ids, strict=True):
+        item["id"] = segment_id
+    return sorted(result, key=lambda item: int(item["id"]))
+
+
+def _segment_ids(path: Path) -> list[int]:
+    return [int(item["id"]) for item in _load_segments(path)]
 
 
 def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
@@ -103,13 +134,24 @@ def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
         raise RuntimeError("audio_repair.repair_all должен быть bool.")
 
     selected = _strict_ids(repair.get("segment_ids"), field="audio_repair.segment_ids")
-    all_ids = _segment_ids(root / "segments_ru_final.json")
+    segments = _load_segments(root / "segments_ru_final.json")
+    all_ids = [int(item["id"]) for item in segments]
     selected_set = set(selected)
     all_set = set(all_ids)
     if not selected_set.issubset(all_set):
         raise RuntimeError("audio_repair содержит неизвестные segment ID.")
     if repair_all != (selected_set == all_set):
         raise RuntimeError("audio_repair.repair_all не соответствует выбранным segment ID.")
+
+    if not repair_all:
+        source = root / "source" / "source.mp4"
+        if not source.is_file():
+            raise RuntimeError("Для выборочного ремонта отсутствует source/source.mp4.")
+        duration = _legacy.pipeline.ffprobe_duration(source)
+        strict_core._mark_and_validate_segments(
+            [dict(item) for item in segments],
+            duration,
+        )
     return repair
 
 
@@ -138,6 +180,34 @@ def _next_seed(
     return candidate
 
 
+def _checkpoint_ready(
+    work_dir: Path,
+    segment_id: int,
+) -> tuple[bool, str]:
+    expected_id = strict_core._strict_int(
+        segment_id,
+        field="checkpoint.segment_id",
+        low=1,
+        high=2**31 - 1,
+    )
+    payload = _legacy._checkpoint_payload(work_dir, expected_id)
+    report = payload.get("report") if isinstance(payload, dict) else None
+    if not isinstance(report, dict):
+        return False, "checkpoint report отсутствует"
+    try:
+        report_id = strict_core._strict_int(
+            report.get("id"),
+            field="checkpoint.report.id",
+            low=1,
+            high=2**31 - 1,
+        )
+    except RuntimeError as exc:
+        return False, str(exc)
+    if report_id != expected_id:
+        return False, "checkpoint report id не совпадает"
+    return _legacy_checkpoint_ready(work_dir, expected_id)
+
+
 def _dominant_segment_delay(root: Path) -> int:
     """Return the global delay proven by rendered segment data.
 
@@ -147,24 +217,13 @@ def _dominant_segment_delay(root: Path) -> int:
     contract.
     """
     path = Path(root) / "segments_ru_final.json"
-    if not path.is_file():
-        raise RuntimeError(f"Не найден segments_ru_final.json для repair manifest: {path}")
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Повреждён segments_ru_final.json: {path}") from exc
-    if not isinstance(payload, list) or not payload:
-        raise RuntimeError("segments_ru_final.json пуст или не является списком.")
-
-    delays: list[int] = []
-    for index, item in enumerate(payload, start=1):
-        if not isinstance(item, dict) or "start_delay_ms" not in item:
-            raise RuntimeError(f"У repair segment #{index} отсутствует start_delay_ms.")
-        delays.append(
-            clean_request_settings.russian_delay_ms(
-                {"russian_delay_ms": item.get("start_delay_ms")}
-            )
+    payload = _load_segments(path)
+    delays = [
+        clean_request_settings.russian_delay_ms(
+            {"russian_delay_ms": item.get("start_delay_ms")}
         )
+        for item in payload
+    ]
     return max(delays)
 
 
@@ -205,12 +264,16 @@ def main() -> None:
 
 # Legacy functions resolve these globals at runtime.
 _legacy._next_seed = _next_seed
+_legacy._checkpoint_ready = _checkpoint_ready
 _legacy._update_manifest = _update_manifest
+_legacy.legacy_repair._load_segments = _load_segments
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
+        "_checkpoint_ready",
         "_dominant_segment_delay",
+        "_load_segments",
         "_next_seed",
         "_strict_ids",
         "_validate_repair_request",
