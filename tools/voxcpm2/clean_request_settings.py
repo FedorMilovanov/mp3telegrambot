@@ -82,8 +82,18 @@ def _correct_label(label: str, *, level: float, delay_ms: int) -> str:
     return text
 
 
-def repair_manifest(root: Path, request: dict[str, Any]) -> dict[str, Any]:
-    """Make completed/prepare manifests report the settings actually used."""
+def repair_manifest(
+    root: Path,
+    request: dict[str, Any],
+    *,
+    actual_delay_ms: Any | None = None,
+) -> dict[str, Any]:
+    """Make a manifest report the level and delay actually used.
+
+    Fresh routes use the canonical request delay. Audio repair may pass the
+    dominant delay measured from ``segments_ru_final.json`` so a historical
+    request/default mismatch cannot survive in Telegram labels.
+    """
     settings = values(request)
     path = Path(root) / "output" / "manifest.json"
     if not path.is_file():
@@ -96,8 +106,14 @@ def repair_manifest(root: Path, request: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("Clean manifest не является JSON-объектом.")
 
     level = float(settings["original_level"])
-    delay_ms = int(settings["russian_delay_ms"])
+    if actual_delay_ms is None:
+        delay_ms = int(settings["russian_delay_ms"])
+        delay_source = "request"
+    else:
+        delay_ms = russian_delay_ms({"russian_delay_ms": actual_delay_ms})
+        delay_source = "segments"
     payload["settings_policy"] = POLICY
+    payload["settings_delay_source"] = delay_source
     payload["original_level"] = level
     payload["russian_delay_ms"] = delay_ms
     outputs = payload.get("telegram_outputs")
