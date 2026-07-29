@@ -8,6 +8,7 @@ on:
       - "services/dub_title_policy.py"
       - "services/dub_studio_runtime.py"
       - "tools/voxcpm2/dub_worker_hardened.py"
+      - "tools/voxcpm2/generic_short_runtime.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
       - "tools/voxcpm2/professional_audio_v45.py"
       - "tools/voxcpm2/professional_audio_qa_v45.py"
@@ -17,10 +18,12 @@ on:
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_health.py"
+      - "handlers/dub_wizard.py"
       - "tests/test_clean_reference_transport.py"
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_expression_aware_voice_qa.py"
+      - "tests/test_gemini_translation_quality.py"
       - "tests/test_dub_title_policy.py"
       - "tests/test_dub_runtime_progress.py"
       - "tests/test_expressive_dub_policy.py"
@@ -51,6 +54,7 @@ jobs:
             services/dub_title_policy.py \
             services/dub_studio_runtime.py \
             tools/voxcpm2/dub_worker_hardened.py \
+            tools/voxcpm2/generic_short_runtime.py \
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_max_quality_analysis.py \
             tools/voxcpm2/direct_max_quality_render.py \
@@ -64,7 +68,8 @@ jobs:
             tools/voxcpm2/generic_clean_direct_runtime.py \
             tools/voxcpm2/generic_clean_custom_runtime.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
-            handlers/dub_health.py
+            handlers/dub_health.py \
+            handlers/dub_wizard.py
       - name: Run focused contracts
         run: |
           pytest -q \
@@ -72,6 +77,7 @@ jobs:
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
             tests/test_expression_aware_voice_qa.py \
+            tests/test_gemini_translation_quality.py \
             tests/test_dub_title_policy.py \
             tests/test_dub_runtime_progress.py \
             tests/test_expressive_dub_policy.py \
