@@ -3,18 +3,22 @@
 """Strict compatibility facade for clean production orchestration.
 
 The proven orchestration remains in ``clean_production_core.py``. This package
-preserves its public API and replaces only numeric/segment validation before
-references, model loading, checkpoint reuse, or rendering can begin.
+preserves its public API, validates segment fields before expensive work, and
+makes every clean child-Python launch independent of the caller's working
+directory. Master stderr is preserved so terminal failures are actionable.
 """
 from __future__ import annotations
 
 import importlib.util
 import math
+import os
 import re
+import subprocess as _stdlib_subprocess
 from pathlib import Path
 from typing import Any
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "clean_production_core.py"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SPEC = importlib.util.spec_from_file_location(
     "tools.voxcpm2._clean_production_core_legacy",
     _LEGACY_PATH,
@@ -27,6 +31,85 @@ _SPEC.loader.exec_module(_legacy)
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
+
+CHILD_PYTHON_POLICY = "repo-root-pythonpath-and-master-stderr-v1"
+
+
+def _child_python_env(value: Any) -> dict[str, str]:
+    """Return an isolated environment with the repository import root first."""
+    if value is None:
+        env = dict(os.environ)
+    elif isinstance(value, dict):
+        env = {str(key): str(item) for key, item in value.items()}
+    else:
+        raise RuntimeError("subprocess env должен быть словарём или None.")
+
+    repo = str(_REPO_ROOT)
+    existing = str(env.get("PYTHONPATH") or "")
+    parts = [item for item in existing.split(os.pathsep) if item]
+    normalized = {os.path.normcase(os.path.abspath(item)) for item in parts}
+    if os.path.normcase(os.path.abspath(repo)) not in normalized:
+        parts.insert(0, repo)
+    else:
+        parts = [repo] + [
+            item
+            for item in parts
+            if os.path.normcase(os.path.abspath(item))
+            != os.path.normcase(os.path.abspath(repo))
+        ]
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
+def _is_python_script_command(command: Any) -> bool:
+    if not isinstance(command, (list, tuple)) or len(command) < 2:
+        return False
+    executable = Path(str(command[0])).name.casefold()
+    script = str(command[1]).casefold()
+    return executable.startswith("python") and script.endswith(".py")
+
+
+def _is_master_command(command: Any) -> bool:
+    return bool(
+        _is_python_script_command(command)
+        and Path(str(command[1])).name.casefold() == "master_constant_mix.py"
+    )
+
+
+def _run_child_process(command: Any, *args: Any, **kwargs: Any):
+    """Run legacy child commands with deterministic imports and useful errors."""
+    is_python = _is_python_script_command(command)
+    is_master = _is_master_command(command)
+    if is_python:
+        kwargs["env"] = _child_python_env(kwargs.get("env"))
+    if is_master and kwargs.get("stderr") is None:
+        kwargs["stderr"] = _stdlib_subprocess.PIPE
+        kwargs.setdefault("text", True)
+        kwargs.setdefault("encoding", "utf-8")
+        kwargs.setdefault("errors", "replace")
+
+    result = _stdlib_subprocess.run(command, *args, **kwargs)
+    if is_master and int(getattr(result, "returncode", 0) or 0) != 0:
+        detail = str(getattr(result, "stderr", "") or "").strip()
+        if detail:
+            detail = detail[-12000:]
+        else:
+            detail = f"process exited with code {result.returncode} without stderr"
+        raise RuntimeError("Прямой master завершился с точной причиной:\n" + detail)
+    return result
+
+
+class _SubprocessProxy:
+    """Module-like proxy scoped to the legacy clean-core module only."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_stdlib_subprocess, name)
+
+    @staticmethod
+    def run(command: Any, *args: Any, **kwargs: Any):
+        return _run_child_process(command, *args, **kwargs)
 
 
 def _finite(value: Any, *, field: str) -> float:
@@ -134,11 +217,23 @@ def _mark_and_validate_segments(
         previous_effective_end = effective_end
 
 
-# Legacy functions resolve these names at call time.
+# Legacy functions resolve these names at call time. Replacing only the module
+# reference keeps the standard subprocess module untouched for every other
+# component and for the parallel agent's direct renderer code.
+_legacy.subprocess = _SubprocessProxy()
 _legacy._finite = _finite
 _legacy._mark_and_validate_segments = _mark_and_validate_segments
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {"_finite", "_mark_and_validate_segments", "_strict_int"}
+    | {
+        "CHILD_PYTHON_POLICY",
+        "_child_python_env",
+        "_finite",
+        "_is_master_command",
+        "_is_python_script_command",
+        "_mark_and_validate_segments",
+        "_run_child_process",
+        "_strict_int",
+    }
 )
