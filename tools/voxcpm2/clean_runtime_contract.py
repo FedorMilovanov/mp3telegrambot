@@ -39,6 +39,8 @@ _RENDER_MODULES = (
     "tools/voxcpm2/generic_clean_direct_runtime.py",
     "tools/voxcpm2/generic_clean_custom_runtime.py",
     "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py",
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_timbre_analysis.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
