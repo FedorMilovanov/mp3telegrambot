@@ -219,6 +219,13 @@ except Exception as _dub_title_error:
     print(f"⚠️ Единая политика русских названий не установлена: {_dub_title_error}")
 
 try:
+    from services.dub_progress_updates import install_dub_progress_updates
+
+    install_dub_progress_updates()
+except Exception as _dub_progress_error:
+    print(f"⚠️ Обновляемое сообщение прогресса Dub Studio не установлено: {_dub_progress_error}")
+
+try:
     from services.restart_state_runtime import install_restart_state_runtime
 
     install_restart_state_runtime(_main_module)
