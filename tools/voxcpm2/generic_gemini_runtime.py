@@ -41,6 +41,36 @@ def clean_manual_caption_line(value: str) -> str:
     return text
 
 
+def _merge_creator_caption_lines(values: list[str]) -> str:
+    """Collapse rolling render states without deleting separated repetitions."""
+    states: list[str] = []
+    for value in values:
+        cleaned = clean_manual_caption_line(value)
+        if not cleaned:
+            continue
+        if not states:
+            states.append(cleaned)
+            continue
+        previous = states[-1]
+        previous_folded = previous.casefold()
+        current_folded = cleaned.casefold()
+        if current_folded == previous_folded:
+            # Exact adjacent duplicates are the same VTT render state.
+            continue
+        if current_folded.startswith(previous_folded + " "):
+            # YouTube rolling captions often replace a partial line with its
+            # longer complete state. Keep only the complete state.
+            states[-1] = cleaned
+            continue
+        if previous_folded.startswith(current_folded + " "):
+            # Ignore a rollback to an older partial render state.
+            continue
+        # Do not deduplicate against the whole cue: A / B / A can be a real
+        # rhetorical repetition and must reach the translator unchanged.
+        states.append(cleaned)
+    return " ".join(states).strip()
+
+
 def parse_creator_vtt_preserving_text(path: Path) -> list[pipeline.Cue]:
     lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
     cues: list[pipeline.Cue] = []
@@ -60,11 +90,9 @@ def parse_creator_vtt_preserving_text(path: Path) -> list[pipeline.Cue]:
         index += 1
         payload: list[str] = []
         while index < len(lines) and lines[index].strip():
-            cleaned = clean_manual_caption_line(lines[index])
-            if cleaned and cleaned not in payload:
-                payload.append(cleaned)
+            payload.append(lines[index])
             index += 1
-        text = " ".join(payload).strip()
+        text = _merge_creator_caption_lines(payload)
         if text and end > start:
             cues.append(pipeline.Cue(start, end, text))
         index += 1
