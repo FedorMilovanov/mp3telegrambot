@@ -15,6 +15,13 @@ from types import ModuleType
 from typing import Any
 
 try:
+    from services.polling_reliability_runtime import install_polling_reliability_runtime
+
+    install_polling_reliability_runtime()
+except Exception as _polling_reliability_error:
+    print(f"⚠️ Polling reliability runtime не установлен: {_polling_reliability_error}")
+
+try:
     from services.gemini_max_quality import configure_max_quality_env
     from services.gemini_qa_policy import configure_gemini_qa_policy
     from services.livedub_quality_runtime import (
