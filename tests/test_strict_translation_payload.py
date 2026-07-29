@@ -37,6 +37,8 @@ def test_full_payload_accepts_reordered_unique_ids_and_restores_source_order() -
         {"segments": [{"id": 1, "russian": "А"}]},
         {"segments": [{"id": 1, "russian": "А"}, {"id": 2, "russian": "Б"}, {"id": 3, "russian": "В"}]},
         {"segments": [{"id": True, "russian": "А"}, {"id": 2, "russian": "Б"}]},
+        {"segments": [{"id": 1.5, "russian": "А"}, {"id": 2, "russian": "Б"}]},
+        {"segments": [{"id": float("nan"), "russian": "А"}, {"id": 2, "russian": "Б"}]},
         {"segments": [{"id": 1, "russian": "А"}, "not-an-object", {"id": 2, "russian": "Б"}]},
         {"segments": [{"id": 1, "russian": "А"}, {"id": 2, "russian": "   "}]},
     ],
