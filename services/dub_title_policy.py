@@ -239,10 +239,15 @@ def _patch_health() -> None:
             "generic_clean_direct_runtime.py",
             "generic_clean_custom_runtime.py",
         )
-        route_sources = [
-            (repo / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
-            for name in route_names
-        ]
+        try:
+            route_sources = [
+                (repo / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+                for name in route_names
+            ]
+            own_source = Path(__file__).read_text(encoding="utf-8")
+        except OSError:
+            route_sources = []
+            own_source = ""
         title_ok = bool(
             canonical_media_title(
                 "Сила И Достоинство Благочестивой Женщины - Джон Пайпер"
@@ -252,10 +257,10 @@ def _patch_health() -> None:
                 "Сила И Достоинство - Джон Пайпер — русский дубляж.mp4"
             )
             == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
+            and len(route_sources) == len(route_names)
             and all("install_voxcpm_title_policy" in source for source in route_sources)
             and all("force_fresh=True" in source for source in route_sources)
-            and "runtime._undelivered_notification_events = wrapped"
-            in Path(__file__).read_text(encoding="utf-8")
+            and "runtime._undelivered_notification_events = wrapped" in own_source
         )
         for item in checks:
             if item.get("label") == "Clean Expressive NoChew + независимый QA":
