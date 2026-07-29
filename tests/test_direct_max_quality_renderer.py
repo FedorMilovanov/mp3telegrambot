@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
     candidate_score,
     pitch_profile,
 )
+from tools.voxcpm2.direct_max_quality_cli import _candidate_failure_summary
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_ENCODE_SR,
     EXPECTED_OUTPUT_SR,
@@ -32,7 +34,9 @@ EXAMPLE = (
 
 def _candidate(*, duration: float, voiced: float, median: float, p90: float, active: float, gap: float) -> dict:
     return {
+        "attempt": 1,
         "duration": duration,
+        "score": 10.0,
         "tail_info": {"suspicious": False},
         "clipping_ratio": 0.0,
         "leading_silence": 0.05,
@@ -87,6 +91,26 @@ def test_nonsense_high_register_candidate_cannot_win() -> None:
     assert bad_score > good_score + 200
 
 
+def test_bad_candidate_diagnostics_are_actionable() -> None:
+    candidate = _candidate(
+        duration=0.28,
+        voiced=0.07,
+        median=205.0,
+        p90=230.0,
+        active=0.08,
+        gap=0.95,
+    )
+    candidate["voice_match"] = {
+        "f0_median_ratio": 1.95,
+        "f0_p90_ratio": 1.59,
+    }
+    summary = _candidate_failure_summary([candidate], 3.6)
+    assert "attempt 1" in summary
+    assert "duration×=" in summary
+    assert "voiced=0.070" in summary
+    assert "F0×=1.950/1.590" in summary
+
+
 def test_generation_has_headroom_for_the_final_word() -> None:
     class FakeModel:
         def __init__(self) -> None:
@@ -133,6 +157,7 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     analysis = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_analysis.py").read_text(encoding="utf-8")
     io = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_io.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
+    ast.parse(cli)
     combined = render + cli + analysis + io + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
@@ -141,6 +166,9 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert "candidate_hard_ok" in cli
     assert "F0×=" in cli
     assert "AudioVAE:" in cli
+    assert "Best-of-bad candidates are forbidden" in cli
+    assert "if not acceptable:" in cli
+    assert "acceptable or candidates" not in cli
     assert "reshape(-1, factor).mean(axis=1)" in analysis
     assert "REFERENCE_TAIL_SILENCE = 0.0" in io
     assert "runpy.run_path" not in combined
