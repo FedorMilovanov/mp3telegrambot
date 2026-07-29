@@ -96,7 +96,11 @@ def _fingerprinted_baseline_ready(
         return False, "renderer/model/voxcpm fingerprint изменился"
     if str(marker.get("release_contract_sha256") or "") != expected_release:
         return False, "QA/master/reference release fingerprint изменился"
-    return True, "fingerprinted clean expressive baseline"
+    if marker.get("segment_qa_passed") is not True:
+        return False, "segment QA baseline не принят"
+    if marker.get("release_complete") is not True:
+        return False, "final AAC release baseline не завершён"
+    return True, "fingerprinted release-complete clean expressive baseline"
 
 
 def _next_seed(
@@ -104,11 +108,17 @@ def _next_seed(
     marker: dict[str, Any],
     manifest: dict[str, Any],
 ) -> int:
-    initial = int(request.get("base_seed") or 2026072800)
-    previous = int(marker.get("base_seed") or initial)
+    try:
+        initial = int(request.get("base_seed") or 2026072800)
+        previous = int(marker.get("base_seed") or initial)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("Некорректный base_seed для аудиоремонта.") from exc
     history = manifest.get("audio_repairs")
     repair_index = len(history) + 1 if isinstance(history, list) else 1
-    return max(initial, previous) + max(1, repair_index) * 100_000
+    candidate = max(initial, previous) + max(1, repair_index) * clean_runtime_contract.RETRY_SEED_OFFSET
+    if not 0 <= candidate <= clean_runtime_contract.MAX_BASE_SEED:
+        raise RuntimeError("Следующий repair seed выходит за безопасный диапазон.")
+    return candidate
 
 
 def _existing_references(root: Path) -> tuple[Path, Path]:
@@ -151,6 +161,7 @@ def _update_manifest(
             "runtime_contract_policy": clean_runtime_contract.POLICY,
             "render_contract_sha256": marker.get("render_contract_sha256"),
             "release_contract_sha256": marker.get("release_contract_sha256"),
+            "release_complete": marker.get("release_complete") is True,
             "renderer_policy": direct_max_quality_io.POLICY,
             "reference_policy": continuous_reference_policy.POLICY,
             "expression_policy": expressive_continuity.POLICY,
@@ -164,6 +175,7 @@ def _update_manifest(
     manifest["runtime_contract_policy"] = clean_runtime_contract.POLICY
     manifest["render_contract_sha256"] = marker.get("render_contract_sha256")
     manifest["release_contract_sha256"] = marker.get("release_contract_sha256")
+    manifest["release_complete"] = marker.get("release_complete") is True
     manifest["audio_production"] = "direct-powershell-equivalent"
     manifest["renderer_policy"] = direct_max_quality_io.POLICY
     manifest["reference_policy"] = continuous_reference_policy.POLICY
@@ -309,15 +321,16 @@ def main() -> None:
         final_marker.get("policy") != clean.POLICY
         or not final_marker.get("render_contract_sha256")
         or not final_marker.get("release_contract_sha256")
+        or final_marker.get("release_complete") is not True
     ):
-        raise RuntimeError("После ремонта не создан fingerprinted clean baseline marker.")
+        raise RuntimeError("После ремонта не создан release-complete fingerprinted marker.")
 
     legacy_repair._refresh_named_outputs(manifest, stable_mixed, stable_russian)
     report_path = output_dir / "audio_repair_report.json"
     production.save_json(
         report_path,
         {
-            "schema_version": 6,
+            "schema_version": 7,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
@@ -326,6 +339,7 @@ def main() -> None:
             "runtime_contract_policy": clean_runtime_contract.POLICY,
             "render_contract_sha256": final_marker.get("render_contract_sha256"),
             "release_contract_sha256": final_marker.get("release_contract_sha256"),
+            "release_complete": True,
             "renderer_policy": direct_max_quality_io.POLICY,
             "reference_policy": continuous_reference_policy.POLICY,
             "segment_policy": clean_segment_normalizer.POLICY,
