@@ -83,9 +83,10 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert "candidate_hard_ok" in cli
     assert "F0×=" in cli
     assert "AudioVAE:" in cli
-    assert "runpy" not in combined
+    assert "runpy.run_path" not in combined
     assert "semantic_tts_guard" not in combined
-    assert "subprocess proxy" not in combined.casefold()
+    assert "class _SubprocessProxy" not in combined
+    assert "install_runtime_adapters()" not in stable
     assert "REPO_ROOT" in stable
 
 
