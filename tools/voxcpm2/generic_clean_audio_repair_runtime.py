@@ -11,6 +11,7 @@ from typing import Any
 from services.dub_studio import utc_now
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_segment_normalizer
+from tools.voxcpm2 import direct_max_quality_io
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_audio_repair_runtime as legacy_repair
 from tools.voxcpm2 import generic_project_runtime as production
@@ -30,6 +31,40 @@ def _clean_marker(work_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _checkpoint_signature(work_dir: Path, segment_id: int) -> dict[str, Any]:
+    path = work_dir / "checkpoints" / f"segment_{segment_id:02d}.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    signature = payload.get("signature") if isinstance(payload, dict) else None
+    return signature if isinstance(signature, dict) else {}
+
+
+def _renderer_baseline_ready(
+    work_dir: Path,
+    segment_ids: set[int],
+) -> tuple[bool, str]:
+    missing: list[int] = []
+    wrong: list[int] = []
+    for segment_id in sorted(segment_ids):
+        signature = _checkpoint_signature(work_dir, segment_id)
+        if not signature:
+            missing.append(segment_id)
+        elif str(signature.get("policy") or "") != direct_max_quality_io.POLICY:
+            wrong.append(segment_id)
+    if missing:
+        return False, f"нет checkpoint: {missing[:12]}"
+    if wrong:
+        return False, (
+            f"устаревший renderer-policy у {wrong[:12]}; "
+            f"нужен {direct_max_quality_io.POLICY}"
+        )
+    return True, direct_max_quality_io.POLICY
 
 
 def _next_seed(
@@ -80,6 +115,7 @@ def _update_manifest(
             "segment_ids": selected_ids,
             "base_seed": int(seed),
             "production_policy": clean.POLICY,
+            "renderer_policy": direct_max_quality_io.POLICY,
             "expression_policy": expressive_continuity.POLICY,
             "report": str(report_path),
             "translation_reused": True,
@@ -89,6 +125,7 @@ def _update_manifest(
     manifest["phase"] = "completed"
     manifest["audio_quality_guard"] = clean.POLICY
     manifest["audio_production"] = "direct-powershell-equivalent"
+    manifest["renderer_policy"] = direct_max_quality_io.POLICY
     manifest["expression_policy"] = expressive_continuity.POLICY
     manifest["audio_repairs"] = repairs[-30:]
     production.save_json(path, manifest)
@@ -136,9 +173,8 @@ def main() -> None:
     manifest = legacy_repair._load_object(manifest_path, "manifest.json")
     duration = pipeline.ffprobe_duration(source)
 
-    # Normalize only a full historical repair. The helper updates both the
-    # segment JSON and audio_repair hash while preserving the exact Russian token
-    # stream. A selective repair never edits text or timing.
+    # A full historical repair may normalize timing while preserving every token.
+    # A selective repair never edits text or timing.
     if repair_all_requested:
         clean_segment_normalizer.normalize(root, request, duration=duration)
         repair, segments = _reload_repair_and_segments(repair_path, segments_path)
@@ -168,14 +204,23 @@ def main() -> None:
         )
     else:
         expression_ready = bool(segments) and all(
-            str(item.get("expression_policy") or "")
-            == expressive_continuity.POLICY
+            str(item.get("expression_policy") or "") == expressive_continuity.POLICY
             for item in segments
         )
-        if marker.get("policy") != clean.POLICY or not expression_ready:
+        renderer_ready, renderer_detail = _renderer_baseline_ready(
+            segment_work,
+            all_ids,
+        )
+        if (
+            marker.get("policy") != clean.POLICY
+            or not expression_ready
+            or not renderer_ready
+        ):
             raise RuntimeError(
                 "Выборочный ремонт разрешён только после успешного clean expressive "
-                "baseline. Сначала выполните /dubfix PROJECT_ID all."
+                f"baseline renderer {direct_max_quality_io.POLICY}. "
+                f"Текущее состояние: {renderer_detail}. "
+                "Сначала выполните /dubfix PROJECT_ID all."
             )
         extended, composite = _existing_references(root)
         semantic_tts_guard_v4._retarget(
@@ -233,12 +278,13 @@ def main() -> None:
     production.save_json(
         report_path,
         {
-            "schema_version": 3,
+            "schema_version": 4,
             "project_id": project_id,
             "repair_all": repair_all,
             "segment_ids": selected_ids,
             "base_seed": seed,
             "production_policy": clean.POLICY,
+            "renderer_policy": direct_max_quality_io.POLICY,
             "segment_policy": clean_segment_normalizer.POLICY,
             "expression_policy": expressive_continuity.POLICY,
             "renderer_mode": "direct-powershell-equivalent",
@@ -248,6 +294,7 @@ def main() -> None:
             "mixed_video": str(stable_mixed),
             "russian_only_video": str(stable_russian),
             "qa_report": str(timeline.with_suffix(".clean_qa.json")),
+            "final_media_qa": str(root / "master_work" / "final_media_verification.json"),
             "expression_report": str(output_dir / "expressive_continuity.json"),
             "controlled_expressive_reference": bool(expressive_built or not repair_all),
         },
