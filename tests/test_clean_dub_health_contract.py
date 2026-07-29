@@ -11,6 +11,7 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_gemini_runtime" in source
     assert "tools.voxcpm2.generic_clean_direct_runtime" in source
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
+    assert "generic_short_runtime.py" in source
     assert "clean_runtime_contract.py" in source
     assert "expressive_continuity.py" in source
     assert "continuous_reference_policy.py" in source
@@ -25,6 +26,15 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert 'root.rglob("*.py")' in source
     assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source
+    assert 'POLICY = "expressive-spoken-translation-v2"' in source
+    assert 'translation-v2-bounded-gemini' in source
+    assert 'DUB_GEMINI_REQUEST_TIMEOUT_SEC' in source
+    assert 'DUB_GEMINI_PASS_TIMEOUT_SEC' in source
+    assert 'types.HttpOptions(timeout=' in source
+    assert 'time.monotonic() + pass_timeout' in source
+    assert 'перевод 1/3' in source
+    assert 'сверка 2/3' in source
+    assert 'редактура 3/3' in source
     assert 'POLICY: Final = "russian-spoken-numbers-v2"' in source
     assert 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in source
     assert 'IDENTITY_POLICY = "calm-and-expressive-identity-v2"' in source
