@@ -177,11 +177,14 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "final-AAC-QA": (
             "linear=true" in text["master"]
             and "10.0 ** (float(target_tp) / 20.0)" in text["master"]
+            and "level=false:latency=true" in text["master"]
             and "verify_final_outputs" in text["master"]
             and "final_media_verification.json" in text["master"]
             and "Отчёт сохранён" in text["media_qa"]
             and "container_duration_delta_seconds" in text["media_qa"]
             and "audio_duration_delta_seconds" in text["media_qa"]
+            and "av_start_delta_seconds" in text["media_qa"]
+            and "AV_START_TOLERANCE_SECONDS = 0.05" in text["media_qa"]
             and "TRUE_PEAK_DELIVERY_CEILING_DBTP = -1.0" in text["media_qa"]
             and "EXPECTED_SAMPLE_RATE = 48_000" in text["media_qa"]
             and "MASTER_I = -16.0" in text["core"]
@@ -255,7 +258,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
             quality_detail
             + "; direct v3 16→48k; fingerprints; retry_badcase; F0/voiced+timbre; "
             "transactional expressive+identity gate; QA v3 auto+forced-RU with foreign block; "
-            "final AAC BS.1770; editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
+            "final AAC BS.1770+PTS; limiter level-off/latency-compensated; editable progress; "
+            "worker v4.4; -16 LUFS/-1.5 dBTP",
         )
     )
 
