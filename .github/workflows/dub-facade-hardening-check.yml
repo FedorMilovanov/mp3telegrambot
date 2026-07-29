@@ -1,0 +1,105 @@
+name: Dub Facade Hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/voxcpm2/clean_runtime_contract.py"
+      - "tools/voxcpm2/clean_runtime_contract/**"
+      - "tools/voxcpm2/clean_production_core.py"
+      - "tools/voxcpm2/clean_production_core/**"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/generic_project_runtime/**"
+      - "tools/voxcpm2/generic_clean_audio_repair_runtime.py"
+      - "tools/voxcpm2/generic_clean_audio_repair_runtime/**"
+      - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/final_media_qa/**"
+      - "tools/voxcpm2/clean_request_settings.py"
+      - "tools/voxcpm2/clean_source_download.py"
+      - "tools/voxcpm2/clean_segment_normalizer.py"
+      - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "handlers/dub_audio_repair.py"
+      - "handlers/dub_audio_repair/**"
+      - "handlers/dub_wizard.py"
+      - "handlers/dub_wizard/**"
+      - "handlers/dub_health.py"
+      - "handlers/dub_health/**"
+      - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_runtime_facades.py"
+      - "tests/test_clean_segment_contract.py"
+      - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_clean_request_settings.py"
+      - "tests/test_zero_delay_legacy_migration.py"
+      - "tests/test_clean_source_download.py"
+      - "tests/test_dub_source_identity.py"
+      - "tests/test_dub_wizard_request_writer.py"
+      - "tests/test_generic_project_runtime_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_dubfix_error_propagation.py"
+      - "tests/test_original_bed_alignment.py"
+      - "tests/test_dub_health_supplemental_contract.py"
+      - ".github/workflows/dub-facade-hardening-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install focused dependencies
+        run: >-
+          python -m pip install --upgrade pytest numpy soundfile
+          "python-telegram-bot>=22.5,<23.0"
+          "flask>=3.0,<4.0"
+          "python-dotenv>=1.0,<2.0"
+      - name: Compile compatibility facades
+        run: |
+          python -m py_compile \
+            tools/voxcpm2/clean_runtime_contract.py \
+            tools/voxcpm2/clean_runtime_contract/__init__.py \
+            tools/voxcpm2/clean_production_core.py \
+            tools/voxcpm2/clean_production_core/__init__.py \
+            tools/voxcpm2/generic_project_runtime.py \
+            tools/voxcpm2/generic_project_runtime/__init__.py \
+            tools/voxcpm2/generic_clean_audio_repair_runtime.py \
+            tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py \
+            tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py \
+            tools/voxcpm2/final_media_qa.py \
+            tools/voxcpm2/final_media_qa/__init__.py \
+            tools/voxcpm2/clean_request_settings.py \
+            tools/voxcpm2/clean_source_download.py \
+            tools/voxcpm2/clean_segment_normalizer.py \
+            tools/voxcpm2/legacy_segment_migration_v45.py \
+            handlers/dub_audio_repair.py \
+            handlers/dub_audio_repair/__init__.py \
+            handlers/dub_wizard.py \
+            handlers/dub_wizard/__init__.py \
+            handlers/dub_health.py \
+            handlers/dub_health/__init__.py
+      - name: Run hardening contracts
+        run: |
+          pytest -q \
+            tests/test_clean_runtime_setting_types.py \
+            tests/test_clean_runtime_facades.py \
+            tests/test_clean_segment_contract.py \
+            tests/test_repair_segment_input_contract.py \
+            tests/test_clean_repair_request_contract.py \
+            tests/test_clean_request_settings.py \
+            tests/test_zero_delay_legacy_migration.py \
+            tests/test_clean_source_download.py \
+            tests/test_dub_source_identity.py \
+            tests/test_dub_wizard_request_writer.py \
+            tests/test_generic_project_runtime_contract.py \
+            tests/test_dub_audio_repair_handler_contract.py \
+            tests/test_dubfix_error_propagation.py \
+            tests/test_original_bed_alignment.py \
+            tests/test_dub_health_supplemental_contract.py
