@@ -33,6 +33,24 @@ def test_reference_selection_keeps_real_voice_metrics_and_report() -> None:
     assert 'output.with_suffix(".selection.json")' in source
 
 
+def test_direct_transport_does_not_filter_prepared_reference_again() -> None:
+    source = _source(ANALYSIS)
+    transport = source[
+        source.index("def _read_reference_transport"):
+        source.index("def prepare_reference")
+    ]
+    assert '"native-mono-16k"' in transport
+    assert '"resample-mono-only"' in transport
+    assert "highpass" not in transport
+    assert "lowpass" not in transport
+    assert "afftdn" not in transport
+    assert "loudnorm" not in transport
+    assert '"spectral_filter": False' in source
+    assert '"denoise": False' in source
+    assert "duration < 5.0" in source
+    assert "duration > 30.0" in source
+
+
 def test_steady_voice_threshold_cannot_regress_to_multiplier_above_one() -> None:
     source = _source(ANALYSIS)
     assert "np.percentile(rms, 35)) * 0.50" in source
