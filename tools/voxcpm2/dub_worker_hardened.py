@@ -9,7 +9,7 @@ import subprocess
 import time
 from typing import Any
 
-from services.dub_studio import DubStore
+from services.dub_studio import DubStore, utc_now
 from tools.voxcpm2 import dub_worker as worker
 
 _RUNTIME_VERSION = "dub-worker-quality-v4.4"
@@ -21,6 +21,7 @@ _ORIGINAL_REGISTER = DubStore.register_worker
 _ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
 _ORIGINAL_UPDATE_JOB_PROGRESS = DubStore.update_job_progress
 _ORIGINAL_FINISH_JOB = DubStore.finish_job
+_ORIGINAL_RECOVER_ABANDONED = DubStore.recover_abandoned_jobs
 _ORIGINAL_TERMINATE = worker._terminate_process
 _LAST_JOB_PULSE: dict[int, float] = {}
 
@@ -189,6 +190,65 @@ def _update_progress_with_milestones(
             conn.commit()
 
 
+def _recover_abandoned_with_terminal_events(
+    self: DubStore,
+    stale_seconds: int = 180,
+) -> int:
+    """Finish recovered cancellations and emit one durable terminal event."""
+    recovered = _ORIGINAL_RECOVER_ABANDONED(self, stale_seconds)
+    now = utc_now()
+    with self.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            """
+            SELECT id, project_id FROM dub_jobs
+            WHERE status='cancelled'
+              AND cancel_requested=1
+              AND finished_at=''
+            ORDER BY id
+            """
+        ).fetchall()
+        for row in rows:
+            job_id = int(row["id"])
+            project_id = str(row["project_id"])
+            conn.execute(
+                """
+                UPDATE dub_jobs
+                SET progress=0, stage='cancelled', finished_at=?, updated_at=?
+                WHERE id=? AND status='cancelled' AND finished_at=''
+                """,
+                (now, now, job_id),
+            )
+            conn.execute(
+                """
+                UPDATE dub_projects
+                SET status='cancelled', stage='cancelled', progress=0, updated_at=?
+                WHERE id=?
+                """,
+                (now, project_id),
+            )
+            exists = conn.execute(
+                """
+                SELECT 1 FROM dub_events
+                WHERE job_id=? AND event_type='job_cancelled'
+                LIMIT 1
+                """,
+                (job_id,),
+            ).fetchone()
+            if exists is None:
+                self._insert_event(
+                    conn,
+                    project_id,
+                    job_id,
+                    "job_cancelled",
+                    "warning",
+                    f"Задание #{job_id} отменено после остановки worker.",
+                    {"recovered_after_worker_stop": True},
+                )
+        conn.commit()
+    return recovered
+
+
 def _progress_from_line_v44(line: str, current: int) -> tuple[int, str]:
     """Parse only explicit production signals, never traceback function names."""
     text = str(line or "").strip()
@@ -311,6 +371,7 @@ def install_hardening() -> None:
     DubStore.register_worker = _register_versioned_worker
     DubStore.worker_heartbeat = _heartbeat_versioned_worker
     DubStore.update_job_progress = _update_progress_with_milestones
+    DubStore.recover_abandoned_jobs = _recover_abandoned_with_terminal_events
     DubStore.finish_job = _finish_job_with_root_cause
 
 
