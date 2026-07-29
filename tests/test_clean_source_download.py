@@ -106,12 +106,38 @@ def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> 
         ("https://youtu.be/AbCdEf12345?t=3", "AbCdEf12345"),
         ("https://www.youtube.com/watch?v=AbCdEf12345&list=PL1", "AbCdEf12345"),
         ("https://m.youtube.com/shorts/AbCdEf12345", "AbCdEf12345"),
+        ("https://music.youtube.com/watch?v=AbCdEf12345", "AbCdEf12345"),
         ("https://youtube.com/live/AbCdEf12345?feature=share", "AbCdEf12345"),
         ("https://youtube.com/embed/AbCdEf12345", "AbCdEf12345"),
+        ("https://www.youtube-nocookie.com/embed/AbCdEf12345", "AbCdEf12345"),
     ],
 )
 def test_canonical_youtube_id_extraction(url: str, expected: str) -> None:
     assert source_cache._url_video_id(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/watch?v=AbCdEf12345",
+        "https://youtube.com/playlist?list=PL123",
+        "https://youtube.com/@channel",
+        "ftp://youtube.com/watch?v=AbCdEf12345",
+        "not-a-url",
+    ],
+)
+def test_non_single_video_urls_fail_before_ytdlp(monkeypatch, url: str) -> None:
+    calls = 0
+
+    def should_not_run(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("yt-dlp must not run for an unsupported source URL")
+
+    monkeypatch.setattr(source_cache.pipeline, "run_checked", should_not_run)
+    with pytest.raises(RuntimeError, match="канонической ссылкой на один YouTube-ролик"):
+        source_cache._metadata(url)
+    assert calls == 0
 
 
 def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
@@ -125,6 +151,20 @@ def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
         ),
     )
     with pytest.raises(RuntimeError, match="разные ролики"):
+        source_cache._metadata("https://youtu.be/AbCdEf12345")
+
+
+def test_invalid_metadata_video_id_is_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(
+        source_cache.pipeline,
+        "run_checked",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout=json.dumps({"id": "bad id"}),
+            returncode=0,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="корректный YouTube video ID"):
         source_cache._metadata("https://youtu.be/AbCdEf12345")
 
 
