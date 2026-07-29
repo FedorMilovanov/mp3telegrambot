@@ -22,6 +22,21 @@ MAX_BASE_SEED = MAX_SEED - RETRY_SEED_OFFSET
 _WEIGHT_SAMPLE_BYTES = 1024 * 1024
 
 _RENDER_MODULES = (
+    "tools/voxcpm2/clean_source_download.py",
+    "tools/voxcpm2/clean_segment_normalizer.py",
+    "tools/voxcpm2/clean_production_core.py",
+    "tools/voxcpm2/continuous_reference_policy.py",
+    "tools/voxcpm2/controlled_reference_gate.py",
+    "tools/voxcpm2/expressive_continuity.py",
+    "tools/voxcpm2/expressive_translation.py",
+    "tools/voxcpm2/generic_short_runtime.py",
+    "tools/voxcpm2/generic_project_runtime.py",
+    "tools/voxcpm2/generic_direct_runtime.py",
+    "tools/voxcpm2/generic_gemini_runtime.py",
+    "tools/voxcpm2/generic_clean_gemini_runtime.py",
+    "tools/voxcpm2/generic_clean_direct_runtime.py",
+    "tools/voxcpm2/generic_clean_custom_runtime.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_timbre_analysis.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
