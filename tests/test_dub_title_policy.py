@@ -64,9 +64,11 @@ def test_bot_installs_title_policy_after_dub_handlers() -> None:
     assert dub_runtime < title_policy
 
 
-def test_title_policy_covers_rows_events_delivery_and_livedub() -> None:
+def test_title_policy_is_runtime_wide_and_health_checked() -> None:
     source = (ROOT / "services" / "dub_title_policy.py").read_text(encoding="utf-8")
+    assert "text_utils.title_case_fragment = canonical_media_title" in source
     assert "DubStore._row_project = wrapped" in source
     assert "runtime._undelivered_notification_events = wrapped" in source
     assert "delivery.available_outputs = wrapped" in source
+    assert "health.collect_dub_health = wrapped" in source
     assert "output_policy._russian_heading_case = canonical_media_title" in source
