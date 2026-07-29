@@ -8,6 +8,7 @@ from telegram.error import BadRequest
 
 from handlers.dub_commands import _read_log_tail, _safe_edit
 from services.dub_studio import DubStore, list_recipes, load_recipe
+from tools.voxcpm2 import dub_worker_hardened
 
 
 def test_piper_recipe_is_registered_and_allowlisted() -> None:
@@ -82,6 +83,61 @@ def test_worker_claim_progress_and_finish(tmp_path: Path) -> None:
     events = store.undelivered_terminal_events()
     assert len(events) == 1
     assert events[0]["event_type"] == "job_succeeded"
+
+
+def test_abandoned_cancel_is_finished_and_notified_once(tmp_path: Path) -> None:
+    store = DubStore(tmp_path)
+    project = store.create_project(
+        "john_piper_z20py4yqhyq",
+        owner_user_id=11,
+        owner_chat_id=22,
+    )
+    queued = store.enqueue_job(project["id"], "repair_psalm15")
+    claimed = store.claim_next_job("dead-worker")
+    assert claimed is not None
+    store.update_job_progress(
+        queued["id"],
+        progress=67,
+        stage="segment 2/3",
+        message="rendering",
+    )
+    requested = store.request_cancel(project["id"])
+    assert requested["status"] == "cancel_requested"
+
+    recovered = dub_worker_hardened._recover_abandoned_with_terminal_events(
+        store,
+        stale_seconds=30,
+    )
+    assert recovered == 1
+
+    job = store.get_job(queued["id"])
+    current_project = store.get_project(project["id"])
+    assert job["status"] == "cancelled"
+    assert job["stage"] == "cancelled"
+    assert job["progress"] == 0
+    assert job["finished_at"]
+    assert current_project["status"] == "cancelled"
+    assert current_project["progress"] == 0
+
+    events = [
+        item
+        for item in store.undelivered_terminal_events(limit=50)
+        if int(item.get("job_id") or 0) == int(queued["id"])
+    ]
+    assert len(events) == 1
+    assert events[0]["event_type"] == "job_cancelled"
+    assert events[0]["payload"]["recovered_after_worker_stop"] is True
+
+    assert dub_worker_hardened._recover_abandoned_with_terminal_events(
+        store,
+        stale_seconds=30,
+    ) == 0
+    repeated = [
+        item
+        for item in store.undelivered_terminal_events(limit=50)
+        if int(item.get("job_id") or 0) == int(queued["id"])
+    ]
+    assert len(repeated) == 1
 
 
 def test_unknown_recipe_and_action_are_rejected(tmp_path: Path) -> None:
