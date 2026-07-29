@@ -27,6 +27,7 @@ def test_explicit_zero_settings_are_preserved() -> None:
 @pytest.mark.parametrize(
     "request",
     [
+        {"original_level": True},
         {"original_level": float("nan")},
         {"original_level": 1.01},
         {"russian_delay_ms": True},
@@ -104,7 +105,7 @@ def test_all_clean_routes_repair_manifest_and_override_delay() -> None:
     for filename, builder in expected.items():
         source = (ROOT / "tools" / "voxcpm2" / filename).read_text(encoding="utf-8")
         assert "from tools.voxcpm2 import clean_request_settings" in source
-        assert f"production._build_" in source
+        assert "production._build_" in source
         assert builder in source
         assert "clean_request_settings.russian_delay_ms(request)" in source
         assert "clean_request_settings.repair_manifest(root, request)" in source
