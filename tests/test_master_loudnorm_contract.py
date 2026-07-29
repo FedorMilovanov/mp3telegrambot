@@ -72,3 +72,72 @@ def test_two_pass_master_rejects_invalid_targets_before_ffmpeg(
             target_tp=-1.5,
         )
     assert called is False
+
+
+def test_constant_mix_keeps_original_branch_exact_and_has_no_post_mix_gain(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def capture(command: list[str], **_kwargs):
+        calls.append(command)
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    monkeypatch.setattr(master, "run", capture)
+    graph = master.build_constant_mix(
+        source=tmp_path / "source.mp4",
+        mastered_russian=tmp_path / "russian.wav",
+        output=tmp_path / "mix.wav",
+        source_duration=59.0,
+        original_level=0.18,
+        russian_gain=0.75,
+    )
+
+    assert calls
+    assert "volume=0.180000000[original]" in graph
+    assert "volume=0.750000000[russian]" in graph
+    after_sum = graph.split("amix=", 1)[1]
+    assert "loudnorm" not in after_sum
+    assert "alimiter" not in after_sum
+    assert "volume=" not in after_sum
+
+
+def test_calibration_changes_only_russian_gain(monkeypatch, tmp_path) -> None:
+    gains: list[tuple[float, float]] = []
+
+    def fake_mix(**kwargs):
+        gains.append((float(kwargs["original_level"]), float(kwargs["russian_gain"])))
+        return "fixed graph"
+
+    measurements = iter(
+        [
+            {
+                "integrated_lufs": -16.0,
+                "true_peak_dbtp": -3.0,
+                "lra_lu": 4.0,
+                "threshold_lufs": -26.0,
+            }
+        ]
+        * 12
+    )
+    monkeypatch.setattr(master, "build_constant_mix", fake_mix)
+    monkeypatch.setattr(master, "measure_loudness", lambda *_args, **_kwargs: next(measurements))
+
+    report = master.calibrate_russian_gain(
+        source=tmp_path / "source.mp4",
+        mastered_russian=tmp_path / "russian.wav",
+        output=tmp_path / "mix.wav",
+        work_dir=tmp_path,
+        source_duration=59.0,
+        original_level=0.18,
+        target_i=-16.0,
+        target_lra=8.0,
+        target_tp=-1.5,
+    )
+
+    assert gains
+    assert {original for original, _gain in gains} == {0.18}
+    assert report["original_gain_changes_after_sum"] is False
+    assert report["post_mix_loudnorm"] is False
+    assert report["post_mix_limiter"] is False
