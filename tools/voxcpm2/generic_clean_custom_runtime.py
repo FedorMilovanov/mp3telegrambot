@@ -13,6 +13,7 @@ from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_project_runtime as production
+from tools.voxcpm2 import strict_translation_payload
 
 
 def _install_clean_runtime_adapters() -> None:
@@ -79,6 +80,7 @@ def _run_clean_voxcpm_and_master(
 def main() -> None:
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
     production.pipeline.group_cues = clean.group_source_cues
+    production._validate_translation_payload = strict_translation_payload.validate_full
     production._build_render_segments = clean.build_render_segments
     production._run_voxcpm_and_master = _run_clean_voxcpm_and_master
     production.main()
