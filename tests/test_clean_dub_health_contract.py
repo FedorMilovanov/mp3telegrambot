@@ -13,6 +13,11 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
     assert "expressive_continuity.py" in source
     assert "expressive_translation.py" in source
+    assert "direct_timbre_analysis.py" in source
+    assert "final_media_qa.py" in source
+    assert "spectral_similarity" in source
+    assert "verify_final_outputs" in source
+    assert "final_media_verification.json" in source
     assert "Clean Expressive NoChew + независимый QA" in source
     assert "NoChew Quality v4.2 + аудиоремонт" not in source
     assert "generic_direct_checked_runtime" not in source
