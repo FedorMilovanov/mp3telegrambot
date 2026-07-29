@@ -221,6 +221,56 @@ def _patch_delivery() -> None:
         pass
 
 
+def _patch_health() -> None:
+    try:
+        import handlers.dub_health as health
+    except Exception:
+        return
+
+    original = health.collect_dub_health
+    if getattr(original, "_canonical_media_title", False):
+        return
+
+    def wrapped() -> list[dict[str, Any]]:
+        checks = original()
+        repo = Path(__file__).resolve().parent.parent
+        route_names = (
+            "generic_clean_gemini_runtime.py",
+            "generic_clean_direct_runtime.py",
+            "generic_clean_custom_runtime.py",
+        )
+        route_sources = [
+            (repo / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+            for name in route_names
+        ]
+        title_ok = bool(
+            canonical_media_title(
+                "Сила И Достоинство Благочестивой Женщины - Джон Пайпер"
+            )
+            == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+            and canonical_delivery_filename(
+                "Сила И Достоинство - Джон Пайпер — русский дубляж.mp4"
+            )
+            == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
+            and all("install_voxcpm_title_policy" in source for source in route_sources)
+            and all("force_fresh=True" in source for source in route_sources)
+            and "runtime._undelivered_notification_events = wrapped"
+            in Path(__file__).read_text(encoding="utf-8")
+        )
+        for item in checks:
+            if item.get("label") == "Clean Expressive NoChew + независимый QA":
+                item["ok"] = bool(item.get("ok")) and title_ok
+                item["detail"] = (
+                    str(item.get("detail") or "")
+                    + "; единый русский Title Case; fresh full baselines"
+                )
+                break
+        return checks
+
+    wrapped._canonical_media_title = True  # type: ignore[attr-defined]
+    health.collect_dub_health = wrapped
+
+
 def _patch_livedub() -> None:
     try:
         import services.livedub_output_policy as output_policy
@@ -241,6 +291,7 @@ def install_dub_title_policy() -> None:
         _patch_dub_store()
         _patch_notifications()
         _patch_delivery()
+        _patch_health()
         _patch_livedub()
         _INSTALLED = True
 
