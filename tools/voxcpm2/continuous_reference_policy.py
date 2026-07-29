@@ -108,14 +108,22 @@ def _window_score(samples: np.ndarray, sample_rate: int) -> tuple[float, dict[st
     return score, {**pitch, **activity}
 
 
+def _float_metric(stats: dict[str, Any], key: str, default: float) -> float:
+    """Read a numeric metric without treating the valid value 0.0 as missing."""
+    raw = stats.get(key, default)
+    if raw is None:
+        raw = default
+    return float(raw)
+
+
 def _finite_stats(stats: dict[str, Any]) -> tuple[float, float, float, float, float] | None:
     try:
         values = (
-            float(stats.get("voiced_ratio") or 0.0),
-            float(stats.get("active_ratio") or 0.0),
-            float(stats.get("max_internal_gap") or 99.0),
-            float(stats.get("f0_median") or 0.0),
-            float(stats.get("f0_p90") or 0.0),
+            _float_metric(stats, "voiced_ratio", 0.0),
+            _float_metric(stats, "active_ratio", 0.0),
+            _float_metric(stats, "max_internal_gap", 99.0),
+            _float_metric(stats, "f0_median", 0.0),
+            _float_metric(stats, "f0_p90", 0.0),
         )
     except (TypeError, ValueError, OverflowError):
         return None
@@ -182,9 +190,12 @@ def _assembled_release_failures(stats: dict[str, Any]) -> list[str]:
     if values is None:
         return ["невалидные pitch/activity метрики"]
     voiced, active, gap, f0_median, f0_p90 = values
-    peak = float(stats.get("peak") or 0.0)
-    clipping = float(stats.get("clipping_ratio") or 1.0)
-    duration = float(stats.get("duration_seconds") or 0.0)
+    try:
+        peak = _float_metric(stats, "peak", 0.0)
+        clipping = _float_metric(stats, "clipping_ratio", 1.0)
+        duration = _float_metric(stats, "duration_seconds", 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return ["невалидные level/duration метрики"]
     if duration < 2.0:
         failures.append(f"duration={duration:.3f}s < 2.0s")
     if peak < release_analysis.MIN_REFERENCE_PEAK:
