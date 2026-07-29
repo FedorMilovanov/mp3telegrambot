@@ -120,7 +120,7 @@ def two_pass_master(
         f"offset={measured['target_offset']}:"
         "linear=true:print_format=summary,"
         "aresample=48000,"
-        f"alimiter=limit={limiter_linear:.8f}"
+        f"alimiter=limit={limiter_linear:.8f}:level=false"
     )
     run(
         [
@@ -147,6 +147,7 @@ def two_pass_master(
         "target_lra": target_lra,
         "target_tp": target_tp,
         "limiter_linear": limiter_linear,
+        "limiter_auto_level": False,
         "first_pass": measured,
         "filter": second_filter,
     }
@@ -159,8 +160,6 @@ def encode_upload_mp4(
     output: Path,
     source_duration: float,
 ) -> None:
-    # Explicit duration avoids -shortest trimming the last video frames because
-    # AAC packet duration/priming differs slightly from the PCM master.
     run(
         [
             "ffmpeg",
@@ -246,14 +245,13 @@ def main() -> None:
     mastered_russian = work_dir / "russian_only_mastered.wav"
     original_level = f"{args.original_level:.6f}"
 
-    # The original remains at one constant percentage; no pumping or sidechain.
     mix_filter = (
         f"[0:a]volume={original_level}[original];"
         "[1:a]volume=1.0[russian];"
         "[original][russian]"
         "amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
         "highpass=f=35,"
-        "alimiter=limit=0.985[mix]"
+        "alimiter=limit=0.985:level=false[mix]"
     )
     print(f"Создаю постоянный микс: оригинал = {args.original_level * 100:.1f}%...")
     run(
