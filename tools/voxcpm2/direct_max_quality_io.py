@@ -5,7 +5,7 @@
 The Telegram bot and manual PowerShell runs invoke this exact CLI. It does not
 patch VoxCPM internals and does not install runtime wrappers. Quality is gained
 through transparent reference preparation, multiple deterministic candidates,
-voice/prosody diagnostics, durable checkpoints and independent downstream QA.
+voice/prosody/timbre diagnostics, durable checkpoints and downstream QA.
 """
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ from typing import Any
 
 import numpy as np
 
-POLICY = "voxcpm2-direct-max-quality-v2"
+POLICY = "voxcpm2-direct-max-quality-v3"
 EXPECTED_ENCODE_SR = 16000
 EXPECTED_OUTPUT_SR = 48000
-# Official guidance favors clean trimmed edges. Silence padding is conflicting
+# Official guidance favours clean trimmed edges. Silence padding is conflicting
 # community advice and is therefore not forced in reference-only production.
 REFERENCE_TAIL_SILENCE = 0.0
 MAX_TEMPO = 1.35
@@ -38,8 +38,12 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
-def run_checked(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
+def run_checked(
+    command: list[str],
+    *,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.run(
         command,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
@@ -48,18 +52,18 @@ def run_checked(command: list[str], *, capture: bool = False) -> subprocess.Comp
         errors="replace",
         check=False,
     )
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "")[-6000:] if capture else ""
+    if process.returncode != 0:
+        tail = (process.stderr or process.stdout or "")[-6000:] if capture else ""
         raise RuntimeError(
             "Команда завершилась с ошибкой:\n"
             + " ".join(command)
             + ("\n\n" + tail if tail else "")
         )
-    return proc
+    return process
 
 
 def probe_duration(path: Path) -> float:
-    proc = run_checked(
+    process = run_checked(
         [
             "ffprobe",
             "-v",
@@ -72,7 +76,7 @@ def probe_duration(path: Path) -> float:
         ],
         capture=True,
     )
-    value = float((proc.stdout or "").strip())
+    value = float((process.stdout or "").strip())
     if value <= 0:
         raise RuntimeError(f"Нулевая длительность: {path}")
     return value
