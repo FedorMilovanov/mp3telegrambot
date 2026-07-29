@@ -5,7 +5,7 @@
 A single natural 5–10 second source span is preferred over a montage. The old
 multi-window builder remains an explicit fallback when captions do not expose a
 long enough continuous speech run or every continuous candidate fails the hard
-speech-quality floor.
+speech-quality floor. Both paths must pass the same release floor.
 """
 from __future__ import annotations
 
@@ -120,6 +120,17 @@ def _usable_stats(stats: dict[str, Any]) -> bool:
     )
 
 
+def _report_has_usable_selection(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    selected = payload.get("selected")
+    return bool(
+        isinstance(selected, list)
+        and selected
+        and any(_usable_stats(item) for item in selected if isinstance(item, dict))
+    )
+
+
 def _candidate_windows(
     audio: np.ndarray,
     sample_rate: int,
@@ -204,7 +215,15 @@ def build_reference(
             target_seconds=target_seconds,
         )
         fallback_path = output.with_suffix(".selection.json")
+        if not fallback_path.is_file():
+            raise RuntimeError("Fallback voice reference не создал selection report.")
         payload = json.loads(fallback_path.read_text(encoding="utf-8-sig"))
+        if not _report_has_usable_selection(payload):
+            output.unlink(missing_ok=True)
+            fallback_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Fallback voice reference {profile} не прошёл hard-quality floor."
+            )
         payload.update(
             {
                 "reference_policy": POLICY,
