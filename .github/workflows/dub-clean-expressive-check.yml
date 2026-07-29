@@ -33,6 +33,7 @@ on:
       - "handlers/dub_commands.py"
       - "handlers/dub_delivery.py"
       - "handlers/dub_health.py"
+      - "handlers/dub_health/**"
       - "handlers/dub_wizard.py"
       - "tests/test_clean_reference_transport.py"
       - "tests/test_clean_runtime_contract.py"
@@ -133,6 +134,7 @@ jobs:
             handlers/dub_commands.py \
             handlers/dub_delivery.py \
             handlers/dub_health.py \
+            handlers/dub_health/__init__.py \
             handlers/dub_wizard.py
       - name: Run focused contracts
         run: |
