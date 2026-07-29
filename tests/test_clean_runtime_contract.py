@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -28,6 +27,11 @@ def test_runtime_settings_reject_nonfinite_and_absurd_values() -> None:
     with pytest.raises(RuntimeError, match="original_level"):
         contract.normalize_settings(
             {"video_id": "project", "original_level": 1.01},
+            duration=30.0,
+        )
+    with pytest.raises(RuntimeError, match="base_seed"):
+        contract.normalize_settings(
+            {"video_id": "project", "base_seed": contract.MAX_BASE_SEED + 1},
             duration=30.0,
         )
 
@@ -111,4 +115,6 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert "release_contract_sha256" in source
     assert "checkpoints не соответствуют renderer/model/runtime fingerprint" in source
     assert "clean_runtime_contract.build_fingerprints(" in source
-    assert '"schema_version": 2' in source
+    assert '"schema_version": 3' in source
+    assert '"release_complete": False' in source
+    assert "release_complete=True" in source
