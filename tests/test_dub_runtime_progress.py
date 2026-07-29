@@ -1,50 +1,56 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
-
-from services.dub_studio_runtime import (
-    _permanent_edit_failure,
-    _progress_message_ref,
-)
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME = ROOT / "services" / "dub_studio_runtime.py"
+WORKER = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened.py"
 
 
-def test_progress_ref_is_scoped_to_current_job() -> None:
-    project = {
-        "metadata": {
-            "dub_progress_message_v1": {
-                "job_id": 12,
-                "chat_id": 123,
-                "message_id": 456,
-            }
-        }
-    }
-    assert _progress_message_ref(project, {"job_id": 12}) == (123, 456)
-    assert _progress_message_ref(project, {"job_id": 13}) is None
+def _source(path: Path) -> str:
+    value = path.read_text(encoding="utf-8")
+    ast.parse(value)
+    return value
 
 
-def test_only_permanent_edit_errors_create_replacement() -> None:
-    assert _permanent_edit_failure(RuntimeError("Message to edit not found"))
-    assert _permanent_edit_failure(RuntimeError("Message can't be edited"))
-    assert not _permanent_edit_failure(RuntimeError("Timed out while connecting"))
-
-
-def test_runtime_edits_one_progress_card_and_finalizes_it() -> None:
-    source = (ROOT / "services" / "dub_studio_runtime.py").read_text(encoding="utf-8")
-    assert "edit_message_text" in source
-    assert "dub_progress_message_v1" in source
+def test_runtime_edits_one_job_scoped_progress_card() -> None:
+    source = _source(RUNTIME)
+    assert '_PROGRESS_METADATA_KEY = "dub_progress_message_v1"' in source
+    assert "event_job_id" in source
+    assert "ref_job_id != event_job_id" in source
     assert "_store_progress_message_ref" in source
-    assert "_finalize_progress_card" in source
-    assert "проценты обновляются в этом сообщении" in source
-    progress_section = source[source.index("async def _notify_progress_milestone"):source.index("async def _finalize_progress_card")]
+    progress_section = source[
+        source.index("async def _notify_progress_milestone"):
+        source.index("async def _finalize_progress_card")
+    ]
     assert progress_section.index("edit_message_text") < progress_section.index("send_message")
+    assert "message is not modified" in progress_section
+    assert "проценты обновляются в этом сообщении" in progress_section
+
+
+def test_runtime_finalizes_progress_card_at_terminal_event() -> None:
+    source = _source(RUNTIME)
+    assert "async def _finalize_progress_card" in source
+    assert '"job_succeeded": ("✅", "готово")' in source
+    assert '"job_failed": ("❌", "ошибка")' in source
+    assert "await _finalize_progress_card(application, event, project)" in source
 
 
 def test_progress_is_integrated_without_second_installer() -> None:
-    bot = (ROOT / "bot_new.py").read_text(encoding="utf-8")
-    runtime = (ROOT / "services" / "dub_studio_runtime.py").read_text(encoding="utf-8")
+    bot = _source(ROOT / "bot_new.py")
+    runtime = _source(RUNTIME)
     assert "install_dub_progress_updates" not in bot
     assert "dub_progress_updates.py" not in runtime
     assert 'dub-worker-quality-v4.4' in runtime
+
+
+def test_worker_stage_parser_never_uses_master_substring_fallback() -> None:
+    worker = _source(WORKER)
+    assert 'dub-worker-quality-v4.4' in worker
+    assert "def _progress_from_line_v44" in worker
+    assert "render_and_master" in worker
+    assert "master_constant_mix.py" in worker
+    assert "return current, \"\"" in worker
+    assert 'if "master" in text.lower()' not in worker
