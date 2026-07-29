@@ -19,6 +19,8 @@ def _setting(request: dict[str, Any], key: str, default: Any) -> Any:
 
 def original_level(request: dict[str, Any]) -> float:
     raw = _setting(request, "original_level", 0.18)
+    if isinstance(raw, bool):
+        raise RuntimeError("original_level не может быть bool.")
     try:
         value = float(raw)
     except (TypeError, ValueError, OverflowError) as exc:
