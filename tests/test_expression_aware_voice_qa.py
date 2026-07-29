@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_max_quality_render as render
 from tools.voxcpm2.professional_audio_qa_v45 import _voice_limits
 
 
@@ -62,3 +63,36 @@ def test_calm_profile_remains_tighter_than_expressive_profile() -> None:
     )
     assert calm["max_median_ratio"] < expressive["max_median_ratio"]
     assert calm["max_p90_ratio"] < expressive["max_p90_ratio"]
+
+
+def test_fitted_phrase_has_real_fade_in_and_fade_out(monkeypatch, tmp_path) -> None:
+    commands: list[list[str]] = []
+    clean = tmp_path / "clean.wav"
+    fitted = tmp_path / "fitted.wav"
+
+    monkeypatch.setattr(
+        render,
+        "probe_duration",
+        lambda path: 2.4 if path == clean else 3.0,
+    )
+    monkeypatch.setattr(
+        render,
+        "run_checked",
+        lambda command: commands.append(command),
+    )
+
+    report = render.fit_without_slowdown(
+        clean,
+        fitted,
+        target_duration=3.0,
+        tail_guard=0.20,
+    )
+
+    assert commands
+    command = commands[0]
+    graph = command[command.index("-af") + 1]
+    assert "afade=t=in" in graph
+    assert "afade=t=out" in graph
+    assert report["fade_in_seconds"] >= 0.010
+    assert report["fade_out_seconds"] >= 0.018
+    assert report["fade_out_start_seconds"] < report["rendered_speech_duration"]
