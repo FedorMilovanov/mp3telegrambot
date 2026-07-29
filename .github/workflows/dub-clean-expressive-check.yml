@@ -35,6 +35,7 @@ on:
       - "tests/test_clean_runtime_contract.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
+      - "tests/test_creator_vtt_integrity.py"
       - "tests/test_continuous_reference_policy.py"
       - "tests/test_continuous_reference_release_contract.py"
       - "tests/test_controlled_reference_gate.py"
@@ -112,6 +113,7 @@ jobs:
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
+            tools/voxcpm2/generic_gemini_runtime.py \
             tools/voxcpm2/generic_clean_gemini_runtime.py \
             tools/voxcpm2/generic_clean_direct_runtime.py \
             tools/voxcpm2/generic_clean_custom_runtime.py \
@@ -127,6 +129,7 @@ jobs:
             tests/test_clean_runtime_contract.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
+            tests/test_creator_vtt_integrity.py \
             tests/test_continuous_reference_policy.py \
             tests/test_continuous_reference_release_contract.py \
             tests/test_controlled_reference_gate.py \
