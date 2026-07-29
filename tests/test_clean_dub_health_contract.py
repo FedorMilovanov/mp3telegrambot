@@ -12,8 +12,11 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "tools.voxcpm2.generic_clean_direct_runtime" in source
     assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
     assert "generic_short_runtime.py" in source
+    assert "generic_gemini_runtime.py" in source
     assert "clean_runtime_contract.py" in source
     assert "clean_source_download.py" in source
+    assert "clean_request_settings.py" in source
+    assert "strict_translation_payload.py" in source
     assert "expressive_continuity.py" in source
     assert "continuous_reference_policy.py" in source
     assert "controlled_reference_gate.py" in source
@@ -29,12 +32,31 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
     assert '"tools/voxcpm2/direct_source_prosody.py"' in source
     assert '"tools/voxcpm2/clean_source_download.py"' in source
+    assert '"tools/voxcpm2/clean_request_settings.py"' in source
+    assert '"tools/voxcpm2/strict_translation_payload.py"' in source
     assert 'verified-source-cache' in source
     assert 'POLICY = "clean-source-download-manifest-v1"' in source
     assert 'def _url_video_id(' in source
     assert 'def _sampled_sha256(' in source
     assert 'hardened.download_source = clean_source_download.download_source' in source
     assert 'hardened.pipeline.download_source = clean_source_download.download_source' in source
+    assert 'truthful-request-settings' in source
+    assert 'POLICY = "clean-request-settings-v1"' in source
+    assert 'def repair_manifest(' in source
+    assert 'clean_request_settings.russian_delay_ms(request)' in source
+    assert 'clean_request_settings.repair_manifest(root, request)' in source
+    assert 'creator-vtt-integrity' in source
+    assert 'def _merge_creator_caption_lines(' in source
+    assert 'Do not deduplicate against the whole cue' in source
+    assert 'production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text' in source
+    assert 'strict-translation-payload' in source
+    assert 'POLICY = "strict-translation-payload-v1"' in source
+    assert 'def validate_full(' in source
+    assert 'def validate_subset(' in source
+    assert 'strict_translation_payload.validate_full(value, groups)' in source
+    assert 'strict_translation_payload.validate_subset(' in source
+    assert 'production._validate_translation_payload = strict_translation_payload.validate_full' in source
+    assert 'production.acquire_transcript = _acquire_transcript_with_actual_language' in source
     assert 'POLICY = "source-prosody-candidate-ranking-v1"' in source
     assert 'source-prosody-ranking' in source
     assert 'def candidate_pitch_evidence_ok(' in source
