@@ -8,6 +8,7 @@ from typing import Any
 
 from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_direct_runtime as production
 
@@ -46,18 +47,14 @@ def _run_clean_voxcpm_and_master(
         duration=duration,
         report_path=root / "output" / "expressive_continuity.json",
     )
-    expressive_built = expressive_continuity.build_controlled_expressive_reference(
+    _expressive_built, reference_detail = controlled_reference_gate.build_or_keep_calm(
         source=source,
         segments=planned,
         output=composite,
     )
     production.log(
         "source-guided emotional arc prepared; user SRT text preserved; "
-        + (
-            "controlled expressive reference active"
-            if expressive_built
-            else "safe calm-reference fallback active"
-        )
+        + reference_detail
     )
     return clean.render_and_master(
         root=root,
