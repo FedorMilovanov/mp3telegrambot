@@ -25,6 +25,7 @@ _RENDER_MODULES = (
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_timbre_analysis.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
+    "tools/voxcpm2/direct_source_prosody.py",
     "tools/voxcpm2/direct_max_quality_render.py",
     "tools/voxcpm2/direct_max_quality_cli.py",
     "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py",
