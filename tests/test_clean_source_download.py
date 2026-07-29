@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tools.voxcpm2 import clean_source_download as source_cache
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_verified_source_cache_reuses_only_same_video(monkeypatch, tmp_path) -> None:
@@ -92,3 +98,46 @@ def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> 
     source_cache.download_source("https://youtu.be/stable-video", source)
     assert downloads == 2
     assert source.read_bytes()[:8] == b"C" * 8
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://youtu.be/AbCdEf12345?t=3", "AbCdEf12345"),
+        ("https://www.youtube.com/watch?v=AbCdEf12345&list=PL1", "AbCdEf12345"),
+        ("https://m.youtube.com/shorts/AbCdEf12345", "AbCdEf12345"),
+        ("https://youtube.com/live/AbCdEf12345?feature=share", "AbCdEf12345"),
+        ("https://youtube.com/embed/AbCdEf12345", "AbCdEf12345"),
+    ],
+)
+def test_canonical_youtube_id_extraction(url: str, expected: str) -> None:
+    assert source_cache._url_video_id(url) == expected
+
+
+def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(
+        source_cache.pipeline,
+        "run_checked",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout=json.dumps({"id": "OtherId9999"}),
+            returncode=0,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="разные ролики"):
+        source_cache._metadata("https://youtu.be/AbCdEf12345")
+
+
+def test_all_clean_entrypoints_replace_the_direct_download_function() -> None:
+    for name in (
+        "generic_clean_gemini_runtime.py",
+        "generic_clean_direct_runtime.py",
+        "generic_clean_custom_runtime.py",
+    ):
+        source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+        assert "from tools.voxcpm2 import clean_source_download" in source
+        assert "hardened.download_source = clean_source_download.download_source" in source
+        assert (
+            "hardened.pipeline.download_source = clean_source_download.download_source"
+            in source
+        )
