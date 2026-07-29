@@ -29,6 +29,7 @@ _RENDER_MODULES = (
     "tools/voxcpm2/controlled_reference_gate.py",
     "tools/voxcpm2/expressive_continuity.py",
     "tools/voxcpm2/expressive_translation.py",
+    "tools/voxcpm2/strict_translation_payload.py",
     "tools/voxcpm2/generic_short_runtime.py",
     "tools/voxcpm2/generic_project_runtime.py",
     "tools/voxcpm2/generic_direct_runtime.py",
