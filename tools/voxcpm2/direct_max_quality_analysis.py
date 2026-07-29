@@ -15,6 +15,12 @@ from tools.voxcpm2.direct_max_quality_io import (
     run_checked,
     sha256_file,
 )
+from tools.voxcpm2.direct_timbre_analysis import (
+    spectral_envelope,
+    spectral_similarity,
+    timbre_hard_ok,
+    timbre_penalty,
+)
 
 
 def _mono(samples: np.ndarray) -> np.ndarray:
@@ -373,6 +379,7 @@ def prepare_reference(
         "transport": transport,
         "spectral_filter": False,
         "denoise": False,
+        "spectral_envelope": spectral_envelope(audio, sample_rate),
         **pitch_profile(audio, sample_rate),
         **activity_stats(audio, sample_rate),
     }
@@ -409,6 +416,7 @@ def candidate_score(
         score += (leading - 0.35) * 35.0
     if trailing > 0.75:
         score += (trailing - 0.75) * 10.0
+
     activity = candidate["activity"]
     pitch = candidate["pitch"]
     if float(activity["active_ratio"]) < 0.22:
@@ -422,6 +430,7 @@ def candidate_score(
             120.0
             + (0.18 - float(pitch["voiced_ratio"])) * 500.0
         )
+
     median_ratio = _ratio(
         float(pitch["f0_median"]),
         float(reference_voice.get("f0_median") or 0.0),
@@ -430,11 +439,22 @@ def candidate_score(
         float(pitch["f0_p90"]),
         float(reference_voice.get("f0_p90") or 0.0),
     )
+    candidate_timbre = spectral_envelope(
+        candidate["samples"],
+        int(candidate["sample_rate"]),
+    )
+    similarity = spectral_similarity(
+        candidate_timbre,
+        reference_voice.get("spectral_envelope") or {},
+    )
+    candidate["timbre"] = candidate_timbre
     candidate["voice_match"] = {
         "f0_median_ratio": median_ratio,
         "f0_p90_ratio": p90_ratio,
         "voiced_ratio": float(pitch["voiced_ratio"]),
+        "spectral_similarity": similarity,
     }
+
     score += abs(
         math.log2(max(0.20, min(5.0, median_ratio)))
     ) * 28.0
@@ -445,6 +465,7 @@ def candidate_score(
         score += 85.0
     if p90_ratio < 0.62 or p90_ratio > 1.45:
         score += 65.0
+    score += timbre_penalty(similarity)
     score += abs(min(duration, speech_slot) - speech_slot) * 0.30
     return score
 
@@ -467,4 +488,5 @@ def candidate_hard_ok(
         and 0.50
         <= float(voice.get("f0_p90_ratio", 1.0))
         <= 1.75
+        and timbre_hard_ok(float(voice.get("spectral_similarity", 1.0)))
     )
