@@ -140,6 +140,43 @@ def test_abandoned_cancel_is_finished_and_notified_once(tmp_path: Path) -> None:
     assert len(repeated) == 1
 
 
+def test_first_terminal_result_wins_without_duplicate_event(tmp_path: Path) -> None:
+    store = DubStore(tmp_path)
+    project = store.create_project(
+        "john_piper_z20py4yqhyq",
+        owner_user_id=31,
+        owner_chat_id=32,
+    )
+    queued = store.enqueue_job(project["id"], "repair_psalm15")
+    assert store.claim_next_job("worker-once") is not None
+
+    dub_worker_hardened._finish_job_with_root_cause(
+        store,
+        queued["id"],
+        status="succeeded",
+        result={"release": "first"},
+    )
+    dub_worker_hardened._finish_job_with_root_cause(
+        store,
+        queued["id"],
+        status="failed",
+        result={"release": "second"},
+        error="RuntimeError: late duplicate callback",
+    )
+
+    job = store.get_job(queued["id"])
+    assert job["status"] == "succeeded"
+    assert job["result"] == {"release": "first"}
+    assert job["error"] == ""
+    terminal = [
+        item
+        for item in store.undelivered_terminal_events(limit=50)
+        if int(item.get("job_id") or 0) == int(queued["id"])
+    ]
+    assert len(terminal) == 1
+    assert terminal[0]["event_type"] == "job_succeeded"
+
+
 def test_unknown_recipe_and_action_are_rejected(tmp_path: Path) -> None:
     store = DubStore(tmp_path)
     with pytest.raises((ValueError, FileNotFoundError)):
