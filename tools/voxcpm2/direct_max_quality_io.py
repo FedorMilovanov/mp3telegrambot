@@ -23,8 +23,6 @@ import numpy as np
 POLICY = "voxcpm2-direct-max-quality-v3"
 EXPECTED_ENCODE_SR = 16000
 EXPECTED_OUTPUT_SR = 48000
-# Official guidance favours clean trimmed edges. Silence padding is conflicting
-# community advice and is therefore not forced in reference-only production.
 REFERENCE_TAIL_SILENCE = 0.0
 MAX_TEMPO = 1.35
 MAX_START_DELAY_MS = 1500
@@ -67,20 +65,14 @@ def run_checked(
 def probe_duration(path: Path) -> float:
     process = run_checked(
         [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
         ],
         capture=True,
     )
     value = float((process.stdout or "").strip())
-    if value <= 0:
-        raise RuntimeError(f"Нулевая длительность: {path}")
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(f"Некорректная длительность: {path}: {value!r}")
     return value
 
 
@@ -163,12 +155,10 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(payload, list) or not payload:
         raise RuntimeError("segments JSON должен содержать непустой список.")
-
     result: list[dict[str, Any]] = []
     seen_ids: set[int] = set()
     previous_end = 0.0
     previous_effective_end = 0.0
-
     for index, raw in enumerate(payload, start=1):
         if not isinstance(raw, dict):
             raise RuntimeError(f"Сегмент #{index} должен быть JSON-объектом.")
@@ -182,7 +172,6 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
         if segment_id in seen_ids:
             raise RuntimeError(f"Повторяющийся ID сегмента: {segment_id}.")
         seen_ids.add(segment_id)
-
         start = _finite_float(item.get("start"), field="start", segment_id=segment_id)
         end = _finite_float(item.get("end"), field="end", segment_id=segment_id)
         tail_guard = _finite_float(
@@ -196,17 +185,13 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
             raise RuntimeError(
                 f"Сегмент #{segment_id}: некорректный start_delay_ms."
             ) from exc
-
         item["id"] = segment_id
         item["start"] = start
         item["end"] = end
         item["text"] = str(item.get("text") or "").strip()
         item["tail_guard"] = tail_guard
         item["start_delay_ms"] = start_delay_ms
-        item["reference_profile"] = str(
-            item.get("reference_profile", "extended")
-        )
-
+        item["reference_profile"] = str(item.get("reference_profile", "extended"))
         if start < 0.0:
             raise RuntimeError(f"Сегмент #{segment_id}: start не может быть отрицательным.")
         if end <= start:
@@ -222,7 +207,6 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
             )
         if start < previous_end - 0.001:
             raise RuntimeError(f"Пересечение у сегмента #{segment_id}.")
-
         effective_start = start + start_delay_ms / 1000.0
         effective_end = end + start_delay_ms / 1000.0
         if effective_start < previous_effective_end - 0.001:
@@ -233,7 +217,6 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
             raise RuntimeError(f"Пустой текст #{segment_id}.")
         if item["reference_profile"] not in {"extended", "composite"}:
             raise RuntimeError(f"Неизвестный reference_profile у #{segment_id}.")
-
         result.append(item)
         previous_end = end
         previous_effective_end = effective_end
