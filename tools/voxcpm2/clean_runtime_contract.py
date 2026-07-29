@@ -23,6 +23,7 @@ _WEIGHT_SAMPLE_BYTES = 1024 * 1024
 
 _RENDER_MODULES = (
     "tools/voxcpm2/clean_source_download.py",
+    "tools/voxcpm2/clean_request_settings.py",
     "tools/voxcpm2/clean_segment_normalizer.py",
     "tools/voxcpm2/clean_production_core.py",
     "tools/voxcpm2/continuous_reference_policy.py",
