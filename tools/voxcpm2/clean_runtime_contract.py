@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import math
 import subprocess
@@ -18,6 +17,8 @@ MAX_THREADS = 64
 MAX_STEPS = 64
 MAX_CFG = 10.0
 MAX_SEED = 2**63 - 1
+RETRY_SEED_OFFSET = 100_000
+MAX_BASE_SEED = MAX_SEED - RETRY_SEED_OFFSET
 
 _RENDER_MODULES = (
     "tools/voxcpm2/direct_max_quality_io.py",
@@ -102,7 +103,7 @@ def normalize_settings(request: dict[str, Any], *, duration: Any) -> dict[str, A
             request.get("base_seed") or 2026072800,
             field="base_seed",
             low=0,
-            high=MAX_SEED,
+            high=MAX_BASE_SEED,
         ),
         "original_level": original_level,
     }
@@ -217,11 +218,13 @@ def build_fingerprints(
 
 
 __all__ = [
+    "MAX_BASE_SEED",
     "MAX_CFG",
     "MAX_SEED",
     "MAX_STEPS",
     "MAX_THREADS",
     "POLICY",
+    "RETRY_SEED_OFFSET",
     "build_fingerprints",
     "normalize_settings",
     "sha256_file",
