@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tools.voxcpm2 import expressive_translation
+from tools.voxcpm2 import generic_clean_gemini_runtime
 from tools.voxcpm2 import strict_translation_payload as strict
 
 
@@ -103,3 +104,28 @@ def test_expressive_prompts_do_not_assume_english_source(monkeypatch) -> None:
     assert "англоязычной" not in combined.casefold()
     assert "английской речью" not in combined.casefold()
     assert "с исходного языка на русский" in combined
+
+
+def test_actual_transcript_language_overrides_stale_metadata(monkeypatch) -> None:
+    metadata = {"title": "Video", "language": "en"}
+    cues = [object()]
+
+    monkeypatch.setattr(
+        generic_clean_gemini_runtime,
+        "_BASE_ACQUIRE_TRANSCRIPT",
+        lambda *_args, **_kwargs: (cues, "whisper", "de"),
+    )
+    result = generic_clean_gemini_runtime._acquire_transcript_with_actual_language(
+        "https://youtu.be/AbCdEf12345",
+        Path("source.mp4"),
+        Path("source"),
+        metadata,
+        whisper_model="large-v3",
+        duration=10.0,
+    )
+
+    assert result == (cues, "whisper", "de")
+    assert metadata["language"] == "de"
+    assert metadata["source_language"] == "de"
+    source = (ROOT / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py").read_text(encoding="utf-8")
+    assert "production.acquire_transcript = _acquire_transcript_with_actual_language" in source
