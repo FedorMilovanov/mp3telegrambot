@@ -116,7 +116,9 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         np.sqrt(np.mean(np.square(audio[start:start + frame].astype(np.float64))) + 1e-12)
         for start in starts
     ], dtype=np.float64)
-    threshold = max(float(np.percentile(rms, 35)) * 1.7, 10 ** (-40 / 20))
+    # Use a permissive activity floor. Multiplying a stable signal's own RMS by
+    # a factor greater than one classifies every frame as unvoiced.
+    threshold = max(float(np.percentile(rms, 35)) * 0.50, 10 ** (-45 / 20))
     lag_lo = max(2, int(sample_rate / 300))
     lag_hi = min(frame - 3, int(sample_rate / 65))
     values: list[float] = []
