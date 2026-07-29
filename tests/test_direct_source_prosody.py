@@ -5,6 +5,7 @@ import math
 from tools.voxcpm2.direct_source_prosody import (
     MAX_PENALTY,
     POLICY,
+    candidate_pitch_evidence_ok,
     source_prosody_penalty,
 )
 
@@ -48,6 +49,7 @@ def test_candidate_matching_source_prosody_gets_near_zero_penalty() -> None:
     penalty = source_prosody_penalty(candidate, _segment())
     report = candidate["source_prosody_match"]
     assert POLICY == "source-prosody-candidate-ranking-v1"
+    assert candidate_pitch_evidence_ok(candidate) is True
     assert penalty == 0.0
     assert report["available"] is True
     assert report["f0_median_ratio_to_source"] == 1.0
@@ -85,6 +87,7 @@ def test_invalid_candidate_prosody_gets_maximum_soft_penalty() -> None:
     )
     penalty = source_prosody_penalty(candidate, _segment(tier="passionate"))
     report = candidate["source_prosody_match"]
+    assert candidate_pitch_evidence_ok(candidate) is False
     assert math.isfinite(penalty)
     assert penalty == MAX_PENALTY
     assert report["available"] is False
@@ -92,10 +95,23 @@ def test_invalid_candidate_prosody_gets_maximum_soft_penalty() -> None:
     assert report["reason"] == "невалидные candidate F0/voiced метрики"
 
 
+def test_contradictory_pitch_shape_fails_raw_hard_floor() -> None:
+    candidate = _candidate(
+        median=180.0,
+        p90=90.0,
+        voiced=0.60,
+        active=0.70,
+        gap=0.20,
+    )
+    assert candidate_pitch_evidence_ok(candidate) is False
+    assert source_prosody_penalty(candidate, _segment()) == MAX_PENALTY
+
+
 def test_missing_candidate_pitch_activity_gets_maximum_soft_penalty() -> None:
     candidate: dict = {}
     penalty = source_prosody_penalty(candidate, _segment())
     report = candidate["source_prosody_match"]
+    assert candidate_pitch_evidence_ok(candidate) is False
     assert penalty == MAX_PENALTY
     assert report["available"] is False
     assert report["reason"] == "candidate pitch/activity отсутствуют"
