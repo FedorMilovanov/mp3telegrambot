@@ -4,7 +4,8 @@
 
 A single natural 5–10 second source span is preferred over a montage. The old
 multi-window builder remains an explicit fallback when captions do not expose a
-long enough continuous speech run.
+long enough continuous speech run or every continuous candidate fails the hard
+speech-quality floor.
 """
 from __future__ import annotations
 
@@ -21,10 +22,13 @@ import soundfile as sf
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_v45
 
-POLICY = "continuous-clean-reference-v1"
+POLICY = "continuous-clean-reference-v2"
 MIN_SECONDS = 5.0
 MAX_SECONDS = 10.0
 MERGE_GAP_SECONDS = 0.32
+MIN_VOICED_RATIO = 0.16
+MIN_ACTIVE_RATIO = 0.25
+MAX_INTERNAL_GAP = 0.85
 
 
 def _decode_source(source: Path, output: Path) -> tuple[np.ndarray, int]:
@@ -46,19 +50,32 @@ def _decode_source(source: Path, output: Path) -> tuple[np.ndarray, int]:
         str(output),
     ]
     process = subprocess.run(command, check=False)
-    if process.returncode != 0:
+    if process.returncode != 0 or not output.is_file():
         raise RuntimeError("Не удалось декодировать source для voice reference.")
     samples, sample_rate = sf.read(output, dtype="float32")
-    return np.asarray(samples, dtype=np.float32).reshape(-1), int(sample_rate)
+    audio = np.asarray(samples, dtype=np.float32).reshape(-1)
+    if sample_rate <= 0 or not len(audio) or not np.isfinite(audio).all():
+        raise RuntimeError("Декодированный source для voice reference повреждён.")
+    return audio, int(sample_rate)
 
 
 def _merged_runs(intervals: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    runs: list[list[float]] = []
-    for raw_start, raw_end in sorted(intervals):
-        start = max(0.0, float(raw_start))
-        end = max(start, float(raw_end))
-        if end - start < 0.35:
+    normalized: list[tuple[float, float]] = []
+    for raw_start, raw_end in intervals:
+        try:
+            start = float(raw_start)
+            end = float(raw_end)
+        except (TypeError, ValueError):
             continue
+        if not math.isfinite(start) or not math.isfinite(end):
+            continue
+        start = max(0.0, start)
+        end = max(start, end)
+        if end - start >= 0.35:
+            normalized.append((start, end))
+
+    runs: list[list[float]] = []
+    for start, end in sorted(normalized):
         if runs and start - runs[-1][1] <= MERGE_GAP_SECONDS:
             runs[-1][1] = max(runs[-1][1], end)
         else:
@@ -79,9 +96,28 @@ def _window_score(samples: np.ndarray, sample_rate: int) -> tuple[float, dict[st
         score += 160.0
     if float(activity["active_ratio"]) < 0.32:
         score += 120.0
-    if float(activity["max_internal_gap"]) > 0.85:
+    if float(activity["max_internal_gap"]) > MAX_INTERNAL_GAP:
         score += 140.0
     return score, {**pitch, **activity}
+
+
+def _usable_stats(stats: dict[str, Any]) -> bool:
+    try:
+        voiced = float(stats.get("voiced_ratio") or 0.0)
+        active = float(stats.get("active_ratio") or 0.0)
+        gap = float(stats.get("max_internal_gap") or 99.0)
+        f0_median = float(stats.get("f0_median") or 0.0)
+        f0_p90 = float(stats.get("f0_p90") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        all(math.isfinite(value) for value in (voiced, active, gap, f0_median, f0_p90))
+        and voiced >= MIN_VOICED_RATIO
+        and active >= MIN_ACTIVE_RATIO
+        and gap <= MAX_INTERNAL_GAP
+        and f0_median > 1.0
+        and f0_p90 > 1.0
+    )
 
 
 def _candidate_windows(
@@ -91,7 +127,10 @@ def _candidate_windows(
     *,
     target_seconds: float,
 ) -> list[dict[str, Any]]:
-    target = max(MIN_SECONDS, min(float(target_seconds), MAX_SECONDS))
+    target_value = float(target_seconds)
+    if not math.isfinite(target_value):
+        raise RuntimeError("Некорректная длительность voice reference.")
+    target = max(MIN_SECONDS, min(target_value, MAX_SECONDS))
     candidates: list[dict[str, Any]] = []
     for run_start, run_end in _merged_runs(intervals):
         run_length = run_end - run_start
@@ -106,13 +145,14 @@ def _candidate_windows(
         ]
         for start in starts:
             end = min(run_end, start + window)
-            clip = np.asarray(
-                audio[int(start * sample_rate) : int(end * sample_rate)],
-                dtype=np.float32,
-            )
+            left = max(0, int(start * sample_rate))
+            right = min(len(audio), int(end * sample_rate))
+            clip = np.asarray(audio[left:right], dtype=np.float32)
             if len(clip) < int(MIN_SECONDS * sample_rate):
                 continue
             score, stats = _window_score(clip, sample_rate)
+            if not _usable_stats(stats):
+                continue
             candidates.append(
                 {
                     "score": float(score),
@@ -169,9 +209,15 @@ def build_reference(
             {
                 "reference_policy": POLICY,
                 "reference_mode": "multi-window-fallback",
+                "fallback_reason": "no_continuous_candidate_passed_hard_floor",
                 "profile_name": profile,
                 "denoise": False,
                 "spectral_filter": False,
+                "hard_floor": {
+                    "min_voiced_ratio": MIN_VOICED_RATIO,
+                    "min_active_ratio": MIN_ACTIVE_RATIO,
+                    "max_internal_gap": MAX_INTERNAL_GAP,
+                },
             }
         )
         fallback_path.write_text(
@@ -198,6 +244,11 @@ def build_reference(
         "gain_only_leveling": True,
         "gain_linear": round(gain, 8),
         "duration_seconds": round(len(samples) / sample_rate, 6),
+        "hard_floor": {
+            "min_voiced_ratio": MIN_VOICED_RATIO,
+            "min_active_ratio": MIN_ACTIVE_RATIO,
+            "max_internal_gap": MAX_INTERNAL_GAP,
+        },
         "selected": [
             {
                 "start": round(float(selected["start"]), 3),
@@ -246,9 +297,12 @@ def build_calm_references(
 
 
 __all__ = [
+    "MAX_INTERNAL_GAP",
     "MAX_SECONDS",
     "MERGE_GAP_SECONDS",
+    "MIN_ACTIVE_RATIO",
     "MIN_SECONDS",
+    "MIN_VOICED_RATIO",
     "POLICY",
     "build_calm_references",
     "build_reference",
