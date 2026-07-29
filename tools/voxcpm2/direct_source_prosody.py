@@ -32,6 +32,22 @@ def _positive(value: Any, *, low: float, high: float) -> float | None:
     return result
 
 
+def candidate_pitch_evidence_ok(candidate: dict[str, Any]) -> bool:
+    """Reject contradictory raw pitch evidence before candidate acceptance."""
+    pitch = candidate.get("pitch")
+    if not isinstance(pitch, dict):
+        return False
+    voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
+    median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
+    p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
+    return bool(
+        voiced is not None
+        and median is not None
+        and p90 is not None
+        and float(p90) >= float(median) * 0.75
+    )
+
+
 def _ratio(value: float, target: float) -> float:
     return value / max(target, 1e-9)
 
@@ -93,6 +109,11 @@ def source_prosody_penalty(
             result,
             "candidate pitch/activity отсутствуют",
         )
+    if not candidate_pitch_evidence_ok(candidate):
+        return _penalize_unavailable_candidate(
+            result,
+            "невалидные candidate F0/voiced метрики",
+        )
 
     candidate_voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
     candidate_median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
@@ -150,4 +171,9 @@ def source_prosody_penalty(
     return penalty
 
 
-__all__ = ["MAX_PENALTY", "POLICY", "source_prosody_penalty"]
+__all__ = [
+    "MAX_PENALTY",
+    "POLICY",
+    "candidate_pitch_evidence_ok",
+    "source_prosody_penalty",
+]
