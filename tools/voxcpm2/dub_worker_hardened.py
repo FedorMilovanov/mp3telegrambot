@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from typing import Any
 
@@ -17,6 +18,7 @@ _PROGRESS_PREFIX = "DUB_PROGRESS "
 _QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
 _MILESTONES = (25, 50, 75, 90)
 _PULSE_SECONDS = 15.0
+_FINAL_JOB_STATES = {"succeeded", "failed", "cancelled"}
 _ORIGINAL_REGISTER = DubStore.register_worker
 _ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
 _ORIGINAL_UPDATE_JOB_PROGRESS = DubStore.update_job_progress
@@ -24,6 +26,7 @@ _ORIGINAL_FINISH_JOB = DubStore.finish_job
 _ORIGINAL_RECOVER_ABANDONED = DubStore.recover_abandoned_jobs
 _ORIGINAL_TERMINATE = worker._terminate_process
 _LAST_JOB_PULSE: dict[int, float] = {}
+_FINISH_LOCK = threading.RLock()
 
 
 def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
@@ -350,19 +353,40 @@ def _finish_job_with_root_cause(
     result: dict[str, Any] | None = None,
     error: str = "",
 ) -> None:
-    payload = str(error or "")
-    if str(status).lower() == "failed" and payload:
-        cause = _deepest_error_line(payload)
-        if not payload.startswith("Точная причина:"):
-            payload = f"Точная причина: {cause}\n\n{payload}"
-    _LAST_JOB_PULSE.pop(int(job_id), None)
-    _ORIGINAL_FINISH_JOB(
-        self,
-        job_id,
-        status=status,
-        result=result,
-        error=payload,
-    )
+    requested_status = str(status).lower()
+    if requested_status not in _FINAL_JOB_STATES:
+        _ORIGINAL_FINISH_JOB(
+            self,
+            job_id,
+            status=status,
+            result=result,
+            error=error,
+        )
+        return
+
+    with _FINISH_LOCK:
+        try:
+            current = self.get_job(int(job_id))
+        except KeyError:
+            _LAST_JOB_PULSE.pop(int(job_id), None)
+            return
+        if str(current.get("status") or "").lower() in _FINAL_JOB_STATES:
+            _LAST_JOB_PULSE.pop(int(job_id), None)
+            return
+
+        payload = str(error or "")
+        if requested_status == "failed" and payload:
+            cause = _deepest_error_line(payload)
+            if not payload.startswith("Точная причина:"):
+                payload = f"Точная причина: {cause}\n\n{payload}"
+        _LAST_JOB_PULSE.pop(int(job_id), None)
+        _ORIGINAL_FINISH_JOB(
+            self,
+            job_id,
+            status=requested_status,
+            result=result,
+            error=payload,
+        )
 
 
 def install_hardening() -> None:
