@@ -50,6 +50,7 @@ def _run_clean_voxcpm_and_master(
         source=source,
         segments=planned,
         output=composite,
+        identity_reference=extended,
     )
     production.log(
         "source-guided emotional arc prepared; custom text preserved; "
