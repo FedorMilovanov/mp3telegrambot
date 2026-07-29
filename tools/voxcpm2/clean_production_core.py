@@ -2,14 +2,15 @@
 # -*- coding: utf-8 -*-
 """Clean production core for Dub Studio.
 
-The bot and a manual PowerShell launch use the same NoChew renderer and master.
-This module never replaces subprocess and never patches VoxCPM internals. It
-prepares short phrases and calm references, launches the renderer directly, and
-runs an independent post-render QA gate.
+The bot and manual PowerShell launch share the same direct renderer and master.
+No subprocess proxy or VoxCPM monkeypatch is installed. Durable checkpoints are
+accepted only under a fingerprint of the actual renderer modules, model snapshot
+and CPU-venv VoxCPM runtime.
 """
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -17,13 +18,14 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_qa_v45
 from tools.voxcpm2 import professional_audio_v45
 from tools.voxcpm2 import semantic_tts_guard_v4
 
-POLICY = "clean-direct-production-v1"
+POLICY = "clean-direct-production-v2"
 TARGET_SECONDS = 4.2
 MAX_SECONDS = 5.4
 MASTER_I = -16.0
@@ -33,6 +35,16 @@ MASTER_TP = -1.5
 
 def log(message: str) -> None:
     print(f"[CLEAN-DUB] {message}", flush=True)
+
+
+def _finite(value: Any, *, field: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Некорректное значение {field}: {value!r}") from exc
+    if not math.isfinite(result):
+        raise RuntimeError(f"{field} должен быть конечным числом.")
+    return result
 
 
 def group_source_cues(cues: list[Any]) -> list[dict[str, Any]]:
@@ -56,10 +68,10 @@ def _validate_groups(groups: list[dict[str, Any]], text_key: str) -> None:
         raise RuntimeError("После сегментации не осталось речевых блоков.")
     previous_end = 0.0
     for index, item in enumerate(groups, start=1):
-        start = float(item["start"])
-        end = float(item["end"])
+        start = _finite(item.get("start"), field=f"group[{index}].start")
+        end = _finite(item.get("end"), field=f"group[{index}].end")
         text = re.sub(r"\s+", " ", str(item.get(text_key) or "")).strip()
-        if not text or end <= start:
+        if start < 0.0 or not text or end <= start:
             raise RuntimeError(f"Некорректный речевой блок #{index}.")
         if start < previous_end - 0.001:
             raise RuntimeError(f"Речевые блоки пересекаются около #{index}.")
@@ -106,21 +118,41 @@ def _mark_and_validate_segments(
     segments: list[dict[str, Any]],
     duration: float,
 ) -> None:
+    duration_value = _finite(duration, field="video_duration")
+    if duration_value <= 0.0:
+        raise RuntimeError("video_duration должен быть > 0.")
     if not segments:
         raise RuntimeError("Список реплик перед VoxCPM пуст.")
     previous_end = 0.0
+    previous_effective_end = 0.0
+    seen_ids: set[int] = set()
     for item in segments:
         item["production_policy"] = POLICY
         segment_id = int(item["id"])
-        start = float(item["start"])
-        end = float(item["end"])
-        delay = max(0, int(item.get("start_delay_ms", 0))) / 1000.0
+        if segment_id <= 0 or segment_id in seen_ids:
+            raise RuntimeError(f"Некорректный или повторный ID реплики: {segment_id}.")
+        seen_ids.add(segment_id)
+        start = _finite(item.get("start"), field=f"segment[{segment_id}].start")
+        end = _finite(item.get("end"), field=f"segment[{segment_id}].end")
+        try:
+            delay_ms = int(item.get("start_delay_ms", 0))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError(f"Некорректный delay реплики #{segment_id}.") from exc
+        if not 0 <= delay_ms <= 1500:
+            raise RuntimeError(f"Delay реплики #{segment_id} вне диапазона 0..1500 ms.")
+        delay = delay_ms / 1000.0
         text = re.sub(r"\s+", " ", str(item.get("text") or "")).strip()
-        if not text or end <= start:
+        if start < 0.0 or not text or end <= start:
             raise RuntimeError(f"Некорректная реплика #{segment_id}.")
         if start < previous_end - 0.001:
             raise RuntimeError(f"Реплика #{segment_id} пересекается с предыдущей.")
-        if end + delay > float(duration) + 0.02:
+        effective_start = start + delay
+        effective_end = end + delay
+        if effective_start < previous_effective_end - 0.001:
+            raise RuntimeError(
+                f"Реплика #{segment_id} пересекается после применения delay."
+            )
+        if effective_end > duration_value + 0.02:
             raise RuntimeError(f"Реплика #{segment_id} выходит за конец видео.")
         if end - start > MAX_SECONDS + 0.30:
             raise RuntimeError(
@@ -133,6 +165,7 @@ def _mark_and_validate_segments(
                 f"Реплика #{segment_id} физически перегружена: {rate:.2f} слова/с."
             )
         previous_end = end
+        previous_effective_end = effective_end
 
 
 def build_calm_references(
@@ -142,7 +175,7 @@ def build_calm_references(
     duration: float,
     reference_dir: Path,
 ) -> tuple[Path, Path]:
-    """Choose calm, continuous source windows and save transparent reports."""
+    """Legacy public helper; production entrypoints use continuous-reference v2."""
     reference_dir.mkdir(parents=True, exist_ok=True)
     extended = reference_dir / "extended_reference.wav"
     composite = reference_dir / "composite_reference.wav"
@@ -165,11 +198,11 @@ def build_calm_references(
 
 
 def _number(item: dict[str, Any], key: str, default: float) -> float:
-    value = item.get(key, default)
     try:
-        return float(value)
+        value = float(item.get(key, default))
     except (TypeError, ValueError):
         return float(default)
+    return value if math.isfinite(value) else float(default)
 
 
 def _validate_reference_report(path: Path, profile: str) -> None:
@@ -246,9 +279,9 @@ def _failure_summary(report: dict[str, Any]) -> str:
         semantic = item.get("semantic")
         if isinstance(semantic, dict) and not semantic.get("passed", True):
             heard = str(semantic.get("heard") or "").replace("\n", " ")[:80]
-            parts.append(
-                f"ASR recall={semantic.get('token_recall')}, услышано=«{heard}»"
-            )
+            if semantic.get("numeric_anchors_passed") is False:
+                parts.append("не совпало числовое/датовое значение")
+            parts.append(f"ASR recall={semantic.get('token_recall')}, услышано=«{heard}»")
         timing = item.get("timing")
         if isinstance(timing, dict) and not timing.get("passed", True):
             parts.append(
@@ -299,10 +332,28 @@ def render_and_master(
     final_russian: Path,
     force_fresh: bool = False,
 ) -> Path:
-    """Run the PowerShell-equivalent renderer directly, then independent QA."""
+    """Run the direct renderer, independent QA and final verified master."""
     repo = Path(__file__).resolve().parents[2]
     renderer, master = _renderer_paths(repo)
     cpu_python = _cpu_python(request)
+    settings = clean_runtime_contract.normalize_settings(request, duration=duration)
+    archive = Path(
+        str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
+    ).resolve()
+    for label, path in (
+        ("source", source),
+        ("segments", segments_json),
+        ("extended reference", extended_reference),
+        ("composite reference", composite_reference),
+    ):
+        if not path.is_file():
+            raise RuntimeError(f"Не найден {label}: {path}")
+    fingerprints = clean_runtime_contract.build_fingerprints(
+        repo=repo,
+        archive=archive,
+        cpu_python=cpu_python,
+    )
+
     segment_work = root / "segment_work"
     master_work = root / "master_work"
     audio_dir = root / "audio"
@@ -312,29 +363,35 @@ def render_and_master(
     segments = json.loads(segments_json.read_text(encoding="utf-8-sig"))
     if not isinstance(segments, list):
         raise RuntimeError("segments_ru_final.json повреждён.")
-    _mark_and_validate_segments(segments, duration)
+    _mark_and_validate_segments(segments, settings["duration"])
     segments_json.write_text(
-        json.dumps(segments, ensure_ascii=False, indent=2),
+        json.dumps(segments, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
 
     existing_checkpoints = any((segment_work / "checkpoints").glob("segment_*.json"))
     marker = _read_clean_marker(segment_work)
-    if existing_checkpoints and marker.get("policy") != POLICY:
-        log("обнаружены checkpoints старой цепочки; выполняю безопасный fresh render")
+    marker_current = bool(
+        marker.get("policy") == POLICY
+        and marker.get("runtime_contract_policy") == clean_runtime_contract.POLICY
+        and marker.get("render_contract_sha256")
+        == fingerprints["render_contract_sha256"]
+    )
+    if existing_checkpoints and not marker_current:
+        log(
+            "checkpoints не соответствуют renderer/model/runtime fingerprint; "
+            "выполняю безопасный fresh render"
+        )
         force_fresh = True
     if force_fresh:
         _remove_render_state(segment_work)
 
-    threads = max(1, int(request.get("threads") or 10))
-    steps = max(1, int(request.get("steps") or 16))
-    cfg = float(request.get("cfg") or 1.8)
-    seed = int(request.get("base_seed") or 2026072800)
-    original_level = float(request.get("original_level") or 0.18)
-    archive = Path(
-        str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    ).resolve()
-    timeline = audio_dir / f"{request['video_id']}_ru_timeline.wav"
+    threads = int(settings["threads"])
+    steps = int(settings["steps"])
+    cfg = float(settings["cfg"])
+    seed = int(settings["base_seed"])
+    original_level = float(settings["original_level"])
+    timeline = audio_dir / f"{settings['video_id']}_ru_timeline.wav"
     env = _environment(threads)
     all_ids = {int(item["id"]) for item in segments}
     last_report: dict[str, Any] = {}
@@ -354,7 +411,7 @@ def render_and_master(
             "--steps", str(steps),
             "--cfg", str(cfg),
             "--cache-length", "4096",
-            "--video-duration", f"{duration:.6f}",
+            "--video-duration", f"{settings['duration']:.6f}",
             "--base-seed", str(round_seed),
         ]
         log(
@@ -366,9 +423,7 @@ def render_and_master(
             raise RuntimeError(
                 f"Прямой VoxCPM2 renderer завершился с кодом {result.returncode}."
             )
-        report_path = timeline.with_suffix(
-            f".clean_qa.round{round_index + 1}.json"
-        )
+        report_path = timeline.with_suffix(f".clean_qa.round{round_index + 1}.json")
         failed, last_report = professional_audio_qa_v45.verify_timeline_v45(
             timeline,
             segments,
@@ -376,19 +431,26 @@ def render_and_master(
         )
         if not failed:
             timeline.with_suffix(".clean_qa.json").write_text(
-                json.dumps(last_report, ensure_ascii=False, indent=2),
+                json.dumps(last_report, ensure_ascii=False, indent=2, allow_nan=False),
                 encoding="utf-8",
             )
             (segment_work / "clean_production.marker.json").write_text(
                 json.dumps(
                     {
+                        "schema_version": 2,
                         "policy": POLICY,
+                        "runtime_contract_policy": clean_runtime_contract.POLICY,
+                        "render_contract_sha256": fingerprints["render_contract_sha256"],
+                        "release_contract_sha256": fingerprints["release_contract_sha256"],
                         "base_seed": round_seed,
                         "renderer": str(renderer),
                         "failed_segment_ids": [],
+                        "qa_policy": last_report.get("professional_audio_policy"),
+                        "numeric_semantic_policy": last_report.get("numeric_semantic_policy"),
                     },
                     ensure_ascii=False,
                     indent=2,
+                    allow_nan=False,
                 ),
                 encoding="utf-8",
             )
@@ -403,7 +465,7 @@ def render_and_master(
             )
             continue
         timeline.with_suffix(".clean_qa.json").write_text(
-            json.dumps(last_report, ensure_ascii=False, indent=2),
+            json.dumps(last_report, ensure_ascii=False, indent=2, allow_nan=False),
             encoding="utf-8",
         )
         raise RuntimeError(
@@ -432,7 +494,11 @@ def render_and_master(
     (root / "output" / "clean_production_report.json").write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "policy": POLICY,
+                "runtime_contract_policy": clean_runtime_contract.POLICY,
+                "render_contract_sha256": fingerprints["render_contract_sha256"],
+                "release_contract_sha256": fingerprints["release_contract_sha256"],
                 "renderer": str(renderer),
                 "master": str(master),
                 "wrapper_count": 0,
@@ -443,9 +509,11 @@ def render_and_master(
                     str(composite_reference.with_suffix(".selection.json")),
                 ],
                 "qa_report": str(timeline.with_suffix(".clean_qa.json")),
+                "fingerprints": fingerprints,
             },
             ensure_ascii=False,
             indent=2,
+            allow_nan=False,
         ),
         encoding="utf-8",
     )
