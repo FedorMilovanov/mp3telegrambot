@@ -12,13 +12,14 @@ from typing import Any
 
 from tools.voxcpm2.direct_max_quality_io import discover_model
 
-POLICY = "clean-runtime-contract-v1"
+POLICY = "clean-runtime-contract-v2"
 MAX_THREADS = 64
 MAX_STEPS = 64
 MAX_CFG = 10.0
 MAX_SEED = 2**63 - 1
 RETRY_SEED_OFFSET = 100_000
 MAX_BASE_SEED = MAX_SEED - RETRY_SEED_OFFSET
+_WEIGHT_SAMPLE_BYTES = 1024 * 1024
 
 _RENDER_MODULES = (
     "tools/voxcpm2/direct_max_quality_io.py",
@@ -47,10 +48,29 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sampled_sha256_file(path: Path, *, block_size: int = _WEIGHT_SAMPLE_BYTES) -> str:
+    """Hash deterministic beginning/middle/end blocks without rereading huge weights."""
+    size = int(path.stat().st_size)
+    block = max(4096, int(block_size))
+    if size <= block * 3:
+        return sha256_file(path)
+    positions = (0, max(0, (size - block) // 2), max(0, size - block))
+    digest = hashlib.sha256()
+    digest.update(str(size).encode("ascii"))
+    with path.open("rb") as handle:
+        for position in positions:
+            handle.seek(position)
+            chunk = handle.read(block)
+            digest.update(str(position).encode("ascii"))
+            digest.update(len(chunk).to_bytes(8, "big"))
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _finite(value: Any, *, field: str) -> float:
     try:
         result = float(value)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError(f"Некорректное значение {field}: {value!r}") from exc
     if not math.isfinite(result):
         raise RuntimeError(f"{field} должен быть конечным числом.")
@@ -67,40 +87,47 @@ def _bounded_int(value: Any, *, field: str, low: int, high: int) -> int:
     return result
 
 
+def _setting(request: dict[str, Any], key: str, default: Any) -> Any:
+    """Use a default only when a setting is absent or explicitly null."""
+    return default if key not in request or request[key] is None else request[key]
+
+
 def normalize_settings(request: dict[str, Any], *, duration: Any) -> dict[str, Any]:
+    if not isinstance(request, dict):
+        raise RuntimeError("Dub request должен быть JSON-объектом.")
     duration_value = _finite(duration, field="video_duration")
     if duration_value <= 0.0:
         raise RuntimeError("video_duration должен быть > 0.")
-    cfg = _finite(request.get("cfg") or 1.8, field="cfg")
+    cfg = _finite(_setting(request, "cfg", 1.8), field="cfg")
     if not 0.05 <= cfg <= MAX_CFG:
         raise RuntimeError(f"cfg={cfg} вне диапазона 0.05..{MAX_CFG}.")
     original_level = _finite(
-        request.get("original_level") if request.get("original_level") is not None else 0.18,
+        _setting(request, "original_level", 0.18),
         field="original_level",
     )
     if not 0.0 <= original_level <= 1.0:
         raise RuntimeError("original_level должен быть в диапазоне 0..1.")
-    video_id = str(request.get("video_id") or "").strip()
+    video_id = str(_setting(request, "video_id", "")).strip()
     if not video_id:
         raise RuntimeError("video_id пуст.")
     return {
         "video_id": video_id,
         "duration": duration_value,
         "threads": _bounded_int(
-            request.get("threads") or 10,
+            _setting(request, "threads", 10),
             field="threads",
             low=1,
             high=MAX_THREADS,
         ),
         "steps": _bounded_int(
-            request.get("steps") or 16,
+            _setting(request, "steps", 16),
             field="steps",
             low=1,
             high=MAX_STEPS,
         ),
         "cfg": cfg,
         "base_seed": _bounded_int(
-            request.get("base_seed") or 2026072800,
+            _setting(request, "base_seed", 2026072800),
             field="base_seed",
             low=0,
             high=MAX_BASE_SEED,
@@ -121,7 +148,7 @@ def _module_hashes(repo: Path, names: tuple[str, ...]) -> dict[str, str]:
 
 def _model_manifest(archive: Path) -> dict[str, Any]:
     model = discover_model(archive)
-    artifacts = []
+    artifacts: list[dict[str, Any]] = []
     for path in sorted(model.iterdir(), key=lambda item: item.name.casefold()):
         if not path.is_file() or path.suffix.casefold() not in {
             ".json",
@@ -136,8 +163,12 @@ def _model_manifest(archive: Path) -> dict[str, Any]:
             "size": int(stat.st_size),
             "mtime_ns": int(stat.st_mtime_ns),
         }
-        if path.name == "config.json":
+        if path.suffix.casefold() == ".json":
             item["sha256"] = sha256_file(path)
+            item["hash_mode"] = "full"
+        else:
+            item["sha256"] = sampled_sha256_file(path)
+            item["hash_mode"] = "sampled-begin-middle-end-v1"
         artifacts.append(item)
     if not artifacts:
         raise RuntimeError(f"Model snapshot не содержит fingerprint-артефактов: {model}")
@@ -147,14 +178,36 @@ def _model_manifest(archive: Path) -> dict[str, Any]:
 def _voxcpm_runtime(cpu_python: Path) -> dict[str, Any]:
     if not cpu_python.is_file():
         raise RuntimeError(f"CPU Python не найден: {cpu_python}")
-    script = (
-        "import importlib.metadata,json,pathlib,voxcpm;"
-        "p=pathlib.Path(voxcpm.__file__).resolve();"
-        "\ntry:v=importlib.metadata.version('voxcpm')"
-        "\nexcept importlib.metadata.PackageNotFoundError:v='unknown'"
-        "\ns=p.stat();print(json.dumps({'version':v,'module':str(p),"
-        "'size':s.st_size,'mtime_ns':s.st_mtime_ns}))"
-    )
+    script = r'''
+import hashlib
+import importlib.metadata
+import json
+from pathlib import Path
+import voxcpm
+
+root = Path(voxcpm.__file__).resolve().parent
+files = []
+for path in sorted(root.rglob("*.py"), key=lambda item: str(item).casefold()):
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    files.append({
+        "path": str(path.relative_to(root)).replace("\\", "/"),
+        "size": path.stat().st_size,
+        "sha256": digest,
+    })
+versions = {}
+for package in ("voxcpm", "torch", "transformers", "tokenizers", "numpy", "soundfile", "wetext"):
+    try:
+        versions[package] = importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        versions[package] = "missing"
+payload = {
+    "module": str(Path(voxcpm.__file__).resolve()),
+    "package_root": str(root),
+    "versions": versions,
+    "python_files": files,
+}
+print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+'''
     process = subprocess.run(
         [str(cpu_python), "-c", script],
         stdout=subprocess.PIPE,
@@ -174,7 +227,13 @@ def _voxcpm_runtime(cpu_python: Path) -> dict[str, Any]:
         payload = json.loads((process.stdout or "").strip())
     except json.JSONDecodeError as exc:
         raise RuntimeError("voxcpm runtime вернул некорректный fingerprint JSON.") from exc
-    if not isinstance(payload, dict) or not payload.get("module"):
+    files = payload.get("python_files") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or not payload.get("module")
+        or not isinstance(files, list)
+        or not files
+    ):
         raise RuntimeError("voxcpm runtime fingerprint неполон.")
     return payload
 
@@ -185,6 +244,7 @@ def _digest(payload: dict[str, Any]) -> str:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -227,5 +287,6 @@ __all__ = [
     "RETRY_SEED_OFFSET",
     "build_fingerprints",
     "normalize_settings",
+    "sampled_sha256_file",
     "sha256_file",
 ]
