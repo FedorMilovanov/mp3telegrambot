@@ -1,0 +1,48 @@
+name: Clean Expressive Dub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/voxcpm2/expressive_*.py"
+      - "tools/voxcpm2/generic_clean_*.py"
+      - "tools/voxcpm2/clean_*.py"
+      - "tools/voxcpm2/recipes/generic_short_v1.json"
+      - "handlers/dub_health.py"
+      - "tests/test_expressive_dub_policy.py"
+      - "tests/test_clean_dub_production.py"
+      - "tests/test_clean_dub_health_contract.py"
+      - ".github/workflows/dub-clean-expressive-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install contract dependencies
+        run: python -m pip install --upgrade pytest numpy soundfile
+      - name: Compile expressive production modules
+        run: |
+          python -m py_compile \
+            tools/voxcpm2/expressive_continuity.py \
+            tools/voxcpm2/expressive_translation.py \
+            tools/voxcpm2/generic_clean_gemini_runtime.py \
+            tools/voxcpm2/generic_clean_direct_runtime.py \
+            tools/voxcpm2/generic_clean_custom_runtime.py \
+            tools/voxcpm2/generic_clean_audio_repair_runtime.py \
+            handlers/dub_health.py
+      - name: Run focused contracts
+        run: |
+          pytest -q \
+            tests/test_expressive_dub_policy.py \
+            tests/test_clean_dub_production.py \
+            tests/test_clean_dub_health_contract.py
