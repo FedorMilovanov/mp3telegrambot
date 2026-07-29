@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 LOUDNESS_TOLERANCE_LU = 0.9
 TRUE_PEAK_DELIVERY_CEILING_DBTP = -1.0
 DURATION_TOLERANCE_SECONDS = 0.10
@@ -19,6 +21,12 @@ EXPECTED_CODEC = "aac"
 TARGET_I_RANGE = (-70.0, -5.0)
 TARGET_LRA_RANGE = (1.0, 50.0)
 TARGET_TP_RANGE = (-9.0, 0.0)
+ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"
+ORIGINAL_BED_SAMPLE_RATE = 8_000
+ORIGINAL_LEVEL_TOLERANCE = 0.015
+ORIGINAL_LOCAL_SPREAD_DB = 0.75
+ORIGINAL_MIN_LOCAL_WINDOWS = 3
+ORIGINAL_WINDOW_SECONDS = 2.0
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -42,10 +50,35 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return process
 
 
+def _run_audio_bytes(command: list[str], *, timeout: float) -> bytes:
+    try:
+        process = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+            timeout=max(30.0, float(timeout)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Декодирование для original-bed QA превысило {timeout:.0f} сек."
+        ) from exc
+    if process.returncode != 0:
+        tail = (process.stderr or b"")[-6000:].decode("utf-8", errors="replace")
+        raise RuntimeError(
+            "FFmpeg original-bed QA завершился с ошибкой:\n"
+            + " ".join(command)
+            + "\n\n"
+            + tail
+        )
+    return bytes(process.stdout or b"")
+
+
 def _float(value: Any, *, field: str) -> float:
     try:
         result = float(value)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError(f"Некорректное значение {field}: {value!r}") from exc
     if not math.isfinite(result):
         raise RuntimeError(f"Нефинитное значение {field}: {value!r}")
@@ -291,6 +324,268 @@ def verify_final_file(
     return report
 
 
+def _decode_audio_mono(path: Path, *, duration: float) -> np.ndarray:
+    raw = _run_audio_bytes(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            str(ORIGINAL_BED_SAMPLE_RATE),
+            "-t",
+            f"{duration:.6f}",
+            "-f",
+            "f32le",
+            "pipe:1",
+        ],
+        timeout=min(1800.0, max(120.0, duration * 3.0 + 60.0)),
+    )
+    audio = np.frombuffer(raw, dtype="<f4").astype(np.float64, copy=True)
+    if len(audio) < ORIGINAL_BED_SAMPLE_RATE * 2:
+        raise RuntimeError("Недостаточно декодированного аудио для original-bed QA.")
+    if not np.isfinite(audio).all():
+        raise RuntimeError("Original-bed QA получил NaN/Inf после декодирования.")
+    return audio
+
+
+def _solve_two_branch(
+    source: np.ndarray,
+    russian: np.ndarray,
+    mixed: np.ndarray,
+) -> tuple[float, float, float] | None:
+    source = np.asarray(source, dtype=np.float64)
+    russian = np.asarray(russian, dtype=np.float64)
+    mixed = np.asarray(mixed, dtype=np.float64)
+    if not len(source) or len(source) != len(russian) or len(source) != len(mixed):
+        return None
+    source = source - float(np.mean(source))
+    russian = russian - float(np.mean(russian))
+    mixed = mixed - float(np.mean(mixed))
+    ss = float(np.dot(source, source))
+    rr = float(np.dot(russian, russian))
+    sr = float(np.dot(source, russian))
+    sm = float(np.dot(source, mixed))
+    rm = float(np.dot(russian, mixed))
+    if not all(math.isfinite(value) for value in (ss, rr, sr, sm, rm)):
+        return None
+    if ss <= 1e-10 or rr <= 1e-10:
+        return None
+    condition = max(0.0, 1.0 - (sr * sr) / max(ss * rr, 1e-18))
+    determinant = ss * rr - sr * sr
+    if condition < 1e-4 or determinant <= 1e-16:
+        return None
+    original = (sm * rr - rm * sr) / determinant
+    russian_gain = (rm * ss - sm * sr) / determinant
+    if not all(math.isfinite(value) for value in (original, russian_gain, condition)):
+        return None
+    return float(original), float(russian_gain), float(condition)
+
+
+def estimate_original_bed(
+    source: np.ndarray,
+    mixed: np.ndarray,
+    russian_only: np.ndarray,
+    *,
+    expected_level: float,
+    sample_rate: int = ORIGINAL_BED_SAMPLE_RATE,
+) -> dict[str, Any]:
+    expected = _range(expected_level, field="expected_original_level", limits=(0.0, 1.0))
+    source = np.asarray(source, dtype=np.float64).reshape(-1)
+    mixed = np.asarray(mixed, dtype=np.float64).reshape(-1)
+    russian = np.asarray(russian_only, dtype=np.float64).reshape(-1)
+    length = min(len(source), len(mixed), len(russian))
+    failures: list[str] = []
+    result: dict[str, Any] = {
+        "policy": ORIGINAL_BED_POLICY,
+        "applicable": True,
+        "passed": False,
+        "expected_original_level": expected,
+        "sample_rate": int(sample_rate),
+        "sample_count": int(length),
+        "estimated_original_level": None,
+        "estimated_russian_gain": None,
+        "absolute_error": None,
+        "regression_condition": None,
+        "local_window_count": 0,
+        "local_median_level": None,
+        "local_p10_level": None,
+        "local_p90_level": None,
+        "local_spread_db": None,
+        "limits": {
+            "absolute_level_tolerance": ORIGINAL_LEVEL_TOLERANCE,
+            "local_spread_db": ORIGINAL_LOCAL_SPREAD_DB,
+            "minimum_local_windows": ORIGINAL_MIN_LOCAL_WINDOWS,
+            "window_seconds": ORIGINAL_WINDOW_SECONDS,
+        },
+        "failures": failures,
+    }
+    minimum = max(1, int(sample_rate * 2.0))
+    if length < minimum:
+        failures.append("недостаточно общих samples для original-bed regression")
+        return result
+    source = source[:length]
+    mixed = mixed[:length]
+    russian = russian[:length]
+    if not (
+        np.isfinite(source).all()
+        and np.isfinite(mixed).all()
+        and np.isfinite(russian).all()
+    ):
+        failures.append("NaN/Inf в original-bed samples")
+        return result
+
+    solved = _solve_two_branch(source, russian, mixed)
+    if solved is None:
+        failures.append("глобальная двухветочная регрессия вырождена")
+        return result
+    original, russian_gain, condition = solved
+    absolute_error = abs(original - expected)
+    result.update(
+        estimated_original_level=original,
+        estimated_russian_gain=russian_gain,
+        absolute_error=absolute_error,
+        regression_condition=condition,
+    )
+    if original < 0.0 or original > 1.0:
+        failures.append(f"оценка original level вне 0..1: {original:.5f}")
+    if absolute_error > ORIGINAL_LEVEL_TOLERANCE:
+        failures.append(
+            f"original level={original:.5f}; нужен {expected:.5f}±{ORIGINAL_LEVEL_TOLERANCE:.3f}"
+        )
+
+    window = max(1, int(float(sample_rate) * ORIGINAL_WINDOW_SECONDS))
+    local: list[float] = []
+    for start in range(0, length - window + 1, window):
+        solved_window = _solve_two_branch(
+            source[start : start + window],
+            russian[start : start + window],
+            mixed[start : start + window],
+        )
+        if solved_window is None:
+            continue
+        local_original, _local_russian, local_condition = solved_window
+        if local_condition < 0.01 or local_original <= 0.0 or local_original > 1.0:
+            continue
+        local.append(local_original)
+
+    result["local_window_count"] = len(local)
+    if len(local) < ORIGINAL_MIN_LOCAL_WINDOWS:
+        failures.append(
+            f"локальных окон={len(local)}; нужно минимум {ORIGINAL_MIN_LOCAL_WINDOWS}"
+        )
+    else:
+        values = np.asarray(local, dtype=np.float64)
+        median = float(np.median(values))
+        p10 = float(np.percentile(values, 10))
+        p90 = float(np.percentile(values, 90))
+        spread_db = max(
+            abs(20.0 * math.log10(max(p10, 1e-9) / max(median, 1e-9))),
+            abs(20.0 * math.log10(max(p90, 1e-9) / max(median, 1e-9))),
+        )
+        result.update(
+            local_median_level=median,
+            local_p10_level=p10,
+            local_p90_level=p90,
+            local_spread_db=spread_db,
+        )
+        if abs(median - expected) > ORIGINAL_LEVEL_TOLERANCE:
+            failures.append(
+                f"локальный median original={median:.5f}; нужен {expected:.5f}±{ORIGINAL_LEVEL_TOLERANCE:.3f}"
+            )
+        if spread_db > ORIGINAL_LOCAL_SPREAD_DB:
+            failures.append(
+                f"локальный разброс original={spread_db:.3f} dB > {ORIGINAL_LOCAL_SPREAD_DB:.2f} dB"
+            )
+
+    result["passed"] = not failures
+    return result
+
+
+def _project_original_contract(mixed_video: Path) -> dict[str, Any]:
+    output_dir = mixed_video.parent
+    if output_dir.name.casefold() != "output":
+        return {
+            "policy": ORIGINAL_BED_POLICY,
+            "applicable": False,
+            "passed": True,
+            "reason": "mixed MP4 находится вне стандартного project/output",
+            "failures": [],
+        }
+    root = output_dir.parent
+    request_path = root / "request.json"
+    source = root / "source" / "source.mp4"
+    failures: list[str] = []
+    if not request_path.is_file():
+        failures.append(f"не найден request.json: {request_path}")
+    if not source.is_file() or source.stat().st_size <= 0:
+        failures.append(f"не найден source/source.mp4: {source}")
+    expected: float | None = None
+    if not failures:
+        try:
+            request = json.loads(request_path.read_text(encoding="utf-8-sig"))
+            if not isinstance(request, dict):
+                raise RuntimeError("request.json не является объектом")
+            expected = _range(
+                request.get("original_level") if request.get("original_level") is not None else 0.18,
+                field="request.original_level",
+                limits=(0.0, 1.0),
+            )
+        except Exception as exc:
+            failures.append(f"request original_level: {exc}")
+    return {
+        "policy": ORIGINAL_BED_POLICY,
+        "applicable": True,
+        "passed": not failures,
+        "root": str(root),
+        "request_path": str(request_path),
+        "source_path": str(source),
+        "source": source,
+        "expected_original_level": expected,
+        "failures": failures,
+    }
+
+
+def verify_original_bed(
+    *,
+    source_duration: float,
+    mixed_video: Path,
+    russian_only_video: Path,
+) -> dict[str, Any]:
+    contract = _project_original_contract(mixed_video)
+    if not contract.get("applicable") or not contract.get("passed"):
+        return contract
+    source = Path(contract.pop("source"))
+    try:
+        source_audio = _decode_audio_mono(source, duration=source_duration)
+        mixed_audio = _decode_audio_mono(mixed_video, duration=source_duration)
+        russian_audio = _decode_audio_mono(russian_only_video, duration=source_duration)
+        measured = estimate_original_bed(
+            source_audio,
+            mixed_audio,
+            russian_audio,
+            expected_level=float(contract["expected_original_level"]),
+            sample_rate=ORIGINAL_BED_SAMPLE_RATE,
+        )
+    except Exception as exc:
+        contract["passed"] = False
+        contract.setdefault("failures", []).append(str(exc))
+        return contract
+    measured.update(
+        root=contract.get("root"),
+        request_path=contract.get("request_path"),
+        source_path=contract.get("source_path"),
+    )
+    return measured
+
+
 def _failure_summary(label: str, report: dict[str, Any]) -> str:
     return f"{label}: " + "; ".join(str(item) for item in report.get("failures") or ["неизвестная ошибка"])
 
@@ -319,12 +614,32 @@ def verify_final_outputs(
         target_lra=target_lra,
         target_tp=target_tp,
     )
+    if mixed.get("passed") and russian_only.get("passed"):
+        original_bed = verify_original_bed(
+            source_duration=source_duration,
+            mixed_video=mixed_video,
+            russian_only_video=russian_only_video,
+        )
+    else:
+        original_bed = {
+            "policy": ORIGINAL_BED_POLICY,
+            "applicable": False,
+            "passed": True,
+            "reason": "basic final-media QA failed before original-bed measurement",
+            "failures": [],
+        }
+    bed_passed = bool(
+        original_bed.get("passed")
+        if original_bed.get("applicable")
+        else True
+    )
     report = {
-        "schema_version": "dub-final-media-qa-v4",
-        "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128",
-        "passed": bool(mixed.get("passed") and russian_only.get("passed")),
+        "schema_version": "dub-final-media-qa-v5",
+        "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128 + post-AAC two-branch regression",
+        "passed": bool(mixed.get("passed") and russian_only.get("passed") and bed_passed),
         "mixed": mixed,
         "russian_only": russian_only,
+        "original_bed": original_bed,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -337,6 +652,8 @@ def verify_final_outputs(
             summaries.append(_failure_summary("mixed", mixed))
         if not russian_only.get("passed"):
             summaries.append(_failure_summary("russian-only", russian_only))
+        if original_bed.get("applicable") and not original_bed.get("passed"):
+            summaries.append(_failure_summary("original-bed", original_bed))
         raise RuntimeError(
             "Конечный media-QA не принят. "
             + " | ".join(summaries)
@@ -352,12 +669,18 @@ __all__ = [
     "EXPECTED_CODEC",
     "EXPECTED_SAMPLE_RATE",
     "LOUDNESS_TOLERANCE_LU",
+    "ORIGINAL_BED_POLICY",
+    "ORIGINAL_BED_SAMPLE_RATE",
+    "ORIGINAL_LEVEL_TOLERANCE",
+    "ORIGINAL_LOCAL_SPREAD_DB",
     "TARGET_I_RANGE",
     "TARGET_LRA_RANGE",
     "TARGET_TP_RANGE",
     "TRUE_PEAK_DELIVERY_CEILING_DBTP",
+    "estimate_original_bed",
     "measure_loudness",
     "probe_media",
     "verify_final_file",
     "verify_final_outputs",
+    "verify_original_bed",
 ]
