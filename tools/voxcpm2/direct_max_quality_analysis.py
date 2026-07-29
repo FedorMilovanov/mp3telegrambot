@@ -24,23 +24,39 @@ def _mono(samples: np.ndarray) -> np.ndarray:
     return audio.reshape(-1)
 
 
-def frame_levels(samples: np.ndarray, sample_rate: int, *, frame_ms: float = 20.0, hop_ms: float = 10.0) -> tuple[np.ndarray, np.ndarray]:
+def frame_levels(
+    samples: np.ndarray,
+    sample_rate: int,
+    *,
+    frame_ms: float = 20.0,
+    hop_ms: float = 10.0,
+) -> tuple[np.ndarray, np.ndarray]:
     audio = _mono(samples)
     frame = max(1, int(sample_rate * frame_ms / 1000.0))
     hop = max(1, int(sample_rate * hop_ms / 1000.0))
     levels: list[float] = []
     centers: list[float] = []
     for start in range(0, max(1, len(audio) - frame + 1), hop):
-        chunk = audio[start:start + frame]
+        chunk = audio[start : start + frame]
         if len(chunk) < frame:
             break
-        rms = float(np.sqrt(np.mean(np.square(chunk.astype(np.float64))) + 1e-12))
+        rms = float(
+            np.sqrt(np.mean(np.square(chunk.astype(np.float64))) + 1e-12)
+        )
         levels.append(20.0 * math.log10(max(rms, 1e-9)))
         centers.append((start + frame / 2) / sample_rate)
-    return np.asarray(levels, dtype=np.float64), np.asarray(centers, dtype=np.float64)
+    return (
+        np.asarray(levels, dtype=np.float64),
+        np.asarray(centers, dtype=np.float64),
+    )
 
 
-def edge_silence(samples: np.ndarray, sample_rate: int, *, threshold_db: float = -52.0) -> tuple[float, float]:
+def edge_silence(
+    samples: np.ndarray,
+    sample_rate: int,
+    *,
+    threshold_db: float = -52.0,
+) -> tuple[float, float]:
     levels, _ = frame_levels(samples, sample_rate)
     if not len(levels):
         return 0.0, 0.0
@@ -63,7 +79,12 @@ def activity_stats(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
     audio = _mono(samples)
     levels, _ = frame_levels(audio, sample_rate)
     if not len(levels):
-        return {"active_ratio": 0.0, "max_internal_gap": 99.0, "rms_dbfs": -120.0, "peak_dbfs": -120.0}
+        return {
+            "active_ratio": 0.0,
+            "max_internal_gap": 99.0,
+            "rms_dbfs": -120.0,
+            "peak_dbfs": -120.0,
+        }
     peak_level = float(np.percentile(levels, 95))
     threshold = max(-48.0, peak_level - 28.0)
     active = levels >= threshold
@@ -71,13 +92,15 @@ def activity_stats(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
     max_gap = 0.0
     if len(ids) > 1:
         run = 0
-        for value in active[ids[0]:ids[-1] + 1]:
+        for value in active[ids[0] : ids[-1] + 1]:
             if value:
                 max_gap = max(max_gap, run * 0.01)
                 run = 0
             else:
                 run += 1
-    rms = math.sqrt(float(np.mean(np.square(audio.astype(np.float64)))) + 1e-12)
+    rms = math.sqrt(
+        float(np.mean(np.square(audio.astype(np.float64)))) + 1e-12
+    )
     peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
     return {
         "active_ratio": float(np.mean(active)),
@@ -87,20 +110,23 @@ def activity_stats(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
     }
 
 
-def _pitch_analysis_audio(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, int]:
-    """Return a cheap diagnostic copy without touching the native 48 kHz WAV.
-
-    Human F0 is below 300 Hz, so autocorrelation does not need the 48 kHz decoder
-    rate. VoxCPM2's 48 kHz output is reduced to approximately 16 kHz by block
-    averaging only for pitch analysis. The selected audio remains untouched.
-    """
+def _pitch_analysis_audio(
+    samples: np.ndarray,
+    sample_rate: int,
+) -> tuple[np.ndarray, int]:
+    """Return a cheap diagnostic copy without touching the native 48 kHz WAV."""
     audio = _mono(samples)
     rate = max(1, int(sample_rate))
     if rate > 20_000:
         factor = max(1, int(round(rate / EXPECTED_ENCODE_SR)))
         usable = len(audio) - (len(audio) % factor)
         if factor > 1 and usable >= factor * 320:
-            audio = audio[:usable].reshape(-1, factor).mean(axis=1).astype(np.float32)
+            audio = (
+                audio[:usable]
+                .reshape(-1, factor)
+                .mean(axis=1)
+                .astype(np.float32)
+            )
             rate = int(round(rate / factor))
     return audio, rate
 
@@ -112,26 +138,39 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
     if len(audio) < frame:
         return {"voiced_ratio": 0.0, "f0_median": 0.0, "f0_p90": 0.0}
     starts = list(range(0, len(audio) - frame + 1, hop))
-    rms = np.asarray([
-        np.sqrt(np.mean(np.square(audio[start:start + frame].astype(np.float64))) + 1e-12)
-        for start in starts
-    ], dtype=np.float64)
-    # Use a permissive activity floor. Multiplying a stable signal's own RMS by
-    # a factor greater than one classifies every frame as unvoiced.
-    threshold = max(float(np.percentile(rms, 35)) * 0.50, 10 ** (-45 / 20))
+    rms = np.asarray(
+        [
+            np.sqrt(
+                np.mean(
+                    np.square(
+                        audio[start : start + frame].astype(np.float64)
+                    )
+                )
+                + 1e-12
+            )
+            for start in starts
+        ],
+        dtype=np.float64,
+    )
+    threshold = max(
+        float(np.percentile(rms, 35)) * 0.50,
+        10 ** (-45 / 20),
+    )
     lag_lo = max(2, int(sample_rate / 300))
     lag_hi = min(frame - 3, int(sample_rate / 65))
     values: list[float] = []
     for index, start in enumerate(starts):
         if rms[index] < threshold:
             continue
-        chunk = audio[start:start + frame].astype(np.float64)
+        chunk = audio[start : start + frame].astype(np.float64)
         chunk -= chunk.mean()
         chunk *= np.hanning(frame)
-        autocorrelation = np.correlate(chunk, chunk, "full")[frame - 1:]
+        autocorrelation = np.correlate(chunk, chunk, "full")[frame - 1 :]
         if autocorrelation[0] <= 1e-9:
             continue
-        lag = lag_lo + int(np.argmax(autocorrelation[lag_lo:lag_hi + 1]))
+        lag = lag_lo + int(
+            np.argmax(autocorrelation[lag_lo : lag_hi + 1])
+        )
         if autocorrelation[lag] / autocorrelation[0] >= 0.30:
             values.append(sample_rate / lag)
     if not values:
@@ -148,7 +187,10 @@ def clipping_ratio(samples: np.ndarray) -> float:
     return float(np.mean(np.abs(_mono(samples)) >= 0.995))
 
 
-def detect_tail_restart(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
+def detect_tail_restart(
+    samples: np.ndarray,
+    sample_rate: int,
+) -> dict[str, Any]:
     levels, centers = frame_levels(samples, sample_rate)
     duration = len(_mono(samples)) / sample_rate
     if len(levels) < 20:
@@ -173,10 +215,16 @@ def detect_tail_restart(samples: np.ndarray, sample_rate: int) -> dict[str, Any]
                     resume_start = float(centers[start_index] - 0.01)
                     resume_end = float(centers[end_index] + 0.01)
                     resumed_duration = resume_end - resume_start
-                    if resume_start > duration * 0.62 and resumed_duration <= 1.60:
+                    if (
+                        resume_start > duration * 0.62
+                        and resumed_duration <= 1.60
+                    ):
                         return {
                             "suspicious": True,
-                            "silence_start": max(0.0, float(centers[run_start] - 0.01)),
+                            "silence_start": max(
+                                0.0,
+                                float(centers[run_start] - 0.01),
+                            ),
                             "resume_start": max(0.0, resume_start),
                             "resume_end": min(duration, resume_end),
                             "resumed_duration": resumed_duration,
@@ -185,7 +233,11 @@ def detect_tail_restart(samples: np.ndarray, sample_rate: int) -> dict[str, Any]
     return {"suspicious": False}
 
 
-def clean_tail_restart(samples: np.ndarray, sample_rate: int, info: dict[str, Any]) -> tuple[np.ndarray, bool, float | None]:
+def clean_tail_restart(
+    samples: np.ndarray,
+    sample_rate: int,
+    info: dict[str, Any],
+) -> tuple[np.ndarray, bool, float | None]:
     if not info.get("suspicious"):
         return _mono(samples), False, None
     trim_time = float(info["silence_start"]) + 0.03
@@ -193,11 +245,19 @@ def clean_tail_restart(samples: np.ndarray, sample_rate: int, info: dict[str, An
     cleaned = _mono(samples)[:trim_sample].copy()
     fade = min(len(cleaned), max(1, int(0.018 * sample_rate)))
     if fade > 1:
-        cleaned[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+        cleaned[-fade:] *= np.linspace(
+            1.0,
+            0.0,
+            fade,
+            dtype=np.float32,
+        )
     return cleaned, True, trim_time
 
 
-def _trim_reference_edges(samples: np.ndarray, sample_rate: int) -> np.ndarray:
+def _trim_reference_edges(
+    samples: np.ndarray,
+    sample_rate: int,
+) -> np.ndarray:
     audio = _mono(samples)
     levels, _ = frame_levels(audio, sample_rate)
     if not len(levels):
@@ -207,50 +267,132 @@ def _trim_reference_edges(samples: np.ndarray, sample_rate: int) -> np.ndarray:
     active = np.flatnonzero(levels >= threshold)
     if not len(active):
         return audio
-    start = max(0, int((active[0] * 0.01 - 0.05) * sample_rate))
-    end = min(len(audio), int((active[-1] * 0.01 + 0.08) * sample_rate))
+    start = max(
+        0,
+        int((active[0] * 0.01 - 0.05) * sample_rate),
+    )
+    end = min(
+        len(audio),
+        int((active[-1] * 0.01 + 0.08) * sample_rate),
+    )
     return audio[start:end].copy()
 
 
-def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
+def _read_reference_transport(
+    source: Path,
+    converted: Path,
+    sf_module: Any,
+) -> tuple[np.ndarray, int, str]:
+    """Use prepared mono-16k WAV directly; otherwise only resample/downmix."""
+    try:
+        info = sf_module.info(str(source))
+        native = (
+            int(info.samplerate) == EXPECTED_ENCODE_SR
+            and int(info.channels) == 1
+        )
+    except Exception:
+        native = False
+    if native:
+        samples, sample_rate = sf_module.read(
+            str(source),
+            dtype="float32",
+        )
+        return np.asarray(samples, dtype=np.float32), int(sample_rate), "native-mono-16k"
+
+    run_checked(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            str(EXPECTED_ENCODE_SR),
+            "-c:a",
+            "pcm_s24le",
+            str(converted),
+        ]
+    )
+    samples, sample_rate = sf_module.read(
+        str(converted),
+        dtype="float32",
+    )
+    converted.unlink(missing_ok=True)
+    return np.asarray(samples, dtype=np.float32), int(sample_rate), "resample-mono-only"
+
+
+def prepare_reference(
+    source: Path,
+    output: Path,
+    sf_module: Any,
+) -> dict[str, Any]:
     output.parent.mkdir(parents=True, exist_ok=True)
     converted = output.with_suffix(".decoded.wav")
-    run_checked([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
-        "-vn", "-ac", "1", "-ar", str(EXPECTED_ENCODE_SR),
-        "-af", "highpass=f=45,lowpass=f=7600", "-c:a", "pcm_s24le", str(converted),
-    ])
-    samples, sample_rate = sf_module.read(str(converted), dtype="float32")
-    sample_rate = int(sample_rate)
+    samples, sample_rate, transport = _read_reference_transport(
+        source,
+        converted,
+        sf_module,
+    )
     audio = _trim_reference_edges(samples, sample_rate)
-    if len(audio) < sample_rate * 4:
-        raise RuntimeError(f"Voice reference слишком короткий после очистки: {source}")
+    duration = len(audio) / max(1, sample_rate)
+    if duration < 5.0:
+        raise RuntimeError(
+            f"Voice reference короче 5 секунд после очистки: {source}"
+        )
+    if duration > 30.0:
+        raise RuntimeError(
+            f"Voice reference длиннее 30 секунд после очистки: {source}"
+        )
     fade = min(int(sample_rate * 0.025), len(audio) // 8)
     if fade > 1:
         ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
         audio[:fade] *= ramp
         audio[-fade:] *= ramp[::-1]
-    tail = np.zeros(int(sample_rate * REFERENCE_TAIL_SILENCE), dtype=np.float32)
-    audio = np.concatenate([audio, tail])
-    sf_module.write(str(output), audio, sample_rate, subtype="PCM_24")
-    converted.unlink(missing_ok=True)
+    if REFERENCE_TAIL_SILENCE > 0.0:
+        tail = np.zeros(
+            int(sample_rate * REFERENCE_TAIL_SILENCE),
+            dtype=np.float32,
+        )
+        audio = np.concatenate([audio, tail])
+    sf_module.write(
+        str(output),
+        audio,
+        sample_rate,
+        subtype="PCM_24",
+    )
     return {
         "path": str(output),
         "sha256": sha256_file(output),
         "sample_rate": sample_rate,
         "duration": len(audio) / sample_rate,
+        "transport": transport,
+        "spectral_filter": False,
+        "denoise": False,
         **pitch_profile(audio, sample_rate),
         **activity_stats(audio, sample_rate),
     }
 
 
-def _ratio(value: float, reference: float, default: float = 1.0) -> float:
+def _ratio(
+    value: float,
+    reference: float,
+    default: float = 1.0,
+) -> float:
     if value <= 0 or reference <= 0:
         return default
     return value / reference
 
 
-def candidate_score(candidate: dict[str, Any], speech_slot: float, reference_voice: dict[str, Any]) -> float:
+def candidate_score(
+    candidate: dict[str, Any],
+    speech_slot: float,
+    reference_voice: dict[str, Any],
+) -> float:
     duration = float(candidate["duration"])
     ratio = duration / max(0.1, speech_slot)
     score = 0.0
@@ -272,18 +414,33 @@ def candidate_score(candidate: dict[str, Any], speech_slot: float, reference_voi
     if float(activity["active_ratio"]) < 0.22:
         score += (0.22 - float(activity["active_ratio"])) * 360.0
     if float(activity["max_internal_gap"]) > 0.68:
-        score += (float(activity["max_internal_gap"]) - 0.68) * 100.0
+        score += (
+            float(activity["max_internal_gap"]) - 0.68
+        ) * 100.0
     if float(pitch["voiced_ratio"]) < 0.18:
-        score += 120.0 + (0.18 - float(pitch["voiced_ratio"])) * 500.0
-    median_ratio = _ratio(float(pitch["f0_median"]), float(reference_voice.get("f0_median") or 0.0))
-    p90_ratio = _ratio(float(pitch["f0_p90"]), float(reference_voice.get("f0_p90") or 0.0))
+        score += (
+            120.0
+            + (0.18 - float(pitch["voiced_ratio"])) * 500.0
+        )
+    median_ratio = _ratio(
+        float(pitch["f0_median"]),
+        float(reference_voice.get("f0_median") or 0.0),
+    )
+    p90_ratio = _ratio(
+        float(pitch["f0_p90"]),
+        float(reference_voice.get("f0_p90") or 0.0),
+    )
     candidate["voice_match"] = {
         "f0_median_ratio": median_ratio,
         "f0_p90_ratio": p90_ratio,
         "voiced_ratio": float(pitch["voiced_ratio"]),
     }
-    score += abs(math.log2(max(0.20, min(5.0, median_ratio)))) * 28.0
-    score += abs(math.log2(max(0.20, min(5.0, p90_ratio)))) * 16.0
+    score += abs(
+        math.log2(max(0.20, min(5.0, median_ratio)))
+    ) * 28.0
+    score += abs(
+        math.log2(max(0.20, min(5.0, p90_ratio)))
+    ) * 16.0
     if median_ratio < 0.68 or median_ratio > 1.38:
         score += 85.0
     if p90_ratio < 0.62 or p90_ratio > 1.45:
@@ -292,7 +449,10 @@ def candidate_score(candidate: dict[str, Any], speech_slot: float, reference_voi
     return score
 
 
-def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
+def candidate_hard_ok(
+    candidate: dict[str, Any],
+    speech_slot: float,
+) -> bool:
     duration_ratio = float(candidate["duration"]) / max(0.1, speech_slot)
     voice = candidate.get("voice_match") or {}
     return bool(
@@ -301,6 +461,10 @@ def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
         and float(candidate["clipping_ratio"]) <= 0.0015
         and float(candidate["activity"]["active_ratio"]) >= 0.16
         and float(candidate["pitch"]["voiced_ratio"]) >= 0.12
-        and 0.55 <= float(voice.get("f0_median_ratio", 1.0)) <= 1.65
-        and 0.50 <= float(voice.get("f0_p90_ratio", 1.0)) <= 1.75
+        and 0.55
+        <= float(voice.get("f0_median_ratio", 1.0))
+        <= 1.65
+        and 0.50
+        <= float(voice.get("f0_p90_ratio", 1.0))
+        <= 1.75
     )
