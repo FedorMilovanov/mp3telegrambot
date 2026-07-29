@@ -64,6 +64,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "core": voxcpm / "clean_production_core.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "expression": voxcpm / "expressive_continuity.py",
+        "reference_gate": voxcpm / "controlled_reference_gate.py",
         "translation": voxcpm / "expressive_translation.py",
         "reference": voxcpm / "professional_audio_v45.py",
         "qa": voxcpm / "professional_audio_qa_v45.py",
@@ -91,6 +92,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     renderer_text = "\n".join(
         text[name] for name in ("io", "analysis", "timbre", "render", "cli", "stable_cli")
     )
+    route_names = ("gemini", "direct", "custom", "repair")
     contracts = {
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
@@ -111,6 +113,18 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "voiced_ratio" in text["analysis"]
             and "spectral_similarity" in text["analysis"]
             and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
+        ),
+        "transactional-reference-identity": (
+            "MIN_REFERENCE_SECONDS = 5.0" in text["reference_gate"]
+            and "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in text["reference_gate"]
+            and "def _restore(" in text["reference_gate"]
+            and "identity_spectral_similarity" in text["reference_gate"]
+            and all(
+                "controlled_reference_gate.build_or_keep_calm" in text[name]
+                and "identity_reference=extended" in text[name]
+                and "expressive_continuity.build_controlled_expressive_reference(" not in text[name]
+                for name in route_names
+            )
         ),
         "natural-timing": (
             "MAX_TEMPO = 1.35" in text["io"]
@@ -138,6 +152,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             "runpy.run_path" not in renderer_text
             and "class _SubprocessProxy" not in renderer_text
             and "semantic_tts_guard" not in renderer_text
+            and "controlled_reference_gate" not in renderer_text
             and '"wrapper_count": 0' in text["core"]
         ),
         "expression": (
@@ -239,8 +254,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
             quality_ok,
             quality_detail
             + "; direct v3 16→48k; fingerprints; retry_badcase; F0/voiced+timbre; "
-            "QA v3 auto+forced-RU with foreign block; final AAC BS.1770; editable progress; "
-            "worker v4.4; -16 LUFS/-1.5 dBTP",
+            "transactional expressive+identity gate; QA v3 auto+forced-RU with foreign block; "
+            "final AAC BS.1770; editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
         )
     )
 
