@@ -6,7 +6,8 @@ on:
     paths:
       - "bot_new.py"
       - "services/dub_title_policy.py"
-      - "services/dub_progress_updates.py"
+      - "services/dub_studio_runtime.py"
+      - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
       - "tools/voxcpm2/professional_audio_v45.py"
       - "tools/voxcpm2/professional_audio_qa_v45.py"
@@ -19,7 +20,7 @@ on:
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_expression_aware_voice_qa.py"
       - "tests/test_dub_title_policy.py"
-      - "tests/test_dub_progress_updates.py"
+      - "tests/test_dub_runtime_progress.py"
       - "tests/test_expressive_dub_policy.py"
       - "tests/test_clean_dub_production.py"
       - "tests/test_clean_dub_health_contract.py"
@@ -46,7 +47,8 @@ jobs:
           python -m py_compile \
             bot_new.py \
             services/dub_title_policy.py \
-            services/dub_progress_updates.py \
+            services/dub_studio_runtime.py \
+            tools/voxcpm2/dub_worker_hardened.py \
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_max_quality_analysis.py \
             tools/voxcpm2/direct_max_quality_render.py \
@@ -67,7 +69,7 @@ jobs:
             tests/test_direct_max_quality_renderer.py \
             tests/test_expression_aware_voice_qa.py \
             tests/test_dub_title_policy.py \
-            tests/test_dub_progress_updates.py \
+            tests/test_dub_runtime_progress.py \
             tests/test_expressive_dub_policy.py \
             tests/test_clean_dub_production.py \
             tests/test_clean_dub_health_contract.py
