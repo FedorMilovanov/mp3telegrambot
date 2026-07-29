@@ -75,7 +75,7 @@ def source_prosody_penalty(
     target_p90 = _positive(target.get("f0_p90"), low=60.0, high=420.0)
     target_active = _positive(target.get("active_ratio"), low=0.05, high=1.0)
     target_gap = _positive(target.get("max_internal_gap"), low=0.0, high=6.0)
-    candidate_voiced = _positive(pitch.get("voiced_ratio"), low=0.0, high=1.0)
+    candidate_voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
     candidate_median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
     candidate_p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
     candidate_active = _positive(activity.get("active_ratio"), low=0.0, high=1.0)
