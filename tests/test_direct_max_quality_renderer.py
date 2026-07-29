@@ -170,9 +170,11 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     combined = render + cli + analysis + timbre + io + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
+    assert "alimiter=limit=0.985:level=false:latency=true" in render
     assert '"reference_sha256"' in cli
     assert '"model_config_sha256"' in cli
     assert "candidate_hard_ok" in cli
+    assert "candidate_hard_ok(best_so_far, speech_slot)" in cli
     assert "F0×=" in cli
     assert "spectral_similarity" in analysis
     assert "AudioVAE:" in cli
