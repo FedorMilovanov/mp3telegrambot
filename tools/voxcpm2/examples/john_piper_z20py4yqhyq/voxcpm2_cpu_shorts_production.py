@@ -21,7 +21,46 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.voxcpm2 import clean_runtime_contract
-from tools.voxcpm2.direct_max_quality_cli import main
+from tools.voxcpm2 import direct_max_quality_cli as _direct_cli
+
+# 1.35 remains the preferred natural-speech ceiling. A candidate above it must
+# trigger the third synthesis attempt instead of being accepted merely because
+# its acoustic score is good. A tiny hard margin up to 1.36 prevents a complete
+# multi-hour job from failing on an inaudible 0.008 boundary overshoot such as
+# atempo=1.358, while anything materially faster still fails closed.
+PREFERRED_MAX_TEMPO = 1.35
+HARD_MAX_TEMPO = 1.36
+_ORIGINAL_CANDIDATE_SCORE = _direct_cli.candidate_score
+
+
+def _tempo_policy_penalty(duration: float, speech_slot: float) -> float:
+    ratio = float(duration) / max(0.1, float(speech_slot))
+    if ratio <= PREFERRED_MAX_TEMPO:
+        return 0.0
+    return 90.0 + (ratio - PREFERRED_MAX_TEMPO) * 400.0
+
+
+def _fit_aware_candidate_score(
+    candidate: dict[str, Any],
+    speech_slot: float,
+    reference_voice: dict[str, Any],
+) -> float:
+    base = float(_ORIGINAL_CANDIDATE_SCORE(candidate, speech_slot, reference_voice))
+    penalty = _tempo_policy_penalty(
+        float(candidate.get("duration") or 0.0),
+        float(speech_slot),
+    )
+    candidate["tempo_preference_penalty"] = float(penalty)
+    candidate["required_tempo_estimate"] = float(candidate.get("duration") or 0.0) / max(
+        0.1,
+        float(speech_slot),
+    )
+    return base + penalty
+
+
+_direct_cli.candidate_score = _fit_aware_candidate_score
+_direct_cli.MAX_TEMPO = HARD_MAX_TEMPO
+main = _direct_cli.main
 
 MARKER_POLICY = "direct-cli-runtime-marker-v1"
 _FAILURE_JSON = "direct_renderer_failure.json"
