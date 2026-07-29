@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -108,6 +109,7 @@ def two_pass_master(
         capture=True,
     )
     measured = parse_loudnorm(first.stderr or "")
+    limiter_linear = 10.0 ** (float(target_tp) / 20.0)
 
     second_filter = (
         f"loudnorm=I={target_i}:LRA={target_lra}:TP={target_tp}:"
@@ -118,7 +120,7 @@ def two_pass_master(
         f"offset={measured['target_offset']}:"
         "linear=true:print_format=summary,"
         "aresample=48000,"
-        "alimiter=limit=0.985"
+        f"alimiter=limit={limiter_linear:.8f}"
     )
     run(
         [
@@ -144,6 +146,7 @@ def two_pass_master(
         "target_i": target_i,
         "target_lra": target_lra,
         "target_tp": target_tp,
+        "limiter_linear": limiter_linear,
         "first_pass": measured,
         "filter": second_filter,
     }
