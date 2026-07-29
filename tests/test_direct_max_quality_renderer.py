@@ -20,7 +20,6 @@ from tools.voxcpm2.direct_max_quality_io import (
 )
 from tools.voxcpm2.direct_max_quality_render import _generate
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = (
     ROOT
@@ -32,7 +31,15 @@ EXAMPLE = (
 )
 
 
-def _candidate(*, duration: float, voiced: float, median: float, p90: float, active: float, gap: float) -> dict:
+def _candidate(
+    *,
+    duration: float,
+    voiced: float,
+    median: float,
+    p90: float,
+    active: float,
+    gap: float,
+) -> dict:
     return {
         "attempt": 1,
         "duration": duration,
@@ -47,7 +54,7 @@ def _candidate(*, duration: float, voiced: float, median: float, p90: float, act
 
 
 def test_renderer_audio_contract_is_native_voxcpm2() -> None:
-    assert POLICY == "voxcpm2-direct-max-quality-v2"
+    assert POLICY == "voxcpm2-direct-max-quality-v3"
     assert EXPECTED_ENCODE_SR == 16000
     assert EXPECTED_OUTPUT_SR == 48000
     assert REFERENCE_TAIL_SILENCE == 0.0
@@ -103,6 +110,7 @@ def test_bad_candidate_diagnostics_are_actionable() -> None:
     candidate["voice_match"] = {
         "f0_median_ratio": 1.95,
         "f0_p90_ratio": 1.59,
+        "spectral_similarity": 0.22,
     }
     summary = _candidate_failure_summary([candidate], 3.6)
     assert "attempt 1" in summary
@@ -155,16 +163,18 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     render = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py").read_text(encoding="utf-8")
     cli = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(encoding="utf-8")
     analysis = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_analysis.py").read_text(encoding="utf-8")
+    timbre = (ROOT / "tools" / "voxcpm2" / "direct_timbre_analysis.py").read_text(encoding="utf-8")
     io = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_io.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
     ast.parse(cli)
-    combined = render + cli + analysis + io + stable
+    combined = render + cli + analysis + timbre + io + stable
     assert '"retry_badcase": True' in render
     assert '"retry_badcase_max_times": 2' in render
     assert '"reference_sha256"' in cli
     assert '"model_config_sha256"' in cli
     assert "candidate_hard_ok" in cli
     assert "F0×=" in cli
+    assert "spectral_similarity" in analysis
     assert "AudioVAE:" in cli
     assert "Best-of-bad candidates are forbidden" in cli
     assert "if not acceptable:" in cli
