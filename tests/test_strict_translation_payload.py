@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.voxcpm2 import expressive_translation
 from tools.voxcpm2 import strict_translation_payload as strict
 
 
@@ -69,3 +70,36 @@ def test_clean_translation_routes_use_strict_validator() -> None:
     assert "strict_translation_payload.validate_full(value, groups)" in expressive
     assert "strict_translation_payload.validate_subset(" in expressive
     assert "production._validate_translation_payload = strict_translation_payload.validate_full" in custom
+
+
+def test_expressive_prompts_do_not_assume_english_source(monkeypatch) -> None:
+    calls: list[str] = []
+    groups = [
+        {
+            "id": 1,
+            "start": 0.0,
+            "end": 10.0,
+            "english": "Sie lacht über die kommende Zeit.",
+        }
+    ]
+
+    def fake_gemini(prompt: str, _model_name: str):
+        calls.append(prompt)
+        return {"segments": [{"id": 1, "russian": "Она смеётся над грядущим."}]}
+
+    monkeypatch.setattr(expressive_translation, "_gemini", fake_gemini)
+    monkeypatch.setattr(expressive_translation.pipeline, "log", lambda _line: None)
+    result = expressive_translation.translate_groups(
+        groups,
+        metadata={"title": "Die starke Frau", "language": "de"},
+        caption_origin="creator",
+        model_name="gemini-3.6-flash",
+    )
+
+    assert result == [{"id": 1, "russian": "Она смеётся над грядущим."}]
+    assert len(calls) == 3
+    combined = "\n".join(calls)
+    assert '"source_language": "de"' in combined
+    assert "англоязычной" not in combined.casefold()
+    assert "английской речью" not in combined.casefold()
+    assert "с исходного языка на русский" in combined
