@@ -72,11 +72,7 @@ def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Pa
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
-    monkeypatch.setattr(
-        final_media_qa,
-        "measure_loudness",
-        lambda _path, **_kwargs: _loudness(),
-    )
+    monkeypatch.setattr(final_media_qa, "measure_loudness", lambda _path, **_kwargs: _loudness())
     report = final_media_qa.verify_final_file(
         output,
         source_duration=59.0,
@@ -160,13 +156,116 @@ def test_final_media_qa_rejects_audio_video_start_desync(monkeypatch, tmp_path: 
     assert any("A/V start delta" in item for item in report["failures"])
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_duration", float("nan")),
+        ("source_duration", float("inf")),
+        ("target_i", float("nan")),
+        ("target_lra", float("inf")),
+        ("target_tp", float("-inf")),
+    ],
+)
+def test_nonfinite_release_contract_fails_before_media_probe(
+    monkeypatch,
+    tmp_path: Path,
+    field: str,
+    value: float,
+) -> None:
+    output = tmp_path / "result.mp4"
+    output.write_bytes(b"not-empty")
+    called = False
+
+    def probe(_path: Path):
+        nonlocal called
+        called = True
+        return _media()
+
+    monkeypatch.setattr(final_media_qa, "probe_media", probe)
+    kwargs = {
+        "source_duration": 59.0,
+        "target_i": -16.0,
+        "target_lra": 8.0,
+        "target_tp": -1.5,
+    }
+    kwargs[field] = value
+    report = final_media_qa.verify_final_file(output, **kwargs)
+    assert report["passed"] is False
+    assert called is False
+    assert any("contract:" in item for item in report["failures"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_duration", 0.0),
+        ("target_i", -71.0),
+        ("target_i", -4.0),
+        ("target_lra", 0.0),
+        ("target_lra", 51.0),
+        ("target_tp", -10.0),
+        ("target_tp", 0.1),
+    ],
+)
+def test_out_of_range_release_contract_is_rejected(
+    tmp_path: Path,
+    field: str,
+    value: float,
+) -> None:
+    output = tmp_path / "result.mp4"
+    output.write_bytes(b"not-empty")
+    kwargs = {
+        "source_duration": 59.0,
+        "target_i": -16.0,
+        "target_lra": 8.0,
+        "target_tp": -1.5,
+    }
+    kwargs[field] = value
+    report = final_media_qa.verify_final_file(output, **kwargs)
+    assert report["passed"] is False
+    assert any("contract:" in item for item in report["failures"])
+
+
+def test_invalid_contract_report_is_strict_json(monkeypatch, tmp_path: Path) -> None:
+    mixed = tmp_path / "mixed.mp4"
+    russian = tmp_path / "russian.mp4"
+    mixed.write_bytes(b"not-empty")
+    russian.write_bytes(b"not-empty")
+    report_path = tmp_path / "final_media_verification.json"
+    with pytest.raises(RuntimeError, match="Отчёт сохранён"):
+        final_media_qa.verify_final_outputs(
+            source_duration=float("nan"),
+            mixed_video=mixed,
+            russian_only_video=russian,
+            target_i=-16.0,
+            target_lra=8.0,
+            target_tp=-1.5,
+            report_path=report_path,
+        )
+    raw = report_path.read_text(encoding="utf-8")
+    assert "NaN" not in raw
+    payload = json.loads(raw)
+    assert payload["passed"] is False
+    assert payload["mixed"]["source_duration"] == "nan"
+
+
+def test_loudnorm_parser_ignores_noise_and_uses_last_object() -> None:
+    text = (
+        "prefix {not json}\n"
+        '{"input_i":"-20.0","input_tp":"-2.0","input_lra":"3.0","input_thresh":"-30.0"}\n'
+        "diagnostic\n"
+        '{"input_i":"-16.1","input_tp":"-1.2","input_lra":"4.0","input_thresh":"-26.0"}\n'
+    )
+    payload = final_media_qa._last_json_object(text)
+    assert payload["input_i"] == "-16.1"
+
+
 def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path: Path) -> None:
     mixed = tmp_path / "mixed.mp4"
     russian = tmp_path / "russian.mp4"
     mixed.write_bytes(b"not-empty")
     russian.write_bytes(b"not-empty")
     report_path = tmp_path / "final_media_verification.json"
-
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
 
     def measured(path: Path, **_kwargs):
@@ -186,7 +285,6 @@ def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path:
             target_tp=-1.5,
             report_path=report_path,
         )
-
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert payload["mixed"]["passed"] is False
