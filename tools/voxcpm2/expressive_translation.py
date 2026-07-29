@@ -17,6 +17,7 @@ from tools.voxcpm2 import generic_short_production as pipeline
 
 POLICY = "expressive-spoken-translation-v2"
 _MAX_WORDS_PER_SECOND = 3.05
+_PROGRESS_PREFIX = "DUB_PROGRESS "
 
 
 def _payload(groups: list[dict[str, Any]]) -> str:
@@ -29,6 +30,16 @@ def _validate(value: Any, groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _gemini(prompt: str, model_name: str) -> Any:
     return pipeline.gemini_json(prompt, model_name=model_name)
+
+
+def _progress(progress: int, stage: str, message: str) -> None:
+    payload = {
+        "progress": max(0, min(int(progress), 94)),
+        "stage": str(stage)[:160],
+        "message": str(message)[:500],
+    }
+    pipeline.log(_PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=False))
+    pipeline.log(message)
 
 
 def translate_groups(
@@ -79,7 +90,9 @@ def translate_groups(
 ИСХОДНАЯ РЕЧЬ:
 {source_json}
 """.strip()
+    _progress(14, "Gemini: перевод 1/3", "Gemini: начинаю черновой перевод 1/3.")
     draft = _validate(_gemini(draft_prompt, model_name), groups)
+    _progress(24, "Gemini: перевод 1/3 готов", "Gemini: черновой перевод 1/3 готов.")
 
     fidelity_prompt = f"""
 Ты — старший двуязычный редактор богословского дубляжа. Построчно сверь русский черновик с английской речью, одновременно читая соседние ID как единый контекст.
@@ -107,7 +120,9 @@ def translate_groups(
 ЧЕРНОВИК:
 {json.dumps(draft, ensure_ascii=False, indent=2)}
 """.strip()
+    _progress(27, "Gemini: сверка 2/3", "Gemini: начинаю смысловую сверку 2/3.")
     faithful = _validate(_gemini(fidelity_prompt, model_name), groups)
+    _progress(37, "Gemini: сверка 2/3 готова", "Gemini: смысловая сверка 2/3 готова.")
 
     performance_prompt = f"""
 Ты — режиссёр русской речевой записи и финальный литературный редактор. Сделай последнюю правку текста для живого мужского голоса, не меняя фактов и смысла.
@@ -131,7 +146,9 @@ def translate_groups(
 ПРОВЕРЕННЫЙ ПЕРЕВОД:
 {json.dumps(faithful, ensure_ascii=False, indent=2)}
 """.strip()
+    _progress(40, "Gemini: редактура 3/3", "Gemini: начинаю речевую редактуру 3/3.")
     final = _validate(_gemini(performance_prompt, model_name), groups)
+    _progress(50, "Gemini: редактура 3/3 готова", "Gemini: речевая редактура 3/3 готова.")
 
     overloaded: list[dict[str, Any]] = []
     for source, translated in zip(groups, final, strict=True):
@@ -170,6 +187,11 @@ def translate_groups(
 ПЕРЕГРУЖЕННЫЕ РЕПЛИКИ:
 {json.dumps(overloaded, ensure_ascii=False, indent=2)}
 """.strip()
+        _progress(
+            52,
+            "Gemini: произносимость",
+            f"Gemini: сокращаю {len(overloaded)} перегруженных реплик без потери смысла.",
+        )
         compact_payload = _gemini(compression_prompt, model_name)
         compact_list = (
             compact_payload.get("segments")
@@ -195,6 +217,9 @@ def translate_groups(
         for item in final:
             if int(item["id"]) in compact_by_id:
                 item["russian"] = compact_by_id[int(item["id"])]
+        _progress(56, "Gemini: произносимость готова", "Gemini: перегруженные реплики сокращены.")
+    else:
+        _progress(54, "Gemini: перевод готов", "Gemini: все три редакторских прохода завершены; сжатие не требуется.")
 
     return final
 
