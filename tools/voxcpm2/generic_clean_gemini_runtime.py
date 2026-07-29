@@ -16,6 +16,8 @@ from tools.voxcpm2 import expressive_translation
 from tools.voxcpm2 import generic_gemini_runtime as checked
 from tools.voxcpm2 import generic_project_runtime as production
 
+_BASE_ACQUIRE_TRANSCRIPT = production.acquire_transcript
+
 
 def _install_clean_runtime_adapters() -> None:
     """Keep hardened download/Gemini routing, but never install a TTS guard."""
@@ -30,6 +32,23 @@ def _install_clean_runtime_adapters() -> None:
         "clean adapters: verified yt-dlp source + Gemini pool; "
         "canonical title policy; TTS guard disabled"
     )
+
+
+def _acquire_transcript_with_actual_language(
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[list[Any], str, str]:
+    """Attach the selected caption/Whisper language to translation metadata."""
+    result = _BASE_ACQUIRE_TRANSCRIPT(*args, **kwargs)
+    cues, caption_origin, source_language = result
+    metadata = kwargs.get("metadata")
+    if metadata is None and len(args) >= 4:
+        metadata = args[3]
+    if isinstance(metadata, dict):
+        language = str(source_language or "unknown")
+        metadata["language"] = language
+        metadata["source_language"] = language
+    return cues, caption_origin, source_language
 
 
 def _run_clean_voxcpm_and_master(
@@ -81,6 +100,7 @@ def _run_clean_voxcpm_and_master(
 
 def main() -> None:
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
+    production.acquire_transcript = _acquire_transcript_with_actual_language
     production.pipeline.group_cues = clean.group_source_cues
     production.translate_groups_max = expressive_translation.translate_groups
     production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text
