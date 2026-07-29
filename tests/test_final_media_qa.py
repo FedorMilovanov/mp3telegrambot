@@ -20,14 +20,23 @@ MASTER = (
 )
 
 
-def _media(*, audio_duration: float = 59.04, container_duration: float = 59.04):
+def _media(
+    *,
+    audio_duration: float = 59.04,
+    container_duration: float = 59.04,
+    av_start_delta: float = 0.0,
+):
     return {
         "audio_codec_name": "aac",
         "audio_sample_rate": 48_000,
         "audio_channels": 2,
         "audio_bit_rate": 320_000,
         "audio_duration": audio_duration,
+        "audio_start_time": av_start_delta,
         "video_codec_name": "h264",
+        "video_start_time": 0.0,
+        "av_start_delta_seconds": abs(av_start_delta),
+        "container_start_time": 0.0,
         "container_duration": container_duration,
     }
 
@@ -78,6 +87,7 @@ def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Pa
     assert report["passed"] is True
     assert report["audio_duration_delta_seconds"] == pytest.approx(0.04)
     assert report["container_duration_delta_seconds"] == pytest.approx(0.04)
+    assert report["av_start_delta_seconds"] == 0.0
 
 
 def test_final_media_qa_reports_aac_true_peak_overshoot(monkeypatch, tmp_path: Path) -> None:
@@ -123,6 +133,31 @@ def test_final_media_qa_checks_audio_and_container_duration(monkeypatch, tmp_pat
     assert report["passed"] is False
     assert any("audio duration delta" in item for item in report["failures"])
     assert any("container duration delta" in item for item in report["failures"])
+
+
+def test_final_media_qa_rejects_audio_video_start_desync(monkeypatch, tmp_path: Path) -> None:
+    output = tmp_path / "result.mp4"
+    output.write_bytes(b"not-empty")
+    monkeypatch.setattr(
+        final_media_qa,
+        "probe_media",
+        lambda _path: _media(av_start_delta=0.081),
+    )
+    monkeypatch.setattr(
+        final_media_qa,
+        "measure_loudness",
+        lambda _path, **_kwargs: _loudness(integrated=-16.0),
+    )
+    report = final_media_qa.verify_final_file(
+        output,
+        source_duration=59.0,
+        target_i=-16.0,
+        target_lra=8.0,
+        target_tp=-1.5,
+    )
+    assert report["passed"] is False
+    assert report["av_start_delta_seconds"] == pytest.approx(0.081)
+    assert any("A/V start delta" in item for item in report["failures"])
 
 
 def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path: Path) -> None:
