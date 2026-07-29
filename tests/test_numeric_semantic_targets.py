@@ -29,6 +29,26 @@ def test_numeric_text_normalizes_percent_currency_and_decimal() -> None:
     )
 
 
+def test_decimal_money_is_one_exact_value_not_two_numbers() -> None:
+    assert numbers.normalize_numeric_text("Цена $5.50.") == (
+        "Цена пять долларов пятьдесят центов."
+    )
+    assert numbers.normalize_numeric_text("Цена 12,05 ₽.") == (
+        "Цена двенадцать рублей пять копеек."
+    )
+    groups = numbers.numeric_anchor_groups("Цена $5.50.")
+    assert groups == [["пять долларов пятьдесят центов"]]
+
+
+def test_decimal_percent_is_consumed_before_plain_decimal() -> None:
+    assert numbers.normalize_numeric_text("Рост 3,5%.") == (
+        "Рост три целых пять десятых процента."
+    )
+    groups = numbers.numeric_anchor_groups("Рост 3,5%.")
+    assert len(groups) == 1
+    assert "три с половиной процента" in groups[0]
+
+
 def test_date_is_consumed_before_decimal_normalization() -> None:
     assert numbers.normalize_numeric_text("Встреча 29.07.2026.") == (
         "Встреча двадцать девятого июля две тысячи двадцать шестого года."
@@ -61,6 +81,15 @@ def test_wrong_spoken_number_does_not_pass_despite_fuzzy_similarity() -> None:
     assert result["numeric_anchors_passed"] is False
     assert result["passed"] is False
     assert result["numeric_normalization_rescued"] is False
+
+
+def test_decimal_money_change_does_not_pass() -> None:
+    _spoken, result = qa._numeric_semantic_target(
+        "Цена $5.50.",
+        _auto("цена пять долларов пятнадцать центов"),
+    )
+    assert result["numeric_anchors_passed"] is False
+    assert result["passed"] is False
 
 
 def test_one_day_date_change_does_not_pass_high_string_similarity() -> None:
