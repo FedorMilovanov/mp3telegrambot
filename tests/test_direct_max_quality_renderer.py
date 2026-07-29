@@ -19,6 +19,7 @@ from tools.voxcpm2.direct_max_quality_io import (
     REFERENCE_TAIL_SILENCE,
 )
 from tools.voxcpm2.direct_max_quality_render import _generate
+from tools.voxcpm2.direct_source_prosody import candidate_pitch_evidence_ok
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = (
@@ -103,7 +104,9 @@ def test_nonsense_high_register_candidate_cannot_win() -> None:
     good_score = candidate_score(good, 3.6, reference)
     bad_score = candidate_score(bad, 3.6, reference)
     assert candidate_hard_ok(good, 3.6)
+    assert candidate_pitch_evidence_ok(good)
     assert not candidate_hard_ok(bad, 3.6)
+    assert not candidate_pitch_evidence_ok(bad)
     assert bad_score > good_score + 200
 
 
@@ -132,6 +135,7 @@ def test_partial_or_nonfinite_voice_match_cannot_pass_hard_gate() -> None:
         )
     )
     assert candidate_hard_ok(candidate, 3.6) is True
+    assert candidate_pitch_evidence_ok(candidate) is True
 
     candidate["voice_match"].pop("spectral_similarity")
     assert candidate_hard_ok(candidate, 3.6) is False
@@ -143,6 +147,21 @@ def test_partial_or_nonfinite_voice_match_cannot_pass_hard_gate() -> None:
     candidate["voice_match"]["f0_median_ratio"] = 1.0
     candidate["voice_match"]["f0_p90_ratio"] = float("inf")
     assert candidate_hard_ok(candidate, 3.6) is False
+
+
+def test_raw_pitch_floor_rejects_contradictory_candidate() -> None:
+    candidate = _complete_voice_match(
+        _candidate(
+            duration=3.5,
+            voiced=0.62,
+            median=180.0,
+            p90=90.0,
+            active=0.76,
+            gap=0.10,
+        )
+    )
+    assert candidate_hard_ok(candidate, 3.6) is True
+    assert candidate_pitch_evidence_ok(candidate) is False
 
 
 def test_nonfinite_candidate_core_metrics_cannot_pass_hard_gate() -> None:
@@ -187,6 +206,7 @@ def test_bad_candidate_diagnostics_are_actionable() -> None:
     assert "duration×=" in summary
     assert "voiced=0.070" in summary
     assert "F0×=1.950/1.590" in summary
+    assert "rawPitch=False" in summary
     assert "srcProsody=n/a" in summary
 
 
@@ -249,13 +269,18 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert '"model_config_sha256"' in cli
     assert '"expression": expression_signature' in cli
     assert "source_prosody_penalty(candidate, segment)" in cli
+    assert "candidate_pitch_evidence_ok(best_so_far)" in cli
+    assert "and candidate_pitch_evidence_ok(item)" in cli
+    assert '"selected_raw_pitch_evidence_ok": True' in cli
     assert '"selected_base_score"' in cli
     assert '"selected_source_prosody_match"' in cli
-    assert '"schema_version": "5.1-direct-source-prosody"' in cli
+    assert '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in cli
     assert 'POLICY = "source-prosody-candidate-ranking-v1"' in prosody
+    assert "def candidate_pitch_evidence_ok(" in prosody
     assert "candidate_hard_ok" in cli
     assert "candidate_hard_ok(best_so_far, speech_slot)" in cli
     assert "F0×=" in cli
+    assert "rawPitch=" in cli
     assert "srcF0×=" in cli
     assert "spectral_similarity" in analysis
     assert "_finite_voice_metric" in analysis
