@@ -122,7 +122,6 @@ def _heartbeat_versioned_worker(
         return
     progress = max(1, min(int(payload.get("progress") or 1), 99))
     stage = str(payload.get("stage") or "CPU-рендер")[:160]
-    elapsed = float(payload.get("elapsed_seconds") or 0.0)
     self.update_job_progress(
         job_id,
         progress=progress,
@@ -130,7 +129,7 @@ def _heartbeat_versioned_worker(
         message=(
             f"{stage}: CPU-процесс активен; прошло {_elapsed_label(elapsed)}. "
             "Процент обновится на следующем подтверждённом шаге модели."
-        ),
+        ) if (elapsed := float(payload.get("elapsed_seconds") or 0.0)) >= 0.0 else stage,
     )
     _LAST_JOB_PULSE[job_id] = now
 
@@ -150,14 +149,19 @@ def _update_progress_with_milestones(
 ) -> None:
     previous = 0
     project_id = ""
+    status = ""
     with self.connect() as conn:
         row = conn.execute(
-            "SELECT project_id, progress FROM dub_jobs WHERE id=?",
+            "SELECT project_id, progress, status FROM dub_jobs WHERE id=?",
             (int(job_id),),
         ).fetchone()
         if row is not None:
             previous = int(row["progress"] or 0)
             project_id = str(row["project_id"])
+            status = str(row["status"] or "").lower()
+    if status in _FINAL_JOB_STATES:
+        _LAST_JOB_PULSE.pop(int(job_id), None)
+        return
 
     _ORIGINAL_UPDATE_JOB_PROGRESS(
         self,
