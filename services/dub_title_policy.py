@@ -3,8 +3,9 @@
 
 Significant words use project Title Case. Russian conjunctions, particles and
 prepositions stay lowercase everywhere except at the beginning. The policy is
-also applied when old Dub Studio rows and manifest filenames are displayed, so
-historical projects do not need another render merely to fix typography.
+also applied when old Dub Studio rows, progress events and manifest filenames
+are displayed, so historical projects do not need another render merely to fix
+typography.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import re
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable
+from typing import Any
 
 from core.person_names import normalize_person_names
 
@@ -117,8 +118,6 @@ def canonical_media_title(value: Any) -> str:
             normalized = core
         elif len(core) >= 2 and core.isupper() and core.isalpha():
             normalized = core
-        elif len(core) == 2 and core[1] == "." and core[0].isalpha():
-            normalized = core[0].upper() + "."
         else:
             normalized = _capitalize(core.lower())
         result.append(prefix + normalized + suffix)
@@ -175,6 +174,27 @@ def _patch_dub_store() -> None:
     DubStore._row_project = wrapped
 
 
+def _patch_notifications() -> None:
+    try:
+        import services.dub_studio_runtime as runtime
+    except Exception:
+        return
+
+    original = runtime._undelivered_notification_events
+    if getattr(original, "_canonical_media_title", False):
+        return
+
+    def wrapped(store: Any, limit: int = 20) -> list[dict[str, Any]]:
+        events = original(store, limit=limit)
+        for event in events:
+            if event.get("project_title"):
+                event["project_title"] = canonical_media_title(event["project_title"])
+        return events
+
+    wrapped._canonical_media_title = True  # type: ignore[attr-defined]
+    runtime._undelivered_notification_events = wrapped
+
+
 def _patch_delivery() -> None:
     try:
         import handlers.dub_delivery as delivery
@@ -219,6 +239,7 @@ def install_dub_title_policy() -> None:
         if _INSTALLED:
             return
         _patch_dub_store()
+        _patch_notifications()
         _patch_delivery()
         _patch_livedub()
         _INSTALLED = True
