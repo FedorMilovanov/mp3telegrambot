@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,29 @@ def _write_wav(path: Path, *, seconds: float, value: float) -> None:
     sf.write(
         path,
         np.full(int(sample_rate * seconds), value, dtype=np.float32),
+        sample_rate,
+        subtype="PCM_24",
+    )
+
+
+def _write_voice_tone(
+    path: Path,
+    *,
+    seconds: float,
+    fundamental: float,
+    gain: float = 0.12,
+) -> None:
+    sample_rate = 16_000
+    time = np.arange(int(sample_rate * seconds), dtype=np.float64) / sample_rate
+    signal = (
+        np.sin(2.0 * math.pi * fundamental * time)
+        + 0.45 * np.sin(2.0 * math.pi * fundamental * 2.0 * time)
+        + 0.20 * np.sin(2.0 * math.pi * fundamental * 3.0 * time)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(
+        path,
+        (signal * gain).astype(np.float32),
         sample_rate,
         subtype="PCM_24",
     )
@@ -138,6 +162,71 @@ def test_valid_expressive_pair_commits(monkeypatch, tmp_path: Path) -> None:
     assert payload["profile"] == "controlled_expressive"
 
 
+def test_similar_expressive_identity_is_committed_and_reported(monkeypatch, tmp_path: Path) -> None:
+    output, report, _calm_wav, _calm_report = _calm_pair(tmp_path)
+    identity = tmp_path / "extended_reference.wav"
+    _write_voice_tone(identity, seconds=8.0, fundamental=110.0)
+
+    def build(**kwargs):
+        _write_voice_tone(kwargs["output"], seconds=6.0, fundamental=112.0)
+        _write_report(
+            kwargs["output"].with_suffix(".selection.json"),
+            profile="controlled_expressive",
+            duration=6.0,
+        )
+        return True
+
+    monkeypatch.setattr(
+        controlled_reference_gate.expressive_continuity,
+        "build_controlled_expressive_reference",
+        build,
+    )
+    built, detail = controlled_reference_gate.build_or_keep_calm(
+        source=tmp_path / "source.mp4",
+        segments=[{"id": 1}],
+        output=output,
+        identity_reference=identity,
+    )
+    assert built is True
+    assert "identity similarity=" in detail
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["identity_spectral_similarity"] >= (
+        controlled_reference_gate.MIN_IDENTITY_SPECTRAL_SIMILARITY
+    )
+    assert payload["identity_reference"] == str(identity)
+
+
+def test_gross_identity_mismatch_restores_calm(monkeypatch, tmp_path: Path) -> None:
+    output, report, calm_wav, calm_report = _calm_pair(tmp_path)
+    identity = tmp_path / "extended_reference.wav"
+    _write_voice_tone(identity, seconds=8.0, fundamental=110.0)
+
+    def build(**kwargs):
+        _write_voice_tone(kwargs["output"], seconds=6.0, fundamental=2400.0)
+        _write_report(
+            kwargs["output"].with_suffix(".selection.json"),
+            profile="controlled_expressive",
+            duration=6.0,
+        )
+        return True
+
+    monkeypatch.setattr(
+        controlled_reference_gate.expressive_continuity,
+        "build_controlled_expressive_reference",
+        build,
+    )
+    built, detail = controlled_reference_gate.build_or_keep_calm(
+        source=tmp_path / "source.mp4",
+        segments=[{"id": 1}],
+        output=output,
+        identity_reference=identity,
+    )
+    assert built is False
+    assert "identity spectral similarity" in detail
+    assert output.read_bytes() == calm_wav
+    assert report.read_text(encoding="utf-8") == calm_report
+
+
 def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -> None:
     output, report, calm_wav, calm_report = _calm_pair(tmp_path)
 
@@ -160,7 +249,7 @@ def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -
     assert report.read_text(encoding="utf-8") == calm_report
 
 
-def test_every_production_route_uses_transactional_gate() -> None:
+def test_every_production_route_uses_transactional_identity_gate() -> None:
     for name in (
         "generic_clean_gemini_runtime.py",
         "generic_clean_direct_runtime.py",
@@ -169,6 +258,7 @@ def test_every_production_route_uses_transactional_gate() -> None:
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
         assert "controlled_reference_gate.build_or_keep_calm" in source
+        assert "identity_reference=extended" in source
         assert "expressive_continuity.build_controlled_expressive_reference(" not in source
 
 
