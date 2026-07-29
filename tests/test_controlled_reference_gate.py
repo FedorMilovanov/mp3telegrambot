@@ -9,6 +9,8 @@ import soundfile as sf
 
 from tools.voxcpm2 import controlled_reference_gate
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def _write_wav(path: Path, *, seconds: float, value: float) -> None:
     sample_rate = 16_000
@@ -156,3 +158,29 @@ def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -
         )
     assert output.read_bytes() == calm_wav
     assert report.read_text(encoding="utf-8") == calm_report
+
+
+def test_every_production_route_uses_transactional_gate() -> None:
+    for name in (
+        "generic_clean_gemini_runtime.py",
+        "generic_clean_direct_runtime.py",
+        "generic_clean_custom_runtime.py",
+        "generic_clean_audio_repair_runtime.py",
+    ):
+        source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+        assert "controlled_reference_gate.build_or_keep_calm" in source
+        assert "expressive_continuity.build_controlled_expressive_reference(" not in source
+
+
+def test_direct_renderer_remains_independent_from_reference_preparation() -> None:
+    combined = "\n".join(
+        (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+        for name in (
+            "direct_max_quality_io.py",
+            "direct_max_quality_analysis.py",
+            "direct_max_quality_render.py",
+            "direct_max_quality_cli.py",
+        )
+    )
+    assert "controlled_reference_gate" not in combined
+    assert "expressive_continuity" not in combined
