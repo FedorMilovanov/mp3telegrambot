@@ -4,6 +4,7 @@ import ast
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from tools.voxcpm2 import final_media_qa
@@ -50,9 +51,19 @@ def _loudness(*, true_peak: float = -1.2, integrated: float = -15.8):
     }
 
 
+def _synthetic_branches(*, seconds: int = 12, sample_rate: int = 8_000):
+    rng = np.random.default_rng(20260729)
+    length = seconds * sample_rate
+    source = rng.normal(0.0, 0.11, length)
+    russian = rng.normal(0.0, 0.09, length)
+    return source.astype(np.float64), russian.astype(np.float64)
+
+
 def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     source = MASTER.read_text(encoding="utf-8")
+    qa = Path(final_media_qa.__file__).read_text(encoding="utf-8")
     ast.parse(source)
+    ast.parse(qa)
     assert "verify_final_outputs" in source
     assert "final_media_verification.json" in source
     assert '"apad=pad_dur=2"' in source
@@ -66,6 +77,81 @@ def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     assert "alimiter=limit=0.985:level=false:latency=true" in source
     assert '"limiter_auto_level": False' in source
     assert '"limiter_latency_compensated": True' in source
+    assert 'post-aac-original-bed-regression-v1' in qa
+    assert 'estimate_original_bed' in qa
+    assert 'original_bed' in qa
+
+
+def test_original_bed_regression_accepts_fixed_eighteen_percent() -> None:
+    source, russian = _synthetic_branches()
+    mixed = 0.18 * source + 0.73 * russian
+    report = final_media_qa.estimate_original_bed(
+        source,
+        mixed,
+        russian,
+        expected_level=0.18,
+        sample_rate=8_000,
+    )
+    assert report["passed"] is True
+    assert report["estimated_original_level"] == pytest.approx(0.18, abs=1e-6)
+    assert report["estimated_russian_gain"] == pytest.approx(0.73, abs=1e-6)
+    assert report["local_window_count"] >= 3
+    assert report["local_spread_db"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_original_bed_regression_rejects_loud_english_branch() -> None:
+    source, russian = _synthetic_branches()
+    mixed = 0.48 * source + 0.73 * russian
+    report = final_media_qa.estimate_original_bed(
+        source,
+        mixed,
+        russian,
+        expected_level=0.18,
+        sample_rate=8_000,
+    )
+    assert report["passed"] is False
+    assert report["estimated_original_level"] == pytest.approx(0.48, abs=1e-6)
+    assert any("original level" in item for item in report["failures"])
+
+
+def test_original_bed_regression_rejects_local_gain_pumping() -> None:
+    sample_rate = 8_000
+    source, russian = _synthetic_branches(seconds=20, sample_rate=sample_rate)
+    coefficient = np.empty_like(source)
+    window = sample_rate * 2
+    for index, start in enumerate(range(0, len(source), window)):
+        coefficient[start : start + window] = 0.16 if index % 2 == 0 else 0.20
+    mixed = coefficient * source + 0.73 * russian
+    report = final_media_qa.estimate_original_bed(
+        source,
+        mixed,
+        russian,
+        expected_level=0.18,
+        sample_rate=sample_rate,
+    )
+    assert report["estimated_original_level"] == pytest.approx(0.18, abs=0.002)
+    assert report["passed"] is False
+    assert report["local_spread_db"] > final_media_qa.ORIGINAL_LOCAL_SPREAD_DB
+    assert any("локальный разброс" in item for item in report["failures"])
+
+
+def test_project_original_contract_reads_expected_level(tmp_path: Path) -> None:
+    root = tmp_path / "dub-project"
+    output = root / "output"
+    source_dir = root / "source"
+    output.mkdir(parents=True)
+    source_dir.mkdir(parents=True)
+    mixed = output / "final_upload.mp4"
+    mixed.write_bytes(b"mixed")
+    (source_dir / "source.mp4").write_bytes(b"source")
+    (root / "request.json").write_text(
+        json.dumps({"schema_version": 1, "original_level": 0.18}),
+        encoding="utf-8",
+    )
+    contract = final_media_qa._project_original_contract(mixed)
+    assert contract["applicable"] is True
+    assert contract["passed"] is True
+    assert contract["expected_original_level"] == 0.18
 
 
 def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Path) -> None:
@@ -290,3 +376,47 @@ def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path:
     assert payload["mixed"]["passed"] is False
     assert payload["russian_only"]["passed"] is True
     assert any("true peak" in item for item in payload["mixed"]["failures"])
+
+
+def test_failed_original_bed_writes_report_before_raising(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    output = root / "output"
+    output.mkdir(parents=True)
+    mixed = output / "final_upload.mp4"
+    russian = output / "russian_only.mp4"
+    mixed.write_bytes(b"mixed")
+    russian.write_bytes(b"russian")
+    report_path = root / "master_work" / "final_media_verification.json"
+
+    monkeypatch.setattr(
+        final_media_qa,
+        "verify_final_file",
+        lambda path, **_kwargs: {
+            "path": str(path),
+            "passed": True,
+            "failures": [],
+        },
+    )
+    monkeypatch.setattr(
+        final_media_qa,
+        "verify_original_bed",
+        lambda **_kwargs: {
+            "policy": final_media_qa.ORIGINAL_BED_POLICY,
+            "applicable": True,
+            "passed": False,
+            "failures": ["original level=0.48; нужен 0.18"],
+        },
+    )
+    with pytest.raises(RuntimeError, match="original-bed"):
+        final_media_qa.verify_final_outputs(
+            source_duration=59.0,
+            mixed_video=mixed,
+            russian_only_video=russian,
+            target_i=-16.0,
+            target_lra=8.0,
+            target_tp=-1.5,
+            report_path=report_path,
+        )
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["original_bed"]["passed"] is False
