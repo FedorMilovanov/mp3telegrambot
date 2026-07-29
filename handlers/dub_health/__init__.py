@@ -37,6 +37,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "repair_facade": voxcpm / "generic_clean_audio_repair_runtime" / "__init__.py",
         "repair_main": voxcpm / "generic_clean_audio_repair_runtime" / "__main__.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
+        "runtime_facade": voxcpm / "clean_runtime_contract" / "__init__.py",
+        "core_facade": voxcpm / "clean_production_core" / "__init__.py",
         "request_settings": voxcpm / "clean_request_settings.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "migration": voxcpm / "legacy_segment_migration_v45.py",
@@ -85,6 +87,15 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and "_legacy._extract_youtube_video_id = _extract_youtube_video_id"
             in text["wizard_facade"]
         ),
+        "strict-segment-preflight": (
+            "def _strict_int(" in text["core_facade"]
+            and "segment[{position}].id" in text["core_facade"]
+            and "start_delay_ms" in text["core_facade"]
+            and "не может быть bool" in text["core_facade"]
+            and "должен быть целым числом" in text["core_facade"]
+            and "_legacy._mark_and_validate_segments = _mark_and_validate_segments"
+            in text["core_facade"]
+        ),
         "facades-fingerprinted": (
             '"tools/voxcpm2/final_media_qa/__init__.py"'
             in text["runtime_contract"]
@@ -96,6 +107,11 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             in text["runtime_contract"]
             and '"tools/voxcpm2/clean_source_download.py"'
             in text["runtime_contract"]
+            and '"tools/voxcpm2/clean_runtime_contract/__init__.py"'
+            in text["runtime_facade"]
+            and '"tools/voxcpm2/clean_production_core/__init__.py"'
+            in text["runtime_facade"]
+            and "_legacy._RENDER_MODULES" in text["runtime_facade"]
         ),
         "strict-runtime-numbers": (
             'raise RuntimeError(f"{field} не может быть bool.")'
@@ -110,7 +126,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "post-AAC original-bed v2 zero-safe/short-clip; final report v6; "
         "repair manifest uses segment-proven delay; migration/normalizer preserve 0 ms; "
         "wizard/download share canonical URL+metadata+request identity; "
-        "compatibility facades and migration fingerprinted; strict bool/fraction settings"
+        "strict pre-render segment fields; self-fingerprinted compatibility facades; "
+        "strict bool/fraction runtime settings"
     )
 
 
