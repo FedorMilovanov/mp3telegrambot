@@ -4,7 +4,8 @@
 
 The PCM master is not the delivery artifact. AAC encoding can change true peak,
 loudness and packet duration, so the finished MP4 is measured again with the
-same FFmpeg BS.1770/EBU-R128 implementation that produced the master.
+same FFmpeg BS.1770/EBU-R128 implementation that produced the master. Reports
+are always written before a delivery failure is raised.
 """
 from __future__ import annotations
 
@@ -71,10 +72,8 @@ def probe_media(path: Path) -> dict[str, Any]:
             "ffprobe",
             "-v",
             "error",
-            "-select_streams",
-            "a:0",
             "-show_entries",
-            "stream=codec_name,sample_rate,channels,bit_rate,duration:format=duration",
+            "stream=index,codec_type,codec_name,sample_rate,channels,bit_rate,duration:format=duration",
             "-of",
             "json",
             str(path),
@@ -82,26 +81,48 @@ def probe_media(path: Path) -> dict[str, Any]:
     )
     payload = json.loads(process.stdout or "{}")
     streams = payload.get("streams") if isinstance(payload, dict) else None
-    if not isinstance(streams, list) or not streams or not isinstance(streams[0], dict):
+    if not isinstance(streams, list):
+        raise RuntimeError(f"ffprobe не вернул потоки конечного файла: {path}")
+
+    audio_stream = next(
+        (
+            dict(item)
+            for item in streams
+            if isinstance(item, dict) and item.get("codec_type") == "audio"
+        ),
+        None,
+    )
+    video_stream = next(
+        (
+            dict(item)
+            for item in streams
+            if isinstance(item, dict) and item.get("codec_type") == "video"
+        ),
+        None,
+    )
+    if audio_stream is None:
         raise RuntimeError(f"В конечном файле нет читаемой аудиодорожки: {path}")
-    stream = dict(streams[0])
-    format_payload = payload.get("format") if isinstance(payload, dict) else {}
-    format_duration = (
-        format_payload.get("duration")
-        if isinstance(format_payload, dict)
-        else None
-    )
-    stream_duration = stream.get("duration")
-    duration = _float(
-        stream_duration if stream_duration not in (None, "N/A") else format_duration,
-        field="duration",
-    )
+    if video_stream is None:
+        raise RuntimeError(f"В конечном файле нет читаемого видеопотока: {path}")
+
+    format_payload = payload.get("format") if isinstance(payload, dict) else None
+    if not isinstance(format_payload, dict):
+        raise RuntimeError(f"ffprobe не вернул длительность контейнера: {path}")
+
     return {
-        "codec_name": str(stream.get("codec_name") or "").casefold(),
-        "sample_rate": int(stream.get("sample_rate") or 0),
-        "channels": int(stream.get("channels") or 0),
-        "bit_rate": int(stream.get("bit_rate") or 0),
-        "duration": duration,
+        "audio_codec_name": str(audio_stream.get("codec_name") or "").casefold(),
+        "audio_sample_rate": int(audio_stream.get("sample_rate") or 0),
+        "audio_channels": int(audio_stream.get("channels") or 0),
+        "audio_bit_rate": int(audio_stream.get("bit_rate") or 0),
+        "audio_duration": _float(
+            audio_stream.get("duration"),
+            field="audio_duration",
+        ),
+        "video_codec_name": str(video_stream.get("codec_name") or "").casefold(),
+        "container_duration": _float(
+            format_payload.get("duration"),
+            field="container_duration",
+        ),
     }
 
 
@@ -140,6 +161,28 @@ def measure_loudness(
     }
 
 
+def _empty_report(path: Path, source_duration: float) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "passed": False,
+        "media": {},
+        "loudness": {},
+        "source_duration": float(source_duration),
+        "audio_duration_delta_seconds": None,
+        "container_duration_delta_seconds": None,
+        "limits": {
+            "integrated_target_lufs": None,
+            "loudness_tolerance_lu": LOUDNESS_TOLERANCE_LU,
+            "true_peak_delivery_ceiling_dbtp": TRUE_PEAK_DELIVERY_CEILING_DBTP,
+            "duration_tolerance_seconds": DURATION_TOLERANCE_SECONDS,
+            "sample_rate": EXPECTED_SAMPLE_RATE,
+            "channels": EXPECTED_CHANNELS,
+            "codec": EXPECTED_CODEC,
+        },
+        "failures": [],
+    }
+
+
 def verify_final_file(
     path: Path,
     *,
@@ -148,31 +191,63 @@ def verify_final_file(
     target_lra: float,
     target_tp: float,
 ) -> dict[str, Any]:
+    report = _empty_report(path, source_duration)
+    report["limits"]["integrated_target_lufs"] = float(target_i)
+
     if not path.is_file() or path.stat().st_size <= 0:
-        raise RuntimeError(f"Конечный MP4 не создан или пуст: {path}")
+        report["failures"].append("конечный MP4 не создан или пуст")
+        return report
 
-    media = probe_media(path)
-    loudness = measure_loudness(
-        path,
-        target_i=target_i,
-        target_lra=target_lra,
-        target_tp=target_tp,
+    try:
+        media = probe_media(path)
+    except Exception as exc:
+        report["failures"].append(f"ffprobe: {exc}")
+        return report
+    report["media"] = media
+
+    try:
+        loudness = measure_loudness(
+            path,
+            target_i=target_i,
+            target_lra=target_lra,
+            target_tp=target_tp,
+        )
+    except Exception as exc:
+        report["failures"].append(f"loudness: {exc}")
+        return report
+    report["loudness"] = loudness
+
+    audio_delta = abs(float(media["audio_duration"]) - float(source_duration))
+    container_delta = abs(
+        float(media["container_duration"]) - float(source_duration)
     )
-    duration_delta = abs(float(media["duration"]) - float(source_duration))
-    failures: list[str] = []
+    report["audio_duration_delta_seconds"] = audio_delta
+    report["container_duration_delta_seconds"] = container_delta
+    failures: list[str] = report["failures"]
 
-    if media["codec_name"] != EXPECTED_CODEC:
-        failures.append(f"codec={media['codec_name'] or 'unknown'}, нужен AAC")
-    if media["sample_rate"] != EXPECTED_SAMPLE_RATE:
+    if media["audio_codec_name"] != EXPECTED_CODEC:
         failures.append(
-            f"sample_rate={media['sample_rate']}, нужен {EXPECTED_SAMPLE_RATE}"
+            f"codec={media['audio_codec_name'] or 'unknown'}, нужен AAC"
         )
-    if media["channels"] != EXPECTED_CHANNELS:
-        failures.append(f"channels={media['channels']}, нужно stereo")
-    if duration_delta > DURATION_TOLERANCE_SECONDS:
+    if media["audio_sample_rate"] != EXPECTED_SAMPLE_RATE:
         failures.append(
-            f"duration delta={duration_delta:.3f}s > {DURATION_TOLERANCE_SECONDS:.2f}s"
+            f"sample_rate={media['audio_sample_rate']}, нужен {EXPECTED_SAMPLE_RATE}"
         )
+    if media["audio_channels"] != EXPECTED_CHANNELS:
+        failures.append(f"channels={media['audio_channels']}, нужно stereo")
+    if not media["video_codec_name"]:
+        failures.append("не определён codec видеопотока")
+    if audio_delta > DURATION_TOLERANCE_SECONDS:
+        failures.append(
+            f"audio duration delta={audio_delta:.3f}s > "
+            f"{DURATION_TOLERANCE_SECONDS:.2f}s"
+        )
+    if container_delta > DURATION_TOLERANCE_SECONDS:
+        failures.append(
+            f"container duration delta={container_delta:.3f}s > "
+            f"{DURATION_TOLERANCE_SECONDS:.2f}s"
+        )
+
     loudness_error = abs(float(loudness["integrated_lufs"]) - float(target_i))
     if loudness_error > LOUDNESS_TOLERANCE_LU:
         failures.append(
@@ -185,29 +260,13 @@ def verify_final_file(
             f"{TRUE_PEAK_DELIVERY_CEILING_DBTP:.1f} dBTP"
         )
 
-    report = {
-        "path": str(path),
-        "passed": not failures,
-        "media": media,
-        "loudness": loudness,
-        "source_duration": float(source_duration),
-        "duration_delta_seconds": duration_delta,
-        "limits": {
-            "integrated_target_lufs": float(target_i),
-            "loudness_tolerance_lu": LOUDNESS_TOLERANCE_LU,
-            "true_peak_delivery_ceiling_dbtp": TRUE_PEAK_DELIVERY_CEILING_DBTP,
-            "duration_tolerance_seconds": DURATION_TOLERANCE_SECONDS,
-            "sample_rate": EXPECTED_SAMPLE_RATE,
-            "channels": EXPECTED_CHANNELS,
-            "codec": EXPECTED_CODEC,
-        },
-        "failures": failures,
-    }
-    if failures:
-        raise RuntimeError(
-            f"Конечный media-QA не принят для {path.name}: " + "; ".join(failures)
-        )
+    report["passed"] = not failures
     return report
+
+
+def _failure_summary(label: str, report: dict[str, Any]) -> str:
+    failures = report.get("failures") or ["неизвестная ошибка"]
+    return f"{label}: " + "; ".join(str(item) for item in failures)
 
 
 def verify_final_outputs(
@@ -220,29 +279,44 @@ def verify_final_outputs(
     target_tp: float,
     report_path: Path,
 ) -> dict[str, Any]:
+    mixed = verify_final_file(
+        mixed_video,
+        source_duration=source_duration,
+        target_i=target_i,
+        target_lra=target_lra,
+        target_tp=target_tp,
+    )
+    russian_only = verify_final_file(
+        russian_only_video,
+        source_duration=source_duration,
+        target_i=target_i,
+        target_lra=target_lra,
+        target_tp=target_tp,
+    )
     report = {
-        "schema_version": "dub-final-media-qa-v1",
+        "schema_version": "dub-final-media-qa-v2",
         "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128",
-        "mixed": verify_final_file(
-            mixed_video,
-            source_duration=source_duration,
-            target_i=target_i,
-            target_lra=target_lra,
-            target_tp=target_tp,
-        ),
-        "russian_only": verify_final_file(
-            russian_only_video,
-            source_duration=source_duration,
-            target_i=target_i,
-            target_lra=target_lra,
-            target_tp=target_tp,
-        ),
+        "passed": bool(mixed.get("passed") and russian_only.get("passed")),
+        "mixed": mixed,
+        "russian_only": russian_only,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    if not report["passed"]:
+        summaries: list[str] = []
+        if not mixed.get("passed"):
+            summaries.append(_failure_summary("mixed", mixed))
+        if not russian_only.get("passed"):
+            summaries.append(_failure_summary("russian-only", russian_only))
+        raise RuntimeError(
+            "Конечный media-QA не принят. "
+            + " | ".join(summaries)
+            + f". Отчёт сохранён: {report_path}"
+        )
     return report
 
 
