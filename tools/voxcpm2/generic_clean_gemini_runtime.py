@@ -8,6 +8,7 @@ from typing import Any
 
 from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import expressive_translation
@@ -39,7 +40,7 @@ def _run_clean_voxcpm_and_master(
     final_mixed: Path,
     final_russian: Path,
 ) -> Path:
-    extended, composite = clean.build_calm_references(
+    extended, composite = continuous_reference_policy.build_calm_references(
         source=source,
         cues=cues,
         duration=duration,
