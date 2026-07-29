@@ -44,6 +44,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "migration": voxcpm / "legacy_segment_migration_v45.py",
         "source_download": voxcpm / "clean_source_download.py",
         "wizard_facade": repo / "handlers" / "dub_wizard" / "__init__.py",
+        "repair_handler": repo / "handlers" / "dub_audio_repair" / "__init__.py",
     }
     text = {
         name: path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -67,6 +68,24 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and 'payload["settings_delay_source"] = delay_source'
             in text["request_settings"]
         ),
+        "strict-repair-request": (
+            "def _validate_repair_request(" in text["repair_facade"]
+            and "def _validated_sha256(" in text["repair_facade"]
+            and "изменился после создания repair request" in text["repair_facade"]
+            and "audio_repair.repair_all должен быть bool" in text["repair_facade"]
+            and "manifest.audio_repairs должен быть списком" in text["repair_facade"]
+            and "_legacy._checkpoint_ready = _checkpoint_ready" in text["repair_facade"]
+            and "_legacy.legacy_repair._load_segments = _load_segments"
+            in text["repair_facade"]
+        ),
+        "serialized-repair-handler": (
+            "_DUBFIX_LOCK = asyncio.Lock()" in text["repair_handler"]
+            and "async with _DUBFIX_LOCK" in text["repair_handler"]
+            and "def load_repair_segments(" in text["repair_handler"]
+            and "def _write_repair_request(" in text["repair_handler"]
+            and '"segments_sha256": digest' in text["repair_handler"]
+            and "_legacy.dubfix_command = dubfix_command" in text["repair_handler"]
+        ),
         "canonical-repair-delay": (
             "clean_request_settings.russian_delay_ms(request)"
             in text["normalizer"]
@@ -74,6 +93,16 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             in text["migration"]
             and 'request.get("russian_delay_ms") or 420' not in text["normalizer"]
             and 'request.get("russian_delay_ms") or 420' not in text["migration"]
+        ),
+        "transactional-repair-preprocess": (
+            "strict_core._strict_int(" in text["normalizer"]
+            and "strict_core._finite(" in text["normalizer"]
+            and "strict_core._mark_and_validate_segments(" in text["normalizer"]
+            and "allow_nan=False" in text["normalizer"]
+            and "strict_core._strict_int(" in text["migration"]
+            and "strict_core._finite(" in text["migration"]
+            and "strict_core._mark_and_validate_segments(" in text["migration"]
+            and "allow_nan=False" in text["migration"]
         ),
         "canonical-source-identity": (
             'for prefix in ("www.", "m.", "music.")' in text["source_download"]
@@ -124,7 +153,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         return False, "facade-контракты не прошли: " + ", ".join(failed)
     return True, (
         "post-AAC original-bed v2 zero-safe/short-clip; final report v6; "
-        "repair manifest uses segment-proven delay; migration/normalizer preserve 0 ms; "
+        "repair request hash/scope/seed/checkpoints fail closed; serialized /dubfix; "
+        "repair manifest uses segment-proven delay; transactional migration/normalizer preserve 0 ms; "
         "wizard/download share canonical URL+metadata+request identity; "
         "strict pre-render segment fields; self-fingerprinted compatibility facades; "
         "strict bool/fraction runtime settings"
