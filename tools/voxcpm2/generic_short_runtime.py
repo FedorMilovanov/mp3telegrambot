@@ -3,9 +3,9 @@
 """Production runtime adapters for the generic Shorts dubbing pipeline.
 
 Keeps the core pipeline deterministic while reusing the bot's hardened yt-dlp
-configuration and Gemini client pool/high-thinking policy. The full legacy
-installer can still install the old semantic guard, but clean entrypoints call
-only the download/Gemini functions directly and never call that installer.
+configuration and Gemini proxy/high-thinking policy. Translation requests use a
+request-local key pool with explicit network budgets, so one dead route cannot
+make the Dub worker look frozen for fifteen minutes.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,14 @@ _JOHN_PIPER_RE = re.compile(
     r"\b(?:john\s+piper|джон\s+пайпер)\b",
     re.IGNORECASE,
 )
+_GEMINI_KEY_NAMES = (
+    "GEMINI_API_KEY",
+    "GEMINI_API_KEY_2",
+    "GEMINI_API_KEY_3",
+    "GEMINI_API_KEY_4",
+)
+_DEFAULT_REQUEST_TIMEOUT_SECONDS = 180.0
+_DEFAULT_PASS_TIMEOUT_SECONDS = 300.0
 
 
 def standardize_russian_title(value: str, *, context: str = "") -> str:
@@ -198,41 +207,86 @@ def download_captions(url: str, source_dir: Path) -> list[pipeline.Cue]:
     return []
 
 
-def _fallback_clients() -> list[Any]:
+def _bounded_env_seconds(
+    name: str,
+    *,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    raw = os.getenv(name)
+    try:
+        value = default if raw is None or not raw.strip() else float(raw.strip())
+    except (TypeError, ValueError, OverflowError):
+        value = default
+    if not value == value or value in {float("inf"), float("-inf")}:
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _translation_timeouts() -> tuple[float, float]:
+    request_timeout = _bounded_env_seconds(
+        "DUB_GEMINI_REQUEST_TIMEOUT_SEC",
+        default=_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        minimum=30.0,
+        maximum=600.0,
+    )
+    pass_timeout = _bounded_env_seconds(
+        "DUB_GEMINI_PASS_TIMEOUT_SEC",
+        default=_DEFAULT_PASS_TIMEOUT_SECONDS,
+        minimum=60.0,
+        maximum=1200.0,
+    )
+    return request_timeout, max(request_timeout, pass_timeout)
+
+
+def _translation_keys() -> list[str]:
+    values: list[str] = []
+    for name in _GEMINI_KEY_NAMES:
+        key = os.getenv(name, "").strip()
+        if key and key not in values:
+            values.append(key)
+    return values
+
+
+def _translation_client(api_key: str, timeout_ms: int) -> Any:
+    """Create one request-local client while retaining the environment proxy."""
     try:
         from google import genai
+        from google.genai import types
     except ImportError as exc:
         raise RuntimeError(
             "Пакет google-genai не установлен в окружении бота."
         ) from exc
-    result: list[Any] = []
-    for name in (
-        "GEMINI_API_KEY",
-        "GEMINI_API_KEY_2",
-        "GEMINI_API_KEY_3",
-        "GEMINI_API_KEY_4",
-    ):
-        key = os.getenv(name, "").strip()
-        if key:
-            result.append(genai.Client(api_key=key))
-    return result
+    options = types.HttpOptions(timeout=max(30_000, int(timeout_ms)))
+    return genai.Client(api_key=api_key, http_options=options)
 
 
-def gemini_json(prompt: str, *, model_name: str) -> Any:
-    clients: list[Any] = []
-    try:
-        from core.globals import GEMINI_CLIENTS
+def _close_client(client: Any) -> None:
+    closer = getattr(client, "close", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:
+            pass
 
-        clients = list(GEMINI_CLIENTS or [])
-    except Exception:
-        clients = []
-    if not clients:
-        clients = _fallback_clients()
-    if not clients:
-        raise RuntimeError(
-            "Для редакторского перевода нужен GEMINI_API_KEY в .env."
-        )
 
+def _prompt_label(prompt: str) -> str:
+    lowered = str(prompt or "").casefold()
+    if _TITLE_PROMPT_MARKER.casefold() in lowered:
+        return "русское название"
+    if "первоклассный переводчик" in lowered:
+        return "черновой перевод"
+    if "старший двуязычный редактор" in lowered:
+        return "сверка смысла"
+    if "режиссёр русской речевой записи" in lowered:
+        return "финальная речевая редактура"
+    if "редактор произносимости" in lowered:
+        return "сжатие перегруженных реплик"
+    return "Gemini JSON"
+
+
+def _generation_config(model_name: str) -> Any:
     config = None
     try:
         from core.globals import make_text_config_smart
@@ -245,24 +299,54 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
         )
     except Exception:
         config = None
-    if config is None:
-        try:
-            from google.genai import types
+    if config is not None:
+        return config
+    try:
+        from google.genai import types
 
-            config = types.GenerateContentConfig(
-                response_mime_type="application/json",
-                max_output_tokens=16000,
-                thinking_config=types.ThinkingConfig(
-                    thinking_level="high",
-                ),
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                "Не удалось создать Gemini high-thinking config для перевода."
-            ) from exc
+        return types.GenerateContentConfig(
+            response_mime_type="application/json",
+            max_output_tokens=16000,
+            thinking_config=types.ThinkingConfig(
+                thinking_level="high",
+            ),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Не удалось создать Gemini high-thinking config для перевода."
+        ) from exc
 
+
+def gemini_json(prompt: str, *, model_name: str) -> Any:
+    keys = _translation_keys()
+    if not keys:
+        raise RuntimeError(
+            "Для редакторского перевода нужен GEMINI_API_KEY в .env."
+        )
+
+    request_timeout, pass_timeout = _translation_timeouts()
+    deadline = time.monotonic() + pass_timeout
+    config = _generation_config(model_name)
+    label = _prompt_label(prompt)
     errors: list[str] = []
-    for index, client in enumerate(clients, start=1):
+    pipeline.log(
+        f"Gemini: начинаю «{label}»; ключей={len(keys)}; "
+        f"лимит ключа={request_timeout:.0f} сек.; прохода={pass_timeout:.0f} сек."
+    )
+
+    for index, api_key in enumerate(keys, start=1):
+        remaining = deadline - time.monotonic()
+        if remaining < 1.0:
+            errors.append(f"общий лимит прохода {pass_timeout:.0f} сек. исчерпан")
+            break
+        effective_timeout = min(request_timeout, remaining)
+        timeout_ms = max(30_000, int(round(effective_timeout * 1000.0)))
+        client = _translation_client(api_key, timeout_ms)
+        started = time.monotonic()
+        pipeline.log(
+            f"Gemini: «{label}», ключ {index}/{len(keys)}, "
+            f"таймаут {timeout_ms / 1000:.0f} сек."
+        )
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -272,17 +356,28 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
             payload = pipeline._extract_json(
                 getattr(response, "text", "")
             )
+            elapsed = time.monotonic() - started
+            pipeline.log(
+                f"Gemini: «{label}» завершён ключом {index}/{len(keys)} "
+                f"за {elapsed:.1f} сек."
+            )
             return _standardize_title_payload(payload, prompt)
         except Exception as exc:
+            elapsed = time.monotonic() - started
             errors.append(
-                f"key#{index}: {type(exc).__name__}: {str(exc)[:220]}"
+                f"key#{index} {elapsed:.1f}s: {type(exc).__name__}: "
+                f"{str(exc)[:220]}"
             )
             pipeline.log(
-                f"Gemini translation route key#{index} не сработал; "
-                "пробую следующий ключ."
+                f"Gemini: «{label}», ключ {index}/{len(keys)} не сработал "
+                f"за {elapsed:.1f} сек.; пробую следующий."
             )
+        finally:
+            _close_client(client)
+
     raise RuntimeError(
-        "Все Gemini-ключи завершились ошибкой: " + " | ".join(errors)
+        f"Gemini не завершил «{label}» в пределах {pass_timeout:.0f} сек.: "
+        + " | ".join(errors)
     )
 
 
