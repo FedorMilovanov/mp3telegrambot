@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,8 @@ from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2.direct_max_quality_cli import main
 
 MARKER_POLICY = "direct-cli-runtime-marker-v1"
+_FAILURE_JSON = "direct_renderer_failure.json"
+_FAILURE_TEXT = "direct_renderer_failure.txt"
 
 
 def _flag(flag: str, *, default: str | None = None) -> str:
@@ -77,6 +80,32 @@ def _runtime_contract() -> tuple[Path, dict[str, Any]]:
     }
 
 
+def _failure_paths(work_dir: Path) -> tuple[Path, Path]:
+    return work_dir / _FAILURE_JSON, work_dir / _FAILURE_TEXT
+
+
+def _clear_failure_report(work_dir: Path) -> None:
+    for path in _failure_paths(work_dir):
+        path.unlink(missing_ok=True)
+
+
+def _write_failure_report(work_dir: Path, exc: BaseException) -> None:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    payload = {
+        "schema_version": 1,
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+        "traceback": trace,
+    }
+    json_path, text_path = _failure_paths(work_dir)
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    text_path.write_text(trace.rstrip() + "\n", encoding="utf-8")
+
+
 def _prepare_runtime_marker() -> tuple[Path, dict[str, Any]]:
     work_dir, expected = _runtime_contract()
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -90,28 +119,45 @@ def _prepare_runtime_marker() -> tuple[Path, dict[str, Any]]:
             flush=True,
         )
         _clear_checkpoint_state(work_dir)
-    marker_path.unlink(missing_ok=True)
+    _clear_failure_report(work_dir)
+    # Маркер описывает совместимость checkpoints, а не факт успешного завершения.
+    # Пишем его до синтеза: если поздний сегмент упадёт, уже готовые сегменты
+    # останутся безопасно возобновляемыми при следующем запуске.
+    marker_path.write_text(
+        json.dumps(expected, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
     return marker_path, expected
 
 
 if __name__ == "__main__":
     marker_path: Path | None = None
     marker_payload: dict[str, Any] | None = None
+    work_dir: Path | None = None
     try:
         marker_path, marker_payload = _prepare_runtime_marker()
+        work_dir = marker_path.parent
         main()
         marker_path.write_text(
             json.dumps(marker_payload, ensure_ascii=False, indent=2, allow_nan=False),
             encoding="utf-8",
         )
+        _clear_failure_report(work_dir)
     except KeyboardInterrupt:
         print("Остановлено пользователем.", file=sys.stderr)
         raise SystemExit(130)
     except Exception as exc:
-        import traceback
-
-        if marker_path is not None:
-            marker_path.unlink(missing_ok=True)
+        if work_dir is None:
+            try:
+                work_dir = Path(_flag("--work-dir")).resolve()
+            except Exception:
+                work_dir = None
+        if work_dir is not None:
+            try:
+                _write_failure_report(work_dir, exc)
+            except Exception as report_exc:
+                print(f"Не удалось сохранить failure report: {report_exc}", file=sys.stderr)
+        # Runtime marker intentionally remains: it proves checkpoint compatibility.
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         traceback.print_exc()
         raise SystemExit(1)
