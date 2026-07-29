@@ -66,6 +66,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "expression": voxcpm / "expressive_continuity.py",
         "continuous_reference": voxcpm / "continuous_reference_policy.py",
         "reference_gate": voxcpm / "controlled_reference_gate.py",
+        "numeric": voxcpm / "russian_spoken_numbers.py",
         "translation": voxcpm / "expressive_translation.py",
         "reference": voxcpm / "professional_audio_v45.py",
         "qa": voxcpm / "professional_audio_qa_v45.py",
@@ -116,11 +117,15 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
         ),
         "continuous-first-reference": (
-            'POLICY = "continuous-clean-reference-v1"' in text["continuous_reference"]
+            'POLICY = "continuous-clean-reference-v2"' in text["continuous_reference"]
             and '"single-continuous-window"' in text["continuous_reference"]
             and '"multi-window-fallback"' in text["continuous_reference"]
             and "MIN_SECONDS = 5.0" in text["continuous_reference"]
             and "MAX_SECONDS = 10.0" in text["continuous_reference"]
+            and "MIN_VOICED_RATIO = 0.16" in text["continuous_reference"]
+            and "MIN_ACTIVE_RATIO = 0.25" in text["continuous_reference"]
+            and "MAX_INTERNAL_GAP = 0.85" in text["continuous_reference"]
+            and "_report_has_usable_selection" in text["continuous_reference"]
             and all(
                 "continuous_reference_policy.build_calm_references" in text[name]
                 and "clean.build_calm_references(" not in text[name]
@@ -130,6 +135,8 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "transactional-reference-identity": (
             "MIN_REFERENCE_SECONDS = 5.0" in text["reference_gate"]
             and "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in text["reference_gate"]
+            and 'IDENTITY_POLICY = "calm-and-expressive-identity-v2"' in text["reference_gate"]
+            and "def _valid_calm_reference(" in text["reference_gate"]
             and "def _restore(" in text["reference_gate"]
             and "identity_spectral_similarity" in text["reference_gate"]
             and all(
@@ -141,6 +148,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         ),
         "natural-timing": (
             "MAX_TEMPO = 1.35" in text["io"]
+            and "MAX_START_DELAY_MS = 1500" in text["io"]
+            and "def _finite_float(" in text["io"]
+            and "Эффективное пересечение" in text["io"]
             and "MAX_SECONDS = 5.4" in text["core"]
             and "Russian tokens preserved" in text["normalizer"]
         ),
@@ -157,6 +167,11 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "confident_foreign_block" in text["qa"]
             and "continuity_v45" in text["qa"]
             and "def _voice_limits(" in text["qa"]
+            and 'POLICY: Final = "russian-spoken-numbers-v2"' in text["numeric"]
+            and "def numeric_anchor_groups(" in text["numeric"]
+            and 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in text["qa"]
+            and "def _numeric_anchor_evidence(" in text["qa"]
+            and "numeric_anchors_passed" in text["qa"]
         ),
         "same-direct-cli": (
             "from tools.voxcpm2.direct_max_quality_cli import main" in text["stable_cli"]
@@ -272,11 +287,11 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             quality_detail
-            + "; direct v3 16→48k; continuous-first 5–10s reference; fingerprints; "
-            "retry_badcase; F0/voiced+timbre; transactional expressive+identity gate; "
-            "QA v3 auto+forced-RU with foreign block; final AAC BS.1770+PTS; "
-            "limiter level-off/latency-compensated; editable progress; worker v4.4; "
-            "-16 LUFS/-1.5 dBTP",
+            + "; direct v3 16→48k; continuous-first v2 hard-floor reference; "
+            "exact numeric/date anchors; fail-closed timing; calm+expressive identity; "
+            "fingerprints; retry_badcase; F0/voiced+timbre; QA auto+forced-RU foreign block; "
+            "final AAC BS.1770+PTS; limiter level-off/latency-compensated; "
+            "editable progress; worker v4.4; -16 LUFS/-1.5 dBTP",
         )
     )
 
@@ -301,23 +316,14 @@ def collect_dub_health() -> list[dict[str, Any]]:
         found = shutil.which(binary)
         checks.append(_check(binary, bool(found), found or "не найден в PATH"))
 
-    cpu_venv = Path(
-        os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
-    )
+    cpu_venv = Path(os.getenv("DUB_CPU_VENV", r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
     cpu_python = cpu_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     checks.append(_check("VoxCPM2 CPU Python", cpu_python.is_file(), str(cpu_python)))
 
-    archive = Path(
-        os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    )
+    archive = Path(os.getenv("DUB_VOX_ARCHIVE", r"C:\AI-Archive\VoxCPM2-paused-RTX3060"))
     checks.append(_check("VoxCPM2 archive", archive.is_dir(), str(archive)))
 
-    gemini_names = (
-        "GEMINI_API_KEY",
-        "GEMINI_API_KEY_2",
-        "GEMINI_API_KEY_3",
-        "GEMINI_API_KEY_4",
-    )
+    gemini_names = ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4")
     available_keys = [name for name in gemini_names if os.getenv(name, "").strip()]
     checks.append(
         _check(
