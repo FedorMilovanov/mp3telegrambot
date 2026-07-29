@@ -49,25 +49,53 @@ from tools.voxcpm2.direct_max_quality_render import (
     fit_without_slowdown,
     set_seed,
 )
+from tools.voxcpm2.direct_source_prosody import source_prosody_penalty
+
+
+def _report_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if isinstance(item, bool) or item is None or isinstance(item, str):
+            result[str(key)] = item
+        elif isinstance(item, (int, float)):
+            number = float(item)
+            result[str(key)] = round(number, 6) if math.isfinite(number) else repr(number)
+        else:
+            result[str(key)] = item
+    return result
 
 
 def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
     parts: list[str] = []
     for item in candidates:
         voice = item.get("voice_match") or {}
+        prosody = item.get("source_prosody_match") or {}
         duration_ratio = float(item.get("duration") or 0.0) / max(0.1, speech_slot)
+        source_detail = (
+            "srcF0×={median:.3f}/{p90:.3f}, srcPenalty={penalty:.2f}".format(
+                median=float(prosody.get("f0_median_ratio_to_source") or 0.0),
+                p90=float(prosody.get("f0_p90_ratio_to_source") or 0.0),
+                penalty=float(prosody.get("penalty") or 0.0),
+            )
+            if prosody.get("available")
+            else "srcProsody=n/a"
+        )
         parts.append(
-            "attempt {attempt}: score={score:.2f}, duration×={duration:.3f}, "
+            "attempt {attempt}: score={score:.2f}, base={base:.2f}, duration×={duration:.3f}, "
             "voiced={voiced:.3f}, active={active:.3f}, gap={gap:.3f}, "
-            "F0×={median:.3f}/{p90:.3f}, clip={clip:.6f}, tail_restart={tail}".format(
+            "F0×={median:.3f}/{p90:.3f}, {source}, clip={clip:.6f}, tail_restart={tail}".format(
                 attempt=int(item.get("attempt") or 0),
                 score=float(item.get("score") or 0.0),
+                base=float(item.get("base_score") or item.get("score") or 0.0),
                 duration=duration_ratio,
                 voiced=float((item.get("pitch") or {}).get("voiced_ratio") or 0.0),
                 active=float((item.get("activity") or {}).get("active_ratio") or 0.0),
                 gap=float((item.get("activity") or {}).get("max_internal_gap") or 0.0),
                 median=float(voice.get("f0_median_ratio") or 0.0),
                 p90=float(voice.get("f0_p90_ratio") or 0.0),
+                source=source_detail,
                 clip=float(item.get("clipping_ratio") or 0.0),
                 tail=bool((item.get("tail_info") or {}).get("suspicious")),
             )
@@ -152,7 +180,7 @@ def main() -> None:
         references[name] = guarded
         reference_reports[name] = report
     (guarded_dir / "references.json").write_text(
-        json.dumps(reference_reports, ensure_ascii=False, indent=2),
+        json.dumps(reference_reports, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
 
@@ -172,7 +200,10 @@ def main() -> None:
     log(f"CUDA доступна: {torch.cuda.is_available()} (должно быть False)")
     log(f"Base Steps: {args.steps}; Base CFG: {args.cfg}")
     log("Reference-only cloning; 2 candidates always, 3rd on quality warning")
-    log("Candidate selection uses duration + artifacts + voiced ratio + F0 match")
+    log(
+        "Candidate selection uses duration + artifacts + voice identity + "
+        "source-guided prosody"
+    )
     log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
 
@@ -224,6 +255,13 @@ def main() -> None:
         clean_path = clean_dir / f"{segment_id:02d}_{profile}_clean.wav"
         fitted_path = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
         checkpoint_path = checkpoints_dir / f"segment_{segment_id:02d}.json"
+        expression_signature = {
+            "policy": str(segment.get("expression_policy") or ""),
+            "tier": str(segment.get("expression_tier") or ""),
+            "score": segment.get("expression_score"),
+            "style_instruction": str(segment.get("style_instruction") or ""),
+            "source_prosody": segment.get("source_prosody") or {},
+        }
         signature = {
             "policy": POLICY,
             "model_config_sha256": config_sha,
@@ -234,6 +272,7 @@ def main() -> None:
             "tail_guard": tail_guard,
             "start_delay_ms": int(segment.get("start_delay_ms", 0)),
             "reference_profile": profile,
+            "expression": expression_signature,
             "steps": int(args.steps),
             "cfg": float(args.cfg),
             "base_seed": int(args.base_seed),
@@ -265,7 +304,7 @@ def main() -> None:
                     )
                     log(
                         f"[{position}/{len(segments)}] #{segment_id} "
-                        "восстановлен из fingerprinted checkpoint"
+                        "восстановлен из fingerprinted expression checkpoint"
                     )
                     continue
 
@@ -273,9 +312,12 @@ def main() -> None:
         log(
             f"[{position}/{len(segments)}] #{segment_id} {profile.upper()} / "
             f"{target_duration:.2f} сек. / "
-            f"delay={int(segment.get('start_delay_ms', 0))} ms"
+            f"delay={int(segment.get('start_delay_ms', 0))} ms / "
+            f"delivery={str(segment.get('expression_tier') or 'unknown')}"
         )
         log(f"Текст: {segment['text']}")
+        if segment.get("style_instruction"):
+            log(f"Подача: {segment['style_instruction']}")
 
         candidates: list[dict[str, Any]] = []
         for attempt_index in range(1, 4):
@@ -350,19 +392,31 @@ def main() -> None:
                 "activity": activity_stats(wav_np, sample_rate),
                 "synthesis_seconds": elapsed,
             }
-            candidate["score"] = candidate_score(
+            base_score = candidate_score(
                 candidate,
                 speech_slot,
                 reference_report,
             )
+            prosody_penalty = source_prosody_penalty(candidate, segment)
+            candidate["base_score"] = float(base_score)
+            candidate["score"] = float(base_score) + float(prosody_penalty)
             candidates.append(candidate)
             voice = candidate["voice_match"]
+            prosody = candidate["source_prosody_match"]
+            source_detail = (
+                f"srcF0×={prosody['f0_median_ratio_to_source']:.3f}/"
+                f"{prosody['f0_p90_ratio_to_source']:.3f}; "
+                f"srcPenalty={prosody['penalty']:.2f}; "
+                if prosody.get("available")
+                else "srcProsody=n/a; "
+            )
             log(
                 f"attempt {attempt_index}: {candidate['duration']:.2f} сек.; "
-                f"score={candidate['score']:.2f}; "
+                f"score={candidate['score']:.2f} (base={base_score:.2f}); "
                 f"voiced={candidate['pitch']['voiced_ratio']:.3f}; "
                 f"F0×={voice['f0_median_ratio']:.3f}/"
                 f"{voice['f0_p90_ratio']:.3f}; "
+                f"{source_detail}"
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
                 f"cfg={cfg_value:.2f}; steps={step_count}; "
                 f"seed={seed}; CPU={elapsed:.1f}"
@@ -418,11 +472,15 @@ def main() -> None:
             "reference_sha256": reference_report["sha256"],
             "selected_attempt": int(selected["attempt"]),
             "selected_seed": int(selected["seed"]),
+            "selected_base_score": round(float(selected["base_score"]), 6),
             "selected_score": round(float(selected["score"]), 6),
             "selected_voice_match": {
                 key: round(float(value), 6)
                 for key, value in selected["voice_match"].items()
             },
+            "selected_source_prosody_match": _report_mapping(
+                selected.get("source_prosody_match")
+            ),
             "tail_trimmed": bool(tail_trimmed),
             "tail_trim_time": (
                 round(float(trim_time), 6)
@@ -442,6 +500,7 @@ def main() -> None:
                     key: (
                         round(float(value), 6)
                         if isinstance(value, (int, float))
+                        and not isinstance(value, bool)
                         else value
                     )
                     for key, value in {
@@ -450,6 +509,7 @@ def main() -> None:
                         "cfg": item["cfg"],
                         "steps": item["steps"],
                         "duration": item["duration"],
+                        "base_score": item["base_score"],
                         "score": item["score"],
                         "leading_silence": item["leading_silence"],
                         "trailing_silence": item["trailing_silence"],
@@ -458,6 +518,9 @@ def main() -> None:
                         **item["pitch"],
                         **item["activity"],
                         **item["voice_match"],
+                        "source_prosody_match": _report_mapping(
+                            item.get("source_prosody_match")
+                        ),
                         "tail_restart": bool(
                             item["tail_info"].get("suspicious")
                         ),
@@ -472,6 +535,7 @@ def main() -> None:
                 {"signature": signature, "report": segment_report},
                 ensure_ascii=False,
                 indent=2,
+                allow_nan=False,
             ),
             encoding="utf-8",
         )
@@ -483,12 +547,12 @@ def main() -> None:
     build_timeline(fitted_segments, output, float(args.video_duration))
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.0-direct-max-quality",
+        "schema_version": "5.1-direct-source-prosody",
         "policy": POLICY,
         "strategy": (
             "direct reference-only VoxCPM2 + guarded references + "
-            "multi-profile candidates + voiced/F0/artifact selection + "
-            "no best-of-bad fallback"
+            "multi-profile candidates + voice/artifact hard gates + "
+            "source-guided prosody soft ranking + no best-of-bad fallback"
         ),
         "model_path": str(model_path),
         "model_config_sha256": config_sha,
@@ -519,10 +583,21 @@ def main() -> None:
     }
     report_path = output.with_suffix(".json")
     report_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
+        json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
     log("")
     log("=== DIRECT MAX-QUALITY RENDER COMPLETE ===")
     log(f"Timeline: {output}")
     log(f"Report: {report_path}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        import traceback
+
+        print(f"ОШИБКА: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        raise SystemExit(1)
