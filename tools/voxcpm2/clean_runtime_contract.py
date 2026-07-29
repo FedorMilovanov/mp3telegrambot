@@ -54,6 +54,7 @@ _RELEASE_MODULES = (
     "tools/voxcpm2/semantic_tts_guard_v4.py",
     "tools/voxcpm2/russian_spoken_numbers.py",
     "tools/voxcpm2/final_media_qa.py",
+    "tools/voxcpm2/final_media_qa/__init__.py",
     "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py",
 )
 
@@ -86,6 +87,8 @@ def sampled_sha256_file(path: Path, *, block_size: int = _WEIGHT_SAMPLE_BYTES) -
 
 
 def _finite(value: Any, *, field: str) -> float:
+    if isinstance(value, bool):
+        raise RuntimeError(f"{field} не может быть bool.")
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -96,6 +99,12 @@ def _finite(value: Any, *, field: str) -> float:
 
 
 def _bounded_int(value: Any, *, field: str, low: int, high: int) -> int:
+    if isinstance(value, bool):
+        raise RuntimeError(f"{field} не может быть bool.")
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        raise RuntimeError(f"{field} должен быть целым числом.")
     try:
         result = int(value)
     except (TypeError, ValueError, OverflowError) as exc:
