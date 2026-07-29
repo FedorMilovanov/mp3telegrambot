@@ -6,6 +6,7 @@ import numpy as np
 
 from tools.voxcpm2.direct_timbre_analysis import (
     HARD_SIMILARITY_FLOOR,
+    MAX_TIMBRE_PENALTY,
     spectral_envelope,
     spectral_similarity,
     timbre_hard_ok,
@@ -45,6 +46,7 @@ def test_only_gross_mismatch_crosses_hard_floor() -> None:
     assert 0.0 < HARD_SIMILARITY_FLOOR < 0.5
     assert timbre_hard_ok(HARD_SIMILARITY_FLOOR) is True
     assert timbre_hard_ok(HARD_SIMILARITY_FLOOR - 0.01) is False
+    assert timbre_hard_ok(1.01) is False
 
 
 def test_missing_or_invalid_profile_fails_closed() -> None:
@@ -54,4 +56,20 @@ def test_missing_or_invalid_profile_fails_closed() -> None:
     assert spectral_similarity({}, valid) == 0.0
     assert spectral_similarity({"bands": [0.5, 0.5]}, {"bands": [1.0]}) == 0.0
     assert spectral_similarity({"bands": [0.0, 0.0]}, {"bands": [0.5, 0.5]}) == 0.0
+    assert spectral_similarity({"bands": [float("nan"), 1.0]}, {"bands": [0.5, 0.5]}) == 0.0
+    assert spectral_similarity({"bands": [float("inf"), 1.0]}, {"bands": [0.5, 0.5]}) == 0.0
     assert timbre_hard_ok(spectral_similarity({}, {})) is False
+
+
+def test_nonfinite_audio_and_sample_rate_return_empty_profile() -> None:
+    audio = _tone(120.0)
+    audio[100] = float("nan")
+    assert spectral_envelope(audio, 16_000)["frames"] == 0
+    assert spectral_envelope(_tone(120.0), 0)["frames"] == 0
+    assert spectral_envelope(_tone(120.0), "invalid")["frames"] == 0
+
+
+def test_nonfinite_similarity_gets_maximum_penalty_and_hard_reject() -> None:
+    for value in (float("nan"), float("inf"), float("-inf"), "invalid", None):
+        assert timbre_penalty(value) == MAX_TIMBRE_PENALTY
+        assert timbre_hard_ok(value) is False
