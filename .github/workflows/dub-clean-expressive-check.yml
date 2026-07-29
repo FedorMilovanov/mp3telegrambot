@@ -17,6 +17,7 @@ on:
       - "tools/voxcpm2/direct_source_prosody.py"
       - "tools/voxcpm2/direct_timbre_analysis.py"
       - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/final_media_qa/**"
       - "tools/voxcpm2/continuous_reference_policy.py"
       - "tools/voxcpm2/controlled_reference_gate.py"
       - "tools/voxcpm2/russian_spoken_numbers.py"
@@ -34,6 +35,7 @@ on:
       - "handlers/dub_wizard.py"
       - "tests/test_clean_reference_transport.py"
       - "tests/test_clean_runtime_contract.py"
+      - "tests/test_clean_runtime_setting_types.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
       - "tests/test_clean_request_settings.py"
@@ -105,6 +107,7 @@ jobs:
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
             tools/voxcpm2/final_media_qa.py \
+            tools/voxcpm2/final_media_qa/__init__.py \
             tools/voxcpm2/continuous_reference_policy.py \
             tools/voxcpm2/controlled_reference_gate.py \
             tools/voxcpm2/russian_spoken_numbers.py \
@@ -132,6 +135,7 @@ jobs:
           pytest -q \
             tests/test_clean_reference_transport.py \
             tests/test_clean_runtime_contract.py \
+            tests/test_clean_runtime_setting_types.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
             tests/test_clean_request_settings.py \
