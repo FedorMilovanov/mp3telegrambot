@@ -26,7 +26,7 @@ _LOCK = threading.Lock()
 _ORIGINAL_BUILD = None
 _ORIGINAL_START = None
 _GENERIC_RECIPE = "generic_short_v1"
-_WORKER_RUNTIME = "dub-worker-quality-v4.4"
+_WORKER_RUNTIME = "dub-worker-quality-v4.5"
 _PROGRESS_METADATA_KEY = "dub_progress_message_v1"
 _ACTIVE_PROJECT_STATES = {"queued", "rendering", "cancelling"}
 _PERMANENT_EDIT_ERRORS = (
@@ -129,7 +129,7 @@ def ensure_worker_running() -> bool:
                 stdin=subprocess.DEVNULL,
                 **kwargs,
             )
-        logger.info("🎙 Dub Studio worker v4.4 autostart requested: %s", root)
+        logger.info("🎙 Dub Studio worker v4.5 autostart requested: %s", root)
         return True
     except Exception as exc:
         logger.warning("⚠️ Dub Studio worker autostart failed: %s", exc)
@@ -556,7 +556,7 @@ def install_dub_studio_runtime() -> None:
         ensure_worker_running()
         _INSTALLED = True
         logger.info(
-            "🎙 Dub Studio runtime v4.4: direct max-quality + editable progress enabled"
+            "🎙 Dub Studio runtime v4.5: direct max-quality + editable progress enabled"
         )
 
 
