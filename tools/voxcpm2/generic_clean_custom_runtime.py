@@ -8,6 +8,7 @@ from typing import Any
 
 from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
@@ -27,6 +28,27 @@ def _install_clean_runtime_adapters() -> None:
     production.log(
         "clean adapters: verified yt-dlp source + canonical title route; "
         "TTS guard disabled"
+    )
+
+
+def _current_request() -> tuple[Path, dict[str, Any]]:
+    root = production.project_root(production.current_project_id())
+    return root, production.load_request(root)
+
+
+def _build_clean_render_segments(
+    groups: list[dict[str, Any]],
+    translations: list[dict[str, Any]],
+    *,
+    delay_ms: int,
+    duration: float,
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    _root, request = _current_request()
+    return clean.build_render_segments(
+        groups,
+        translations,
+        delay_ms=clean_request_settings.russian_delay_ms(request),
+        duration=duration,
     )
 
 
@@ -81,9 +103,11 @@ def main() -> None:
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
     production.pipeline.group_cues = clean.group_source_cues
     production._validate_translation_payload = strict_translation_payload.validate_full
-    production._build_render_segments = clean.build_render_segments
+    production._build_render_segments = _build_clean_render_segments
     production._run_voxcpm_and_master = _run_clean_voxcpm_and_master
     production.main()
+    root, request = _current_request()
+    clean_request_settings.repair_manifest(root, request)
 
 
 if __name__ == "__main__":
