@@ -27,7 +27,8 @@ from tools.voxcpm2.direct_max_quality_analysis import (
 )
 
 
-POLICY = "clean-expression-aware-qa-v4"
+POLICY = "clean-expression-aware-qa-v3"
+VOICE_EVIDENCE_POLICY = "fail-closed-reference-f0-v1"
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -222,6 +223,7 @@ def _voice_evaluation(
     return {
         **candidate,
         "policy": POLICY,
+        "voice_evidence_policy": VOICE_EVIDENCE_POLICY,
         "reference_profile": profile_name,
         "expression_tier": str(item.get("expression_tier") or ""),
         "expression_score": _number(item.get("expression_score"), 0.0),
@@ -342,9 +344,7 @@ def verify_timeline_v45(
     report["semantic_asr_policy"] = (
         "auto-language + conservative forced-Russian fallback"
     )
-    report["voice_evidence_policy"] = (
-        "fail-closed reference and candidate F0"
-    )
+    report["voice_evidence_policy"] = VOICE_EVIDENCE_POLICY
     report["passed"] = not result
     report["failed_segment_ids"] = result
     report_path.write_text(
