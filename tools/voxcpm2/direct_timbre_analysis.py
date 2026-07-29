@@ -34,7 +34,12 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         factor = max(1, int(round(rate / 16_000)))
         usable = len(audio) - len(audio) % factor
         if usable >= factor * 512:
-            audio = audio[:usable].reshape(-1, factor).mean(axis=1).astype(np.float32)
+            audio = (
+                audio[:usable]
+                .reshape(-1, factor)
+                .mean(axis=1)
+                .astype(np.float32)
+            )
             rate = int(round(rate / factor))
 
     frame = max(512, int(rate * 0.032))
@@ -52,7 +57,9 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
             math.sqrt(
                 float(
                     np.mean(
-                        np.square(audio[start : start + frame].astype(np.float64))
+                        np.square(
+                            audio[start : start + frame].astype(np.float64)
+                        )
                     )
                 )
                 + 1e-12
@@ -61,7 +68,10 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         ],
         dtype=np.float64,
     )
-    activity_floor = max(float(np.percentile(rms, 35)) * 0.60, 10 ** (-45 / 20))
+    activity_floor = max(
+        float(np.percentile(rms, 35)) * 0.60,
+        10 ** (-45 / 20),
+    )
     frequencies = np.fft.rfftfreq(frame, d=1.0 / rate)
     window = np.hanning(frame)
     accumulated = np.zeros(len(BAND_EDGES_HZ) - 1, dtype=np.float64)
@@ -88,7 +98,9 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
                 frequencies < BAND_EDGES_HZ[band_index + 1]
             )
             accumulated[band_index] += math.log1p(float(np.sum(power[mask])))
-        centroid_numerator += float(np.sum(audible_frequencies * audible_power))
+        centroid_numerator += float(
+            np.sum(audible_frequencies * audible_power)
+        )
         centroid_denominator += total
         used += 1
 
@@ -112,26 +124,39 @@ def spectral_similarity(
     candidate_profile: dict[str, Any],
     reference_profile: dict[str, Any],
 ) -> float:
-    candidate = np.asarray(candidate_profile.get("bands") or [], dtype=np.float64)
-    reference = np.asarray(reference_profile.get("bands") or [], dtype=np.float64)
+    candidate = np.asarray(
+        candidate_profile.get("bands") or [],
+        dtype=np.float64,
+    )
+    reference = np.asarray(
+        reference_profile.get("bands") or [],
+        dtype=np.float64,
+    )
     if (
         candidate.ndim != 1
         or reference.ndim != 1
         or len(candidate) == 0
         or len(candidate) != len(reference)
     ):
-        return 1.0
+        # Missing evidence is not evidence of a perfect speaker match.
+        return 0.0
     candidate = np.clip(candidate, 0.0, None)
     reference = np.clip(reference, 0.0, None)
     candidate_sum = float(np.sum(candidate))
     reference_sum = float(np.sum(reference))
     if candidate_sum <= 1e-12 or reference_sum <= 1e-12:
-        return 1.0
+        return 0.0
     candidate /= candidate_sum
     reference /= reference_sum
     # Bhattacharyya coefficient is bounded 0..1 and is robust to small
     # phoneme-dependent shifts between neighbouring bands.
-    return float(np.clip(np.sum(np.sqrt(candidate * reference)), 0.0, 1.0))
+    return float(
+        np.clip(
+            np.sum(np.sqrt(candidate * reference)),
+            0.0,
+            1.0,
+        )
+    )
 
 
 def timbre_penalty(similarity: float) -> float:
