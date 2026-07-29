@@ -33,6 +33,8 @@ on:
       - "tools/voxcpm2/generic_clean_*.py"
       - "tools/voxcpm2/clean_*.py"
       - "tools/voxcpm2/recipes/generic_short_v1.json"
+      - "handlers/dub_audio_repair.py"
+      - "handlers/dub_audio_repair/**"
       - "handlers/dub_commands.py"
       - "handlers/dub_delivery.py"
       - "handlers/dub_health.py"
@@ -45,6 +47,8 @@ on:
       - "tests/test_clean_runtime_facades.py"
       - "tests/test_clean_segment_contract.py"
       - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
       - "tests/test_clean_release_marker.py"
       - "tests/test_clean_source_download.py"
       - "tests/test_clean_request_settings.py"
@@ -144,6 +148,8 @@ jobs:
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py \
+            handlers/dub_audio_repair.py \
+            handlers/dub_audio_repair/__init__.py \
             handlers/dub_commands.py \
             handlers/dub_delivery.py \
             handlers/dub_health.py \
@@ -159,6 +165,8 @@ jobs:
             tests/test_clean_runtime_facades.py \
             tests/test_clean_segment_contract.py \
             tests/test_repair_segment_input_contract.py \
+            tests/test_clean_repair_request_contract.py \
+            tests/test_dub_audio_repair_handler_contract.py \
             tests/test_clean_release_marker.py \
             tests/test_clean_source_download.py \
             tests/test_clean_request_settings.py \
