@@ -32,6 +32,7 @@ on:
       - "tests/test_continuous_reference_release_contract.py"
       - "tests/test_controlled_reference_gate.py"
       - "tests/test_calm_reference_identity_gate.py"
+      - "tests/test_direct_cli_runtime_marker.py"
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_direct_segment_input_contract.py"
@@ -107,6 +108,7 @@ jobs:
             tests/test_continuous_reference_release_contract.py \
             tests/test_controlled_reference_gate.py \
             tests/test_calm_reference_identity_gate.py \
+            tests/test_direct_cli_runtime_marker.py \
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
             tests/test_direct_segment_input_contract.py \
