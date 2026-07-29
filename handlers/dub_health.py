@@ -64,6 +64,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "core": voxcpm / "clean_production_core.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
         "source_download": voxcpm / "clean_source_download.py",
+        "request_settings": voxcpm / "clean_request_settings.py",
+        "strict_translation": voxcpm / "strict_translation_payload.py",
+        "creator_vtt": voxcpm / "generic_gemini_runtime.py",
         "normalizer": voxcpm / "clean_segment_normalizer.py",
         "expression": voxcpm / "expressive_continuity.py",
         "continuous_reference": voxcpm / "continuous_reference_policy.py",
@@ -118,10 +121,10 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "def _setting(" in text["runtime_contract"]
             and '_setting(request, "base_seed", 2026072800)' in text["runtime_contract"]
             and 'request.get("base_seed") or' not in text["runtime_contract"]
-            and '"tools/voxcpm2/direct_source_prosody.py"'
-            in text["runtime_contract"]
-            and '"tools/voxcpm2/clean_source_download.py"'
-            in text["runtime_contract"]
+            and '"tools/voxcpm2/direct_source_prosody.py"' in text["runtime_contract"]
+            and '"tools/voxcpm2/clean_source_download.py"' in text["runtime_contract"]
+            and '"tools/voxcpm2/clean_request_settings.py"' in text["runtime_contract"]
+            and '"tools/voxcpm2/strict_translation_payload.py"' in text["runtime_contract"]
             and '"release_complete": False' in text["core"]
             and "release_complete=True" in text["core"]
             and "direct_cli_runtime.marker.json" in text["stable_cli"]
@@ -130,17 +133,47 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             'POLICY = "clean-source-download-manifest-v1"' in text["source_download"]
             and "def _url_video_id(" in text["source_download"]
             and "def _sampled_sha256(" in text["source_download"]
-            and 'source.with_suffix(source.suffix + ".download.json")'
-            in text["source_download"]
-            and "YouTube URL и yt-dlp metadata указывают на разные ролики"
-            in text["source_download"]
+            and 'source.with_suffix(source.suffix + ".download.json")' in text["source_download"]
+            and "YouTube URL и yt-dlp metadata указывают на разные ролики" in text["source_download"]
             and all(
-                "hardened.download_source = clean_source_download.download_source"
-                in text[name]
-                and "hardened.pipeline.download_source = clean_source_download.download_source"
-                in text[name]
+                "hardened.download_source = clean_source_download.download_source" in text[name]
+                and "hardened.pipeline.download_source = clean_source_download.download_source" in text[name]
                 for name in source_route_names
             )
+        ),
+        "truthful-request-settings": (
+            'POLICY = "clean-request-settings-v1"' in text["request_settings"]
+            and "def _setting(" in text["request_settings"]
+            and "original_level не может быть bool" in text["request_settings"]
+            and "russian_delay_ms не может быть bool" in text["request_settings"]
+            and "def repair_manifest(" in text["request_settings"]
+            and 'payload["settings_policy"] = POLICY' in text["request_settings"]
+            and all(
+                "clean_request_settings.russian_delay_ms(request)" in text[name]
+                and "clean_request_settings.repair_manifest(root, request)" in text[name]
+                for name in source_route_names
+            )
+        ),
+        "creator-vtt-integrity": (
+            "def _merge_creator_caption_lines(" in text["creator_vtt"]
+            and "Exact adjacent duplicates are the same VTT render state" in text["creator_vtt"]
+            and "Do not deduplicate against the whole cue" in text["creator_vtt"]
+            and "parse_creator_vtt_preserving_text" in text["creator_vtt"]
+            and "production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in text["gemini"]
+        ),
+        "strict-translation-payload": (
+            'POLICY = "strict-translation-payload-v1"' in text["strict_translation"]
+            and "def validate_full(" in text["strict_translation"]
+            and "def validate_subset(" in text["strict_translation"]
+            and "Переводчик вернул повторяющийся ID" in text["strict_translation"]
+            and "strict_translation_payload.validate_full(value, groups)" in text["translation"]
+            and "strict_translation_payload.validate_subset(" in text["translation"]
+            and "production._validate_translation_payload = strict_translation_payload.validate_full" in text["custom"]
+            and '"source_language"' in text["translation"]
+            and "с исходного языка на русский" in text["translation"]
+            and "англоязычной" not in text["translation"].casefold()
+            and "английской речью" not in text["translation"].casefold()
+            and "production.acquire_transcript = _acquire_transcript_with_actual_language" in text["gemini"]
         ),
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
@@ -179,8 +212,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and '"selected_raw_pitch_evidence_ok": True' in text["cli"]
             and '"selected_base_score"' in text["cli"]
             and '"selected_source_prosody_match"' in text["cli"]
-            and '"schema_version": "5.2-direct-raw-pitch-source-prosody"'
-            in text["cli"]
+            and '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in text["cli"]
             and "rawPitch=" in text["cli"]
             and "srcF0×=" in text["cli"]
         ),
@@ -277,8 +309,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in text["gemini_runtime"]
             and "load_dotenv(override=False)" in text["gemini_runtime"]
             and "пробую следующий" in text["gemini_runtime"]
-            and "production.translate_groups_max = expressive_translation.translate_groups"
-            in text["gemini"]
+            and "production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]
         ),
         "clean-entrypoints": (
             "TTS guard disabled" in text["gemini"]
@@ -297,8 +328,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "calibrate_russian_gain" in text["master"]
             and "verify_final_outputs" in text["master"]
             and "final_media_verification.json" in text["master"]
-            and 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"'
-            in text["media_qa"]
+            and 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"' in text["media_qa"]
             and "def estimate_original_bed(" in text["media_qa"]
             and "def _estimate_alignment_lag(" in text["media_qa"]
             and "alignment_lag_ms" in text["media_qa"]
@@ -383,7 +413,8 @@ def collect_dub_health() -> list[dict[str, Any]]:
             "Clean Expressive NoChew + независимый QA",
             quality_ok,
             quality_detail
-            + "; verified YouTube ID + sampled source cache; "
+            + "; verified YouTube ID + sampled source cache; truthful 0%/0ms settings; "
+            "strict unique translation IDs + creator-repeat preservation + actual source language; "
             "runtime v2 complete clean-path fingerprints; direct v3 16→48k; "
             "continuous-first v2 hard-floor reference; exact numeric/date anchors; "
             "fail-closed raw pitch + voice/timbre gates + source-prosody ranking; "
