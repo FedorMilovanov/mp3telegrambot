@@ -182,7 +182,7 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         if autocorrelation[0] <= 1e-9:
             continue
         lag = lag_lo + int(
-            np.argmax(autocorrelation[lag_lo : lag_hi + 1])
+            np.argmax(autorrelation[lag_lo : lag_hi + 1])
         )
         if autocorrelation[lag] / autocorrelation[0] >= 0.30:
             values.append(sample_rate / lag)
@@ -535,23 +535,53 @@ def candidate_score(
     return score
 
 
+def _finite_voice_metric(voice: dict[str, Any], key: str) -> float | None:
+    if key not in voice:
+        return None
+    try:
+        value = float(voice[key])
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def candidate_hard_ok(
     candidate: dict[str, Any],
     speech_slot: float,
 ) -> bool:
-    duration_ratio = float(candidate["duration"]) / max(0.1, speech_slot)
-    voice = candidate.get("voice_match") or {}
+    try:
+        duration = float(candidate["duration"])
+        slot = float(speech_slot)
+        clipping = float(candidate["clipping_ratio"])
+        active = float(candidate["activity"]["active_ratio"])
+        voiced = float(candidate["pitch"]["voiced_ratio"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    if not all(math.isfinite(value) for value in (duration, slot, clipping, active, voiced)):
+        return False
+    if slot <= 0.0:
+        return False
+
+    voice = candidate.get("voice_match")
+    if not isinstance(voice, dict):
+        return False
+    median_ratio = _finite_voice_metric(voice, "f0_median_ratio")
+    p90_ratio = _finite_voice_metric(voice, "f0_p90_ratio")
+    similarity = _finite_voice_metric(voice, "spectral_similarity")
+    if median_ratio is None or p90_ratio is None or similarity is None:
+        return False
+
+    tail = candidate.get("tail_info")
+    if not isinstance(tail, dict):
+        return False
+    duration_ratio = duration / max(0.1, slot)
     return bool(
-        not candidate["tail_info"].get("suspicious")
+        not tail.get("suspicious")
         and 0.42 <= duration_ratio <= 1.55
-        and float(candidate["clipping_ratio"]) <= 0.0015
-        and float(candidate["activity"]["active_ratio"]) >= 0.16
-        and float(candidate["pitch"]["voiced_ratio"]) >= 0.12
-        and 0.55
-        <= float(voice.get("f0_median_ratio", 1.0))
-        <= 1.65
-        and 0.50
-        <= float(voice.get("f0_p90_ratio", 1.0))
-        <= 1.75
-        and timbre_hard_ok(float(voice.get("spectral_similarity", 1.0)))
+        and clipping <= 0.0015
+        and active >= 0.16
+        and voiced >= 0.12
+        and 0.55 <= median_ratio <= 1.65
+        and 0.50 <= p90_ratio <= 1.75
+        and timbre_hard_ok(similarity)
     )
