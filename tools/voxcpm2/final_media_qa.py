@@ -27,6 +27,9 @@ ORIGINAL_LEVEL_TOLERANCE = 0.015
 ORIGINAL_LOCAL_SPREAD_DB = 0.75
 ORIGINAL_MIN_LOCAL_WINDOWS = 3
 ORIGINAL_WINDOW_SECONDS = 2.0
+ORIGINAL_ALIGNMENT_MAX_SECONDS = 0.15
+ORIGINAL_ALIGNMENT_PROBE_RATE = 1_000
+ORIGINAL_ALIGNMENT_PROBE_SECONDS = 180.0
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -356,6 +359,74 @@ def _decode_audio_mono(path: Path, *, duration: float) -> np.ndarray:
     return audio
 
 
+def _estimate_alignment_lag(
+    source: np.ndarray,
+    mixed: np.ndarray,
+    *,
+    sample_rate: int,
+) -> tuple[int, float]:
+    factor = max(1, int(round(float(sample_rate) / ORIGINAL_ALIGNMENT_PROBE_RATE)))
+    source_probe = np.asarray(source, dtype=np.float64).reshape(-1)[::factor]
+    mixed_probe = np.asarray(mixed, dtype=np.float64).reshape(-1)[::factor]
+    limit = min(
+        len(source_probe),
+        len(mixed_probe),
+        int(ORIGINAL_ALIGNMENT_PROBE_SECONDS * ORIGINAL_ALIGNMENT_PROBE_RATE),
+    )
+    if limit < ORIGINAL_ALIGNMENT_PROBE_RATE * 2:
+        return 0, 0.0
+    source_probe = source_probe[:limit] - float(np.mean(source_probe[:limit]))
+    mixed_probe = mixed_probe[:limit] - float(np.mean(mixed_probe[:limit]))
+    max_lag_probe = max(
+        1,
+        int(round(ORIGINAL_ALIGNMENT_MAX_SECONDS * sample_rate / factor)),
+    )
+    best_lag = 0
+    best_score = -1.0
+    for lag in range(-max_lag_probe, max_lag_probe + 1):
+        if lag > 0:
+            left = source_probe[:-lag]
+            right = mixed_probe[lag:]
+        elif lag < 0:
+            left = source_probe[-lag:]
+            right = mixed_probe[:lag]
+        else:
+            left = source_probe
+            right = mixed_probe
+        if len(left) < ORIGINAL_ALIGNMENT_PROBE_RATE:
+            continue
+        denominator = math.sqrt(
+            max(float(np.dot(left, left)), 0.0)
+            * max(float(np.dot(right, right)), 0.0)
+        )
+        if denominator <= 1e-12:
+            continue
+        score = float(np.dot(left, right)) / denominator
+        if math.isfinite(score) and score > best_score:
+            best_score = score
+            best_lag = lag * factor
+    return int(best_lag), float(max(best_score, 0.0))
+
+
+def _align_three(
+    source: np.ndarray,
+    mixed: np.ndarray,
+    russian: np.ndarray,
+    lag_samples: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if lag_samples > 0:
+        source = source[:-lag_samples]
+        mixed = mixed[lag_samples:]
+        russian = russian[lag_samples:]
+    elif lag_samples < 0:
+        offset = -lag_samples
+        source = source[offset:]
+        mixed = mixed[:-offset]
+        russian = russian[:-offset]
+    length = min(len(source), len(mixed), len(russian))
+    return source[:length], mixed[:length], russian[:length]
+
+
 def _solve_two_branch(
     source: np.ndarray,
     russian: np.ndarray,
@@ -401,7 +472,7 @@ def estimate_original_bed(
     source = np.asarray(source, dtype=np.float64).reshape(-1)
     mixed = np.asarray(mixed, dtype=np.float64).reshape(-1)
     russian = np.asarray(russian_only, dtype=np.float64).reshape(-1)
-    length = min(len(source), len(mixed), len(russian))
+    raw_length = min(len(source), len(mixed), len(russian))
     failures: list[str] = []
     result: dict[str, Any] = {
         "policy": ORIGINAL_BED_POLICY,
@@ -409,7 +480,11 @@ def estimate_original_bed(
         "passed": False,
         "expected_original_level": expected,
         "sample_rate": int(sample_rate),
-        "sample_count": int(length),
+        "sample_count": int(raw_length),
+        "aligned_sample_count": 0,
+        "alignment_lag_samples": 0,
+        "alignment_lag_ms": 0.0,
+        "alignment_correlation": 0.0,
         "estimated_original_level": None,
         "estimated_russian_gain": None,
         "absolute_error": None,
@@ -424,22 +499,45 @@ def estimate_original_bed(
             "local_spread_db": ORIGINAL_LOCAL_SPREAD_DB,
             "minimum_local_windows": ORIGINAL_MIN_LOCAL_WINDOWS,
             "window_seconds": ORIGINAL_WINDOW_SECONDS,
+            "alignment_max_seconds": ORIGINAL_ALIGNMENT_MAX_SECONDS,
         },
         "failures": failures,
     }
     minimum = max(1, int(sample_rate * 2.0))
-    if length < minimum:
+    if raw_length < minimum:
         failures.append("недостаточно общих samples для original-bed regression")
         return result
-    source = source[:length]
-    mixed = mixed[:length]
-    russian = russian[:length]
+    source = source[:raw_length]
+    mixed = mixed[:raw_length]
+    russian = russian[:raw_length]
     if not (
         np.isfinite(source).all()
         and np.isfinite(mixed).all()
         and np.isfinite(russian).all()
     ):
         failures.append("NaN/Inf в original-bed samples")
+        return result
+
+    lag_samples, correlation = _estimate_alignment_lag(
+        source,
+        mixed,
+        sample_rate=sample_rate,
+    )
+    source, mixed, russian = _align_three(
+        source,
+        mixed,
+        russian,
+        lag_samples,
+    )
+    length = min(len(source), len(mixed), len(russian))
+    result.update(
+        aligned_sample_count=int(length),
+        alignment_lag_samples=int(lag_samples),
+        alignment_lag_ms=float(lag_samples) * 1000.0 / max(1, int(sample_rate)),
+        alignment_correlation=float(correlation),
+    )
+    if length < minimum:
+        failures.append("после alignment осталось недостаточно samples")
         return result
 
     solved = _solve_two_branch(source, russian, mixed)
@@ -636,7 +734,7 @@ def verify_final_outputs(
     )
     report = {
         "schema_version": "dub-final-media-qa-v5",
-        "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128 + post-AAC two-branch regression",
+        "measurement": "FFmpeg loudnorm / ITU-R BS.1770 / EBU R128 + aligned post-AAC two-branch regression",
         "passed": bool(mixed.get("passed") and russian_only.get("passed") and bed_passed),
         "mixed": mixed,
         "russian_only": russian_only,
@@ -670,6 +768,7 @@ __all__ = [
     "EXPECTED_CODEC",
     "EXPECTED_SAMPLE_RATE",
     "LOUDNESS_TOLERANCE_LU",
+    "ORIGINAL_ALIGNMENT_MAX_SECONDS",
     "ORIGINAL_BED_POLICY",
     "ORIGINAL_BED_SAMPLE_RATE",
     "ORIGINAL_LEVEL_TOLERANCE",
