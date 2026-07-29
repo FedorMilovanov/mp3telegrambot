@@ -10,6 +10,7 @@ on:
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/generic_short_runtime.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/direct_timbre_analysis.py"
       - "tools/voxcpm2/final_media_qa.py"
       - "tools/voxcpm2/professional_audio_v45.py"
       - "tools/voxcpm2/professional_audio_qa_v45.py"
@@ -24,6 +25,7 @@ on:
       - "tests/test_clean_reference_transport.py"
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
+      - "tests/test_direct_timbre_analysis.py"
       - "tests/test_expression_aware_voice_qa.py"
       - "tests/test_final_media_qa.py"
       - "tests/test_gemini_translation_quality.py"
@@ -59,6 +61,7 @@ jobs:
             tools/voxcpm2/dub_worker_hardened.py \
             tools/voxcpm2/generic_short_runtime.py \
             tools/voxcpm2/direct_max_quality_io.py \
+            tools/voxcpm2/direct_timbre_analysis.py \
             tools/voxcpm2/direct_max_quality_analysis.py \
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
@@ -81,6 +84,7 @@ jobs:
             tests/test_clean_reference_transport.py \
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
+            tests/test_direct_timbre_analysis.py \
             tests/test_expression_aware_voice_qa.py \
             tests/test_final_media_qa.py \
             tests/test_gemini_translation_quality.py \
