@@ -11,6 +11,7 @@ on:
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/generic_short_runtime.py"
       - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/direct_source_prosody.py"
       - "tools/voxcpm2/direct_timbre_analysis.py"
       - "tools/voxcpm2/final_media_qa.py"
       - "tools/voxcpm2/continuous_reference_policy.py"
@@ -38,6 +39,7 @@ on:
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
       - "tests/test_direct_segment_input_contract.py"
+      - "tests/test_direct_source_prosody.py"
       - "tests/test_direct_timbre_analysis.py"
       - "tests/test_dual_whisper_semantic_qa.py"
       - "tests/test_forced_russian_script_gate.py"
@@ -86,6 +88,7 @@ jobs:
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_timbre_analysis.py \
             tools/voxcpm2/direct_max_quality_analysis.py \
+            tools/voxcpm2/direct_source_prosody.py \
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
             tools/voxcpm2/final_media_qa.py \
@@ -121,6 +124,7 @@ jobs:
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
             tests/test_direct_segment_input_contract.py \
+            tests/test_direct_source_prosody.py \
             tests/test_direct_timbre_analysis.py \
             tests/test_dual_whisper_semantic_qa.py \
             tests/test_forced_russian_script_gate.py \
