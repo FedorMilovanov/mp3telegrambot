@@ -25,6 +25,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/clean_runtime_contract/__init__.py",
     "tools/voxcpm2/clean_production_core/__init__.py",
     "tools/voxcpm2/generic_project_runtime/__init__.py",
+    "tools/voxcpm2/clean_source_download/__init__.py",
 )
 _legacy._RENDER_MODULES = tuple(
     dict.fromkeys((*_legacy._RENDER_MODULES, *_FACADE_RENDER_MODULES))
