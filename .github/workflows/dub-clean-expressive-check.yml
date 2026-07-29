@@ -12,6 +12,7 @@ on:
       - "tools/voxcpm2/direct_max_quality_*.py"
       - "tools/voxcpm2/direct_timbre_analysis.py"
       - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/continuous_reference_policy.py"
       - "tools/voxcpm2/controlled_reference_gate.py"
       - "tools/voxcpm2/professional_audio_v45.py"
       - "tools/voxcpm2/professional_audio_qa_v45.py"
@@ -24,6 +25,7 @@ on:
       - "handlers/dub_health.py"
       - "handlers/dub_wizard.py"
       - "tests/test_clean_reference_transport.py"
+      - "tests/test_continuous_reference_policy.py"
       - "tests/test_controlled_reference_gate.py"
       - "tests/test_direct_max_quality_renderer.py"
       - "tests/test_direct_retry_checkpoint.py"
@@ -69,6 +71,7 @@ jobs:
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
             tools/voxcpm2/final_media_qa.py \
+            tools/voxcpm2/continuous_reference_policy.py \
             tools/voxcpm2/controlled_reference_gate.py \
             tools/voxcpm2/professional_audio_v45.py \
             tools/voxcpm2/professional_audio_qa_v45.py \
@@ -86,6 +89,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_clean_reference_transport.py \
+            tests/test_continuous_reference_policy.py \
             tests/test_controlled_reference_gate.py \
             tests/test_direct_max_quality_renderer.py \
             tests/test_direct_retry_checkpoint.py \
