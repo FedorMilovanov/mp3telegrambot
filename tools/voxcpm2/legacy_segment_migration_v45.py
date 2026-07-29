@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_v45 as policy
 
@@ -47,7 +48,7 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
     ):
         return False
 
-    delay_ms = max(0, int(request.get("russian_delay_ms") or 420))
+    delay_ms = clean_request_settings.russian_delay_ms(request)
     delay = delay_ms / 1000.0
     if not any(
         _window(item, delay)[1] - _window(item, delay)[0] > 6.2
