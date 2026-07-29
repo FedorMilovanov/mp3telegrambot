@@ -145,6 +145,29 @@ def test_sampled_hash_detects_same_size_middle_replacement(tmp_path: Path) -> No
     assert weights.stat().st_size == block * 5
 
 
+def test_render_fingerprint_covers_complete_clean_path() -> None:
+    required = {
+        "tools/voxcpm2/clean_source_download.py",
+        "tools/voxcpm2/clean_segment_normalizer.py",
+        "tools/voxcpm2/clean_production_core.py",
+        "tools/voxcpm2/continuous_reference_policy.py",
+        "tools/voxcpm2/controlled_reference_gate.py",
+        "tools/voxcpm2/expressive_continuity.py",
+        "tools/voxcpm2/expressive_translation.py",
+        "tools/voxcpm2/generic_short_runtime.py",
+        "tools/voxcpm2/generic_project_runtime.py",
+        "tools/voxcpm2/generic_direct_runtime.py",
+        "tools/voxcpm2/generic_gemini_runtime.py",
+        "tools/voxcpm2/generic_clean_gemini_runtime.py",
+        "tools/voxcpm2/generic_clean_direct_runtime.py",
+        "tools/voxcpm2/generic_clean_custom_runtime.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
+        "tools/voxcpm2/direct_source_prosody.py",
+        "tools/voxcpm2/direct_max_quality_cli.py",
+    }
+    assert required.issubset(set(contract._RENDER_MODULES))
+
+
 def test_clean_core_requires_current_marker_fingerprints() -> None:
     source = Path(clean.__file__).read_text(encoding="utf-8")
     contract_source = Path(contract.__file__).read_text(encoding="utf-8")
@@ -157,6 +180,7 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert '"release_complete": False' in source
     assert "release_complete=True" in source
     assert '"tools/voxcpm2/direct_source_prosody.py"' in contract_source
+    assert '"tools/voxcpm2/clean_source_download.py"' in contract_source
     assert 'request.get("cfg") or' not in contract_source
     assert 'request.get("threads") or' not in contract_source
     assert 'request.get("steps") or' not in contract_source
