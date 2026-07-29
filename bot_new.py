@@ -212,6 +212,13 @@ except Exception as _dub_studio_error:
     print(f"⚠️ VoxCPM2 Dub Studio не установлена: {_dub_studio_error}")
 
 try:
+    from services.dub_title_policy import install_dub_title_policy
+
+    install_dub_title_policy()
+except Exception as _dub_title_error:
+    print(f"⚠️ Единая политика русских названий не установлена: {_dub_title_error}")
+
+try:
     from services.restart_state_runtime import install_restart_state_runtime
 
     install_restart_state_runtime(_main_module)
