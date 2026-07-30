@@ -114,3 +114,45 @@ def test_terminal_octave_glitch_is_corrected_before_cadence_decision():
 
     assert result["ending_delta_semitones"] < 0.5
     assert "terminal_rises" not in result["failures"]
+
+
+def _enveloped_chirp(start_hz: float, end_hz: float, start_amp: float, end_amp: float):
+    sample_rate = 48_000
+    duration = 2.0
+    time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
+    slope = (end_hz - start_hz) / duration
+    phase = 2.0 * np.pi * (start_hz * time + 0.5 * slope * time**2)
+    envelope = np.linspace(start_amp, end_amp, len(time), dtype=np.float64)
+    audio = envelope * np.sin(phase)
+    fade = int(0.015 * sample_rate)
+    audio[:fade] *= np.linspace(0.0, 1.0, fade)
+    audio[-fade:] *= np.linspace(1.0, 0.0, fade)
+    return np.concatenate(
+        [audio.astype(np.float32), np.zeros(int(0.12 * sample_rate), dtype=np.float32)]
+    ), sample_rate
+
+
+def test_slight_terminal_rise_requires_an_energy_resolution():
+    unresolved_audio, sample_rate = _enveloped_chirp(110.0, 132.0, 0.08, 0.28)
+    resolved_audio, _ = _enveloped_chirp(110.0, 132.0, 0.28, 0.06)
+    segment = {
+        "text": "И не на то, что выйдет замуж.",
+        "start": 0.0,
+        "end": 2.25,
+        "tail_guard": 0.13,
+    }
+    unresolved = evaluate_candidate_cadence(
+        {"samples": unresolved_audio, "sample_rate": sample_rate, "duration": len(unresolved_audio) / sample_rate},
+        segment,
+    )
+    resolved = evaluate_candidate_cadence(
+        {"samples": resolved_audio, "sample_rate": sample_rate, "duration": len(resolved_audio) / sample_rate},
+        segment,
+    )
+
+    assert 0.45 < unresolved["ending_delta_semitones"] < 1.40
+    assert unresolved["ending_energy_delta_db"] > -1.0
+    assert unresolved["hard_ok"] is False
+    assert "terminal_not_resolved" in unresolved["failures"]
+    assert resolved["ending_energy_delta_db"] < -1.0
+    assert "terminal_not_resolved" not in resolved["failures"]
