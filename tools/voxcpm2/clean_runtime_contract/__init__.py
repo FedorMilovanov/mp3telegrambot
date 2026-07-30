@@ -4,7 +4,7 @@
 
 The stable contract remains in ``clean_runtime_contract.py``. This package keeps
 its API and extends fingerprints with every compatibility facade, render gate,
-and final encoded release gate resolved by production imports.
+retry-state contract and final encoded release gate resolved by production imports.
 """
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/clean_source_download/__init__.py",
     "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
     "tools/voxcpm2/direct_max_quality_render/__init__.py",
+    "tools/voxcpm2/direct_retry_epoch.py",
     "tools/voxcpm2/direct_russian_cadence.py",
     "tools/voxcpm2/direct_russian_cadence/__init__.py",
     "tools/voxcpm2/direct_tail_artifact.py",
