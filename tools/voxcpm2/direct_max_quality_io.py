@@ -24,7 +24,11 @@ POLICY = "voxcpm2-direct-max-quality-v3"
 EXPECTED_ENCODE_SR = 16000
 EXPECTED_OUTPUT_SR = 48000
 REFERENCE_TAIL_SILENCE = 0.0
-MAX_TEMPO = 1.35
+# 1.35 is the preferred natural fit ceiling. Candidates above it receive a
+# strong ranking penalty and trigger retries. The hard release ceiling keeps the
+# previously validated 1.358 boundary case without allowing material time warp.
+PREFERRED_MAX_TEMPO = 1.35
+MAX_TEMPO = 1.36
 MAX_START_DELAY_MS = 1500
 
 
