@@ -94,6 +94,29 @@ def verify_timeline_delivery(
             }
         )
 
+    invalidated: list[dict[str, str]] = []
+    if failed:
+        failed_set = set(failed)
+        for position, (raw_segment, fitted_path) in enumerate(fitted_segments, start=1):
+            segment_id = int(raw_segment.get("id") or position)
+            if segment_id not in failed_set:
+                continue
+            fitted = Path(fitted_path)
+            checkpoint = (
+                fitted.parent.parent
+                / "checkpoints"
+                / f"segment_{segment_id:02d}.json"
+            )
+            fitted.unlink(missing_ok=True)
+            checkpoint.unlink(missing_ok=True)
+            invalidated.append(
+                {
+                    "id": str(segment_id),
+                    "fitted": str(fitted),
+                    "checkpoint": str(checkpoint),
+                }
+            )
+
     report = {
         "schema_version": 1,
         "policy": POLICY,
@@ -101,6 +124,7 @@ def verify_timeline_delivery(
         "sample_rate": rate,
         "segments": checks,
         "failed_segment_ids": failed,
+        "invalidated_for_retry": invalidated,
         "passed": not failed,
     }
     report_path = timeline.with_suffix(".delivery_qa.json")
