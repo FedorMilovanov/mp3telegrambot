@@ -8,7 +8,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
     candidate_hard_ok,
     required_tempo,
 )
-from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO
+from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO, PREFERRED_MAX_TEMPO
 from tools.voxcpm2.direct_max_quality_render import (
     ADAPTIVE_RETRY_POLICY,
     _generation_profile,
@@ -72,16 +72,20 @@ def _cadence(text: str, audio: np.ndarray, sample_rate: int) -> dict[str, object
     )
 
 
-def test_candidate_fit_tempo_is_a_preselection_hard_gate() -> None:
+def test_candidate_fit_tempo_has_preferred_and_hard_boundaries() -> None:
     slot = 4.0
-    at_limit = _valid_candidate(slot * MAX_TEMPO)
-    above_limit = _valid_candidate(slot * (MAX_TEMPO + 0.008))
+    preferred = _valid_candidate(slot * PREFERRED_MAX_TEMPO)
+    validated_margin = _valid_candidate(slot * 1.358)
+    above_hard = _valid_candidate(slot * (MAX_TEMPO + 0.008))
 
     assert FIT_TEMPO_POLICY == "candidate-fit-tempo-hard-gate-v1"
-    assert candidate_hard_ok(at_limit, slot) is True
-    assert required_tempo(at_limit, slot) == pytest.approx(MAX_TEMPO)
-    assert candidate_hard_ok(above_limit, slot) is False
-    assert required_tempo(above_limit, slot) > MAX_TEMPO
+    assert PREFERRED_MAX_TEMPO == pytest.approx(1.35)
+    assert MAX_TEMPO == pytest.approx(1.36)
+    assert candidate_hard_ok(preferred, slot) is True
+    assert candidate_hard_ok(validated_margin, slot) is True
+    assert required_tempo(validated_margin, slot) == pytest.approx(1.358)
+    assert candidate_hard_ok(above_hard, slot) is False
+    assert required_tempo(above_hard, slot) > MAX_TEMPO
 
 
 def test_adaptive_profiles_add_two_bounded_rescue_attempts() -> None:
