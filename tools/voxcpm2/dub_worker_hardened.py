@@ -11,9 +11,10 @@ import time
 from typing import Any
 
 from services.dub_studio import DubStore, utc_now
+from tools.voxcpm2 import dub_job_preflight
 from tools.voxcpm2 import dub_worker as worker
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.5"
+_RUNTIME_VERSION = "dub-worker-quality-v4.6"
 _PROGRESS_PREFIX = "DUB_PROGRESS "
 _QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
 _MILESTONES = (25, 50, 75, 90)
@@ -25,6 +26,7 @@ _ORIGINAL_UPDATE_JOB_PROGRESS = DubStore.update_job_progress
 _ORIGINAL_FINISH_JOB = DubStore.finish_job
 _ORIGINAL_RECOVER_ABANDONED = DubStore.recover_abandoned_jobs
 _ORIGINAL_TERMINATE = worker._terminate_process
+_ORIGINAL_EXECUTE_JOB = worker.execute_job
 _LAST_JOB_PULSE: dict[int, float] = {}
 _FINISH_LOCK = threading.RLock()
 
@@ -394,9 +396,46 @@ def _finish_job_with_root_cause(
         )
 
 
+def _execute_job_with_preflight(
+    store: DubStore,
+    worker_id: str,
+    job: dict[str, Any],
+) -> None:
+    """Reject broken runtime/import contracts before a long VoxCPM render starts."""
+    job_id = int(job["id"])
+    try:
+        project = store.get_project(str(job["project_id"]))
+        if not project:
+            raise RuntimeError(f"Preflight: проект не найден: {job['project_id']}")
+        store.update_job_progress(
+            job_id,
+            progress=1,
+            stage="preflight",
+            message="Проверяю CPU Python, модель, FFmpeg и production imports до синтеза.",
+        )
+        report = dub_job_preflight.run(project, str(job.get("action") or ""))
+        if not report.get("skipped"):
+            store.update_job_progress(
+                job_id,
+                progress=2,
+                stage="preflight:ok",
+                message="Production preflight пройден; запускаю runner.",
+            )
+    except Exception as exc:
+        log_path = store.logs_dir / f"job-{job_id:06d}.log"
+        store.set_job_log_path(job_id, log_path)
+        detail = f"Preflight остановил задание до синтеза: {type(exc).__name__}: {exc}"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(detail + "\n", encoding="utf-8", errors="replace")
+        store.finish_job(job_id, status="failed", error=detail)
+        return
+    _ORIGINAL_EXECUTE_JOB(store, worker_id, job)
+
+
 def install_hardening() -> None:
     worker._terminate_process = _terminate_process_tree
     worker._progress_from_line = _progress_from_line_v44
+    worker.execute_job = _execute_job_with_preflight
     DubStore.register_worker = _register_versioned_worker
     DubStore.worker_heartbeat = _heartbeat_versioned_worker
     DubStore.update_job_progress = _update_progress_with_milestones
