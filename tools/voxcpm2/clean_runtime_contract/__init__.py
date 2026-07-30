@@ -5,6 +5,8 @@
 The stable contract remains in ``clean_runtime_contract.py``. This package keeps
 its API and extends fingerprints with every compatibility facade, render gate,
 retry-state contract and final encoded release gate resolved by production imports.
+It also retires historical fingerprint names only when their active implementation
+has an explicit replacement in the release contract.
 """
 from __future__ import annotations
 
@@ -34,14 +36,23 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/direct_tail_artifact.py",
     "tools/voxcpm2/direct_timeline_delivery_qa.py",
 )
+_RETIRED_RELEASE_MODULES = (
+    # This historical filename never shipped. Its implementation has always lived
+    # in professional_audio_qa_v45.py (POLICY=clean-expression-aware-qa-v3).
+    "tools/voxcpm2/clean_expression_aware_qa.py",
+)
 _FACADE_RELEASE_MODULES = (
+    "tools/voxcpm2/professional_audio_qa_v45.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
     dict.fromkeys((*_legacy._RENDER_MODULES, *_FACADE_RENDER_MODULES))
 )
+_release_base = tuple(
+    name for name in _legacy._RELEASE_MODULES if name not in _RETIRED_RELEASE_MODULES
+)
 _legacy._RELEASE_MODULES = tuple(
-    dict.fromkeys((*_legacy._RELEASE_MODULES, *_FACADE_RELEASE_MODULES))
+    dict.fromkeys((*_release_base, *_FACADE_RELEASE_MODULES))
 )
 
 for _name in dir(_legacy):
