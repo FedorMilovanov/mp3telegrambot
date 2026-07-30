@@ -161,10 +161,13 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _has(
             text,
             "cadence_facade",
-            'DELIVERY_POLICY = "russian-ending-and-emphasis-hard-gate-v1"',
+            'DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"',
+            '_SOURCE_PEAK_MIN_DOMINANCE = 0.18',
             'failures.append("terminal_not_resolved")',
             'failures.append("firm_terminal_not_resolved")',
             'failures.append("emphasis_too_early")',
+            'failures.append("source_emphasis_misplaced_early")',
+            "source_peak_dominance",
         ) and _has(
             text,
             "direct_cli",
@@ -215,8 +218,9 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         return False, "v4.7-контракты не прошли: " + ", ".join(failed)
     return True, (
         "worker v4.7/preflight v2; cancellation and explicit root; "
-        "fit-aware adaptive retries; Russian ending/emphasis gates; late-tail, assembled and post-AAC QA; "
-        "full implementation/model/runtime cache; deterministic child imports"
+        "fit-aware adaptive retries; evidence-backed Russian ending/emphasis gates; "
+        "late-tail, assembled and post-AAC QA; full implementation/model/runtime cache; "
+        "deterministic child imports"
     )
 
 
