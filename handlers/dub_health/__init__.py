@@ -184,7 +184,9 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _has(
             text,
             "delivery_qa",
-            'POLICY = "assembled-russian-delivery-v1"',
+            'POLICY = "assembled-russian-delivery-v2"',
+            "LINKED_MAX_GAP_SECONDS = 0.55",
+            '"linked_phrase_gap"',
             "verify_timeline_delivery",
             "invalidated_for_retry",
         ) and _has(
@@ -219,8 +221,8 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
     return True, (
         "worker v4.7/preflight v2; cancellation and explicit root; "
         "fit-aware adaptive retries; evidence-backed Russian ending/emphasis gates; "
-        "late-tail, assembled and post-AAC QA; full implementation/model/runtime cache; "
-        "deterministic child imports"
+        "linked-phrase, late-tail, assembled and post-AAC QA; "
+        "full implementation/model/runtime cache; deterministic child imports"
     )
 
 
