@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -74,3 +76,60 @@ def test_retry_classifier_is_narrow_and_delivery_specific() -> None:
     assert core._retryable_delivery_failure("late_broadband_burst") is True
     assert core._retryable_delivery_failure("HTTP 403 при скачивании source") is False
     assert core._retryable_delivery_failure("не найден ffmpeg") is False
+
+
+def test_streamed_renderer_failure_report_drives_automatic_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+    report = tmp_path / "segment_work" / "direct_renderer_failure.json"
+    report.parent.mkdir(parents=True)
+
+    def fake_render(*_args: Any, **_kwargs: Any) -> str:
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            report.write_text(
+                json.dumps(
+                    {
+                        "error_type": "RuntimeError",
+                        "message": (
+                            "Сегмент #7: нет ни одного hard-quality кандидата; "
+                            "следующий повтор использует seed epoch 1."
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")
+        return "ready"
+
+    monkeypatch.setattr(core, "_legacy_render_and_master", fake_render)
+    monkeypatch.setattr(core, "MAX_AUTOMATIC_DELIVERY_RETRIES", 3)
+
+    assert core.render_and_master(root=tmp_path) == "ready"
+    assert calls == [1, 2]
+
+
+def test_previous_quality_detail_cannot_retry_a_later_infrastructure_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def fake_render(*_args: Any, **_kwargs: Any) -> None:
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            core._LAST_CHILD_STDERR = (
+                "Сегмент #7: нет hard-quality кандидата; seed epochs"
+            )
+            raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")
+        core._LAST_CHILD_STDERR = "ModuleNotFoundError: No module named 'voxcpm'"
+        raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")
+
+    monkeypatch.setattr(core, "_legacy_render_and_master", fake_render)
+    monkeypatch.setattr(core, "MAX_AUTOMATIC_DELIVERY_RETRIES", 5)
+
+    with pytest.raises(RuntimeError, match="ModuleNotFoundError"):
+        core.render_and_master(object())
+    assert calls == [1, 2]

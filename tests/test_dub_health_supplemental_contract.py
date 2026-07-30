@@ -124,7 +124,7 @@ def test_supplemental_health_requires_long_form_delivery_resilience() -> None:
         "speech_slot = speech_slot_seconds(target_duration, tail_guard)",
         'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
         'POLICY = "failed-segment-seed-epoch-v1"',
-        "SEED_EPOCH_STRIDE = 100_000",
+        "SEED_EPOCH_STRIDE = 1_000_000_000_000",
         "def load_retry_epoch(",
         "def seed_for_attempt(",
         "def invalidate_segment_for_retry(",
@@ -148,6 +148,12 @@ def test_supplemental_health_requires_long_form_delivery_resilience() -> None:
         'CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"',
         "def _is_master_release_command(",
         "final_encoded_delivery_qa.verify_final_encoded_russian(",
+        'DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"',
+        "MAX_AUTOMATIC_DELIVERY_RETRIES = 3",
+        "def _retryable_delivery_failure(",
+        "def _direct_failure_report(",
+        "_legacy_render_and_master = _legacy.render_and_master",
+        "def render_and_master(",
     )
     for item in required:
         assert item in facade

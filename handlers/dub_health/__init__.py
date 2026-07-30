@@ -178,7 +178,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             text,
             "retry_epoch",
             'POLICY = "failed-segment-seed-epoch-v1"',
-            "SEED_EPOCH_STRIDE = 100_000",
+            "SEED_EPOCH_STRIDE = 1_000_000_000_000",
             "def load_retry_epoch(",
             "def seed_for_attempt(",
             "def invalidate_segment_for_retry(",
@@ -247,6 +247,18 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             "final_encoded_delivery_qa.verify_final_encoded_russian(",
             "def _run_child_process(",
             "_legacy.subprocess = _SubprocessProxy()",
+        ),
+        "checkpointed-quality-retry": _has(
+            text,
+            "core_facade",
+            'DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"',
+            "MAX_AUTOMATIC_DELIVERY_RETRIES = 3",
+            "def _retryable_delivery_failure(",
+            "def _direct_failure_report(",
+            "def _delivery_failure_detail(",
+            "_legacy_render_and_master = _legacy.render_and_master",
+            "def render_and_master(",
+            "сохраняю успешные checkpoints",
         ),
     }
     failed = [name for name, passed in checks.items() if not passed]

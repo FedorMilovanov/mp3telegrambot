@@ -891,3 +891,20 @@ Fixes:
   changed-surface ruff, both PowerShell parsers and git diff check.
 - The full legacy verifier was also executed; three pre-existing Windows-only
   LiveDub tests remain outside this change (cookie discovery and backup file lock).
+
+## 2026-07-30 — Автовосстановление direct-дубляжа после quality-only отказов
+
+- Закрыт разрыв между durable seed epochs и worker: ранее неудачный сегмент
+  переводился на новый epoch, но всё задание немедленно становилось `failed`.
+- Production-фасад теперь сам делает до трёх ограниченных повторов, сохраняя
+  успешные segment checkpoints. Системные ошибки (preflight/fingerprint,
+  отсутствующий Python/FFmpeg, HTTP и import failures) не повторяются.
+- Точная причина берётся из свежего `direct_renderer_failure.json`, поскольку
+  длинный renderer продолжает стримить лог без буферизации. Старый failure report
+  не может ошибочно классифицировать новый инфраструктурный сбой.
+- После исчерпания бюджета возвращается глубинная причина последнего quality
+  отказа, а не только общий exit code. `/dubhealth` проверяет наличие
+  checkpoint-retry orchestration и актуальный collision-free seed stride.
+
+Регрессии: `tests/test_clean_delivery_retry_orchestration.py`,
+`tests/test_dub_health_supplemental_contract.py`.

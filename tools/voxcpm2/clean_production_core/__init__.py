@@ -10,6 +10,7 @@ the actual encoded final Russian ending before a production project is released.
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 import os
 import re
@@ -35,6 +36,44 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"
+DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"
+MAX_AUTOMATIC_DELIVERY_RETRIES = 3
+_LAST_CHILD_STDERR = ""
+
+# Explicit bindings keep static verification aligned with the dynamically
+# imported legacy API used by this compatibility facade.
+POLICY = _legacy.POLICY
+MAX_SECONDS = _legacy.MAX_SECONDS
+log = _legacy.log
+
+_RETRYABLE_DELIVERY_MARKERS = (
+    "следующий повтор использует seed epoch",
+    "переведена на новый seed epoch",
+    "переведен на новый seed epoch",
+    "seed epochs",
+    "hard-quality кандидат",
+    "linked_phrase_gap",
+    "late_broadband_burst",
+    "late_broadband_tail",
+    "assembled_delivery:",
+    "post_aac_delivery:",
+    "ending/tail qa",
+)
+_NON_RETRYABLE_INFRASTRUCTURE_MARKERS = (
+    "modulenotfounderror",
+    "filenotfounderror",
+    "permissionerror",
+    "preflight",
+    "fingerprint",
+    "не найден ffmpeg",
+    "не найдены в path",
+    "не найден cpu python",
+    "не найден source",
+    "не найден segments",
+    "не найден voice reference",
+    "http 403",
+    "http 404",
+)
 
 
 def _child_python_env(value: Any) -> dict[str, str]:
@@ -68,15 +107,18 @@ def _child_python_env(value: Any) -> dict[str, str]:
 def _is_python_script_command(command: Any) -> bool:
     if not isinstance(command, (list, tuple)) or len(command) < 2:
         return False
-    executable = Path(str(command[0])).name.casefold()
-    script = str(command[1]).casefold()
+    # A Linux CI process must still recognize the Windows commands production
+    # will run. ``Path`` only treats separators from the host OS as separators.
+    executable = re.split(r"[\\/]", str(command[0]))[-1].casefold()
+    script = re.split(r"[\\/]", str(command[1]))[-1].casefold()
     return executable.startswith("python") and script.endswith(".py")
 
 
 def _is_master_command(command: Any) -> bool:
     return bool(
         _is_python_script_command(command)
-        and Path(str(command[1])).name.casefold() == "master_constant_mix.py"
+        and re.split(r"[\\/]", str(command[1]))[-1].casefold()
+        == "master_constant_mix.py"
     )
 
 
@@ -128,6 +170,8 @@ def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
 
 def _run_child_process(command: Any, *args: Any, **kwargs: Any):
     """Run child commands with deterministic imports and fail-closed release QA."""
+    global _LAST_CHILD_STDERR
+
     is_python = _is_python_script_command(command)
     is_master = _is_master_command(command)
     is_master_release = _is_master_release_command(command)
@@ -146,11 +190,13 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
             detail = detail[-12000:]
         else:
             detail = f"process exited with code {result.returncode} without stderr"
+        _LAST_CHILD_STDERR = detail
         raise RuntimeError("Прямой master завершился с точной причиной:\n" + detail)
     if is_master_release:
         try:
             _verify_post_aac_master_output(command)
         except Exception as exc:
+            _LAST_CHILD_STDERR = str(exc)
             raise RuntimeError(
                 "Прямой master создал файлы, но post-AAC ending/tail QA их отклонил:\n"
                 + str(exc)
@@ -280,20 +326,124 @@ def _mark_and_validate_segments(
 _legacy.subprocess = _SubprocessProxy()
 _legacy._finite = _finite
 _legacy._mark_and_validate_segments = _mark_and_validate_segments
+_legacy_render_and_master = _legacy.render_and_master
+
+
+def _retryable_delivery_failure(detail: str) -> bool:
+    """Accept only failures whose quality code already invalidated a checkpoint."""
+    normalized = str(detail or "").casefold().replace("ё", "е")
+    if not normalized:
+        return False
+    if any(marker in normalized for marker in _NON_RETRYABLE_INFRASTRUCTURE_MARKERS):
+        return False
+    return any(marker in normalized for marker in _RETRYABLE_DELIVERY_MARKERS)
+
+
+def _direct_failure_report(root: Any) -> str:
+    try:
+        path = Path(root).resolve() / "segment_work" / "direct_renderer_failure.json"
+    except (TypeError, ValueError, OSError):
+        return ""
+    if not path.is_file():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    message = str(payload.get("message") or "").strip()
+    error_type = str(payload.get("error_type") or "RuntimeError").strip()
+    return f"{error_type}: {message}" if message else ""
+
+
+def _delivery_failure_detail(
+    exc: RuntimeError,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> str:
+    """Recover the deepest child cause without treating an old report as current."""
+    exception_detail = str(exc).strip()
+    details: list[str] = []
+    child_detail = str(_LAST_CHILD_STDERR or "").strip()
+    if child_detail:
+        details.append(child_detail)
+
+    # The renderer deliberately streams logs instead of buffering many minutes
+    # of output. Its fresh failure JSON is authoritative only when that exact
+    # child process returned non-zero; otherwise an older report must not turn
+    # an infrastructure error into a quality retry.
+    if "Прямой VoxCPM2 renderer завершился с кодом" in exception_detail:
+        root = kwargs.get("root")
+        if root is None and args:
+            root = args[0]
+        report_detail = _direct_failure_report(root)
+        if report_detail:
+            details.append(report_detail)
+    if exception_detail:
+        details.append(exception_detail)
+
+    unique: list[str] = []
+    for value in details:
+        if value not in unique:
+            unique.append(value)
+    return "\n".join(unique)
+
+
+def render_and_master(*args: Any, **kwargs: Any) -> Any:
+    """Retry quality-only failures in-place while preserving good checkpoints."""
+    global _LAST_CHILD_STDERR
+
+    try:
+        retry_limit = int(MAX_AUTOMATIC_DELIVERY_RETRIES)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("MAX_AUTOMATIC_DELIVERY_RETRIES должен быть целым.") from exc
+    retry_limit = max(0, min(8, retry_limit))
+
+    for retry_index in range(retry_limit + 1):
+        _LAST_CHILD_STDERR = ""
+        try:
+            return _legacy_render_and_master(*args, **kwargs)
+        except RuntimeError as exc:
+            detail = _delivery_failure_detail(exc, args, kwargs)
+            if not _retryable_delivery_failure(detail):
+                if detail and detail != str(exc).strip():
+                    raise RuntimeError(detail) from exc
+                raise
+            if retry_index >= retry_limit:
+                raise RuntimeError(
+                    "Автоматическое checkpoint-восстановление исчерпано "
+                    f"после {retry_limit} повторов. Последняя точная причина:\n{detail}"
+                ) from exc
+            log(
+                "quality-only failure; сохраняю успешные checkpoints и запускаю "
+                f"автоматический повтор {retry_index + 1}/{retry_limit}. "
+                f"Причина: {detail[:1200]}"
+            )
+
+    raise RuntimeError("Недостижимое состояние automatic delivery retry.")
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CHILD_PYTHON_POLICY",
+        "DELIVERY_RETRY_POLICY",
+        "MAX_AUTOMATIC_DELIVERY_RETRIES",
+        "_LAST_CHILD_STDERR",
         "_child_python_env",
         "_command_flag",
+        "_delivery_failure_detail",
+        "_direct_failure_report",
         "_finite",
         "_is_master_command",
         "_is_master_release_command",
         "_is_python_script_command",
+        "_legacy_render_and_master",
         "_mark_and_validate_segments",
+        "_retryable_delivery_failure",
         "_run_child_process",
         "_strict_int",
         "_verify_post_aac_master_output",
+        "render_and_master",
     }
 )
