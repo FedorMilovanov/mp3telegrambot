@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tools.voxcpm2.direct_retry_epoch import (
+    MAX_SEGMENT_ID,
     POLICY,
     SEED_EPOCH_STRIDE,
     advance_retry_epoch,
@@ -27,6 +30,7 @@ def test_retry_epoch_defaults_to_zero_and_changes_seed_by_collision_safe_stride(
 ) -> None:
     assert POLICY == "failed-segment-seed-epoch-v1"
     assert SEED_EPOCH_STRIDE == 1_000_000_000_000
+    assert MAX_SEGMENT_ID == 1_000_000_000
     assert load_retry_epoch(tmp_path, 19) == 0
 
     seed0 = seed_for_attempt(2026072900, 19, 2, 0)
@@ -35,13 +39,16 @@ def test_retry_epoch_defaults_to_zero_and_changes_seed_by_collision_safe_stride(
 
     assert seed1 - seed0 == SEED_EPOCH_STRIDE
     assert seed2 - seed1 == SEED_EPOCH_STRIDE
-    # Regression: the previous 100,000 stride collided with segment 1001.
+    # Regression: the previous 100,000 stride collided with epoch 1 / segment 1
+    # and epoch 0 / segment 1001.
     assert seed_for_attempt(2026072900, 1, 1, 1) != seed_for_attempt(
         2026072900,
-        10000000001,
+        1001,
         1,
         0,
     )
+    with pytest.raises(RuntimeError, match="диапазоне"):
+        seed_for_attempt(2026072900, MAX_SEGMENT_ID + 1, 1, 0)
 
 
 def test_advance_retry_epoch_is_durable_atomic_and_keeps_bounded_history(tmp_path: Path) -> None:
