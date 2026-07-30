@@ -10,8 +10,8 @@ from services import dub_title_policy
 
 def test_supervisor_facade_is_active_without_health_import_order_dependency() -> None:
     assert Path(dub_studio_runtime.__file__).name == "__init__.py"
-    assert dub_studio_runtime._WORKER_RUNTIME == "dub-worker-quality-v4.6"
-    assert dub_studio_runtime._legacy._WORKER_RUNTIME == "dub-worker-quality-v4.6"
+    assert dub_studio_runtime._WORKER_RUNTIME == "dub-worker-quality-v4.7"
+    assert dub_studio_runtime._legacy._WORKER_RUNTIME == "dub-worker-quality-v4.7"
 
 
 def test_supervisor_monkeypatch_assignments_reach_legacy_function_globals() -> None:
