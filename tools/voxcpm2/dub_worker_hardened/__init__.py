@@ -39,7 +39,10 @@ STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"
 @contextmanager
 def _store_root_environment(store: Any) -> Iterator[Path]:
     """Expose the actual DubStore root to preflight modules for this job."""
-    root = Path(getattr(store, "root", "")).resolve()
+    raw_root = getattr(store, "root", None)
+    if raw_root is None or isinstance(raw_root, bool) or not str(raw_root).strip():
+        raise RuntimeError("Worker store root отсутствует или некорректен.")
+    root = Path(raw_root).expanduser().resolve()
     if not root.is_dir():
         raise RuntimeError(f"Worker store root отсутствует: {root}")
     previous = os.environ.get("DUB_STUDIO_ROOT")
