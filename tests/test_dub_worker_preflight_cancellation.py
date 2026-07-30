@@ -54,7 +54,7 @@ def _job() -> dict[str, Any]:
 def test_worker_import_and_module_execution_resolve_package_facade() -> None:
     assert Path(hardened.__file__).name == "__init__.py"
     assert hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
-    assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v1"
+    assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v2"
     assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.6"
     main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
         encoding="utf-8"
@@ -151,7 +151,7 @@ def test_normal_preflight_starts_original_runner_once(
     ]
 
 
-def test_explicit_store_root_is_visible_only_during_preflight(
+def test_explicit_store_root_is_visible_during_preflight_and_runner(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -174,7 +174,7 @@ def test_explicit_store_root_is_visible_only_during_preflight(
 
     hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
 
-    assert seen == [str(store.root), previous]
+    assert seen == [str(store.root), str(store.root)]
     assert os.environ["DUB_STUDIO_ROOT"] == previous
 
 
