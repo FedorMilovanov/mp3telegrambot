@@ -4,20 +4,24 @@
 
 The parallel agent's durable implementation remains in ``dub_job_preflight.py``.
 This package shadows it for normal imports and strengthens only the trust
-boundaries: canonical project/request identity, complete implementation-aware
-cache signatures, deterministic child imports, and collision-safe report writes.
+boundaries: canonical project/request identity, complete implementation/model/
+runtime-aware cache signatures, deterministic child imports, collision-safe
+report writes, and a worker heartbeat during potentially long checks.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
-from typing import Any
+import threading
+from typing import Any, Iterator
 import uuid
 
+from services.dub_studio import DubStore
 from tools.voxcpm2 import clean_production_core
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import generic_project_runtime
@@ -38,6 +42,7 @@ for _name in dir(_legacy):
 
 POLICY = "dub-production-preflight-v2"
 REPORT_SCHEMA = 2
+PREFLIGHT_HEARTBEAT_SECONDS = 5.0
 _ACTIONS = {
     "render",
     "render_direct",
@@ -75,9 +80,7 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
         raise RuntimeError("Preflight report должен быть JSON-объектом.")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}"
-    )
+    temporary = path.with_name(path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
     try:
         encoded = json.dumps(
             payload,
@@ -137,8 +140,7 @@ def _project_root(project: dict[str, Any]) -> Path:
         raw_root = Path(raw).resolve()
         # DubStore.create_project historically stores recipe.work_root (the
         # shared studio root) until the first successful project update. It is
-        # a placeholder, not the actual project directory. Normalize that
-        # trusted legacy value instead of rejecting every brand-new project.
+        # a placeholder, not the actual project directory.
         if _normalized_path(raw_root) in {
             _normalized_path(studio),
             _normalized_path(allowed),
@@ -218,10 +220,7 @@ def _implementation_identity(repo: Path) -> dict[str, Any]:
         )
     )
     files = {name: _sha256(repo / name) for name in names}
-    return {
-        "files": files,
-        "sha256": _payload_sha256(files),
-    }
+    return {"files": files, "sha256": _payload_sha256(files)}
 
 
 def _signature(paths: dict[str, Path], *, action: str) -> dict[str, Any]:
@@ -231,10 +230,11 @@ def _signature(paths: dict[str, Path], *, action: str) -> dict[str, Any]:
         raise RuntimeError(f"Preflight: CPU Python не найден: {cpu_python}")
     python_stat = cpu_python.stat()
 
-    model = _legacy.discover_model(paths["archive"])
-    config = model / "config.json"
-    if not config.is_file():
-        raise RuntimeError(f"Preflight: config.json модели не найден: {config}")
+    # Reuse the exact clean production model/runtime fingerprints. A cached
+    # import success must not survive replaced weights, an edited voxcpm install,
+    # or changed package versions merely because python.exe itself is unchanged.
+    model_manifest = clean_runtime_contract._model_manifest(Path(paths["archive"]).resolve())
+    voxcpm_runtime = clean_runtime_contract._voxcpm_runtime(cpu_python)
     return {
         "policy": POLICY,
         "action": action,
@@ -247,8 +247,8 @@ def _signature(paths: dict[str, Path], *, action: str) -> dict[str, Any]:
         "renderer_sha256": _sha256(paths["renderer"]),
         "master": str(paths["master"]),
         "master_sha256": _sha256(paths["master"]),
-        "model": str(model),
-        "model_config_sha256": _sha256(config),
+        "model": model_manifest,
+        "voxcpm_runtime": voxcpm_runtime,
         "implementation": _implementation_identity(repo),
         "ffmpeg": _executable_identity("ffmpeg"),
         "ffprobe": _executable_identity("ffprobe"),
@@ -262,6 +262,13 @@ def _inside(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _signature_executable_path(name: str) -> Path:
+    value = shutil.which(name)
+    if not value:
+        raise RuntimeError(f"Preflight: {name} не найден в PATH.")
+    return Path(value).resolve()
 
 
 def _probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
@@ -340,11 +347,65 @@ def _probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
     }
 
 
-def _signature_executable_path(name: str) -> Path:
-    value = shutil.which(name)
-    if not value:
-        raise RuntimeError(f"Preflight: {name} не найден в PATH.")
-    return Path(value).resolve()
+def _claimed_job_context(project_id: str) -> tuple[DubStore, int, str] | None:
+    store = DubStore(_legacy.studio_root())
+    with store.connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, worker_id
+            FROM dub_jobs
+            WHERE project_id=? AND status IN ('running','cancel_requested')
+            ORDER BY id DESC LIMIT 1
+            """,
+            (str(project_id),),
+        ).fetchone()
+    if row is None:
+        return None
+    worker_id = str(row["worker_id"] or "").strip()
+    if not worker_id:
+        return None
+    return store, int(row["id"]), worker_id
+
+
+@contextmanager
+def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
+    context = _claimed_job_context(project_id)
+    if context is None:
+        yield
+        return
+    store, job_id, worker_id = context
+    stopped = threading.Event()
+
+    def pulse() -> None:
+        while not stopped.is_set():
+            try:
+                store.worker_heartbeat(
+                    worker_id,
+                    status="busy",
+                    current_job_id=job_id,
+                    details={
+                        "runtime": "dub-worker-quality-v4.6",
+                        "project_id": project_id,
+                        "action": action,
+                        "progress": 1,
+                        "stage": "preflight",
+                    },
+                )
+            except Exception:
+                pass
+            stopped.wait(max(1.0, float(PREFLIGHT_HEARTBEAT_SECONDS)))
+
+    thread = threading.Thread(
+        target=pulse,
+        name=f"dub-preflight-heartbeat-{job_id}",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        thread.join(timeout=max(2.0, float(PREFLIGHT_HEARTBEAT_SECONDS) + 1.0))
 
 
 def _cache_hit(
@@ -379,29 +440,30 @@ def run(project: dict[str, Any], action: str) -> dict[str, Any]:
     paths = _runtime_paths(project)
     project_id = str(project["id"]).strip().lower()
     report_path = paths["root"] / "output" / "production_preflight.json"
-    signature = _signature(paths, action=action)
-    current = _read_report(report_path)
-    if _cache_hit(
-        current,
-        project_id=project_id,
-        action=action,
-        signature=signature,
-    ):
-        return current
+    with _preflight_heartbeat(project_id, action):
+        signature = _signature(paths, action=action)
+        current = _read_report(report_path)
+        if _cache_hit(
+            current,
+            project_id=project_id,
+            action=action,
+            signature=signature,
+        ):
+            return current
 
-    probe = _probe_imports(paths)
-    report = {
-        "schema_version": REPORT_SCHEMA,
-        "policy": POLICY,
-        "passed": True,
-        "skipped": False,
-        "project_id": project_id,
-        "action": action,
-        "signature": signature,
-        "probe": probe,
-    }
-    _atomic_json(report_path, report)
-    return report
+        probe = _probe_imports(paths)
+        report = {
+            "schema_version": REPORT_SCHEMA,
+            "policy": POLICY,
+            "passed": True,
+            "skipped": False,
+            "project_id": project_id,
+            "action": action,
+            "signature": signature,
+            "probe": probe,
+        }
+        _atomic_json(report_path, report)
+        return report
 
 
 # Patch the parallel agent's module as well, so any already-captured legacy
@@ -419,9 +481,13 @@ __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
     | {
         "POLICY",
+        "PREFLIGHT_HEARTBEAT_SECONDS",
         "REPORT_SCHEMA",
         "_atomic_json",
         "_cache_hit",
+        "_claimed_job_context",
+        "_implementation_identity",
+        "_preflight_heartbeat",
         "_probe_imports",
         "_project_root",
         "_read_report",
