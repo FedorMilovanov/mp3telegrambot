@@ -45,7 +45,10 @@ _RENDER_MODULES = (
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_timbre_analysis.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
+    "tools/voxcpm2/direct_russian_cadence.py",
+    "tools/voxcpm2/direct_tail_artifact.py",
     "tools/voxcpm2/direct_source_prosody.py",
+    "tools/voxcpm2/direct_timeline_delivery_qa.py",
     "tools/voxcpm2/direct_max_quality_render.py",
     "tools/voxcpm2/direct_max_quality_cli.py",
     "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py",
@@ -53,6 +56,7 @@ _RENDER_MODULES = (
 _RELEASE_MODULES = (
     "tools/voxcpm2/professional_audio_qa_v45.py",
     "tools/voxcpm2/professional_audio_v45.py",
+    "tools/voxcpm2/clean_expression_aware_qa.py",
     "tools/voxcpm2/semantic_tts_guard.py",
     "tools/voxcpm2/semantic_tts_guard_v4.py",
     "tools/voxcpm2/russian_spoken_numbers.py",
