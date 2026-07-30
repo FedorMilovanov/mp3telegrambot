@@ -17,9 +17,11 @@ from pathlib import Path
 from typing import Any
 
 POLICY = "failed-segment-seed-epoch-v1"
-# Keep epoch namespaces disjoint even for extremely long projects. The old
-# 100,000 stride collided with epoch 1 / segment 1 and epoch 0 / segment 1001.
+# Epoch namespaces remain disjoint for every supported segment id. One billion
+# segment IDs is many orders of magnitude above an hour-long project while still
+# leaving a wide, explicit namespace between adjacent epochs.
 SEED_EPOCH_STRIDE = 1_000_000_000_000
+MAX_SEGMENT_ID = 1_000_000_000
 MAX_RETRY_EPOCH = 100_000
 
 
@@ -34,8 +36,10 @@ def _strict_segment_id(value: Any) -> int:
         result = int(value)
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError(f"Некорректный segment_id: {value!r}") from exc
-    if result <= 0:
-        raise RuntimeError(f"segment_id должен быть положительным: {result}.")
+    if not 1 <= result <= MAX_SEGMENT_ID:
+        raise RuntimeError(
+            f"segment_id должен быть в диапазоне 1..{MAX_SEGMENT_ID}: {result}."
+        )
     return result
 
 
@@ -77,23 +81,17 @@ def seed_for_attempt(
     attempt: Any,
     epoch: Any,
 ) -> int:
-    values: list[int] = []
-    for name, value in (
-        ("base_seed", base_seed),
-        ("segment_id", segment_id),
-        ("attempt", attempt),
-        ("epoch", epoch),
-    ):
-        if isinstance(value, bool):
-            raise RuntimeError(f"{name} не может быть bool.")
-        try:
-            number = int(value)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise RuntimeError(f"Некорректный {name}: {value!r}") from exc
-        values.append(number)
-    base, segment, attempt_value, epoch_value = values
-    if base < 0 or segment <= 0 or attempt_value <= 0:
-        raise RuntimeError("base_seed/segment_id/attempt вне допустимого диапазона.")
+    if isinstance(base_seed, bool) or isinstance(attempt, bool) or isinstance(epoch, bool):
+        raise RuntimeError("base_seed/attempt/epoch не могут быть bool.")
+    try:
+        base = int(base_seed)
+        attempt_value = int(attempt)
+        epoch_value = int(epoch)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("Некорректный base_seed/attempt/epoch.") from exc
+    segment = _strict_segment_id(segment_id)
+    if base < 0 or attempt_value <= 0:
+        raise RuntimeError("base_seed/attempt вне допустимого диапазона.")
     if not 0 <= epoch_value <= MAX_RETRY_EPOCH:
         raise RuntimeError(f"epoch вне диапазона 0..{MAX_RETRY_EPOCH}.")
     seed = base + segment * 100 + attempt_value + epoch_value * SEED_EPOCH_STRIDE
@@ -197,6 +195,7 @@ def invalidate_segment_for_retry(
 
 __all__ = [
     "MAX_RETRY_EPOCH",
+    "MAX_SEGMENT_ID",
     "POLICY",
     "SEED_EPOCH_STRIDE",
     "advance_retry_epoch",
