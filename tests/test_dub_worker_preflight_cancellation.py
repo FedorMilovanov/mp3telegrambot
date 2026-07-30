@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ from tools.voxcpm2 import dub_worker_hardened as hardened
 
 class FakeStore:
     def __init__(self, tmp_path: Path, cancel_values: list[bool]) -> None:
+        self.root = (tmp_path / "studio").resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
         self.logs_dir = tmp_path / "logs"
         self.cancel_values = list(cancel_values)
         self.progress: list[dict[str, Any]] = []
@@ -51,6 +54,7 @@ def _job() -> dict[str, Any]:
 def test_worker_import_and_module_execution_resolve_package_facade() -> None:
     assert Path(hardened.__file__).name == "__init__.py"
     assert hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
+    assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v1"
     assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.6"
     main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
         encoding="utf-8"
@@ -145,6 +149,45 @@ def test_normal_preflight_starts_original_runner_once(
         "preflight",
         "preflight:ok",
     ]
+
+
+def test_explicit_store_root_is_visible_only_during_preflight(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = FakeStore(tmp_path, [False, False])
+    seen: list[str | None] = []
+    previous = str((tmp_path / "previous-root").resolve())
+    monkeypatch.setenv("DUB_STUDIO_ROOT", previous)
+    hardened._legacy.worker._STOP.clear()
+
+    def fake_preflight(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        seen.append(os.environ.get("DUB_STUDIO_ROOT"))
+        return {"passed": True, "skipped": True}
+
+    monkeypatch.setattr(hardened._legacy.dub_job_preflight, "run", fake_preflight)
+    monkeypatch.setattr(
+        hardened._legacy,
+        "_ORIGINAL_EXECUTE_JOB",
+        lambda *_args, **_kwargs: seen.append(os.environ.get("DUB_STUDIO_ROOT")),
+    )
+
+    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
+
+    assert seen == [str(store.root), previous]
+    assert os.environ["DUB_STUDIO_ROOT"] == previous
+
+
+def test_store_root_environment_removes_temporary_value_when_absent(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = FakeStore(tmp_path, [False])
+    monkeypatch.delenv("DUB_STUDIO_ROOT", raising=False)
+    with hardened._store_root_environment(store) as root:
+        assert root == store.root
+        assert os.environ["DUB_STUDIO_ROOT"] == str(store.root)
+    assert "DUB_STUDIO_ROOT" not in os.environ
 
 
 def test_real_preflight_failure_is_failed_and_logged(
