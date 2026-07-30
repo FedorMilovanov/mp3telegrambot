@@ -30,6 +30,8 @@ REFERENCE_TAIL_SILENCE = 0.0
 PREFERRED_MAX_TEMPO = 1.35
 MAX_TEMPO = 1.36
 MAX_START_DELAY_MS = 1500
+MIN_SPEECH_SLOT_SECONDS = 0.12
+SPEECH_SLOT_POLICY = "exact-srt-slot-minus-tail-v1"
 
 
 def configure_utf8() -> None:
@@ -101,6 +103,38 @@ def atempo_chain(factor: float) -> list[str]:
         remaining /= 2.0
     result.append(f"atempo={remaining:.8f}")
     return result
+
+
+def speech_slot_seconds(target_duration: Any, tail_guard: Any) -> float:
+    """Return the real speech room inside one SRT window.
+
+    The old ``max(1.0, ...)`` floor made a 350 ms cue look one second long to
+    candidate selection, then FFmpeg trimmed the selected phrase back to 350 ms.
+    That could cut words while all upstream checks still reported success. This
+    contract uses the exact cue duration minus its explicit tail guard and rejects
+    only structurally impossible windows.
+    """
+    try:
+        target = float(target_duration)
+        guard = float(tail_guard)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            f"Некорректный speech-slot: duration={target_duration!r}, tail_guard={tail_guard!r}."
+        ) from exc
+    if not math.isfinite(target) or not math.isfinite(guard):
+        raise RuntimeError("Speech-slot duration/tail_guard должны быть конечными числами.")
+    if target <= 0.0:
+        raise RuntimeError(f"Speech-slot target_duration должен быть > 0: {target}.")
+    if guard < 0.0:
+        raise RuntimeError(f"Speech-slot tail_guard не может быть отрицательным: {guard}.")
+    slot = target - guard
+    if slot < MIN_SPEECH_SLOT_SECONDS - 1e-9:
+        raise RuntimeError(
+            "Окно реплики не оставляет безопасного времени для речи: "
+            f"duration={target:.3f}, tail_guard={guard:.3f}, speech_slot={slot:.3f}; "
+            f"минимум={MIN_SPEECH_SLOT_SECONDS:.3f}."
+        )
+    return float(slot)
 
 
 def looks_like_model_dir(path: Path) -> bool:
@@ -204,6 +238,10 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
             raise RuntimeError(
                 f"Сегмент #{segment_id}: tail_guard не может быть отрицательным."
             )
+        try:
+            speech_slot = speech_slot_seconds(end - start, tail_guard)
+        except RuntimeError as exc:
+            raise RuntimeError(f"Сегмент #{segment_id}: {exc}") from exc
         if not 0 <= start_delay_ms <= MAX_START_DELAY_MS:
             raise RuntimeError(
                 f"Сегмент #{segment_id}: start_delay_ms должен быть в диапазоне "
@@ -221,6 +259,8 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
             raise RuntimeError(f"Пустой текст #{segment_id}.")
         if item["reference_profile"] not in {"extended", "composite"}:
             raise RuntimeError(f"Неизвестный reference_profile у #{segment_id}.")
+        item["speech_slot"] = speech_slot
+        item["speech_slot_policy"] = SPEECH_SLOT_POLICY
         result.append(item)
         previous_end = end
         previous_effective_end = effective_end
