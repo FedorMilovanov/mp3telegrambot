@@ -116,10 +116,16 @@ def test_supplemental_health_requires_long_form_delivery_resilience() -> None:
     )
     required = (
         '"long-form-direct-resilience"',
-        'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v1"',
+        'SPEECH_SLOT_POLICY = "exact-srt-slot-minus-tail-v1"',
+        "MIN_SPEECH_SLOT_SECONDS = 0.12",
+        "def speech_slot_seconds(",
+        'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"',
+        'candidate.get("actual_speech_slot", speech_slot)',
+        "speech_slot = speech_slot_seconds(target_duration, tail_guard)",
         'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
         'DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"',
         '_SOURCE_PEAK_MIN_DOMINANCE = 0.18',
+        'failures.append("fit_tempo_exceeds_hard_limit")',
         'failures.append("source_emphasis_misplaced_early")',
         "source_peak_dominance",
         "MAX_CANDIDATE_ATTEMPTS = 5",
