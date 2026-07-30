@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Source-prosody and Russian-cadence ranking for direct VoxCPM2 candidates.
 
-Speaker identity and artifact checks remain hard gates elsewhere.  This module
+Speaker identity and artifact checks remain hard gates elsewhere. This module
 compares each plausible candidate with the matching source-language window and
-also checks the Russian syntactic ending actually produced.  It never changes
+also checks the Russian syntactic ending actually produced. It never changes
 the supplied Russian text and never relaxes the anti-shouting voice limits.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import math
 from typing import Any
 
 from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence
+from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
 POLICY = "source-prosody-candidate-ranking-v2"
 MAX_PENALTY = 180.0
@@ -34,7 +35,9 @@ def _positive(value: Any, *, low: float, high: float) -> float | None:
 
 
 def candidate_pitch_evidence_ok(candidate: dict[str, Any]) -> bool:
-    """Reject contradictory raw pitch evidence before candidate acceptance."""
+    """Reject contradictory pitch, cadence or artifact evidence."""
+    if candidate.get("cadence_hard_ok") is False:
+        return False
     pitch = candidate.get("pitch")
     if not isinstance(pitch, dict):
         return False
@@ -73,7 +76,7 @@ def source_prosody_penalty(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> float:
-    """Attach source, contour and cadence evidence and return a bounded penalty."""
+    """Attach source, contour, cadence and late-tail evidence."""
     target = segment.get("source_prosody")
     pitch = candidate.get("pitch")
     activity = candidate.get("activity")
@@ -96,6 +99,23 @@ def source_prosody_penalty(
     candidate["source_prosody_match"] = result
 
     cadence = evaluate_candidate_cadence(candidate, segment)
+    tail_artifact = detect_late_broadband_tail(
+        candidate.get("samples"),
+        int(candidate.get("sample_rate") or 1),
+    )
+    if tail_artifact.get("suspicious"):
+        cadence = dict(cadence)
+        failures = list(cadence.get("failures") or [])
+        if "late_broadband_tail" not in failures:
+            failures.append("late_broadband_tail")
+        cadence.update(
+            hard_ok=False,
+            failures=failures,
+            penalty=float(cadence.get("penalty") or 0.0) + 145.0,
+            tail_artifact=tail_artifact,
+        )
+    else:
+        cadence = {**cadence, "tail_artifact": tail_artifact}
     result["cadence"] = cadence
     result["cadence_penalty"] = float(cadence.get("penalty") or 0.0)
     candidate["cadence_hard_ok"] = bool(cadence.get("hard_ok"))
@@ -135,7 +155,7 @@ def source_prosody_penalty(
     if not candidate_pitch_evidence_ok(candidate):
         acoustic = _penalize_unavailable_candidate(
             result,
-            "невалидные candidate F0/voiced метрики",
+            "невалидные candidate F0/voiced/cadence метрики",
         )
         total = min(MAX_PENALTY, acoustic + float(cadence.get("penalty") or 0.0))
         result["penalty"] = total
