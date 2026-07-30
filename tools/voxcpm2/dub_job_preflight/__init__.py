@@ -116,6 +116,10 @@ def _read_report(path: Path) -> dict[str, Any]:
     return payload if schema == REPORT_SCHEMA else {}
 
 
+def _normalized_path(value: Path) -> str:
+    return os.path.normcase(os.path.normpath(str(Path(value).resolve())))
+
+
 def _project_root(project: dict[str, Any]) -> Path:
     if not isinstance(project, dict):
         raise RuntimeError("Preflight project должен быть JSON-объектом.")
@@ -123,15 +127,31 @@ def _project_root(project: dict[str, Any]) -> Path:
     if not generic_project_runtime._legacy._PROJECT_RE.fullmatch(project_id):
         raise RuntimeError("Preflight: некорректный Dub Studio project ID.")
 
-    allowed = (_legacy.studio_root() / "projects").resolve()
+    studio = _legacy.studio_root().resolve()
+    allowed = (studio / "projects").resolve()
     expected = (allowed / project_id).resolve()
     raw = str(project.get("work_root") or "").strip()
-    root = Path(raw).resolve() if raw else expected
+    if not raw:
+        root = expected
+    else:
+        raw_root = Path(raw).resolve()
+        # DubStore.create_project historically stores recipe.work_root (the
+        # shared studio root) until the first successful project update. It is
+        # a placeholder, not the actual project directory. Normalize that
+        # trusted legacy value instead of rejecting every brand-new project.
+        if _normalized_path(raw_root) in {
+            _normalized_path(studio),
+            _normalized_path(allowed),
+        }:
+            root = expected
+        else:
+            root = raw_root
+
     try:
         root.relative_to(allowed)
     except ValueError as exc:
         raise RuntimeError("Project root escaped Dub Studio projects directory.") from exc
-    if os.path.normcase(str(root)) != os.path.normcase(str(expected)):
+    if _normalized_path(root) != _normalized_path(expected):
         raise RuntimeError(
             "Preflight: work_root проекта не совпадает с его canonical project ID."
         )
@@ -289,7 +309,7 @@ def _probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
     reported_python = str(payload.get("python") or "") if isinstance(payload, dict) else ""
     if not isinstance(loaded, dict) or set(loaded) != set(_MODULES):
         raise RuntimeError("Preflight: импортирован не полный набор production-модулей.")
-    if os.path.normcase(str(Path(reported_python).resolve())) != os.path.normcase(str(python)):
+    if _normalized_path(Path(reported_python)) != _normalized_path(python):
         raise RuntimeError("Preflight: import probe запущен не тем CPU Python.")
 
     expected_files = {
@@ -305,9 +325,7 @@ def _probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
         if name.startswith("tools.") and not _inside(path, repo):
             raise RuntimeError(f"Preflight: project module {name} загружен вне repo: {path}")
         expected = expected_files.get(name)
-        if expected is not None and os.path.normcase(str(path)) != os.path.normcase(
-            str(expected.resolve())
-        ):
+        if expected is not None and _normalized_path(path) != _normalized_path(expected):
             raise RuntimeError(f"Preflight: module {name} загружен не из production entrypoint.")
     final_qa = Path(loaded["tools.voxcpm2.final_media_qa"]).resolve()
     if final_qa.name != "__init__.py" or final_qa.parent.name != "final_media_qa":
