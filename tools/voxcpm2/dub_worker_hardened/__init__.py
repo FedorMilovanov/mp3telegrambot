@@ -7,7 +7,7 @@ The parallel agent's complete v4.6 implementation remains in the sibling
 ``python -m`` execution, installs every original hardening patch, and replaces
 only the preflight wrapper so cancellation never becomes a false failure, the
 production runner never starts after cancellation, and an explicit worker
-``--root`` is used consistently by every preflight storage lookup.
+``--root`` is used consistently by preflight and the production subprocess.
 """
 from __future__ import annotations
 
@@ -33,12 +33,12 @@ for _name in dir(_legacy):
 
 _RUNTIME_VERSION = "dub-worker-quality-v4.6"
 CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"
-STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"
+STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"
 
 
 @contextmanager
 def _store_root_environment(store: Any) -> Iterator[Path]:
-    """Expose the actual DubStore root to preflight modules for this job."""
+    """Expose the actual DubStore root to preflight/runner for this job."""
     raw_root = getattr(store, "root", None)
     if raw_root is None or isinstance(raw_root, bool) or not str(raw_root).strip():
         raise RuntimeError("Worker store root отсутствует или некорректен.")
@@ -93,7 +93,7 @@ def _execute_job_with_cancellable_preflight(
     worker_id: str,
     job: dict[str, Any],
 ) -> None:
-    """Run the agent's preflight, but never start runner after cancellation."""
+    """Run preflight and runner against one exact store root."""
     job_id = int(job["id"])
     reason = _stop_reason(store, job_id)
     if reason:
@@ -140,7 +140,11 @@ def _execute_job_with_cancellable_preflight(
         _write_preflight_failure(store, job_id, exc)
         return
 
-    _legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)
+    # Base execute_job copies os.environ into the child process but does not add
+    # DUB_STUDIO_ROOT itself. Keep the exact worker root active for the entire
+    # runner lifecycle so custom --root cannot silently fall back to default.
+    with _store_root_environment(store):
+        _legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)
 
 
 def install_hardening() -> None:
