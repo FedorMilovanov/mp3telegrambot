@@ -51,8 +51,10 @@ def _texts(repo: Path) -> dict[str, str]:
         "core_facade": voxcpm / "clean_production_core" / "__init__.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
         "runtime_facade": voxcpm / "clean_runtime_contract" / "__init__.py",
+        "direct_io": voxcpm / "direct_max_quality_io.py",
         "direct_cli": voxcpm / "direct_max_quality_cli.py",
         "analysis_facade": voxcpm / "direct_max_quality_analysis" / "__init__.py",
+        "render_core": voxcpm / "direct_max_quality_render.py",
         "render_facade": voxcpm / "direct_max_quality_render" / "__init__.py",
         "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
         "tail_artifact": voxcpm / "direct_tail_artifact.py",
@@ -149,9 +151,22 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ),
         "long-form-direct-resilience": _has(
             text,
+            "direct_io",
+            'SPEECH_SLOT_POLICY = "exact-srt-slot-minus-tail-v1"',
+            "MIN_SPEECH_SLOT_SECONDS = 0.12",
+            "def speech_slot_seconds(",
+            'item["speech_slot"] = speech_slot',
+        ) and _has(
+            text,
             "analysis_facade",
-            'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v1"',
+            'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"',
+            'candidate.get("actual_speech_slot", speech_slot)',
             "tempo <= float(MAX_TEMPO) + 1e-9",
+        ) and _has(
+            text,
+            "render_core",
+            "speech_slot = speech_slot_seconds(target_duration, tail_guard)",
+            '"speech_slot_policy": SPEECH_SLOT_POLICY',
         ) and _has(
             text,
             "render_facade",
@@ -163,6 +178,8 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             "cadence_facade",
             'DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"',
             '_SOURCE_PEAK_MIN_DOMINANCE = 0.18',
+            'candidate["actual_speech_slot"] = actual_speech_slot',
+            'failures.append("fit_tempo_exceeds_hard_limit")',
             'failures.append("terminal_not_resolved")',
             'failures.append("firm_terminal_not_resolved")',
             'failures.append("emphasis_too_early")',
@@ -220,9 +237,10 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         return False, "v4.7-контракты не прошли: " + ", ".join(failed)
     return True, (
         "worker v4.7/preflight v2; cancellation and explicit root; "
-        "fit-aware adaptive retries; evidence-backed Russian ending/emphasis gates; "
-        "linked-phrase, late-tail, assembled and post-AAC QA; "
-        "full implementation/model/runtime cache; deterministic child imports"
+        "exact SRT speech slots and fit-aware adaptive retries; "
+        "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, "
+        "assembled and post-AAC QA; full implementation/model/runtime cache; "
+        "deterministic child imports"
     )
 
 
