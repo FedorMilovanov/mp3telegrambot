@@ -55,20 +55,27 @@ def _shaped_chirp(
     ), sample_rate
 
 
-def _cadence(text: str, audio: np.ndarray, sample_rate: int) -> dict[str, object]:
+def _cadence(
+    text: str,
+    audio: np.ndarray,
+    sample_rate: int,
+    **metadata: object,
+) -> dict[str, object]:
+    segment: dict[str, object] = {
+        "id": 1,
+        "text": text,
+        "start": 0.0,
+        "end": 2.35,
+        "tail_guard": 0.17,
+    }
+    segment.update(metadata)
     return evaluate_candidate_cadence(
         {
             "samples": audio,
             "sample_rate": sample_rate,
             "duration": len(audio) / sample_rate,
         },
-        {
-            "id": 1,
-            "text": text,
-            "start": 0.0,
-            "end": 2.35,
-            "tail_guard": 0.17,
-        },
+        segment,
     )
 
 
@@ -120,3 +127,29 @@ def test_multiword_exclamation_rejects_early_emotional_burst() -> None:
     assert "emphasis_too_early" in rejected["failures"]
     assert accepted["peak_energy_bin"] in {2, 3, 4}
     assert "emphasis_too_early" not in accepted["failures"]
+
+
+def test_strong_late_source_build_rejects_early_russian_burst() -> None:
+    early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
+    late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
+    source_prosody = {"contour": {"peak_energy_bin": 3}}
+
+    rejected = _cadence(
+        "Всё, что надвигается на меня, не заставит меня бояться.",
+        early,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=source_prosody,
+    )
+    accepted = _cadence(
+        "Всё, что надвигается на меня, не заставит меня бояться.",
+        late,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=source_prosody,
+    )
+
+    assert rejected["hard_ok"] is False
+    assert "source_emphasis_misplaced_early" in rejected["failures"]
+    assert accepted["source_late_peak_expected"] is True
+    assert "source_emphasis_misplaced_early" not in accepted["failures"]
