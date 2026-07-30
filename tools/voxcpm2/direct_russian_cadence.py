@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 POLICY = "russian-cadence-contour-v1"
-_CLOSERS_RE = re.compile(r'[\s"\'»”\)\]}]+$')
+_CLOSERS_RE = re.compile(r'[\s"\'»”)\]}]+$')
 
 
 def classify_cadence(text: str) -> str:
@@ -99,11 +99,56 @@ def _pitch_frames(
         valid = bool(periodicity >= 0.28 and 45.0 <= f0 <= 500.0)
         values.append(float(f0) if valid else 0.0)
         voiced.append(valid)
-    return (
-        np.asarray(times, dtype=np.float64),
-        np.asarray(values, dtype=np.float64),
-        np.asarray(voiced, dtype=bool),
-    )
+    times_array = np.asarray(times, dtype=np.float64)
+    values_array = np.asarray(values, dtype=np.float64)
+    voiced_array = np.asarray(voiced, dtype=bool)
+    values_array = _stabilize_pitch_track(values_array, voiced_array)
+    return times_array, values_array, voiced_array
+
+
+def _stabilize_pitch_track(
+    values: np.ndarray,
+    voiced: np.ndarray,
+) -> np.ndarray:
+    """Remove isolated octave errors without flattening real intonation.
+
+    Autocorrelation can briefly report the second harmonic as F0, especially on
+    fricative-heavy Russian endings.  We only halve/double a frame when it is
+    more than roughly three quarters of an octave away from the recent voiced
+    median and an octave-equivalent candidate restores continuity.
+    """
+    corrected = np.asarray(values, dtype=np.float64).copy()
+    history: list[float] = []
+    unvoiced_run = 0
+    for index, raw in enumerate(corrected):
+        if not bool(voiced[index]) or not math.isfinite(float(raw)) or raw <= 0.0:
+            unvoiced_run += 1
+            if unvoiced_run >= 6:
+                history.clear()
+            continue
+        unvoiced_run = 0
+        value = float(raw)
+        if history:
+            anchor = float(np.median(np.asarray(history[-7:], dtype=np.float64)))
+            raw_distance = abs(math.log2(value / max(anchor, 1e-9)))
+            if raw_distance >= 0.72:
+                candidates = [
+                    candidate
+                    for candidate in (value * 0.5, value, value * 2.0)
+                    if 45.0 <= candidate <= 500.0
+                ]
+                best = min(
+                    candidates,
+                    key=lambda candidate: abs(
+                        math.log2(candidate / max(anchor, 1e-9))
+                    ),
+                )
+                best_distance = abs(math.log2(best / max(anchor, 1e-9)))
+                if best_distance + 0.20 < raw_distance:
+                    value = float(best)
+        corrected[index] = value
+        history.append(value)
+    return corrected
 
 
 def _level_frames(
@@ -302,7 +347,7 @@ def evaluate_candidate_cadence(
             penalty += min(55.0, (trailing - 0.42) * 65.0)
         if trailing > 0.92:
             failures.append("continuation_dead_tail")
-    else:
+    else:  # suspense
         if abs(delta) > 3.2:
             penalty += (abs(delta) - 3.2) * 10.0
         if trailing > 0.70:
