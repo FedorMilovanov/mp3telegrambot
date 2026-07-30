@@ -5,7 +5,7 @@
 The proven orchestration remains in ``clean_production_core.py``. This package
 preserves its public API, validates segment fields before expensive work, makes
 child-Python launches independent of cwd, preserves master stderr, and verifies
-the actual encoded final Russian ending before a project can be released.
+the actual encoded final Russian ending before a production project is released.
 """
 from __future__ import annotations
 
@@ -80,6 +80,22 @@ def _is_master_command(command: Any) -> bool:
     )
 
 
+def _is_master_release_command(command: Any) -> bool:
+    """Distinguish a real production master from --help/import smoke tests."""
+    if not _is_master_command(command) or not isinstance(command, (list, tuple)):
+        return False
+    values = [str(item) for item in command]
+    if "--help" in values or "-h" in values:
+        return False
+    for flag in ("--work-dir", "--russian-only-video"):
+        if flag not in values:
+            return False
+        index = values.index(flag)
+        if index + 1 >= len(values) or not values[index + 1].strip():
+            return False
+    return True
+
+
 def _command_flag(command: Any, flag: str) -> str:
     if not isinstance(command, (list, tuple)):
         raise RuntimeError("Master command должен быть списком аргументов.")
@@ -114,6 +130,7 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
     """Run child commands with deterministic imports and fail-closed release QA."""
     is_python = _is_python_script_command(command)
     is_master = _is_master_command(command)
+    is_master_release = _is_master_release_command(command)
     if is_python:
         kwargs["env"] = _child_python_env(kwargs.get("env"))
     if is_master and kwargs.get("stderr") is None:
@@ -130,7 +147,7 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
         else:
             detail = f"process exited with code {result.returncode} without stderr"
         raise RuntimeError("Прямой master завершился с точной причиной:\n" + detail)
-    if is_master:
+    if is_master_release:
         try:
             _verify_post_aac_master_output(command)
         except Exception as exc:
@@ -272,6 +289,7 @@ __all__ = sorted(
         "_command_flag",
         "_finite",
         "_is_master_command",
+        "_is_master_release_command",
         "_is_python_script_command",
         "_mark_and_validate_segments",
         "_run_child_process",
