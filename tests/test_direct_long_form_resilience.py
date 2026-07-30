@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from tools.voxcpm2.direct_max_quality_analysis import (
+    FIT_TEMPO_POLICY,
+    candidate_hard_ok,
+    required_tempo,
+)
+from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO
+from tools.voxcpm2.direct_max_quality_render import (
+    ADAPTIVE_RETRY_POLICY,
+    _generation_profile,
+)
+from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence
+
+
+def _valid_candidate(duration: float) -> dict[str, object]:
+    return {
+        "duration": duration,
+        "clipping_ratio": 0.0,
+        "activity": {"active_ratio": 0.82, "max_internal_gap": 0.0},
+        "pitch": {"voiced_ratio": 0.76, "f0_median": 120.0, "f0_p90": 145.0},
+        "voice_match": {
+            "f0_median_ratio": 1.0,
+            "f0_p90_ratio": 1.0,
+            "spectral_similarity": 0.92,
+        },
+        "tail_info": {"suspicious": False},
+    }
+
+
+def _shaped_chirp(
+    start_hz: float,
+    end_hz: float,
+    *,
+    early_peak: bool = False,
+    duration: float = 2.0,
+) -> tuple[np.ndarray, int]:
+    sample_rate = 48_000
+    time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
+    slope = (end_hz - start_hz) / duration
+    phase = 2.0 * np.pi * (start_hz * time + 0.5 * slope * time**2)
+    if early_peak:
+        envelope = np.interp(time, [0.0, 0.35, duration], [0.08, 0.30, 0.07])
+    else:
+        envelope = np.interp(time, [0.0, duration * 0.65, duration], [0.07, 0.11, 0.30])
+    audio = envelope * np.sin(phase)
+    fade = int(0.03 * sample_rate)
+    audio[:fade] *= np.linspace(0.0, 1.0, fade)
+    audio[-fade:] *= np.linspace(1.0, 0.0, fade)
+    return np.concatenate(
+        [audio.astype(np.float32), np.zeros(int(0.18 * sample_rate), dtype=np.float32)]
+    ), sample_rate
+
+
+def _cadence(text: str, audio: np.ndarray, sample_rate: int) -> dict[str, object]:
+    return evaluate_candidate_cadence(
+        {
+            "samples": audio,
+            "sample_rate": sample_rate,
+            "duration": len(audio) / sample_rate,
+        },
+        {
+            "id": 1,
+            "text": text,
+            "start": 0.0,
+            "end": 2.35,
+            "tail_guard": 0.17,
+        },
+    )
+
+
+def test_candidate_fit_tempo_is_a_preselection_hard_gate() -> None:
+    slot = 4.0
+    at_limit = _valid_candidate(slot * MAX_TEMPO)
+    above_limit = _valid_candidate(slot * (MAX_TEMPO + 0.008))
+
+    assert FIT_TEMPO_POLICY == "candidate-fit-tempo-hard-gate-v1"
+    assert candidate_hard_ok(at_limit, slot) is True
+    assert required_tempo(at_limit, slot) == pytest.approx(MAX_TEMPO)
+    assert candidate_hard_ok(above_limit, slot) is False
+    assert required_tempo(above_limit, slot) > MAX_TEMPO
+
+
+def test_adaptive_profiles_add_two_bounded_rescue_attempts() -> None:
+    assert ADAPTIVE_RETRY_POLICY == "direct-candidate-adaptive-retry-v1"
+    profiles = [_generation_profile(index, 1.9, 16) for index in range(1, 6)]
+
+    assert len(set(profiles)) == 5
+    assert profiles[3][1] > profiles[1][1]
+    assert profiles[4][0] < profiles[0][0]
+    assert all(1.35 <= cfg <= 2.20 for cfg, _steps in profiles)
+    assert all(1 <= steps <= 40 for _cfg, steps in profiles)
+    with pytest.raises(ValueError, match="Неподдерживаемая попытка"):
+        _generation_profile(6, 1.9, 16)
+
+
+def test_flat_declarative_without_energy_release_is_rejected() -> None:
+    audio, sample_rate = _shaped_chirp(120.0, 120.0, early_peak=False)
+    result = _cadence("И не на то, что выйдет замуж.", audio, sample_rate)
+
+    assert result["hard_ok"] is False
+    assert "terminal_not_resolved" in result["failures"]
+
+
+def test_multiword_exclamation_rejects_early_emotional_burst() -> None:
+    early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
+    late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
+
+    rejected = _cadence("Я смеюсь тебе в лицо!", early, sample_rate)
+    accepted = _cadence("Я смеюсь тебе в лицо!", late, sample_rate)
+
+    assert rejected["hard_ok"] is False
+    assert "emphasis_too_early" in rejected["failures"]
+    assert accepted["peak_energy_bin"] in {2, 3, 4}
+    assert "emphasis_too_early" not in accepted["failures"]
