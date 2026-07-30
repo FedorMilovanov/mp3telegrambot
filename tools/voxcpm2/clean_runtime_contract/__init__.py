@@ -3,8 +3,8 @@
 """Compatibility facade for the clean runtime fingerprint contract.
 
 The stable contract remains in ``clean_runtime_contract.py``. This package keeps
-its API and extends the render fingerprint with compatibility facades that are
-resolved by production imports before rendering.
+its API and extends the render fingerprint with every compatibility facade and
+post-assembly delivery gate resolved by production imports.
 """
 from __future__ import annotations
 
@@ -26,6 +26,12 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/clean_production_core/__init__.py",
     "tools/voxcpm2/generic_project_runtime/__init__.py",
     "tools/voxcpm2/clean_source_download/__init__.py",
+    "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
+    "tools/voxcpm2/direct_max_quality_render/__init__.py",
+    "tools/voxcpm2/direct_russian_cadence.py",
+    "tools/voxcpm2/direct_russian_cadence/__init__.py",
+    "tools/voxcpm2/direct_tail_artifact.py",
+    "tools/voxcpm2/direct_timeline_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
     dict.fromkeys((*_legacy._RENDER_MODULES, *_FACADE_RENDER_MODULES))
