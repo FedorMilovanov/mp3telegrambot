@@ -122,6 +122,12 @@ def test_supplemental_health_requires_long_form_delivery_resilience() -> None:
         "MAX_CANDIDATE_ATTEMPTS = 5",
         "invalidated_for_retry",
         'POLICY = "late-broadband-tail-v2"',
+        'POLICY = "post-aac-russian-delivery-v1"',
+        "MAX_SEGMENT_WINDOW_SECONDS = 30.0",
+        "def verify_final_encoded_russian(",
+        'CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"',
+        "def _is_master_release_command(",
+        "final_encoded_delivery_qa.verify_final_encoded_russian(",
     )
     for item in required:
         assert item in facade
