@@ -9,6 +9,7 @@ on:
       - "services/dub_title_policy.py"
       - "services/dub_title_policy/**"
       - "tools/voxcpm2/dub_worker_hardened.py"
+      - "tools/voxcpm2/dub_worker_hardened/**"
       - "tools/voxcpm2/dub_job_preflight.py"
       - "tools/voxcpm2/dub_job_preflight/**"
       - "tools/voxcpm2/clean_runtime_contract.py"
@@ -33,6 +34,7 @@ on:
       - "handlers/dub_wizard/**"
       - "handlers/dub_health.py"
       - "handlers/dub_health/**"
+      - "tests/test_dub_worker_preflight_cancellation.py"
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_dub_facade_write_through.py"
       - "tests/test_dub_runtime_progress.py"
@@ -84,6 +86,8 @@ jobs:
             services/dub_title_policy.py \
             services/dub_title_policy/__init__.py \
             tools/voxcpm2/dub_worker_hardened.py \
+            tools/voxcpm2/dub_worker_hardened/__init__.py \
+            tools/voxcpm2/dub_worker_hardened/__main__.py \
             tools/voxcpm2/dub_job_preflight.py \
             tools/voxcpm2/dub_job_preflight/__init__.py \
             tools/voxcpm2/clean_runtime_contract.py \
@@ -112,6 +116,7 @@ jobs:
       - name: Run hardening contracts
         run: |
           pytest -q \
+            tests/test_dub_worker_preflight_cancellation.py \
             tests/test_dub_job_preflight_v2.py \
             tests/test_dub_facade_write_through.py \
             tests/test_dub_runtime_progress.py \
