@@ -16,6 +16,15 @@ on:
       - "tools/voxcpm2/clean_runtime_contract/**"
       - "tools/voxcpm2/clean_production_core.py"
       - "tools/voxcpm2/clean_production_core/**"
+      - "tools/voxcpm2/direct_max_quality_cli.py"
+      - "tools/voxcpm2/direct_max_quality_analysis.py"
+      - "tools/voxcpm2/direct_max_quality_analysis/**"
+      - "tools/voxcpm2/direct_max_quality_render.py"
+      - "tools/voxcpm2/direct_max_quality_render/**"
+      - "tools/voxcpm2/direct_russian_cadence.py"
+      - "tools/voxcpm2/direct_russian_cadence/**"
+      - "tools/voxcpm2/direct_tail_artifact.py"
+      - "tools/voxcpm2/direct_timeline_delivery_qa.py"
       - "tools/voxcpm2/generic_project_runtime.py"
       - "tools/voxcpm2/generic_project_runtime/**"
       - "tools/voxcpm2/generic_clean_audio_repair_runtime.py"
@@ -34,6 +43,10 @@ on:
       - "handlers/dub_wizard/**"
       - "handlers/dub_health.py"
       - "handlers/dub_health/**"
+      - "tests/test_direct_long_form_resilience.py"
+      - "tests/test_direct_russian_cadence.py"
+      - "tests/test_direct_tail_artifact.py"
+      - "tests/test_direct_timeline_delivery_qa.py"
       - "tests/test_dub_worker_preflight_cancellation.py"
       - "tests/test_dub_worker_root_fail_closed.py"
       - "tests/test_dub_job_preflight_v2.py"
@@ -95,6 +108,15 @@ jobs:
             tools/voxcpm2/clean_runtime_contract/__init__.py \
             tools/voxcpm2/clean_production_core.py \
             tools/voxcpm2/clean_production_core/__init__.py \
+            tools/voxcpm2/direct_max_quality_cli.py \
+            tools/voxcpm2/direct_max_quality_analysis.py \
+            tools/voxcpm2/direct_max_quality_analysis/__init__.py \
+            tools/voxcpm2/direct_max_quality_render.py \
+            tools/voxcpm2/direct_max_quality_render/__init__.py \
+            tools/voxcpm2/direct_russian_cadence.py \
+            tools/voxcpm2/direct_russian_cadence/__init__.py \
+            tools/voxcpm2/direct_tail_artifact.py \
+            tools/voxcpm2/direct_timeline_delivery_qa.py \
             tools/voxcpm2/generic_project_runtime.py \
             tools/voxcpm2/generic_project_runtime/__init__.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
@@ -117,6 +139,10 @@ jobs:
       - name: Run hardening contracts
         run: |
           pytest -q \
+            tests/test_direct_long_form_resilience.py \
+            tests/test_direct_russian_cadence.py \
+            tests/test_direct_tail_artifact.py \
+            tests/test_direct_timeline_delivery_qa.py \
             tests/test_dub_worker_preflight_cancellation.py \
             tests/test_dub_worker_root_fail_closed.py \
             tests/test_dub_job_preflight_v2.py \
