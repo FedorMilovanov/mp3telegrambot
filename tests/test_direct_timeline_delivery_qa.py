@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 import soundfile as sf
 
-from tools.voxcpm2.direct_timeline_delivery_qa import verify_timeline_delivery
+from tools.voxcpm2.direct_retry_epoch import load_retry_epoch
+from tools.voxcpm2.direct_timeline_delivery_qa import (
+    POLICY,
+    verify_timeline_delivery,
+)
 
 
 def _segment(text: str) -> dict[str, object]:
@@ -16,6 +21,7 @@ def _segment(text: str) -> dict[str, object]:
         "end": 2.25,
         "start_delay_ms": 0,
         "tail_guard": 0.13,
+        "reference_profile": "extended",
         "text": text,
     }
 
@@ -62,6 +68,7 @@ def _write_linked_timeline(path: Path, gap_seconds: float) -> list[tuple[dict[st
         "end": 1.12,
         "start_delay_ms": 0,
         "tail_guard": 0.10,
+        "reference_profile": "extended",
         "text": "Помните мой любимый стих",
     }
     second_start = 1.0 + gap_seconds
@@ -71,24 +78,31 @@ def _write_linked_timeline(path: Path, gap_seconds: float) -> list[tuple[dict[st
         "end": second_start + 1.18,
         "start_delay_ms": 0,
         "tail_guard": 0.10,
+        "reference_profile": "extended",
         "text": "о женщине из тридцать первой главы Притч?",
     }
+    fitted_dir = path.parent / "segment_work" / "segments_fitted"
+    fitted_dir.mkdir(parents=True, exist_ok=True)
+    first_fitted = fitted_dir / "01_extended_fitted.wav"
+    second_fitted = fitted_dir / "02_extended_fitted.wav"
+    first_fitted.write_bytes(b"fitted")
+    second_fitted.write_bytes(b"fitted")
     return [
-        (first_segment, path.parent / "missing_01.wav"),
-        (second_segment, path.parent / "missing_02.wav"),
+        (first_segment, first_fitted),
+        (second_segment, second_fitted),
     ]
 
 
-def test_rejects_unresolved_terminal_after_timeline_assembly(tmp_path: Path) -> None:
+def test_rejects_unresolved_terminal_and_advances_only_failed_epoch(tmp_path: Path) -> None:
     timeline = tmp_path / "timeline.wav"
     _write_timeline(timeline, rising=True, growing=True)
     work = tmp_path / "segment_work"
     fitted = work / "segments_fitted" / "01_extended_fitted.wav"
+    clean = work / "segments_clean" / "01_extended_clean.wav"
     checkpoint = work / "checkpoints" / "segment_01.json"
-    fitted.parent.mkdir(parents=True)
-    checkpoint.parent.mkdir(parents=True)
-    fitted.write_bytes(b"fitted")
-    checkpoint.write_text("{}", encoding="utf-8")
+    for path in (fitted, clean, checkpoint):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"checkpoint")
 
     with pytest.raises(RuntimeError, match="terminal_not_resolved"):
         verify_timeline_delivery(
@@ -96,23 +110,38 @@ def test_rejects_unresolved_terminal_after_timeline_assembly(tmp_path: Path) -> 
             [(_segment("И не на то, что выйдет замуж."), fitted)],
         )
 
-    assert timeline.with_suffix(".delivery_qa.json").is_file()
+    report_path = timeline.with_suffix(".delivery_qa.json")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert POLICY == "assembled-russian-delivery-v3"
+    assert report["policy"] == POLICY
+    assert report["invalidated_for_retry"][0]["retry_epoch"] == 1
+    assert load_retry_epoch(work, 1) == 1
     assert not fitted.exists()
+    assert not clean.exists()
     assert not checkpoint.exists()
 
 
-def test_accepts_resolved_terminal_after_timeline_assembly(tmp_path: Path) -> None:
+def test_accepts_resolved_terminal_without_advancing_epoch(tmp_path: Path) -> None:
     timeline = tmp_path / "timeline.wav"
     _write_timeline(timeline, rising=False, growing=False)
+    work = tmp_path / "segment_work"
+    fitted = work / "segments_fitted" / "01_extended_fitted.wav"
+    fitted.parent.mkdir(parents=True, exist_ok=True)
+    fitted.write_bytes(b"fitted")
     report = verify_timeline_delivery(
         timeline,
-        [(_segment("И не на то, что выйдет замуж."), Path("unused.wav"))],
+        [(_segment("И не на то, что выйдет замуж."), fitted)],
     )
     assert report["passed"] is True
     assert report["failed_segment_ids"] == []
+    assert report["invalidated_for_retry"] == []
+    assert load_retry_epoch(work, 1) == 0
+    assert fitted.exists()
 
 
-def test_assembled_timeline_rejects_late_broadband_noise(tmp_path: Path) -> None:
+def test_assembled_timeline_rejects_late_broadband_noise_and_changes_seed_epoch(
+    tmp_path: Path,
+) -> None:
     sample_rate = 48_000
     speech_seconds = 1.55
     time = np.arange(int(speech_seconds * sample_rate), dtype=np.float64) / sample_rate
@@ -132,17 +161,32 @@ def test_assembled_timeline_rejects_late_broadband_noise(tmp_path: Path) -> None
     sf.write(timeline, timeline_audio, sample_rate, subtype="PCM_24")
     segment = _segment("Она знает, что грядёт, — и смеётся.")
     segment["end"] = len(timeline_audio) / sample_rate
+    work = tmp_path / "segment_work"
+    fitted = work / "segments_fitted" / "01_extended_fitted.wav"
+    fitted.parent.mkdir(parents=True, exist_ok=True)
+    fitted.write_bytes(b"fitted")
 
     with pytest.raises(RuntimeError, match="late_broadband_burst"):
-        verify_timeline_delivery(timeline, [(segment, tmp_path / "missing.wav")])
+        verify_timeline_delivery(timeline, [(segment, fitted)])
+
+    assert load_retry_epoch(work, 1) == 1
+    assert not fitted.exists()
 
 
-def test_rejects_long_gap_between_linked_srt_lines(tmp_path: Path) -> None:
+def test_rejects_long_gap_between_linked_srt_lines_and_advances_first_only(
+    tmp_path: Path,
+) -> None:
     timeline = tmp_path / "linked_long_gap.wav"
     fitted_segments = _write_linked_timeline(timeline, gap_seconds=0.82)
+    work = tmp_path / "segment_work"
 
     with pytest.raises(RuntimeError, match="linked_phrase_gap"):
         verify_timeline_delivery(timeline, fitted_segments)
+
+    assert load_retry_epoch(work, 1) == 1
+    assert load_retry_epoch(work, 2) == 0
+    assert not fitted_segments[0][1].exists()
+    assert fitted_segments[1][1].exists()
 
 
 def test_accepts_natural_gap_between_linked_srt_lines(tmp_path: Path) -> None:
