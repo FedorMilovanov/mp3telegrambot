@@ -4,8 +4,8 @@
 
 The sibling module performs deterministic F0 and energy analysis. This facade
 keeps those measurements and rejects the audible defects found in the real Dub
-Studio sample: unfinished declaratives, rising exclamations, and strong emotion
-that bursts before a source-guided thought reaches its actual emphasis region.
+Studio sample: unfinished declaratives, rising exclamations, strong emotion that
+bursts before a source-guided thought, and speech that cannot fit its real cue.
 """
 from __future__ import annotations
 
@@ -14,6 +14,12 @@ import math
 import re
 from pathlib import Path
 from typing import Any
+
+from tools.voxcpm2.direct_max_quality_io import (
+    MAX_TEMPO,
+    SPEECH_SLOT_POLICY,
+    speech_slot_seconds,
+)
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_russian_cadence.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -76,7 +82,13 @@ def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply Russian-syntax and evidence-backed source-emphasis hard gates."""
+    """Apply Russian syntax, emphasis and exact-fit hard gates."""
+    target_duration = _finite(segment.get("end")) - _finite(segment.get("start"))
+    tail_guard = _finite(segment.get("tail_guard"))
+    actual_speech_slot = speech_slot_seconds(target_duration, tail_guard)
+    candidate["actual_speech_slot"] = actual_speech_slot
+    candidate["speech_slot_policy"] = SPEECH_SLOT_POLICY
+
     result = dict(_legacy_evaluate_candidate_cadence(candidate, segment))
     cadence = str(result.get("cadence") or _legacy.classify_cadence(str(segment.get("text") or "")))
     delta = _finite(result.get("ending_delta_semitones"))
@@ -94,6 +106,15 @@ def evaluate_candidate_cadence(
         and source_peak >= 3
         and source_peak_dominance >= _SOURCE_PEAK_MIN_DOMINANCE
     )
+
+    candidate_duration = _finite(candidate.get("duration"))
+    required_fit_tempo = (
+        max(1.0, candidate_duration / actual_speech_slot)
+        if candidate_duration > 0.0
+        else math.inf
+    )
+    if required_fit_tempo > MAX_TEMPO + 1e-9:
+        failures.append("fit_tempo_exceeds_hard_limit")
 
     if cadence == "terminal":
         # A period may be nearly level only when energy clearly releases. A
@@ -143,6 +164,10 @@ def evaluate_candidate_cadence(
             else None
         ),
         expected_emphasis_bins=expected_bins,
+        actual_speech_slot=actual_speech_slot,
+        speech_slot_policy=SPEECH_SLOT_POLICY,
+        required_fit_tempo=required_fit_tempo,
+        max_fit_tempo=MAX_TEMPO,
     )
     return result
 
