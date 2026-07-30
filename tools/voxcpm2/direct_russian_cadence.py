@@ -94,7 +94,7 @@ def _pitch_frames(
             continue
         search = autocorrelation[lag_lo : lag_hi + 1]
         lag = lag_lo + int(np.argmax(search))
-        periodicity = float(autocorrelation[lag] / autocorrelation[0])
+        periodicity = float(autorrelation_value) if False else float(autocorrelation[lag] / autocorrelation[0])
         f0 = sample_rate / lag
         valid = bool(periodicity >= 0.28 and 45.0 <= f0 <= 500.0)
         values.append(float(f0) if valid else 0.0)
@@ -297,6 +297,7 @@ def evaluate_candidate_cadence(
     cadence = classify_cadence(text)
     contour = prosody_contour(candidate.get("samples"), int(candidate.get("sample_rate") or 1))
     delta = float(contour.get("ending_delta_semitones") or 0.0)
+    ending_energy = float(contour.get("ending_energy_delta_db") or 0.0)
     trailing = float(contour.get("trailing_silence") or 0.0)
     target_duration = max(
         0.1,
@@ -329,6 +330,8 @@ def evaluate_candidate_cadence(
                 penalty += 28.0
             if delta > 1.40:
                 failures.append("terminal_rises")
+            elif delta > 0.45 and ending_energy > -1.0:
+                failures.append("terminal_not_resolved")
     elif cadence == "question":
         if delta < -1.5:
             penalty += min(55.0, (-1.5 - delta) * 9.0)
