@@ -69,3 +69,28 @@ def test_accepts_resolved_terminal_after_timeline_assembly(tmp_path: Path) -> No
     )
     assert report["passed"] is True
     assert report["failed_segment_ids"] == []
+
+
+def test_assembled_timeline_rejects_late_broadband_noise(tmp_path: Path) -> None:
+    sample_rate = 48_000
+    speech_seconds = 1.55
+    time = np.arange(int(speech_seconds * sample_rate), dtype=np.float64) / sample_rate
+    slope = (105.0 - 155.0) / speech_seconds
+    phase = 2.0 * np.pi * (155.0 * time + 0.5 * slope * time**2)
+    speech = 0.22 * np.sin(phase)
+    fade = int(0.04 * sample_rate)
+    speech[:fade] *= np.linspace(0.0, 1.0, fade)
+    speech[-fade:] *= np.linspace(1.0, 0.0, fade)
+    quiet = np.zeros(int(0.06 * sample_rate), dtype=np.float32)
+    rng = np.random.default_rng(20260730)
+    noise = rng.normal(0.0, 0.16, int(0.12 * sample_rate)).astype(np.float32)
+    noise *= np.hanning(len(noise)).astype(np.float32)
+    tail = np.zeros(int(0.27 * sample_rate), dtype=np.float32)
+    timeline_audio = np.concatenate([speech.astype(np.float32), quiet, noise, tail])
+    timeline = tmp_path / "timeline.wav"
+    sf.write(timeline, timeline_audio, sample_rate, subtype="PCM_24")
+    segment = _segment("Она знает, что грядёт, — и смеётся.")
+    segment["end"] = len(timeline_audio) / sample_rate
+
+    with pytest.raises(RuntimeError, match="late_broadband_burst"):
+        verify_timeline_delivery(timeline, [(segment, tmp_path / "missing.wav")])
