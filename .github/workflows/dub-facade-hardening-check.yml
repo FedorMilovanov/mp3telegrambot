@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "services/dub_studio_runtime.py"
+      - "services/dub_studio_runtime/**"
+      - "services/dub_title_policy.py"
+      - "services/dub_title_policy/**"
       - "tools/voxcpm2/dub_worker_hardened.py"
       - "tools/voxcpm2/dub_job_preflight.py"
       - "tools/voxcpm2/dub_job_preflight/**"
@@ -31,6 +34,8 @@ on:
       - "handlers/dub_health.py"
       - "handlers/dub_health/**"
       - "tests/test_dub_job_preflight_v2.py"
+      - "tests/test_dub_facade_write_through.py"
+      - "tests/test_dub_runtime_progress.py"
       - "tests/test_clean_runtime_setting_types.py"
       - "tests/test_clean_runtime_facades.py"
       - "tests/test_clean_segment_contract.py"
@@ -75,6 +80,9 @@ jobs:
         run: |
           python -m py_compile \
             services/dub_studio_runtime.py \
+            services/dub_studio_runtime/__init__.py \
+            services/dub_title_policy.py \
+            services/dub_title_policy/__init__.py \
             tools/voxcpm2/dub_worker_hardened.py \
             tools/voxcpm2/dub_job_preflight.py \
             tools/voxcpm2/dub_job_preflight/__init__.py \
@@ -105,6 +113,8 @@ jobs:
         run: |
           pytest -q \
             tests/test_dub_job_preflight_v2.py \
+            tests/test_dub_facade_write_through.py \
+            tests/test_dub_runtime_progress.py \
             tests/test_clean_runtime_setting_types.py \
             tests/test_clean_runtime_facades.py \
             tests/test_clean_segment_contract.py \
