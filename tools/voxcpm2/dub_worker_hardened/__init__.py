@@ -5,14 +5,17 @@
 The parallel agent's complete v4.6 implementation remains in the sibling
 ``dub_worker_hardened.py`` file. This package shadows it for imports and
 ``python -m`` execution, installs every original hardening patch, and replaces
-only the preflight wrapper so cancellation never becomes a false failure and a
-production runner is never launched after cancellation was requested.
+only the preflight wrapper so cancellation never becomes a false failure, the
+production runner never starts after cancellation, and an explicit worker
+``--root`` is used consistently by every preflight storage lookup.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import importlib.util
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_worker_hardened.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -30,6 +33,24 @@ for _name in dir(_legacy):
 
 _RUNTIME_VERSION = "dub-worker-quality-v4.6"
 CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"
+STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"
+
+
+@contextmanager
+def _store_root_environment(store: Any) -> Iterator[Path]:
+    """Expose the actual DubStore root to preflight modules for this job."""
+    root = Path(getattr(store, "root", "")).resolve()
+    if not root.is_dir():
+        raise RuntimeError(f"Worker store root отсутствует: {root}")
+    previous = os.environ.get("DUB_STUDIO_ROOT")
+    os.environ["DUB_STUDIO_ROOT"] = str(root)
+    try:
+        yield root
+    finally:
+        if previous is None:
+            os.environ.pop("DUB_STUDIO_ROOT", None)
+        else:
+            os.environ["DUB_STUDIO_ROOT"] = previous
 
 
 def _stop_reason(store: Any, job_id: int) -> str:
@@ -77,34 +98,35 @@ def _execute_job_with_cancellable_preflight(
         return
 
     try:
-        project = store.get_project(str(job["project_id"]))
-        if not project:
-            raise RuntimeError(f"Preflight: проект не найден: {job['project_id']}")
-        store.update_job_progress(
-            job_id,
-            progress=1,
-            stage="preflight",
-            message="Проверяю CPU Python, модель, FFmpeg и production imports до синтеза.",
-        )
-        report = _legacy.dub_job_preflight.run(
-            project,
-            str(job.get("action") or ""),
-        )
-
-        # The request can arrive while model/runtime hashes or import probes are
-        # running. Check once more before any runner process is created.
-        reason = _stop_reason(store, job_id)
-        if reason:
-            _finish_cancelled(store, job_id, reason)
-            return
-
-        if not report.get("skipped"):
+        with _store_root_environment(store):
+            project = store.get_project(str(job["project_id"]))
+            if not project:
+                raise RuntimeError(f"Preflight: проект не найден: {job['project_id']}")
             store.update_job_progress(
                 job_id,
-                progress=2,
-                stage="preflight:ok",
-                message="Production preflight пройден; запускаю runner.",
+                progress=1,
+                stage="preflight",
+                message="Проверяю CPU Python, модель, FFmpeg и production imports до синтеза.",
             )
+            report = _legacy.dub_job_preflight.run(
+                project,
+                str(job.get("action") or ""),
+            )
+
+            # The request can arrive while model/runtime hashes or import probes
+            # are running. Check once more before any runner process is created.
+            reason = _stop_reason(store, job_id)
+            if reason:
+                _finish_cancelled(store, job_id, reason)
+                return
+
+            if not report.get("skipped"):
+                store.update_job_progress(
+                    job_id,
+                    progress=2,
+                    stage="preflight:ok",
+                    message="Production preflight пройден; запускаю runner.",
+                )
     except Exception as exc:
         # A cancellation racing with a failing import/model probe is still a
         # cancellation, not a misleading preflight failure.
@@ -132,9 +154,11 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CANCELLATION_POLICY",
+        "STORE_ROOT_POLICY",
         "_execute_job_with_cancellable_preflight",
         "_finish_cancelled",
         "_stop_reason",
+        "_store_root_environment",
         "_write_preflight_failure",
         "install_hardening",
         "main",
