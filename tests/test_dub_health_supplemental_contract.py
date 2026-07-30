@@ -54,6 +54,27 @@ def test_supplemental_health_requires_source_segment_and_full_preflight_identity
         assert item in facade
 
 
+def test_supplemental_health_requires_cancellation_safe_worker_package() -> None:
+    facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    required = (
+        '"worker_facade"',
+        '"worker_main"',
+        'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"',
+        'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"',
+        "def _execute_job_with_cancellable_preflight(",
+        "with _store_root_environment(store):",
+        "reason = _stop_reason(store, job_id)",
+        "_legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)",
+        "_legacy.install_hardening()",
+        "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
+        "from . import main",
+    )
+    for item in required:
+        assert item in facade
+
+
 def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None:
     facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
         encoding="utf-8"
