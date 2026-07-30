@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Soft source-prosody ranking for direct VoxCPM2 candidates.
+"""Source-prosody and Russian-cadence ranking for direct VoxCPM2 candidates.
 
-Speaker identity and artifact checks remain hard gates elsewhere. This module
-only breaks ties between already plausible candidates by preferring the one
-whose pitch contour, voiced activity and rhetorical pauses are closer to the
-matching source-language window. It never changes the supplied Russian text and
-never relaxes the anti-shouting voice-reference limits.
+Speaker identity and artifact checks remain hard gates elsewhere.  This module
+compares each plausible candidate with the matching source-language window and
+also checks the Russian syntactic ending actually produced.  It never changes
+the supplied Russian text and never relaxes the anti-shouting voice limits.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-POLICY = "source-prosody-candidate-ranking-v1"
-MAX_PENALTY = 95.0
+from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence
+
+POLICY = "source-prosody-candidate-ranking-v2"
+MAX_PENALTY = 180.0
 
 
 def _finite(value: Any) -> float | None:
@@ -72,7 +73,7 @@ def source_prosody_penalty(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> float:
-    """Attach transparent source-prosody evidence and return a bounded penalty."""
+    """Attach source, contour and cadence evidence and return a bounded penalty."""
     target = segment.get("source_prosody")
     pitch = candidate.get("pitch")
     activity = candidate.get("activity")
@@ -87,13 +88,27 @@ def source_prosody_penalty(
         "voiced_ratio_delta_to_source": None,
         "active_ratio_delta_to_source": None,
         "internal_gap_delta_to_source": None,
+        "acoustic_penalty": 0.0,
+        "cadence_penalty": 0.0,
         "penalty": 0.0,
         "reason": None,
     }
     candidate["source_prosody_match"] = result
+
+    cadence = evaluate_candidate_cadence(candidate, segment)
+    result["cadence"] = cadence
+    result["cadence_penalty"] = float(cadence.get("penalty") or 0.0)
+    candidate["cadence_hard_ok"] = bool(cadence.get("hard_ok"))
+    candidate["cadence_evidence"] = cadence
+
     if not isinstance(target, dict):
-        result["reason"] = "source_prosody отсутствует"
-        return 0.0
+        total = min(MAX_PENALTY, float(cadence.get("penalty") or 0.0))
+        result.update(
+            available=False,
+            penalty=total,
+            reason="source_prosody отсутствует; применён русский cadence gate",
+        )
+        return total
 
     target_voiced = _positive(target.get("voiced_ratio"), low=0.12, high=1.0)
     target_median = _positive(target.get("f0_median"), low=55.0, high=350.0)
@@ -101,19 +116,30 @@ def source_prosody_penalty(
     target_active = _positive(target.get("active_ratio"), low=0.05, high=1.0)
     target_gap = _positive(target.get("max_internal_gap"), low=0.0, high=6.0)
     if any(value is None for value in (target_voiced, target_median, target_p90)):
-        result["reason"] = "невалидные source F0/voiced метрики"
-        return 0.0
+        total = min(MAX_PENALTY, float(cadence.get("penalty") or 0.0))
+        result.update(
+            available=False,
+            penalty=total,
+            reason="невалидные source F0/voiced метрики; применён русский cadence gate",
+        )
+        return total
 
     if not isinstance(pitch, dict) or not isinstance(activity, dict):
-        return _penalize_unavailable_candidate(
+        acoustic = _penalize_unavailable_candidate(
             result,
             "candidate pitch/activity отсутствуют",
         )
+        total = min(MAX_PENALTY, acoustic + float(cadence.get("penalty") or 0.0))
+        result["penalty"] = total
+        return total
     if not candidate_pitch_evidence_ok(candidate):
-        return _penalize_unavailable_candidate(
+        acoustic = _penalize_unavailable_candidate(
             result,
             "невалидные candidate F0/voiced метрики",
         )
+        total = min(MAX_PENALTY, acoustic + float(cadence.get("penalty") or 0.0))
+        result["penalty"] = total
+        return total
 
     candidate_voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
     candidate_median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
@@ -124,10 +150,13 @@ def source_prosody_penalty(
         value is None
         for value in (candidate_voiced, candidate_median, candidate_p90)
     ):
-        return _penalize_unavailable_candidate(
+        acoustic = _penalize_unavailable_candidate(
             result,
             "невалидные candidate F0/voiced метрики",
         )
+        total = min(MAX_PENALTY, acoustic + float(cadence.get("penalty") or 0.0))
+        result["penalty"] = total
+        return total
 
     median_ratio = _ratio(float(candidate_median), float(target_median))
     p90_ratio = _ratio(float(candidate_p90), float(target_p90))
@@ -150,14 +179,18 @@ def source_prosody_penalty(
         "emphatic": 1.12,
         "passionate": 1.18,
     }.get(tier, 0.95)
-    penalty = tier_weight * (
+    acoustic_penalty = tier_weight * (
         _log_distance(median_ratio) * 25.0
         + _log_distance(p90_ratio) * 15.0
         + voiced_delta * 22.0
         + active_delta * 12.0
         + min(gap_delta, 1.5) * 7.0
     )
-    penalty = min(MAX_PENALTY, max(0.0, float(penalty)))
+    cadence_penalty = float(cadence.get("penalty") or 0.0)
+    total_penalty = min(
+        MAX_PENALTY,
+        max(0.0, float(acoustic_penalty) + cadence_penalty),
+    )
     result.update(
         available=True,
         f0_median_ratio_to_source=median_ratio,
@@ -165,10 +198,12 @@ def source_prosody_penalty(
         voiced_ratio_delta_to_source=voiced_delta,
         active_ratio_delta_to_source=active_delta,
         internal_gap_delta_to_source=gap_delta,
-        penalty=penalty,
+        acoustic_penalty=acoustic_penalty,
+        cadence_penalty=cadence_penalty,
+        penalty=total_penalty,
         reason=None,
     )
-    return penalty
+    return total_penalty
 
 
 __all__ = [
