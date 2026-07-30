@@ -85,7 +85,7 @@ def test_candidate_fit_tempo_has_preferred_and_hard_boundaries() -> None:
     validated_margin = _valid_candidate(slot * 1.358)
     above_hard = _valid_candidate(slot * (MAX_TEMPO + 0.008))
 
-    assert FIT_TEMPO_POLICY == "candidate-fit-tempo-hard-gate-v1"
+    assert FIT_TEMPO_POLICY == "candidate-fit-tempo-hard-gate-v2"
     assert PREFERRED_MAX_TEMPO == pytest.approx(1.35)
     assert MAX_TEMPO == pytest.approx(1.36)
     assert candidate_hard_ok(preferred, slot) is True
