@@ -35,6 +35,7 @@ on:
       - "handlers/dub_health.py"
       - "handlers/dub_health/**"
       - "tests/test_dub_worker_preflight_cancellation.py"
+      - "tests/test_dub_worker_root_fail_closed.py"
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_dub_facade_write_through.py"
       - "tests/test_dub_runtime_progress.py"
@@ -117,6 +118,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_dub_worker_preflight_cancellation.py \
+            tests/test_dub_worker_root_fail_closed.py \
             tests/test_dub_job_preflight_v2.py \
             tests/test_dub_facade_write_through.py \
             tests/test_dub_runtime_progress.py \
