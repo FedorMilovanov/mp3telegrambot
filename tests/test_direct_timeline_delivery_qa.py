@@ -41,12 +41,23 @@ def _write_timeline(path: Path, *, rising: bool, growing: bool) -> None:
 def test_rejects_unresolved_terminal_after_timeline_assembly(tmp_path: Path) -> None:
     timeline = tmp_path / "timeline.wav"
     _write_timeline(timeline, rising=True, growing=True)
+    work = tmp_path / "segment_work"
+    fitted = work / "segments_fitted" / "01_extended_fitted.wav"
+    checkpoint = work / "checkpoints" / "segment_01.json"
+    fitted.parent.mkdir(parents=True)
+    checkpoint.parent.mkdir(parents=True)
+    fitted.write_bytes(b"fitted")
+    checkpoint.write_text("{}", encoding="utf-8")
+
     with pytest.raises(RuntimeError, match="terminal_not_resolved"):
         verify_timeline_delivery(
             timeline,
-            [(_segment("И не на то, что выйдет замуж."), Path("unused.wav"))],
+            [(_segment("И не на то, что выйдет замуж."), fitted)],
         )
+
     assert timeline.with_suffix(".delivery_qa.json").is_file()
+    assert not fitted.exists()
+    assert not checkpoint.exists()
 
 
 def test_accepts_resolved_terminal_after_timeline_assembly(tmp_path: Path) -> None:
