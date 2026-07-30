@@ -31,8 +31,12 @@ def test_child_environment_places_repo_root_first() -> None:
 
 
 def test_real_master_entrypoint_imports_tools_from_foreign_cwd(tmp_path: Path) -> None:
+    command = [sys.executable, str(MASTER), "--help"]
+    assert core._is_master_command(command) is True
+    assert core._is_master_release_command(command) is False
+
     result = core._run_child_process(
-        [sys.executable, str(MASTER), "--help"],
+        command,
         cwd=str(tmp_path),
         env={},
         stdout=subprocess.PIPE,
@@ -73,4 +77,7 @@ def test_subprocess_proxy_is_scoped_to_clean_legacy_module() -> None:
     assert core._legacy.subprocess is not subprocess
     assert subprocess.run is core._stdlib_subprocess.run
     assert core._legacy.subprocess.run is not subprocess.run
-    assert core.CHILD_PYTHON_POLICY == "repo-root-pythonpath-and-master-stderr-v1"
+    assert (
+        core.CHILD_PYTHON_POLICY
+        == "repo-root-pythonpath-master-stderr-and-post-aac-v2"
+    )
