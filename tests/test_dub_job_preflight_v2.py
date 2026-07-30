@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 import json
 from pathlib import Path
+import threading
+import time
+from typing import Any
 
 import pytest
 
 from handlers import dub_health
 from services import dub_studio_runtime
+from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import dub_job_preflight as preflight
 from tools.voxcpm2 import generic_project_runtime
 
@@ -39,6 +44,7 @@ def test_preflight_import_resolves_to_v2_compatibility_package() -> None:
     assert Path(preflight.__file__).name == "__init__.py"
     assert preflight.POLICY == "dub-production-preflight-v2"
     assert preflight.REPORT_SCHEMA == 2
+    assert preflight.PREFLIGHT_HEARTBEAT_SECONDS == 5.0
     assert preflight._legacy.run is preflight.run
 
 
@@ -128,6 +134,11 @@ def test_render_custom_runs_preflight_and_writes_action_specific_report(
     monkeypatch.setattr(preflight, "_probe_imports", lambda _paths: {"python": "ok"})
     monkeypatch.setattr(
         preflight,
+        "_preflight_heartbeat",
+        lambda _project_id, _action: nullcontext(),
+    )
+    monkeypatch.setattr(
+        preflight,
         "_atomic_json",
         lambda path, payload: written.append((Path(path), dict(payload))),
     )
@@ -203,6 +214,100 @@ def test_signature_covers_all_clean_modules_and_both_preflight_layers() -> None:
     assert "tools/voxcpm2/clean_production_core/__init__.py" in files
     assert "tools/voxcpm2/clean_source_download/__init__.py" in files
     assert len(identity["sha256"]) == 64
+
+
+def test_signature_uses_complete_model_and_voxcpm_runtime_fingerprints(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    cpu_python = tmp_path / "python.exe"
+    renderer = tmp_path / "renderer.py"
+    master = tmp_path / "master.py"
+    for path in (cpu_python, renderer, master):
+        path.write_bytes(b"runtime")
+
+    model_manifest = {
+        "path": str(tmp_path / "model"),
+        "artifacts": [{"name": "weights.safetensors", "sha256": "weight-sha"}],
+    }
+    runtime_manifest = {
+        "module": str(tmp_path / "voxcpm" / "__init__.py"),
+        "versions": {"voxcpm": "1.0", "torch": "2.0"},
+        "python_files": [{"path": "model.py", "sha256": "runtime-sha"}],
+    }
+    calls: list[tuple[str, Path]] = []
+
+    def fake_model_manifest(path: Path) -> dict[str, Any]:
+        calls.append(("model", Path(path)))
+        return model_manifest
+
+    def fake_runtime(path: Path) -> dict[str, Any]:
+        calls.append(("runtime", Path(path)))
+        return runtime_manifest
+
+    monkeypatch.setattr(clean_runtime_contract, "_model_manifest", fake_model_manifest)
+    monkeypatch.setattr(clean_runtime_contract, "_voxcpm_runtime", fake_runtime)
+    monkeypatch.setattr(
+        preflight,
+        "_implementation_identity",
+        lambda _repo: {"files": {"core.py": "sha"}, "sha256": "impl-sha"},
+    )
+    monkeypatch.setattr(
+        preflight,
+        "_executable_identity",
+        lambda name: {"path": f"/{name}", "size": 1, "mtime_ns": 1},
+    )
+    monkeypatch.setattr(preflight, "_sha256", lambda path: f"sha:{Path(path).name}")
+
+    signature = preflight._signature(
+        {
+            "repo": ROOT,
+            "cpu_python": cpu_python,
+            "archive": tmp_path / "archive",
+            "renderer": renderer,
+            "master": master,
+        },
+        action="render_direct",
+    )
+    assert signature["model"] == model_manifest
+    assert signature["voxcpm_runtime"] == runtime_manifest
+    assert signature["implementation"]["sha256"] == "impl-sha"
+    assert signature["action"] == "render_direct"
+    assert calls == [
+        ("model", (tmp_path / "archive").resolve()),
+        ("runtime", cpu_python.resolve()),
+    ]
+
+
+def test_preflight_heartbeat_pulses_immediately_and_stops(monkeypatch) -> None:
+    pulses: list[dict[str, Any]] = []
+    first_pulse = threading.Event()
+
+    class FakeStore:
+        def worker_heartbeat(self, worker_id: str, **kwargs: Any) -> None:
+            pulses.append({"worker_id": worker_id, **kwargs})
+            first_pulse.set()
+
+    monkeypatch.setattr(
+        preflight,
+        "_claimed_job_context",
+        lambda _project_id: (FakeStore(), 42, "worker-1"),
+    )
+
+    with preflight._preflight_heartbeat(PROJECT_ID, "render_direct"):
+        assert first_pulse.wait(timeout=1.0)
+        assert pulses
+        latest = pulses[-1]
+        assert latest["worker_id"] == "worker-1"
+        assert latest["status"] == "busy"
+        assert latest["current_job_id"] == 42
+        assert latest["details"]["runtime"] == "dub-worker-quality-v4.6"
+        assert latest["details"]["stage"] == "preflight"
+        assert latest["details"]["action"] == "render_direct"
+
+    completed_count = len(pulses)
+    time.sleep(0.05)
+    assert len(pulses) == completed_count
 
 
 def test_health_import_synchronizes_supervisor_and_worker_contract() -> None:
