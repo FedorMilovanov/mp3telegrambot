@@ -56,6 +56,7 @@ def _texts(repo: Path) -> dict[str, str]:
         "analysis_facade": voxcpm / "direct_max_quality_analysis" / "__init__.py",
         "render_core": voxcpm / "direct_max_quality_render.py",
         "render_facade": voxcpm / "direct_max_quality_render" / "__init__.py",
+        "retry_epoch": voxcpm / "direct_retry_epoch.py",
         "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
         "tail_artifact": voxcpm / "direct_tail_artifact.py",
         "delivery_qa": voxcpm / "direct_timeline_delivery_qa.py",
@@ -175,6 +176,15 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             "if attempt == 5:",
         ) and _has(
             text,
+            "retry_epoch",
+            'POLICY = "failed-segment-seed-epoch-v1"',
+            "SEED_EPOCH_STRIDE = 100_000",
+            "def load_retry_epoch(",
+            "def seed_for_attempt(",
+            "def invalidate_segment_for_retry(",
+            "os.replace(temporary, path)",
+        ) and _has(
+            text,
             "cadence_facade",
             'DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"',
             '_SOURCE_PEAK_MIN_DOMINANCE = 0.18',
@@ -189,6 +199,10 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             text,
             "direct_cli",
             "MAX_CANDIDATE_ATTEMPTS = 5",
+            "load_retry_epoch(work_dir, segment_id)",
+            "seed_for_attempt(",
+            "invalidate_segment_for_retry(",
+            '"retry_epoch": retry_epoch',
             "for attempt_index in range(1, MAX_CANDIDATE_ATTEMPTS + 1):",
             '"candidate_contract": {',
             '"selected_required_tempo"',
@@ -201,17 +215,20 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _has(
             text,
             "delivery_qa",
-            'POLICY = "assembled-russian-delivery-v2"',
+            'POLICY = "assembled-russian-delivery-v3"',
             "LINKED_MAX_GAP_SECONDS = 0.55",
             '"linked_phrase_gap"',
+            "invalidate_segment_for_retry(",
+            "seed epochs",
             "verify_timeline_delivery",
             "invalidated_for_retry",
         ) and _has(
             text,
             "encoded_delivery_qa",
-            'POLICY = "post-aac-russian-delivery-v1"',
+            'POLICY = "post-aac-russian-delivery-v2"',
             "MAX_SEGMENT_WINDOW_SECONDS = 30.0",
             "def verify_final_encoded_russian(",
+            "invalidate_segment_for_retry(",
             "decode only the final SRT window",
         ),
         "title-health-write-through": _has(
@@ -237,10 +254,9 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         return False, "v4.7-контракты не прошли: " + ", ".join(failed)
     return True, (
         "worker v4.7/preflight v2; cancellation and explicit root; "
-        "exact SRT speech slots and fit-aware adaptive retries; "
-        "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, "
-        "assembled and post-AAC QA; full implementation/model/runtime cache; "
-        "deterministic child imports"
+        "exact SRT speech slots and fit-aware adaptive retries; durable per-segment seed epochs; "
+        "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, assembled and "
+        "post-AAC QA; full implementation/model/runtime cache; deterministic child imports"
     )
 
 
@@ -388,6 +404,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             '"tools/voxcpm2/clean_source_download/__init__.py"',
             '"tools/voxcpm2/direct_max_quality_analysis/__init__.py"',
             '"tools/voxcpm2/direct_max_quality_render/__init__.py"',
+            '"tools/voxcpm2/direct_retry_epoch.py"',
             '"tools/voxcpm2/direct_russian_cadence/__init__.py"',
             '"tools/voxcpm2/direct_tail_artifact.py"',
             '"tools/voxcpm2/direct_timeline_delivery_qa.py"',
@@ -408,7 +425,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
     return True, (
         "zero-safe final QA; strict repair/source/segment/project contracts; "
         "truthful 0-ms settings; transactional preprocessing; clean adapters write through; "
-        "wizard request barrier; cadence/tail/fit/post-AAC gates fingerprinted"
+        "wizard request barrier; cadence/tail/fit/retry-epoch/post-AAC gates fingerprinted"
     )
 
 
