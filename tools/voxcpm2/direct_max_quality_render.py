@@ -14,9 +14,11 @@ import numpy as np
 from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
+    SPEECH_SLOT_POLICY,
     atempo_chain,
     probe_duration,
     run_checked,
+    speech_slot_seconds,
 )
 
 
@@ -27,7 +29,7 @@ def fit_without_slowdown(
     tail_guard: float,
 ) -> dict[str, Any]:
     clean_duration = probe_duration(clean_path)
-    speech_slot = max(1.0, target_duration - tail_guard)
+    speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
         tempo = clean_duration / speech_slot
         tempo_filters = atempo_chain(tempo)
@@ -35,9 +37,9 @@ def fit_without_slowdown(
         tempo = 1.0
         tempo_filters = []
 
-    # Fade around the real spoken material, before padding.  The previous 8 ms
+    # Fade around the real spoken material, before padding. The previous 8 ms
     # one-sided fade behaved almost like a hard edit: Russian phrases appeared
-    # abruptly and the fixed English bed seemed to jump between segments.  A
+    # abruptly and the fixed English bed seemed to jump between segments. A
     # short equal-purpose in/out envelope keeps consonants intact while making
     # phrase boundaries perceptually continuous.
     rendered_speech_duration = min(clean_duration / max(tempo, 1e-9), speech_slot)
@@ -77,6 +79,7 @@ def fit_without_slowdown(
         "clean_duration": clean_duration,
         "target_duration": target_duration,
         "speech_slot": speech_slot,
+        "speech_slot_policy": SPEECH_SLOT_POLICY,
         "tail_guard": tail_guard,
         "tempo": tempo,
         "slowed_down": False,
