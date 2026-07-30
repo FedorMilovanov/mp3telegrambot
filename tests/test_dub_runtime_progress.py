@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "services" / "dub_studio_runtime.py"
 RUNTIME_FACADE = ROOT / "services" / "dub_studio_runtime" / "__init__.py"
 WORKER = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened.py"
+WORKER_FACADE = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened" / "__init__.py"
 
 
 def _source(path: Path) -> str:
@@ -39,13 +40,13 @@ def test_runtime_finalizes_progress_card_at_terminal_event() -> None:
     assert "await _finalize_progress_card(application, event, project)" in source
 
 
-def test_progress_is_integrated_with_active_v46_supervisor_facade() -> None:
+def test_progress_is_integrated_with_active_v47_supervisor_facade() -> None:
     bot = _source(ROOT / "bot_new.py")
     runtime = _source(RUNTIME)
     facade = _source(RUNTIME_FACADE)
     assert "install_dub_progress_updates" not in bot
     assert "dub_progress_updates.py" not in runtime
-    assert '_WORKER_RUNTIME = "dub-worker-quality-v4.6"' in facade
+    assert '_WORKER_RUNTIME = "dub-worker-quality-v4.7"' in facade
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "class _WriteThroughModule" in facade
     assert "_module.__class__ = _WriteThroughModule" in facade
@@ -53,7 +54,9 @@ def test_progress_is_integrated_with_active_v46_supervisor_facade() -> None:
 
 def test_worker_stage_parser_never_uses_master_substring_fallback() -> None:
     worker = _source(WORKER)
-    assert 'dub-worker-quality-v4.6' in worker
+    facade = _source(WORKER_FACADE)
+    assert '_RUNTIME_VERSION = "dub-worker-quality-v4.7"' in facade
+    assert "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION" in facade
     assert "def _progress_from_line_v44" in worker
     assert "render_and_master" in worker
     assert "master_constant_mix.py" in worker
@@ -61,8 +64,9 @@ def test_worker_stage_parser_never_uses_master_substring_fallback() -> None:
     assert 'if "master" in text.lower()' not in worker
 
 
-def test_worker_v46_contains_durable_terminal_and_preflight_guards() -> None:
+def test_worker_v47_contains_durable_terminal_preflight_and_delivery_guards() -> None:
     worker = _source(WORKER)
+    facade = _source(WORKER_FACADE)
     assert "_recover_abandoned_with_terminal_events" in worker
     assert "_FINAL_JOB_STATES" in worker
     assert "status in _FINAL_JOB_STATES" in worker
@@ -72,3 +76,5 @@ def test_worker_v46_contains_durable_terminal_and_preflight_guards() -> None:
     assert "from tools.voxcpm2 import dub_job_preflight" in worker
     assert "def _execute_job_with_preflight(" in worker
     assert "worker.execute_job = _execute_job_with_preflight" in worker
+    assert 'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"' in facade
+    assert "cadence/tail/fit gates" in facade
