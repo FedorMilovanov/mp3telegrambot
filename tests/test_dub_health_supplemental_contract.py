@@ -30,18 +30,28 @@ def test_supplemental_health_requires_full_repair_chain() -> None:
         assert item in facade
 
 
-def test_supplemental_health_requires_source_and_segment_identity() -> None:
+def test_supplemental_health_requires_source_segment_and_full_preflight_identity() -> None:
     facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
         encoding="utf-8"
     )
-    assert '"canonical-source-identity"' in facade
-    assert "Project request и скачиваемый YouTube-ролик имеют разные video ID" in facade
-    assert "clean_source_download._url_video_id(raw)" in facade
-    assert '"strict-segment-preflight"' in facade
-    assert "_legacy._mark_and_validate_segments = _mark_and_validate_segments" in facade
-    assert '"production-preflight-v2"' in facade
-    assert "generic_project_runtime.load_request(root)" in facade
-    assert "def _implementation_identity(" in facade
+    required = (
+        '"canonical-source-identity"',
+        "Project request и скачиваемый YouTube-ролик имеют разные video ID",
+        "clean_source_download._url_video_id(raw)",
+        '"strict-segment-preflight"',
+        "_legacy._mark_and_validate_segments = _mark_and_validate_segments",
+        '"production-preflight-v2"',
+        "generic_project_runtime.load_request(root)",
+        "def _implementation_identity(",
+        "PREFLIGHT_HEARTBEAT_SECONDS = 5.0",
+        "def _preflight_heartbeat(",
+        "clean_runtime_contract._model_manifest(",
+        "clean_runtime_contract._voxcpm_runtime(",
+        "uuid.uuid4().hex",
+        "os.fsync(handle.fileno())",
+    )
+    for item in required:
+        assert item in facade
 
 
 def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None:
@@ -55,6 +65,18 @@ def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "def _v46_static_contract(" in facade
     assert "worker.execute_job = _execute_job_with_preflight" in facade
+
+
+def test_supplemental_health_requires_write_through_service_hooks() -> None:
+    facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"supervisor_facade"' in facade
+    assert '"title_facade"' in facade
+    assert "class _WriteThroughModule" in facade
+    assert "_module.__class__ = _WriteThroughModule" in facade
+    assert "_legacy._patch_health = _patch_health" in facade
+    assert "legacy_health.collect_dub_health = wrapped" in facade
 
 
 def test_supplemental_health_composes_base_v46_and_facades() -> None:
