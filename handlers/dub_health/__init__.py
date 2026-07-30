@@ -27,7 +27,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.6"
+_WORKER_RUNTIME = "dub-worker-quality-v4.7"
 from services import dub_studio_runtime as _supervisor  # noqa: E402
 
 _supervisor._WORKER_RUNTIME = _WORKER_RUNTIME
@@ -51,6 +51,12 @@ def _texts(repo: Path) -> dict[str, str]:
         "core_facade": voxcpm / "clean_production_core" / "__init__.py",
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
         "runtime_facade": voxcpm / "clean_runtime_contract" / "__init__.py",
+        "direct_cli": voxcpm / "direct_max_quality_cli.py",
+        "analysis_facade": voxcpm / "direct_max_quality_analysis" / "__init__.py",
+        "render_facade": voxcpm / "direct_max_quality_render" / "__init__.py",
+        "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
+        "tail_artifact": voxcpm / "direct_tail_artifact.py",
+        "delivery_qa": voxcpm / "direct_timeline_delivery_qa.py",
         "zero_safe_qa": voxcpm / "final_media_qa" / "__init__.py",
         "repair_facade": voxcpm / "generic_clean_audio_repair_runtime" / "__init__.py",
         "repair_main": voxcpm / "generic_clean_audio_repair_runtime" / "__main__.py",
@@ -74,13 +80,20 @@ def _has(text: dict[str, str], file_key: str, *markers: str) -> bool:
     return bool(value) and all(marker in value for marker in markers)
 
 
-def _v46_static_contract(repo: Path) -> tuple[bool, str]:
+def _v47_static_contract(repo: Path) -> tuple[bool, str]:
     text = _texts(repo)
     checks = {
-        "worker-agent-v46": _has(
+        "worker-agent-v47": _has(
+            text,
+            "worker_facade",
+            '_RUNTIME_VERSION = "dub-worker-quality-v4.7"',
+            "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION",
+            'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"',
+            "def _execute_job_with_cancellable_preflight(",
+            "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
+        ) and _has(
             text,
             "worker",
-            '_RUNTIME_VERSION = "dub-worker-quality-v4.6"',
             "from tools.voxcpm2 import dub_job_preflight",
             "def _execute_job_with_preflight(",
             "worker.execute_job = _execute_job_with_preflight",
@@ -90,12 +103,10 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
             "worker_facade",
             'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"',
             'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"',
-            "def _execute_job_with_cancellable_preflight(",
             "with _store_root_environment(store):",
             "reason = _stop_reason(store, job_id)",
             "_legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)",
             "_legacy.install_hardening()",
-            "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
         ) and _has(text, "worker_main", "from . import main", "main()"),
         "production-preflight-v2": _has(
             text,
@@ -125,15 +136,53 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
         "worker-runtime-sync": _has(
             text,
             "health_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.6"',
+            '_WORKER_RUNTIME = "dub-worker-quality-v4.7"',
             "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME",
             "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME",
         ) and _has(
             text,
             "supervisor_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.6"',
+            '_WORKER_RUNTIME = "dub-worker-quality-v4.7"',
             "class _WriteThroughModule",
             "_module.__class__ = _WriteThroughModule",
+        ),
+        "long-form-direct-resilience": _has(
+            text,
+            "analysis_facade",
+            'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v1"',
+            "tempo <= float(MAX_TEMPO) + 1e-9",
+        ) and _has(
+            text,
+            "render_facade",
+            'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
+            "if attempt == 4:",
+            "if attempt == 5:",
+        ) and _has(
+            text,
+            "cadence_facade",
+            'DELIVERY_POLICY = "russian-ending-and-emphasis-hard-gate-v1"',
+            'failures.append("terminal_not_resolved")',
+            'failures.append("firm_terminal_not_resolved")',
+            'failures.append("emphasis_too_early")',
+        ) and _has(
+            text,
+            "direct_cli",
+            "MAX_CANDIDATE_ATTEMPTS = 5",
+            "for attempt_index in range(1, MAX_CANDIDATE_ATTEMPTS + 1):",
+            '"candidate_contract": {',
+            '"selected_required_tempo"',
+            "build_timeline(fitted_segments, output, float(args.video_duration))",
+        ) and _has(
+            text,
+            "tail_artifact",
+            'POLICY = "late-broadband-tail-v2"',
+            '"artifact_type": "late_broadband_burst"',
+        ) and _has(
+            text,
+            "delivery_qa",
+            'POLICY = "assembled-russian-delivery-v1"',
+            "verify_timeline_delivery",
+            "invalidated_for_retry",
         ),
         "title-health-write-through": _has(
             text,
@@ -152,11 +201,11 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
-        return False, "v4.6-контракты не прошли: " + ", ".join(failed)
+        return False, "v4.7-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "worker/preflight v4.6/v2; cancellation before runner; explicit root through runner; "
-        "full implementation/model/runtime cache; heartbeat; atomic report; "
-        "deterministic child imports; supervisor/title hooks write through"
+        "worker v4.7/preflight v2; cancellation and explicit root; "
+        "fit-aware adaptive retries; Russian ending/emphasis gates; late-tail and assembled QA; "
+        "full implementation/model/runtime cache; deterministic child imports"
     )
 
 
@@ -171,7 +220,7 @@ def _legacy_quality_without_superseded_worker(repo: Path) -> tuple[bool, str]:
     failed = [item for item in failed if item != "worker-v45"]
     if failed:
         return False, "не прошли: " + ", ".join(failed)
-    return True, "все legacy-контракты активны; worker-v45 заменён v4.6 preflight"
+    return True, "все legacy-контракты активны; worker-v45 заменён v4.7 preflight"
 
 
 def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
@@ -302,6 +351,11 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             '"tools/voxcpm2/clean_production_core/__init__.py"',
             '"tools/voxcpm2/generic_project_runtime/__init__.py"',
             '"tools/voxcpm2/clean_source_download/__init__.py"',
+            '"tools/voxcpm2/direct_max_quality_analysis/__init__.py"',
+            '"tools/voxcpm2/direct_max_quality_render/__init__.py"',
+            '"tools/voxcpm2/direct_russian_cadence/__init__.py"',
+            '"tools/voxcpm2/direct_tail_artifact.py"',
+            '"tools/voxcpm2/direct_timeline_delivery_qa.py"',
             "_legacy._RENDER_MODULES",
         ),
         "strict-runtime-numbers": _has(
@@ -317,16 +371,16 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
     return True, (
         "zero-safe final QA; strict repair/source/segment/project contracts; "
         "truthful 0-ms settings; transactional preprocessing; clean adapters write through; "
-        "wizard request barrier; fingerprinted facades"
+        "wizard request barrier; cadence/tail/fit facades fingerprinted"
     )
 
 
 def _quality_contract(repo: Path) -> tuple[bool, str]:
     base_ok, base_detail = _legacy_quality_without_superseded_worker(repo)
-    v46_ok, v46_detail = _v46_static_contract(repo)
+    v47_ok, v47_detail = _v47_static_contract(repo)
     supplemental_ok, supplemental_detail = _supplemental_quality_contract(repo)
-    detail = "; ".join((base_detail, v46_detail, supplemental_detail))
-    return bool(base_ok and v46_ok and supplemental_ok), detail
+    detail = "; ".join((base_detail, v47_detail, supplemental_detail))
+    return bool(base_ok and v47_ok and supplemental_ok), detail
 
 
 _legacy._quality_contract = _quality_contract
