@@ -25,6 +25,7 @@ on:
       - "tools/voxcpm2/direct_russian_cadence/**"
       - "tools/voxcpm2/direct_tail_artifact.py"
       - "tools/voxcpm2/direct_timeline_delivery_qa.py"
+      - "tools/voxcpm2/final_encoded_delivery_qa.py"
       - "tools/voxcpm2/generic_project_runtime.py"
       - "tools/voxcpm2/generic_project_runtime/**"
       - "tools/voxcpm2/generic_clean_audio_repair_runtime.py"
@@ -47,6 +48,9 @@ on:
       - "tests/test_direct_russian_cadence.py"
       - "tests/test_direct_tail_artifact.py"
       - "tests/test_direct_timeline_delivery_qa.py"
+      - "tests/test_final_encoded_delivery_qa.py"
+      - "tests/test_clean_master_post_aac_gate.py"
+      - "tests/test_clean_runtime_delivery_fingerprints.py"
       - "tests/test_dub_worker_preflight_cancellation.py"
       - "tests/test_dub_worker_root_fail_closed.py"
       - "tests/test_dub_job_preflight_v2.py"
@@ -117,6 +121,7 @@ jobs:
             tools/voxcpm2/direct_russian_cadence/__init__.py \
             tools/voxcpm2/direct_tail_artifact.py \
             tools/voxcpm2/direct_timeline_delivery_qa.py \
+            tools/voxcpm2/final_encoded_delivery_qa.py \
             tools/voxcpm2/generic_project_runtime.py \
             tools/voxcpm2/generic_project_runtime/__init__.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
@@ -143,6 +148,9 @@ jobs:
             tests/test_direct_russian_cadence.py \
             tests/test_direct_tail_artifact.py \
             tests/test_direct_timeline_delivery_qa.py \
+            tests/test_final_encoded_delivery_qa.py \
+            tests/test_clean_master_post_aac_gate.py \
+            tests/test_clean_runtime_delivery_fingerprints.py \
             tests/test_dub_worker_preflight_cancellation.py \
             tests/test_dub_worker_root_fail_closed.py \
             tests/test_dub_job_preflight_v2.py \
