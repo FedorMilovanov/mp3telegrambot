@@ -54,6 +54,27 @@ def test_supplemental_health_requires_source_segment_and_full_preflight_identity
         assert item in facade
 
 
+def test_supplemental_health_requires_clean_adapter_and_wizard_barriers() -> None:
+    facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    required = (
+        '"atomic-project-request"',
+        'POLICY = "generic-project-runtime-write-through-v2"',
+        "def validate_request_payload(",
+        "class _WriteThroughModule",
+        "_module.__class__ = _WriteThroughModule",
+        "_legacy.validate_request_payload = validate_request_payload",
+        "def _write_request(",
+        "generic_project_runtime.validate_request_payload(payload)",
+        "generic_project_runtime.save_json(destination, validated)",
+        "_legacy._write_request = _write_request",
+        "_legacy._create_generic_project = _create_generic_project",
+    )
+    for item in required:
+        assert item in facade
+
+
 def test_supplemental_health_requires_cancellation_safe_worker_package() -> None:
     facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
         encoding="utf-8"
