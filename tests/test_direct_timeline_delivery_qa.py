@@ -38,6 +38,47 @@ def _write_timeline(path: Path, *, rising: bool, growing: bool) -> None:
     sf.write(path, timeline, sample_rate, subtype="PCM_24")
 
 
+def _phrase_audio(duration: float = 1.0) -> tuple[np.ndarray, int]:
+    sample_rate = 48_000
+    time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
+    slope = 45.0 / duration
+    phase = 2.0 * np.pi * (105.0 * time + 0.5 * slope * time**2)
+    audio = 0.20 * np.sin(phase)
+    fade = int(0.025 * sample_rate)
+    audio[:fade] *= np.linspace(0.0, 1.0, fade)
+    audio[-fade:] *= np.linspace(1.0, 0.0, fade)
+    return audio.astype(np.float32), sample_rate
+
+
+def _write_linked_timeline(path: Path, gap_seconds: float) -> list[tuple[dict[str, object], Path]]:
+    first, sample_rate = _phrase_audio()
+    second, _ = _phrase_audio()
+    gap = np.zeros(int(gap_seconds * sample_rate), dtype=np.float32)
+    tail = np.zeros(int(0.18 * sample_rate), dtype=np.float32)
+    sf.write(path, np.concatenate([first, gap, second, tail]), sample_rate, subtype="PCM_24")
+    first_segment = {
+        "id": 1,
+        "start": 0.0,
+        "end": 1.12,
+        "start_delay_ms": 0,
+        "tail_guard": 0.10,
+        "text": "Помните мой любимый стих",
+    }
+    second_start = 1.0 + gap_seconds
+    second_segment = {
+        "id": 2,
+        "start": second_start,
+        "end": second_start + 1.18,
+        "start_delay_ms": 0,
+        "tail_guard": 0.10,
+        "text": "о женщине из тридцать первой главы Притч?",
+    }
+    return [
+        (first_segment, path.parent / "missing_01.wav"),
+        (second_segment, path.parent / "missing_02.wav"),
+    ]
+
+
 def test_rejects_unresolved_terminal_after_timeline_assembly(tmp_path: Path) -> None:
     timeline = tmp_path / "timeline.wav"
     _write_timeline(timeline, rising=True, growing=True)
@@ -94,3 +135,21 @@ def test_assembled_timeline_rejects_late_broadband_noise(tmp_path: Path) -> None
 
     with pytest.raises(RuntimeError, match="late_broadband_burst"):
         verify_timeline_delivery(timeline, [(segment, tmp_path / "missing.wav")])
+
+
+def test_rejects_long_gap_between_linked_srt_lines(tmp_path: Path) -> None:
+    timeline = tmp_path / "linked_long_gap.wav"
+    fitted_segments = _write_linked_timeline(timeline, gap_seconds=0.82)
+
+    with pytest.raises(RuntimeError, match="linked_phrase_gap"):
+        verify_timeline_delivery(timeline, fitted_segments)
+
+
+def test_accepts_natural_gap_between_linked_srt_lines(tmp_path: Path) -> None:
+    timeline = tmp_path / "linked_natural_gap.wav"
+    fitted_segments = _write_linked_timeline(timeline, gap_seconds=0.22)
+
+    report = verify_timeline_delivery(timeline, fitted_segments)
+
+    assert report["passed"] is True
+    assert report["segments"][0]["gap_to_next_seconds"] <= 0.32
