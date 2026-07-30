@@ -136,7 +136,9 @@ def test_gemini_job_is_enqueued_only_after_durable_request(
         return request_path
 
     monkeypatch.setattr(dub_wizard, "_write_request", write_request)
-    context = SimpleNamespace(user_data={"pending": True})
+    context = SimpleNamespace(
+        user_data={dub_wizard._legacy._WIZARD_KEY: {"awaiting": "url"}}
+    )
 
     asyncio.run(
         dub_wizard._create_generic_project(
