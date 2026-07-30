@@ -41,6 +41,7 @@ on:
       - "tests/test_dub_audio_repair_handler_contract.py"
       - "tests/test_dubfix_error_propagation.py"
       - "tests/test_clean_master_child_process_contract.py"
+      - "tests/test_master_standalone_entrypoint.py"
       - "tests/test_original_bed_alignment.py"
       - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-facade-hardening-check.yml"
@@ -109,5 +110,6 @@ jobs:
             tests/test_dub_audio_repair_handler_contract.py \
             tests/test_dubfix_error_propagation.py \
             tests/test_clean_master_child_process_contract.py \
+            tests/test_master_standalone_entrypoint.py \
             tests/test_original_bed_alignment.py \
             tests/test_dub_health_supplemental_contract.py
