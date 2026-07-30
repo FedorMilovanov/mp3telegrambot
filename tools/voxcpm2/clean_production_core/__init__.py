@@ -3,9 +3,9 @@
 """Strict compatibility facade for clean production orchestration.
 
 The proven orchestration remains in ``clean_production_core.py``. This package
-preserves its public API, validates segment fields before expensive work, and
-makes every clean child-Python launch independent of the caller's working
-directory. Master stderr is preserved so terminal failures are actionable.
+preserves its public API, validates segment fields before expensive work, makes
+child-Python launches independent of cwd, preserves master stderr, and verifies
+the actual encoded final Russian ending before a project can be released.
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ import re
 import subprocess as _stdlib_subprocess
 from pathlib import Path
 from typing import Any
+
+from tools.voxcpm2 import final_encoded_delivery_qa
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "clean_production_core.py"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -32,7 +34,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-CHILD_PYTHON_POLICY = "repo-root-pythonpath-and-master-stderr-v1"
+CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"
 
 
 def _child_python_env(value: Any) -> dict[str, str]:
@@ -78,8 +80,38 @@ def _is_master_command(command: Any) -> bool:
     )
 
 
+def _command_flag(command: Any, flag: str) -> str:
+    if not isinstance(command, (list, tuple)):
+        raise RuntimeError("Master command должен быть списком аргументов.")
+    values = [str(item) for item in command]
+    try:
+        index = values.index(flag)
+    except ValueError as exc:
+        raise RuntimeError(f"Master command не содержит {flag}.") from exc
+    if index + 1 >= len(values) or not values[index + 1].strip():
+        raise RuntimeError(f"Master command не содержит значение после {flag}.")
+    return values[index + 1]
+
+
+def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
+    russian_only = Path(_command_flag(command, "--russian-only-video")).resolve()
+    work_dir = Path(_command_flag(command, "--work-dir")).resolve()
+    output_dir = russian_only.parent
+    if output_dir.name.casefold() != "output":
+        raise RuntimeError(
+            "Russian-only MP4 должен находиться в стандартной project/output папке."
+        )
+    project_root = output_dir.parent
+    return final_encoded_delivery_qa.verify_final_encoded_russian(
+        russian_only_video=russian_only,
+        segments_path=project_root / "segments_ru_final.json",
+        report_path=work_dir / "final_encoded_delivery_qa.json",
+        final_media_report_path=work_dir / "final_media_verification.json",
+    )
+
+
 def _run_child_process(command: Any, *args: Any, **kwargs: Any):
-    """Run legacy child commands with deterministic imports and useful errors."""
+    """Run child commands with deterministic imports and fail-closed release QA."""
     is_python = _is_python_script_command(command)
     is_master = _is_master_command(command)
     if is_python:
@@ -98,6 +130,14 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
         else:
             detail = f"process exited with code {result.returncode} without stderr"
         raise RuntimeError("Прямой master завершился с точной причиной:\n" + detail)
+    if is_master:
+        try:
+            _verify_post_aac_master_output(command)
+        except Exception as exc:
+            raise RuntimeError(
+                "Прямой master создал файлы, но post-AAC ending/tail QA их отклонил:\n"
+                + str(exc)
+            ) from exc
     return result
 
 
@@ -219,7 +259,7 @@ def _mark_and_validate_segments(
 
 # Legacy functions resolve these names at call time. Replacing only the module
 # reference keeps the standard subprocess module untouched for every other
-# component and for the parallel agent's direct renderer code.
+# component and for the direct renderer code.
 _legacy.subprocess = _SubprocessProxy()
 _legacy._finite = _finite
 _legacy._mark_and_validate_segments = _mark_and_validate_segments
@@ -229,11 +269,13 @@ __all__ = sorted(
     | {
         "CHILD_PYTHON_POLICY",
         "_child_python_env",
+        "_command_flag",
         "_finite",
         "_is_master_command",
         "_is_python_script_command",
         "_mark_and_validate_segments",
         "_run_child_process",
         "_strict_int",
+        "_verify_post_aac_master_output",
     }
 )
