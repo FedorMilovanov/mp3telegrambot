@@ -3,7 +3,7 @@
 """Write-through compatibility facade for the Dub Studio supervisor.
 
 The established implementation remains in ``services/dub_studio_runtime.py``.
-This package pins the expected worker runtime to v4.6 for every import order and
+This package pins the expected worker runtime to v4.7 for every import order and
 forwards external monkeypatch assignments to the legacy module, preserving title
 policy and test hooks whose functions resolve globals in that module.
 """
@@ -25,7 +25,7 @@ if _SPEC is None or _SPEC.loader is None:
 _legacy = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_legacy)
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.6"
+_WORKER_RUNTIME = "dub-worker-quality-v4.7"
 _legacy._WORKER_RUNTIME = _WORKER_RUNTIME
 
 for _name in dir(_legacy):
