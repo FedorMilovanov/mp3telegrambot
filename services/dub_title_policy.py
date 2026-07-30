@@ -240,6 +240,56 @@ def _patch_delivery() -> None:
         pass
 
 
+def _title_health_contract(repo: Path) -> tuple[bool, str]:
+    route_names = (
+        "generic_clean_gemini_runtime.py",
+        "generic_clean_direct_runtime.py",
+        "generic_clean_custom_runtime.py",
+    )
+    try:
+        route_sources = {
+            name: (repo / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
+            for name in route_names
+        }
+        own_source = Path(__file__).read_text(encoding="utf-8")
+    except OSError as exc:
+        return False, f"title/resume contract не читается: {exc}"
+
+    full_baseline_names = (
+        "generic_clean_gemini_runtime.py",
+        "generic_clean_custom_runtime.py",
+    )
+    direct_source = route_sources["generic_clean_direct_runtime.py"]
+    title_ok = bool(
+        canonical_media_title(
+            "Сила И Достоинство Благочестивой Женщины - Джон Пайпер"
+        )
+        == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+        and canonical_delivery_filename(
+            "Сила И Достоинство - Джон Пайпер — русский дубляж.mp4"
+        )
+        == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
+        and all(
+            "install_voxcpm_title_policy" in source
+            for source in route_sources.values()
+        )
+        and all(
+            "force_fresh=True" in route_sources[name]
+            for name in full_baseline_names
+        )
+        and "force_fresh=False" in direct_source
+        and "Keeping this False makes a late failed segment resumable"
+        in direct_source
+        and "runtime._undelivered_notification_events = wrapped" in own_source
+        and "text_utils.sentence_case_russian_title = wrapped" in own_source
+    )
+    detail = (
+        "единый русский Title Case; Gemini/custom fresh baselines; "
+        "готовый SRT продолжает проверенные checkpoints"
+    )
+    return title_ok, detail
+
+
 def _patch_health() -> None:
     try:
         import handlers.dub_health as health
@@ -253,41 +303,14 @@ def _patch_health() -> None:
     def wrapped() -> list[dict[str, Any]]:
         checks = original()
         repo = Path(__file__).resolve().parent.parent
-        route_names = (
-            "generic_clean_gemini_runtime.py",
-            "generic_clean_direct_runtime.py",
-            "generic_clean_custom_runtime.py",
-        )
-        try:
-            route_sources = [
-                (repo / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
-                for name in route_names
-            ]
-            own_source = Path(__file__).read_text(encoding="utf-8")
-        except OSError:
-            route_sources = []
-            own_source = ""
-        title_ok = bool(
-            canonical_media_title(
-                "Сила И Достоинство Благочестивой Женщины - Джон Пайпер"
-            )
-            == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
-            and canonical_delivery_filename(
-                "Сила И Достоинство - Джон Пайпер — русский дубляж.mp4"
-            )
-            == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
-            and len(route_sources) == len(route_names)
-            and all("install_voxcpm_title_policy" in source for source in route_sources)
-            and all("force_fresh=True" in source for source in route_sources)
-            and "runtime._undelivered_notification_events = wrapped" in own_source
-            and "text_utils.sentence_case_russian_title = wrapped" in own_source
-        )
+        title_ok, title_detail = _title_health_contract(repo)
         for item in checks:
             if item.get("label") == "Clean Expressive NoChew + независимый QA":
                 item["ok"] = bool(item.get("ok")) and title_ok
                 item["detail"] = (
                     str(item.get("detail") or "")
-                    + "; единый русский Title Case; fresh full baselines"
+                    + "; "
+                    + title_detail
                 )
                 break
         return checks

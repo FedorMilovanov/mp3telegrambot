@@ -56,10 +56,9 @@ def test_core_patch_preserves_existing_english_title_case() -> None:
     )
 
 
-def test_clean_full_routes_use_title_policy_and_fresh_baselines() -> None:
+def test_clean_routes_keep_title_policy_and_correct_resume_mode() -> None:
     for name in (
         "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
         "generic_clean_custom_runtime.py",
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
@@ -67,6 +66,22 @@ def test_clean_full_routes_use_title_policy_and_fresh_baselines() -> None:
         assert "force_fresh=True" in source
         assert "semantic_tts_guard_v4.install" not in source
         assert "runpy.run_path" not in source
+
+    direct = (
+        ROOT / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "install_voxcpm_title_policy" in direct
+    assert "force_fresh=False" in direct
+    assert "Keeping this False makes a late failed segment resumable" in direct
+    assert "semantic_tts_guard_v4.install" not in direct
+    assert "runpy.run_path" not in direct
+
+
+def test_title_health_accepts_resumable_direct_route() -> None:
+    ok, detail = dub_title_policy._title_health_contract(ROOT)
+
+    assert ok, detail
+    assert "готовый SRT продолжает проверенные checkpoints" in detail
 
 
 def test_bot_installs_title_policy_after_dub_handlers() -> None:

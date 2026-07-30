@@ -944,3 +944,16 @@ Fixes:
 Регрессии: `tests/test_clean_dub_health_contract.py`,
 `tests/test_direct_max_quality_renderer.py`,
 `tests/test_direct_source_prosody.py`.
+
+## 2026-07-30 — Title health больше не отменяет SRT checkpoint resume
+
+- После синхронизации основных Dub-контрактов `/dubcheck` всё ещё показывал
+  13/14, хотя detail сообщал, что legacy, worker v4.8 и facade-контракты зелёные.
+- Причиной оказался поздний Title Policy wrapper: он требовал `force_fresh=True`
+  от всех clean routes и поэтому скрыто переводил готовый SRT с корректным
+  `force_fresh=False` в красный статус.
+- Контракт разделён по назначению: Gemini/custom сохраняют fresh baseline,
+  готовый SRT обязан продолжать только совместимые проверенные checkpoints.
+  Title Case и canonical delivery filenames проверяются как прежде.
+
+Регрессия: `tests/test_dub_title_policy.py`.
