@@ -22,9 +22,11 @@ def _segment(segment_id: int, profile: str = "extended") -> dict[str, object]:
     }
 
 
-def test_retry_epoch_defaults_to_zero_and_changes_seed_by_fixed_stride(tmp_path: Path) -> None:
+def test_retry_epoch_defaults_to_zero_and_changes_seed_by_collision_safe_stride(
+    tmp_path: Path,
+) -> None:
     assert POLICY == "failed-segment-seed-epoch-v1"
-    assert SEED_EPOCH_STRIDE == 100_000
+    assert SEED_EPOCH_STRIDE == 1_000_000_000_000
     assert load_retry_epoch(tmp_path, 19) == 0
 
     seed0 = seed_for_attempt(2026072900, 19, 2, 0)
@@ -33,6 +35,13 @@ def test_retry_epoch_defaults_to_zero_and_changes_seed_by_fixed_stride(tmp_path:
 
     assert seed1 - seed0 == SEED_EPOCH_STRIDE
     assert seed2 - seed1 == SEED_EPOCH_STRIDE
+    # Regression: the previous 100,000 stride collided with segment 1001.
+    assert seed_for_attempt(2026072900, 1, 1, 1) != seed_for_attempt(
+        2026072900,
+        10000000001,
+        1,
+        0,
+    )
 
 
 def test_advance_retry_epoch_is_durable_atomic_and_keeps_bounded_history(tmp_path: Path) -> None:
@@ -55,6 +64,7 @@ def test_advance_retry_epoch_is_durable_atomic_and_keeps_bounded_history(tmp_pat
     assert second["epoch"] == 2
     assert load_retry_epoch(tmp_path, 7) == 2
     assert payload["epoch"] == 2
+    assert payload["seed_stride"] == SEED_EPOCH_STRIDE
     assert payload["history"][-2]["reason"] == "raw_candidate_hard_failure"
     assert payload["history"][-1]["reason"].startswith("assembled_delivery")
     assert list(path.parent.glob("*.tmp")) == []
