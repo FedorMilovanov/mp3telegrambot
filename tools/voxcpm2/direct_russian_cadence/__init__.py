@@ -32,6 +32,7 @@ for _name in dir(_legacy):
 POLICY = "russian-cadence-contour-v3"
 DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"
 _STRONG_TIERS = {"emphatic", "passionate"}
+_SOURCE_PEAK_MIN_DOMINANCE = 0.18
 _legacy_evaluate_candidate_cadence = _legacy.evaluate_candidate_cadence
 
 
@@ -43,28 +44,39 @@ def _finite(value: Any, default: float = 0.0) -> float:
     return result if math.isfinite(result) else float(default)
 
 
-def _source_peak_bin(segment: dict[str, Any]) -> int | None:
+def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
+    """Return a source peak only with enough contour evidence to hard-gate it."""
     source = segment.get("source_prosody")
     if not isinstance(source, dict):
-        return None
+        return None, 0.0
     contour = source.get("contour")
     if not isinstance(contour, dict):
-        return None
+        return None, 0.0
     value = contour.get("peak_energy_bin")
     if isinstance(value, bool):
-        return None
+        return None, 0.0
     try:
-        result = int(value)
+        peak = int(value)
     except (TypeError, ValueError, OverflowError):
-        return None
-    return result if 0 <= result <= 4 else None
+        return None, 0.0
+    energy = contour.get("energy_contour")
+    if not 0 <= peak <= 4 or not isinstance(energy, list) or len(energy) != 5:
+        return None, 0.0
+    values = [_finite(item, -1.0) for item in energy]
+    if any(item < 0.0 for item in values):
+        return None, 0.0
+    ordered = sorted(values, reverse=True)
+    dominance = max(0.0, ordered[0] - ordered[1])
+    if abs(values[peak] - ordered[0]) > 1e-6:
+        return None, 0.0
+    return peak, dominance
 
 
 def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply Russian-syntax and source-guided emphasis hard gates."""
+    """Apply Russian-syntax and evidence-backed source-emphasis hard gates."""
     result = dict(_legacy_evaluate_candidate_cadence(candidate, segment))
     cadence = str(result.get("cadence") or _legacy.classify_cadence(str(segment.get("text") or "")))
     delta = _finite(result.get("ending_delta_semitones"))
@@ -73,13 +85,14 @@ def evaluate_candidate_cadence(
     failures = list(result.get("failures") or [])
     text = str(segment.get("text") or "")
     word_count = len(re.findall(r"\w+", text, flags=re.UNICODE))
-    tier = str(segment.get("expression_tier") or "")
-    source_peak = _source_peak_bin(segment)
+    tier = str(segment.get("expression_tier") or "").casefold()
+    source_peak, source_peak_dominance = _source_peak_evidence(segment)
     source_late_peak_expected = bool(
         tier in _STRONG_TIERS
-        and word_count >= 3
+        and word_count >= 4
         and source_peak is not None
-        and source_peak >= 2
+        and source_peak >= 3
+        and source_peak_dominance >= _SOURCE_PEAK_MIN_DOMINANCE
     )
 
     if cadence == "terminal":
@@ -99,10 +112,10 @@ def evaluate_candidate_cadence(
             if "emphasis_too_early" not in failures:
                 failures.append("emphasis_too_early")
 
-    # Do not copy English word timing blindly: Russian word order can differ.
-    # The hard rule is deliberately one-way and narrow. When a genuinely strong
-    # source delivery builds toward the middle/end, a Russian candidate whose
-    # maximum energy already occurs in the first 40% is audibly misplaced.
+    # Russian word order can differ from English, so this is deliberately not a
+    # word-level imitation rule. Only a dominant source peak in the final 40%
+    # can hard-reject a Russian candidate peaking in the first 40%. A middle-bin
+    # source peak, a broad plateau, or a one-bin shift stays a soft ranking signal.
     if source_late_peak_expected and isinstance(peak_bin, int) and peak_bin <= 1:
         if "source_emphasis_misplaced_early" not in failures:
             failures.append("source_emphasis_misplaced_early")
@@ -121,7 +134,14 @@ def evaluate_candidate_cadence(
         russian_word_count=word_count,
         expression_tier=tier,
         source_peak_energy_bin=source_peak,
+        source_peak_dominance=source_peak_dominance,
+        source_peak_min_dominance=_SOURCE_PEAK_MIN_DOMINANCE,
         source_late_peak_expected=source_late_peak_expected,
+        emphasis_peak_distance=(
+            abs(source_peak - peak_bin)
+            if isinstance(source_peak, int) and isinstance(peak_bin, int)
+            else None
+        ),
         expected_emphasis_bins=expected_bins,
     )
     return result
