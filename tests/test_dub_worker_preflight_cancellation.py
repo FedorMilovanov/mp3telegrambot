@@ -55,7 +55,9 @@ def test_worker_import_and_module_execution_resolve_package_facade() -> None:
     assert Path(hardened.__file__).name == "__init__.py"
     assert hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
     assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v2"
-    assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.6"
+    assert hardened.DELIVERY_RESILIENCE_POLICY == "cadence-tail-fit-adaptive-resume-v1"
+    assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.7"
+    assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.7"
     main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
         encoding="utf-8"
     )
@@ -259,6 +261,7 @@ def test_install_keeps_agent_hardening_then_overrides_only_execute_job(
     try:
         hardened.install_hardening()
         assert calls == ["agent-hardening"]
+        assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.7"
         assert (
             hardened._legacy.worker.execute_job
             is hardened._execute_job_with_cancellable_preflight
