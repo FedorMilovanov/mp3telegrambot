@@ -49,6 +49,8 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
     paths = {
         "worker": voxcpm / "dub_worker_hardened.py",
         "supervisor": repo / "services" / "dub_studio_runtime.py",
+        "supervisor_facade": repo / "services" / "dub_studio_runtime" / "__init__.py",
+        "title_facade": repo / "services" / "dub_title_policy" / "__init__.py",
         "health_facade": Path(__file__).resolve(),
         "preflight": voxcpm / "dub_job_preflight.py",
         "preflight_facade": voxcpm / "dub_job_preflight" / "__init__.py",
@@ -71,16 +73,27 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
         and "*clean_runtime_contract._RELEASE_MODULES" in text["preflight_facade"]
         and '"tools/voxcpm2/dub_job_preflight/__init__.py"' in text["preflight_facade"]
         and "recipe.work_root" in text["preflight_facade"]
+        and "PREFLIGHT_HEARTBEAT_SECONDS = 5.0" in text["preflight_facade"]
+        and "def _preflight_heartbeat(" in text["preflight_facade"]
+        and "clean_runtime_contract._model_manifest(" in text["preflight_facade"]
+        and "clean_runtime_contract._voxcpm_runtime(" in text["preflight_facade"]
+        and 'status="busy"' in text["preflight_facade"]
         and '_WORKER_RUNTIME = "dub-worker-quality-v4.6"' in text["health_facade"]
         and "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME" in text["health_facade"]
         and "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in text["health_facade"]
+        and '_WORKER_RUNTIME = "dub-worker-quality-v4.6"' in text["supervisor_facade"]
+        and "class _WriteThroughModule" in text["supervisor_facade"]
+        and "_module.__class__ = _WriteThroughModule" in text["supervisor_facade"]
+        and "_legacy._patch_health = _patch_health" in text["title_facade"]
+        and "legacy_health.collect_dub_health = wrapped" in text["title_facade"]
         and 'CHILD_PYTHON_POLICY = "repo-root-pythonpath-and-master-stderr-v1"'
         in text["core_facade"]
         and "_legacy.subprocess = _SubprocessProxy()" in text["core_facade"]
     )
     detail = (
         "worker/preflight v4.6/v2 synchronized; shared recipe root normalized; "
-        "implementation-aware cache; atomic report; deterministic child imports"
+        "full implementation/model/runtime cache; preflight heartbeat; atomic report; "
+        "deterministic child imports; supervisor/title hooks write through"
         if ok
         else "worker/preflight v4.6 compatibility contract incomplete"
     )
@@ -204,6 +217,10 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             and "def _cache_hit(" in text["preflight_facade"]
             and "uuid.uuid4().hex" in text["preflight_facade"]
             and "os.fsync(handle.fileno())" in text["preflight_facade"]
+            and "PREFLIGHT_HEARTBEAT_SECONDS = 5.0" in text["preflight_facade"]
+            and "def _preflight_heartbeat(" in text["preflight_facade"]
+            and "clean_runtime_contract._model_manifest(" in text["preflight_facade"]
+            and "clean_runtime_contract._voxcpm_runtime(" in text["preflight_facade"]
         ),
         "strict-segment-preflight": (
             "def _strict_int(" in text["core_facade"]
@@ -254,7 +271,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "strict repair hash/scope/seed/checkpoints and cross-process /dubfix; "
         "segment-proven delay with transactional migration/normalizer; "
         "canonical pre-network source identity and atomic project request; "
-        "production preflight v2; deterministic child Python/master diagnostics; "
+        "production preflight v2 with full model/runtime fingerprints and heartbeat; "
+        "deterministic child Python/master diagnostics; write-through service hooks; "
         "self-fingerprinted compatibility facades; strict runtime numbers"
     )
 
