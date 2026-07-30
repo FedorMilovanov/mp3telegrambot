@@ -24,6 +24,7 @@ from tools.voxcpm2.direct_russian_cadence import (
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
 POLICY = "post-aac-russian-delivery-v1"
+SCOPE = "decode only the final SRT window"
 SAMPLE_RATE = 48_000
 MAX_SEGMENT_WINDOW_SECONDS = 30.0
 
@@ -137,6 +138,7 @@ def evaluate_encoded_segment(
         failures.append(str(tail.get("artifact_type") or "late_tail"))
     return {
         "policy": POLICY,
+        "scope": SCOPE,
         "segment_id": int(segment.get("id") or 0),
         "text": str(segment.get("text") or ""),
         "sample_rate": rate,
@@ -228,6 +230,7 @@ __all__ = [
     "MAX_SEGMENT_WINDOW_SECONDS",
     "POLICY",
     "SAMPLE_RATE",
+    "SCOPE",
     "evaluate_encoded_segment",
     "verify_final_encoded_russian",
 ]
