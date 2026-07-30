@@ -20,8 +20,12 @@ import numpy as np
 import soundfile as sf
 
 from tools.voxcpm2 import professional_audio_v45 as audio_policy
+from tools.voxcpm2.direct_russian_cadence import (
+    classify_cadence,
+    prosody_contour,
+)
 
-POLICY = "source-guided-expression-v1"
+POLICY = "source-guided-expression-v2"
 
 
 def _words(value: str) -> int:
@@ -93,8 +97,13 @@ def _smooth(values: list[float]) -> list[float]:
     return [max(-1.65, min(1.65, value)) for value in limited]
 
 
-def _style(score: float, rate_z: float, text: str) -> tuple[str, str]:
+def _style(
+    score: float,
+    rate_z: float,
+    text: str,
+) -> tuple[str, str]:
     punctuation = str(text or "")
+    cadence = classify_cadence(punctuation)
     if score <= -0.72:
         tier = "reflective"
         instruction = (
@@ -123,8 +132,15 @@ def _style(score: float, rate_z: float, text: str) -> tuple[str, str]:
         instruction += ", slightly slower"
     elif rate_z >= 1.05 and tier not in {"reflective", "warm"}:
         instruction += ", slightly quicker"
-    if "?" in punctuation and tier in {"warm", "earnest"}:
-        instruction += ", genuine questioning intonation"
+
+    if cadence == "question":
+        instruction += ", genuine questioning cadence"
+    elif cadence in {"terminal", "firm_terminal"}:
+        instruction += ", clearly finish the sentence with a natural falling cadence"
+    elif cadence in {"continuation", "linked"}:
+        instruction += ", keep the phrase connected and open toward the next line"
+    elif cadence == "suspense":
+        instruction += ", hold restrained suspense without a full stop"
     return tier, instruction
 
 
@@ -172,11 +188,13 @@ def plan_segments(
                 _number(pitch.get("voiced_ratio")) >= 0.12
                 and _number(pitch.get("f0_median")) >= 55.0
             )
+            contour = prosody_contour(clip, sample_rate)
             metrics.append(
                 {
                     "start": round(start, 3),
                     "end": round(end, 3),
                     "speech_rate": round(speech_rate, 4),
+                    "contour": contour,
                     **{
                         key: round(_number(value), 5)
                         for key, value in pitch.items()
@@ -220,10 +238,11 @@ def plan_segments(
     report_segments: list[dict[str, Any]] = []
     for index, (item, score) in enumerate(zip(segments, scores, strict=True)):
         updated = dict(item)
+        text = str(item.get("text") or "")
         tier, instruction = _style(
             score,
             rate_z[index],
-            str(item.get("text") or ""),
+            text,
         )
         profile = _reference_profile(tier)
         updated.update(
@@ -233,6 +252,7 @@ def plan_segments(
                 "expression_tier": tier,
                 "expression_score": round(float(score), 5),
                 "expression_policy": POLICY,
+                "cadence_type": classify_cadence(text),
                 "source_prosody": metrics[index],
             }
         )
@@ -244,6 +264,7 @@ def plan_segments(
                 "score": round(float(score), 5),
                 "raw_score": round(float(raw_scores[index]), 5),
                 "reference_profile": profile,
+                "cadence_type": updated["cadence_type"],
                 "style_instruction": instruction,
                 "source_prosody": metrics[index],
             }
@@ -264,6 +285,8 @@ def plan_segments(
                 "notes": [
                     "Short synthesis windows are retained for stability.",
                     "Expression is derived from source F0, energy and speaking rate.",
+                    "Five-bin source pitch/energy contours guide within-phrase emphasis.",
+                    "Russian punctuation defines terminal, question and continuation cadence.",
                     "Adjacent scores are smoothed and limited to prevent robotic jumps.",
                     "Strong arc sections use a controlled expressive real voice reference.",
                     "Russian text is not changed.",
@@ -376,7 +399,6 @@ def _expressive_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any
         )
         if not safe:
             continue
-        # Aim for engaged/emphatic delivery near 0.72, not the loudest moment.
         selection_score = (
             abs(expression - 0.72) * 42.0
             + max(0.0, f0 / max(1.0, median_f0) - 1.12) * 20.0
@@ -447,18 +469,19 @@ def build_controlled_expressive_reference(
             if len(clip) < int(sample_rate * 0.85):
                 continue
             parts.append(clip)
-            duration = len(clip) / sample_rate
-            total += duration
+            clip_duration = len(clip) / sample_rate
+            total += clip_duration
             actual_selected.append(
                 {
                     "id": candidate["id"],
                     "start": round(start, 3),
-                    "end": round(start + duration, 3),
+                    "end": round(start + clip_duration, 3),
                     "expression_score": round(candidate["expression_score"], 5),
                     "selection_score": round(candidate["selection_score"], 5),
                     **{
                         key: round(_number(value), 5)
                         for key, value in candidate["metrics"].items()
+                        if isinstance(value, (int, float))
                     },
                 }
             )
