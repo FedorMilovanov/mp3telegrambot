@@ -6,6 +6,7 @@ The renderer already checks raw candidates and the assembled PCM timeline. This
 module closes the final release gap by decoding only the last SRT segment from
 the encoded Russian-only MP4 and applying the same deterministic cadence and
 late-broadband-tail contracts. Work and memory stay bounded for hour-long video.
+A failed final segment advances its seed epoch before the next render job.
 """
 from __future__ import annotations
 
@@ -17,13 +18,14 @@ from typing import Any
 
 import numpy as np
 
+from tools.voxcpm2.direct_retry_epoch import invalidate_segment_for_retry
 from tools.voxcpm2.direct_russian_cadence import (
     evaluate_candidate_cadence,
     prosody_contour,
 )
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
-POLICY = "post-aac-russian-delivery-v1"
+POLICY = "post-aac-russian-delivery-v2"
 SCOPE = "decode only the final SRT window"
 SAMPLE_RATE = 48_000
 MAX_SEGMENT_WINDOW_SECONDS = 30.0
@@ -211,17 +213,36 @@ def verify_final_encoded_russian(
         decoded_start_seconds=start + delay,
         requested_window_seconds=duration,
     )
+    if not delivery["passed"]:
+        cadence = delivery.get("cadence") or {}
+        tail = delivery.get("late_tail") or {}
+        reasons = [str(item) for item in delivery.get("failures") or []]
+        invalidated = invalidate_segment_for_retry(
+            segments_path.parent / "segment_work",
+            segment,
+            reason="post_aac_delivery:" + ",".join(reasons or ["delivery_qa"]),
+            evidence={
+                "policy": POLICY,
+                "ending_delta_semitones": cadence.get("ending_delta_semitones"),
+                "ending_energy_delta_db": cadence.get("ending_energy_delta_db"),
+                "tail_artifact": tail.get("artifact_type"),
+                "video": str(russian_only_video),
+            },
+        )
+        delivery["invalidated_for_retry"] = invalidated
     _write_json(report_path, delivery)
     if final_media_report_path is not None:
         _attach_to_final_report(final_media_report_path, delivery)
     if not delivery["passed"]:
         reasons = ",".join(str(item) for item in delivery.get("failures") or [])
         cadence = delivery.get("cadence") or {}
+        invalidated = delivery.get("invalidated_for_retry") or {}
         raise RuntimeError(
-            "Финальная AAC-дорожка не прошла ending/tail QA: "
+            "Финальная AAC-дорожка не прошла ending/tail QA; "
+            "последняя реплика переведена на новый seed epoch: "
             f"segment #{delivery['segment_id']}; reasons={reasons or 'delivery_qa'}; "
-            f"ending={float(cadence.get('ending_delta_semitones') or 0.0):.2f}st. "
-            f"Отчёт: {report_path}"
+            f"ending={float(cadence.get('ending_delta_semitones') or 0.0):.2f}st; "
+            f"next_epoch={invalidated.get('retry_epoch')}. Отчёт: {report_path}"
         )
     return delivery
 
