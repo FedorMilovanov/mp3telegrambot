@@ -57,6 +57,7 @@ def _texts(repo: Path) -> dict[str, str]:
         "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
         "tail_artifact": voxcpm / "direct_tail_artifact.py",
         "delivery_qa": voxcpm / "direct_timeline_delivery_qa.py",
+        "encoded_delivery_qa": voxcpm / "final_encoded_delivery_qa.py",
         "zero_safe_qa": voxcpm / "final_media_qa" / "__init__.py",
         "repair_facade": voxcpm / "generic_clean_audio_repair_runtime" / "__init__.py",
         "repair_main": voxcpm / "generic_clean_audio_repair_runtime" / "__main__.py",
@@ -183,6 +184,13 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             'POLICY = "assembled-russian-delivery-v1"',
             "verify_timeline_delivery",
             "invalidated_for_retry",
+        ) and _has(
+            text,
+            "encoded_delivery_qa",
+            'POLICY = "post-aac-russian-delivery-v1"',
+            "MAX_SEGMENT_WINDOW_SECONDS = 30.0",
+            "def verify_final_encoded_russian(",
+            "decode only the final SRT window",
         ),
         "title-health-write-through": _has(
             text,
@@ -193,8 +201,11 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         "child-python-contract": _has(
             text,
             "core_facade",
-            'CHILD_PYTHON_POLICY = "repo-root-pythonpath-and-master-stderr-v1"',
+            'CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"',
             "def _child_python_env(",
+            "def _is_master_release_command(",
+            "def _verify_post_aac_master_output(",
+            "final_encoded_delivery_qa.verify_final_encoded_russian(",
             "def _run_child_process(",
             "_legacy.subprocess = _SubprocessProxy()",
         ),
@@ -204,7 +215,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         return False, "v4.7-контракты не прошли: " + ", ".join(failed)
     return True, (
         "worker v4.7/preflight v2; cancellation and explicit root; "
-        "fit-aware adaptive retries; Russian ending/emphasis gates; late-tail and assembled QA; "
+        "fit-aware adaptive retries; Russian ending/emphasis gates; late-tail, assembled and post-AAC QA; "
         "full implementation/model/runtime cache; deterministic child imports"
     )
 
@@ -356,7 +367,9 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
             '"tools/voxcpm2/direct_russian_cadence/__init__.py"',
             '"tools/voxcpm2/direct_tail_artifact.py"',
             '"tools/voxcpm2/direct_timeline_delivery_qa.py"',
+            '"tools/voxcpm2/final_encoded_delivery_qa.py"',
             "_legacy._RENDER_MODULES",
+            "_legacy._RELEASE_MODULES",
         ),
         "strict-runtime-numbers": _has(
             text,
@@ -371,7 +384,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
     return True, (
         "zero-safe final QA; strict repair/source/segment/project contracts; "
         "truthful 0-ms settings; transactional preprocessing; clean adapters write through; "
-        "wizard request barrier; cadence/tail/fit facades fingerprinted"
+        "wizard request barrier; cadence/tail/fit/post-AAC gates fingerprinted"
     )
 
 
