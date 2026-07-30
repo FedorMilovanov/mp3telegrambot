@@ -34,6 +34,13 @@ FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"
 _legacy_candidate_hard_ok = _legacy.candidate_hard_ok
 
 
+def _effective_slot(candidate: dict[str, Any], speech_slot: float) -> float:
+    try:
+        return float(candidate.get("actual_speech_slot", speech_slot))
+    except (TypeError, ValueError, OverflowError):
+        return math.nan
+
+
 def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
     """Return the exact atempo factor the fitter would need for this candidate.
 
@@ -43,8 +50,7 @@ def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
     """
     try:
         duration = float(candidate.get("duration"))
-        slot_value = candidate.get("actual_speech_slot", speech_slot)
-        slot = float(slot_value)
+        slot = _effective_slot(candidate, speech_slot)
     except (TypeError, ValueError, OverflowError):
         return math.inf
     if not math.isfinite(duration) or not math.isfinite(slot) or duration <= 0.0 or slot <= 0.0:
@@ -54,9 +60,15 @@ def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
 
 def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
     """Reject overlong speech before selection, not after expensive fitting."""
-    if not _legacy_candidate_hard_ok(candidate, speech_slot):
+    actual_slot = _effective_slot(candidate, speech_slot)
+    if not math.isfinite(actual_slot) or actual_slot <= 0.0:
         return False
-    tempo = required_tempo(candidate, speech_slot)
+    # The legacy acoustic gate also contains a duration-ratio contract. Give it
+    # the same exact slot used by the fitter; otherwise a valid 130 ms cue is
+    # compared with the obsolete one-second floor and falsely rejected as short.
+    if not _legacy_candidate_hard_ok(candidate, actual_slot):
+        return False
+    tempo = required_tempo(candidate, actual_slot)
     candidate["required_tempo"] = tempo
     candidate["fit_tempo_policy"] = FIT_TEMPO_POLICY
     return bool(math.isfinite(tempo) and tempo <= float(MAX_TEMPO) + 1e-9)
