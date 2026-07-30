@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 """Cancellation-safe package entrypoint for the hardened Dub worker.
 
-The parallel agent's complete v4.6 implementation remains in the sibling
-``dub_worker_hardened.py`` file. This package shadows it for imports and
-``python -m`` execution, installs every original hardening patch, and replaces
-only the preflight wrapper so cancellation never becomes a false failure, the
-production runner never starts after cancellation, and an explicit worker
-``--root`` is used consistently by preflight and the production subprocess.
+The sibling implementation remains in ``dub_worker_hardened.py``. This package
+shadows it for imports and ``python -m`` execution, installs every original
+hardening patch, and replaces only the preflight wrapper so cancellation never
+becomes a false failure, the production runner never starts after cancellation,
+and an explicit worker ``--root`` is used consistently by preflight and runner.
 """
 from __future__ import annotations
 
@@ -31,9 +30,11 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.6"
+_RUNTIME_VERSION = "dub-worker-quality-v4.7"
+_legacy._RUNTIME_VERSION = _RUNTIME_VERSION
 CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"
 STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"
+DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"
 
 
 @contextmanager
@@ -63,7 +64,6 @@ def _stop_reason(store: Any, job_id: int) -> str:
         if store.is_cancel_requested(int(job_id)):
             return "Остановлено пользователем."
     except Exception:
-        # A transient read error must not be mistaken for a cancellation.
         return ""
     return ""
 
@@ -109,15 +109,16 @@ def _execute_job_with_cancellable_preflight(
                 job_id,
                 progress=1,
                 stage="preflight",
-                message="Проверяю CPU Python, модель, FFmpeg и production imports до синтеза.",
+                message=(
+                    "Проверяю CPU Python, модель, FFmpeg, cadence/tail/fit gates "
+                    "и production imports до синтеза."
+                ),
             )
             report = _legacy.dub_job_preflight.run(
                 project,
                 str(job.get("action") or ""),
             )
 
-            # The request can arrive while model/runtime hashes or import probes
-            # are running. Check once more before any runner process is created.
             reason = _stop_reason(store, job_id)
             if reason:
                 _finish_cancelled(store, job_id, reason)
@@ -128,11 +129,9 @@ def _execute_job_with_cancellable_preflight(
                     job_id,
                     progress=2,
                     stage="preflight:ok",
-                    message="Production preflight пройден; запускаю runner.",
+                    message="Production preflight v4.7 пройден; запускаю runner.",
                 )
     except Exception as exc:
-        # A cancellation racing with a failing import/model probe is still a
-        # cancellation, not a misleading preflight failure.
         reason = _stop_reason(store, job_id)
         if reason:
             _finish_cancelled(store, job_id, reason)
@@ -140,14 +139,12 @@ def _execute_job_with_cancellable_preflight(
         _write_preflight_failure(store, job_id, exc)
         return
 
-    # Base execute_job copies os.environ into the child process but does not add
-    # DUB_STUDIO_ROOT itself. Keep the exact worker root active for the entire
-    # runner lifecycle so custom --root cannot silently fall back to default.
     with _store_root_environment(store):
         _legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)
 
 
 def install_hardening() -> None:
+    _legacy._RUNTIME_VERSION = _RUNTIME_VERSION
     _legacy.install_hardening()
     _legacy.worker.execute_job = _execute_job_with_cancellable_preflight
 
@@ -161,7 +158,9 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CANCELLATION_POLICY",
+        "DELIVERY_RESILIENCE_POLICY",
         "STORE_ROOT_POLICY",
+        "_RUNTIME_VERSION",
         "_execute_job_with_cancellable_preflight",
         "_finish_cancelled",
         "_stop_reason",
