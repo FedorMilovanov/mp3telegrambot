@@ -258,10 +258,24 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "atomic-project-request": _has(
             text,
             "project_runtime",
-            "def load_request(",
+            'POLICY = "generic-project-runtime-write-through-v2"',
+            "def validate_request_payload(",
             "request.schema_version",
+            "uuid.uuid4().hex",
+            "os.fsync(handle.fileno())",
             "allow_nan=False",
             "os.replace(temporary, path)",
+            "class _WriteThroughModule",
+            "_module.__class__ = _WriteThroughModule",
+            "_legacy.validate_request_payload = validate_request_payload",
+        ) and _has(
+            text,
+            "wizard_facade",
+            "def _write_request(",
+            "generic_project_runtime.validate_request_payload(payload)",
+            "generic_project_runtime.save_json(destination, validated)",
+            "_legacy._write_request = _write_request",
+            "_legacy._create_generic_project = _create_generic_project",
         ),
         "strict-segment-preflight": _has(
             text,
@@ -302,7 +316,8 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         return False, "facade-контракты не прошли: " + ", ".join(failed)
     return True, (
         "zero-safe final QA; strict repair/source/segment/project contracts; "
-        "truthful 0-ms settings; transactional preprocessing; fingerprinted facades"
+        "truthful 0-ms settings; transactional preprocessing; clean adapters write through; "
+        "wizard request barrier; fingerprinted facades"
     )
 
 
