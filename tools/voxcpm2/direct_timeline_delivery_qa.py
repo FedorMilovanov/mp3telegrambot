@@ -4,7 +4,8 @@
 
 Candidate QA runs before timing filters. This module checks the actual timeline
 written by FFmpeg, after atempo, fades, padding, delays and mixing, so a release
-cannot pass merely because the raw candidate was clean.
+cannot pass merely because the raw candidate was clean. Failed segments advance
+their durable seed epoch, so the next job does not regenerate identical audio.
 """
 from __future__ import annotations
 
@@ -16,13 +17,14 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
+from tools.voxcpm2.direct_retry_epoch import invalidate_segment_for_retry
 from tools.voxcpm2.direct_russian_cadence import (
     evaluate_candidate_cadence,
     prosody_contour,
 )
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
-POLICY = "assembled-russian-delivery-v2"
+POLICY = "assembled-russian-delivery-v3"
 LINKED_PREFERRED_GAP_SECONDS = 0.32
 LINKED_MAX_GAP_SECONDS = 0.55
 
@@ -141,31 +143,40 @@ def verify_timeline_delivery(
             current["passed"] = False
 
     failed = [int(item["id"]) for item in checks if not bool(item.get("passed"))]
-    invalidated: list[dict[str, str]] = []
+    invalidated: list[dict[str, Any]] = []
     if failed:
         failed_set = set(failed)
+        checks_by_id = {int(item["id"]): item for item in checks}
         for position, (raw_segment, fitted_path) in enumerate(fitted_segments, start=1):
             segment_id = int(raw_segment.get("id") or position)
             if segment_id not in failed_set:
                 continue
             fitted = Path(fitted_path)
-            checkpoint = (
-                fitted.parent.parent
-                / "checkpoints"
-                / f"segment_{segment_id:02d}.json"
-            )
-            fitted.unlink(missing_ok=True)
-            checkpoint.unlink(missing_ok=True)
+            work_dir = fitted.parent.parent
+            check = checks_by_id[segment_id]
+            cadence = check.get("cadence") or {}
+            tail = check.get("late_tail") or {}
+            reasons = list(cadence.get("failures") or [])
+            if tail.get("suspicious"):
+                reasons.append(str(tail.get("artifact_type") or "late_tail"))
             invalidated.append(
-                {
-                    "id": str(segment_id),
-                    "fitted": str(fitted),
-                    "checkpoint": str(checkpoint),
-                }
+                invalidate_segment_for_retry(
+                    work_dir,
+                    dict(raw_segment),
+                    reason="assembled_delivery:" + ",".join(reasons or ["delivery_qa"]),
+                    fitted_path=fitted,
+                    evidence={
+                        "policy": POLICY,
+                        "ending_delta_semitones": cadence.get("ending_delta_semitones"),
+                        "ending_energy_delta_db": cadence.get("ending_energy_delta_db"),
+                        "gap_to_next_seconds": check.get("gap_to_next_seconds"),
+                        "tail_artifact": tail.get("artifact_type"),
+                    },
+                )
             )
 
     report = {
-        "schema_version": 2,
+        "schema_version": 3,
         "policy": POLICY,
         "timeline": str(timeline),
         "sample_rate": rate,
@@ -205,7 +216,8 @@ def verify_timeline_delivery(
                 )
             )
         raise RuntimeError(
-            "Собранная русская дорожка не прошла cadence/tail QA: "
+            "Собранная русская дорожка не прошла cadence/tail QA; "
+            "проваленные сегменты переведены на новые seed epochs: "
             + "; ".join(details)
         )
     return report
