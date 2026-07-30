@@ -31,6 +31,7 @@ from tools.voxcpm2.direct_max_quality_io import (
     read_segments,
 )
 from tools.voxcpm2.direct_max_quality_analysis import (
+    FIT_TEMPO_POLICY,
     _mono,
     activity_stats,
     candidate_hard_ok,
@@ -41,8 +42,10 @@ from tools.voxcpm2.direct_max_quality_analysis import (
     edge_silence,
     pitch_profile,
     prepare_reference,
+    required_tempo,
 )
 from tools.voxcpm2.direct_max_quality_render import (
+    ADAPTIVE_RETRY_POLICY,
     _generate,
     _generation_profile,
     build_timeline,
@@ -53,6 +56,10 @@ from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
     source_prosody_penalty,
 )
+
+BASE_CANDIDATE_ATTEMPTS = 3
+MAX_CANDIDATE_ATTEMPTS = 5
+STRONG_CANDIDATE_SCORE = 85.0
 
 
 def _report_mapping(value: Any) -> dict[str, Any]:
@@ -70,12 +77,26 @@ def _report_mapping(value: Any) -> dict[str, Any]:
     return result
 
 
+def _acceptable_candidates(
+    candidates: list[dict[str, Any]],
+    speech_slot: float,
+) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in candidates
+        if candidate_hard_ok(item, speech_slot)
+        and candidate_pitch_evidence_ok(item)
+    ]
+
+
 def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
     parts: list[str] = []
     for item in candidates:
         voice = item.get("voice_match") or {}
         prosody = item.get("source_prosody_match") or {}
+        cadence = item.get("cadence_evidence") or {}
         duration_ratio = float(item.get("duration") or 0.0) / max(0.1, speech_slot)
+        tempo = required_tempo(item, speech_slot)
         source_detail = (
             "srcF0×={median:.3f}/{p90:.3f}, srcPenalty={penalty:.2f}".format(
                 median=float(prosody.get("f0_median_ratio_to_source") or 0.0),
@@ -85,21 +106,25 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
             if prosody.get("available")
             else "srcProsody=n/a"
         )
+        cadence_failures = ",".join(str(value) for value in cadence.get("failures") or []) or "none"
         parts.append(
             "attempt {attempt}: score={score:.2f}, base={base:.2f}, duration×={duration:.3f}, "
-            "voiced={voiced:.3f}, active={active:.3f}, gap={gap:.3f}, "
-            "F0×={median:.3f}/{p90:.3f}, rawPitch={raw_pitch}, {source}, "
-            "clip={clip:.6f}, tail_restart={tail}".format(
+            "atempo={tempo:.3f}/{tempo_limit:.2f}, voiced={voiced:.3f}, active={active:.3f}, "
+            "gap={gap:.3f}, F0×={median:.3f}/{p90:.3f}, rawPitch={raw_pitch}, "
+            "cadence={cadence}, {source}, clip={clip:.6f}, tail_restart={tail}".format(
                 attempt=int(item.get("attempt") or 0),
                 score=float(item.get("score") or 0.0),
                 base=float(item.get("base_score") or item.get("score") or 0.0),
                 duration=duration_ratio,
+                tempo=tempo,
+                tempo_limit=MAX_TEMPO,
                 voiced=float((item.get("pitch") or {}).get("voiced_ratio") or 0.0),
                 active=float((item.get("activity") or {}).get("active_ratio") or 0.0),
                 gap=float((item.get("activity") or {}).get("max_internal_gap") or 0.0),
                 median=float(voice.get("f0_median_ratio") or 0.0),
                 p90=float(voice.get("f0_p90_ratio") or 0.0),
                 raw_pitch=candidate_pitch_evidence_ok(item),
+                cadence=cadence_failures,
                 source=source_detail,
                 clip=float(item.get("clipping_ratio") or 0.0),
                 tail=bool((item.get("tail_info") or {}).get("suspicious")),
@@ -204,10 +229,13 @@ def main() -> None:
     log(f"Model config SHA256: {config_sha}")
     log(f"CUDA доступна: {torch.cuda.is_available()} (должно быть False)")
     log(f"Base Steps: {args.steps}; Base CFG: {args.cfg}")
-    log("Reference-only cloning; 2 candidates always, 3rd on quality warning")
     log(
-        "Candidate selection uses duration + artifacts + raw pitch + "
-        "voice identity + source-guided prosody"
+        "Candidate policy: 2 обязательных; 3-я при quality warning; "
+        "4-я и 5-я только когда ни один кандидат не проходит hard gates"
+    )
+    log(
+        "Candidate selection uses duration/fit tempo + artifacts + raw pitch + "
+        "voice identity + Russian cadence + source-guided prosody"
     )
     log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
@@ -281,6 +309,13 @@ def main() -> None:
             "steps": int(args.steps),
             "cfg": float(args.cfg),
             "base_seed": int(args.base_seed),
+            "candidate_contract": {
+                "adaptive_retry_policy": ADAPTIVE_RETRY_POLICY,
+                "fit_tempo_policy": FIT_TEMPO_POLICY,
+                "base_attempts": BASE_CANDIDATE_ATTEMPTS,
+                "max_attempts": MAX_CANDIDATE_ATTEMPTS,
+                "max_tempo": MAX_TEMPO,
+            },
         }
 
         if (
@@ -325,21 +360,23 @@ def main() -> None:
             log(f"Подача: {segment['style_instruction']}")
 
         candidates: list[dict[str, Any]] = []
-        for attempt_index in range(1, 4):
-            if attempt_index == 3:
-                best_so_far = min(
-                    candidates,
-                    key=lambda item: float(item["score"]),
-                )
-                if (
-                    candidate_hard_ok(best_so_far, speech_slot)
-                    and candidate_pitch_evidence_ok(best_so_far)
-                    and float(best_so_far["score"]) < 85.0
-                ):
-                    break
+        for attempt_index in range(1, MAX_CANDIDATE_ATTEMPTS + 1):
+            if attempt_index >= 3 and candidates:
+                acceptable_so_far = _acceptable_candidates(candidates, speech_slot)
+                if acceptable_so_far:
+                    best_so_far = min(
+                        acceptable_so_far,
+                        key=lambda item: float(item["score"]),
+                    )
+                    if attempt_index == 3 and float(best_so_far["score"]) < STRONG_CANDIDATE_SCORE:
+                        break
+                    if attempt_index >= 4:
+                        break
+
             min_len = 2
             if (
-                attempt_index == 3
+                attempt_index >= 3
+                and candidates
                 and all(
                     float(item["duration"]) < speech_slot * 0.48
                     for item in candidates
@@ -406,9 +443,12 @@ def main() -> None:
             prosody_penalty = source_prosody_penalty(candidate, segment)
             candidate["base_score"] = float(base_score)
             candidate["score"] = float(base_score) + float(prosody_penalty)
+            candidate["required_tempo"] = required_tempo(candidate, speech_slot)
+            candidate["fit_tempo_policy"] = FIT_TEMPO_POLICY
             candidates.append(candidate)
             voice = candidate["voice_match"]
             prosody = candidate["source_prosody_match"]
+            cadence = candidate.get("cadence_evidence") or {}
             source_detail = (
                 f"srcF0×={prosody['f0_median_ratio_to_source']:.3f}/"
                 f"{prosody['f0_p90_ratio_to_source']:.3f}; "
@@ -419,10 +459,12 @@ def main() -> None:
             log(
                 f"attempt {attempt_index}: {candidate['duration']:.2f} сек.; "
                 f"score={candidate['score']:.2f} (base={base_score:.2f}); "
+                f"atempo={candidate['required_tempo']:.3f}/{MAX_TEMPO:.2f}; "
                 f"voiced={candidate['pitch']['voiced_ratio']:.3f}; "
                 f"F0×={voice['f0_median_ratio']:.3f}/"
                 f"{voice['f0_p90_ratio']:.3f}; "
                 f"rawPitch={candidate_pitch_evidence_ok(candidate)}; "
+                f"cadence={','.join(cadence.get('failures') or []) or 'ok'}; "
                 f"{source_detail}"
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
                 f"cfg={cfg_value:.2f}; steps={step_count}; "
@@ -431,12 +473,7 @@ def main() -> None:
             del wav
             gc.collect()
 
-        acceptable = [
-            item
-            for item in candidates
-            if candidate_hard_ok(item, speech_slot)
-            and candidate_pitch_evidence_ok(item)
-        ]
+        acceptable = _acceptable_candidates(candidates, speech_slot)
         if not acceptable:
             diagnostics = _candidate_failure_summary(candidates, speech_slot)
             for item in candidates:
@@ -465,10 +502,11 @@ def main() -> None:
             target_duration,
             tail_guard,
         )
-        if float(fit["tempo"]) > MAX_TEMPO:
+        if float(fit["tempo"]) > MAX_TEMPO + 1e-9:
+            fitted_path.unlink(missing_ok=True)
             raise RuntimeError(
-                f"Сегмент #{segment_id}: для естественной речи требуется слишком "
-                f"сильное ускорение atempo={fit['tempo']:.3f}; "
+                f"Сегмент #{segment_id}: нарушен fit-tempo invariant: "
+                f"выбран hard-quality кандидат atempo={fit['tempo']:.3f}, "
                 f"предел={MAX_TEMPO:.2f}."
             )
 
@@ -476,11 +514,15 @@ def main() -> None:
         segment_report = {
             **segment,
             "renderer_policy": POLICY,
+            "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
+            "fit_tempo_policy": FIT_TEMPO_POLICY,
+            "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
             "reference_path": str(reference),
             "reference_sha256": reference_report["sha256"],
             "selected_attempt": int(selected["attempt"]),
             "selected_seed": int(selected["seed"]),
             "selected_raw_pitch_evidence_ok": True,
+            "selected_required_tempo": round(float(selected["required_tempo"]), 6),
             "selected_base_score": round(float(selected["base_score"]), 6),
             "selected_score": round(float(selected["score"]), 6),
             "selected_voice_match": {
@@ -518,6 +560,8 @@ def main() -> None:
                         "cfg": item["cfg"],
                         "steps": item["steps"],
                         "duration": item["duration"],
+                        "required_tempo": item["required_tempo"],
+                        "fit_tempo_policy": item["fit_tempo_policy"],
                         "base_score": item["base_score"],
                         "score": item["score"],
                         "raw_pitch_evidence_ok": candidate_pitch_evidence_ok(item),
@@ -557,13 +601,17 @@ def main() -> None:
     build_timeline(fitted_segments, output, float(args.video_duration))
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.2-direct-raw-pitch-source-prosody",
+        "schema_version": "5.3-direct-cadence-fit-resilience",
         "policy": POLICY,
         "strategy": (
             "direct reference-only VoxCPM2 + guarded references + "
-            "multi-profile candidates + raw-pitch/voice/artifact hard gates + "
-            "source-guided prosody soft ranking + no best-of-bad fallback"
+            "bounded adaptive candidates + pre-selection fit-tempo/artifact/voice/cadence hard gates + "
+            "source-guided prosody ranking + assembled timeline QA + no best-of-bad fallback"
         ),
+        "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
+        "fit_tempo_policy": FIT_TEMPO_POLICY,
+        "base_candidate_attempts": BASE_CANDIDATE_ATTEMPTS,
+        "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
         "model_path": str(model_path),
         "model_config_sha256": config_sha,
         "encode_sample_rate": encode_sr,
