@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Fail-closed cadence and late-tail QA for the assembled Russian timeline.
 
-Candidate QA runs before timing filters.  This module checks the actual timeline
+Candidate QA runs before timing filters. This module checks the actual timeline
 written by FFmpeg, after atempo, fades, padding, delays and mixing, so a release
 cannot pass merely because the raw candidate was clean.
 """
@@ -22,7 +22,9 @@ from tools.voxcpm2.direct_russian_cadence import (
 )
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
-POLICY = "assembled-russian-delivery-v1"
+POLICY = "assembled-russian-delivery-v2"
+LINKED_PREFERRED_GAP_SECONDS = 0.32
+LINKED_MAX_GAP_SECONDS = 0.55
 
 
 def _mono(samples: Any) -> np.ndarray:
@@ -40,6 +42,20 @@ def _finite(value: Any, default: float = 0.0) -> float:
     return result if math.isfinite(result) else float(default)
 
 
+def _append_cadence_failure(
+    cadence: dict[str, Any],
+    reason: str,
+    *,
+    penalty: float,
+) -> None:
+    failures = list(cadence.get("failures") or [])
+    if reason not in failures:
+        failures.append(reason)
+    cadence["failures"] = failures
+    cadence["hard_ok"] = False
+    cadence["penalty"] = _finite(cadence.get("penalty")) + max(0.0, penalty)
+
+
 def verify_timeline_delivery(
     timeline: Path,
     fitted_segments: list[tuple[dict[str, Any], Path]],
@@ -51,7 +67,6 @@ def verify_timeline_delivery(
     audio = _mono(samples)
     rate = max(1, int(sample_rate))
     checks: list[dict[str, Any]] = []
-    failed: list[int] = []
 
     for position, (raw_segment, _path) in enumerate(fitted_segments, start=1):
         segment = dict(raw_segment)
@@ -66,10 +81,9 @@ def verify_timeline_delivery(
         right = min(len(audio), int(round((start + window) * rate)))
         clip = audio[left:right]
         contour = prosody_contour(clip, rate)
-        active_duration = max(
-            0.0,
-            _finite(contour.get("active_end")) - _finite(contour.get("active_start")),
-        )
+        active_start = start + _finite(contour.get("active_start"))
+        active_end = start + _finite(contour.get("active_end"))
+        active_duration = max(0.0, active_end - active_start)
         cadence = evaluate_candidate_cadence(
             {
                 "samples": clip,
@@ -80,20 +94,53 @@ def verify_timeline_delivery(
         )
         tail = detect_late_broadband_tail(clip, rate)
         passed = bool(cadence.get("hard_ok") and not tail.get("suspicious"))
-        if not passed:
-            failed.append(segment_id)
         checks.append(
             {
                 "id": segment_id,
                 "start": start,
                 "window_seconds": window,
+                "active_start_time": active_start,
+                "active_end_time": active_end,
                 "active_speech_seconds": active_duration,
+                "gap_to_next_seconds": None,
                 "cadence": cadence,
                 "late_tail": tail,
                 "passed": passed,
             }
         )
 
+    # A line without final punctuation is a syntactic continuation even when the
+    # SRT stores the next words in another timing block. Measure the real audible
+    # gap on the assembled timeline rather than trusting either block in isolation.
+    for index in range(len(checks) - 1):
+        current = checks[index]
+        following = checks[index + 1]
+        gap = max(
+            0.0,
+            _finite(following.get("active_start_time"))
+            - _finite(current.get("active_end_time")),
+        )
+        current["gap_to_next_seconds"] = gap
+        cadence = current["cadence"]
+        if cadence.get("cadence") != "linked":
+            continue
+        cadence["linked_gap_seconds"] = gap
+        cadence["linked_preferred_gap_seconds"] = LINKED_PREFERRED_GAP_SECONDS
+        cadence["linked_max_gap_seconds"] = LINKED_MAX_GAP_SECONDS
+        if gap > LINKED_PREFERRED_GAP_SECONDS:
+            cadence["penalty"] = _finite(cadence.get("penalty")) + min(
+                55.0,
+                (gap - LINKED_PREFERRED_GAP_SECONDS) * 95.0,
+            )
+        if gap > LINKED_MAX_GAP_SECONDS:
+            _append_cadence_failure(
+                cadence,
+                "linked_phrase_gap",
+                penalty=90.0 + (gap - LINKED_MAX_GAP_SECONDS) * 80.0,
+            )
+            current["passed"] = False
+
+    failed = [int(item["id"]) for item in checks if not bool(item.get("passed"))]
     invalidated: list[dict[str, str]] = []
     if failed:
         failed_set = set(failed)
@@ -118,10 +165,14 @@ def verify_timeline_delivery(
             )
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "policy": POLICY,
         "timeline": str(timeline),
         "sample_rate": rate,
+        "linked_gap_policy": {
+            "preferred_max_seconds": LINKED_PREFERRED_GAP_SECONDS,
+            "hard_max_seconds": LINKED_MAX_GAP_SECONDS,
+        },
         "segments": checks,
         "failed_segment_ids": failed,
         "invalidated_for_retry": invalidated,
@@ -142,12 +193,15 @@ def verify_timeline_delivery(
             reasons = list(cadence.get("failures") or [])
             if tail.get("suspicious"):
                 reasons.append(str(tail.get("artifact_type") or "late_tail"))
+            gap = item.get("gap_to_next_seconds")
+            gap_text = f"; next-gap={float(gap):.3f}s" if gap is not None else ""
             details.append(
-                "#{id}: {reasons}; ending={ending:.2f}st; energy={energy:.2f}dB".format(
+                "#{id}: {reasons}; ending={ending:.2f}st; energy={energy:.2f}dB{gap}".format(
                     id=item["id"],
                     reasons=",".join(reasons or ["delivery_qa"]),
                     ending=_finite(cadence.get("ending_delta_semitones")),
                     energy=_finite(cadence.get("ending_energy_delta_db")),
+                    gap=gap_text,
                 )
             )
         raise RuntimeError(
@@ -157,4 +211,9 @@ def verify_timeline_delivery(
     return report
 
 
-__all__ = ["POLICY", "verify_timeline_delivery"]
+__all__ = [
+    "LINKED_MAX_GAP_SECONDS",
+    "LINKED_PREFERRED_GAP_SECONDS",
+    "POLICY",
+    "verify_timeline_delivery",
+]
