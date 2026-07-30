@@ -94,7 +94,7 @@ def _pitch_frames(
             continue
         search = autocorrelation[lag_lo : lag_hi + 1]
         lag = lag_lo + int(np.argmax(search))
-        periodicity = float(autorrelation_value) if False else float(autocorrelation[lag] / autocorrelation[0])
+        periodicity = float(autocorrelation[lag] / autocorrelation[0])
         f0 = sample_rate / lag
         valid = bool(periodicity >= 0.28 and 45.0 <= f0 <= 500.0)
         values.append(float(f0) if valid else 0.0)
