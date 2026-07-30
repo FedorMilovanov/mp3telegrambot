@@ -6,6 +6,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
+    from handlers import dub_health
+
+    ok, detail = dub_health._quality_contract(ROOT)
+
+    assert ok, detail
+
+
 def test_dub_health_checks_clean_entrypoints_only() -> None:
     source = (ROOT / "handlers" / "dub_health.py").read_text(encoding="utf-8")
     assert "tools.voxcpm2.generic_clean_gemini_runtime" in source
@@ -57,16 +65,18 @@ def test_dub_health_checks_clean_entrypoints_only() -> None:
     assert "strict_translation_payload.validate_subset(" in source
     assert "production._validate_translation_payload = strict_translation_payload.validate_full" in source
     assert "production.acquire_transcript = _acquire_transcript_with_actual_language" in source
-    assert 'POLICY = "source-prosody-candidate-ranking-v1"' in source
+    assert 'POLICY = "source-prosody-candidate-ranking-v2"' in source
     assert "source-prosody-ranking" in source
     assert "def candidate_pitch_evidence_ok(" in source
-    assert "candidate_pitch_evidence_ok(best_so_far)" in source
+    assert "def _acceptable_candidates(" in source
     assert "and candidate_pitch_evidence_ok(item)" in source
     assert "source_prosody_penalty(candidate, segment)" in source
     assert '"expression": expression_signature' in source
     assert '"selected_raw_pitch_evidence_ok": True' in source
     assert '"selected_source_prosody_match"' in source
-    assert '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in source
+    assert '"schema_version": "5.5-direct-durable-seed-epochs"' in source
+    assert 'if candidate.get("cadence_hard_ok") is False:' in source
+    assert "detect_late_broadband_tail(" in source
     assert "rawPitch=" in source
     assert "srcF0×=" in source
     assert 'POLICY = "continuous-clean-reference-v2"' in source

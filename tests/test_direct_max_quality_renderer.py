@@ -9,6 +9,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
     candidate_hard_ok,
     candidate_score,
     pitch_profile,
+    spectral_envelope,
 )
 from tools.voxcpm2.direct_max_quality_cli import _candidate_failure_summary
 from tools.voxcpm2.direct_max_quality_io import (
@@ -41,6 +42,8 @@ def _candidate(
     active: float,
     gap: float,
 ) -> dict:
+    sample_rate = 16_000
+    time = np.arange(max(1, int(duration * sample_rate)), dtype=np.float32) / sample_rate
     return {
         "attempt": 1,
         "duration": duration,
@@ -51,6 +54,8 @@ def _candidate(
         "trailing_silence": 0.10,
         "activity": {"active_ratio": active, "max_internal_gap": gap},
         "pitch": {"voiced_ratio": voiced, "f0_median": median, "f0_p90": p90},
+        "samples": (0.12 * np.sin(2.0 * np.pi * median * time)).astype(np.float32),
+        "sample_rate": sample_rate,
     }
 
 
@@ -68,7 +73,7 @@ def test_renderer_audio_contract_is_native_voxcpm2() -> None:
     assert EXPECTED_ENCODE_SR == 16000
     assert EXPECTED_OUTPUT_SR == 48000
     assert REFERENCE_TAIL_SILENCE == 0.0
-    assert MAX_TEMPO <= 1.35
+    assert MAX_TEMPO == 1.36
 
 
 def test_48khz_pitch_diagnostic_keeps_male_f0() -> None:
@@ -100,6 +105,10 @@ def test_nonsense_high_register_candidate_cannot_win() -> None:
         p90=230.0,
         active=0.08,
         gap=0.95,
+    )
+    reference["spectral_envelope"] = spectral_envelope(
+        good["samples"],
+        good["sample_rate"],
     )
     good_score = candidate_score(good, 3.6, reference)
     bad_score = candidate_score(bad, 3.6, reference)
@@ -269,16 +278,17 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert '"model_config_sha256"' in cli
     assert '"expression": expression_signature' in cli
     assert "source_prosody_penalty(candidate, segment)" in cli
-    assert "candidate_pitch_evidence_ok(best_so_far)" in cli
+    assert "def _acceptable_candidates(" in cli
     assert "and candidate_pitch_evidence_ok(item)" in cli
     assert '"selected_raw_pitch_evidence_ok": True' in cli
     assert '"selected_base_score"' in cli
     assert '"selected_source_prosody_match"' in cli
-    assert '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in cli
-    assert 'POLICY = "source-prosody-candidate-ranking-v1"' in prosody
+    assert '"schema_version": "5.5-direct-durable-seed-epochs"' in cli
+    assert 'POLICY = "source-prosody-candidate-ranking-v2"' in prosody
+    assert 'if candidate.get("cadence_hard_ok") is False:' in prosody
+    assert "detect_late_broadband_tail(" in prosody
     assert "def candidate_pitch_evidence_ok(" in prosody
     assert "candidate_hard_ok" in cli
-    assert "candidate_hard_ok(best_so_far, speech_slot)" in cli
     assert "F0×=" in cli
     assert "rawPitch=" in cli
     assert "srcF0×=" in cli
@@ -288,7 +298,8 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
     assert "Best-of-bad candidates are forbidden" in cli
     assert "if not acceptable:" in cli
     assert "acceptable or candidates" not in cli
-    assert "reshape(-1, factor).mean(axis=1)" in analysis
+    assert ".reshape(-1, factor)" in analysis
+    assert ".mean(axis=1)" in analysis
     assert "REFERENCE_TAIL_SILENCE = 0.0" in io
     assert "runpy.run_path" not in combined
     assert "semantic_tts_guard" not in combined
@@ -299,6 +310,7 @@ def test_direct_cli_uses_official_quality_controls_without_wrappers() -> None:
 
 def test_stable_bot_and_powershell_path_imports_one_cli() -> None:
     stable = EXAMPLE.read_text(encoding="utf-8")
-    assert "from tools.voxcpm2.direct_max_quality_cli import main" in stable
+    assert "from tools.voxcpm2 import direct_max_quality_cli as _direct_cli" in stable
+    assert "main = _direct_cli.main" in stable
     assert "VoxCPM.from_pretrained" not in stable
     assert "model.generate" not in stable

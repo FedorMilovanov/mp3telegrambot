@@ -927,3 +927,20 @@ Fixes:
 Регрессии: `tests/test_dub_worker_preflight_cancellation.py`,
 `tests/test_dub_health_supplemental_contract.py`,
 `tests/test_dub_facade_write_through.py`.
+
+## 2026-07-30 — Синхронизация Dub health с усиленными runtime-контрактами
+
+- Локальный `/dubcheck` давал ложный красный результат 13/14: production уже
+  использовал source-prosody ranking v2, durable seed schema 5.5, expression v2
+  и module-alias стабильного direct CLI, а legacy health всё ещё искал старые
+  v1/schema 5.2/форму прямого импорта.
+- Health теперь проверяет фактические усиленные гарантии: cadence hard gate,
+  late-broadband-tail detector, единый `_acceptable_candidates`, durable seed
+  epochs, expression planning и точное перенаправление stable entrypoint на
+  `_direct_cli.main`.
+- Изменены только диагностические маркеры и их регрессии. Quality-пороги,
+  `best-of-bad` запрет, renderer, checkpoints и синтез не ослаблялись.
+
+Регрессии: `tests/test_clean_dub_health_contract.py`,
+`tests/test_direct_max_quality_renderer.py`,
+`tests/test_direct_source_prosody.py`.

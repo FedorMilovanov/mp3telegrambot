@@ -202,17 +202,19 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "not np.isfinite(candidate).all()" in text["timbre"]
         ),
         "source-prosody-ranking": (
-            'POLICY = "source-prosody-candidate-ranking-v1"' in text["prosody"]
+            'POLICY = "source-prosody-candidate-ranking-v2"' in text["prosody"]
             and "def candidate_pitch_evidence_ok(" in text["prosody"]
             and "def source_prosody_penalty(" in text["prosody"]
-            and "candidate_pitch_evidence_ok(best_so_far)" in text["cli"]
+            and "def _acceptable_candidates(" in text["cli"]
             and "and candidate_pitch_evidence_ok(item)" in text["cli"]
             and "source_prosody_penalty(candidate, segment)" in text["cli"]
             and '"expression": expression_signature' in text["cli"]
             and '"selected_raw_pitch_evidence_ok": True' in text["cli"]
             and '"selected_base_score"' in text["cli"]
             and '"selected_source_prosody_match"' in text["cli"]
-            and '"schema_version": "5.2-direct-raw-pitch-source-prosody"' in text["cli"]
+            and '"schema_version": "5.5-direct-durable-seed-epochs"' in text["cli"]
+            and 'if candidate.get("cadence_hard_ok") is False:' in text["prosody"]
+            and "detect_late_broadband_tail(" in text["prosody"]
             and "rawPitch=" in text["cli"]
             and "srcF0×=" in text["cli"]
         ),
@@ -277,7 +279,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "numeric_anchors_passed" in text["qa"]
         ),
         "same-direct-cli": (
-            "from tools.voxcpm2.direct_max_quality_cli import main" in text["stable_cli"]
+            "from tools.voxcpm2 import direct_max_quality_cli as _direct_cli"
+            in text["stable_cli"]
+            and "main = _direct_cli.main" in text["stable_cli"]
             and "voxcpm2_cpu_shorts_production.py" in text["core"]
             and "subprocess.run(command" in text["core"]
         ),
@@ -290,8 +294,10 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and '"wrapper_count": 0' in text["core"]
         ),
         "expression": (
-            'POLICY = "source-guided-expression-v1"' in text["expression"]
+            'POLICY = "source-guided-expression-v2"' in text["expression"]
             and "def _smooth(" in text["expression"]
+            and "def plan_json(" in text["expression"]
+            and "def _expressive_candidates(" in text["expression"]
             and "build_controlled_expressive_reference" in text["expression"]
         ),
         "translation-v2-bounded-gemini": (

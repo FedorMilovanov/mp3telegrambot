@@ -2,12 +2,34 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
+from tools.voxcpm2 import direct_source_prosody as prosody
 from tools.voxcpm2.direct_source_prosody import (
     MAX_PENALTY,
     POLICY,
     candidate_pitch_evidence_ok,
     source_prosody_penalty,
 )
+
+
+@pytest.fixture(autouse=True)
+def _neutral_cadence_and_tail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep source-ranking tests independent from the separate cadence suite."""
+    monkeypatch.setattr(
+        prosody,
+        "evaluate_candidate_cadence",
+        lambda *_args, **_kwargs: {
+            "hard_ok": True,
+            "failures": [],
+            "penalty": 0.0,
+        },
+    )
+    monkeypatch.setattr(
+        prosody,
+        "detect_late_broadband_tail",
+        lambda *_args, **_kwargs: {"suspicious": False},
+    )
 
 
 def _candidate(*, median: float, p90: float, voiced: float, active: float, gap: float):
@@ -48,7 +70,7 @@ def test_candidate_matching_source_prosody_gets_near_zero_penalty() -> None:
     )
     penalty = source_prosody_penalty(candidate, _segment())
     report = candidate["source_prosody_match"]
-    assert POLICY == "source-prosody-candidate-ranking-v1"
+    assert POLICY == "source-prosody-candidate-ranking-v2"
     assert candidate_pitch_evidence_ok(candidate) is True
     assert penalty == 0.0
     assert report["available"] is True
@@ -92,7 +114,7 @@ def test_invalid_candidate_prosody_gets_maximum_soft_penalty() -> None:
     assert penalty == MAX_PENALTY
     assert report["available"] is False
     assert report["penalty"] == MAX_PENALTY
-    assert report["reason"] == "невалидные candidate F0/voiced метрики"
+    assert report["reason"] == "невалидные candidate F0/voiced/cadence метрики"
 
 
 def test_contradictory_pitch_shape_fails_raw_hard_floor() -> None:
@@ -129,7 +151,10 @@ def test_missing_source_prosody_is_neutral_not_fabricated() -> None:
     report = candidate["source_prosody_match"]
     assert penalty == 0.0
     assert report["available"] is False
-    assert report["reason"] == "source_prosody отсутствует"
+    assert (
+        report["reason"]
+        == "source_prosody отсутствует; применён русский cadence gate"
+    )
 
 
 def test_nonfinite_source_metrics_do_not_poison_score() -> None:
@@ -146,4 +171,7 @@ def test_nonfinite_source_metrics_do_not_poison_score() -> None:
     assert penalty == 0.0
     report = candidate["source_prosody_match"]
     assert report["available"] is False
-    assert report["reason"] == "невалидные source F0/voiced метрики"
+    assert (
+        report["reason"]
+        == "невалидные source F0/voiced метрики; применён русский cadence gate"
+    )
