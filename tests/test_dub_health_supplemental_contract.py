@@ -62,7 +62,7 @@ def test_supplemental_health_requires_cancellation_safe_worker_package() -> None
         '"worker_facade"',
         '"worker_main"',
         'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"',
-        'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"',
+        'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"',
         "def _execute_job_with_cancellable_preflight(",
         "with _store_root_environment(store):",
         "reason = _stop_reason(store, job_id)",
