@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     atempo_chain,
@@ -128,6 +129,7 @@ def build_timeline(
         ]
     )
     run_checked(command)
+    direct_timeline_delivery_qa.verify_timeline_delivery(output, fitted_segments)
 
 
 def set_seed(seed: int, torch_module: Any) -> None:
