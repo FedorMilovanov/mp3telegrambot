@@ -23,12 +23,14 @@ from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     REFERENCE_TAIL_SILENCE,
     MAX_TEMPO,
+    SPEECH_SLOT_POLICY,
     configure_utf8,
     log,
     probe_duration,
     sha256_file,
     discover_model,
     read_segments,
+    speech_slot_seconds,
 )
 from tools.voxcpm2.direct_max_quality_analysis import (
     FIT_TEMPO_POLICY,
@@ -234,7 +236,7 @@ def main() -> None:
         "4-я и 5-я только когда ни один кандидат не проходит hard gates"
     )
     log(
-        "Candidate selection uses duration/fit tempo + artifacts + raw pitch + "
+        "Candidate selection uses exact SRT speech slot + fit tempo + artifacts + raw pitch + "
         "voice identity + Russian cadence + source-guided prosody"
     )
     log("Best-of-bad candidates are forbidden")
@@ -279,7 +281,15 @@ def main() -> None:
         segment_id = int(segment["id"])
         target_duration = float(segment["end"]) - float(segment["start"])
         tail_guard = float(segment["tail_guard"])
-        speech_slot = max(1.0, target_duration - tail_guard)
+        speech_slot = speech_slot_seconds(target_duration, tail_guard)
+        stored_slot = segment.get("speech_slot")
+        if stored_slot is not None and abs(float(stored_slot) - speech_slot) > 1e-6:
+            raise RuntimeError(
+                f"Сегмент #{segment_id}: speech_slot изменился после read_segments: "
+                f"stored={float(stored_slot):.6f}, computed={speech_slot:.6f}."
+            )
+        segment["speech_slot"] = speech_slot
+        segment["speech_slot_policy"] = SPEECH_SLOT_POLICY
         desired_steps = speech_slot / seconds_per_step
         max_len = max(24, int(math.ceil(desired_steps * 1.40)))
         profile = str(segment["reference_profile"])
@@ -303,6 +313,8 @@ def main() -> None:
             "start": float(segment["start"]),
             "end": float(segment["end"]),
             "tail_guard": tail_guard,
+            "speech_slot": speech_slot,
+            "speech_slot_policy": SPEECH_SLOT_POLICY,
             "start_delay_ms": int(segment.get("start_delay_ms", 0)),
             "reference_profile": profile,
             "expression": expression_signature,
@@ -351,7 +363,7 @@ def main() -> None:
         log("")
         log(
             f"[{position}/{len(segments)}] #{segment_id} {profile.upper()} / "
-            f"{target_duration:.2f} сек. / "
+            f"{target_duration:.2f} сек. / slot={speech_slot:.2f} сек. / "
             f"delay={int(segment.get('start_delay_ms', 0))} ms / "
             f"delivery={str(segment.get('expression_tier') or 'unknown')}"
         )
@@ -425,6 +437,8 @@ def main() -> None:
                 "samples": wav_np,
                 "sample_rate": sample_rate,
                 "duration": len(wav_np) / sample_rate,
+                "actual_speech_slot": speech_slot,
+                "speech_slot_policy": SPEECH_SLOT_POLICY,
                 "min_len": min_len,
                 "max_len": max_len,
                 "tail_info": tail_info,
@@ -502,6 +516,12 @@ def main() -> None:
             target_duration,
             tail_guard,
         )
+        if abs(float(fit["speech_slot"]) - speech_slot) > 1e-6:
+            fitted_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Сегмент #{segment_id}: renderer/fitter speech-slot mismatch: "
+                f"renderer={speech_slot:.6f}, fitter={float(fit['speech_slot']):.6f}."
+            )
         if float(fit["tempo"]) > MAX_TEMPO + 1e-9:
             fitted_path.unlink(missing_ok=True)
             raise RuntimeError(
@@ -516,6 +536,8 @@ def main() -> None:
             "renderer_policy": POLICY,
             "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
             "fit_tempo_policy": FIT_TEMPO_POLICY,
+            "speech_slot_policy": SPEECH_SLOT_POLICY,
+            "speech_slot": speech_slot,
             "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
             "reference_path": str(reference),
             "reference_sha256": reference_report["sha256"],
@@ -560,6 +582,8 @@ def main() -> None:
                         "cfg": item["cfg"],
                         "steps": item["steps"],
                         "duration": item["duration"],
+                        "actual_speech_slot": item["actual_speech_slot"],
+                        "speech_slot_policy": item["speech_slot_policy"],
                         "required_tempo": item["required_tempo"],
                         "fit_tempo_policy": item["fit_tempo_policy"],
                         "base_score": item["base_score"],
@@ -601,15 +625,16 @@ def main() -> None:
     build_timeline(fitted_segments, output, float(args.video_duration))
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.3-direct-cadence-fit-resilience",
+        "schema_version": "5.4-direct-exact-slot-cadence-resilience",
         "policy": POLICY,
         "strategy": (
-            "direct reference-only VoxCPM2 + guarded references + "
+            "direct reference-only VoxCPM2 + guarded references + exact SRT speech slots + "
             "bounded adaptive candidates + pre-selection fit-tempo/artifact/voice/cadence hard gates + "
             "source-guided prosody ranking + assembled timeline QA + no best-of-bad fallback"
         ),
         "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
         "fit_tempo_policy": FIT_TEMPO_POLICY,
+        "speech_slot_policy": SPEECH_SLOT_POLICY,
         "base_candidate_attempts": BASE_CANDIDATE_ATTEMPTS,
         "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
         "model_path": str(model_path),
