@@ -10,7 +10,6 @@ their original epoch and remain reusable during hour-long renders.
 from __future__ import annotations
 
 import json
-import math
 import os
 import uuid
 from datetime import datetime, timezone
@@ -18,7 +17,9 @@ from pathlib import Path
 from typing import Any
 
 POLICY = "failed-segment-seed-epoch-v1"
-SEED_EPOCH_STRIDE = 100_000
+# Keep epoch namespaces disjoint even for extremely long projects. The old
+# 100,000 stride collided with epoch 1 / segment 1 and epoch 0 / segment 1001.
+SEED_EPOCH_STRIDE = 1_000_000_000_000
 MAX_RETRY_EPOCH = 100_000
 
 
