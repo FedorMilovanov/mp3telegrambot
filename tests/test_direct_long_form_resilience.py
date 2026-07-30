@@ -129,10 +129,15 @@ def test_multiword_exclamation_rejects_early_emotional_burst() -> None:
     assert "emphasis_too_early" not in accepted["failures"]
 
 
-def test_strong_late_source_build_rejects_early_russian_burst() -> None:
+def test_dominant_late_source_build_rejects_early_russian_burst() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
-    source_prosody = {"contour": {"peak_energy_bin": 3}}
+    source_prosody = {
+        "contour": {
+            "peak_energy_bin": 4,
+            "energy_contour": [0.08, 0.15, 0.31, 0.55, 1.0],
+        }
+    }
 
     rejected = _cadence(
         "Всё, что надвигается на меня, не заставит меня бояться.",
@@ -151,5 +156,42 @@ def test_strong_late_source_build_rejects_early_russian_burst() -> None:
 
     assert rejected["hard_ok"] is False
     assert "source_emphasis_misplaced_early" in rejected["failures"]
+    assert rejected["source_peak_dominance"] >= 0.18
     assert accepted["source_late_peak_expected"] is True
     assert "source_emphasis_misplaced_early" not in accepted["failures"]
+
+
+def test_broad_or_middle_source_peak_does_not_hard_gate_russian_word_order() -> None:
+    early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
+    broad_source = {
+        "contour": {
+            "peak_energy_bin": 3,
+            "energy_contour": [0.30, 0.45, 0.86, 1.0, 0.94],
+        }
+    }
+    middle_source = {
+        "contour": {
+            "peak_energy_bin": 2,
+            "energy_contour": [0.20, 0.45, 1.0, 0.62, 0.35],
+        }
+    }
+
+    broad = _cadence(
+        "Всё, что надвигается на меня, не заставит меня бояться.",
+        early,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=broad_source,
+    )
+    middle = _cadence(
+        "Всё, что надвигается на меня, не заставит меня бояться.",
+        early,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=middle_source,
+    )
+
+    assert broad["source_late_peak_expected"] is False
+    assert middle["source_late_peak_expected"] is False
+    assert "source_emphasis_misplaced_early" not in broad["failures"]
+    assert "source_emphasis_misplaced_early" not in middle["failures"]
