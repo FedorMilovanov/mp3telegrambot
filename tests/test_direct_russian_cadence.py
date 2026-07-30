@@ -9,13 +9,7 @@ from tools.voxcpm2.direct_russian_cadence import (
 )
 
 
-def _chirp(
-    start_hz: float,
-    end_hz: float,
-    *,
-    duration: float = 2.0,
-    tail: float = 0.18,
-):
+def _chirp(start_hz: float, end_hz: float, *, duration: float = 2.0, tail: float = 0.18):
     sample_rate = 48_000
     time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
     slope = (end_hz - start_hz) / duration
@@ -85,3 +79,38 @@ def test_prosody_contour_exposes_five_bin_emphasis_shape():
     assert len(contour["energy_contour"]) == 5
     assert len(contour["pitch_contour"]) == 5
     assert contour["voiced_ending"] is True
+
+
+def test_terminal_octave_glitch_is_corrected_before_cadence_decision():
+    sample_rate = 48_000
+    first_duration = 1.72
+    glitch_duration = 0.18
+    first_time = np.arange(int(first_duration * sample_rate), dtype=np.float64) / sample_rate
+    slope = (112.0 - 170.0) / first_duration
+    first_phase = 2.0 * np.pi * (170.0 * first_time + 0.5 * slope * first_time**2)
+    first = 0.22 * np.sin(first_phase)
+    glitch_time = np.arange(int(glitch_duration * sample_rate), dtype=np.float64) / sample_rate
+    glitch = 0.18 * np.sin(2.0 * np.pi * 224.0 * glitch_time)
+    audio = np.concatenate(
+        [
+            first.astype(np.float32),
+            glitch.astype(np.float32),
+            np.zeros(int(0.18 * sample_rate), dtype=np.float32),
+        ]
+    )
+    result = evaluate_candidate_cadence(
+        {
+            "samples": audio,
+            "sample_rate": sample_rate,
+            "duration": len(audio) / sample_rate,
+        },
+        {
+            "text": "Который обещает помочь ей.",
+            "start": 0.0,
+            "end": 2.18,
+            "tail_guard": 0.10,
+        },
+    )
+
+    assert result["ending_delta_semitones"] < 0.5
+    assert "terminal_rises" not in result["failures"]
