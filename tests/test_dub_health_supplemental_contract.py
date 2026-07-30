@@ -84,6 +84,7 @@ def test_supplemental_health_requires_cancellation_safe_worker_package() -> None
         '"worker_main"',
         'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"',
         'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"',
+        'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"',
         "def _execute_job_with_cancellable_preflight(",
         "with _store_root_environment(store):",
         "reason = _stop_reason(store, job_id)",
@@ -102,11 +103,28 @@ def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None
     )
     assert "def _legacy_quality_without_superseded_worker(" in facade
     assert 'item != "worker-v45"' in facade
-    assert '"dub-worker-quality-v4.6"' in facade
+    assert '"dub-worker-quality-v4.7"' in facade
     assert "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
-    assert "def _v46_static_contract(" in facade
+    assert "def _v47_static_contract(" in facade
     assert "worker.execute_job = _execute_job_with_preflight" in facade
+
+
+def test_supplemental_health_requires_long_form_delivery_resilience() -> None:
+    facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    required = (
+        '"long-form-direct-resilience"',
+        'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v1"',
+        'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
+        'DELIVERY_POLICY = "russian-ending-and-emphasis-hard-gate-v1"',
+        "MAX_CANDIDATE_ATTEMPTS = 5",
+        "invalidated_for_retry",
+        'POLICY = "late-broadband-tail-v2"',
+    )
+    for item in required:
+        assert item in facade
 
 
 def test_supplemental_health_requires_write_through_service_hooks() -> None:
@@ -121,12 +139,12 @@ def test_supplemental_health_requires_write_through_service_hooks() -> None:
     assert "legacy_health.collect_dub_health = wrapped" in facade
 
 
-def test_supplemental_health_composes_base_v46_and_facades() -> None:
+def test_supplemental_health_composes_base_v47_and_facades() -> None:
     facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
         encoding="utf-8"
     )
     assert "base_ok, base_detail = _legacy_quality_without_superseded_worker(repo)" in facade
-    assert "v46_ok, v46_detail = _v46_static_contract(repo)" in facade
+    assert "v47_ok, v47_detail = _v47_static_contract(repo)" in facade
     assert "supplemental_ok, supplemental_detail = _supplemental_quality_contract(repo)" in facade
-    assert "bool(base_ok and v46_ok and supplemental_ok)" in facade
+    assert "bool(base_ok and v47_ok and supplemental_ok)" in facade
     assert "_legacy._quality_contract = _quality_contract" in facade
