@@ -27,7 +27,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.7"
+_WORKER_RUNTIME = "dub-worker-quality-v4.8"
 from services import dub_studio_runtime as _supervisor  # noqa: E402
 
 _supervisor._WORKER_RUNTIME = _WORKER_RUNTIME
@@ -90,9 +90,12 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         "worker-agent-v47": _has(
             text,
             "worker_facade",
-            '_RUNTIME_VERSION = "dub-worker-quality-v4.7"',
+            '_RUNTIME_VERSION = "dub-worker-quality-v4.8"',
             "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION",
             'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"',
+            'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
+            "MAX_JOB_QUALITY_RESTARTS = 3",
+            "def _run_with_quality_restarts(",
             "def _execute_job_with_cancellable_preflight(",
             "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
         ) and _has(
@@ -109,7 +112,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"',
             "with _store_root_environment(store):",
             "reason = _stop_reason(store, job_id)",
-            "_legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)",
+            "_run_with_quality_restarts(store, worker_id, job, project)",
             "_legacy.install_hardening()",
         ) and _has(text, "worker_main", "from . import main", "main()"),
         "production-preflight-v2": _has(
@@ -140,13 +143,13 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         "worker-runtime-sync": _has(
             text,
             "health_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.7"',
+            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
             "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME",
             "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME",
         ) and _has(
             text,
             "supervisor_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.7"',
+            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
             "class _WriteThroughModule",
             "_module.__class__ = _WriteThroughModule",
         ),
@@ -259,13 +262,21 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             "_legacy_render_and_master = _legacy.render_and_master",
             "def render_and_master(",
             "сохраняю успешные checkpoints",
+        ) and _has(
+            text,
+            "worker_facade",
+            'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
+            "MAX_JOB_QUALITY_RESTARTS = 3",
+            "def _quality_failure_detail(",
+            "def _run_with_quality_restarts(",
+            "Hard-quality gate отклонил только проблемный сегмент",
         ),
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
-        return False, "v4.7-контракты не прошли: " + ", ".join(failed)
+        return False, "v4.8-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "worker v4.7/preflight v2; cancellation and explicit root; "
+        "worker v4.8/preflight v2; cancellation, explicit root and job-level quality restarts; "
         "exact SRT speech slots and fit-aware adaptive retries; durable per-segment seed epochs; "
         "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, assembled and "
         "post-AAC QA; full implementation/model/runtime cache; deterministic child imports"
@@ -283,7 +294,7 @@ def _legacy_quality_without_superseded_worker(repo: Path) -> tuple[bool, str]:
     failed = [item for item in failed if item != "worker-v45"]
     if failed:
         return False, "не прошли: " + ", ".join(failed)
-    return True, "все legacy-контракты активны; worker-v45 заменён v4.7 preflight"
+    return True, "все legacy-контракты активны; worker-v45 заменён v4.8 preflight"
 
 
 def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:

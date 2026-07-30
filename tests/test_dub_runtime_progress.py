@@ -46,7 +46,7 @@ def test_progress_is_integrated_with_active_v47_supervisor_facade() -> None:
     facade = _source(RUNTIME_FACADE)
     assert "install_dub_progress_updates" not in bot
     assert "dub_progress_updates.py" not in runtime
-    assert '_WORKER_RUNTIME = "dub-worker-quality-v4.7"' in facade
+    assert '_WORKER_RUNTIME = "dub-worker-quality-v4.8"' in facade
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "class _WriteThroughModule" in facade
     assert "_module.__class__ = _WriteThroughModule" in facade
@@ -55,7 +55,7 @@ def test_progress_is_integrated_with_active_v47_supervisor_facade() -> None:
 def test_worker_stage_parser_never_uses_master_substring_fallback() -> None:
     worker = _source(WORKER)
     facade = _source(WORKER_FACADE)
-    assert '_RUNTIME_VERSION = "dub-worker-quality-v4.7"' in facade
+    assert '_RUNTIME_VERSION = "dub-worker-quality-v4.8"' in facade
     assert "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION" in facade
     assert "def _progress_from_line_v44" in worker
     assert "render_and_master" in worker

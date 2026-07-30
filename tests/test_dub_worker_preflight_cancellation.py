@@ -56,8 +56,10 @@ def test_worker_import_and_module_execution_resolve_package_facade() -> None:
     assert hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
     assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v2"
     assert hardened.DELIVERY_RESILIENCE_POLICY == "cadence-tail-fit-adaptive-resume-v1"
-    assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.7"
-    assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.7"
+    assert hardened.JOB_QUALITY_RETRY_POLICY == "worker-checkpoint-quality-restart-v1"
+    assert hardened.MAX_JOB_QUALITY_RESTARTS == 3
+    assert hardened._RUNTIME_VERSION == "dub-worker-quality-v4.8"
+    assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.8"
     main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
         encoding="utf-8"
     )
@@ -220,6 +222,123 @@ def test_real_preflight_failure_is_failed_and_logged(
     assert "IMPORT_SENTINEL" in log_path.read_text(encoding="utf-8")
 
 
+def test_quality_failure_restarts_same_job_until_success(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = FakeStore(tmp_path, [False])
+    calls: list[int] = []
+    hardened._legacy.worker._STOP.clear()
+    monkeypatch.delenv("DUB_WORKER_MAX_QUALITY_RESTARTS", raising=False)
+
+    def fake_runner(capture: Any, _worker_id: str, job: dict[str, Any]) -> None:
+        calls.append(len(calls) + 1)
+        if len(calls) < 3:
+            capture.finish_job(
+                int(job["id"]),
+                status="failed",
+                error=(
+                    "RuntimeError: Сегмент #12: нет ни одного hard-quality "
+                    f"кандидата; следующий повтор использует seed epoch {len(calls) + 1}."
+                ),
+            )
+            return
+        capture.finish_job(
+            int(job["id"]),
+            status="succeeded",
+            result={"output": "ready.mp4"},
+        )
+
+    monkeypatch.setattr(hardened._legacy, "_ORIGINAL_EXECUTE_JOB", fake_runner)
+    hardened._run_with_quality_restarts(
+        store,
+        "worker-1",
+        _job(),
+        store.get_project(_job()["project_id"]),
+    )
+
+    assert calls == [1, 2, 3]
+    assert store.finished == [
+        {
+            "job_id": 17,
+            "status": "succeeded",
+            "result": {"output": "ready.mp4"},
+            "error": "",
+        }
+    ]
+    retries = [
+        item for item in store.progress if item["stage"].startswith("quality-retry:")
+    ]
+    assert [item["stage"] for item in retries] == [
+        "quality-retry:1/3",
+        "quality-retry:2/3",
+    ]
+
+
+def test_infrastructure_failure_is_never_restarted(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = FakeStore(tmp_path, [False])
+    calls: list[int] = []
+
+    def fake_runner(capture: Any, _worker_id: str, job: dict[str, Any]) -> None:
+        calls.append(1)
+        capture.finish_job(
+            int(job["id"]),
+            status="failed",
+            error="ModuleNotFoundError: No module named 'voxcpm'",
+        )
+
+    monkeypatch.setattr(hardened._legacy, "_ORIGINAL_EXECUTE_JOB", fake_runner)
+    hardened._run_with_quality_restarts(
+        store,
+        "worker-1",
+        _job(),
+        store.get_project(_job()["project_id"]),
+    )
+
+    assert calls == [1]
+    assert store.finished[-1]["status"] == "failed"
+    assert "ModuleNotFoundError" in store.finished[-1]["error"]
+    assert not any(
+        item["stage"].startswith("quality-retry:") for item in store.progress
+    )
+
+
+def test_quality_restarts_are_bounded_and_keep_checkpoints(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = FakeStore(tmp_path, [False])
+    calls: list[int] = []
+    monkeypatch.setenv("DUB_WORKER_MAX_QUALITY_RESTARTS", "2")
+
+    def fake_runner(capture: Any, _worker_id: str, job: dict[str, Any]) -> None:
+        calls.append(1)
+        capture.finish_job(
+            int(job["id"]),
+            status="failed",
+            error=(
+                "Сегмент #12: нет ни одного hard-quality кандидата; "
+                "следующий повтор использует seed epoch 9."
+            ),
+        )
+
+    monkeypatch.setattr(hardened._legacy, "_ORIGINAL_EXECUTE_JOB", fake_runner)
+    hardened._run_with_quality_restarts(
+        store,
+        "worker-1",
+        _job(),
+        store.get_project(_job()["project_id"]),
+    )
+
+    assert len(calls) == 3
+    assert store.finished[-1]["status"] == "failed"
+    assert "исчерпал автоматические quality-restarts (2)" in store.finished[-1]["error"]
+    assert "checkpoints сохранены" in store.finished[-1]["error"]
+
+
 def test_worker_stop_during_preflight_is_cancelled_not_failed(
     monkeypatch,
     tmp_path: Path,
@@ -261,7 +380,7 @@ def test_install_keeps_agent_hardening_then_overrides_only_execute_job(
     try:
         hardened.install_hardening()
         assert calls == ["agent-hardening"]
-        assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.7"
+        assert hardened._legacy._RUNTIME_VERSION == "dub-worker-quality-v4.8"
         assert (
             hardened._legacy.worker.execute_job
             is hardened._execute_job_with_cancellable_preflight

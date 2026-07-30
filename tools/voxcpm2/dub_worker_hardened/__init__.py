@@ -14,6 +14,7 @@ from contextlib import contextmanager
 import importlib.util
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Iterator
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_worker_hardened.py"
@@ -30,11 +31,158 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.7"
+_RUNTIME_VERSION = "dub-worker-quality-v4.8"
 _legacy._RUNTIME_VERSION = _RUNTIME_VERSION
 CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"
 STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"
 DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"
+JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"
+MAX_JOB_QUALITY_RESTARTS = 3
+
+
+class _TerminalCaptureStore:
+    """Delegate store operations while deferring one runner terminal result."""
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+        self.terminal: dict[str, Any] | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._store, name)
+
+    def finish_job(
+        self,
+        job_id: int,
+        *,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+    ) -> None:
+        normalized = str(status).lower()
+        if normalized in {"succeeded", "failed", "cancelled"}:
+            self.terminal = {
+                "job_id": int(job_id),
+                "status": normalized,
+                "result": result,
+                "error": str(error or ""),
+            }
+            return
+        self._store.finish_job(
+            int(job_id),
+            status=status,
+            result=result,
+            error=error,
+        )
+
+
+def _quality_failure_detail(project: dict[str, Any], error: str) -> str:
+    """Return a retryable quality cause, never an infrastructure failure."""
+    from tools.voxcpm2 import clean_production_core
+
+    detail = str(error or "").strip()
+    if clean_production_core._retryable_delivery_failure(detail):
+        return detail
+
+    # A runner tail can be truncated before the quality marker. Consult the
+    # renderer report only when this failure explicitly came from that renderer;
+    # an old report must never turn a later infrastructure failure into a retry.
+    if "Прямой VoxCPM2 renderer" not in detail:
+        return ""
+    root = str(project.get("work_root") or "").strip()
+    report = clean_production_core._direct_failure_report(root) if root else ""
+    combined = "\n".join(value for value in (report, detail) if value)
+    return (
+        combined
+        if clean_production_core._retryable_delivery_failure(combined)
+        else ""
+    )
+
+
+def _archive_quality_retry_log(store: Any, job_id: int, retry_index: int) -> None:
+    source = Path(store.logs_dir) / f"job-{int(job_id):06d}.log"
+    if not source.is_file():
+        return
+    target = source.with_name(
+        f"job-{int(job_id):06d}.quality-retry-{int(retry_index):02d}.log"
+    )
+    try:
+        shutil.copy2(source, target)
+    except OSError:
+        # Diagnostics must not be allowed to stop a valid checkpoint recovery.
+        pass
+
+
+def _run_with_quality_restarts(
+    store: Any,
+    worker_id: str,
+    job: dict[str, Any],
+    project: dict[str, Any],
+) -> None:
+    """Keep the same job alive across bounded quality-only subprocess restarts."""
+    job_id = int(job["id"])
+    try:
+        retry_limit = int(
+            os.environ.get(
+                "DUB_WORKER_MAX_QUALITY_RESTARTS",
+                str(MAX_JOB_QUALITY_RESTARTS),
+            )
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            "DUB_WORKER_MAX_QUALITY_RESTARTS должен быть целым."
+        ) from exc
+    retry_limit = max(0, min(12, retry_limit))
+
+    for retry_index in range(retry_limit + 1):
+        capture = _TerminalCaptureStore(store)
+        _legacy._ORIGINAL_EXECUTE_JOB(capture, worker_id, job)
+        terminal = capture.terminal
+        if terminal is None:
+            return
+
+        status = str(terminal["status"])
+        if status != "failed":
+            store.finish_job(
+                job_id,
+                status=status,
+                result=terminal.get("result"),
+                error=str(terminal.get("error") or ""),
+            )
+            return
+
+        detail = _quality_failure_detail(
+            project,
+            str(terminal.get("error") or ""),
+        )
+        if not detail or retry_index >= retry_limit:
+            error = str(terminal.get("error") or "")
+            if detail and retry_limit:
+                error = (
+                    "Worker исчерпал автоматические quality-restarts "
+                    f"({retry_limit}); успешные checkpoints сохранены.\n{error}"
+                )
+            store.finish_job(job_id, status="failed", error=error)
+            return
+
+        next_retry = retry_index + 1
+        _archive_quality_retry_log(store, job_id, next_retry)
+        store.update_job_progress(
+            job_id,
+            progress=2,
+            stage=f"quality-retry:{next_retry}/{retry_limit}",
+            message=(
+                "Hard-quality gate отклонил только проблемный сегмент. "
+                "Сохраняю принятые checkpoints и перезапускаю runner с новым "
+                f"seed epoch ({next_retry}/{retry_limit})."
+            ),
+        )
+
+        reason = _stop_reason(store, job_id)
+        if reason:
+            store.finish_job(job_id, status="cancelled", error=reason)
+            return
+
+    raise RuntimeError("Недостижимое состояние worker quality restart.")
 
 
 @contextmanager
@@ -129,7 +277,7 @@ def _execute_job_with_cancellable_preflight(
                     job_id,
                     progress=2,
                     stage="preflight:ok",
-                    message="Production preflight v4.7 пройден; запускаю runner.",
+                    message="Production preflight v4.8 пройден; запускаю runner.",
                 )
     except Exception as exc:
         reason = _stop_reason(store, job_id)
@@ -140,7 +288,7 @@ def _execute_job_with_cancellable_preflight(
         return
 
     with _store_root_environment(store):
-        _legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)
+        _run_with_quality_restarts(store, worker_id, job, project)
 
 
 def install_hardening() -> None:
@@ -159,10 +307,16 @@ __all__ = sorted(
     | {
         "CANCELLATION_POLICY",
         "DELIVERY_RESILIENCE_POLICY",
+        "JOB_QUALITY_RETRY_POLICY",
+        "MAX_JOB_QUALITY_RESTARTS",
         "STORE_ROOT_POLICY",
+        "_TerminalCaptureStore",
+        "_archive_quality_retry_log",
         "_RUNTIME_VERSION",
         "_execute_job_with_cancellable_preflight",
         "_finish_cancelled",
+        "_quality_failure_detail",
+        "_run_with_quality_restarts",
         "_stop_reason",
         "_store_root_environment",
         "_write_preflight_failure",

@@ -88,7 +88,9 @@ def test_supplemental_health_requires_cancellation_safe_worker_package() -> None
         "def _execute_job_with_cancellable_preflight(",
         "with _store_root_environment(store):",
         "reason = _stop_reason(store, job_id)",
-        "_legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)",
+        "_run_with_quality_restarts(store, worker_id, job, project)",
+        'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
+        "MAX_JOB_QUALITY_RESTARTS = 3",
         "_legacy.install_hardening()",
         "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
         "from . import main",
@@ -103,7 +105,7 @@ def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None
     )
     assert "def _legacy_quality_without_superseded_worker(" in facade
     assert 'item != "worker-v45"' in facade
-    assert '"dub-worker-quality-v4.7"' in facade
+    assert '"dub-worker-quality-v4.8"' in facade
     assert "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "def _v47_static_contract(" in facade

@@ -908,3 +908,22 @@ Fixes:
 
 Регрессии: `tests/test_clean_delivery_retry_orchestration.py`,
 `tests/test_dub_health_supplemental_contract.py`.
+
+## 2026-07-30 — Job-level восстановление после исчерпания renderer retry
+
+- Реальный job #20 показал второй уровень отказа: локальный renderer корректно
+  сохранил checkpoints и поднял seed epoch проблемного сегмента, но после
+  исчерпания своего бюджета внешний worker всё равно записывал terminal `failed`.
+- Worker v4.8 теперь откладывает terminal status и делает до трёх дополнительных
+  перезапусков того же production runner внутри того же job. Повтор разрешён
+  только для подтверждённых hard-quality/delivery причин; import, model,
+  fingerprint, FFmpeg, HTTP и другие инфраструктурные сбои завершаются сразу.
+- Каждый предыдущий runner-log архивируется перед перезапуском, принятые
+  segment checkpoints не удаляются, а проблемный сегмент продолжает с уже
+  увеличенного seed epoch. `best-of-bad` по-прежнему запрещён.
+- `/dubhealth` синхронизирован с `dub-worker-quality-v4.8` и отдельно проверяет
+  наличие job-level checkpoint restart policy.
+
+Регрессии: `tests/test_dub_worker_preflight_cancellation.py`,
+`tests/test_dub_health_supplemental_contract.py`,
+`tests/test_dub_facade_write_through.py`.
