@@ -54,6 +54,12 @@ from tools.voxcpm2.direct_max_quality_render import (
     fit_without_slowdown,
     set_seed,
 )
+from tools.voxcpm2.direct_retry_epoch import (
+    POLICY as RETRY_EPOCH_POLICY,
+    invalidate_segment_for_retry,
+    load_retry_epoch,
+    seed_for_attempt,
+)
 from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
     source_prosody_penalty,
@@ -111,15 +117,17 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
         cadence_failures = ",".join(str(value) for value in cadence.get("failures") or []) or "none"
         parts.append(
             "attempt {attempt}: score={score:.2f}, base={base:.2f}, duration×={duration:.3f}, "
-            "atempo={tempo:.3f}/{tempo_limit:.2f}, voiced={voiced:.3f}, active={active:.3f}, "
-            "gap={gap:.3f}, F0×={median:.3f}/{p90:.3f}, rawPitch={raw_pitch}, "
-            "cadence={cadence}, {source}, clip={clip:.6f}, tail_restart={tail}".format(
+            "atempo={tempo:.3f}/{tempo_limit:.2f}, epoch={epoch}, "
+            "voiced={voiced:.3f}, active={active:.3f}, gap={gap:.3f}, "
+            "F0×={median:.3f}/{p90:.3f}, rawPitch={raw_pitch}, cadence={cadence}, "
+            "{source}, clip={clip:.6f}, tail_restart={tail}".format(
                 attempt=int(item.get("attempt") or 0),
                 score=float(item.get("score") or 0.0),
                 base=float(item.get("base_score") or item.get("score") or 0.0),
                 duration=duration_ratio,
                 tempo=tempo,
                 tempo_limit=MAX_TEMPO,
+                epoch=int(item.get("retry_epoch") or 0),
                 voiced=float((item.get("pitch") or {}).get("voiced_ratio") or 0.0),
                 active=float((item.get("activity") or {}).get("active_ratio") or 0.0),
                 gap=float((item.get("activity") or {}).get("max_internal_gap") or 0.0),
@@ -133,6 +141,39 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
             )
         )
     return "; ".join(parts)
+
+
+def _raw_failure_evidence(
+    candidates: list[dict[str, Any]],
+    *,
+    speech_slot: float,
+    retry_epoch: int,
+) -> dict[str, Any]:
+    return {
+        "policy": POLICY,
+        "retry_epoch_policy": RETRY_EPOCH_POLICY,
+        "failed_epoch": int(retry_epoch),
+        "speech_slot": round(float(speech_slot), 6),
+        "max_tempo": float(MAX_TEMPO),
+        "attempts": [
+            {
+                "attempt": int(item.get("attempt") or 0),
+                "seed": int(item.get("seed") or 0),
+                "score": round(float(item.get("score") or 0.0), 6),
+                "required_tempo": round(required_tempo(item, speech_slot), 6),
+                "cadence_failures": [
+                    str(value)
+                    for value in (item.get("cadence_evidence") or {}).get("failures") or []
+                ],
+                "late_tail": bool(
+                    ((item.get("cadence_evidence") or {}).get("tail_artifact") or {}).get(
+                        "suspicious"
+                    )
+                ),
+            }
+            for item in candidates
+        ],
+    }
 
 
 def main() -> None:
@@ -239,6 +280,9 @@ def main() -> None:
         "Candidate selection uses exact SRT speech slot + fit tempo + artifacts + raw pitch + "
         "voice identity + Russian cadence + source-guided prosody"
     )
+    log(
+        "Failed segments advance a durable seed epoch; successful checkpoints remain reusable"
+    )
     log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
 
@@ -288,8 +332,11 @@ def main() -> None:
                 f"Сегмент #{segment_id}: speech_slot изменился после read_segments: "
                 f"stored={float(stored_slot):.6f}, computed={speech_slot:.6f}."
             )
+        retry_epoch = load_retry_epoch(work_dir, segment_id)
         segment["speech_slot"] = speech_slot
         segment["speech_slot_policy"] = SPEECH_SLOT_POLICY
+        segment["retry_epoch"] = retry_epoch
+        segment["retry_epoch_policy"] = RETRY_EPOCH_POLICY
         desired_steps = speech_slot / seconds_per_step
         max_len = max(24, int(math.ceil(desired_steps * 1.40)))
         profile = str(segment["reference_profile"])
@@ -315,6 +362,8 @@ def main() -> None:
             "tail_guard": tail_guard,
             "speech_slot": speech_slot,
             "speech_slot_policy": SPEECH_SLOT_POLICY,
+            "retry_epoch": retry_epoch,
+            "retry_epoch_policy": RETRY_EPOCH_POLICY,
             "start_delay_ms": int(segment.get("start_delay_ms", 0)),
             "reference_profile": profile,
             "expression": expression_signature,
@@ -324,6 +373,7 @@ def main() -> None:
             "candidate_contract": {
                 "adaptive_retry_policy": ADAPTIVE_RETRY_POLICY,
                 "fit_tempo_policy": FIT_TEMPO_POLICY,
+                "retry_epoch_policy": RETRY_EPOCH_POLICY,
                 "base_attempts": BASE_CANDIDATE_ATTEMPTS,
                 "max_attempts": MAX_CANDIDATE_ATTEMPTS,
                 "max_tempo": MAX_TEMPO,
@@ -356,7 +406,7 @@ def main() -> None:
                     )
                     log(
                         f"[{position}/{len(segments)}] #{segment_id} "
-                        "восстановлен из fingerprinted expression checkpoint"
+                        f"восстановлен из checkpoint (seed epoch {retry_epoch})"
                     )
                     continue
 
@@ -364,6 +414,7 @@ def main() -> None:
         log(
             f"[{position}/{len(segments)}] #{segment_id} {profile.upper()} / "
             f"{target_duration:.2f} сек. / slot={speech_slot:.2f} сек. / "
+            f"epoch={retry_epoch} / "
             f"delay={int(segment.get('start_delay_ms', 0))} ms / "
             f"delivery={str(segment.get('expression_tier') or 'unknown')}"
         )
@@ -401,11 +452,16 @@ def main() -> None:
                 float(args.cfg),
                 max(1, int(args.steps)),
             )
-            seed = int(args.base_seed) + segment_id * 100 + attempt_index
+            seed = seed_for_attempt(
+                int(args.base_seed),
+                segment_id,
+                attempt_index,
+                retry_epoch,
+            )
             set_seed(seed, torch)
             raw_path = (
                 attempts_dir
-                / f"{segment_id:02d}_{profile}_attempt{attempt_index}.wav"
+                / f"{segment_id:02d}_{profile}_epoch{retry_epoch}_attempt{attempt_index}.wav"
             )
 
             started = time.perf_counter()
@@ -431,6 +487,8 @@ def main() -> None:
             candidate = {
                 "attempt": attempt_index,
                 "seed": seed,
+                "retry_epoch": retry_epoch,
+                "retry_epoch_policy": RETRY_EPOCH_POLICY,
                 "cfg": cfg_value,
                 "steps": step_count,
                 "path": str(raw_path),
@@ -482,7 +540,7 @@ def main() -> None:
                 f"{source_detail}"
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
                 f"cfg={cfg_value:.2f}; steps={step_count}; "
-                f"seed={seed}; CPU={elapsed:.1f}"
+                f"epoch={retry_epoch}; seed={seed}; CPU={elapsed:.1f}"
             )
             del wav
             gc.collect()
@@ -490,11 +548,23 @@ def main() -> None:
         acceptable = _acceptable_candidates(candidates, speech_slot)
         if not acceptable:
             diagnostics = _candidate_failure_summary(candidates, speech_slot)
+            invalidated = invalidate_segment_for_retry(
+                work_dir,
+                segment,
+                reason="raw_candidate_hard_failure",
+                fitted_path=fitted_path,
+                evidence=_raw_failure_evidence(
+                    candidates,
+                    speech_slot=speech_slot,
+                    retry_epoch=retry_epoch,
+                ),
+            )
             for item in candidates:
                 item.pop("samples", None)
             raise RuntimeError(
                 f"Сегмент #{segment_id}: после {len(candidates)} прямых попыток "
                 "нет ни одного hard-quality кандидата; best-of-bad запрещён. "
+                f"Следующий повтор использует seed epoch {invalidated['retry_epoch']}. "
                 f"{diagnostics}"
             )
         selected = min(acceptable, key=lambda item: float(item["score"]))
@@ -538,6 +608,8 @@ def main() -> None:
             "fit_tempo_policy": FIT_TEMPO_POLICY,
             "speech_slot_policy": SPEECH_SLOT_POLICY,
             "speech_slot": speech_slot,
+            "retry_epoch_policy": RETRY_EPOCH_POLICY,
+            "retry_epoch": retry_epoch,
             "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
             "reference_path": str(reference),
             "reference_sha256": reference_report["sha256"],
@@ -579,6 +651,8 @@ def main() -> None:
                     for key, value in {
                         "attempt": item["attempt"],
                         "seed": item["seed"],
+                        "retry_epoch": item["retry_epoch"],
+                        "retry_epoch_policy": item["retry_epoch_policy"],
                         "cfg": item["cfg"],
                         "steps": item["steps"],
                         "duration": item["duration"],
@@ -625,16 +699,18 @@ def main() -> None:
     build_timeline(fitted_segments, output, float(args.video_duration))
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.4-direct-exact-slot-cadence-resilience",
+        "schema_version": "5.5-direct-durable-seed-epochs",
         "policy": POLICY,
         "strategy": (
             "direct reference-only VoxCPM2 + guarded references + exact SRT speech slots + "
-            "bounded adaptive candidates + pre-selection fit-tempo/artifact/voice/cadence hard gates + "
+            "bounded adaptive candidates + durable failed-segment seed epochs + "
+            "pre-selection fit-tempo/artifact/voice/cadence hard gates + "
             "source-guided prosody ranking + assembled timeline QA + no best-of-bad fallback"
         ),
         "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
         "fit_tempo_policy": FIT_TEMPO_POLICY,
         "speech_slot_policy": SPEECH_SLOT_POLICY,
+        "retry_epoch_policy": RETRY_EPOCH_POLICY,
         "base_candidate_attempts": BASE_CANDIDATE_ATTEMPTS,
         "max_candidate_attempts": MAX_CANDIDATE_ATTEMPTS,
         "model_path": str(model_path),
