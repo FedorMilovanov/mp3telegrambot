@@ -48,6 +48,8 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
     voxcpm = repo / "tools" / "voxcpm2"
     paths = {
         "worker": voxcpm / "dub_worker_hardened.py",
+        "worker_facade": voxcpm / "dub_worker_hardened" / "__init__.py",
+        "worker_main": voxcpm / "dub_worker_hardened" / "__main__.py",
         "supervisor": repo / "services" / "dub_studio_runtime.py",
         "supervisor_facade": repo / "services" / "dub_studio_runtime" / "__init__.py",
         "title_facade": repo / "services" / "dub_title_policy" / "__init__.py",
@@ -62,6 +64,19 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
         and "from tools.voxcpm2 import dub_job_preflight" in text["worker"]
         and "def _execute_job_with_preflight(" in text["worker"]
         and "worker.execute_job = _execute_job_with_preflight" in text["worker"]
+        and 'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"'
+        in text["worker_facade"]
+        and 'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v1"'
+        in text["worker_facade"]
+        and "def _execute_job_with_cancellable_preflight(" in text["worker_facade"]
+        and "with _store_root_environment(store):" in text["worker_facade"]
+        and "reason = _stop_reason(store, job_id)" in text["worker_facade"]
+        and "_legacy._ORIGINAL_EXECUTE_JOB(store, worker_id, job)"
+        in text["worker_facade"]
+        and "_legacy.install_hardening()" in text["worker_facade"]
+        and "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight"
+        in text["worker_facade"]
+        and "from . import main" in text["worker_main"]
         and 'POLICY = "dub-production-preflight-v1"' in text["preflight"]
         and 'POLICY = "dub-production-preflight-v2"' in text["preflight_facade"]
         and "REPORT_SCHEMA = 2" in text["preflight_facade"]
@@ -91,7 +106,8 @@ def _v46_static_contract(repo: Path) -> tuple[bool, str]:
         and "_legacy.subprocess = _SubprocessProxy()" in text["core_facade"]
     )
     detail = (
-        "worker/preflight v4.6/v2 synchronized; shared recipe root normalized; "
+        "worker/preflight v4.6/v2 synchronized; cancellation before runner; "
+        "explicit worker root propagation; shared recipe root normalized; "
         "full implementation/model/runtime cache; preflight heartbeat; atomic report; "
         "deterministic child imports; supervisor/title hooks write through"
         if ok
@@ -272,6 +288,7 @@ def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
         "segment-proven delay with transactional migration/normalizer; "
         "canonical pre-network source identity and atomic project request; "
         "production preflight v2 with full model/runtime fingerprints and heartbeat; "
+        "cancellation-safe worker with explicit root propagation; "
         "deterministic child Python/master diagnostics; write-through service hooks; "
         "self-fingerprinted compatibility facades; strict runtime numbers"
     )
