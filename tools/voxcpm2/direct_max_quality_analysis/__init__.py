@@ -3,9 +3,9 @@
 """Fit-aware facade for direct VoxCPM2 candidate analysis.
 
 The established acoustic and identity diagnostics remain in the sibling
-``direct_max_quality_analysis.py`` module.  This package adds one missing hard
-contract: a candidate is not acceptable when fitting it into the SRT speech slot
-would require tempo above the renderer's declared natural-speech limit.
+``direct_max_quality_analysis.py`` module. This package adds one missing hard
+contract: a candidate is not acceptable when fitting it into its exact SRT
+speech slot would require tempo above the declared natural-speech limit.
 """
 from __future__ import annotations
 
@@ -30,15 +30,21 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v1"
+FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"
 _legacy_candidate_hard_ok = _legacy.candidate_hard_ok
 
 
 def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
-    """Return the exact atempo factor the fitter would need for this candidate."""
+    """Return the exact atempo factor the fitter would need for this candidate.
+
+    Cadence analysis knows the original segment and records ``actual_speech_slot``.
+    Prefer that value over a legacy caller's provisional slot so short SRT cues
+    can never pass against a fabricated one-second window.
+    """
     try:
         duration = float(candidate.get("duration"))
-        slot = float(speech_slot)
+        slot_value = candidate.get("actual_speech_slot", speech_slot)
+        slot = float(slot_value)
     except (TypeError, ValueError, OverflowError):
         return math.inf
     if not math.isfinite(duration) or not math.isfinite(slot) or duration <= 0.0 or slot <= 0.0:
