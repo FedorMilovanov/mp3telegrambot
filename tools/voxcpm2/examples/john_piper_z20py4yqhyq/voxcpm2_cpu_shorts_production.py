@@ -22,14 +22,15 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import direct_max_quality_cli as _direct_cli
+from tools.voxcpm2.direct_max_quality_io import (
+    MAX_TEMPO as HARD_MAX_TEMPO,
+    PREFERRED_MAX_TEMPO,
+)
 
-# 1.35 remains the preferred natural-speech ceiling. A candidate above it must
-# trigger the third synthesis attempt instead of being accepted merely because
-# its acoustic score is good. A tiny hard margin up to 1.36 prevents a complete
-# multi-hour job from failing on an inaudible 0.008 boundary overshoot such as
-# atempo=1.358, while anything materially faster still fails closed.
-PREFERRED_MAX_TEMPO = 1.35
-HARD_MAX_TEMPO = 1.36
+# A candidate above the preferred ceiling must trigger another synthesis attempt
+# instead of being accepted merely because its acoustic score is good. The tiny
+# hard margin preserves the validated atempo=1.358 boundary case while anything
+# materially faster still fails closed.
 _ORIGINAL_CANDIDATE_SCORE = _direct_cli.candidate_score
 
 
