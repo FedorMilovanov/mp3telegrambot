@@ -30,6 +30,19 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 CHECKPOINT_MIGRATION_POLICY = "signature-verified-complete-checkpoint-adoption-v1"
+MAX_ACCEPTED_SEED_ROUNDS = 12
+
+
+def _signature_seed_round(actual: Any, base_seed: int, stride: int) -> int | None:
+    try:
+        value = int(actual)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    delta = value - int(base_seed)
+    if stride <= 0 or delta < 0 or delta % stride:
+        return None
+    round_index = delta // stride
+    return round_index if round_index <= MAX_ACCEPTED_SEED_ROUNDS else None
 
 
 def _signature_valid_checkpoint_set(
@@ -61,7 +74,9 @@ def _signature_valid_checkpoint_set(
         if request.get("base_seed") is not None
         else 2026072800
     )
+    stride = int(_legacy.clean.clean_runtime_contract.RETRY_SEED_OFFSET)
     accepted_ids: list[int] = []
+    accepted_seed_rounds: set[int] = set()
 
     for path in checkpoint_paths:
         payload = _legacy._read_json(path)
@@ -107,7 +122,6 @@ def _signature_valid_checkpoint_set(
             "expression": _legacy._expected_expression(segment),
             "steps": steps,
             "cfg": cfg,
-            "base_seed": base_seed,
         }
         for key, expected in expected_core.items():
             actual = signature.get(key)
@@ -116,6 +130,14 @@ def _signature_valid_checkpoint_set(
                     return []
             elif actual != expected:
                 return []
+        seed_round = _signature_seed_round(
+            signature.get("base_seed"),
+            base_seed,
+            stride,
+        )
+        if seed_round is None:
+            return []
+        accepted_seed_rounds.add(seed_round)
         if not str(signature.get("model_config_sha256") or ""):
             return []
         if not str(signature.get("reference_sha256") or ""):
@@ -129,6 +151,16 @@ def _signature_valid_checkpoint_set(
         return []
     if accepted_ids[-1] > len(segments_payload):
         return []
+
+    if accepted_seed_rounds != {0}:
+        # The direct renderer expects the request base seed in checkpoint
+        # signatures. Retarget metadata only; fitted WAVs remain byte-identical.
+        _legacy.clean.semantic_tts_guard_v4._retarget(
+            segment_work,
+            good_ids=accepted_ids,
+            failed_ids=[],
+            new_base_seed=base_seed,
+        )
     return accepted_ids
 
 
@@ -153,7 +185,9 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CHECKPOINT_MIGRATION_POLICY",
+        "MAX_ACCEPTED_SEED_ROUNDS",
         "_legacy_checkpoint_prefix",
+        "_signature_seed_round",
         "_signature_valid_checkpoint_set",
         "main",
     }
