@@ -2,15 +2,16 @@
 # -*- coding: utf-8 -*-
 """Monolithic-expression facade for source-guided Dub Studio delivery.
 
-The sibling implementation still measures the source prosody.  This facade
-changes the unsafe performance decision: every segment uses one calm identity
-reference, emotional scores move slowly, isolated strong bursts are suppressed,
-and style metadata explicitly requests one connected sermon performance.
+The sibling implementation still measures source prosody. This facade changes
+the unsafe performance decision: every segment uses one calm identity reference,
+emotional scores move slowly, isolated strong bursts are suppressed, and style
+metadata explicitly requests one connected sermon performance.
 """
 from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -36,19 +37,21 @@ ARC_POLICY = "bounded-neighbour-supported-emotion-v1"
 MAX_ADJACENT_SCORE_STEP = 0.26
 MIN_STRONG_NEIGHBOUR_SCORE = 0.20
 
+# Preserve proven measurement functions before installing facade overrides.
+_legacy_plan_segments = _legacy.plan_segments
+
 
 def _number(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError):
         return float(default)
-    return result if result == result and abs(result) != float("inf") else float(default)
+    return result if math.isfinite(result) else float(default)
 
 
 def _monolithic_scores(values: list[float]) -> list[float]:
     if not values:
         return []
-    # Two low-pass passes keep real builds but remove one-cue emotional spikes.
     current = [max(-0.72, min(0.72, _number(value))) for value in values]
     for _ in range(2):
         smoothed: list[float] = []
@@ -81,7 +84,7 @@ def _tier(scores: list[float], index: int) -> str:
         return "warm"
     if score <= 0.38:
         return "earnest"
-    neighbours = []
+    neighbours: list[float] = []
     if index:
         neighbours.append(scores[index - 1])
     if index + 1 < len(scores):
@@ -117,12 +120,14 @@ def plan_segments(
     report_path: Path,
 ) -> list[dict[str, Any]]:
     original_text = [str(item.get("text") or "") for item in segments]
-    measured = _legacy.plan_segments(
+    measured = _legacy_plan_segments(
         source=source,
         segments=segments,
         duration=duration,
         report_path=report_path,
     )
+    if len(measured) != len(original_text):
+        raise RuntimeError("Source expression analysis изменил число сегментов.")
     scores = _monolithic_scores(
         [_number(item.get("expression_score")) for item in measured]
     )
@@ -131,7 +136,10 @@ def plan_segments(
     for index, item in enumerate(measured):
         updated = dict(item)
         tier = _tier(scores, index)
-        cadence = str(updated.get("cadence_type") or _legacy.classify_cadence(original_text[index]))
+        cadence = str(
+            updated.get("cadence_type")
+            or _legacy.classify_cadence(original_text[index])
+        )
         updated.update(
             expression_policy=POLICY,
             expression_arc_policy=ARC_POLICY,
@@ -239,6 +247,7 @@ __all__ = sorted(
         "MIN_STRONG_NEIGHBOUR_SCORE",
         "POLICY",
         "REFERENCE_POLICY",
+        "_legacy_plan_segments",
         "build_controlled_expressive_reference",
         "plan_json",
         "plan_segments",
