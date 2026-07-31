@@ -285,6 +285,21 @@ def test_generic_project_runtime_delegates_engine_to_backend() -> None:
     assert "--archive-root" not in source
 
 
+def test_audio_repair_runtime_delegates_engine_to_backend() -> None:
+    source = (ROOT / "tools" / "voxcpm2" / "generic_audio_repair_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "backend = get_backend(request.get(\"speech_backend\") or DEFAULT_BACKEND_ID)" in source
+    assert "backend.process_environment(" in source
+    assert "backend.build_renderer_command(" in source
+    assert "backend.build_master_command(" in source
+    assert "CUDA_VISIBLE_DEVICES" not in source
+    assert "HF_HUB_OFFLINE" not in source
+    assert "synth_script" not in source
+    assert "master_script" not in source
+
+
 def test_clean_core_does_not_own_model_specific_command_arguments() -> None:
     source = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(
         encoding="utf-8"
