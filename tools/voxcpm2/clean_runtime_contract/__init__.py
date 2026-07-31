@@ -37,7 +37,6 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/clean_production_core/__init__.py",
     "tools/voxcpm2/generic_project_runtime/__init__.py",
     "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
-    "tools/voxcpm2/generic_clean_direct_runtime/__main__.py",
     "tools/voxcpm2/clean_source_download/__init__.py",
     "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
     "tools/voxcpm2/direct_max_quality_render/__init__.py",
@@ -59,6 +58,8 @@ _FACADE_RELEASE_MODULES = (
     "tools/voxcpm2/professional_audio_qa_v45/__init__.py",
     "tools/voxcpm2/timeline_onset_repair.py",
     "tools/voxcpm2/preflight_json_protocol.py",
+    "tools/voxcpm2/independent_qa_retry.py",
+    "tools/voxcpm2/generic_clean_direct_runtime/__main__.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
