@@ -41,6 +41,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/expressive_continuity/__init__.py",
     "tools/voxcpm2/russian_pronunciation.py",
     "tools/voxcpm2/direct_monolith_contract.py",
+    "tools/voxcpm2/direct_monolith_contract/__init__.py",
     "tools/voxcpm2/direct_max_quality_cli/__init__.py",
     "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
     "tools/voxcpm2/direct_max_quality_render/__init__.py",
