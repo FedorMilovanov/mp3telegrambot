@@ -15,6 +15,10 @@ from services.speech_backends import (
 )
 from tools.voxcpm2 import semantic_tts_guard_v4
 from tools.voxcpm2 import timeline_onset_repair
+from tools.voxcpm2.professional_audio_qa_v45 import (
+    TIMING_RECHECK_POLICY,
+    _remeasure_repaired_timing,
+)
 
 
 def _late_speech(*, onset: float, trailing: float, duration: float = 4.0):
@@ -37,7 +41,7 @@ def _timing_report(segment_id: int, *, onset_ms: float, trailing_ms: float):
             {
                 "id": segment_id,
                 "passed": False,
-                "semantic": {"passed": True},
+                "semantic": {"passed": True, "heard": "тестовая фраза"},
                 "acoustic": {"passed": True},
                 "continuity_v45": {"passed": True},
                 "voice_match_v45": {"passed": True},
@@ -92,6 +96,38 @@ def test_late_onset_is_shifted_without_resynthesis(tmp_path: Path, onset: float)
     )
 
 
+def test_repaired_window_rechecks_only_timing_and_reuses_semantics(tmp_path: Path) -> None:
+    original, sample_rate = _late_speech(onset=0.810, trailing=0.230)
+    timeline = tmp_path / "timeline.wav"
+    sf.write(timeline, original, sample_rate, subtype="FLOAT")
+    segments = [
+        {
+            "id": 5,
+            "start": 0.0,
+            "end": 4.0,
+            "start_delay_ms": 0,
+            "text": "Тестовая фраза.",
+        }
+    ]
+    report = _timing_report(5, onset_ms=810.0, trailing_ms=230.0)
+    semantic_before = dict(report["segments"][0]["semantic"])
+    timeline_onset_repair.repair_timeline_onsets(timeline, segments, report)
+
+    failed, repaired_report = _remeasure_repaired_timing(
+        timeline,
+        segments,
+        report,
+        [5],
+    )
+
+    check = repaired_report["segments"][0]
+    assert failed == []
+    assert check["passed"] is True
+    assert check["timing"]["passed"] is True
+    assert check["timing"]["recheck_policy"] == TIMING_RECHECK_POLICY
+    assert check["semantic"] == semantic_before
+
+
 def test_non_timing_failure_is_never_repaired(tmp_path: Path) -> None:
     audio, sample_rate = _late_speech(onset=0.810, trailing=0.230)
     timeline = tmp_path / "timeline.wav"
@@ -124,8 +160,9 @@ def test_speech_backend_registry_exposes_voxcpm2_as_an_adapter() -> None:
 
 
 def test_runtime_contract_fingerprints_backend_and_onset_repair_sources() -> None:
+    root = Path(__file__).resolve().parents[1]
     source = (
-        Path(__file__).resolve().parents[1]
+        root
         / "tools"
         / "voxcpm2"
         / "clean_runtime_contract"
@@ -137,6 +174,40 @@ def test_runtime_contract_fingerprints_backend_and_onset_repair_sources() -> Non
         "services/speech_backends/voxcpm2.py",
         "tools/voxcpm2/timeline_onset_repair.py",
         "tools/voxcpm2/professional_audio_qa_v45/__init__.py",
+        "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
         'render["speech_backend"] = backend_payload',
     ):
         assert marker in source
+
+
+def test_complete_retry_round_checkpoints_are_migratable_without_audio_loss() -> None:
+    root = Path(__file__).resolve().parents[1]
+    facade = (
+        root
+        / "tools"
+        / "voxcpm2"
+        / "generic_clean_direct_runtime"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+    main = (
+        root
+        / "tools"
+        / "voxcpm2"
+        / "generic_clean_direct_runtime"
+        / "__main__.py"
+    ).read_text(encoding="utf-8")
+    required = (
+        'CHECKPOINT_MIGRATION_POLICY = "signature-verified-complete-checkpoint-adoption-v1"',
+        "MAX_ACCEPTED_SEED_ROUNDS = 12",
+        "accepted_ids != list(range(1, accepted_ids[-1] + 1))",
+        "accepted_ids[-1] > len(segments_payload)",
+        "selected_raw_pitch_evidence_ok",
+        "model_config_sha256",
+        "reference_sha256",
+        "_legacy.clean.semantic_tts_guard_v4._retarget(",
+        "new_base_seed=base_seed",
+    )
+    for marker in required:
+        assert marker in facade
+    assert "from . import main" in main
+    assert "main()" in main
