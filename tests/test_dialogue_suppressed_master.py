@@ -6,23 +6,29 @@ from tools.voxcpm2 import master_monolithic_mix
 from tools.voxcpm2 import monolithic_runtime_install
 
 
-def test_requested_eighteen_percent_becomes_side_bed_with_one_percent_center() -> None:
+def test_requested_source_level_is_audit_only_and_applied_level_is_zero() -> None:
     levels = master_monolithic_mix.source_bed_levels(0.18)
 
     assert levels["requested_original_level"] == 0.18
-    assert levels["spatial_side_level"] == 0.18
-    assert levels["center_full_mix_level"] == 0.010
-    assert levels["center_full_mix_level"] < levels["spatial_side_level"] / 10.0
+    assert levels["applied_original_level"] == 0.0
+    assert levels["spatial_side_level"] == 0.0
+    assert levels["center_full_mix_level"] == 0.0
+    assert levels["source_bed_applied"] is False
+    assert levels["source_bed_disabled_reason"] == (
+        "original_mid_and_side_may_both_contain_dialogue"
+    )
 
 
-def test_small_requested_bed_scales_center_floor_proportionally() -> None:
-    levels = master_monolithic_mix.source_bed_levels(0.04)
+def test_any_requested_bed_remains_zero_in_direct_ready_srt_mode() -> None:
+    for requested in (0.0, 0.04, 0.18, 1.0):
+        levels = master_monolithic_mix.source_bed_levels(requested)
+        assert levels["requested_original_level"] == requested
+        assert levels["applied_original_level"] == 0.0
+        assert levels["center_full_mix_level"] == 0.0
+        assert levels["spatial_side_level"] == 0.0
 
-    assert levels["spatial_side_level"] == 0.04
-    assert levels["center_full_mix_level"] == 0.04 * 0.065
 
-
-def test_mix_graph_suppresses_center_dialogue_and_keeps_spatial_side(
+def test_mix_graph_uses_only_russian_audio(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -42,11 +48,13 @@ def test_mix_graph_suppresses_center_dialogue_and_keeps_spatial_side(
         russian_gain=1.0,
     )
 
-    assert "aformat=channel_layouts=stereo" in graph
-    assert "volume=0.010000000[center_floor]" in graph
-    assert "pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0" in graph
-    assert "volume=0.180000000[spatial_bed]" in graph
-    assert "[original_bed][russian]amix" in graph
+    assert graph.startswith("[1:a]")
+    assert "[0:a]" not in graph
+    assert "source_side" not in graph
+    assert "spatial_bed" not in graph
+    assert "center_floor" not in graph
+    assert "volume=1.000000000" in graph
+    assert "apad=pad_dur=60.000000" in graph
     assert len(calls) == 1
     command = calls[0]
     assert "-filter_complex" in command
