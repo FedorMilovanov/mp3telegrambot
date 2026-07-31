@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Cross-language source-prosody advisory for independently rendered breaths.
+"""Cross-language source-prosody diagnostics for independently rendered breaths.
 
 English and Russian windows may share timeline anchors but not lexical stress,
-word duration or breath boundaries. Source F0 therefore remains useful for
-ranking and diagnostics, but it may never relax speaker-identity hard gates.
-Absolute anchor, neighbour, timbre and pitch limits stay authoritative.
+word duration or breath boundaries. Source F0 is therefore recorded for audit
+only. It may neither relax speaker-identity hard gates nor change candidate
+ranking until semantic/word alignment is available.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-POLICY = "cross-language-source-prosody-advisory-v2"
+POLICY = "cross-language-source-prosody-diagnostic-v3"
 ABSOLUTE_GATE_OVERRIDE_ALLOWED = False
+RANKING_PENALTY_ENABLED = False
 
 MEDIAN_BASE_LIMIT_ST = 5.0
 MEDIAN_SOURCE_HEADROOM_ST = 2.5
@@ -26,8 +27,6 @@ P90_MAX_LIMIT_ST = 12.5
 P90_UNGUIDED_LIMIT_ST = 8.0
 
 DIRECTION_MISMATCH_MIN_ST = 4.0
-DIRECTION_MISMATCH_PENALTY = 28.0
-MAX_PENALTY = 120.0
 
 
 def _finite(value: Any) -> float | None:
@@ -92,7 +91,7 @@ def evaluate_transition(
     current_segment: dict[str, Any],
     previous_segment: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Return ranking evidence without permission to override identity gates."""
+    """Return transparent diagnostics with zero production penalty."""
     generated_median = _signed_semitones(
         _identity_pitch(current_identity, "f0_median"),
         _identity_pitch(previous_identity, "f0_median"),
@@ -126,15 +125,15 @@ def evaluate_transition(
     )
 
     warnings: list[str] = []
-    penalty = 0.0
+    raw_diagnostic_score = 0.0
     if generated_median is not None:
         excess = max(0.0, abs(generated_median) - median_limit)
-        penalty += excess * 18.0
+        raw_diagnostic_score += excess * 18.0
         if excess > 1e-9:
             warnings.append("source_relative_f0_median_jump")
     if generated_p90 is not None:
         excess = max(0.0, abs(generated_p90) - p90_limit)
-        penalty += excess * 10.0
+        raw_diagnostic_score += excess * 10.0
         if excess > 1e-9:
             warnings.append("source_relative_f0_p90_jump")
 
@@ -147,26 +146,26 @@ def evaluate_transition(
     )
     if direction_mismatch:
         warnings.append("cross_language_pitch_direction_mismatch")
-        penalty += DIRECTION_MISMATCH_PENALTY
+        raw_diagnostic_score += 28.0
 
     source_median_available = source_median is not None
     source_p90_available = source_p90 is not None
     complete_source_evidence = bool(source_median_available and source_p90_available)
     return {
         "policy": POLICY,
+        "role": "diagnostics_only_until_semantic_alignment",
         "available": previous_identity is not None,
-        # Compatibility field deliberately remains false. Existing callers then
-        # keep their conservative absolute pitch fallbacks instead of granting a
-        # cross-language override.
         "source_available": False,
         "advisory_source_available": complete_source_evidence,
         "source_median_available": source_median_available,
         "source_p90_available": source_p90_available,
         "absolute_gate_override_allowed": ABSOLUTE_GATE_OVERRIDE_ALLOWED,
+        "ranking_penalty_enabled": RANKING_PENALTY_ENABLED,
         "hard_ok": True,
         "failures": [],
         "warnings": warnings,
-        "penalty": min(MAX_PENALTY, max(0.0, penalty)),
+        "raw_diagnostic_score": max(0.0, raw_diagnostic_score),
+        "penalty": 0.0,
         "generated_f0_median_jump_st": generated_median,
         "generated_f0_p90_jump_st": generated_p90,
         "source_f0_median_jump_st": source_median,
@@ -199,5 +198,6 @@ __all__ = [
     "P90_SOURCE_HEADROOM_ST",
     "P90_UNGUIDED_LIMIT_ST",
     "POLICY",
+    "RANKING_PENALTY_ENABLED",
     "evaluate_transition",
 ]
