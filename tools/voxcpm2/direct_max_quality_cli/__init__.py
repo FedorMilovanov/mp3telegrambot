@@ -4,8 +4,8 @@
 
 The established CLI remains in ``direct_max_quality_cli.py``. This package
 shadows that module for production imports and injects one-speaker continuity,
-separate synthesis text, Russian stress evidence, conservative length floors and
-explicit failure diagnostics without weakening any existing quality gate.
+bounded pronunciation variants, Russian stress evidence, conservative length
+floors and explicit failure diagnostics without weakening existing quality gates.
 """
 from __future__ import annotations
 
@@ -35,6 +35,8 @@ for _name in dir(_legacy):
 
 POLICY = "direct-cli-monolithic-voice-v1"
 SYNTHESIS_TEXT_POLICY = russian_pronunciation.POLICY
+PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY
+_CURRENT_ATTEMPT = 1
 
 _legacy_read_segments = _legacy.read_segments
 _legacy_seed_for_attempt = _legacy.seed_for_attempt
@@ -57,7 +59,9 @@ def seed_for_attempt(
     attempt: int,
     retry_epoch: int,
 ) -> int:
+    global _CURRENT_ATTEMPT
     direct_monolith_contract.set_current_segment_id(segment_id)
+    _CURRENT_ATTEMPT = max(1, int(attempt))
     return int(
         _legacy_seed_for_attempt(
             base_seed,
@@ -80,7 +84,7 @@ def _generate(
     seed: int,
 ) -> Any:
     segment = direct_monolith_contract.current_segment() or {"text": text}
-    synthesis = russian_pronunciation.synthesis_text(segment)
+    synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
     cadence = str(segment.get("cadence_type") or "")
     estimated_steps = max(2, int(math.floor(max(2, int(max_len)) / 1.40)))
     minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
@@ -116,11 +120,17 @@ def source_prosody_penalty(
     if not isinstance(match, dict):
         match = {}
         candidate["source_prosody_match"] = match
+    variant = russian_pronunciation.variant_for_attempt(
+        segment,
+        int(candidate.get("attempt") or _CURRENT_ATTEMPT),
+    )
     match["monolith_identity"] = monolith
     match["synthesis_text_policy"] = SYNTHESIS_TEXT_POLICY
+    match["pronunciation_variant_policy"] = PRONUNCIATION_VARIANT_POLICY
+    match["pronunciation_variant"] = variant
     match["display_text"] = str(pronunciation.get("display_text") or "")
     match["synthesis_text_without_control"] = str(
-        pronunciation.get("synthesis_text_without_control") or ""
+        variant.get("synthesis_text_without_control") or ""
     )
     return base + direct_monolith_contract.candidate_penalty(candidate)
 
@@ -148,11 +158,14 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
     failures = ",".join(str(value) for value in evidence.get("failures") or []) or "ok"
     identity = evidence.get("identity") or {}
     neighbour = evidence.get("neighbour") or {}
+    transition = evidence.get("source_relative_transition") or {}
     start = evidence.get("start_artifact") or {}
     stress = evidence.get("stress_evidence") or {}
+    variant = (candidate.get("source_prosody_match") or {}).get("pronunciation_variant") or {}
     return (
         "monolith={failures}, anchorSim={anchor:.3f}, neighbourSim={neighbour_sim}, "
-        "adjF0={adj_f0}, f0={f0:.1f}, startLeak={start_leak}, stress={stress}"
+        "adjF0={adj_f0}, sourceAdj={source_adj}, allowedAdj={allowed_adj}, "
+        "f0={f0:.1f}, startLeak={start_leak}, stress={stress}, variant={variant}"
     ).format(
         failures=failures,
         anchor=float(identity.get("anchor_spectral_similarity") or 0.0),
@@ -162,8 +175,18 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
             else "n/a"
         ),
         adj_f0=(
-            f"{float(neighbour.get('f0_median_ratio')):.3f}"
-            if neighbour.get("f0_median_ratio") is not None
+            f"{float(transition.get('generated_f0_median_jump_st')):.2f}st"
+            if transition.get("generated_f0_median_jump_st") is not None
+            else "n/a"
+        ),
+        source_adj=(
+            f"{float(transition.get('source_f0_median_jump_st')):.2f}st"
+            if transition.get("source_f0_median_jump_st") is not None
+            else "n/a"
+        ),
+        allowed_adj=(
+            f"{float(transition.get('allowed_f0_median_jump_st')):.2f}st"
+            if transition.get("allowed_f0_median_jump_st") is not None
             else "n/a"
         ),
         f0=float(identity.get("f0_median") or 0.0),
@@ -173,6 +196,7 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
             if stress.get("required")
             else "n/a"
         ),
+        variant=int(variant.get("variant_index") or 0),
     )
 
 
@@ -203,6 +227,7 @@ def _raw_failure_evidence(
         )
     )
     payload["monolith_policy"] = direct_monolith_contract.POLICY
+    payload["pronunciation_variant_policy"] = PRONUNCIATION_VARIANT_POLICY
     by_attempt = {
         int(item.get("attempt") or 0): item
         for item in candidates
@@ -217,6 +242,9 @@ def _raw_failure_evidence(
             evidence = candidate.get("monolith_identity") if isinstance(candidate, dict) else None
             if isinstance(evidence, dict):
                 row["monolith_identity"] = evidence
+            match = candidate.get("source_prosody_match") if isinstance(candidate, dict) else None
+            if isinstance(match, dict) and isinstance(match.get("pronunciation_variant"), dict):
+                row["pronunciation_variant"] = match["pronunciation_variant"]
     return payload
 
 
@@ -255,6 +283,7 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "POLICY",
+        "PRONUNCIATION_VARIANT_POLICY",
         "SYNTHESIS_TEXT_POLICY",
         "_acceptable_candidates",
         "_candidate_failure_summary",
