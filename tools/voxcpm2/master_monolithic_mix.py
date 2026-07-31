@@ -131,6 +131,11 @@ def main() -> None:
     _legacy.main()
 
 
+# Importing the module is enough to make direct callers safe; script execution
+# calls the same idempotent installer again before entering the legacy CLI.
+install()
+
+
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
