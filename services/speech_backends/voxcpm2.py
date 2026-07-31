@@ -3,11 +3,42 @@
 """VoxCPM2 adapter implementing the generic speech-backend contract."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from typing import Any
 
-from services.speech_backends.base import BackendCapabilities, BackendIdentity
+from services.speech_backends.base import (
+    BackendCapabilities,
+    BackendIdentity,
+    BackendRuntimePaths,
+)
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v1"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v2"
+
+_DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
+_DEFAULT_ARCHIVE = r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
+_RENDERER_MODULE = (
+    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production"
+)
+_MASTER_MODULE = (
+    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
+)
+_FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
+_IMPORT_MODULES = (
+    _FINAL_QA_MODULE,
+    _MASTER_MODULE,
+    _RENDERER_MODULE,
+    "voxcpm",
+    "torch",
+    "soundfile",
+)
+
+
+def _request_path(request: dict[str, Any], key: str, default: str) -> Path:
+    value = default if key not in request or request[key] is None else request[key]
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        raise RuntimeError(f"Speech backend request.{key} должен быть непустым путём.")
+    return Path(value.strip()).expanduser().resolve()
 
 
 class VoxCPM2Backend:
@@ -49,6 +80,29 @@ class VoxCPM2Backend:
                 "cache_length",
             ),
             output_contract="mono-pcm-wav-segment-v1",
+        )
+
+    def runtime_paths(
+        self,
+        repo_root: Path,
+        request: dict[str, Any],
+    ) -> BackendRuntimePaths:
+        repo = Path(repo_root).resolve()
+        venv = _request_path(request, "cpu_venv", _DEFAULT_CPU_VENV)
+        archive = _request_path(request, "vox_archive", _DEFAULT_ARCHIVE)
+        python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+        return BackendRuntimePaths(
+            backend_id=self.backend_id,
+            repo_root=repo,
+            cpu_python=python,
+            archive_root=archive,
+            renderer_entrypoint=example / "voxcpm2_cpu_shorts_production.py",
+            master_entrypoint=example / "master_constant_mix.py",
+            import_modules=_IMPORT_MODULES,
+            renderer_module=_RENDERER_MODULE,
+            master_module=_MASTER_MODULE,
+            final_qa_module=_FINAL_QA_MODULE,
         )
 
 
