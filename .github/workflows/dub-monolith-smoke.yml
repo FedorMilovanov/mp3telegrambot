@@ -5,10 +5,13 @@ on:
     branches: [main]
     paths:
       - "services/dub_worker_release.py"
+      - "services/dub_release_health_v64.py"
+      - "services/dub_studio_runtime/**"
       - "services/dub_title_policy/**"
       - "services/speech_backends/**"
       - "tools/voxcpm2/**"
       - "handlers/dub_health/**"
+      - "tests/test_continuous_reference_typical_f0.py"
       - "tests/test_cross_language_identity_fail_closed.py"
       - "tests/test_dialogue_suppressed_master.py"
       - "tests/test_dub_health_v60_monolithic_release.py"
@@ -51,6 +54,7 @@ jobs:
           PYTHONIOENCODING: "utf-8"
         run: |
           python -m pytest -q \
+            tests/test_continuous_reference_typical_f0.py \
             tests/test_cross_language_identity_fail_closed.py \
             tests/test_dialogue_suppressed_master.py \
             tests/test_dub_health_v60_monolithic_release.py \
