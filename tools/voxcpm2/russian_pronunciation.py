@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 """Fail-closed Russian pronunciation overrides for direct speech synthesis.
 
-The display/ASR text is never changed. A separate synthesis string may contain
-conservative syllable hints and the official VoxCPM ``(control)text`` prefix.
-Known final-word stress overrides also receive acoustic evidence checks.
+The display/ASR text is never changed. A bounded set of synthesis strings may
+contain conservative syllable hints and the official VoxCPM ``(control)text``
+prefix. Candidate attempts alternate those forms, while known final-word stress
+is accepted only after independent acoustic evidence.
 """
 from __future__ import annotations
 
@@ -15,18 +16,20 @@ from typing import Any
 import numpy as np
 
 POLICY = "russian-pronunciation-overrides-v1"
+VARIANT_POLICY = "bounded-pronunciation-candidate-variants-v1"
 CONTROL_POLICY = "stable-monolithic-control-instruction-v1"
 STRESS_EVIDENCE_POLICY = "final-stressed-syllable-energy-duration-v1"
 
-# Manual Russian stress marks are not a documented VoxCPM2 contract. Keep the
-# table deliberately small and evidence-backed instead of silently rewriting an
-# unlimited vocabulary.
+# Manual Russian stress syntax is not a documented VoxCPM2 contract. Keep the
+# table deliberately small and test both the canonical spelling and one bounded
+# syllable hint instead of assuming that a hyphen is universally beneficial.
 _RULES: tuple[dict[str, Any], ...] = (
     {
         "name": "gryadyot-final-stress",
         "pattern": re.compile(r"\bгряд[её]т\b", re.IGNORECASE),
-        "replacement": "гря-дёт",
         "spoken_form": "грядёт",
+        "replacement": "гря-дёт",
+        "variants": ("грядёт", "гря-дёт"),
         "stress": "final",
     },
 )
@@ -49,22 +52,41 @@ def _is_final_lexical_match(text: str, end: int) -> bool:
     return not any(char.isalpha() or char.isdigit() for char in str(text)[int(end):])
 
 
+def _dedupe(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
+
+
 def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
-    """Return transparent display, synthesis and control metadata."""
+    """Return transparent display, bounded synthesis variants and control metadata."""
     display = re.sub(r"\s+", " ", str(segment.get("text") or "")).strip()
-    synthesis = display
+    variants = [display]
     overrides: list[dict[str, Any]] = []
     for rule in _RULES:
-        matches = list(rule["pattern"].finditer(synthesis))
-        if not matches:
+        display_matches = list(rule["pattern"].finditer(display))
+        if not display_matches:
             continue
-        final_word = _is_final_lexical_match(synthesis, matches[-1].end())
-        synthesis = rule["pattern"].sub(str(rule["replacement"]), synthesis)
+        final_word = _is_final_lexical_match(display, display_matches[-1].end())
+        forms = [str(value) for value in rule.get("variants") or () if str(value)]
+        if not forms:
+            forms = [str(rule["spoken_form"]), str(rule["replacement"])]
+        variants = _dedupe(
+            [
+                rule["pattern"].sub(form, existing)
+                for existing in variants
+                for form in forms
+            ]
+        )
         overrides.append(
             {
                 "name": str(rule["name"]),
                 "spoken_form": str(rule["spoken_form"]),
                 "synthesis_form": str(rule["replacement"]),
+                "synthesis_forms": forms,
                 "stress": str(rule["stress"]),
                 "final_word": final_word,
                 "acoustic_evidence_required": final_word,
@@ -83,27 +105,57 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
     if overrides:
         controls.append("Russian pronunciation: stress the final syllable in gryadyot")
     control = ", ".join(_clean_control(item) for item in controls if _clean_control(item))
-    final_text = f"({control}){synthesis}" if control else synthesis
+    controlled = [f"({control}){value}" if control else value for value in variants]
     evidence_required = any(
         bool(item.get("acoustic_evidence_required")) for item in overrides
     )
     return {
         "policy": POLICY,
+        "variant_policy": VARIANT_POLICY,
         "control_policy": CONTROL_POLICY,
         "display_text": display,
-        "synthesis_text": final_text,
-        "synthesis_text_without_control": synthesis,
+        "synthesis_text": controlled[0] if controlled else display,
+        "synthesis_text_without_control": variants[0] if variants else display,
+        "synthesis_variants": controlled or [display],
+        "synthesis_variants_without_control": variants or [display],
         "control_instruction": control,
         "overrides": overrides,
         "stress_evidence_required": evidence_required,
     }
 
 
-def synthesis_text(segment: dict[str, Any]) -> str:
+def variant_for_attempt(segment: dict[str, Any], attempt: int = 1) -> dict[str, Any]:
     prepared = segment.get("pronunciation")
     if not isinstance(prepared, dict) or prepared.get("policy") != POLICY:
         prepared = prepare_segment(segment)
-    return str(prepared.get("synthesis_text") or segment.get("text") or "").strip()
+    controlled = [str(value) for value in prepared.get("synthesis_variants") or []]
+    plain = [
+        str(value)
+        for value in prepared.get("synthesis_variants_without_control") or []
+    ]
+    if not controlled:
+        controlled = [str(prepared.get("synthesis_text") or segment.get("text") or "")]
+    if not plain:
+        plain = [
+            str(
+                prepared.get("synthesis_text_without_control")
+                or segment.get("text")
+                or ""
+            )
+        ]
+    index = (max(1, int(attempt)) - 1) % len(controlled)
+    return {
+        "policy": VARIANT_POLICY,
+        "attempt": max(1, int(attempt)),
+        "variant_index": index,
+        "variant_count": len(controlled),
+        "synthesis_text": controlled[index],
+        "synthesis_text_without_control": plain[min(index, len(plain) - 1)],
+    }
+
+
+def synthesis_text(segment: dict[str, Any], attempt: int = 1) -> str:
+    return str(variant_for_attempt(segment, attempt).get("synthesis_text") or "").strip()
 
 
 def _mono(samples: Any) -> np.ndarray:
@@ -210,11 +262,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
         }
     active_end = int(active_ids[-1])
     search_start = max(int(active_ids[0]), active_end - 115)
-    vowel_like = (
-        active
-        & (zcr <= 0.18)
-        & (levels >= max(-43.0, peak - 23.0))
-    )
+    vowel_like = active & (zcr <= 0.18) & (levels >= max(-43.0, peak - 23.0))
     nuclei = [
         (left, right)
         for left, right in _runs(vowel_like[search_start:active_end + 1])
@@ -274,7 +322,9 @@ __all__ = [
     "CONTROL_POLICY",
     "POLICY",
     "STRESS_EVIDENCE_POLICY",
+    "VARIANT_POLICY",
     "prepare_segment",
     "stress_evidence",
     "synthesis_text",
+    "variant_for_attempt",
 ]
