@@ -11,6 +11,7 @@ from tools.voxcpm2.direct_russian_cadence import classify_cadence, prosody_conto
 
 POLICY = "continuation-timeline-compaction-v1"
 TARGET_GAP_SECONDS = 0.22
+MIN_COMPACTION_GAP_SECONDS = 0.32
 MAX_SHIFT_SECONDS = 2.40
 _MIN_WINDOW_SECONDS = 0.12
 _REPAIRABLE_CADENCES = {"continuation", "linked"}
@@ -40,8 +41,9 @@ def compact_timeline_segments(
 
     Raw candidates remain untouched. When measured speech in a continuation ends
     too early, the padded fitted cue is moved later so its last voiced frame lands
-    close to the following cue. All later cue starts remain unchanged; the shift is
-    bounded, and final assembled QA still checks cadence, fit, tails and real gaps.
+    close to the following cue. All later cue starts remain unchanged; natural
+    pauses up to 320 ms remain untouched, the shift is bounded, and final assembled
+    QA still checks cadence, fit, tails and real gaps.
     """
     if not fitted_segments:
         return [], {"policy": POLICY, "segments": [], "shifted_segment_ids": []}
@@ -90,13 +92,17 @@ def compact_timeline_segments(
         ):
             continue
         next_start = _finite(following["nominal_start"])
-        desired_start = next_start - TARGET_GAP_SECONDS - _finite(current["active_end"])
         nominal_start = _finite(current["nominal_start"])
-        latest_start = min(
+        audible_end = nominal_start + _finite(current["active_end"])
+        existing_gap = max(0.0, next_start - audible_end)
+        current["original_gap_seconds"] = existing_gap
+        if existing_gap <= MIN_COMPACTION_GAP_SECONDS:
+            continue
+        desired_start = next_start - TARGET_GAP_SECONDS - _finite(current["active_end"])
+        planned_start = min(
+            desired_start,
             nominal_start + MAX_SHIFT_SECONDS,
-            next_start - TARGET_GAP_SECONDS - _finite(current["active_end"]),
         )
-        planned_start = max(nominal_start, min(desired_start, latest_start))
         if planned_start > nominal_start + 0.001:
             current["planned_start"] = planned_start
 
@@ -137,6 +143,7 @@ def compact_timeline_segments(
                 "planned_start": planned_start,
                 "planned_end": planned_end,
                 "shift_seconds": max(0.0, shift),
+                "original_gap_seconds": _finite(row.get("original_gap_seconds")),
                 "active_end_relative": _finite(row["active_end"]),
                 "evidence_available": bool(row["evidence_available"]),
                 "evidence_error": str(row["evidence_error"]),
@@ -146,6 +153,7 @@ def compact_timeline_segments(
     return adjusted, {
         "policy": POLICY,
         "target_gap_seconds": TARGET_GAP_SECONDS,
+        "minimum_compaction_gap_seconds": MIN_COMPACTION_GAP_SECONDS,
         "max_shift_seconds": MAX_SHIFT_SECONDS,
         "shifted_segment_ids": shifted_ids,
         "segments": report_rows,
@@ -154,6 +162,7 @@ def compact_timeline_segments(
 
 __all__ = [
     "MAX_SHIFT_SECONDS",
+    "MIN_COMPACTION_GAP_SECONDS",
     "POLICY",
     "TARGET_GAP_SECONDS",
     "compact_timeline_segments",
