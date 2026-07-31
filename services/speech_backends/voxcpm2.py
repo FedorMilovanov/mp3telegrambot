@@ -13,23 +13,19 @@ from services.speech_backends.base import (
     BackendRuntimePaths,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v3"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v4"
+MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
 _DEFAULT_ARCHIVE = r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
 _RENDERER_MODULE = (
     "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production"
 )
-_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"
-_FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
-_IMPORT_MODULES = (
-    _FINAL_QA_MODULE,
-    _MASTER_MODULE,
-    _RENDERER_MODULE,
-    "voxcpm",
-    "torch",
-    "soundfile",
+_LEGACY_MASTER_MODULE = (
+    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
 )
+_DIRECT_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"
+_FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
 
 
 def _request_path(request: dict[str, Any], key: str, default: str) -> Path:
@@ -37,6 +33,20 @@ def _request_path(request: dict[str, Any], key: str, default: str) -> Path:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise RuntimeError(f"Speech backend request.{key} должен быть непустым путём.")
     return Path(value.strip()).expanduser().resolve()
+
+
+def _master_contract(
+    repo: Path,
+    request: dict[str, Any],
+) -> tuple[Path, str]:
+    mode = str(request.get("translation_mode") or "").casefold().strip()
+    if mode == "direct":
+        return (
+            repo / "tools" / "voxcpm2" / "master_monolithic_mix.py",
+            _DIRECT_MASTER_MODULE,
+        )
+    example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+    return example / "master_constant_mix.py", _LEGACY_MASTER_MODULE
 
 
 class VoxCPM2Backend:
@@ -88,18 +98,31 @@ class VoxCPM2Backend:
         archive = _request_path(request, "vox_archive", _DEFAULT_ARCHIVE)
         python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+        master_entrypoint, master_module = _master_contract(repo, request)
+        import_modules = (
+            _FINAL_QA_MODULE,
+            master_module,
+            _RENDERER_MODULE,
+            "voxcpm",
+            "torch",
+            "soundfile",
+        )
         return BackendRuntimePaths(
             backend_id=self.backend_id,
             repo_root=repo,
             cpu_python=python,
             archive_root=archive,
             renderer_entrypoint=example / "voxcpm2_cpu_shorts_production.py",
-            master_entrypoint=repo / "tools" / "voxcpm2" / "master_monolithic_mix.py",
-            import_modules=_IMPORT_MODULES,
+            master_entrypoint=master_entrypoint,
+            import_modules=import_modules,
             renderer_module=_RENDERER_MODULE,
-            master_module=_MASTER_MODULE,
+            master_module=master_module,
             final_qa_module=_FINAL_QA_MODULE,
         )
 
 
-__all__ = ["ADAPTER_POLICY", "VoxCPM2Backend"]
+__all__ = [
+    "ADAPTER_POLICY",
+    "MASTER_SELECTION_POLICY",
+    "VoxCPM2Backend",
+]
