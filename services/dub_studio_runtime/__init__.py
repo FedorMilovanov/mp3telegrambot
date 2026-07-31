@@ -57,11 +57,14 @@ def _install_multicommand_build_wrapper() -> None:
 
 
 def install_dub_studio_runtime() -> None:
-    """Install the proven runtime, then its reliable Telegram command surface."""
+    """Install the proven runtime, command surface and current release-health hook."""
     _legacy._WORKER_RUNTIME = WORKER_RUNTIME
     globals()["_WORKER_RUNTIME"] = WORKER_RUNTIME
     _legacy_install_dub_studio_runtime()
     _install_multicommand_build_wrapper()
+    from services.dub_release_health_v64 import install_release_health_hook
+
+    install_release_health_hook()
 
 
 class _WriteThroughModule(types.ModuleType):
