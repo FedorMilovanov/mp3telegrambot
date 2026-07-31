@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_source_relative_continuity
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import russian_pronunciation
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
@@ -30,17 +31,34 @@ def _segment(segment_id: int, text: str = "Обычная фраза.") -> dict[
     }
 
 
-def test_pronunciation_keeps_display_text_and_builds_separate_gryadyot_prompt() -> None:
+def test_pronunciation_keeps_display_text_and_builds_bounded_gryadyot_variants() -> None:
     segment = _segment(1, "Она надеется на то, что грядёт.")
 
     prepared = russian_pronunciation.prepare_segment(segment)
 
     assert segment["text"] == "Она надеется на то, что грядёт."
     assert prepared["display_text"] == segment["text"]
-    assert "гря-дёт" in prepared["synthesis_text_without_control"]
+    assert prepared["variant_policy"] == russian_pronunciation.VARIANT_POLICY
+    assert prepared["synthesis_variants_without_control"] == [
+        "Она надеется на то, что грядёт.",
+        "Она надеется на то, что гря-дёт.",
+    ]
     assert prepared["synthesis_text"].startswith("(")
     assert "stress the final syllable" in prepared["control_instruction"]
     assert prepared["stress_evidence_required"] is True
+
+
+def test_pronunciation_attempts_alternate_canonical_and_syllable_hint() -> None:
+    segment = _segment(1, "Это то, что грядёт.")
+    segment["pronunciation"] = russian_pronunciation.prepare_segment(segment)
+
+    first = russian_pronunciation.variant_for_attempt(segment, 1)
+    second = russian_pronunciation.variant_for_attempt(segment, 2)
+    third = russian_pronunciation.variant_for_attempt(segment, 3)
+
+    assert first["synthesis_text_without_control"].endswith("грядёт.")
+    assert second["synthesis_text_without_control"].endswith("гря-дёт.")
+    assert third["synthesis_text_without_control"] == first["synthesis_text_without_control"]
 
 
 def test_known_final_stress_requires_strong_last_nucleus() -> None:
@@ -164,7 +182,48 @@ def test_bassy_adjacent_voice_is_rejected(tmp_path: Path) -> None:
     )
 
     assert evidence["hard_ok"] is False
-    assert "adjacent_f0_median_jump" in evidence["failures"]
+    assert (
+        "adjacent_f0_median_jump" in evidence["failures"]
+        or "source_relative_f0_median_jump" in evidence["failures"]
+    )
+
+
+def test_source_relative_gate_rejects_generated_jump_when_original_is_stable() -> None:
+    previous_segment = _segment(1)
+    current_segment = _segment(2)
+    previous_segment["source_prosody"] = {"f0_median": 170.0, "f0_p90": 210.0}
+    current_segment["source_prosody"] = {"f0_median": 172.0, "f0_p90": 212.0}
+
+    evidence = direct_source_relative_continuity.evaluate_transition(
+        current_identity=_identity(100.0),
+        previous_identity=_identity(170.0),
+        current_segment=current_segment,
+        previous_segment=previous_segment,
+    )
+
+    assert evidence["source_available"] is True
+    assert evidence["hard_ok"] is False
+    assert "source_relative_f0_median_jump" in evidence["failures"]
+    assert abs(float(evidence["source_f0_median_jump_st"])) < 1.0
+
+
+def test_source_relative_gate_allows_source_supported_emotional_rise() -> None:
+    previous_segment = _segment(1)
+    current_segment = _segment(2)
+    previous_segment["source_prosody"] = {"f0_median": 100.0, "f0_p90": 125.0}
+    current_segment["source_prosody"] = {"f0_median": 180.0, "f0_p90": 225.0}
+
+    evidence = direct_source_relative_continuity.evaluate_transition(
+        current_identity=_identity(275.0),
+        previous_identity=_identity(160.0),
+        current_segment=current_segment,
+        previous_segment=previous_segment,
+    )
+
+    assert evidence["source_available"] is True
+    assert evidence["hard_ok"] is True, evidence
+    assert float(evidence["generated_f0_median_jump_st"]) > 8.0
+    assert float(evidence["allowed_f0_median_jump_st"]) >= 10.0
 
 
 def test_resume_compares_with_immediate_previous_checkpoint(tmp_path: Path) -> None:
