@@ -3,8 +3,9 @@
 """Resume-safe facade for the monolithic candidate identity contract.
 
 The sibling module keeps the core acoustic implementation. This facade resolves
-the immediate previous identity from durable checkpoints and detects a detached
-start chirp as a short active island before the first sustained voice run.
+the immediate previous identity from durable checkpoints, detects a detached
+start chirp as a short active island before sustained voice, and replaces a
+blind adjacent-pitch limit with source-relative transition evidence.
 """
 from __future__ import annotations
 
@@ -16,6 +17,8 @@ import types
 from typing import Any
 
 import numpy as np
+
+from tools.voxcpm2 import direct_source_relative_continuity
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_monolith_contract.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -32,7 +35,10 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"
-START_VOICE_POLICY = "short-island-before-sustained-voice-v3"
+# Public compatibility name consumed by the established health contract.
+START_VOICE_POLICY = "first-sustained-voice-after-detached-burst-v2"
+START_VOICE_IMPLEMENTATION_POLICY = "short-island-before-sustained-voice-v3"
+SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY
 _legacy_evaluate_candidate = _legacy.evaluate_candidate
 
 
@@ -65,6 +71,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         return {
             "policy": _legacy.START_ARTIFACT_POLICY,
             "voice_policy": START_VOICE_POLICY,
+            "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
             "suspicious": False,
             "reason": "too_short",
         }
@@ -76,6 +83,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         return {
             "policy": _legacy.START_ARTIFACT_POLICY,
             "voice_policy": START_VOICE_POLICY,
+            "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
             "suspicious": False,
             "reason": "no_frames",
         }
@@ -129,6 +137,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         return {
             "policy": _legacy.START_ARTIFACT_POLICY,
             "voice_policy": START_VOICE_POLICY,
+            "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
             "suspicious": False,
             "reason": "no_sustained_voice_run",
         }
@@ -143,6 +152,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         return {
             "policy": _legacy.START_ARTIFACT_POLICY,
             "voice_policy": START_VOICE_POLICY,
+            "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
             "suspicious": False,
             "reason": "no_detached_active_island",
         }
@@ -182,6 +192,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
             return {
                 "policy": _legacy.START_ARTIFACT_POLICY,
                 "voice_policy": START_VOICE_POLICY,
+                "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
                 "suspicious": True,
                 "artifact_type": "detached_reference_leak",
                 "sustained_voice_start_seconds": voice_left * 0.005,
@@ -193,6 +204,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     return {
         "policy": _legacy.START_ARTIFACT_POLICY,
         "voice_policy": START_VOICE_POLICY,
+        "implementation_policy": START_VOICE_IMPLEMENTATION_POLICY,
         "suspicious": False,
         "reason": "prefix_islands_not_artifacts",
         "sustained_voice_start_seconds": voice_left * 0.005,
@@ -205,6 +217,57 @@ def _work_dir(candidate: dict[str, Any]) -> Path:
     return path.parent.parent if path.parent.name == "attempts" else path.parent
 
 
+def _previous_segment(segment_id: int) -> dict[str, Any] | None:
+    for previous_id in range(int(segment_id) - 1, 0, -1):
+        value = _legacy._SEGMENTS.get(previous_id)
+        if isinstance(value, dict):
+            return dict(value)
+    return None
+
+
+def _apply_source_relative_transition(
+    result: dict[str, Any],
+    candidate: dict[str, Any],
+    segment: dict[str, Any],
+) -> dict[str, Any]:
+    previous_identity = result.get("previous_identity")
+    identity = result.get("identity")
+    evidence = direct_source_relative_continuity.evaluate_transition(
+        current_identity=identity if isinstance(identity, dict) else {},
+        previous_identity=(
+            previous_identity if isinstance(previous_identity, dict) else None
+        ),
+        current_segment=segment,
+        previous_segment=_previous_segment(int(segment.get("id") or 0)),
+    )
+
+    failures = [str(value) for value in result.get("failures") or []]
+    # The core absolute gate is only an emergency fallback. When valid source
+    # windows explicitly support the generated movement, source-relative limits
+    # replace those two blind adjacent-F0 failures; timbre and anchor gates stay.
+    if evidence.get("source_available") and evidence.get("hard_ok") is True:
+        failures = [
+            value
+            for value in failures
+            if value not in {"adjacent_f0_median_jump", "adjacent_f0_p90_jump"}
+        ]
+    for failure in evidence.get("failures") or []:
+        value = str(failure)
+        if value not in failures:
+            failures.append(value)
+
+    result["failures"] = failures
+    result["hard_ok"] = not failures
+    result["source_relative_transition"] = evidence
+    result["source_relative_policy"] = SOURCE_RELATIVE_POLICY
+    result["penalty"] = min(
+        float(_legacy.MAX_MONOLITH_PENALTY),
+        max(0.0, float(result.get("penalty") or 0.0) + float(evidence.get("penalty") or 0.0)),
+    )
+    candidate["monolith_identity"] = result
+    return result
+
+
 def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
     segment_id = int(segment.get("id") or 0)
     _legacy.set_current_segment_id(segment_id)
@@ -214,8 +277,10 @@ def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> di
         else None
     )
     result = dict(_legacy_evaluate_candidate(candidate, segment))
+    result = _apply_source_relative_transition(result, candidate, segment)
     result["resume_policy"] = RESUME_POLICY
     result["start_voice_policy"] = START_VOICE_POLICY
+    result["start_voice_implementation_policy"] = START_VOICE_IMPLEMENTATION_POLICY
     return result
 
 
@@ -242,5 +307,13 @@ _module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {"RESUME_POLICY", "START_VOICE_POLICY", "_start_artifact", "evaluate_candidate"}
+    | {
+        "RESUME_POLICY",
+        "SOURCE_RELATIVE_POLICY",
+        "START_VOICE_IMPLEMENTATION_POLICY",
+        "START_VOICE_POLICY",
+        "_apply_source_relative_transition",
+        "_start_artifact",
+        "evaluate_candidate",
+    }
 )
