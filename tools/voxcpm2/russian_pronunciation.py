@@ -4,8 +4,9 @@
 
 The display/ASR text is never changed. A bounded set of synthesis strings may
 contain conservative syllable hints and the official VoxCPM ``(control)text``
-prefix. Candidate attempts alternate those forms, while known final-word stress
-is accepted only after independent acoustic evidence.
+prefix. Candidate attempts alternate those forms. Known final-word stress is
+accepted only after duration, energy and periodic-pitch evidence agree; this is
+an acoustic screen, not a universal Russian stress recognizer.
 """
 from __future__ import annotations
 
@@ -18,11 +19,8 @@ import numpy as np
 POLICY = "russian-pronunciation-overrides-v1"
 VARIANT_POLICY = "bounded-pronunciation-candidate-variants-v1"
 CONTROL_POLICY = "stable-monolithic-control-instruction-v1"
-STRESS_EVIDENCE_POLICY = "final-stressed-syllable-energy-duration-v1"
+STRESS_EVIDENCE_POLICY = "final-stressed-syllable-duration-energy-pitch-v2"
 
-# Manual Russian stress syntax is not a documented VoxCPM2 contract. Keep the
-# table deliberately small and test both the canonical spelling and one bounded
-# syllable hint instead of assuming that a hyphen is universally beneficial.
 _RULES: tuple[dict[str, Any], ...] = (
     {
         "name": "gryadyot-final-stress",
@@ -90,6 +88,7 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
                 "stress": str(rule["stress"]),
                 "final_word": final_word,
                 "acoustic_evidence_required": final_word,
+                "manual_review_required": final_word,
             }
         )
 
@@ -121,6 +120,7 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
         "control_instruction": control,
         "overrides": overrides,
         "stress_evidence_required": evidence_required,
+        "manual_pronunciation_review_required": evidence_required,
     }
 
 
@@ -129,20 +129,11 @@ def variant_for_attempt(segment: dict[str, Any], attempt: int = 1) -> dict[str, 
     if not isinstance(prepared, dict) or prepared.get("policy") != POLICY:
         prepared = prepare_segment(segment)
     controlled = [str(value) for value in prepared.get("synthesis_variants") or []]
-    plain = [
-        str(value)
-        for value in prepared.get("synthesis_variants_without_control") or []
-    ]
+    plain = [str(value) for value in prepared.get("synthesis_variants_without_control") or []]
     if not controlled:
         controlled = [str(prepared.get("synthesis_text") or segment.get("text") or "")]
     if not plain:
-        plain = [
-            str(
-                prepared.get("synthesis_text_without_control")
-                or segment.get("text")
-                or ""
-            )
-        ]
+        plain = [str(prepared.get("synthesis_text_without_control") or segment.get("text") or "")]
     index = (max(1, int(attempt)) - 1) % len(controlled)
     return {
         "policy": VARIANT_POLICY,
@@ -165,16 +156,24 @@ def _mono(samples: Any) -> np.ndarray:
     return audio.reshape(-1)
 
 
-def _frame_features(audio: np.ndarray, rate: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    frame = max(160, int(rate * 0.020))
+def _frame_features(
+    audio: np.ndarray,
+    rate: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    frame = max(320, int(rate * 0.040))
     hop = max(80, int(rate * 0.010))
     starts = np.arange(0, max(0, len(audio) - frame + 1), hop, dtype=np.int64)
     if not len(starts):
         empty = np.asarray([], dtype=np.float64)
-        return empty, empty, empty
+        return empty, empty, empty, empty, empty
     levels: list[float] = []
     zcr: list[float] = []
+    f0_values: list[float] = []
+    periodicity_values: list[float] = []
     times: list[float] = []
+    window = np.hanning(frame)
+    lag_low = max(2, int(rate / 350.0))
+    lag_high = min(frame - 2, int(rate / 55.0))
     for start in starts:
         chunk = audio[start : start + frame].astype(np.float64)
         rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12)
@@ -184,11 +183,25 @@ def _frame_features(audio: np.ndarray, rate: int) -> tuple[np.ndarray, np.ndarra
             if len(chunk) > 1
             else 0.0
         )
+        work = (chunk - float(np.mean(chunk))) * window
+        correlation = np.correlate(work, work, mode="full")[frame - 1 :]
+        if correlation[0] <= 1e-10 or lag_high <= lag_low:
+            f0_values.append(0.0)
+            periodicity_values.append(0.0)
+        else:
+            search = correlation[lag_low : lag_high + 1]
+            offset = int(np.argmax(search))
+            lag = lag_low + offset
+            periodicity = float(search[offset] / correlation[0])
+            periodicity_values.append(periodicity)
+            f0_values.append(rate / lag if periodicity >= 0.16 else 0.0)
         times.append((start + frame / 2) / rate)
     return (
         np.asarray(times, dtype=np.float64),
         np.asarray(levels, dtype=np.float64),
         np.asarray(zcr, dtype=np.float64),
+        np.asarray(f0_values, dtype=np.float64),
+        np.asarray(periodicity_values, dtype=np.float64),
     )
 
 
@@ -206,12 +219,17 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     return result
 
 
-def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> dict[str, Any]:
-    """Verify a known final stress through the last two vowel-like nuclei.
+def _median_positive(values: np.ndarray) -> float:
+    valid = np.asarray(values, dtype=np.float64)
+    valid = valid[np.isfinite(valid) & (valid > 0.0)]
+    return float(np.median(valid)) if len(valid) else 0.0
 
-    This is intentionally narrow. It does not claim to be a general Russian
-    stress recognizer and runs only when the overridden word is the final lexical
-    word in the segment.
+
+def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> dict[str, Any]:
+    """Screen final lexical stress using duration, energy and periodic pitch.
+
+    Phrase-final lengthening alone is not accepted. The result remains marked for
+    manual review until a Russian word/phone forced aligner is available.
     """
     prepared = segment.get("pronunciation")
     if not isinstance(prepared, dict):
@@ -229,6 +247,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
             "policy": STRESS_EVIDENCE_POLICY,
             "required": False,
             "passed": True,
+            "manual_review_required": False,
             "reason": "no_final_known_override",
         }
 
@@ -239,14 +258,16 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
             "policy": STRESS_EVIDENCE_POLICY,
             "required": True,
             "passed": False,
+            "manual_review_required": True,
             "reason": "invalid_audio",
         }
-    times, levels, zcr = _frame_features(audio, rate)
+    times, levels, zcr, f0, periodicity = _frame_features(audio, rate)
     if len(levels) < 12:
         return {
             "policy": STRESS_EVIDENCE_POLICY,
             "required": True,
             "passed": False,
+            "manual_review_required": True,
             "reason": "too_short",
         }
 
@@ -258,14 +279,22 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
             "policy": STRESS_EVIDENCE_POLICY,
             "required": True,
             "passed": False,
+            "manual_review_required": True,
             "reason": "no_active_speech",
         }
     active_end = int(active_ids[-1])
     search_start = max(int(active_ids[0]), active_end - 115)
-    vowel_like = active & (zcr <= 0.18) & (levels >= max(-43.0, peak - 23.0))
+    vowel_like = (
+        active
+        & (zcr <= 0.20)
+        & (periodicity >= 0.20)
+        & (f0 >= 55.0)
+        & (f0 <= 350.0)
+        & (levels >= max(-43.0, peak - 23.0))
+    )
     nuclei = [
         (left, right)
-        for left, right in _runs(vowel_like[search_start:active_end + 1])
+        for left, right in _runs(vowel_like[search_start : active_end + 1])
         if right - left >= 2
     ]
     nuclei = [(left + search_start, right + search_start) for left, right in nuclei]
@@ -280,7 +309,8 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
             "policy": STRESS_EVIDENCE_POLICY,
             "required": True,
             "passed": False,
-            "reason": "two_syllable_nuclei_not_resolved",
+            "manual_review_required": True,
+            "reason": "two_periodic_syllable_nuclei_not_resolved",
             "nuclei": len(merged),
         }
 
@@ -288,21 +318,39 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
     final = merged[-1]
     previous_duration = (previous[1] - previous[0]) * 0.010
     final_duration = (final[1] - final[0]) * 0.010
-    previous_level = float(np.median(levels[previous[0]:previous[1]]))
-    final_level = float(np.median(levels[final[0]:final[1]]))
+    previous_level = float(np.median(levels[previous[0] : previous[1]]))
+    final_level = float(np.median(levels[final[0] : final[1]]))
+    previous_f0 = _median_positive(f0[previous[0] : previous[1]])
+    final_f0 = _median_positive(f0[final[0] : final[1]])
     duration_ratio = final_duration / max(0.01, previous_duration)
     level_delta = final_level - previous_level
+    f0_delta_st = (
+        12.0 * math.log2(final_f0 / previous_f0)
+        if previous_f0 > 0.0 and final_f0 > 0.0
+        else None
+    )
     final_near_end = bool(final[1] >= active_end - 7)
+    strong_cues = sum(
+        (
+            duration_ratio >= 1.10,
+            level_delta >= 0.0,
+            f0_delta_st is not None and f0_delta_st >= -0.50,
+        )
+    )
     passed = bool(
         final_near_end
-        and duration_ratio >= 0.78
-        and level_delta >= -2.2
-        and (duration_ratio >= 1.02 or level_delta >= -0.8)
+        and duration_ratio >= 0.90
+        and level_delta >= -1.50
+        and f0_delta_st is not None
+        and f0_delta_st >= -3.50
+        and strong_cues >= 2
     )
     return {
         "policy": STRESS_EVIDENCE_POLICY,
         "required": True,
         "passed": passed,
+        "manual_review_required": True,
+        "evidence_class": "provisional_acoustic_not_lexical_alignment",
         "reason": "" if passed else "final_stressed_nucleus_not_supported",
         "previous_start": float(times[previous[0]]),
         "previous_end": float(times[min(len(times) - 1, previous[1] - 1)]),
@@ -314,6 +362,10 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
         "previous_level_db": previous_level,
         "final_level_db": final_level,
         "level_delta_db": level_delta,
+        "previous_f0_hz": previous_f0,
+        "final_f0_hz": final_f0,
+        "f0_delta_semitones": f0_delta_st,
+        "strong_cue_count": strong_cues,
         "final_near_active_end": final_near_end,
     }
 
