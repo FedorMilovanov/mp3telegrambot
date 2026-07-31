@@ -21,7 +21,7 @@ PRONUNCIATION_POLICY = "russian-pronunciation-overrides-v1"
 PRONUNCIATION_VARIANT_POLICY = "bounded-pronunciation-candidate-variants-v1"
 EXPRESSION_POLICY = "source-guided-monolithic-expression-v3"
 MASTER_MIX_POLICY = "dialogue-suppressed-spatial-bed-v1"
-RUNTIME_ROUTING_POLICY = "monolithic-ready-srt-runtime-routing-v1"
+RUNTIME_ROUTING_POLICY = "monolithic-ready-srt-runtime-routing-v2"
 
 
 __all__ = [
