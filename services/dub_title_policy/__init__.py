@@ -13,7 +13,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from services.dub_worker_release import WORKER_RUNTIME
+from services.dub_worker_release import (
+    INDEPENDENT_QA_RECOVERY_POLICY,
+    WORKER_RUNTIME,
+)
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_title_policy.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -32,11 +35,17 @@ for _name in dir(_legacy):
 _legacy_patch_health = _legacy._patch_health
 
 
+def _release_label() -> str:
+    value = str(WORKER_RUNTIME)
+    return value.rsplit("v", 1)[-1] if "v" in value else value
+
+
 def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
     """Preserve all old static gates, replacing only superseded release checks."""
+    label = _release_label()
     ok, detail = health._v47_static_contract(Path(repo))
     if ok:
-        return True, str(detail).replace("worker v4.8", "worker v4.9")
+        return True, str(detail).replace("worker v4.8", f"worker v{label}")
 
     prefix = "v4.8-контракты не прошли: "
     raw = str(detail)
@@ -52,16 +61,23 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
         repo / "tools" / "voxcpm2" / "dub_worker_hardened" / "__main__.py"
     )
     supervisor = repo / "services" / "dub_studio_runtime" / "__init__.py"
+    direct_main = (
+        repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime" / "__main__.py"
+    )
+    recovery = repo / "tools" / "voxcpm2" / "independent_qa_retry.py"
     release_text = release.read_text(encoding="utf-8") if release.is_file() else ""
     worker_text = worker_main.read_text(encoding="utf-8") if worker_main.is_file() else ""
     supervisor_text = supervisor.read_text(encoding="utf-8") if supervisor.is_file() else ""
+    direct_main_text = direct_main.read_text(encoding="utf-8") if direct_main.is_file() else ""
+    recovery_text = recovery.read_text(encoding="utf-8") if recovery.is_file() else ""
 
     release_ok = all(
         marker in release_text
         for marker in (
-            'WORKER_RUNTIME = "dub-worker-quality-v4.9"',
+            f'WORKER_RUNTIME = "{WORKER_RUNTIME}"',
             'RELEASE_POLICY = "single-source-worker-release-identity-v1"',
             'PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"',
+            f'INDEPENDENT_QA_RECOVERY_POLICY = "{INDEPENDENT_QA_RECOVERY_POLICY}"',
         )
     )
     worker_ok = all(
@@ -86,14 +102,35 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             "_module.__class__ = _WriteThroughModule",
         )
     )
-    if not (release_ok and worker_ok and supervisor_ok):
-        remaining.append("worker-release-v49")
+    recovery_ok = all(
+        marker in recovery_text
+        for marker in (
+            f'POLICY = "{INDEPENDENT_QA_RECOVERY_POLICY}"',
+            "MAX_RECOVERY_CYCLES = 3",
+            "INTERNAL_SEED_ROUNDS_PER_CALL = 2",
+            "def _retry_context(",
+            "def _retarget_checkpoints(",
+            "failed_ids=failed_ids",
+            "next_request[\"base_seed\"] = next_base_seed",
+            "def install(",
+        )
+    ) and all(
+        marker in direct_main_text
+        for marker in (
+            "from tools.voxcpm2 import independent_qa_retry",
+            "independent_qa_retry.install()",
+            "main()",
+        )
+    )
+    if not (release_ok and worker_ok and supervisor_ok and recovery_ok):
+        remaining.append("worker-current-release")
     if remaining:
-        return False, "v4.9-контракты не прошли: " + ", ".join(remaining)
+        return False, f"v{label}-контракты не прошли: " + ", ".join(remaining)
     return True, (
-        "worker v4.9/preflight v2; shared release identity; stale-worker replacement; "
-        "marked noise-tolerant JSON transport; cancellation, explicit root and job-level "
-        "quality restarts; все прежние cadence/tail/fit/checkpoint/post-AAC gates активны"
+        f"worker v{label}/preflight v2; shared release identity; stale-worker replacement; "
+        "marked noise-tolerant JSON transport; bounded report-backed segment-only independent "
+        "QA recovery; cancellation, explicit root and job-level quality restarts; все прежние "
+        "cadence/tail/fit/checkpoint/post-AAC gates активны"
     )
 
 
