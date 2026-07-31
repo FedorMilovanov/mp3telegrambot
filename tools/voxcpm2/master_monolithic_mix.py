@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Dialogue-suppressed spatial-bed master for monolithic Russian dubbing.
+"""Russian-only master for monolithic ready-SRT dubbing.
 
 The established constant-mix implementation remains the loudness, AAC and media
-QA authority. This executable replaces only the unsafe source branch: the
-requested original level controls the stereo side/ambience component, while the
-full center channel (where a talking-head voice normally lives) is kept at a
-very low floor. A mono sermon source therefore contributes almost no English
-speech under the Russian voice, while real stereo ambience remains available.
+QA authority.  This executable replaces only the unsafe source branch.  The
+original sermon is not mixed under Russian speech because both its mid and side
+channels may carry English dialogue.  A future ambience stem must pass a separate
+speech-free gate before it can be introduced; L-R is never treated as ambience by
+assumption.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from tools.voxcpm2.spatial_bed_contract import (
     MAX_CENTER_FLOOR,
     POLICY,
     SIDE_BED_RATIO,
+    SOURCE_BED_POLICY,
     source_bed_levels,
 )
 
@@ -54,25 +55,16 @@ def build_dialogue_suppressed_mix(
     original_level: float,
     russian_gain: float,
 ) -> str:
-    """Preserve source space without carrying an audible center dialogue bed."""
+    """Build a Russian-only PCM master; source is audit input, never a mix stem."""
     levels = source_bed_levels(original_level)
     russian_gain = _legacy._finite(russian_gain, field="russian_gain")
     if not 0.0 < russian_gain <= 2.0:
         raise RuntimeError("russian_gain должен быть в диапазоне 0..2")
     source_duration = _legacy._finite(source_duration, field="source_duration")
-    center = float(levels["center_full_mix_level"])
-    side = float(levels["spatial_side_level"])
+    if float(levels["applied_original_level"]) != 0.0:
+        raise RuntimeError("Russian-only master получил ненулевой source-bed contract.")
     mix_filter = (
-        "[0:a]aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,asplit=2"
-        "[source_full][source_side];"
-        f"[source_full]volume={center:.9f}[center_floor];"
-        "[source_side]pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0,"
-        f"volume={side:.9f}[spatial_bed];"
-        "[center_floor][spatial_bed]amix=inputs=2:duration=longest:"
-        "dropout_transition=0:normalize=0[original_bed];"
-        f"[1:a]asetpts=PTS-STARTPTS,highpass=f=35,volume={russian_gain:.9f}[russian];"
-        "[original_bed][russian]amix=inputs=2:duration=longest:"
-        "dropout_transition=0:normalize=0,"
+        f"[1:a]asetpts=PTS-STARTPTS,highpass=f=35,volume={russian_gain:.9f},"
         f"apad=pad_dur={source_duration:.6f},"
         f"atrim=duration={source_duration:.6f},"
         "asetpts=N/SR/TB[mix]"
@@ -109,17 +101,21 @@ def calibrate_russian_gain(**kwargs: Any) -> dict[str, Any]:
     report = dict(_legacy_calibrate_russian_gain(**kwargs))
     report.update(
         policy=POLICY,
-        dialogue_suppression="stereo-side bed plus bounded full-center floor",
+        source_bed_policy=SOURCE_BED_POLICY,
+        dialogue_suppression="original source disabled; Russian-only direct master",
         requested_original_level=levels["requested_original_level"],
-        requested_original_level_percent=levels["requested_original_level"] * 100.0,
-        center_full_mix_level=levels["center_full_mix_level"],
-        center_full_mix_percent=levels["center_full_mix_level"] * 100.0,
-        spatial_side_level=levels["spatial_side_level"],
-        spatial_side_percent=levels["spatial_side_level"] * 100.0,
-        expected_total_side_level=levels["expected_total_side_level"],
+        requested_original_level_percent=float(levels["requested_original_level"]) * 100.0,
+        applied_original_level=0.0,
+        applied_original_level_percent=0.0,
+        center_full_mix_level=0.0,
+        center_full_mix_percent=0.0,
+        spatial_side_level=0.0,
+        spatial_side_percent=0.0,
+        expected_total_side_level=0.0,
         center_floor_ratio=CENTER_FLOOR_RATIO,
         max_center_floor=MAX_CENTER_FLOOR,
-        mono_source_behavior="side cancels; only bounded center floor remains",
+        source_bed_applied=False,
+        source_bed_disabled_reason=levels["source_bed_disabled_reason"],
         original_dialogue_preserved_at_requested_level=False,
     )
     return report
@@ -142,6 +138,7 @@ __all__ = sorted(
         "MAX_CENTER_FLOOR",
         "POLICY",
         "SIDE_BED_RATIO",
+        "SOURCE_BED_POLICY",
         "build_dialogue_suppressed_mix",
         "calibrate_russian_gain",
         "install",
