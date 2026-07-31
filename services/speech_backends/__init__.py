@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from services.speech_backends.base import (
     BACKEND_CONTRACT_POLICY,
+    BACKEND_RUNTIME_PATH_POLICY,
     BackendCapabilities,
     BackendIdentity,
     BackendRuntimePaths,
@@ -32,6 +33,7 @@ def default_backend() -> SpeechBackend:
 
 __all__ = [
     "BACKEND_CONTRACT_POLICY",
+    "BACKEND_RUNTIME_PATH_POLICY",
     "DEFAULT_BACKEND_ID",
     "REGISTRY_POLICY",
     "BackendCapabilities",
