@@ -4,9 +4,9 @@
 
 The sibling module keeps established splitting/reference helpers. Its historical
 ready-SRT policy merged only sub-1.15-second cues, leaving many 1–2 second calls
-that inevitably sounded like separately acted inserts. This facade performs a
-bounded dynamic-programming partition into natural 3–5 second breaths while
-preserving every word and all outer timing anchors.
+that sounded like separately acted inserts. This facade performs a bounded
+partition into natural 3–5 second breaths, then applies only two narrow recovery
+merges for a detached verse heading or an isolated ``смеётся`` cue.
 """
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 POLICY = "ready-srt-semantic-breath-grouping-v1"
+POST_MERGE_POLICY = "fragile-heading-and-laughter-breath-merge-v1"
 TARGET_SECONDS = 4.15
 MIN_PREFERRED_SECONDS = 2.35
 MAX_INTERNAL_GAP_SECONDS = 0.38
@@ -107,8 +108,6 @@ def _candidate(
     ]
     if gaps and max(gaps) > MAX_INTERNAL_GAP_SECONDS:
         return None
-    # A final-stress acoustic rule can verify only a final lexical word. Keep
-    # that word at the end of its synthesis breath.
     if any(_protected_final_pronunciation(item["source"]) for item in selected[:-1]):
         return None
 
@@ -134,12 +133,7 @@ def _candidate(
             max(0.0, gap - PREFERRED_INTERNAL_GAP_SECONDS) * 1.8
             for gap in gaps
         )
-    if _sentence_end(text):
-        cost -= 0.10
-    else:
-        cost += 0.14
-    # Fewer independent model calls are preferred, but only weakly: timing and
-    # semantic boundaries still dominate.
+    cost += -0.10 if _sentence_end(text) else 0.14
     cost += 0.035
     return {
         "start": start,
@@ -163,6 +157,87 @@ def _candidate(
     }
 
 
+def _fragile_heading(text: str) -> bool:
+    normalized = _normal_text(text).casefold().replace("ё", "е")
+    return bool(normalized.endswith(":") or re.search(r"\bстих\s*:$", normalized))
+
+
+def _fragile_laughter(text: str) -> bool:
+    normalized = _normal_text(text).casefold().replace("ё", "е")
+    return bool(re.search(r"\bсмеет(?:ся|есь)?\b|\bсмеюсь\b", normalized))
+
+
+def _merge_pair(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    *,
+    max_seconds: float,
+) -> dict[str, Any] | None:
+    if _protected_final_pronunciation(left.get("source")):
+        return None
+    start = float(left["start"])
+    end = float(right["end"])
+    duration = end - start
+    gap = max(0.0, float(right["start"]) - float(left["end"]))
+    text = _normal_text(f"{left['source']} {right['source']}")
+    rate = _words(text) / max(0.35, duration)
+    if (
+        duration > float(max_seconds) + _MAX_GROUP_SLACK
+        or gap > MAX_INTERNAL_GAP_SECONDS
+        or rate > MAX_WORDS_PER_SECOND
+    ):
+        return None
+    return {
+        "id": int(left.get("id") or 0),
+        "start": round(start, 3),
+        "end": round(end, 3),
+        "source": text,
+        "grouping_policy": POLICY,
+        "post_merge_policy": POST_MERGE_POLICY,
+        "source_cue_count": len(
+            {
+                int(item.get("cue") or 0)
+                for item in [*(left.get("source_parts") or []), *(right.get("source_parts") or [])]
+            }
+            - {0}
+        ),
+        "source_parts": [*(left.get("source_parts") or []), *(right.get("source_parts") or [])],
+        "internal_gaps": [
+            *(left.get("internal_gaps") or []),
+            round(gap, 6),
+            *(right.get("internal_gaps") or []),
+        ],
+        "word_rate": round(rate, 6),
+    }
+
+
+def _merge_fragile_groups(
+    groups: list[dict[str, Any]],
+    *,
+    max_seconds: float,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    index = 0
+    while index < len(groups):
+        current = dict(groups[index])
+        following = dict(groups[index + 1]) if index + 1 < len(groups) else None
+        if following is not None and (
+            _fragile_heading(str(current.get("source") or ""))
+            or _fragile_laughter(str(current.get("source") or ""))
+            or _fragile_laughter(str(following.get("source") or ""))
+        ):
+            merged = _merge_pair(current, following, max_seconds=max_seconds)
+            if merged is not None:
+                result.append(merged)
+                index += 2
+                continue
+        result.append(current)
+        index += 1
+    for position, item in enumerate(result, start=1):
+        item["id"] = position
+    return result
+
+
 def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dict[str, Any]]:
     """Partition ready SRT into natural bounded breaths with exact text coverage."""
     limit = float(max_seconds)
@@ -177,7 +252,6 @@ def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dic
     best_next = [-1] * (count + 1)
     best_group: list[dict[str, Any] | None] = [None] * (count + 1)
     best_cost[count] = 0.0
-
     for left in range(count - 1, -1, -1):
         for right in range(left, count):
             candidate = _candidate(atoms, left, right, max_seconds=limit)
@@ -190,7 +264,6 @@ def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dic
                 best_cost[left] = total
                 best_next[left] = right + 1
                 best_group[left] = candidate
-
     if best_next[0] < 0:
         raise RuntimeError("Не удалось построить физически допустимые semantic breaths из SRT.")
 
@@ -216,6 +289,7 @@ def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dic
         )
         cursor = next_cursor
 
+    groups = _merge_fragile_groups(groups, max_seconds=limit)
     source_text = _normal_text(" ".join(str(item["source"]) for item in atoms))
     grouped_text = _normal_text(" ".join(str(item["source"]) for item in groups))
     if source_text != grouped_text:
@@ -255,8 +329,10 @@ __all__ = sorted(
         "MAX_WORDS_PER_SECOND",
         "MIN_PREFERRED_SECONDS",
         "POLICY",
+        "POST_MERGE_POLICY",
         "PREFERRED_INTERNAL_GAP_SECONDS",
         "TARGET_SECONDS",
+        "_merge_fragile_groups",
         "group_ready_srt_v4",
     }
 )
