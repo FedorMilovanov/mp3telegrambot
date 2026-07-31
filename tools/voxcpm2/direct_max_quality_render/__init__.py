@@ -78,7 +78,11 @@ def fit_without_slowdown(
     fitted_path: Path,
     target_duration: float,
     tail_guard: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> dict[str, Any]:
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
     clean_duration = probe_duration(Path(clean_path))
     speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
@@ -111,7 +115,7 @@ def fit_without_slowdown(
             "-af",
             ",".join(filters),
             "-ar",
-            str(EXPECTED_OUTPUT_SR),
+            str(output_sample_rate),
             "-ac",
             "1",
             "-c:a",
@@ -142,14 +146,26 @@ def build_timeline(
     fitted_segments: list[tuple[dict[str, Any], Path]],
     output: Path,
     total_duration: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> None:
     """Assemble at authored cue starts; never disguise short speech by late shifting."""
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
     print(
         "🧩 Monolithic timeline: authored starts preserved; linked phrases must pass "
         "duration/gap QA without late compaction",
         flush=True,
     )
-    _legacy_build_timeline(fitted_segments, output, total_duration)
+    if output_sample_rate == EXPECTED_OUTPUT_SR:
+        _legacy_build_timeline(fitted_segments, output, total_duration)
+    else:
+        _legacy_build_timeline(
+            fitted_segments,
+            output,
+            total_duration,
+            output_sample_rate=output_sample_rate,
+        )
 
 
 _legacy._generation_profile = _generation_profile

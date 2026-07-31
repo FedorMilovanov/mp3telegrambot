@@ -31,7 +31,11 @@ def fit_without_slowdown(
     fitted_path: Path,
     target_duration: float,
     tail_guard: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> dict[str, Any]:
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
     clean_duration = probe_duration(clean_path)
     speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
@@ -71,7 +75,7 @@ def fit_without_slowdown(
             "-af",
             ",".join(filters),
             "-ar",
-            str(EXPECTED_OUTPUT_SR),
+            str(output_sample_rate),
             "-ac",
             "1",
             "-c:a",
@@ -99,7 +103,11 @@ def build_timeline(
     fitted_segments: list[tuple[dict[str, Any], Path]],
     output: Path,
     total_duration: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> None:
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     for _, path in fitted_segments:
         command.extend(["-i", str(path)])
@@ -127,7 +135,7 @@ def build_timeline(
             "-map",
             "[out]",
             "-ar",
-            str(EXPECTED_OUTPUT_SR),
+            str(output_sample_rate),
             "-ac",
             "2",
             "-c:a",

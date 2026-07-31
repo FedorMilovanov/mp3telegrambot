@@ -579,6 +579,7 @@ def main() -> None:
             fitted_path,
             target_duration,
             tail_guard,
+            output_sample_rate=output_sr,
         )
         if abs(float(fit["speech_slot"]) - speech_slot) > 1e-6:
             fitted_path.unlink(missing_ok=True)
@@ -693,7 +694,12 @@ def main() -> None:
         del candidates, selected, clean_samples
         gc.collect()
 
-    build_timeline(fitted_segments, output, float(args.video_duration))
+    build_timeline(
+        fitted_segments,
+        output,
+        float(args.video_duration),
+        output_sample_rate=output_sr,
+    )
     final_duration = probe_duration(output)
     report = {
         "schema_version": "5.5-direct-durable-seed-epochs",
