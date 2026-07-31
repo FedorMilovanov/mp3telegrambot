@@ -9,6 +9,7 @@ on:
       - "services/speech_backends/**"
       - "tools/voxcpm2/**"
       - "handlers/dub_health/**"
+      - "tests/test_cross_language_identity_fail_closed.py"
       - "tests/test_dialogue_suppressed_master.py"
       - "tests/test_dub_health_v60_monolithic_release.py"
       - "tests/test_embedded_terminal_noise_gate.py"
@@ -49,6 +50,7 @@ jobs:
           PYTHONIOENCODING: "utf-8"
         run: |
           python -m pytest -q \
+            tests/test_cross_language_identity_fail_closed.py \
             tests/test_dialogue_suppressed_master.py \
             tests/test_dub_health_v60_monolithic_release.py \
             tests/test_embedded_terminal_noise_gate.py \
