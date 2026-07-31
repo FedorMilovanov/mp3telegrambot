@@ -15,6 +15,7 @@ from typing import Any, Callable
 from services.dub_worker_release import (
     BACKEND_COMMAND_POLICY,
     BACKEND_ENVIRONMENT_POLICY,
+    PRODUCTION_CAPABILITY_POLICY,
     LEGACY_IMPORT_POLICY,
     MASTER_MIX_POLICY,
     REFERENCE_POLICY,
@@ -148,6 +149,9 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             backend_base,
             f'BACKEND_COMMAND_POLICY = "{BACKEND_COMMAND_POLICY}"',
             f'BACKEND_ENVIRONMENT_POLICY = "{BACKEND_ENVIRONMENT_POLICY}"',
+            f'PRODUCTION_CAPABILITY_POLICY = "{PRODUCTION_CAPABILITY_POLICY}"',
+            "REQUIRED_PRODUCTION_CAPABILITIES = (",
+            "def missing(",
             "class BackendAudioSpec:",
             "class BackendProcessEnvironment:",
             "class BackendSynthesisSession(Protocol):",
@@ -175,8 +179,10 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         ),
         "speech-backend-request-boundary": _all(
             project_runtime,
-            "from services.speech_backends import DEFAULT_BACKEND_ID, resolve_backend_id",
+            "from services.speech_backends import DEFAULT_BACKEND_ID, get_backend, resolve_backend_id",
             "backend_id = resolve_backend_id(",
+            "backend = get_backend(backend_id)",
+            "backend.capabilities().missing()",
             'result["speech_backend"] = backend_id',
             "Некорректный speech_backend",
         ) and (
@@ -271,7 +277,8 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         f"modules use {LEGACY_IMPORT_POLICY} before execution with rollback on failure; "
         f"terminal broadband islands use {TAIL_BRACKETING_POLICY} with bounded frame overlap; "
         f"semantic blocks use {SEMANTIC_BLOCK_POLICY}; backend={BACKEND_COMMAND_POLICY}; "
-        f"process environment={BACKEND_ENVIRONMENT_POLICY}; request backend selector is fail-closed; "
+        f"process environment={BACKEND_ENVIRONMENT_POLICY}; capability gate={PRODUCTION_CAPABILITY_POLICY}; "
+        "request backend selector is fail-closed; "
         f"source prosody role is {SOURCE_PROSODY_ROLE_POLICY}"
     )
 

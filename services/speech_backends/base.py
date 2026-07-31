@@ -12,6 +12,14 @@ BACKEND_CONTRACT_POLICY = "speech-backend-contract-v1"
 BACKEND_RUNTIME_PATH_POLICY = "speech-backend-runtime-paths-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
+PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v1"
+REQUIRED_PRODUCTION_CAPABILITIES = (
+    "voice_cloning",
+    "reference_audio",
+    "deterministic_seed",
+    "pcm_output",
+    "checkpointable_segments",
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +34,10 @@ class BackendCapabilities:
 
     def as_dict(self) -> dict[str, bool]:
         return {key: bool(value) for key, value in asdict(self).items()}
+
+    def missing(self, required: tuple[str, ...] = REQUIRED_PRODUCTION_CAPABILITIES) -> tuple[str, ...]:
+        values = self.as_dict()
+        return tuple(name for name in required if values.get(name) is not True)
 
 
 @dataclass(frozen=True)
@@ -198,6 +210,8 @@ __all__ = [
     "BACKEND_COMMAND_POLICY",
     "BACKEND_CONTRACT_POLICY",
     "BACKEND_ENVIRONMENT_POLICY",
+    "PRODUCTION_CAPABILITY_POLICY",
+    "REQUIRED_PRODUCTION_CAPABILITIES",
     "BACKEND_RUNTIME_PATH_POLICY",
     "BackendAudioSpec",
     "BackendCapabilities",

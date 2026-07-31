@@ -21,7 +21,7 @@ import types
 from typing import Any
 import uuid
 
-from services.speech_backends import DEFAULT_BACKEND_ID, resolve_backend_id
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend, resolve_backend_id
 from tools.voxcpm2 import clean_source_download
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "generic_project_runtime.py"
@@ -108,10 +108,16 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
         backend_id = resolve_backend_id(
             result.get("speech_backend") or DEFAULT_BACKEND_ID
         )
+        backend = get_backend(backend_id)
     except RuntimeError as exc:
         raise RuntimeError(
             f"Некорректный speech_backend={result.get('speech_backend')!r} в request.json."
         ) from exc
+    if backend.capabilities().missing():
+        missing = ", ".join(backend.capabilities().missing())
+        raise RuntimeError(
+            f"speech_backend={backend_id} не имеет обязательных production capabilities: {missing}."
+        )
     result["video_id"] = video_id
     result["source_url"] = source_url
     result["translation_mode"] = mode

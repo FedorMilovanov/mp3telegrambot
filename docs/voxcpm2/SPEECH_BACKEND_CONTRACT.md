@@ -14,6 +14,11 @@ A backend adapter owns only:
 6. low-level synthesis session/model call;
 7. declared capabilities.
 
+Production routes require the capability gate
+`production-speech-capability-gate-v1`: voice cloning, reference audio,
+deterministic seeds, PCM output and checkpointable segments must all be declared
+before a backend can enter request validation or preflight.
+
 The generic clean core calls `build_renderer_command()`,
 `build_master_command()` and `process_environment()` through
 `services.speech_backends.SpeechBackend`. The direct candidate loop obtains an

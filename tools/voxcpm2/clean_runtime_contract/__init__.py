@@ -17,6 +17,7 @@ from typing import Any
 from services.speech_backends import (
     BACKEND_ENVIRONMENT_POLICY,
     DEFAULT_BACKEND_ID,
+    PRODUCTION_CAPABILITY_POLICY,
     BackendIdentity,
     default_backend,
     get_backend,
@@ -115,10 +116,17 @@ def normalize_settings(
         not callable(getattr(backend, "build_renderer_command", None))
         or not callable(getattr(backend, "build_master_command", None))
         or not callable(getattr(backend, "process_environment", None))
+        or not callable(getattr(backend, "open_session", None))
     ):
         raise RuntimeError(
-            "Speech backend не реализует model-independent process/command contract: "
+            "Speech backend не реализует model-independent process/command/session contract: "
             f"{backend.backend_id}."
+        )
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Speech backend {backend.backend_id} не проходит "
+            f"{PRODUCTION_CAPABILITY_POLICY}: {', '.join(missing)}."
         )
     settings["speech_backend"] = backend.backend_id
     settings["speech_backend_policy"] = BACKEND_SELECTION_POLICY

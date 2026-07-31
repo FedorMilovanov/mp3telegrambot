@@ -21,6 +21,7 @@ SEMANTIC_BLOCK_POLICY = "semantic-block-continuation-v1"
 SOURCE_PROSODY_ROLE_POLICY = "diagnostic-only-no-cross-language-ranking-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
+PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v1"
 MONOLITHIC_VOICE_POLICY = "single-speaker-monolithic-candidate-v1"
 SOURCE_RELATIVE_CONTINUITY_POLICY = "cross-language-source-prosody-diagnostic-v3"
 FAIL_CLOSED_IDENTITY_POLICY = "cross-language-prosody-cannot-override-identity-v1"
@@ -55,6 +56,7 @@ __all__ = [
     "SEMANTIC_BLOCK_POLICY",
     "BACKEND_COMMAND_POLICY",
     "BACKEND_ENVIRONMENT_POLICY",
+    "PRODUCTION_CAPABILITY_POLICY",
     "TAIL_BRACKETING_POLICY",
     "WORKER_RUNTIME",
 ]

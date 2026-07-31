@@ -87,10 +87,17 @@ def runtime_paths(project: dict[str, Any]) -> dict[str, Any]:
         not callable(getattr(backend, "build_renderer_command", None))
         or not callable(getattr(backend, "build_master_command", None))
         or not callable(getattr(backend, "process_environment", None))
+        or not callable(getattr(backend, "open_session", None))
     ):
         raise RuntimeError(
-            "Preflight: выбранный speech backend не реализует process/command contract: "
+            "Preflight: выбранный speech backend не реализует process/command/session contract: "
             f"{backend.backend_id}"
+        )
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Preflight: backend {backend.backend_id} не проходит production capability gate: "
+            f"{', '.join(missing)}."
         )
     runtime = backend.runtime_paths(repo, request)
     environment_policy = backend.process_environment(
