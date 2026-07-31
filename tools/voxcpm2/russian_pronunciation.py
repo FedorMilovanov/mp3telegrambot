@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 """Fail-closed Russian pronunciation overrides for direct speech synthesis.
 
-The display/ASR text is never changed.  A separate synthesis string may contain
+The display/ASR text is never changed. A separate synthesis string may contain
 conservative syllable hints and the official VoxCPM ``(control)text`` prefix.
-Known stress-sensitive words also receive acoustic evidence checks so an override
-is not treated as successful merely because it was present in the prompt.
+Known final-word stress overrides also receive acoustic evidence checks.
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ POLICY = "russian-pronunciation-overrides-v1"
 CONTROL_POLICY = "stable-monolithic-control-instruction-v1"
 STRESS_EVIDENCE_POLICY = "final-stressed-syllable-energy-duration-v1"
 
-# Manual Russian stress marks are not a documented VoxCPM2 contract.  Keep the
+# Manual Russian stress marks are not a documented VoxCPM2 contract. Keep the
 # table deliberately small and evidence-backed instead of silently rewriting an
 # unlimited vocabulary.
 _RULES: tuple[dict[str, Any], ...] = (
@@ -46,14 +45,20 @@ def _tier_control(tier: str) -> str:
     return "natural conversational emphasis"
 
 
+def _is_final_lexical_match(text: str, end: int) -> bool:
+    return not any(char.isalpha() or char.isdigit() for char in str(text)[int(end):])
+
+
 def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
     """Return transparent display, synthesis and control metadata."""
     display = re.sub(r"\s+", " ", str(segment.get("text") or "")).strip()
     synthesis = display
     overrides: list[dict[str, Any]] = []
     for rule in _RULES:
-        if not rule["pattern"].search(synthesis):
+        matches = list(rule["pattern"].finditer(synthesis))
+        if not matches:
             continue
+        final_word = _is_final_lexical_match(synthesis, matches[-1].end())
         synthesis = rule["pattern"].sub(str(rule["replacement"]), synthesis)
         overrides.append(
             {
@@ -61,6 +66,8 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
                 "spoken_form": str(rule["spoken_form"]),
                 "synthesis_form": str(rule["replacement"]),
                 "stress": str(rule["stress"]),
+                "final_word": final_word,
+                "acoustic_evidence_required": final_word,
             }
         )
 
@@ -77,6 +84,9 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
         controls.append("Russian pronunciation: stress the final syllable in gryadyot")
     control = ", ".join(_clean_control(item) for item in controls if _clean_control(item))
     final_text = f"({control}){synthesis}" if control else synthesis
+    evidence_required = any(
+        bool(item.get("acoustic_evidence_required")) for item in overrides
+    )
     return {
         "policy": POLICY,
         "control_policy": CONTROL_POLICY,
@@ -85,7 +95,7 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
         "synthesis_text_without_control": synthesis,
         "control_instruction": control,
         "overrides": overrides,
-        "stress_evidence_required": bool(overrides),
+        "stress_evidence_required": evidence_required,
     }
 
 
@@ -145,23 +155,29 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
 
 
 def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> dict[str, Any]:
-    """Verify that a known final-stress override produced a substantial last nucleus.
+    """Verify a known final stress through the last two vowel-like nuclei.
 
-    This is intentionally narrow.  It does not claim to be a general Russian
-    stress recognizer; it rejects only a known override when the final vowel-like
-    nucleus is clearly weaker and shorter than the preceding one.
+    This is intentionally narrow. It does not claim to be a general Russian
+    stress recognizer and runs only when the overridden word is the final lexical
+    word in the segment.
     """
     prepared = segment.get("pronunciation")
     if not isinstance(prepared, dict):
         prepared = prepare_segment(segment)
     overrides = prepared.get("overrides")
-    required = bool(isinstance(overrides, list) and overrides)
+    required = bool(
+        isinstance(overrides, list)
+        and any(
+            isinstance(item, dict) and item.get("acoustic_evidence_required") is True
+            for item in overrides
+        )
+    )
     if not required:
         return {
             "policy": STRESS_EVIDENCE_POLICY,
             "required": False,
             "passed": True,
-            "reason": "no_known_override",
+            "reason": "no_final_known_override",
         }
 
     audio = _mono(samples)
@@ -193,7 +209,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
             "reason": "no_active_speech",
         }
     active_end = int(active_ids[-1])
-    search_start = max(int(active_ids[0]), active_end - 115)  # last ~1.15 s
+    search_start = max(int(active_ids[0]), active_end - 115)
     vowel_like = (
         active
         & (zcr <= 0.18)
@@ -201,11 +217,10 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
     )
     nuclei = [
         (left, right)
-        for left, right in _runs(vowel_like[search_start : active_end + 1])
+        for left, right in _runs(vowel_like[search_start:active_end + 1])
         if right - left >= 2
     ]
     nuclei = [(left + search_start, right + search_start) for left, right in nuclei]
-    # Merge nuclei split by one or two consonant frames.
     merged: list[tuple[int, int]] = []
     for left, right in nuclei:
         if merged and left - merged[-1][1] <= 2:
@@ -225,8 +240,8 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
     final = merged[-1]
     previous_duration = (previous[1] - previous[0]) * 0.010
     final_duration = (final[1] - final[0]) * 0.010
-    previous_level = float(np.median(levels[previous[0] : previous[1]]))
-    final_level = float(np.median(levels[final[0] : final[1]]))
+    previous_level = float(np.median(levels[previous[0]:previous[1]]))
+    final_level = float(np.median(levels[final[0]:final[1]]))
     duration_ratio = final_duration / max(0.01, previous_duration)
     level_delta = final_level - previous_level
     final_near_end = bool(final[1] >= active_end - 7)
