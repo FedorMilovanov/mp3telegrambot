@@ -69,6 +69,8 @@ def _stamp_identity(
     identity_reference: Path | None,
     similarity: float | None,
 ) -> None:
+    if identity_reference is None and similarity is None:
+        return
     payload["identity_policy"] = IDENTITY_POLICY
     if identity_reference is not None:
         payload["identity_reference"] = str(identity_reference)

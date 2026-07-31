@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CLI entry for the single direct VoxCPM2 max-quality renderer."""
+"""CLI entry for the direct max-quality speech-backend renderer."""
 from __future__ import annotations
 
 import argparse
 import gc
-import importlib.metadata
 import json
 import math
 import os
@@ -17,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from services.speech_backends import get_backend
 from tools.voxcpm2.direct_max_quality_io import (
     POLICY,
     EXPECTED_ENCODE_SR,
@@ -28,7 +28,6 @@ from tools.voxcpm2.direct_max_quality_io import (
     log,
     probe_duration,
     sha256_file,
-    discover_model,
     read_segments,
     speech_slot_seconds,
 )
@@ -48,7 +47,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
 )
 from tools.voxcpm2.direct_max_quality_render import (
     ADAPTIVE_RETRY_POLICY,
-    _generate,
+    _generate,  # noqa: F401 - legacy facade compatibility; production uses backend session
     _generation_profile,
     build_timeline,
     fit_without_slowdown,
@@ -68,6 +67,11 @@ from tools.voxcpm2.direct_source_prosody import (
 BASE_CANDIDATE_ATTEMPTS = 3
 MAX_CANDIDATE_ATTEMPTS = 5
 STRONG_CANDIDATE_SCORE = 85.0
+
+
+def _backend_generate(session: Any, **kwargs: Any) -> Any:
+    """Neutral hook allowing the monolithic facade to wrap a backend session."""
+    return session.generate(**kwargs)
 
 
 def _report_mapping(value: Any) -> dict[str, Any]:
@@ -179,8 +183,9 @@ def _raw_failure_evidence(
 def main() -> None:
     configure_utf8()
     parser = argparse.ArgumentParser(
-        description="Direct maximum-quality VoxCPM2 CPU renderer."
+        description="Direct maximum-quality speech backend renderer."
     )
+    parser.add_argument("--speech-backend", default="voxcpm2")
     parser.add_argument("--archive-root", required=True)
     parser.add_argument("--extended-reference", required=True)
     parser.add_argument("--composite-reference", required=True)
@@ -195,23 +200,22 @@ def main() -> None:
     parser.add_argument("--base-seed", type=int, default=2026072900)
     parser.add_argument("--force-segments", action="store_true")
     args = parser.parse_args()
+    continuation_reset = globals().get("set_continuation_context")
+    if callable(continuation_reset):
+        continuation_reset(None, "")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["OMP_NUM_THREADS"] = str(max(1, args.threads))
-    os.environ["MKL_NUM_THREADS"] = str(max(1, args.threads))
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["PYTHONUTF8"] = "1"
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    backend = get_backend(args.speech_backend)
+    environment_policy = backend.process_environment(
+        {"threads": max(1, int(args.threads))},
+        base_environment=os.environ,
+    )
+    os.environ.update(environment_policy.as_dict(os.environ))
 
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise RuntimeError("FFmpeg/ffprobe не найдены в PATH.")
 
     import soundfile as sf
     import torch
-    from voxcpm import VoxCPM
 
     torch.set_num_threads(max(1, int(args.threads)))
     try:
@@ -257,17 +261,14 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    model_path = discover_model(Path(args.archive_root).resolve())
+    model_path = backend.discover_model(Path(args.archive_root).resolve())
     config_path = model_path / "config.json"
     config_sha = sha256_file(config_path)
 
-    log("=== VOXCPM2 DIRECT MAX-QUALITY CPU RENDER ===")
+    log(f"=== {backend.backend_id} DIRECT MAX-QUALITY RENDER ===")
     log(f"Policy: {POLICY}")
     log(f"PyTorch: {torch.__version__}")
-    try:
-        log(f"voxcpm package: {importlib.metadata.version('voxcpm')}")
-    except importlib.metadata.PackageNotFoundError:
-        log("voxcpm package version: unknown")
+    log(f"Backend environment policy: {environment_policy.as_metadata()}")
     log(f"Model: {model_path}")
     log(f"Model config SHA256: {config_sha}")
     log(f"CUDA доступна: {torch.cuda.is_available()} (должно быть False)")
@@ -287,34 +288,24 @@ def main() -> None:
     log("Official retry_badcase enabled when supported")
 
     load_started = time.perf_counter()
-    model = VoxCPM.from_pretrained(
-        str(model_path),
-        device="cpu",
-        optimize=False,
-        load_denoiser=False,
-    )
-
     cache_length = max(2048, int(args.cache_length))
-    cache_dtype = next(model.tts_model.parameters()).dtype
-    cache_device = model.tts_model.device
-    model.tts_model.base_lm.setup_cache(1, cache_length, cache_device, cache_dtype)
-    model.tts_model.residual_lm.setup_cache(1, cache_length, cache_device, cache_dtype)
-
-    encode_sr = int(model.tts_model._encode_sample_rate)
-    output_sr = int(model.tts_model.sample_rate)
+    session = backend.open_session(
+        model_path,
+        cache_length=cache_length,
+        torch_module=torch,
+    )
+    audio_spec = session.audio_spec
+    encode_sr = int(audio_spec.encode_sample_rate)
+    output_sr = int(audio_spec.output_sample_rate)
     if encode_sr != EXPECTED_ENCODE_SR or output_sr != EXPECTED_OUTPUT_SR:
         raise RuntimeError(
-            "Неожиданный аудиотракт VoxCPM2: "
+            f"Неожиданный аудиотракт backend={backend.backend_id}: "
             f"encoder={encode_sr}, decoder={output_sr}; "
             f"ожидалось {EXPECTED_ENCODE_SR}->{EXPECTED_OUTPUT_SR}."
         )
-    seconds_per_step = (
-        int(model.tts_model.patch_size)
-        * int(model.tts_model.chunk_size)
-        / encode_sr
-    )
-    log(f"AudioVAE: {encode_sr} Hz encode -> {output_sr} Hz decode")
-    log(f"KV cache: {cache_length}; model step ≈ {seconds_per_step:.3f} сек.")
+    seconds_per_step = float(audio_spec.seconds_per_step)
+    log(f"Audio: {encode_sr} Hz encode -> {output_sr} Hz decode")
+    log(f"KV cache: {audio_spec.cache_length}; model step ≈ {seconds_per_step:.3f} сек.")
     log(f"Модель загружена за {time.perf_counter() - load_started:.1f} сек.")
 
     fitted_segments: list[tuple[dict[str, Any], Path]] = []
@@ -399,6 +390,9 @@ def main() -> None:
                 if isinstance(saved_report, dict):
                     fitted_segments.append((segment, fitted_path))
                     report_segments.append(saved_report)
+                    continuation_hook = globals().get("set_continuation_context")
+                    if callable(continuation_hook):
+                        continuation_hook(clean_path, str(segment.get("text") or ""))
                     total_synthesis += sum(
                         float(item.get("synthesis_seconds", 0.0))
                         for item in saved_report.get("attempts", [])
@@ -466,8 +460,8 @@ def main() -> None:
 
             started = time.perf_counter()
             with torch.inference_mode():
-                wav = _generate(
-                    model,
+                wav = _backend_generate(
+                    session,
                     text=str(segment["text"]),
                     reference=reference,
                     cfg=cfg_value,
@@ -480,7 +474,7 @@ def main() -> None:
             total_synthesis += elapsed
 
             wav_np = _mono(np.asarray(wav, dtype=np.float32))
-            sample_rate = int(model.tts_model.sample_rate)
+            sample_rate = output_sr
             sf.write(str(raw_path), wav_np, sample_rate, subtype="PCM_24")
             leading, trailing = edge_silence(wav_np, sample_rate)
             tail_info = detect_tail_restart(wav_np, sample_rate)
@@ -601,6 +595,9 @@ def main() -> None:
             )
 
         fitted_segments.append((segment, fitted_path))
+        continuation_hook = globals().get("set_continuation_context")
+        if callable(continuation_hook):
+            continuation_hook(clean_path, str(segment.get("text") or ""))
         segment_report = {
             **segment,
             "renderer_policy": POLICY,
@@ -701,8 +698,11 @@ def main() -> None:
     report = {
         "schema_version": "5.5-direct-durable-seed-epochs",
         "policy": POLICY,
+        "speech_backend": backend.backend_id,
+        "backend_environment": environment_policy.as_metadata(),
+        "audio_spec": audio_spec.as_dict(),
         "strategy": (
-            "direct reference-only VoxCPM2 + guarded references + exact SRT speech slots + "
+            f"direct reference-only {backend.backend_id} + guarded references + exact SRT speech slots + "
             "bounded adaptive candidates + durable failed-segment seed epochs + "
             "pre-selection fit-tempo/artifact/voice/cadence hard gates + "
             "source-guided prosody ranking + assembled timeline QA + no best-of-bad fallback"

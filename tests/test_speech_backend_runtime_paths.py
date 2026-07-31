@@ -5,6 +5,7 @@ from pathlib import Path
 
 from services.speech_backends import (
     BACKEND_CONTRACT_POLICY,
+    BACKEND_ENVIRONMENT_POLICY,
     BACKEND_RUNTIME_PATH_POLICY,
     default_backend,
 )
@@ -72,6 +73,7 @@ def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
 
     assert payload["backend_id"] == "voxcpm2"
     assert payload["runtime_path_policy"] == "speech-backend-runtime-paths-v1"
+    assert payload["environment_policy"] == BACKEND_ENVIRONMENT_POLICY
     assert isinstance(payload["import_modules"], list)
     assert isinstance(payload["cpu_python"], str)
     assert payload["master_module"] == "tools.voxcpm2.master_monolithic_mix"

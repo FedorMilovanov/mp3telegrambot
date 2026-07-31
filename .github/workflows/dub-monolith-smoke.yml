@@ -16,11 +16,14 @@ on:
       - "tests/test_dialogue_suppressed_master.py"
       - "tests/test_dub_health_v60_monolithic_release.py"
       - "tests/test_embedded_terminal_noise_gate.py"
+      - "tests/test_legacy_facade_module_registration.py"
       - "tests/test_monolithic_voice_and_pronunciation.py"
       - "tests/test_ready_srt_semantic_breath_grouping.py"
       - "tests/test_russian_stress_evidence_v2.py"
       - "tests/test_spatial_bed_final_media_qa.py"
       - "tests/test_speech_backend_runtime_paths.py"
+      - "tests/test_speech_backend_command_contract.py"
+      - "tests/test_semantic_block_runtime.py"
       - ".github/workflows/dub-monolith-smoke.yml"
   workflow_dispatch:
 
@@ -59,8 +62,11 @@ jobs:
             tests/test_dialogue_suppressed_master.py \
             tests/test_dub_health_v60_monolithic_release.py \
             tests/test_embedded_terminal_noise_gate.py \
+            tests/test_legacy_facade_module_registration.py \
             tests/test_monolithic_voice_and_pronunciation.py \
             tests/test_ready_srt_semantic_breath_grouping.py \
             tests/test_russian_stress_evidence_v2.py \
             tests/test_spatial_bed_final_media_qa.py \
-            tests/test_speech_backend_runtime_paths.py
+            tests/test_speech_backend_runtime_paths.py \
+            tests/test_speech_backend_command_contract.py \
+            tests/test_semantic_block_runtime.py

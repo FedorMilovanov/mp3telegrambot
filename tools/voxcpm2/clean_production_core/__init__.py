@@ -10,6 +10,7 @@ the actual encoded final Russian ending before a production project is released.
 from __future__ import annotations
 
 import importlib.util
+import sys
 import json
 import math
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.voxcpm2 import final_encoded_delivery_qa
+from tools.voxcpm2 import semantic_block_runtime
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "clean_production_core.py"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -29,7 +31,10 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить clean production core: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
+
+_legacy_build_direct_segments = _legacy.build_direct_segments
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
@@ -44,6 +49,7 @@ _LAST_CHILD_STDERR = ""
 # imported legacy API used by this compatibility facade.
 POLICY = _legacy.POLICY
 MAX_SECONDS = _legacy.MAX_SECONDS
+SEMANTIC_BLOCK_MAX_SECONDS = semantic_block_runtime.MAX_BLOCK_SECONDS
 log = _legacy.log
 
 _RETRYABLE_DELIVERY_MARKERS = (
@@ -303,7 +309,12 @@ def _mark_and_validate_segments(
             )
         if effective_end > duration_value + 0.02:
             raise RuntimeError(f"Реплика #{segment_id} выходит за конец видео.")
-        if end - start > MAX_SECONDS + 0.30:
+        segment_limit = (
+            SEMANTIC_BLOCK_MAX_SECONDS
+            if str(item.get("semantic_block_policy") or "") == semantic_block_runtime.POLICY
+            else MAX_SECONDS
+        )
+        if end - start > segment_limit + 0.30:
             raise RuntimeError(
                 f"Реплика #{segment_id} слишком длинная: {end - start:.3f} сек."
             )
@@ -320,9 +331,30 @@ def _mark_and_validate_segments(
         previous_effective_end = effective_end
 
 
+def build_direct_segments(
+    groups: list[dict[str, Any]],
+    *,
+    delay_ms: int,
+    duration: float,
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """Select the direct planning policy without exposing model internals."""
+    if any(str(item.get("semantic_block_policy") or "") == semantic_block_runtime.POLICY for item in groups):
+        return semantic_block_runtime.build_direct_segments(
+            groups,
+            delay_ms=delay_ms,
+            duration=duration,
+        )
+    return _legacy_build_direct_segments(
+        groups,
+        delay_ms=delay_ms,
+        duration=duration,
+    )
+
+
 # Legacy functions resolve these names at call time. Replacing only the module
 # reference keeps the standard subprocess module untouched for every other
 # component and for the direct renderer code.
+_legacy.build_direct_segments = build_direct_segments
 _legacy.subprocess = _SubprocessProxy()
 _legacy._finite = _finite
 _legacy._mark_and_validate_segments = _mark_and_validate_segments

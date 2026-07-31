@@ -3,20 +3,21 @@
 """Stricter Russian sentence-ending and evidence-backed emphasis contract.
 
 The sibling module performs deterministic F0 and energy analysis. This facade
-keeps those measurements and rejects unfinished endings, rising exclamations,
-source-contradicting emphasis and speech that cannot fit its real cue. An early
-energy peak remains a ranking penalty by itself; it becomes a hard failure only
-when a dominant late source peak proves that the Russian delivery contradicts
-the original build.
+keeps those measurements and rejects unfinished endings, rising exclamations
+and speech that cannot fit its real cue. Source-language contours are retained
+for diagnostics only and cannot rank or hard-gate the Russian candidate. An
+early energy peak remains a Russian cadence signal.
 """
 from __future__ import annotations
 
 import importlib.util
+import sys
 import math
 import re
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import source_prosody_policy
 from tools.voxcpm2.direct_max_quality_io import (
     MAX_TEMPO,
     SPEECH_SLOT_POLICY,
@@ -31,6 +32,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Russian cadence analysis: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -123,7 +125,8 @@ def evaluate_candidate_cadence(
     candidate["actual_speech_slot"] = actual_speech_slot
     candidate["speech_slot_policy"] = SPEECH_SLOT_POLICY
 
-    result = dict(_legacy_evaluate_candidate_cadence(candidate, segment))
+    ranking_segment = source_prosody_policy.ranking_view(segment)
+    result = dict(_legacy_evaluate_candidate_cadence(candidate, ranking_segment))
     cadence = str(
         result.get("cadence")
         or _legacy.classify_cadence(str(segment.get("text") or ""))
@@ -135,7 +138,7 @@ def evaluate_candidate_cadence(
     text = str(segment.get("text") or "")
     word_count = len(re.findall(r"\w+", text, flags=re.UNICODE))
     tier = str(segment.get("expression_tier") or "").casefold()
-    source_peak, source_peak_dominance = _source_peak_evidence(segment)
+    source_peak, source_peak_dominance = _source_peak_evidence(ranking_segment)
     source_late_peak_expected = bool(
         tier in _STRONG_TIERS
         and word_count >= 4

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from services.dub_studio import DubStore, studio_root, utc_now
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import generic_short_runtime as hardened
 
@@ -592,14 +593,13 @@ def _run_voxcpm_and_master(
     pipeline.build_reference(source, composite_intervals, composite_reference, target_seconds=min(21.0, max(10.0, duration * 0.38)))
 
     repo = Path(__file__).resolve().parents[2]
-    synth_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "voxcpm2_cpu_shorts_production.py"
-    master_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
-    cpu_venv = Path(str(request.get("cpu_venv") or r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
-    cpu_python = cpu_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(repo, request)
+    cpu_python = runtime.cpu_python
     if not cpu_python.is_file():
-        raise RuntimeError(f"CPU Python не найден: {cpu_python}")
-    if not synth_script.is_file() or not master_script.is_file():
-        raise RuntimeError("Production NoChew renderer/master не найдены.")
+        raise RuntimeError(
+            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
+        )
 
     threads = max(1, int(request.get("threads") or 10))
     steps = max(1, int(request.get("steps") or 16))
@@ -607,56 +607,59 @@ def _run_voxcpm_and_master(
     original_level = float(request.get("original_level") or 0.18)
     video_id = str(request["video_id"])
     russian_timeline = audio_dir / f"{video_id}_ru_timeline.wav"
-    env = dict(os.environ)
-    env.update({
-        "CUDA_VISIBLE_DEVICES": "-1",
-        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-        "PYTHONUTF8": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "OMP_NUM_THREADS": str(threads),
-        "MKL_NUM_THREADS": str(threads),
-        "TOKENIZERS_PARALLELISM": "false",
-    })
+    env = backend.process_environment(
+        {"threads": threads, "speech_backend": backend.backend_id},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
 
-    log("=== VOXCPM2 CPU / NOCHEW ===")
-    synth = [
-        str(cpu_python), str(synth_script),
-        "--archive-root", str(Path(str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")).resolve()),
-        "--extended-reference", str(extended_reference),
-        "--composite-reference", str(composite_reference),
-        "--segments-json", str(segments_json),
-        "--work-dir", str(segment_work),
-        "--output", str(russian_timeline),
-        "--threads", str(threads),
-        "--steps", str(steps),
-        "--cfg", str(cfg),
-        "--cache-length", "4096",
-        "--video-duration", f"{duration:.6f}",
-        "--base-seed", str(int(request.get("base_seed") or 2026072800)),
-    ]
+    log(f"=== {backend.backend_id} SPEECH / RENDER ===")
+    synth = backend.build_renderer_command(
+        runtime,
+        values={
+            "extended_reference": str(extended_reference),
+            "composite_reference": str(composite_reference),
+            "segments_json": str(segments_json),
+            "segment_work": str(segment_work),
+            "timeline": str(russian_timeline),
+            "threads": str(threads),
+            "steps": str(steps),
+            "cfg": str(cfg),
+            "cache_length": "4096",
+            "duration": f"{duration:.6f}",
+            "base_seed": str(int(request.get("base_seed") or 2026072800)),
+        },
+    )
     result = subprocess.run(synth, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"VoxCPM2 CPU-синтез завершился с кодом {result.returncode}.")
+        raise RuntimeError(
+            f"Speech backend {backend.backend_id} CPU-синтез завершился "
+            f"с кодом {result.returncode}."
+        )
 
     log("=== CONSTANT MIX / FINAL MASTER ===")
-    master = [
-        str(cpu_python), str(master_script),
-        "--source-video", str(source),
-        "--russian-wav", str(russian_timeline),
-        "--work-dir", str(master_work),
-        "--mixed-video", str(final_mixed),
-        "--russian-only-video", str(final_russian),
-        "--original-level", f"{original_level:.6f}",
-        "--target-i", "-14.0",
-        "--target-lra", "9.0",
-        "--target-tp", "-1.0",
-    ]
+    master = backend.build_master_command(
+        runtime,
+        values={
+            "source": str(source),
+            "timeline": str(russian_timeline),
+            "master_work": str(master_work),
+            "final_mixed": str(final_mixed),
+            "final_russian": str(final_russian),
+            "original_level": f"{original_level:.6f}",
+            "target_i": "-14.0",
+            "target_lra": "9.0",
+            "target_tp": "-1.0",
+        },
+    )
     result = subprocess.run(master, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"Финальный master завершился с кодом {result.returncode}.")
     return russian_timeline
+
+
+def _run_speech_and_master(**kwargs: Any) -> Path:
+    """Generic engine hook; clean routes replace this before main()."""
+    return _run_voxcpm_and_master(**kwargs)
 
 
 def main() -> None:
@@ -829,7 +832,7 @@ def main() -> None:
 
     stable_mixed = output_dir / "final_upload.mp4"
     stable_russian = output_dir / "russian_only.mp4"
-    russian_timeline = _run_voxcpm_and_master(
+    russian_timeline = _run_speech_and_master(
         root=root,
         request=request,
         source=source,

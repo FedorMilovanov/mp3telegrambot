@@ -39,8 +39,9 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
     assert "QualityV4SubprocessProxy" not in source
     assert "semantic_tts_guard_v4.install(" not in source
     assert "professional_audio_v45.install(" not in source
-    assert "voxcpm2_cpu_shorts_production.py" in source
-    assert "master_constant_mix.py" in source
+    assert "backend.build_renderer_command(" in source
+    assert "backend.build_master_command(" in source
+    assert "get_backend(" in source
     assert '"wrapper_count": 0' in source
     assert "clean_runtime_contract.build_fingerprints" in source
     assert '"release_complete": False' in source
@@ -132,7 +133,7 @@ def test_clean_repair_requires_expressive_baseline_for_selective_work() -> None:
     assert "expression_ready" in source
     assert "force_fresh=repair_all" in source
     assert "clean_segment_normalizer.normalize" in source
-    assert "build_controlled_expressive_reference" in source
+    assert "controlled_reference_gate.build_or_keep_calm" in source
     assert "semantic_tts_guard_v47" not in source
     assert "semantic_tts_guard_v46" not in source
     assert "professional_audio_v45.install" not in source

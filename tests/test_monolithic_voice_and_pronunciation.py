@@ -188,7 +188,7 @@ def test_bassy_adjacent_voice_is_rejected(tmp_path: Path) -> None:
     )
 
 
-def test_source_relative_gate_rejects_generated_jump_when_original_is_stable() -> None:
+def test_source_prosody_is_diagnostic_when_original_is_stable() -> None:
     previous_segment = _segment(1)
     current_segment = _segment(2)
     previous_segment["source_prosody"] = {"f0_median": 170.0, "f0_p90": 210.0}
@@ -201,13 +201,19 @@ def test_source_relative_gate_rejects_generated_jump_when_original_is_stable() -
         previous_segment=previous_segment,
     )
 
-    assert evidence["source_available"] is True
-    assert evidence["hard_ok"] is False
-    assert "source_relative_f0_median_jump" in evidence["failures"]
+    assert evidence["source_available"] is False
+    assert evidence["advisory_source_available"] is True
+    assert evidence["role"] == "diagnostics_only_until_semantic_alignment"
+    assert evidence["absolute_gate_override_allowed"] is False
+    assert evidence["ranking_penalty_enabled"] is False
+    assert evidence["hard_ok"] is True
+    assert evidence["failures"] == []
+    assert evidence["penalty"] == 0.0
+    assert "source_relative_f0_median_jump" in evidence["warnings"]
     assert abs(float(evidence["source_f0_median_jump_st"])) < 1.0
 
 
-def test_source_relative_gate_allows_source_supported_emotional_rise() -> None:
+def test_source_supported_rise_remains_diagnostic_and_cannot_authorize_identity() -> None:
     previous_segment = _segment(1)
     current_segment = _segment(2)
     previous_segment["source_prosody"] = {"f0_median": 100.0, "f0_p90": 125.0}
@@ -220,8 +226,13 @@ def test_source_relative_gate_allows_source_supported_emotional_rise() -> None:
         previous_segment=previous_segment,
     )
 
-    assert evidence["source_available"] is True
+    assert evidence["source_available"] is False
+    assert evidence["advisory_source_available"] is True
+    assert evidence["absolute_gate_override_allowed"] is False
+    assert evidence["ranking_penalty_enabled"] is False
     assert evidence["hard_ok"] is True, evidence
+    assert evidence["failures"] == []
+    assert evidence["penalty"] == 0.0
     assert float(evidence["generated_f0_median_jump_st"]) > 8.0
     assert float(evidence["allowed_f0_median_jump_st"]) >= 10.0
 

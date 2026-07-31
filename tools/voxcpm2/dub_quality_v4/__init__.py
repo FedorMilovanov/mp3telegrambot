@@ -28,7 +28,16 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Dub quality helpers: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_legacy)
+_previous_legacy = sys.modules.get(_SPEC.name)
+sys.modules[_SPEC.name] = _legacy
+try:
+    _SPEC.loader.exec_module(_legacy)
+except BaseException:
+    if _previous_legacy is None:
+        sys.modules.pop(_SPEC.name, None)
+    else:
+        sys.modules[_SPEC.name] = _previous_legacy
+    raise
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):

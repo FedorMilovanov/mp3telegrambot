@@ -10,6 +10,7 @@ seeds before execution and making manifest settings match rendered segments.
 from __future__ import annotations
 
 import importlib.util
+import sys
 import json
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить clean audio repair runtime: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):

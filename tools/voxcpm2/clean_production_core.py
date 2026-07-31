@@ -4,8 +4,8 @@
 
 The bot and manual PowerShell launch share the same direct renderer and master.
 No subprocess proxy or VoxCPM monkeypatch is installed. Durable checkpoints are
-accepted only under a fingerprint of the actual renderer modules, model snapshot
-and CPU-venv VoxCPM runtime. A baseline becomes release-complete only after the
+accepted only under a fingerprint of the actual renderer modules, selected model
+snapshot and backend runtime. A baseline becomes release-complete only after the
 final encoded AAC files pass media QA.
 """
 from __future__ import annotations
@@ -25,6 +25,7 @@ from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_qa_v45
 from tools.voxcpm2 import professional_audio_v45
 from tools.voxcpm2 import semantic_tts_guard_v4
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 
 POLICY = "clean-direct-production-v2"
 TARGET_SECONDS = 4.2
@@ -123,7 +124,7 @@ def _mark_and_validate_segments(
     if duration_value <= 0.0:
         raise RuntimeError("video_duration должен быть > 0.")
     if not segments:
-        raise RuntimeError("Список реплик перед VoxCPM пуст.")
+        raise RuntimeError("Список реплик перед speech backend пуст.")
     previous_end = 0.0
     previous_effective_end = 0.0
     seen_ids: set[int] = set()
@@ -228,46 +229,48 @@ def _validate_reference_report(path: Path, profile: str) -> None:
         )
 
 
-def _renderer_paths(repo: Path) -> tuple[Path, Path]:
-    example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
-    renderer = example / "voxcpm2_cpu_shorts_production.py"
-    master = example / "master_constant_mix.py"
+def _renderer_paths(
+    repo: Path,
+    request: dict[str, Any] | None = None,
+) -> tuple[Path, Path]:
+    """Resolve engine-owned entrypoints without hard-coding a TTS model in core."""
+    payload = dict(request or {})
+    payload.setdefault("speech_backend", DEFAULT_BACKEND_ID)
+    backend = get_backend(payload["speech_backend"])
+    runtime = backend.runtime_paths(Path(repo), payload)
+    renderer = runtime.renderer_entrypoint
+    master = runtime.master_entrypoint
     if not renderer.is_file() or not master.is_file():
-        raise RuntimeError("Прямой NoChew renderer/master не найдены.")
+        raise RuntimeError(
+            "Speech backend renderer/master не найдены: "
+            f"backend={runtime.backend_id}; renderer={renderer}; master={master}"
+        )
     return renderer, master
 
 
 def _cpu_python(request: dict[str, Any]) -> Path:
-    venv = Path(str(request.get("cpu_venv") or r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"))
-    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    """Resolve the selected backend interpreter through its runtime adapter."""
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(Path(__file__).resolve().parents[2], request)
+    python = runtime.cpu_python
     if not python.is_file():
-        raise RuntimeError(f"CPU Python не найден: {python}")
+        raise RuntimeError(
+            f"CPU Python не найден для backend={backend.backend_id}: {python}"
+        )
     return python
 
 
-def _environment(threads: int) -> dict[str, str]:
-    env = dict(os.environ)
-    env.update(
-        {
-            "CUDA_VISIBLE_DEVICES": "-1",
-            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-            "HF_HUB_OFFLINE": "1",
-            "TRANSFORMERS_OFFLINE": "1",
-            "OMP_NUM_THREADS": str(threads),
-            "MKL_NUM_THREADS": str(threads),
-            "TOKENIZERS_PARALLELISM": "false",
-        }
-    )
-    for key in (
-        "VOXCPM_ORIGINAL_RENDERER",
-        "VOXCPM_RESCUE_RENDERER",
-        "VOXCPM_PROMPT_TEXTS_JSON",
-        "VOXCPM_SEMANTIC_GUARD_VERSION",
-    ):
-        env.pop(key, None)
-    return env
+def _environment(
+    threads: int,
+    *,
+    backend_id: object = DEFAULT_BACKEND_ID,
+) -> dict[str, str]:
+    """Compatibility helper delegating process policy to the selected backend."""
+    backend = get_backend(backend_id)
+    return backend.process_environment(
+        {"threads": threads},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
 
 
 def _failure_summary(report: dict[str, Any]) -> str:
@@ -342,12 +345,13 @@ def render_and_master(
 ) -> Path:
     """Run the direct renderer, independent QA and final verified master."""
     repo = Path(__file__).resolve().parents[2]
-    renderer, master = _renderer_paths(repo)
-    cpu_python = _cpu_python(request)
     settings = clean_runtime_contract.normalize_settings(request, duration=duration)
-    archive = Path(
-        str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    ).resolve()
+    backend = get_backend(settings.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(repo, settings)
+    renderer = runtime.renderer_entrypoint
+    master = runtime.master_entrypoint
+    cpu_python = runtime.cpu_python
+    archive = runtime.archive_root
     for label, path in (
         ("source", source),
         ("segments", segments_json),
@@ -360,6 +364,7 @@ def render_and_master(
         repo=repo,
         archive=archive,
         cpu_python=cpu_python,
+        backend_id=backend.backend_id,
     )
 
     segment_work = root / "segment_work"
@@ -400,29 +405,32 @@ def render_and_master(
     seed = int(settings["base_seed"])
     original_level = float(settings["original_level"])
     timeline = audio_dir / f"{settings['video_id']}_ru_timeline.wav"
-    env = _environment(threads)
+    env = backend.process_environment(
+        {"threads": threads, "speech_backend": backend.backend_id},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
     all_ids = {int(item["id"]) for item in segments}
     last_report: dict[str, Any] = {}
     accepted_seed: int | None = None
 
     for round_index in range(2):
         round_seed = seed + round_index * clean_runtime_contract.RETRY_SEED_OFFSET
-        command = [
-            str(cpu_python),
-            str(renderer),
-            "--archive-root", str(archive),
-            "--extended-reference", str(extended_reference),
-            "--composite-reference", str(composite_reference),
-            "--segments-json", str(segments_json),
-            "--work-dir", str(segment_work),
-            "--output", str(timeline),
-            "--threads", str(threads),
-            "--steps", str(steps),
-            "--cfg", str(cfg),
-            "--cache-length", "4096",
-            "--video-duration", f"{settings['duration']:.6f}",
-            "--base-seed", str(round_seed),
-        ]
+        command = backend.build_renderer_command(
+            runtime,
+            values={
+                "extended_reference": str(extended_reference),
+                "composite_reference": str(composite_reference),
+                "segments_json": str(segments_json),
+                "segment_work": str(segment_work),
+                "timeline": str(timeline),
+                "threads": str(threads),
+                "steps": str(steps),
+                "cfg": str(cfg),
+                "cache_length": "4096",
+                "duration": f"{settings['duration']:.6f}",
+                "base_seed": str(round_seed),
+            },
+        )
         log(
             f"direct NoChew round {round_index + 1}/2; seed={round_seed}; "
             "без renderer wrappers"
@@ -430,7 +438,7 @@ def render_and_master(
         result = subprocess.run(command, cwd=str(repo), env=env, check=False)
         if result.returncode != 0:
             raise RuntimeError(
-                f"Прямой VoxCPM2 renderer завершился с кодом {result.returncode}."
+                f"Прямой speech backend renderer завершился с кодом {result.returncode}."
             )
         report_path = timeline.with_suffix(f".clean_qa.round{round_index + 1}.json")
         failed, last_report = professional_audio_qa_v45.verify_timeline_v45(
@@ -484,22 +492,25 @@ def render_and_master(
     if accepted_seed is None:
         raise RuntimeError("Segment QA не создал принятого baseline.")
 
-    master_command = [
-        str(cpu_python),
-        str(master),
-        "--source-video", str(source),
-        "--russian-wav", str(timeline),
-        "--work-dir", str(master_work),
-        "--mixed-video", str(final_mixed),
-        "--russian-only-video", str(final_russian),
-        "--original-level", f"{original_level:.6f}",
-        "--target-i", f"{MASTER_I:.1f}",
-        "--target-lra", f"{MASTER_LRA:.1f}",
-        "--target-tp", f"{MASTER_TP:.1f}",
-    ]
+    master_command = backend.build_master_command(
+        runtime,
+        values={
+            "source": str(source),
+            "timeline": str(timeline),
+            "master_work": str(master_work),
+            "final_mixed": str(final_mixed),
+            "final_russian": str(final_russian),
+            "original_level": f"{original_level:.6f}",
+            "target_i": f"{MASTER_I:.1f}",
+            "target_lra": f"{MASTER_LRA:.1f}",
+            "target_tp": f"{MASTER_TP:.1f}",
+        },
+    )
     result = subprocess.run(master_command, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"Прямой master завершился с кодом {result.returncode}.")
+        raise RuntimeError(
+            f"Прямой speech backend master завершился с кодом {result.returncode}."
+        )
 
     final_media_qa = master_work / "final_media_verification.json"
     if not final_media_qa.is_file():

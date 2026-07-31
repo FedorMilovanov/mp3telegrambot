@@ -17,6 +17,7 @@ def _payload(**overrides):
         "video_id": "AbCdEf12345",
         "source_url": "https://youtube.com/watch?v=AbCdEf12345",
         "translation_mode": "gemini",
+        "speech_backend": "voxcpm2",
         **overrides,
     }
 
@@ -51,6 +52,7 @@ def test_wizard_writes_validated_request_inside_project_root(
         _payload(source_url="https://youtube.com/watch?v=OtherId999"),
         _payload(source_url="https://youtube.com/playlist?list=PL123"),
         _payload(translation_mode="unknown"),
+        _payload(speech_backend="future-neural-engine"),
     ],
 )
 def test_invalid_wizard_request_is_not_written(

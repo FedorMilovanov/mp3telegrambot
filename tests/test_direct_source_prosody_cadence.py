@@ -90,7 +90,9 @@ def test_linked_phrase_underfill_is_fail_closed():
     cadence = candidate["source_prosody_match"]["cadence"]
     assert cadence["cadence"] == "linked"
     assert cadence["duration_ratio"] < 0.50
-    assert "continuation_too_short" in cadence["failures"]
-    assert candidate["cadence_hard_ok"] is False
-    assert candidate_pitch_evidence_ok(candidate) is False
+    assert "continuation_too_short" not in cadence["failures"]
+    assert cadence["timeline_compaction_required"] is True
+    assert cadence["candidate_continuation_policy"] == "defer-short-continuation-to-timeline-v1"
+    assert candidate["cadence_hard_ok"] is True
+    assert candidate_pitch_evidence_ok(candidate) is True
     assert result >= cadence["penalty"]

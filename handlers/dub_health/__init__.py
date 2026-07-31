@@ -10,8 +10,11 @@ the sibling legacy files.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from typing import Any
+
+from services.dub_worker_release import WORKER_RUNTIME
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_health.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -21,17 +24,19 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить базовый Dub health: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.8"
+_WORKER_RUNTIME = WORKER_RUNTIME
 from services import dub_studio_runtime as _supervisor  # noqa: E402
 
-_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME
-_legacy._WORKER_RUNTIME = _WORKER_RUNTIME
+_supervisor._WORKER_RUNTIME = WORKER_RUNTIME
+_supervisor._legacy._WORKER_RUNTIME = WORKER_RUNTIME
+_legacy._WORKER_RUNTIME = WORKER_RUNTIME
 _legacy_quality_contract = _legacy._quality_contract
 
 
@@ -59,6 +64,7 @@ def _texts(repo: Path) -> dict[str, str]:
         "retry_epoch": voxcpm / "direct_retry_epoch.py",
         "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
         "tail_artifact": voxcpm / "direct_tail_artifact.py",
+        "tail_facade": voxcpm / "direct_tail_artifact" / "__init__.py",
         "delivery_qa": voxcpm / "direct_timeline_delivery_qa.py",
         "encoded_delivery_qa": voxcpm / "final_encoded_delivery_qa.py",
         "zero_safe_qa": voxcpm / "final_media_qa" / "__init__.py",
@@ -90,7 +96,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         "worker-agent-v47": _has(
             text,
             "worker_facade",
-            '_RUNTIME_VERSION = "dub-worker-quality-v4.8"',
+            "_RUNTIME_VERSION = WORKER_RUNTIME",
             "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION",
             'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"',
             'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
@@ -114,7 +120,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
             "reason = _stop_reason(store, job_id)",
             "_run_with_quality_restarts(store, worker_id, job, project)",
             "_legacy.install_hardening()",
-        ) and _has(text, "worker_main", "from . import main", "main()"),
+        ) and _has(text, "worker_main", "from . import _legacy, main", "main()"),
         "production-preflight-v2": _has(
             text,
             "preflight",
@@ -143,13 +149,13 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         "worker-runtime-sync": _has(
             text,
             "health_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
-            "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME",
-            "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME",
+            "_WORKER_RUNTIME = WORKER_RUNTIME",
+            "_supervisor._WORKER_RUNTIME = WORKER_RUNTIME",
+            "_legacy._WORKER_RUNTIME = WORKER_RUNTIME",
         ) and _has(
             text,
             "supervisor_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
+            "_WORKER_RUNTIME = WORKER_RUNTIME",
             "class _WriteThroughModule",
             "_module.__class__ = _WriteThroughModule",
         ),
@@ -174,7 +180,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _has(
             text,
             "render_facade",
-            'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
+            'ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"',
             "if attempt == 4:",
             "if attempt == 5:",
         ) and _has(
@@ -213,8 +219,14 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _has(
             text,
             "tail_artifact",
-            'POLICY = "late-broadband-tail-v2"',
+            'POLICY = "late-broadband-tail-v4"',
             '"artifact_type": "late_broadband_burst"',
+        ) and _has(
+            text,
+            "tail_facade",
+            'POLICY = "late-broadband-tail-v5"',
+            'BRACKETING_POLICY = "analysis-window-overlap-aware-voice-brackets-v1"',
+            "overlap_before + overlap_after > tolerance",
         ) and _has(
             text,
             "delivery_qa",
@@ -276,7 +288,7 @@ def _v47_static_contract(repo: Path) -> tuple[bool, str]:
     if failed:
         return False, "v4.8-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "worker v4.8/preflight v2; cancellation, explicit root and job-level quality restarts; "
+        "worker v6.8/preflight v2; cancellation, explicit root and job-level quality restarts; "
         "exact SRT speech slots and fit-aware adaptive retries; durable per-segment seed epochs; "
         "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, assembled and "
         "post-AAC QA; full implementation/model/runtime cache; deterministic child imports"
@@ -294,7 +306,7 @@ def _legacy_quality_without_superseded_worker(repo: Path) -> tuple[bool, str]:
     failed = [item for item in failed if item != "worker-v45"]
     if failed:
         return False, "не прошли: " + ", ".join(failed)
-    return True, "все legacy-контракты активны; worker-v45 заменён v4.8 preflight"
+    return True, "все legacy-контракты активны; worker-v45 заменён v6.8 preflight"
 
 
 def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:

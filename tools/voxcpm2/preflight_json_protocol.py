@@ -83,7 +83,20 @@ def runtime_paths(project: dict[str, Any]) -> dict[str, Any]:
     request = preflight.generic_project_runtime.load_request(root)
     repo = preflight._legacy.repo_root().resolve()
     backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    if (
+        not callable(getattr(backend, "build_renderer_command", None))
+        or not callable(getattr(backend, "build_master_command", None))
+        or not callable(getattr(backend, "process_environment", None))
+    ):
+        raise RuntimeError(
+            "Preflight: выбранный speech backend не реализует process/command contract: "
+            f"{backend.backend_id}"
+        )
     runtime = backend.runtime_paths(repo, request)
+    environment_policy = backend.process_environment(
+        request,
+        base_environment=os.environ,
+    )
 
     # Existing strict preflight signatures resolve this global at call time.
     # Jobs are processed serially by one worker, so the active backend module set
@@ -107,6 +120,8 @@ def runtime_paths(project: dict[str, Any]) -> dict[str, Any]:
         "master_module": runtime.master_module,
         "final_qa_module": runtime.final_qa_module,
         "runtime_path_policy": RUNTIME_PATH_POLICY,
+        "environment_policy": environment_policy.as_metadata()["environment_policy"],
+        "environment_metadata": environment_policy.as_metadata(),
     }
 
 
@@ -200,6 +215,8 @@ def probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
         "python": reported_python,
         "speech_backend": str(paths.get("speech_backend") or ""),
         "runtime_path_policy": str(paths.get("runtime_path_policy") or ""),
+        "environment_policy": str(paths.get("environment_policy") or ""),
+        "environment_metadata": paths.get("environment_metadata") or {},
         "loaded_modules": loaded,
         "ffmpeg": str(preflight._signature_executable_path("ffmpeg")),
         "ffprobe": str(preflight._signature_executable_path("ffprobe")),

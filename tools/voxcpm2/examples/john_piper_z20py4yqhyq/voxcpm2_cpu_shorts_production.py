@@ -100,6 +100,7 @@ def _clear_checkpoint_state(work_dir: Path) -> None:
 def _runtime_contract() -> tuple[Path, dict[str, Any]]:
     work_dir = Path(_flag("--work-dir")).resolve()
     archive = Path(_flag("--archive-root")).resolve()
+    speech_backend = _flag("--speech-backend", default="voxcpm2")
     try:
         cache_length = int(_flag("--cache-length", default="4096"))
     except (TypeError, ValueError, OverflowError) as exc:
@@ -110,10 +111,12 @@ def _runtime_contract() -> tuple[Path, dict[str, Any]]:
         repo=REPO_ROOT,
         archive=archive,
         cpu_python=Path(sys.executable).resolve(),
+        backend_id=speech_backend,
     )
     return work_dir, {
         "schema_version": 1,
         "policy": MARKER_POLICY,
+        "speech_backend": speech_backend,
         "render_contract_sha256": fingerprints["render_contract_sha256"],
         "cache_length": cache_length,
         "python_executable": str(Path(sys.executable).resolve()),

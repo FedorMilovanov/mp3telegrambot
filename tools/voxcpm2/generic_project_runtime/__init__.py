@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -20,7 +21,7 @@ import types
 from typing import Any
 import uuid
 
-from tools.voxcpm2 import clean_production_core as strict_core
+from services.speech_backends import DEFAULT_BACKEND_ID, resolve_backend_id
 from tools.voxcpm2 import clean_source_download
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "generic_project_runtime.py"
@@ -31,6 +32,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить generic project runtime: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -40,6 +42,23 @@ for _name in dir(_legacy):
 POLICY = "generic-project-runtime-write-through-v2"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
 _PROTECTED_HOOKS = {"project_root", "load_request", "save_json", "validate_request_payload"}
+
+
+def _strict_schema_int(value: Any, *, field: str, low: int, high: int) -> int:
+    """Validate control-plane integers without importing the synthesis engine."""
+    if isinstance(value, bool):
+        raise RuntimeError(f"{field} не может быть bool.")
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        raise RuntimeError(f"{field} должен быть целым числом.")
+    try:
+        result = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(f"Некорректное значение {field}: {value!r}") from exc
+    if not low <= result <= high:
+        raise RuntimeError(f"{field}={result} вне диапазона {low}..{high}.")
+    return result
 
 
 def project_root(project_id: str | None = None) -> Path:
@@ -60,7 +79,7 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("request.json должен быть JSON-объектом.")
     result = dict(payload)
-    schema = strict_core._strict_int(
+    schema = _strict_schema_int(
         result.get("schema_version"),
         field="request.schema_version",
         low=1,
@@ -85,9 +104,18 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
     mode = str(result.get("translation_mode") or "").strip().lower()
     if mode not in _ALLOWED_TRANSLATION_MODES:
         raise RuntimeError(f"Некорректный translation_mode={mode!r} в request.json.")
+    try:
+        backend_id = resolve_backend_id(
+            result.get("speech_backend") or DEFAULT_BACKEND_ID
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Некорректный speech_backend={result.get('speech_backend')!r} в request.json."
+        ) from exc
     result["video_id"] = video_id
     result["source_url"] = source_url
     result["translation_mode"] = mode
+    result["speech_backend"] = backend_id
     return result
 
 

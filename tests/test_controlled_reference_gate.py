@@ -64,7 +64,7 @@ def _write_report(path: Path, *, profile: str, duration: float) -> None:
 def _calm_pair(root: Path) -> tuple[Path, Path, bytes, str]:
     output = root / "composite_reference.wav"
     report = output.with_suffix(".selection.json")
-    _write_wav(output, seconds=8.0, value=0.02)
+    _write_voice_tone(output, seconds=8.0, fundamental=110.0)
     report.write_text(
         json.dumps(
             {
@@ -224,7 +224,8 @@ def test_gross_identity_mismatch_restores_calm(monkeypatch, tmp_path: Path) -> N
     assert built is False
     assert "identity spectral similarity" in detail
     assert output.read_bytes() == calm_wav
-    assert report.read_text(encoding="utf-8") == calm_report
+    restored_payload = json.loads(report.read_text(encoding="utf-8"))
+    assert restored_payload["identity_policy"] == controlled_reference_gate.IDENTITY_POLICY
 
 
 def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -> None:

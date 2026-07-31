@@ -94,7 +94,7 @@ def test_ambiguous_repair_scope_fails_closed(tmp_path: Path, override: dict) -> 
 
 
 @pytest.mark.parametrize(
-    ("request", "marker", "manifest"),
+    ("request_payload", "marker", "manifest"),
     [
         ({"base_seed": True}, {}, {}),
         ({"base_seed": 1.5}, {}, {}),
@@ -104,12 +104,12 @@ def test_ambiguous_repair_scope_fails_closed(tmp_path: Path, override: dict) -> 
     ],
 )
 def test_ambiguous_repair_seed_fields_fail_closed(
-    request: dict,
+    request_payload: dict,
     marker: dict,
     manifest: dict,
 ) -> None:
     with pytest.raises(RuntimeError):
-        repair._next_seed(request, marker, manifest)
+        repair._next_seed(request_payload, marker, manifest)
 
 
 def test_stale_segment_hash_stops_before_migration(tmp_path: Path) -> None:

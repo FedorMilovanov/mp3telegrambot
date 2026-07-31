@@ -38,6 +38,7 @@ _RENDER_MODULES = (
     "tools/voxcpm2/generic_gemini_runtime.py",
     "tools/voxcpm2/generic_clean_gemini_runtime.py",
     "tools/voxcpm2/generic_clean_direct_runtime.py",
+    "tools/voxcpm2/semantic_block_runtime.py",
     "tools/voxcpm2/generic_clean_custom_runtime.py",
     "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
     "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
@@ -48,6 +49,7 @@ _RENDER_MODULES = (
     "tools/voxcpm2/direct_russian_cadence.py",
     "tools/voxcpm2/direct_tail_artifact.py",
     "tools/voxcpm2/direct_source_prosody.py",
+    "tools/voxcpm2/source_prosody_policy.py",
     "tools/voxcpm2/direct_timeline_delivery_qa.py",
     "tools/voxcpm2/direct_max_quality_render.py",
     "tools/voxcpm2/direct_max_quality_cli.py",
@@ -288,11 +290,13 @@ def build_fingerprints(
     repo: Path,
     archive: Path,
     cpu_python: Path,
+    backend_id: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
     archive = archive.resolve()
     render_payload = {
         "policy": POLICY,
+        "backend_id": str(backend_id or "default"),
         "contract_module_sha256": sha256_file(Path(__file__).resolve()),
         "implementation": _module_hashes(repo, _RENDER_MODULES),
         "model": _model_manifest(archive),

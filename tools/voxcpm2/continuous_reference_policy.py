@@ -334,7 +334,15 @@ def build_reference(
                 f"Fallback voice reference {profile} не содержит выбранных окон."
             )
 
-        assembled_stats = _assembled_reference_stats(output)
+        try:
+            assembled_stats = _assembled_reference_stats(output)
+        except Exception as exc:
+            output.unlink(missing_ok=True)
+            fallback_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Fallback voice reference {profile} не прошёл hard-quality floor: "
+                f"assembled WAV не читается: {exc}"
+            ) from exc
         failures = _assembled_release_failures(assembled_stats)
         if failures:
             output.unlink(missing_ok=True)
@@ -406,6 +414,11 @@ def build_reference(
                 "start": round(float(selected["start"]), 3),
                 "end": round(float(selected["end"]), 3),
                 "score": round(float(selected["score"]), 4),
+                "selection_policy": str(selected.get("selection_policy") or "legacy-quality-score"),
+                "robust_f0_median": selected.get("robust_f0_median"),
+                "robust_f0_p90": selected.get("robust_f0_p90"),
+                "f0_median_log_distance": selected.get("f0_median_log_distance"),
+                "f0_p90_log_distance": selected.get("f0_p90_log_distance"),
                 **{
                     key: round(float(value), 6)
                     for key, value in selected["stats"].items()

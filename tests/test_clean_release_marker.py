@@ -80,9 +80,9 @@ def test_repair_seed_overflow_is_rejected() -> None:
 
 
 def test_clean_core_marks_qa_before_release_completion() -> None:
-    source = Path(clean.__file__).read_text(encoding="utf-8")
+    source = Path(clean._legacy.__file__).read_text(encoding="utf-8")
     false_position = source.index('"release_complete": False')
-    master_position = source.index("master_command = [")
+    master_position = source.index("backend.build_master_command(")
     true_position = source.index("release_complete=True")
     assert false_position < master_position < true_position
     assert 'final_verification.get("passed") is not True' in source

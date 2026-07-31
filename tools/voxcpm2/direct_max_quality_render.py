@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Timing, timeline and model-call utilities for direct VoxCPM2 production."""
+"""Timing and timeline utilities for direct speech-backend production.
+
+The low-level model call is owned by the selected backend session; the legacy
+``_generate`` helper remains only as a compatibility seam for older facades.
+"""
 from __future__ import annotations
 
 import inspect
@@ -167,6 +171,8 @@ def _generate(
     min_len: int,
     max_len: int,
     seed: int,
+    continuation_reference: Path | None = None,
+    continuation_text: str = "",
 ) -> Any:
     parameters = inspect.signature(model.generate).parameters
     generation_max_len = min(
@@ -189,6 +195,13 @@ def _generate(
         "retry_badcase_ratio_threshold": 6.0,
         "seed": int(seed),
     }
+    if continuation_reference is not None and continuation_reference.is_file():
+        if "prompt_wav_path" in parameters:
+            kwargs["prompt_wav_path"] = str(continuation_reference)
+        if "prompt_text" in parameters and str(continuation_text or "").strip():
+            kwargs["prompt_text"] = str(continuation_text).strip()
+        elif "reference_text" in parameters and str(continuation_text or "").strip():
+            kwargs["reference_text"] = str(continuation_text).strip()
     for name, value in optional.items():
         if name in parameters:
             kwargs[name] = value

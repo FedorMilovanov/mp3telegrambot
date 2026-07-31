@@ -127,6 +127,7 @@ def main() -> None:
     production.translate_groups_max = expressive_translation.translate_groups
     production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text
     production._build_render_segments = _build_clean_render_segments
+    production._run_speech_and_master = _run_clean_voxcpm_and_master
     production._run_voxcpm_and_master = _run_clean_voxcpm_and_master
     production.main()
     root, request = _current_request()

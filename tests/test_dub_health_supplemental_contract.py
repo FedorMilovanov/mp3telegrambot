@@ -105,7 +105,7 @@ def test_supplemental_health_replaces_only_superseded_worker_v45_check() -> None
     )
     assert "def _legacy_quality_without_superseded_worker(" in facade
     assert 'item != "worker-v45"' in facade
-    assert '"dub-worker-quality-v4.8"' in facade
+    assert 'WORKER_RUNTIME' in facade
     assert "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
     assert "def _v47_static_contract(" in facade

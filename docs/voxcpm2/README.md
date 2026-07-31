@@ -1,6 +1,8 @@
 # VoxCPM2 CPU dubbing handbook
 
 > Актуальный источник истины для локальной CPU-озвучки, будущей интеграции с LiveDub и передачи задачи другим ИИ/разработчикам. Обновлено 26 июля 2026 года.
+>
+> Актуальное сравнение VoxCPM2 с Qwen3-TTS, Chatterbox V3, Fish S2-Pro, CosyVoice3 и другими моделями: [`MODEL_COMPARISON_2026-08-01.md`](MODEL_COMPARISON_2026-08-01.md).
 
 ## 1. Цель проекта
 

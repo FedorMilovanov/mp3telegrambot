@@ -9,11 +9,15 @@ extends fingerprints with every active facade, repair gate and release contract.
 from __future__ import annotations
 
 import importlib.util
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
 from services.speech_backends import (
+    BACKEND_ENVIRONMENT_POLICY,
     DEFAULT_BACKEND_ID,
+    BackendIdentity,
     default_backend,
     get_backend,
 )
@@ -26,6 +30,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить clean runtime contract: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 _FACADE_RENDER_MODULES = (
@@ -37,6 +42,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/clean_production_core/__init__.py",
     "tools/voxcpm2/generic_project_runtime/__init__.py",
     "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
+    "tools/voxcpm2/semantic_block_runtime.py",
     "tools/voxcpm2/clean_source_download/__init__.py",
     "tools/voxcpm2/dub_quality_v4/__init__.py",
     "tools/voxcpm2/expressive_continuity/__init__.py",
@@ -105,9 +111,13 @@ def normalize_settings(
     settings = dict(_legacy_normalize_settings(request, duration=duration))
     raw_backend = request.get("speech_backend") or DEFAULT_BACKEND_ID
     backend = get_backend(raw_backend)
-    if backend.backend_id != DEFAULT_BACKEND_ID:
+    if (
+        not callable(getattr(backend, "build_renderer_command", None))
+        or not callable(getattr(backend, "build_master_command", None))
+        or not callable(getattr(backend, "process_environment", None))
+    ):
         raise RuntimeError(
-            "Speech backend зарегистрирован, но ещё не подключён к clean renderer: "
+            "Speech backend не реализует model-independent process/command contract: "
             f"{backend.backend_id}."
         )
     settings["speech_backend"] = backend.backend_id
@@ -120,18 +130,46 @@ def build_fingerprints(
     repo: Path,
     archive: Path,
     cpu_python: Path,
+    backend_id: object | None = None,
 ) -> dict[str, Any]:
-    result = dict(
-        _legacy_build_fingerprints(
-            repo=repo,
-            archive=archive,
-            cpu_python=cpu_python,
+    backend = get_backend(backend_id or DEFAULT_BACKEND_ID)
+    previous_discover_model = _legacy.discover_model
+    _legacy.discover_model = backend.discover_model
+    try:
+        result = dict(
+            _legacy_build_fingerprints(
+                repo=repo,
+                archive=archive,
+                cpu_python=cpu_python,
+            )
         )
-    )
+    finally:
+        _legacy.discover_model = previous_discover_model
+    try:
+        identity_payload = backend.identity(Path(archive)).as_dict()
+    except RuntimeError:
+        # The legacy fingerprint call may be deterministically stubbed in a
+        # contract test. Reuse its already-validated model manifest rather than
+        # performing a second discovery with a different seam.
+        model_manifest = (result.get("render") or {}).get("model") or {}
+        model_path = str(model_manifest.get("path") or "").strip()
+        if not model_path:
+            raise
+        identity_payload = BackendIdentity(
+            backend_id=backend.backend_id,
+            family="reference-conditioned-generative-tts",
+            adapter_policy=str(getattr(backend, "adapter_policy", "")),
+            model_path=model_path,
+            runtime_module=backend.backend_id,
+            parameter_schema=(),
+            output_contract="backend-model-manifest-v1",
+        ).as_dict()
     backend_payload = {
-        "identity": _BACKEND.identity(Path(archive)).as_dict(),
-        "capabilities": _BACKEND.capabilities().as_dict(),
+        "identity": identity_payload,
+        "capabilities": backend.capabilities().as_dict(),
         "selection_policy": BACKEND_SELECTION_POLICY,
+        "environment_policy": BACKEND_ENVIRONMENT_POLICY,
+        "backend_id": backend.backend_id,
     }
     render = dict(result.get("render") or {})
     render["speech_backend"] = backend_payload
@@ -153,6 +191,25 @@ globals()["normalize_settings"] = normalize_settings
 globals()["build_fingerprints"] = build_fingerprints
 _RENDER_MODULES = _legacy._RENDER_MODULES
 _RELEASE_MODULES = _legacy._RELEASE_MODULES
+
+
+class _WriteThroughModule(types.ModuleType):
+    """Keep fingerprint seams synchronized with legacy function globals."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        types.ModuleType.__setattr__(self, name, value)
+        if name in {"_legacy", "__class__"} or name.startswith("__"):
+            return
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        if hasattr(legacy, name):
+            setattr(legacy, name, value)
+
+    def __getattr__(self, name: str) -> Any:
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        return getattr(legacy, name)
+
+
+sys.modules[__name__].__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))

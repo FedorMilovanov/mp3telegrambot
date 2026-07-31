@@ -11,6 +11,7 @@ speaker-identity gates or influence candidate ranking.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 from services.dub_worker_release import (
@@ -24,6 +25,10 @@ from services.dub_worker_release import (
     PRONUNCIATION_VARIANT_POLICY,
     READY_SRT_GROUPING_POLICY,
     RUNTIME_ROUTING_POLICY,
+    SEMANTIC_BLOCK_POLICY,
+    SOURCE_PROSODY_ROLE_POLICY,
+    BACKEND_COMMAND_POLICY,
+    BACKEND_ENVIRONMENT_POLICY,
     SOURCE_RELATIVE_CONTINUITY_POLICY,
     WORKER_RUNTIME,
 )
@@ -36,6 +41,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Dub title policy: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -243,6 +249,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             'if mode == "direct"',
             '_DIRECT_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"',
             "master_entrypoint, master_module = _master_contract(repo, request)",
+            "def process_environment(",
         ),
         "monolith-fingerprinted": _all(
             text["fingerprint"],
@@ -270,7 +277,10 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "whole-timeline F0 gates that source evidence cannot override; resume-safe nearest "
         "checkpoint identity; no late cue shifting; short cadence-aware fades; detached-start "
         "and embedded/immediate broadband-tail gates; dialogue-suppressed stereo-side source "
-        "bed with bounded center floor; synthesis/release fingerprinting"
+        "bed with bounded center floor; model-independent backend command and process "
+        "environment boundary; "
+        f"backend={BACKEND_COMMAND_POLICY}; environment={BACKEND_ENVIRONMENT_POLICY}; "
+        "synthesis/release fingerprinting"
     )
 
 
@@ -322,6 +332,9 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             f'EXPRESSION_POLICY = "{EXPRESSION_POLICY}"',
             f'MASTER_MIX_POLICY = "{MASTER_MIX_POLICY}"',
             f'RUNTIME_ROUTING_POLICY = "{RUNTIME_ROUTING_POLICY}"',
+            f'SEMANTIC_BLOCK_POLICY = "{SEMANTIC_BLOCK_POLICY}"',
+            f'SOURCE_PROSODY_ROLE_POLICY = "{SOURCE_PROSODY_ROLE_POLICY}"',
+            f'BACKEND_COMMAND_POLICY = "{BACKEND_COMMAND_POLICY}"',
         )
     )
     worker_ok = all(

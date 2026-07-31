@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Direct ready-SRT -> Russian VoxCPM2 production runtime.
+"""Direct ready-SRT -> Russian speech-backend production runtime.
 
 This mode treats the uploaded Russian SRT as final editorial copy. Gemini is
 used only for a lightweight Russian output filename; it never reviews,
@@ -29,6 +29,11 @@ from tools.voxcpm2.generic_project_runtime import (
     save_json,
     update_project_record,
 )
+
+
+def _run_speech_and_master(**kwargs: Any) -> Path:
+    """Generic engine hook; the selected route may replace this before main()."""
+    return _run_voxcpm_and_master(**kwargs)
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _TIMING_RE = re.compile(
@@ -344,7 +349,7 @@ def main() -> None:
     stable_mixed = output_dir / "final_upload.mp4"
     stable_russian = output_dir / "russian_only.mp4"
     log("=== 4. VOXCPM2 / ГОТОВЫЙ ТЕКСТ БЕЗ GEMINI-ПРАВОК ===")
-    russian_timeline = _run_voxcpm_and_master(
+    russian_timeline = _run_speech_and_master(
         root=root,
         request=request,
         source=source,

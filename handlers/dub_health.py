@@ -282,8 +282,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             "from tools.voxcpm2 import direct_max_quality_cli as _direct_cli"
             in text["stable_cli"]
             and "main = _direct_cli.main" in text["stable_cli"]
-            and "voxcpm2_cpu_shorts_production.py" in text["core"]
-            and "subprocess.run(command" in text["core"]
+            and "backend.build_renderer_command(" in text["core"]
+            and "backend.build_master_command(" in text["core"]
+            and "get_backend(" in text["core"]
         ),
         "no-wrapper": (
             "runpy.run_path" not in renderer_text
