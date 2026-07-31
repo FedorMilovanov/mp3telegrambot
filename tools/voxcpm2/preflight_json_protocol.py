@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Noise-tolerant, fail-closed JSON transport for Dub CPU import preflight.
+"""Backend-aware, noise-tolerant JSON transport for Dub CPU import preflight.
 
 Some third-party runtime modules print banners or warnings to stdout during
 import. Preflight must not confuse that diagnostic noise with its machine
 payload, but it must still validate the exact CPU interpreter, complete module
-set and production entrypoint paths. The child therefore emits one uniquely
-marked JSON line; every other stdout line is retained only as diagnostics.
+set and production entrypoint paths. Runtime paths and import probes are supplied
+by the selected speech backend rather than hardcoded in shared orchestration.
 """
 from __future__ import annotations
 
@@ -15,7 +15,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-POLICY = "marked-preflight-json-transport-v1"
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
+
+POLICY = "marked-preflight-json-transport-v2"
+RUNTIME_PATH_POLICY = "backend-owned-preflight-runtime-paths-v1"
 MARKER = "__DUB_PREFLIGHT_JSON_V1__="
 MAX_DIAGNOSTIC_CHARS = 4000
 
@@ -72,12 +75,48 @@ def decode_payload(stdout: str) -> tuple[dict[str, Any], str]:
     return payload, noise
 
 
-def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
+def runtime_paths(project: dict[str, Any]) -> dict[str, Any]:
+    """Resolve exact preflight paths through the selected backend adapter."""
+    from tools.voxcpm2 import dub_job_preflight as preflight
+
+    root = preflight._project_root(project)
+    request = preflight.generic_project_runtime.load_request(root)
+    repo = preflight._legacy.repo_root().resolve()
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(repo, request)
+
+    # Existing strict preflight signatures resolve this global at call time.
+    # Jobs are processed serially by one worker, so the active backend module set
+    # can be made explicit without weakening any validation.
+    preflight._MODULES = tuple(runtime.import_modules)
+    legacy = getattr(preflight, "_legacy", None)
+    if legacy is not None:
+        legacy._MODULES = tuple(runtime.import_modules)
+
+    return {
+        "root": root,
+        "request": root / "request.json",
+        "repo": runtime.repo_root,
+        "cpu_python": runtime.cpu_python,
+        "archive": runtime.archive_root,
+        "renderer": runtime.renderer_entrypoint,
+        "master": runtime.master_entrypoint,
+        "speech_backend": runtime.backend_id,
+        "import_modules": tuple(runtime.import_modules),
+        "renderer_module": runtime.renderer_module,
+        "master_module": runtime.master_module,
+        "final_qa_module": runtime.final_qa_module,
+        "runtime_path_policy": RUNTIME_PATH_POLICY,
+    }
+
+
+def probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
     """Run the active strict preflight import probe through the marked protocol."""
     from tools.voxcpm2 import dub_job_preflight as preflight
 
     python = Path(paths["cpu_python"]).resolve()
     repo = Path(paths["repo"]).resolve()
+    modules = tuple(paths.get("import_modules") or preflight._MODULES)
     for label in ("renderer", "master"):
         path = Path(paths[label]).resolve()
         if not path.is_file():
@@ -85,7 +124,7 @@ def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
 
     script = (
         "import importlib, json, sys\n"
-        f"names = {list(preflight._MODULES)!r}\n"
+        f"names = {list(modules)!r}\n"
         "loaded = {}\n"
         "for name in names:\n"
         "    module = importlib.import_module(name)\n"
@@ -116,14 +155,17 @@ def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
     payload, stdout_noise = decode_payload(process.stdout or "")
     loaded = payload.get("loaded") if isinstance(payload, dict) else None
     reported_python = str(payload.get("python") or "") if isinstance(payload, dict) else ""
-    if not isinstance(loaded, dict) or set(loaded) != set(preflight._MODULES):
+    if not isinstance(loaded, dict) or set(loaded) != set(modules):
         raise RuntimeError("Preflight: импортирован не полный набор production-модулей.")
     if preflight._normalized_path(Path(reported_python)) != preflight._normalized_path(python):
         raise RuntimeError("Preflight: import probe запущен не тем CPU Python.")
 
+    renderer_module = str(paths.get("renderer_module") or "")
+    master_module = str(paths.get("master_module") or "")
+    final_qa_module = str(paths.get("final_qa_module") or "")
     expected_files = {
-        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix": Path(paths["master"]),
-        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production": Path(paths["renderer"]),
+        master_module: Path(paths["master"]),
+        renderer_module: Path(paths["renderer"]),
     }
     for name, raw_path in loaded.items():
         if not isinstance(raw_path, str) or not raw_path.strip():
@@ -147,7 +189,7 @@ def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
                 f"Preflight: module {name} загружен не из production entrypoint."
             )
 
-    final_qa = Path(loaded["tools.voxcpm2.final_media_qa"]).resolve()
+    final_qa = Path(loaded[final_qa_module]).resolve()
     if final_qa.name != "__init__.py" or final_qa.parent.name != "final_media_qa":
         raise RuntimeError(
             "Preflight: active final_media_qa compatibility package не загружен."
@@ -156,6 +198,8 @@ def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
     return {
         "python_returncode": int(process.returncode),
         "python": reported_python,
+        "speech_backend": str(paths.get("speech_backend") or ""),
+        "runtime_path_policy": str(paths.get("runtime_path_policy") or ""),
         "loaded_modules": loaded,
         "ffmpeg": str(preflight._signature_executable_path("ffmpeg")),
         "ffprobe": str(preflight._signature_executable_path("ffprobe")),
@@ -166,12 +210,14 @@ def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
 
 
 def install() -> None:
-    """Install into the active package facade before any production job runs."""
+    """Install backend path routing and marked transport before production jobs."""
     from tools.voxcpm2 import dub_job_preflight as preflight
 
+    preflight._runtime_paths = runtime_paths
     preflight._probe_imports = probe_imports
     legacy = getattr(preflight, "_legacy", None)
     if legacy is not None:
+        legacy._runtime_paths = runtime_paths
         legacy._probe_imports = probe_imports
 
 
@@ -179,8 +225,10 @@ __all__ = [
     "MARKER",
     "MAX_DIAGNOSTIC_CHARS",
     "POLICY",
+    "RUNTIME_PATH_POLICY",
     "decode_payload",
     "encode_payload",
     "install",
     "probe_imports",
+    "runtime_paths",
 ]
