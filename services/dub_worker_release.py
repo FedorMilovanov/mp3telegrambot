@@ -8,11 +8,13 @@ replaced before it can claim another production job.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v6.4"
+WORKER_RUNTIME = "dub-worker-quality-v6.5"
 RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
 READY_SRT_GROUPING_POLICY = "ready-srt-semantic-breath-grouping-v1"
+REFERENCE_POLICY = "continuous-clean-reference-v3"
+REFERENCE_SELECTION_POLICY = "robust-typical-f0-continuous-window-v1"
 MONOLITHIC_VOICE_POLICY = "single-speaker-monolithic-candidate-v1"
 SOURCE_RELATIVE_CONTINUITY_POLICY = "cross-language-source-prosody-diagnostic-v3"
 FAIL_CLOSED_IDENTITY_POLICY = "cross-language-prosody-cannot-override-identity-v1"
@@ -36,6 +38,8 @@ __all__ = [
     "PRONUNCIATION_POLICY",
     "PRONUNCIATION_VARIANT_POLICY",
     "READY_SRT_GROUPING_POLICY",
+    "REFERENCE_POLICY",
+    "REFERENCE_SELECTION_POLICY",
     "RELEASE_POLICY",
     "RUNTIME_ROUTING_POLICY",
     "SOURCE_BED_POLICY",
