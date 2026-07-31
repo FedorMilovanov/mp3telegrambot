@@ -13,16 +13,14 @@ from services.speech_backends.base import (
     BackendRuntimePaths,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v2"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v3"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
 _DEFAULT_ARCHIVE = r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
 _RENDERER_MODULE = (
     "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production"
 )
-_MASTER_MODULE = (
-    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
-)
+_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"
 _FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
 _IMPORT_MODULES = (
     _FINAL_QA_MODULE,
@@ -58,8 +56,6 @@ class VoxCPM2Backend:
         )
 
     def discover_model(self, archive_root: Path) -> Path:
-        # Imported lazily so the generic service layer does not import model code
-        # merely to list registered backends.
         from tools.voxcpm2.direct_max_quality_io import discover_model
 
         return discover_model(Path(archive_root))
@@ -98,7 +94,7 @@ class VoxCPM2Backend:
             cpu_python=python,
             archive_root=archive,
             renderer_entrypoint=example / "voxcpm2_cpu_shorts_production.py",
-            master_entrypoint=example / "master_constant_mix.py",
+            master_entrypoint=repo / "tools" / "voxcpm2" / "master_monolithic_mix.py",
             import_modules=_IMPORT_MODULES,
             renderer_module=_RENDERER_MODULE,
             master_module=_MASTER_MODULE,
