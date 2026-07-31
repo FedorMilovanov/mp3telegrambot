@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Narrow release-health upgrade for the v6.5 direct quality release.
+"""Narrow release-health upgrade for the v6.6 direct quality release.
 
 All established Dub environment, worker, renderer, cadence, pronunciation and
-post-AAC checks remain authoritative. This module replaces only the superseded
-source-bed static contract and adds the typical continuous-reference selector.
+post-AAC checks remain authoritative. This module replaces only superseded
+source-bed health and adds typical-reference plus transactional import checks.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from services.dub_worker_release import (
+    LEGACY_IMPORT_POLICY,
     MASTER_MIX_POLICY,
     REFERENCE_POLICY,
     REFERENCE_SELECTION_POLICY,
@@ -19,7 +20,7 @@ from services.dub_worker_release import (
     WORKER_RUNTIME,
 )
 
-POLICY = "truthful-russian-only-master-and-reference-health-v2"
+POLICY = "truthful-master-reference-and-import-health-v3"
 _SUPERSEDED_CHECK = "dialogue-suppressed-master"
 _HOOKED = False
 
@@ -32,16 +33,18 @@ def _all(text: str, *markers: str) -> bool:
     return bool(text) and all(marker in text for marker in markers)
 
 
-def _v65_quality_contract(repo: Path) -> tuple[bool, str]:
+def _v66_quality_contract(repo: Path) -> tuple[bool, str]:
     root = Path(repo)
     voxcpm = root / "tools" / "voxcpm2"
     contract = _read(voxcpm / "spatial_bed_contract.py")
     master = _read(voxcpm / "master_monolithic_mix.py")
     qa = _read(voxcpm / "final_media_spatial_bed.py")
     reference = _read(voxcpm / "continuous_reference_policy" / "__init__.py")
+    quality_facade = _read(voxcpm / "dub_quality_v4" / "__init__.py")
     tests = _read(root / "tests" / "test_spatial_bed_final_media_qa.py")
     master_tests = _read(root / "tests" / "test_dialogue_suppressed_master.py")
     reference_tests = _read(root / "tests" / "test_continuous_reference_typical_f0.py")
+    import_tests = _read(root / "tests" / "test_legacy_facade_module_registration.py")
 
     checks = {
         "zero-source-contract": _all(
@@ -106,30 +109,49 @@ def _v65_quality_contract(repo: Path) -> tuple[bool, str]:
             'assert selected["stats"]["f0_median"] == 170.0',
             "test_quality_metrics_remain_part_of_reference_ranking",
         ),
+        "transactional-legacy-import": _all(
+            quality_facade,
+            "_previous_legacy = sys.modules.get(_SPEC.name)",
+            "sys.modules[_SPEC.name] = _legacy",
+            "_SPEC.loader.exec_module(_legacy)",
+            "sys.modules.pop(_SPEC.name, None)",
+            "sys.modules[_SPEC.name] = _previous_legacy",
+        ) and _all(
+            import_tests,
+            "test_dub_quality_legacy_module_is_registered_for_dataclasses",
+            "test_dub_quality_import_succeeds_in_fresh_python_process",
+            "test_registration_is_transactional_in_source",
+            "sys.modules.get(legacy.__name__) is legacy",
+        ),
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
-        return False, "Dub v6.5 quality-contract не прошёл: " + ", ".join(failed)
+        return False, "Dub v6.6 quality-contract не прошёл: " + ", ".join(failed)
     return True, (
         "Russian-only direct master: requested source level is audit-only; applied center/side "
         "are zero; speech-bearing original is absent from the FFmpeg graph; post-AAC center "
         "and side leakage regressions are fail-closed; continuous reference selection is "
-        "quality-gated and ranked around the speaker's robust median F0 instead of preferring "
-        "the lowest/bassiest window"
+        "quality-gated and ranked around the speaker's robust median F0; legacy dataclass "
+        f"modules use {LEGACY_IMPORT_POLICY} before execution with rollback on failure"
     )
+
+
+def _v65_quality_contract(repo: Path) -> tuple[bool, str]:
+    """Compatibility alias retained for existing callers."""
+    return _v66_quality_contract(repo)
 
 
 def _russian_only_master_contract(repo: Path) -> tuple[bool, str]:
     """Compatibility alias retained for existing tests and diagnostics."""
-    return _v65_quality_contract(repo)
+    return _v66_quality_contract(repo)
 
 
 def _upgrade_monolithic_contract(title: Any) -> None:
     current = title._monolithic_static_contract
-    if getattr(current, "_dub_v65_quality_contract", False):
+    if getattr(current, "_dub_v66_quality_contract", False):
         return
 
-    def v65_monolithic_contract(repo: Path) -> tuple[bool, str]:
+    def v66_monolithic_contract(repo: Path) -> tuple[bool, str]:
         ok, detail = current(Path(repo))
         remaining: list[str] = []
         base_detail = str(detail)
@@ -143,7 +165,7 @@ def _upgrade_monolithic_contract(title: Any) -> None:
                 if item.strip()
             ]
             remaining = [item for item in failed if item != _SUPERSEDED_CHECK]
-        current_ok, current_detail = _v65_quality_contract(Path(repo))
+        current_ok, current_detail = _v66_quality_contract(Path(repo))
         if remaining:
             return False, "monolithic-контракты не прошли: " + ", ".join(remaining)
         if not current_ok:
@@ -154,11 +176,11 @@ def _upgrade_monolithic_contract(title: Any) -> None:
         )
         return True, stable_detail + "; " + current_detail
 
-    v65_monolithic_contract._dub_v65_quality_contract = True  # type: ignore[attr-defined]
-    title._monolithic_static_contract = v65_monolithic_contract
+    v66_monolithic_contract._dub_v66_quality_contract = True  # type: ignore[attr-defined]
+    title._monolithic_static_contract = v66_monolithic_contract
     legacy = getattr(title, "_legacy", None)
     if legacy is not None and hasattr(legacy, "_monolithic_static_contract"):
-        legacy._monolithic_static_contract = v65_monolithic_contract
+        legacy._monolithic_static_contract = v66_monolithic_contract
 
 
 def _install_after_title_policy() -> None:
@@ -175,17 +197,17 @@ def install_release_health_hook() -> None:
     from services import dub_title_policy as title
 
     current: Callable[..., Any] = title.install_dub_title_policy
-    if getattr(current, "_dub_v65_release_health_hook", False):
+    if getattr(current, "_dub_v66_release_health_hook", False):
         _HOOKED = True
         return
 
-    def install_dub_title_policy_v65(*args: Any, **kwargs: Any) -> Any:
+    def install_dub_title_policy_v66(*args: Any, **kwargs: Any) -> Any:
         result = current(*args, **kwargs)
         _install_after_title_policy()
         return result
 
-    install_dub_title_policy_v65._dub_v65_release_health_hook = True  # type: ignore[attr-defined]
-    title.install_dub_title_policy = install_dub_title_policy_v65
+    install_dub_title_policy_v66._dub_v66_release_health_hook = True  # type: ignore[attr-defined]
+    title.install_dub_title_policy = install_dub_title_policy_v66
     _HOOKED = True
 
 
@@ -194,5 +216,6 @@ __all__ = [
     "WORKER_RUNTIME",
     "_russian_only_master_contract",
     "_v65_quality_contract",
+    "_v66_quality_contract",
     "install_release_health_hook",
 ]
