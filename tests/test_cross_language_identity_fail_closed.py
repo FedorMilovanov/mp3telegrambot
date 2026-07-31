@@ -12,7 +12,7 @@ def _segment(f0: float, p90: float) -> dict[str, object]:
     return {"source_prosody": {"f0_median": f0, "f0_p90": p90}}
 
 
-def test_cross_language_source_is_advisory_and_never_grants_override() -> None:
+def test_cross_language_source_is_diagnostic_and_never_changes_ranking() -> None:
     evidence = direct_source_relative_continuity.evaluate_transition(
         current_identity=_identity(90.0, 125.0),
         previous_identity=_identity(170.0, 230.0),
@@ -20,12 +20,15 @@ def test_cross_language_source_is_advisory_and_never_grants_override() -> None:
         previous_segment=_segment(160.0, 220.0),
     )
 
+    assert evidence["policy"] == "cross-language-source-prosody-diagnostic-v3"
     assert evidence["advisory_source_available"] is True
     assert evidence["source_available"] is False
     assert evidence["absolute_gate_override_allowed"] is False
+    assert evidence["ranking_penalty_enabled"] is False
     assert evidence["failures"] == []
     assert evidence["warnings"]
-    assert evidence["penalty"] > 0.0
+    assert evidence["raw_diagnostic_score"] > 0.0
+    assert evidence["penalty"] == 0.0
 
 
 def test_fail_closed_timeline_rejects_large_jump_even_with_source_support() -> None:
