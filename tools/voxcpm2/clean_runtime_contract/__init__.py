@@ -43,7 +43,6 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/direct_max_quality_render/__init__.py",
     "tools/voxcpm2/direct_source_prosody/__init__.py",
     "tools/voxcpm2/direct_timeline_compaction.py",
-    "tools/voxcpm2/timeline_onset_repair.py",
     "tools/voxcpm2/direct_retry_epoch.py",
     "tools/voxcpm2/direct_russian_cadence.py",
     "tools/voxcpm2/direct_russian_cadence/__init__.py",
@@ -58,6 +57,7 @@ _RETIRED_RELEASE_MODULES = (
 _FACADE_RELEASE_MODULES = (
     "tools/voxcpm2/professional_audio_qa_v45.py",
     "tools/voxcpm2/professional_audio_qa_v45/__init__.py",
+    "tools/voxcpm2/timeline_onset_repair.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
