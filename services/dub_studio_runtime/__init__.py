@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Write-through compatibility facade for the Dub Studio supervisor.
+"""Write-through Dub supervisor facade with command-surface hardening.
 
 The established implementation remains in ``services/dub_studio_runtime.py``.
-This package pins the expected worker runtime to v4.8 for every import order and
-forwards external monkeypatch assignments to the legacy module, preserving title
-policy and test hooks whose functions resolve globals in that module.
+This package pins worker v4.8, preserves write-through monkeypatch behavior and
+registers reliable multiline Dub commands plus stale callback-card recovery.
 """
 from __future__ import annotations
 
@@ -33,6 +32,32 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 globals()["_WORKER_RUNTIME"] = _WORKER_RUNTIME
 
+_legacy_install_dub_studio_runtime = _legacy.install_dub_studio_runtime
+
+
+def _install_multicommand_build_wrapper() -> None:
+    from telegram.ext import ApplicationBuilder
+
+    current = ApplicationBuilder.build
+    if getattr(current, "_dub_multicommand_build_wrapper", False):
+        return
+
+    def build_with_multicommand(self: Any) -> Any:
+        application = current(self)
+        from handlers.dub_multicommand import register_dub_multicommand_handler
+
+        register_dub_multicommand_handler(application)
+        return application
+
+    build_with_multicommand._dub_multicommand_build_wrapper = True  # type: ignore[attr-defined]
+    ApplicationBuilder.build = build_with_multicommand
+
+
+def install_dub_studio_runtime() -> None:
+    """Install the proven runtime, then its reliable Telegram command surface."""
+    _legacy_install_dub_studio_runtime()
+    _install_multicommand_build_wrapper()
+
 
 class _WriteThroughModule(types.ModuleType):
     """Keep package assignments and legacy function globals synchronized."""
@@ -55,5 +80,9 @@ _module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {"_WORKER_RUNTIME"}
+    | {
+        "_WORKER_RUNTIME",
+        "_install_multicommand_build_wrapper",
+        "install_dub_studio_runtime",
+    }
 )
