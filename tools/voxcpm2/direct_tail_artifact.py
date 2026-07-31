@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Deterministic detection of detached broadband synthesis tails.
 
-VoxCPM tails do not always contain a long silent valley.  This detector accepts
+VoxCPM tails do not always contain a long silent valley. This detector accepts
 two evidence paths: the historical quiet-valley rebound and an immediate
-voice-to-broadband transition after the last sustained voiced region.  Natural
+voice-to-broadband transition after the last sustained voiced region. Natural
 final fricatives remain protected by duration, spectral-jump, location and
 post-burst decay requirements.
 """
@@ -44,7 +44,7 @@ def _frame_metrics(
     high_ratio: list[float] = []
     flatness: list[float] = []
     for pos in starts:
-        chunk = audio[pos : pos + frame].astype(np.float64)
+        chunk = audio[pos:pos + frame].astype(np.float64)
         rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12)
         levels.append(20.0 * math.log10(max(rms, 1e-9)))
         zcr.append(
@@ -128,7 +128,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
     if voice_end_time < duration * 0.42:
         return {"policy": POLICY, "suspicious": False, "reason": "voice_ends_too_early"}
 
-    # Search from the final voice region onward.  The first frames may be a
+    # Search from the final voice region onward. The first frames may be a
     # natural final fricative, so broadband evidence must persist and differ
     # materially from the preceding voice posture.
     search_start = max(voice_left, voice_right - 3)
@@ -151,7 +151,9 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
         if not 0.035 <= burst_seconds <= 0.38:
             continue
         burst_time = float(times[burst_start])
-        if burst_time < max(duration * 0.70, voice_end_time - 0.06):
+        # Padding after the last spoken word can be long. Voice adjacency and
+        # subsequent decay are the primary evidence; 60% is only a safety floor.
+        if burst_time < max(duration * 0.60, voice_end_time - 0.06):
             continue
         burst_levels = levels[burst_start:burst_end]
         burst_zcr = zcr[burst_start:burst_end]
