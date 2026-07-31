@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Voice/noise-separated facade for late broadband tail detection."""
+"""Voice/noise-separated facade with a narrow embedded-terminal artifact path.
+
+The sibling module remains the general detached/immediate broadband detector.
+This facade first prevents broadband noise from becoming the "last voice", then
+checks the failure shape measured in the Piper render: a short quiet dip, a
+35–240 ms high-frequency island, a short harmonic residue, and final decay.
+Embedded islands are never auto-trimmed because valid speech follows them; the
+whole candidate must be regenerated.
+"""
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
 import sys
 import types
+from typing import Any
 
 import numpy as np
 
@@ -24,7 +33,30 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-VOICE_CLASSIFICATION_POLICY = "conjunctive-voiced-vs-broadband-tail-v1"
+POLICY = "late-broadband-tail-v5"
+VOICE_CLASSIFICATION_POLICY = "conjunctive-voiced-vs-broadband-tail-v2"
+EMBEDDED_POLICY = "quiet-dip-broadband-island-voice-residue-v1"
+_legacy_detect = _legacy.detect_late_broadband_tail
+
+
+def _voice_runs(
+    active: np.ndarray,
+    zcr: np.ndarray,
+    high_ratio: np.ndarray,
+    flatness: np.ndarray,
+) -> list[tuple[int, int]]:
+    active = np.asarray(active, dtype=bool)
+    zcr = np.asarray(zcr, dtype=np.float64)
+    high_ratio = np.asarray(high_ratio, dtype=np.float64)
+    flatness = np.asarray(flatness, dtype=np.float64)
+    voice_like = active & (zcr <= 0.23) & (
+        (high_ratio <= 0.48) | (flatness <= 0.22)
+    )
+    return [
+        (left, right)
+        for left, right in _legacy._runs(voice_like)
+        if right - left >= 4
+    ]
 
 
 def _last_sustained_voice(
@@ -33,24 +65,151 @@ def _last_sustained_voice(
     high_ratio: np.ndarray,
     flatness: np.ndarray,
 ) -> tuple[int, int] | None:
-    """Require speech-like conjunctions so broadband noise cannot become voice."""
-    active = np.asarray(active, dtype=bool)
-    zcr = np.asarray(zcr, dtype=np.float64)
-    high_ratio = np.asarray(high_ratio, dtype=np.float64)
-    flatness = np.asarray(flatness, dtype=np.float64)
-    voice_like = active & (
-        ((zcr <= 0.23) & (flatness <= 0.42))
-        | ((high_ratio <= 0.48) & (flatness <= 0.22))
-    )
-    sustained = [
-        (left, right)
-        for left, right in _legacy._runs(voice_like)
-        if right - left >= 4
-    ]
+    sustained = _voice_runs(active, zcr, high_ratio, flatness)
     return sustained[-1] if sustained else None
 
 
+def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
+    audio = _legacy._mono(samples)
+    rate = max(1, int(sample_rate))
+    duration = len(audio) / rate
+    times, levels, zcr, high_ratio, flatness = _legacy._frame_metrics(audio, rate)
+    if len(levels) < 16:
+        return {"policy": POLICY, "embedded_policy": EMBEDDED_POLICY, "suspicious": False, "reason": "too_short"}
+
+    peak = float(np.percentile(levels, 95))
+    active_threshold = max(-52.0, peak - 34.0)
+    quiet_threshold = max(-61.0, peak - 47.0)
+    active = levels >= active_threshold
+    voice_runs = _voice_runs(active, zcr, high_ratio, flatness)
+    if len(voice_runs) < 2:
+        return {"policy": POLICY, "embedded_policy": EMBEDDED_POLICY, "suspicious": False, "reason": "insufficient_voice_brackets"}
+
+    broadband = active & (zcr >= 0.17) & (high_ratio >= 0.34) & (flatness >= 0.09)
+    for burst_start, burst_end in _legacy._runs(broadband):
+        burst_seconds = (burst_end - burst_start) * 0.010
+        burst_time = float(times[burst_start])
+        if not 0.035 <= burst_seconds <= 0.24:
+            continue
+        if burst_time < duration * 0.60 or duration - burst_time > 0.80:
+            continue
+        previous_runs = [item for item in voice_runs if item[1] <= burst_start]
+        following_runs = [item for item in voice_runs if item[0] >= burst_end]
+        if not previous_runs or not following_runs:
+            continue
+        previous = previous_runs[-1]
+        following = following_runs[0]
+        gap_before = (burst_start - previous[1]) * 0.010
+        gap_after = (following[0] - burst_end) * 0.010
+        if gap_before > 0.18 or gap_after > 0.18:
+            continue
+
+        voice_probe_left = max(previous[0], previous[1] - 14)
+        voice_level = float(np.median(levels[voice_probe_left:previous[1]]))
+        voice_zcr = float(np.median(zcr[voice_probe_left:previous[1]]))
+        voice_high = float(np.median(high_ratio[voice_probe_left:previous[1]]))
+        voice_flatness = float(np.median(flatness[voice_probe_left:previous[1]]))
+        level = float(np.percentile(levels[burst_start:burst_end], 80))
+        median_zcr = float(np.median(zcr[burst_start:burst_end]))
+        median_high = float(np.median(high_ratio[burst_start:burst_end]))
+        median_flatness = float(np.median(flatness[burst_start:burst_end]))
+        spectral_jump = _legacy._spectral_jump(
+            burst_zcr=median_zcr,
+            burst_high=median_high,
+            burst_flatness=median_flatness,
+            voice_zcr=voice_zcr,
+            voice_high=voice_high,
+            voice_flatness=voice_flatness,
+        )
+
+        # Only the immediately preceding 60 ms describes the measured quiet dip.
+        # A longer median is dominated by the previous word and hides the valley.
+        before = levels[max(0, burst_start - 6):burst_start]
+        if not len(before):
+            continue
+        pre_quiet_level = float(np.percentile(before, 25))
+        valley_rebound = level - pre_quiet_level
+        low_pre_fraction = float(np.mean(before <= level - 8.0))
+        after = levels[following[1]:]
+        if len(after):
+            quiet_fraction = float(np.mean(after <= quiet_threshold))
+            active_after_seconds = float(np.sum(after > active_threshold)) * 0.010
+        else:
+            quiet_fraction = 1.0
+            active_after_seconds = 0.0
+        followed_by_decay = bool(
+            quiet_fraction >= 0.45 and active_after_seconds <= 0.20
+        )
+        terminal_residue_seconds = (following[1] - following[0]) * 0.010
+        suspicious = bool(
+            spectral_jump >= 0.70
+            and median_zcr >= 0.22
+            and median_high >= 0.50
+            and valley_rebound >= 7.0
+            and low_pre_fraction >= 0.20
+            and terminal_residue_seconds <= 0.34
+            and followed_by_decay
+        )
+        if not suspicious:
+            continue
+        return {
+            "policy": POLICY,
+            "base_policy": _legacy.POLICY,
+            "voice_classification_policy": VOICE_CLASSIFICATION_POLICY,
+            "embedded_policy": EMBEDDED_POLICY,
+            "suspicious": True,
+            "repairable": False,
+            "artifact_type": "embedded_terminal_broadband_island",
+            "detection_path": "quiet_dip_broadband_island_then_voice_residue",
+            "trim_time": None,
+            "previous_voice_end": float(times[max(previous[0], previous[1] - 1)] + 0.01),
+            "burst_start": burst_time,
+            "burst_end": min(duration, float(times[max(burst_start, burst_end - 1)] + 0.01)),
+            "following_voice_start": float(times[following[0]]),
+            "following_voice_end": float(times[max(following[0], following[1] - 1)] + 0.01),
+            "terminal_residue_seconds": terminal_residue_seconds,
+            "burst_seconds": burst_seconds,
+            "burst_level_db": level,
+            "voice_level_db": voice_level,
+            "pre_quiet_level_db": pre_quiet_level,
+            "valley_rebound_db": valley_rebound,
+            "low_pre_fraction": low_pre_fraction,
+            "burst_median_zcr": median_zcr,
+            "burst_high_frequency_ratio": median_high,
+            "burst_spectral_flatness": median_flatness,
+            "spectral_jump_score": spectral_jump,
+            "quiet_fraction_after": quiet_fraction,
+            "active_after_seconds": active_after_seconds,
+        }
+
+    return {
+        "policy": POLICY,
+        "base_policy": _legacy.POLICY,
+        "voice_classification_policy": VOICE_CLASSIFICATION_POLICY,
+        "embedded_policy": EMBEDDED_POLICY,
+        "suspicious": False,
+        "reason": "no_embedded_terminal_broadband_island",
+    }
+
+
+def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]:
+    base = dict(_legacy_detect(samples, sample_rate))
+    if base.get("suspicious"):
+        base.setdefault("facade_policy", POLICY)
+        base.setdefault("voice_classification_policy", VOICE_CLASSIFICATION_POLICY)
+        return base
+    embedded = _embedded_terminal_island(samples, sample_rate)
+    if embedded.get("suspicious"):
+        embedded["base_detector_result"] = base
+        return embedded
+    base["facade_policy"] = POLICY
+    base["voice_classification_policy"] = VOICE_CLASSIFICATION_POLICY
+    base["embedded_detector_result"] = embedded
+    return base
+
+
 _legacy._last_sustained_voice = _last_sustained_voice
+_legacy.detect_late_broadband_tail = detect_late_broadband_tail
 
 
 class _WriteThroughModule(types.ModuleType):
@@ -72,5 +231,12 @@ _module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {"VOICE_CLASSIFICATION_POLICY", "_last_sustained_voice"}
+    | {
+        "EMBEDDED_POLICY",
+        "POLICY",
+        "VOICE_CLASSIFICATION_POLICY",
+        "_embedded_terminal_island",
+        "_last_sustained_voice",
+        "detect_late_broadband_tail",
+    }
 )
