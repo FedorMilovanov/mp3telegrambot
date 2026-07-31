@@ -7,6 +7,7 @@ from services.speech_backends.base import (
     BACKEND_CONTRACT_POLICY,
     BackendCapabilities,
     BackendIdentity,
+    BackendRuntimePaths,
     SpeechBackend,
 )
 from services.speech_backends.registry import (
@@ -35,6 +36,7 @@ __all__ = [
     "REGISTRY_POLICY",
     "BackendCapabilities",
     "BackendIdentity",
+    "BackendRuntimePaths",
     "SpeechBackend",
     "VoxCPM2Backend",
     "backend_ids",
