@@ -75,4 +75,4 @@ def test_shared_worker_runtime_and_policies_are_v62() -> None:
     assert PRONUNCIATION_VARIANT_POLICY == "bounded-pronunciation-candidate-variants-v1"
     assert EXPRESSION_POLICY == "source-guided-monolithic-expression-v3"
     assert MASTER_MIX_POLICY == "dialogue-suppressed-spatial-bed-v1"
-    assert RUNTIME_ROUTING_POLICY == "monolithic-ready-srt-runtime-routing-v1"
+    assert RUNTIME_ROUTING_POLICY == "monolithic-ready-srt-runtime-routing-v2"
