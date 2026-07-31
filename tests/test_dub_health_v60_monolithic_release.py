@@ -8,6 +8,7 @@ from services import dub_title_policy
 from services.dub_worker_release import (
     EXPRESSION_POLICY,
     FAIL_CLOSED_IDENTITY_POLICY,
+    LEGACY_IMPORT_POLICY,
     MASTER_MIX_POLICY,
     MONOLITHIC_TIMELINE_POLICY,
     MONOLITHIC_VOICE_POLICY,
@@ -26,22 +27,23 @@ from services.dub_worker_release import (
 REPO = Path(__file__).resolve().parents[1]
 
 
-def _install_v65_static_upgrade() -> None:
+def _install_v66_static_upgrade() -> None:
     dub_release_health_v64._upgrade_monolithic_contract(dub_title_policy)
 
 
 def test_monolithic_static_contract_passes_current_repository() -> None:
-    _install_v65_static_upgrade()
+    _install_v66_static_upgrade()
     ok, detail = dub_title_policy._monolithic_static_contract(REPO)
 
     assert ok is True, detail
     assert "semantic-breath" in detail
     assert "Russian-only direct master" in detail
     assert "robust median F0" in detail
+    assert LEGACY_IMPORT_POLICY in detail
 
 
 def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() -> None:
-    _install_v65_static_upgrade()
+    _install_v66_static_upgrade()
     health = SimpleNamespace(
         _v47_static_contract=lambda repo: (
             False,
@@ -53,13 +55,14 @@ def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() 
     ok, detail = dub_title_policy._release_static_contract(health, REPO)
 
     assert ok is True, detail
-    assert "worker v6.5" in detail
+    assert "worker v6.6" in detail
     assert "Russian-only direct master" in detail
     assert "lowest/bassiest window" in detail
+    assert LEGACY_IMPORT_POLICY in detail
 
 
 def test_release_contract_keeps_unrelated_failure_red() -> None:
-    _install_v65_static_upgrade()
+    _install_v66_static_upgrade()
     health = SimpleNamespace(
         _v47_static_contract=lambda repo: (
             False,
@@ -73,20 +76,22 @@ def test_release_contract_keeps_unrelated_failure_red() -> None:
     assert "child-python-contract" in detail
 
 
-def test_v65_quality_contract_fails_closed_on_current_repository() -> None:
-    ok, detail = dub_release_health_v64._v65_quality_contract(REPO)
+def test_v66_quality_contract_fails_closed_on_current_repository() -> None:
+    ok, detail = dub_release_health_v64._v66_quality_contract(REPO)
 
     assert ok is True, detail
     assert "speech-bearing original is absent" in detail
     assert "post-AAC center and side leakage regressions" in detail
     assert "robust median F0" in detail
+    assert LEGACY_IMPORT_POLICY in detail
 
 
-def test_shared_worker_runtime_and_policies_are_v65() -> None:
-    assert WORKER_RUNTIME == "dub-worker-quality-v6.5"
+def test_shared_worker_runtime_and_policies_are_v66() -> None:
+    assert WORKER_RUNTIME == "dub-worker-quality-v6.6"
     assert READY_SRT_GROUPING_POLICY == "ready-srt-semantic-breath-grouping-v1"
     assert REFERENCE_POLICY == "continuous-clean-reference-v3"
     assert REFERENCE_SELECTION_POLICY == "robust-typical-f0-continuous-window-v1"
+    assert LEGACY_IMPORT_POLICY == "transactional-sys-modules-registration-v1"
     assert MONOLITHIC_VOICE_POLICY == "single-speaker-monolithic-candidate-v1"
     assert SOURCE_RELATIVE_CONTINUITY_POLICY == "cross-language-source-prosody-diagnostic-v3"
     assert FAIL_CLOSED_IDENTITY_POLICY == "cross-language-prosody-cannot-override-identity-v1"
