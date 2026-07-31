@@ -45,7 +45,7 @@ def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() 
     ok, detail = dub_title_policy._release_static_contract(health, REPO)
 
     assert ok is True, detail
-    assert "worker v6.2" in detail
+    assert "worker v6.3" in detail
     assert "one calm identity reference" in detail
     assert "dialogue-suppressed" in detail
 
@@ -64,11 +64,11 @@ def test_release_contract_keeps_unrelated_failure_red() -> None:
     assert "child-python-contract" in detail
 
 
-def test_shared_worker_runtime_and_policies_are_v62() -> None:
-    assert WORKER_RUNTIME == "dub-worker-quality-v6.2"
+def test_shared_worker_runtime_and_policies_are_v63() -> None:
+    assert WORKER_RUNTIME == "dub-worker-quality-v6.3"
     assert READY_SRT_GROUPING_POLICY == "ready-srt-semantic-breath-grouping-v1"
     assert MONOLITHIC_VOICE_POLICY == "single-speaker-monolithic-candidate-v1"
-    assert SOURCE_RELATIVE_CONTINUITY_POLICY == "cross-language-source-prosody-advisory-v2"
+    assert SOURCE_RELATIVE_CONTINUITY_POLICY == "cross-language-source-prosody-diagnostic-v3"
     assert FAIL_CLOSED_IDENTITY_POLICY == "cross-language-prosody-cannot-override-identity-v1"
     assert MONOLITHIC_TIMELINE_POLICY == "assembled-monolithic-voice-v1"
     assert PRONUNCIATION_POLICY == "russian-pronunciation-overrides-v1"
