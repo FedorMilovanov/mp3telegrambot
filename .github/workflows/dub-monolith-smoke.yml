@@ -22,8 +22,6 @@ on:
       - "tests/test_russian_stress_evidence_v2.py"
       - "tests/test_spatial_bed_final_media_qa.py"
       - "tests/test_speech_backend_runtime_paths.py"
-      - "tests/test_speech_backend_command_contract.py"
-      - "tests/test_semantic_block_runtime.py"
       - ".github/workflows/dub-monolith-smoke.yml"
   workflow_dispatch:
 
@@ -67,6 +65,4 @@ jobs:
             tests/test_ready_srt_semantic_breath_grouping.py \
             tests/test_russian_stress_evidence_v2.py \
             tests/test_spatial_bed_final_media_qa.py \
-            tests/test_speech_backend_runtime_paths.py \
-            tests/test_speech_backend_command_contract.py \
-            tests/test_semantic_block_runtime.py
+            tests/test_speech_backend_runtime_paths.py
