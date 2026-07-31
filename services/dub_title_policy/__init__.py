@@ -49,6 +49,7 @@ def _read(path: Path) -> str:
 def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     voxcpm = Path(repo) / "tools" / "voxcpm2"
     files = {
+        "grouping": voxcpm / "dub_quality_v4" / "__init__.py",
         "pronunciation": voxcpm / "russian_pronunciation.py",
         "expression": voxcpm / "expressive_continuity" / "__init__.py",
         "candidate": voxcpm / "direct_monolith_contract.py",
@@ -61,6 +62,20 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     }
     text = {name: _read(path) for name, path in files.items()}
     checks = {
+        "semantic-breath-grouping": all(
+            marker in text["grouping"]
+            for marker in (
+                'POLICY = "ready-srt-semantic-breath-grouping-v1"',
+                "TARGET_SECONDS = 4.15",
+                "MAX_INTERNAL_GAP_SECONDS = 0.38",
+                "MAX_WORDS_PER_SECOND = 5.45",
+                "def _protected_final_pronunciation(",
+                "def _candidate(",
+                "def group_ready_srt_v4(",
+                "best_cost = [float(\"inf\")]",
+                "Semantic-breath grouping изменил текст готового SRT",
+            )
+        ),
         "single-identity-expression": all(
             marker in text["expression"]
             for marker in (
@@ -79,6 +94,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             for marker in (
                 f'POLICY = "{PRONUNCIATION_POLICY}"',
                 '"replacement": "гря-дёт"',
+                "def _is_final_lexical_match(",
                 "def prepare_segment(",
                 "def stress_evidence(",
                 "final_stressed_nucleus_not_supported",
@@ -99,7 +115,9 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             marker in text["candidate_facade"]
             for marker in (
                 'RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"',
+                'START_VOICE_POLICY = "first-sustained-voice-after-detached-burst-v2"',
                 "_legacy._load_previous_checkpoint",
+                "def _start_artifact(",
                 "def evaluate_candidate(",
                 'result["resume_policy"] = RESUME_POLICY',
                 "class _WriteThroughModule",
@@ -112,6 +130,8 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 "russian_pronunciation.synthesis_text",
                 "direct_monolith_contract.evaluate_candidate",
                 "direct_monolith_contract.candidate_hard_ok",
+                "def _candidate_failure_summary(",
+                "def _raw_failure_evidence(",
                 "class _WriteThroughModule",
             )
         ),
@@ -139,6 +159,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             marker in text["tail"]
             for marker in (
                 'POLICY = "late-broadband-tail-v3"',
+                "duration * 0.60",
                 "immediate_voice_to_broadband_transition",
                 "burst_spectral_flatness",
                 "spectral_jump_score",
@@ -147,6 +168,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "monolith-fingerprinted": all(
             marker in text["fingerprint"]
             for marker in (
+                '"tools/voxcpm2/dub_quality_v4/__init__.py"',
                 '"tools/voxcpm2/expressive_continuity/__init__.py"',
                 '"tools/voxcpm2/russian_pronunciation.py"',
                 '"tools/voxcpm2/direct_monolith_contract.py"',
@@ -160,11 +182,11 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     if failed:
         return False, "monolithic-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "one calm identity reference; bounded neighbour-supported emotion; separate synthesis "
-        "text and stress evidence; candidate/adjacent voice continuity; resume-safe nearest "
-        "checkpoint identity; no late cue shifting; short cadence-aware fades; start-chirp and "
-        "immediate broadband-tail gates; assembled whole-timeline monolith QA; "
-        "synthesis-critical fingerprinting"
+        "semantic-breath ready-SRT grouping; one calm identity reference; bounded "
+        "neighbour-supported emotion; separate synthesis text and stress evidence; "
+        "candidate/adjacent voice continuity; resume-safe nearest checkpoint identity; no late "
+        "cue shifting; short cadence-aware fades; start-chirp and immediate broadband-tail "
+        "gates; assembled whole-timeline monolith QA; synthesis-critical fingerprinting"
     )
 
 
