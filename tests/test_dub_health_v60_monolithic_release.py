@@ -10,8 +10,10 @@ from services.dub_worker_release import (
     MONOLITHIC_TIMELINE_POLICY,
     MONOLITHIC_VOICE_POLICY,
     PRONUNCIATION_POLICY,
+    PRONUNCIATION_VARIANT_POLICY,
     READY_SRT_GROUPING_POLICY,
     RUNTIME_ROUTING_POLICY,
+    SOURCE_RELATIVE_CONTINUITY_POLICY,
     WORKER_RUNTIME,
 )
 
@@ -42,7 +44,7 @@ def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() 
     ok, detail = dub_title_policy._release_static_contract(health, REPO)
 
     assert ok is True, detail
-    assert "worker v6.0" in detail
+    assert "worker v6.1" in detail
     assert "one calm identity reference" in detail
     assert "dialogue-suppressed" in detail
 
@@ -61,12 +63,14 @@ def test_release_contract_keeps_unrelated_failure_red() -> None:
     assert "child-python-contract" in detail
 
 
-def test_shared_worker_runtime_and_policies_are_v60() -> None:
-    assert WORKER_RUNTIME == "dub-worker-quality-v6.0"
+def test_shared_worker_runtime_and_policies_are_v61() -> None:
+    assert WORKER_RUNTIME == "dub-worker-quality-v6.1"
     assert READY_SRT_GROUPING_POLICY == "ready-srt-semantic-breath-grouping-v1"
     assert MONOLITHIC_VOICE_POLICY == "single-speaker-monolithic-candidate-v1"
+    assert SOURCE_RELATIVE_CONTINUITY_POLICY == "source-relative-adjacent-voice-continuity-v1"
     assert MONOLITHIC_TIMELINE_POLICY == "assembled-monolithic-voice-v1"
     assert PRONUNCIATION_POLICY == "russian-pronunciation-overrides-v1"
+    assert PRONUNCIATION_VARIANT_POLICY == "bounded-pronunciation-candidate-variants-v1"
     assert EXPRESSION_POLICY == "source-guided-monolithic-expression-v3"
     assert MASTER_MIX_POLICY == "dialogue-suppressed-spatial-bed-v1"
     assert RUNTIME_ROUTING_POLICY == "monolithic-ready-srt-runtime-routing-v1"
