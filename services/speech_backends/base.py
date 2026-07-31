@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+import math
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -78,6 +79,17 @@ class BackendAudioSpec:
     output_sample_rate: int
     seconds_per_step: float
     cache_length: int
+
+    def __post_init__(self) -> None:
+        for field, value in (
+            ("encode_sample_rate", self.encode_sample_rate),
+            ("output_sample_rate", self.output_sample_rate),
+            ("cache_length", self.cache_length),
+        ):
+            if isinstance(value, bool) or int(value) <= 0:
+                raise ValueError(f"{field} должен быть положительным целым числом.")
+        if not math.isfinite(float(self.seconds_per_step)) or self.seconds_per_step <= 0.0:
+            raise ValueError("seconds_per_step должен быть конечным числом > 0.")
 
     def as_dict(self) -> dict[str, Any]:
         return {

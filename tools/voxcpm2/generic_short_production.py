@@ -595,6 +595,11 @@ def main() -> None:
 
     repo = Path(__file__).resolve().parents[2]
     backend = get_backend(args.speech_backend or DEFAULT_BACKEND_ID)
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Short production backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}."
+        )
     runtime = backend.runtime_paths(
         repo,
         {

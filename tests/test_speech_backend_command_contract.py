@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from services.speech_backends import (
     BACKEND_ENVIRONMENT_POLICY,
     BackendAudioSpec,
@@ -45,6 +47,15 @@ def test_backend_owns_process_environment_policy() -> None:
     assert "VOXCPM_RESCUE_RENDERER" not in environment
     assert "TRANSFORMERS_OFFLINE" not in environment
     assert policy.as_metadata()["environment_policy"] == BACKEND_ENVIRONMENT_POLICY
+
+
+def test_audio_spec_fails_closed_on_invalid_runtime_facts() -> None:
+    with pytest.raises(ValueError, match="output_sample_rate"):
+        BackendAudioSpec(16000, 0, 0.08, 4096)
+    with pytest.raises(ValueError, match="seconds_per_step"):
+        BackendAudioSpec(16000, 48000, 0.0, 4096)
+    with pytest.raises(ValueError, match="cache_length"):
+        BackendAudioSpec(16000, 48000, 0.08, 0)
 
 
 def test_voxcpm2_session_owns_model_generate_kwargs() -> None:
@@ -277,6 +288,7 @@ def test_generic_project_runtime_delegates_engine_to_backend() -> None:
     )
 
     assert "backend = get_backend(request.get(\"speech_backend\") or DEFAULT_BACKEND_ID)" in source
+    assert "backend.capabilities().missing()" in source
     assert "backend.process_environment(" in source
     assert "backend.build_renderer_command(" in source
     assert "backend.build_master_command(" in source
@@ -291,6 +303,7 @@ def test_audio_repair_runtime_delegates_engine_to_backend() -> None:
     )
 
     assert "backend = get_backend(request.get(\"speech_backend\") or DEFAULT_BACKEND_ID)" in source
+    assert "backend.capabilities().missing()" in source
     assert "backend.process_environment(" in source
     assert "backend.build_renderer_command(" in source
     assert "backend.build_master_command(" in source
@@ -306,6 +319,7 @@ def test_short_production_runtime_delegates_engine_to_backend() -> None:
     )
 
     assert "backend = get_backend(args.speech_backend or DEFAULT_BACKEND_ID)" in source
+    assert "backend.capabilities().missing()" in source
     assert "backend.process_environment(" in source
     assert "backend.build_renderer_command(" in source
     assert "backend.build_master_command(" in source

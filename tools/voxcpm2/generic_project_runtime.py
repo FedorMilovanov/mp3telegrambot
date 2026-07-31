@@ -594,6 +594,11 @@ def _run_voxcpm_and_master(
 
     repo = Path(__file__).resolve().parents[2]
     backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Speech backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}."
+        )
     runtime = backend.runtime_paths(repo, request)
     cpu_python = runtime.cpu_python
     if not cpu_python.is_file():

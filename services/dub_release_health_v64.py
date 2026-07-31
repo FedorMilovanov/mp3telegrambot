@@ -153,6 +153,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             "REQUIRED_PRODUCTION_CAPABILITIES = (",
             "def missing(",
             "class BackendAudioSpec:",
+            "def __post_init__(self)",
             "class BackendProcessEnvironment:",
             "class BackendSynthesisSession(Protocol):",
             "def open_session(",
