@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Source-relative continuity limits for independently rendered speech breaths.
+"""Cross-language source-prosody advisory for independently rendered breaths.
 
-A large adjacent F0 change is not automatically an identity failure: the source
-speaker may genuinely raise or lower the voice at that discourse boundary. This
-module compares the generated transition with the matching original-speaker
-transition. The old absolute fallback may be replaced only when both median and
-upper-range source pitch transitions are valid; partial evidence remains useful
-for diagnostics and penalties but never weakens a fallback hard gate.
+English and Russian windows may share timeline anchors but not lexical stress,
+word duration or breath boundaries. Source F0 therefore remains useful for
+ranking and diagnostics, but it may never relax speaker-identity hard gates.
+Absolute anchor, neighbour, timbre and pitch limits stay authoritative.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-POLICY = "source-relative-adjacent-voice-continuity-v1"
+POLICY = "cross-language-source-prosody-advisory-v2"
+ABSOLUTE_GATE_OVERRIDE_ALLOWED = False
 
 MEDIAN_BASE_LIMIT_ST = 5.0
 MEDIAN_SOURCE_HEADROOM_ST = 2.5
@@ -93,7 +92,7 @@ def evaluate_transition(
     current_segment: dict[str, Any],
     previous_segment: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Return fail-closed, source-supported adjacent pitch evidence."""
+    """Return ranking evidence without permission to override identity gates."""
     generated_median = _signed_semitones(
         _identity_pitch(current_identity, "f0_median"),
         _identity_pitch(previous_identity, "f0_median"),
@@ -126,18 +125,18 @@ def evaluate_transition(
         unguided=P90_UNGUIDED_LIMIT_ST,
     )
 
-    failures: list[str] = []
+    warnings: list[str] = []
     penalty = 0.0
     if generated_median is not None:
         excess = max(0.0, abs(generated_median) - median_limit)
         penalty += excess * 18.0
         if excess > 1e-9:
-            failures.append("source_relative_f0_median_jump")
+            warnings.append("source_relative_f0_median_jump")
     if generated_p90 is not None:
         excess = max(0.0, abs(generated_p90) - p90_limit)
         penalty += excess * 10.0
         if excess > 1e-9:
-            failures.append("source_relative_f0_p90_jump")
+            warnings.append("source_relative_f0_p90_jump")
 
     direction_mismatch = bool(
         source_median is not None
@@ -147,23 +146,26 @@ def evaluate_transition(
         and source_median * generated_median < 0.0
     )
     if direction_mismatch:
-        # Opposite direction is suspicious, but cross-language phrasing may differ.
-        # Keep it as ranking evidence; timbre/anchor and jump limits remain hard gates.
+        warnings.append("cross_language_pitch_direction_mismatch")
         penalty += DIRECTION_MISMATCH_PENALTY
 
     source_median_available = source_median is not None
     source_p90_available = source_p90 is not None
-    # Replacing both blind fallback gates requires a complete two-metric source
-    # transition. Partial evidence must never silently remove the other gate.
-    source_available = bool(source_median_available and source_p90_available)
+    complete_source_evidence = bool(source_median_available and source_p90_available)
     return {
         "policy": POLICY,
         "available": previous_identity is not None,
-        "source_available": source_available,
+        # Compatibility field deliberately remains false. Existing callers then
+        # keep their conservative absolute pitch fallbacks instead of granting a
+        # cross-language override.
+        "source_available": False,
+        "advisory_source_available": complete_source_evidence,
         "source_median_available": source_median_available,
         "source_p90_available": source_p90_available,
-        "hard_ok": not failures,
-        "failures": failures,
+        "absolute_gate_override_allowed": ABSOLUTE_GATE_OVERRIDE_ALLOWED,
+        "hard_ok": True,
+        "failures": [],
+        "warnings": warnings,
         "penalty": min(MAX_PENALTY, max(0.0, penalty)),
         "generated_f0_median_jump_st": generated_median,
         "generated_f0_p90_jump_st": generated_p90,
@@ -186,6 +188,7 @@ def evaluate_transition(
 
 
 __all__ = [
+    "ABSOLUTE_GATE_OVERRIDE_ALLOWED",
     "DIRECTION_MISMATCH_MIN_ST",
     "MEDIAN_BASE_LIMIT_ST",
     "MEDIAN_MAX_LIMIT_ST",
