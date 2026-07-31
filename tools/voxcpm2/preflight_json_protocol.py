@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Noise-tolerant, fail-closed JSON transport for Dub CPU import preflight.
+
+Some third-party runtime modules print banners or warnings to stdout during
+import. Preflight must not confuse that diagnostic noise with its machine
+payload, but it must still validate the exact CPU interpreter, complete module
+set and production entrypoint paths. The child therefore emits one uniquely
+marked JSON line; every other stdout line is retained only as diagnostics.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+POLICY = "marked-preflight-json-transport-v1"
+MARKER = "__DUB_PREFLIGHT_JSON_V1__="
+MAX_DIAGNOSTIC_CHARS = 4000
+
+
+def encode_payload(payload: dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        raise RuntimeError("Preflight probe payload должен быть JSON-объектом.")
+    return MARKER + json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def decode_payload(stdout: str) -> tuple[dict[str, Any], str]:
+    """Return the last marked object and bounded non-protocol stdout diagnostics."""
+    lines = str(stdout or "").splitlines()
+    marker_index: int | None = None
+    payload: dict[str, Any] | None = None
+    parse_error = ""
+
+    for index in range(len(lines) - 1, -1, -1):
+        line = lines[index].strip().lstrip("\ufeff")
+        if not line.startswith(MARKER):
+            continue
+        marker_index = index
+        raw = line[len(MARKER) :].strip()
+        try:
+            candidate = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            parse_error = f"{type(exc).__name__}: {exc}"
+            continue
+        if not isinstance(candidate, dict):
+            parse_error = "marked payload не является JSON-объектом"
+            continue
+        payload = candidate
+        break
+
+    noise_lines = [
+        line
+        for index, line in enumerate(lines)
+        if index != marker_index and line.strip()
+    ]
+    noise = "\n".join(noise_lines)[-MAX_DIAGNOSTIC_CHARS:]
+    if payload is None:
+        detail = f" Последняя ошибка: {parse_error}." if parse_error else ""
+        if noise:
+            detail += " stdout tail:\n" + noise
+        raise RuntimeError(
+            "Preflight: CPU runtime не вернул маркированный JSON." + detail
+        )
+    return payload, noise
+
+
+def probe_imports(paths: dict[str, Path]) -> dict[str, Any]:
+    """Run the active strict preflight import probe through the marked protocol."""
+    from tools.voxcpm2 import dub_job_preflight as preflight
+
+    python = Path(paths["cpu_python"]).resolve()
+    repo = Path(paths["repo"]).resolve()
+    for label in ("renderer", "master"):
+        path = Path(paths[label]).resolve()
+        if not path.is_file():
+            raise RuntimeError(f"Preflight: {label} entrypoint не найден: {path}")
+
+    script = (
+        "import importlib, json, sys\n"
+        f"names = {list(preflight._MODULES)!r}\n"
+        "loaded = {}\n"
+        "for name in names:\n"
+        "    module = importlib.import_module(name)\n"
+        "    loaded[name] = str(getattr(module, '__file__', '') or '')\n"
+        f"print({MARKER!r} + json.dumps({{'python': sys.executable, 'loaded': loaded}}, "
+        "ensure_ascii=False, sort_keys=True, separators=(',', ':')), flush=True)\n"
+    )
+    env = preflight.clean_production_core._child_python_env(dict(os.environ))
+    process = preflight._legacy.subprocess.run(
+        [str(python), "-c", script],
+        cwd=str(repo),
+        env=env,
+        stdout=preflight._legacy.subprocess.PIPE,
+        stderr=preflight._legacy.subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    if int(process.returncode) != 0:
+        tail = (process.stderr or process.stdout or "")[-8000:]
+        raise RuntimeError(
+            "Preflight: CPU runtime/import graph завершился с кодом "
+            f"{process.returncode}:\n{tail}"
+        )
+
+    payload, stdout_noise = decode_payload(process.stdout or "")
+    loaded = payload.get("loaded") if isinstance(payload, dict) else None
+    reported_python = str(payload.get("python") or "") if isinstance(payload, dict) else ""
+    if not isinstance(loaded, dict) or set(loaded) != set(preflight._MODULES):
+        raise RuntimeError("Preflight: импортирован не полный набор production-модулей.")
+    if preflight._normalized_path(Path(reported_python)) != preflight._normalized_path(python):
+        raise RuntimeError("Preflight: import probe запущен не тем CPU Python.")
+
+    expected_files = {
+        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix": Path(paths["master"]),
+        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production": Path(paths["renderer"]),
+    }
+    for name, raw_path in loaded.items():
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise RuntimeError(f"Preflight: module {name} не сообщил __file__.")
+        path = Path(raw_path).resolve()
+        if not path.is_file():
+            raise RuntimeError(
+                f"Preflight: module {name} загружен из отсутствующего файла: {path}"
+            )
+        if name.startswith("tools.") and not preflight._inside(path, repo):
+            raise RuntimeError(
+                f"Preflight: project module {name} загружен вне repo: {path}"
+            )
+        expected = expected_files.get(name)
+        if (
+            expected is not None
+            and preflight._normalized_path(path)
+            != preflight._normalized_path(expected)
+        ):
+            raise RuntimeError(
+                f"Preflight: module {name} загружен не из production entrypoint."
+            )
+
+    final_qa = Path(loaded["tools.voxcpm2.final_media_qa"]).resolve()
+    if final_qa.name != "__init__.py" or final_qa.parent.name != "final_media_qa":
+        raise RuntimeError(
+            "Preflight: active final_media_qa compatibility package не загружен."
+        )
+
+    return {
+        "python_returncode": int(process.returncode),
+        "python": reported_python,
+        "loaded_modules": loaded,
+        "ffmpeg": str(preflight._signature_executable_path("ffmpeg")),
+        "ffprobe": str(preflight._signature_executable_path("ffprobe")),
+        "json_transport_policy": POLICY,
+        "stdout_noise_detected": bool(stdout_noise),
+        "stdout_noise_tail": stdout_noise,
+    }
+
+
+def install() -> None:
+    """Install into the active package facade before any production job runs."""
+    from tools.voxcpm2 import dub_job_preflight as preflight
+
+    preflight._probe_imports = probe_imports
+    legacy = getattr(preflight, "_legacy", None)
+    if legacy is not None:
+        legacy._probe_imports = probe_imports
+
+
+__all__ = [
+    "MARKER",
+    "MAX_DIAGNOSTIC_CHARS",
+    "POLICY",
+    "decode_payload",
+    "encode_payload",
+    "install",
+    "probe_imports",
+]
