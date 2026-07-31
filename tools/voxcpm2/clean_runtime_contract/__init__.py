@@ -38,6 +38,10 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/generic_project_runtime/__init__.py",
     "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
     "tools/voxcpm2/clean_source_download/__init__.py",
+    "tools/voxcpm2/expressive_continuity/__init__.py",
+    "tools/voxcpm2/russian_pronunciation.py",
+    "tools/voxcpm2/direct_monolith_contract.py",
+    "tools/voxcpm2/direct_max_quality_cli/__init__.py",
     "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
     "tools/voxcpm2/direct_max_quality_render/__init__.py",
     "tools/voxcpm2/direct_source_prosody/__init__.py",
@@ -47,6 +51,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/direct_russian_cadence/__init__.py",
     "tools/voxcpm2/direct_tail_artifact.py",
     "tools/voxcpm2/direct_timeline_delivery_qa.py",
+    "tools/voxcpm2/direct_timeline_delivery_qa/__init__.py",
 )
 _RETIRED_RELEASE_MODULES = (
     # This historical filename never shipped. Its implementation has always lived
