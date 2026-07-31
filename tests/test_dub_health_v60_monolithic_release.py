@@ -28,7 +28,7 @@ def test_monolithic_static_contract_passes_current_repository() -> None:
     assert "semantic-breath ready-SRT grouping" in detail
     assert "one calm identity reference" in detail
     assert "stress evidence" in detail
-    assert "whole-timeline monolith QA" in detail
+    assert "whole-timeline source-relative monolith QA" in detail
     assert "dialogue-suppressed stereo-side source bed" in detail
 
 
