@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import sys
+import types
 from typing import Any
 
 import numpy as np
@@ -198,6 +200,26 @@ def verify_timeline_v45(
 
 
 _legacy.verify_timeline_v45 = verify_timeline_v45
+
+
+class _WriteThroughModule(types.ModuleType):
+    """Keep QA monkeypatches synchronized with the sibling implementation."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        types.ModuleType.__setattr__(self, name, value)
+        if name in {"_legacy", "__class__"} or name.startswith("__"):
+            return
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        if hasattr(legacy, name):
+            setattr(legacy, name, value)
+
+    def __getattr__(self, name: str) -> Any:
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        return getattr(legacy, name)
+
+
+_module = sys.modules[__name__]
+_module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
