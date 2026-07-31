@@ -12,7 +12,11 @@ import importlib.util
 from pathlib import Path
 from typing import Any
 
-from services.speech_backends import DEFAULT_BACKEND_ID, default_backend
+from services.speech_backends import (
+    DEFAULT_BACKEND_ID,
+    default_backend,
+    get_backend,
+)
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "clean_runtime_contract.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -66,6 +70,7 @@ _legacy._RELEASE_MODULES = tuple(
     dict.fromkeys((*_release_base, *_FACADE_RELEASE_MODULES))
 )
 
+BACKEND_SELECTION_POLICY = "explicit-request-speech-backend-v1"
 _BACKEND = default_backend()
 if _BACKEND.backend_id != DEFAULT_BACKEND_ID:
     raise RuntimeError("Default speech backend registry рассинхронизирован.")
@@ -73,6 +78,25 @@ if _BACKEND.backend_id != DEFAULT_BACKEND_ID:
 # the adapter is the first production seam for future engines.
 _legacy.discover_model = _BACKEND.discover_model
 _legacy_build_fingerprints = _legacy.build_fingerprints
+_legacy_normalize_settings = _legacy.normalize_settings
+
+
+def normalize_settings(
+    request: dict[str, Any],
+    *,
+    duration: Any,
+) -> dict[str, Any]:
+    settings = dict(_legacy_normalize_settings(request, duration=duration))
+    raw_backend = request.get("speech_backend") or DEFAULT_BACKEND_ID
+    backend = get_backend(raw_backend)
+    if backend.backend_id != DEFAULT_BACKEND_ID:
+        raise RuntimeError(
+            "Speech backend зарегистрирован, но ещё не подключён к clean renderer: "
+            f"{backend.backend_id}."
+        )
+    settings["speech_backend"] = backend.backend_id
+    settings["speech_backend_policy"] = BACKEND_SELECTION_POLICY
+    return settings
 
 
 def build_fingerprints(
@@ -91,6 +115,7 @@ def build_fingerprints(
     backend_payload = {
         "identity": _BACKEND.identity(Path(archive)).as_dict(),
         "capabilities": _BACKEND.capabilities().as_dict(),
+        "selection_policy": BACKEND_SELECTION_POLICY,
     }
     render = dict(result.get("render") or {})
     render["speech_backend"] = backend_payload
@@ -100,13 +125,15 @@ def build_fingerprints(
     return result
 
 
+_legacy.normalize_settings = normalize_settings
 _legacy.build_fingerprints = build_fingerprints
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals()[_name] = getattr(_legacy, _name)
 
-# Re-apply the facade override after exporting the legacy namespace.
+# Re-apply facade overrides after exporting the legacy namespace.
+globals()["normalize_settings"] = normalize_settings
 globals()["build_fingerprints"] = build_fingerprints
 _RENDER_MODULES = _legacy._RENDER_MODULES
 _RELEASE_MODULES = _legacy._RELEASE_MODULES
@@ -114,9 +141,11 @@ _RELEASE_MODULES = _legacy._RELEASE_MODULES
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
     | {
+        "BACKEND_SELECTION_POLICY",
         "DEFAULT_BACKEND_ID",
         "_RENDER_MODULES",
         "_RELEASE_MODULES",
         "build_fingerprints",
+        "normalize_settings",
     }
 )
