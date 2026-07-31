@@ -10,12 +10,14 @@ worker before another production job is claimed.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v4.9"
+WORKER_RUNTIME = "dub-worker-quality-v5.0"
 RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
+INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
 
 
 __all__ = [
+    "INDEPENDENT_QA_RECOVERY_POLICY",
     "PREFLIGHT_TRANSPORT_POLICY",
     "RELEASE_POLICY",
     "WORKER_RUNTIME",
