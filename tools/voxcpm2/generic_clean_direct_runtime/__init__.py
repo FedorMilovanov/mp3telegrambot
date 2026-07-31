@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
+import types
 from typing import Any
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "generic_clean_direct_runtime.py"
@@ -180,6 +182,25 @@ def main() -> None:
     _legacy._LEGACY_RESUME_POLICY = CHECKPOINT_MIGRATION_POLICY
     _legacy.main()
 
+
+class _WriteThroughModule(types.ModuleType):
+    """Keep runtime monkeypatches synchronized with the sibling implementation."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        types.ModuleType.__setattr__(self, name, value)
+        if name in {"_legacy", "__class__"} or name.startswith("__"):
+            return
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        if hasattr(legacy, name):
+            setattr(legacy, name, value)
+
+    def __getattr__(self, name: str) -> Any:
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        return getattr(legacy, name)
+
+
+_module = sys.modules[__name__]
+_module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
