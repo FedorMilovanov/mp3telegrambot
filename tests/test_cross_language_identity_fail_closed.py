@@ -16,7 +16,7 @@ def test_cross_language_source_is_advisory_and_never_grants_override() -> None:
     evidence = direct_source_relative_continuity.evaluate_transition(
         current_identity=_identity(90.0, 125.0),
         previous_identity=_identity(170.0, 230.0),
-        current_segment=_segment(80.0, 112.0),
+        current_segment=_segment(161.0, 221.0),
         previous_segment=_segment(160.0, 220.0),
     )
 
