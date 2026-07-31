@@ -15,6 +15,7 @@ on:
       - "tests/test_embedded_terminal_noise_gate.py"
       - "tests/test_monolithic_voice_and_pronunciation.py"
       - "tests/test_ready_srt_semantic_breath_grouping.py"
+      - "tests/test_russian_stress_evidence_v2.py"
       - "tests/test_spatial_bed_final_media_qa.py"
       - "tests/test_speech_backend_runtime_paths.py"
       - ".github/workflows/dub-monolith-smoke.yml"
@@ -56,5 +57,6 @@ jobs:
             tests/test_embedded_terminal_noise_gate.py \
             tests/test_monolithic_voice_and_pronunciation.py \
             tests/test_ready_srt_semantic_breath_grouping.py \
+            tests/test_russian_stress_evidence_v2.py \
             tests/test_spatial_bed_final_media_qa.py \
             tests/test_speech_backend_runtime_paths.py
