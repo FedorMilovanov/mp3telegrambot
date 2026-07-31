@@ -1,0 +1,56 @@
+name: Dub Monolith Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/dub_worker_release.py"
+      - "services/dub_title_policy/**"
+      - "services/speech_backends/**"
+      - "tools/voxcpm2/**"
+      - "handlers/dub_health/**"
+      - "tests/test_dialogue_suppressed_master.py"
+      - "tests/test_dub_health_v60_monolithic_release.py"
+      - "tests/test_monolithic_voice_and_pronunciation.py"
+      - "tests/test_ready_srt_semantic_breath_grouping.py"
+      - "tests/test_spatial_bed_final_media_qa.py"
+      - "tests/test_speech_backend_runtime_paths.py"
+      - ".github/workflows/dub-monolith-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Compile active Python tree
+        run: |
+          python -m compileall -q services handlers tools tests
+
+      - name: Run monolithic Dub contract tests
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          python -m pytest -q \
+            tests/test_dialogue_suppressed_master.py \
+            tests/test_dub_health_v60_monolithic_release.py \
+            tests/test_monolithic_voice_and_pronunciation.py \
+            tests/test_ready_srt_semantic_breath_grouping.py \
+            tests/test_spatial_bed_final_media_qa.py \
+            tests/test_speech_backend_runtime_paths.py
