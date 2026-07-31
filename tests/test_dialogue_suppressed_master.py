@@ -6,6 +6,17 @@ from tools.voxcpm2 import master_monolithic_mix
 from tools.voxcpm2 import monolithic_runtime_install
 
 
+def test_import_immediately_overrides_legacy_mixer_and_calibration() -> None:
+    assert (
+        master_monolithic_mix._legacy.build_constant_mix
+        is master_monolithic_mix.build_dialogue_suppressed_mix
+    )
+    assert (
+        master_monolithic_mix._legacy.calibrate_russian_gain
+        is master_monolithic_mix.calibrate_russian_gain
+    )
+
+
 def test_requested_source_level_is_audit_only_and_applied_level_is_zero() -> None:
     levels = master_monolithic_mix.source_bed_levels(0.18)
 
