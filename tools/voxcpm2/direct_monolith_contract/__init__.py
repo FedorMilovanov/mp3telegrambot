@@ -97,9 +97,11 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     periodicity_array = np.asarray(periodicity, dtype=np.float64)
     peak = float(np.percentile(levels, 95))
     active = levels >= max(-49.0, peak - 31.0)
+    # A 10 ms frame can contain less than two periods of a low male voice, so
+    # low ZCR is primary evidence; autocorrelation is only an extra path.
     voice_like = active & (
-        (periodicity_array >= 0.23)
-        | ((zcr_array <= 0.18) & (periodicity_array >= 0.14))
+        (zcr_array <= 0.16)
+        | (periodicity_array >= 0.18)
     )
 
     sustained_start: int | None = None
