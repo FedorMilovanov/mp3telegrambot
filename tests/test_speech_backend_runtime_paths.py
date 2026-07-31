@@ -11,12 +11,17 @@ from services.speech_backends import (
 from tools.voxcpm2 import preflight_json_protocol
 
 
-def test_voxcpm2_backend_owns_exact_monolithic_runtime_paths(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    request = {
+def _request(tmp_path: Path, *, mode: str) -> dict[str, str]:
+    return {
         "cpu_venv": str(tmp_path / "cpu-venv"),
         "vox_archive": str(tmp_path / "archive"),
+        "translation_mode": mode,
     }
+
+
+def test_voxcpm2_direct_backend_owns_monolithic_runtime_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    request = _request(tmp_path, mode="direct")
 
     runtime = default_backend().runtime_paths(repo, request)
 
@@ -42,13 +47,25 @@ def test_voxcpm2_backend_owns_exact_monolithic_runtime_paths(tmp_path: Path) -> 
     assert {"voxcpm", "torch", "soundfile"}.issubset(runtime.import_modules)
 
 
+def test_voxcpm2_gemini_backend_keeps_legacy_master_path(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    runtime = default_backend().runtime_paths(
+        repo,
+        _request(tmp_path, mode="gemini"),
+    )
+    example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
+
+    assert runtime.master_entrypoint == (example / "master_constant_mix.py").resolve()
+    assert runtime.master_module == (
+        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
+    )
+    assert "tools.voxcpm2.master_monolithic_mix" not in runtime.import_modules
+
+
 def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
     runtime = default_backend().runtime_paths(
         tmp_path,
-        {
-            "cpu_venv": str(tmp_path / "venv"),
-            "vox_archive": str(tmp_path / "archive"),
-        },
+        _request(tmp_path, mode="direct"),
     )
 
     payload = runtime.as_dict()
