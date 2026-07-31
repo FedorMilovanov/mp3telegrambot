@@ -9,6 +9,7 @@ from handlers.dub_multicommand import (
 )
 from tools.voxcpm2.direct_source_prosody import _defer_short_continuation
 from tools.voxcpm2.direct_timeline_compaction import (
+    MIN_COMPACTION_GAP_SECONDS,
     POLICY,
     TARGET_GAP_SECONDS,
     compact_timeline_segments,
@@ -118,6 +119,47 @@ def test_short_colon_cue_is_late_aligned_without_moving_following_cue() -> None:
     assert abs(float(second["start"]) - 13.0) < 1e-9
     assert abs(float(second["start"]) - audible_end - TARGET_GAP_SECONDS) < 1e-6
     assert report["shifted_segment_ids"] == [7]
+
+
+def test_natural_continuation_gap_is_not_retimed() -> None:
+    def evidence(path: Path) -> dict[str, float | bool]:
+        if path.name == "segment-1.wav":
+            return {
+                "available": True,
+                "active_start": 0.05,
+                "active_end": 1.70,
+            }
+        return _evidence(path)
+
+    fitted = [
+        (
+            {
+                "id": 1,
+                "text": "И вот что сказано:",
+                "start": 0.0,
+                "end": 2.0,
+                "tail_guard": 0.22,
+            },
+            Path("segment-1.wav"),
+        ),
+        (
+            {
+                "id": 2,
+                "text": "Следующая часть мысли.",
+                "start": 2.0,
+                "end": 4.0,
+                "tail_guard": 0.22,
+            },
+            Path("segment-2.wav"),
+        ),
+    ]
+
+    adjusted, report = compact_timeline_segments(fitted, evidence_reader=evidence)
+
+    assert MIN_COMPACTION_GAP_SECONDS == 0.32
+    assert abs(2.0 - 1.70) < MIN_COMPACTION_GAP_SECONDS
+    assert float(adjusted[0][0]["start"]) == 0.0
+    assert report["shifted_segment_ids"] == []
 
 
 def test_terminal_cue_is_never_retimed() -> None:
