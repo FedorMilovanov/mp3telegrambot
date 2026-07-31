@@ -52,6 +52,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "pronunciation": voxcpm / "russian_pronunciation.py",
         "expression": voxcpm / "expressive_continuity" / "__init__.py",
         "candidate": voxcpm / "direct_monolith_contract.py",
+        "candidate_facade": voxcpm / "direct_monolith_contract" / "__init__.py",
         "cli": voxcpm / "direct_max_quality_cli" / "__init__.py",
         "render": voxcpm / "direct_max_quality_render" / "__init__.py",
         "tail": voxcpm / "direct_tail_artifact.py",
@@ -68,6 +69,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 'reference_profile="extended"',
                 'identity_reference_profile="extended"',
                 "MAX_ADJACENT_SCORE_STEP = 0.26",
+                "_legacy_plan_segments = _legacy.plan_segments",
                 "def build_controlled_expressive_reference(",
                 "return False",
             )
@@ -92,6 +94,15 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 "adjacent_f0_median_jump",
                 "start_reference_leak",
                 "pronunciation_stress_not_verified",
+            )
+        ) and all(
+            marker in text["candidate_facade"]
+            for marker in (
+                'RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"',
+                "_legacy._load_previous_checkpoint",
+                "def evaluate_candidate(",
+                'result["resume_policy"] = RESUME_POLICY',
+                "class _WriteThroughModule",
             )
         ) and all(
             marker in text["cli"]
@@ -139,6 +150,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 '"tools/voxcpm2/expressive_continuity/__init__.py"',
                 '"tools/voxcpm2/russian_pronunciation.py"',
                 '"tools/voxcpm2/direct_monolith_contract.py"',
+                '"tools/voxcpm2/direct_monolith_contract/__init__.py"',
                 '"tools/voxcpm2/direct_max_quality_cli/__init__.py"',
                 '"tools/voxcpm2/direct_timeline_delivery_qa/__init__.py"',
             )
@@ -149,9 +161,10 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         return False, "monolithic-контракты не прошли: " + ", ".join(failed)
     return True, (
         "one calm identity reference; bounded neighbour-supported emotion; separate synthesis "
-        "text and stress evidence; candidate/adjacent voice continuity; no late cue shifting; "
-        "short cadence-aware fades; start-chirp and immediate broadband-tail gates; assembled "
-        "whole-timeline monolith QA; synthesis-critical fingerprinting"
+        "text and stress evidence; candidate/adjacent voice continuity; resume-safe nearest "
+        "checkpoint identity; no late cue shifting; short cadence-aware fades; start-chirp and "
+        "immediate broadband-tail gates; assembled whole-timeline monolith QA; "
+        "synthesis-critical fingerprinting"
     )
 
 
