@@ -13,7 +13,10 @@ from tools.voxcpm2.direct_max_quality_render import (
     ADAPTIVE_RETRY_POLICY,
     _generation_profile,
 )
-from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence
+from tools.voxcpm2.direct_russian_cadence import (
+    EMPHASIS_EVIDENCE_POLICY,
+    evaluate_candidate_cadence,
+)
 
 
 def _valid_candidate(duration: float) -> dict[str, object]:
@@ -79,6 +82,15 @@ def _cadence(
     )
 
 
+def _dominant_late_source() -> dict[str, object]:
+    return {
+        "contour": {
+            "peak_energy_bin": 4,
+            "energy_contour": [0.08, 0.15, 0.31, 0.55, 1.0],
+        }
+    }
+
+
 def test_candidate_fit_tempo_has_preferred_and_hard_boundaries() -> None:
     slot = 4.0
     preferred = _valid_candidate(slot * PREFERRED_MAX_TEMPO)
@@ -116,28 +128,55 @@ def test_flat_declarative_without_energy_release_is_rejected() -> None:
     assert "terminal_not_resolved" in result["failures"]
 
 
-def test_multiword_exclamation_rejects_early_emotional_burst() -> None:
+def test_multiword_exclamation_early_burst_is_advisory_without_source() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
 
-    rejected = _cadence("Я смеюсь тебе в лицо!", early, sample_rate)
+    advisory = _cadence("Я смеюсь тебе в лицо!", early, sample_rate)
     accepted = _cadence("Я смеюсь тебе в лицо!", late, sample_rate)
 
-    assert rejected["hard_ok"] is False
-    assert "emphasis_too_early" in rejected["failures"]
+    assert EMPHASIS_EVIDENCE_POLICY == "dominant-late-source-required-v1"
+    assert advisory["hard_ok"] is True
+    assert "emphasis_too_early" not in advisory["failures"]
+    assert "emphasis_too_early" in advisory["emphasis_advisories"]
+    assert advisory["early_emphasis_observed"] is True
+    assert advisory["emphasis_hard_gate_evidence"] is False
+    assert advisory["preferred_emphasis_bins"] == [2, 3, 4]
     assert accepted["peak_energy_bin"] in {2, 3, 4}
+    assert accepted["emphasis_advisories"] == []
+
+
+def test_exclamation_with_dominant_late_source_rejects_early_burst() -> None:
+    early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
+    late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
+    source_prosody = _dominant_late_source()
+
+    rejected = _cadence(
+        "Я смеюсь тебе в лицо!",
+        early,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=source_prosody,
+    )
+    accepted = _cadence(
+        "Я смеюсь тебе в лицо!",
+        late,
+        sample_rate,
+        expression_tier="emphatic",
+        source_prosody=source_prosody,
+    )
+
+    assert rejected["hard_ok"] is False
+    assert rejected["emphasis_hard_gate_evidence"] is True
+    assert "emphasis_too_early" in rejected["failures"]
+    assert "source_emphasis_misplaced_early" not in rejected["failures"]
     assert "emphasis_too_early" not in accepted["failures"]
 
 
 def test_dominant_late_source_build_rejects_early_russian_burst() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
-    source_prosody = {
-        "contour": {
-            "peak_energy_bin": 4,
-            "energy_contour": [0.08, 0.15, 0.31, 0.55, 1.0],
-        }
-    }
+    source_prosody = _dominant_late_source()
 
     rejected = _cadence(
         "Всё, что надвигается на меня, не заставит меня бояться.",
