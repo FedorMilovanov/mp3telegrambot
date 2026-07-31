@@ -13,8 +13,15 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-import sys
 from typing import Any
+
+from tools.voxcpm2.spatial_bed_contract import (
+    CENTER_FLOOR_RATIO,
+    MAX_CENTER_FLOOR,
+    POLICY,
+    SIDE_BED_RATIO,
+    source_bed_levels,
+)
 
 _LEGACY_PATH = (
     Path(__file__).resolve().parent
@@ -35,25 +42,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "dialogue-suppressed-spatial-bed-v1"
-CENTER_FLOOR_RATIO = 0.065
-MAX_CENTER_FLOOR = 0.010
-SIDE_BED_RATIO = 1.0
-
 _legacy_calibrate_russian_gain = _legacy.calibrate_russian_gain
-
-
-def source_bed_levels(original_level: Any) -> dict[str, float]:
-    requested = _legacy._finite(original_level, field="original_level")
-    if not 0.0 <= requested <= 1.0:
-        raise RuntimeError("original_level должен быть в диапазоне 0..1")
-    center = min(MAX_CENTER_FLOOR, requested * CENTER_FLOOR_RATIO)
-    side = requested * SIDE_BED_RATIO
-    return {
-        "requested_original_level": requested,
-        "center_full_mix_level": center,
-        "spatial_side_level": side,
-    }
 
 
 def build_dialogue_suppressed_mix(
@@ -127,6 +116,7 @@ def calibrate_russian_gain(**kwargs: Any) -> dict[str, Any]:
         center_full_mix_percent=levels["center_full_mix_level"] * 100.0,
         spatial_side_level=levels["spatial_side_level"],
         spatial_side_percent=levels["spatial_side_level"] * 100.0,
+        expected_total_side_level=levels["expected_total_side_level"],
         center_floor_ratio=CENTER_FLOOR_RATIO,
         max_center_floor=MAX_CENTER_FLOOR,
         mono_source_behavior="side cancels; only bounded center floor remains",
