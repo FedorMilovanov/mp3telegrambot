@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
+import types
 from typing import Any
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_source_prosody.py"
@@ -65,6 +67,26 @@ def evaluate_candidate_cadence(
 _legacy.evaluate_candidate_cadence = evaluate_candidate_cadence
 source_prosody_penalty = _legacy.source_prosody_penalty
 candidate_pitch_evidence_ok = _legacy.candidate_pitch_evidence_ok
+
+
+class _WriteThroughModule(types.ModuleType):
+    """Keep test hooks and runtime monkeypatches synchronized with the sibling."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        types.ModuleType.__setattr__(self, name, value)
+        if name in {"_legacy", "__class__"} or name.startswith("__"):
+            return
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        if hasattr(legacy, name):
+            setattr(legacy, name, value)
+
+    def __getattr__(self, name: str) -> Any:
+        legacy = types.ModuleType.__getattribute__(self, "_legacy")
+        return getattr(legacy, name)
+
+
+_module = sys.modules[__name__]
+_module.__class__ = _WriteThroughModule
 
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
