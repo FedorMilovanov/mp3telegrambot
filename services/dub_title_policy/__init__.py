@@ -14,9 +14,12 @@ from pathlib import Path
 from services.dub_worker_release import (
     EXPRESSION_POLICY,
     INDEPENDENT_QA_RECOVERY_POLICY,
+    MASTER_MIX_POLICY,
     MONOLITHIC_TIMELINE_POLICY,
     MONOLITHIC_VOICE_POLICY,
     PRONUNCIATION_POLICY,
+    READY_SRT_GROUPING_POLICY,
+    RUNTIME_ROUTING_POLICY,
     WORKER_RUNTIME,
 )
 
@@ -47,7 +50,8 @@ def _read(path: Path) -> str:
 
 
 def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
-    voxcpm = Path(repo) / "tools" / "voxcpm2"
+    repo = Path(repo)
+    voxcpm = repo / "tools" / "voxcpm2"
     files = {
         "grouping": voxcpm / "dub_quality_v4" / "__init__.py",
         "pronunciation": voxcpm / "russian_pronunciation.py",
@@ -58,6 +62,10 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "render": voxcpm / "direct_max_quality_render" / "__init__.py",
         "tail": voxcpm / "direct_tail_artifact.py",
         "timeline": voxcpm / "direct_timeline_delivery_qa" / "__init__.py",
+        "master": voxcpm / "master_monolithic_mix.py",
+        "routing": voxcpm / "monolithic_runtime_install.py",
+        "direct_main": voxcpm / "generic_clean_direct_runtime" / "__main__.py",
+        "backend": repo / "services" / "speech_backends" / "voxcpm2.py",
         "fingerprint": voxcpm / "clean_runtime_contract" / "__init__.py",
     }
     text = {name: _read(path) for name, path in files.items()}
@@ -65,7 +73,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "semantic-breath-grouping": all(
             marker in text["grouping"]
             for marker in (
-                'POLICY = "ready-srt-semantic-breath-grouping-v1"',
+                f'POLICY = "{READY_SRT_GROUPING_POLICY}"',
                 "TARGET_SECONDS = 4.15",
                 "MAX_INTERNAL_GAP_SECONDS = 0.38",
                 "MAX_WORDS_PER_SECOND = 5.45",
@@ -165,6 +173,44 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 "spectral_jump_score",
             )
         ),
+        "dialogue-suppressed-master": all(
+            marker in text["master"]
+            for marker in (
+                f'POLICY = "{MASTER_MIX_POLICY}"',
+                "CENTER_FLOOR_RATIO = 0.065",
+                "MAX_CENTER_FLOOR = 0.010",
+                "def source_bed_levels(",
+                "def build_dialogue_suppressed_mix(",
+                "pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0",
+                "original_dialogue_preserved_at_requested_level=False",
+                "_legacy.build_constant_mix = build_dialogue_suppressed_mix",
+            )
+        ) and all(
+            marker in text["routing"]
+            for marker in (
+                f'POLICY = "{RUNTIME_ROUTING_POLICY}"',
+                'MASTER_NAME = "master_monolithic_mix.py"',
+                "def _renderer_paths(",
+                "def _is_master_command(",
+                "legacy._renderer_paths = _renderer_paths",
+                "clean_production_core._is_master_command = _is_master_command",
+            )
+        ) and all(
+            marker in text["direct_main"]
+            for marker in (
+                "from tools.voxcpm2 import monolithic_runtime_install",
+                "monolithic_runtime_install.install()",
+                "independent_qa_retry.install()",
+                "main()",
+            )
+        ) and all(
+            marker in text["backend"]
+            for marker in (
+                'ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v3"',
+                '_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"',
+                'master_entrypoint=repo / "tools" / "voxcpm2" / "master_monolithic_mix.py"',
+            )
+        ),
         "monolith-fingerprinted": all(
             marker in text["fingerprint"]
             for marker in (
@@ -175,6 +221,8 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
                 '"tools/voxcpm2/direct_monolith_contract/__init__.py"',
                 '"tools/voxcpm2/direct_max_quality_cli/__init__.py"',
                 '"tools/voxcpm2/direct_timeline_delivery_qa/__init__.py"',
+                '"tools/voxcpm2/monolithic_runtime_install.py"',
+                '"tools/voxcpm2/master_monolithic_mix.py"',
             )
         ),
     }
@@ -186,7 +234,8 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "neighbour-supported emotion; separate synthesis text and stress evidence; "
         "candidate/adjacent voice continuity; resume-safe nearest checkpoint identity; no late "
         "cue shifting; short cadence-aware fades; start-chirp and immediate broadband-tail "
-        "gates; assembled whole-timeline monolith QA; synthesis-critical fingerprinting"
+        "gates; assembled whole-timeline monolith QA; dialogue-suppressed stereo-side source "
+        "bed with bounded center floor; synthesis/release fingerprinting"
     )
 
 
@@ -227,10 +276,13 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             'RELEASE_POLICY = "single-source-worker-release-identity-v1"',
             'PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"',
             f'INDEPENDENT_QA_RECOVERY_POLICY = "{INDEPENDENT_QA_RECOVERY_POLICY}"',
+            f'READY_SRT_GROUPING_POLICY = "{READY_SRT_GROUPING_POLICY}"',
             f'MONOLITHIC_VOICE_POLICY = "{MONOLITHIC_VOICE_POLICY}"',
             f'MONOLITHIC_TIMELINE_POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
             f'PRONUNCIATION_POLICY = "{PRONUNCIATION_POLICY}"',
             f'EXPRESSION_POLICY = "{EXPRESSION_POLICY}"',
+            f'MASTER_MIX_POLICY = "{MASTER_MIX_POLICY}"',
+            f'RUNTIME_ROUTING_POLICY = "{RUNTIME_ROUTING_POLICY}"',
         )
     )
     worker_ok = all(
@@ -271,6 +323,8 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
         marker in direct_main_text
         for marker in (
             "from tools.voxcpm2 import independent_qa_retry",
+            "from tools.voxcpm2 import monolithic_runtime_install",
+            "monolithic_runtime_install.install()",
             "independent_qa_retry.install()",
             "main()",
         )
