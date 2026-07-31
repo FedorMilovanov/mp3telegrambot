@@ -3,8 +3,9 @@
 """Write-through Dub supervisor facade with command-surface hardening.
 
 The established implementation remains in ``services/dub_studio_runtime.py``.
-This package pins worker v4.8, preserves write-through monkeypatch behavior and
-registers reliable multiline Dub commands plus stale callback-card recovery.
+This package reads the shared worker release identity, preserves write-through
+monkeypatch behavior and registers reliable multiline Dub commands plus stale
+callback-card recovery.
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ from pathlib import Path
 import sys
 import types
 from typing import Any
+
+from services.dub_worker_release import WORKER_RUNTIME
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_studio_runtime.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -24,7 +27,7 @@ if _SPEC is None or _SPEC.loader is None:
 _legacy = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_legacy)
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.8"
+_WORKER_RUNTIME = WORKER_RUNTIME
 _legacy._WORKER_RUNTIME = _WORKER_RUNTIME
 
 for _name in dir(_legacy):
@@ -55,6 +58,8 @@ def _install_multicommand_build_wrapper() -> None:
 
 def install_dub_studio_runtime() -> None:
     """Install the proven runtime, then its reliable Telegram command surface."""
+    _legacy._WORKER_RUNTIME = WORKER_RUNTIME
+    globals()["_WORKER_RUNTIME"] = WORKER_RUNTIME
     _legacy_install_dub_studio_runtime()
     _install_multicommand_build_wrapper()
 
@@ -81,6 +86,7 @@ _module.__class__ = _WriteThroughModule
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
+        "WORKER_RUNTIME",
         "_WORKER_RUNTIME",
         "_install_multicommand_build_wrapper",
         "install_dub_studio_runtime",
