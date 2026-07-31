@@ -53,6 +53,7 @@ _FACADE_RENDER_MODULES = (
     "tools/voxcpm2/direct_russian_cadence.py",
     "tools/voxcpm2/direct_russian_cadence/__init__.py",
     "tools/voxcpm2/direct_tail_artifact.py",
+    "tools/voxcpm2/direct_tail_artifact/__init__.py",
     "tools/voxcpm2/direct_timeline_delivery_qa.py",
     "tools/voxcpm2/direct_timeline_delivery_qa/__init__.py",
 )
