@@ -58,7 +58,7 @@ def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
     assert isinstance(payload["cpu_python"], str)
 
 
-def test_preflight_installer_routes_both_paths_and_probe(monkeypatch) -> None:
+def test_preflight_installer_routes_both_paths_and_probe() -> None:
     from tools.voxcpm2 import dub_job_preflight
 
     old_paths = dub_job_preflight._runtime_paths
@@ -68,5 +68,5 @@ def test_preflight_installer_routes_both_paths_and_probe(monkeypatch) -> None:
         assert dub_job_preflight._runtime_paths is preflight_json_protocol.runtime_paths
         assert dub_job_preflight._probe_imports is preflight_json_protocol.probe_imports
     finally:
-        monkeypatch.setattr(dub_job_preflight, "_runtime_paths", old_paths)
-        monkeypatch.setattr(dub_job_preflight, "_probe_imports", old_probe)
+        dub_job_preflight._runtime_paths = old_paths
+        dub_job_preflight._probe_imports = old_probe
