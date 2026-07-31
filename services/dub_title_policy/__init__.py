@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Compatibility facade preserving Dub title-policy and health semantics.
+"""Compatibility facade preserving Dub title-policy and truthful health semantics.
 
 The canonical title implementation remains in ``services/dub_title_policy.py``.
 This facade mirrors health wrappers into the legacy module and verifies the
-shared worker release plus the active source-relative monolithic production
-contract. Static checks are implementation-backed: a superseded literal is not
-accepted merely to make ``/dubcheck`` green.
+shared worker release plus the active fail-closed monolithic production
+contract. Cross-language source prosody is diagnostic only: it may not relax
+speaker-identity gates or influence candidate ranking.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pathlib import Path
 
 from services.dub_worker_release import (
     EXPRESSION_POLICY,
+    FAIL_CLOSED_IDENTITY_POLICY,
     INDEPENDENT_QA_RECOVERY_POLICY,
     MASTER_MIX_POLICY,
     MONOLITHIC_TIMELINE_POLICY,
@@ -64,7 +65,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "grouping": voxcpm / "dub_quality_v4" / "__init__.py",
         "pronunciation": voxcpm / "russian_pronunciation.py",
         "expression": voxcpm / "expressive_continuity" / "__init__.py",
-        "source_relative": voxcpm / "direct_source_relative_continuity.py",
+        "source_diagnostic": voxcpm / "direct_source_relative_continuity.py",
         "candidate": voxcpm / "direct_monolith_contract.py",
         "candidate_facade": voxcpm / "direct_monolith_contract" / "__init__.py",
         "cli": voxcpm / "direct_max_quality_cli" / "__init__.py",
@@ -89,7 +90,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             "def _protected_final_pronunciation(",
             "def _candidate(",
             "def group_ready_srt_v4(",
-            "best_cost = [float(\"inf\")]",
+            'best_cost = [float("inf")]',
             "Semantic-breath grouping изменил текст готового SRT",
         ),
         "single-identity-expression": _all(
@@ -103,26 +104,32 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             "def build_controlled_expressive_reference(",
             "return False",
         ),
-        "bounded-pronunciation-evidence": _all(
+        "bounded-pronunciation-evidence-v2": _all(
             text["pronunciation"],
             f'POLICY = "{PRONUNCIATION_POLICY}"',
             f'VARIANT_POLICY = "{PRONUNCIATION_VARIANT_POLICY}"',
+            'STRESS_EVIDENCE_POLICY = "final-stressed-syllable-duration-energy-pitch-v2"',
             '"variants": ("грядёт", "гря-дёт")',
-            "def _is_final_lexical_match(",
-            "def prepare_segment(",
+            '"manual_pronunciation_review_required": evidence_required',
+            '"manual_review_required": True',
+            '"provisional_acoustic_not_lexical_alignment"',
+            "periodicity >= 0.20",
+            "strong_cues >= 2",
             "def variant_for_attempt(",
             "def stress_evidence(",
             "final_stressed_nucleus_not_supported",
         ),
-        "source-relative-transition": _all(
-            text["source_relative"],
+        "cross-language-diagnostic-only": _all(
+            text["source_diagnostic"],
             f'POLICY = "{SOURCE_RELATIVE_CONTINUITY_POLICY}"',
-            "MEDIAN_SOURCE_HEADROOM_ST = 2.5",
-            "P90_SOURCE_HEADROOM_ST = 3.0",
-            "source_median_available and source_p90_available",
+            "ABSOLUTE_GATE_OVERRIDE_ALLOWED = False",
+            "RANKING_PENALTY_ENABLED = False",
+            '"role": "diagnostics_only_until_semantic_alignment"',
+            '"absolute_gate_override_allowed": ABSOLUTE_GATE_OVERRIDE_ALLOWED',
+            '"ranking_penalty_enabled": RANKING_PENALTY_ENABLED',
+            '"penalty": 0.0',
+            "raw_diagnostic_score",
             "def evaluate_transition(",
-            "source_relative_f0_median_jump",
-            "source_relative_f0_p90_jump",
         ),
         "candidate-monolith": _all(
             text["candidate"],
@@ -135,7 +142,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _all(
             text["candidate_facade"],
             'RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"',
-            f"SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
+            "SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
             'START_VOICE_IMPLEMENTATION_POLICY = "short-island-before-sustained-voice-v3"',
             "direct_source_relative_continuity.evaluate_transition(",
             "def _apply_source_relative_transition(",
@@ -147,19 +154,17 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _all(
             text["cli"],
             'POLICY = "direct-cli-monolithic-voice-v1"',
-            f"PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY",
+            "PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY",
             "direct_monolith_contract.register_segments",
             "russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)",
             "russian_pronunciation.variant_for_attempt(",
             "direct_monolith_contract.evaluate_candidate",
             "direct_monolith_contract.candidate_hard_ok",
-            "source_f0_median_jump_st",
-            "allowed_f0_median_jump_st",
             "def _candidate_failure_summary(",
             "def _raw_failure_evidence(",
             "class _WriteThroughModule",
         ),
-        "monolithic-assembly": _all(
+        "fail-closed-monolithic-assembly": _all(
             text["render"],
             'TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"',
             'FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"',
@@ -169,13 +174,24 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         ) and _all(
             text["timeline"],
             f'POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
-            f"SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
+            "SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
             "PREFERRED_CONNECTED_GAP_SECONDS = 0.18",
             "MAX_CONNECTED_GAP_SECONDS = 0.32",
             "direct_source_relative_continuity.evaluate_transition(",
             "adjacent_voice_timbre_discontinuity",
             "whole_timeline_late_broadband_tail",
             "def verify_timeline_delivery(",
+        ) and _all(
+            text["routing"],
+            f'POLICY = "{RUNTIME_ROUTING_POLICY}"',
+            f'FAIL_CLOSED_IDENTITY_POLICY = "{FAIL_CLOSED_IDENTITY_POLICY}"',
+            "ABSOLUTE_GLOBAL_F0_LIMIT_ST = 8.4",
+            "ABSOLUTE_ADJACENT_F0_RATIO = (0.62, 1.62)",
+            "ABSOLUTE_ADJACENT_P90_RATIO = (0.58, 1.72)",
+            "def enforce_fail_closed_identity(",
+            "def _install_fail_closed_timeline(",
+            'transition["role"] = "ranking_and_diagnostics_only"',
+            "_install_fail_closed_timeline()",
         ),
         "broadband-tail-v5": _all(
             text["tail"],
@@ -208,7 +224,6 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             "_legacy.build_constant_mix = build_dialogue_suppressed_mix",
         ) and _all(
             text["routing"],
-            f'POLICY = "{RUNTIME_ROUTING_POLICY}"',
             'MASTER_NAME = "master_monolithic_mix.py"',
             "def _renderer_paths(",
             "def _is_master_command(",
@@ -248,13 +263,14 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     if failed:
         return False, "monolithic-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "semantic-breath ready-SRT grouping; one calm identity reference; source-relative "
-        "neighbour-supported emotion; bounded pronunciation variants and final stress "
-        "evidence; candidate/adjacent voice continuity; resume-safe nearest checkpoint "
-        "identity; no late cue shifting; short cadence-aware fades; detached-start and "
-        "embedded/immediate broadband-tail gates; assembled whole-timeline source-relative "
-        "monolith QA; dialogue-suppressed stereo-side source bed with bounded center floor; "
-        "synthesis/release fingerprinting"
+        "semantic-breath ready-SRT grouping; one calm identity reference; "
+        "cross-language source prosody is diagnostic-only with zero ranking penalty; "
+        "bounded pronunciation variants with duration/energy/F0 screening and mandatory "
+        "manual review; candidate anchor/neighbour identity gates; fail-closed absolute "
+        "whole-timeline F0 gates that source evidence cannot override; resume-safe nearest "
+        "checkpoint identity; no late cue shifting; short cadence-aware fades; detached-start "
+        "and embedded/immediate broadband-tail gates; dialogue-suppressed stereo-side source "
+        "bed with bounded center floor; synthesis/release fingerprinting"
     )
 
 
@@ -278,9 +294,15 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
 
     repo = Path(repo)
     release_text = _read(repo / "services" / "dub_worker_release.py")
-    worker_text = _read(repo / "tools" / "voxcpm2" / "dub_worker_hardened" / "__main__.py")
-    supervisor_text = _read(repo / "services" / "dub_studio_runtime" / "__init__.py")
-    direct_main_text = _read(repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime" / "__main__.py")
+    worker_text = _read(
+        repo / "tools" / "voxcpm2" / "dub_worker_hardened" / "__main__.py"
+    )
+    supervisor_text = _read(
+        repo / "services" / "dub_studio_runtime" / "__init__.py"
+    )
+    direct_main_text = _read(
+        repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime" / "__main__.py"
+    )
     recovery_text = _read(repo / "tools" / "voxcpm2" / "independent_qa_retry.py")
 
     release_ok = all(
@@ -293,6 +315,7 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             f'READY_SRT_GROUPING_POLICY = "{READY_SRT_GROUPING_POLICY}"',
             f'MONOLITHIC_VOICE_POLICY = "{MONOLITHIC_VOICE_POLICY}"',
             f'SOURCE_RELATIVE_CONTINUITY_POLICY = "{SOURCE_RELATIVE_CONTINUITY_POLICY}"',
+            f'FAIL_CLOSED_IDENTITY_POLICY = "{FAIL_CLOSED_IDENTITY_POLICY}"',
             f'MONOLITHIC_TIMELINE_POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
             f'PRONUNCIATION_POLICY = "{PRONUNCIATION_POLICY}"',
             f'PRONUNCIATION_VARIANT_POLICY = "{PRONUNCIATION_VARIANT_POLICY}"',
@@ -332,7 +355,7 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             "def _retry_context(",
             "def _retarget_checkpoints(",
             "failed_ids=failed_ids",
-            "next_request[\"base_seed\"] = next_base_seed",
+            'next_request["base_seed"] = next_base_seed',
             "def install(",
         )
     ) and all(
