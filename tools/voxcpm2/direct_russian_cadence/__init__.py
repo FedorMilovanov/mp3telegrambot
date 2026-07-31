@@ -53,11 +53,6 @@ def _finite(value: Any, default: float = 0.0) -> float:
     return result if math.isfinite(result) else float(default)
 
 
-def _append_unique(values: list[str], reason: str) -> None:
-    if reason not in values:
-        values.append(reason)
-
-
 def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
     """Return a source peak only with enough contour evidence to hard-gate it."""
     source = segment.get("source_prosody")
@@ -110,7 +105,8 @@ def _apply_emphasis_policy(
     if not early_emphasis_observed:
         return False, advisories
     if source_late_peak_expected:
-        failures.append("emphasis_too_early")
+        if "emphasis_too_early" not in failures:
+            failures.append("emphasis_too_early")
     else:
         advisories.append("emphasis_too_early")
     return True, advisories
@@ -154,20 +150,31 @@ def evaluate_candidate_cadence(
         if candidate_duration > 0.0
         else math.inf
     )
-    if required_fit_tempo > MAX_TEMPO + 1e-9:
-        _append_unique(failures, "fit_tempo_exceeds_hard_limit")
+    if (
+        required_fit_tempo > MAX_TEMPO + 1e-9
+        and "fit_tempo_exceeds_hard_limit" not in failures
+    ):
+        failures.append("fit_tempo_exceeds_hard_limit")
 
     if cadence == "terminal":
         # A period may be nearly level only when energy clearly releases. A
         # shallow pitch ending with no release is the exact "будет продолжение"
         # defect heard in the supplied sample.
-        if delta > -0.55 and ending_energy > -1.0:
-            _append_unique(failures, "terminal_not_resolved")
+        if (
+            delta > -0.55
+            and ending_energy > -1.0
+            and "terminal_not_resolved" not in failures
+        ):
+            failures.append("terminal_not_resolved")
     elif cadence == "firm_terminal":
-        if delta > 0.35:
-            _append_unique(failures, "terminal_rises")
-        if delta > -0.75 and ending_energy > -0.50:
-            _append_unique(failures, "firm_terminal_not_resolved")
+        if delta > 0.35 and "terminal_rises" not in failures:
+            failures.append("terminal_rises")
+        if (
+            delta > -0.75
+            and ending_energy > -0.50
+            and "firm_terminal_not_resolved" not in failures
+        ):
+            failures.append("firm_terminal_not_resolved")
 
     early_emphasis_observed, emphasis_advisories = _apply_emphasis_policy(
         cadence=cadence,
@@ -186,8 +193,9 @@ def evaluate_candidate_cadence(
         and isinstance(peak_bin, int)
         and peak_bin <= 1
         and cadence != "firm_terminal"
+        and "source_emphasis_misplaced_early" not in failures
     ):
-        _append_unique(failures, "source_emphasis_misplaced_early")
+        failures.append("source_emphasis_misplaced_early")
 
     preferred_bins: list[int] | None = None
     if cadence == "firm_terminal" and word_count >= 3:
