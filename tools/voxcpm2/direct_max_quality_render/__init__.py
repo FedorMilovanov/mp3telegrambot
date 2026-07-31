@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Adaptive retry profiles for direct VoxCPM2 rendering.
-
-The sibling module owns all FFmpeg fitting, timeline assembly and model-call
-logic.  This facade extends only the deterministic candidate profile table so a
-long render can recover from three artifact/cadence failures without changing
-text, voice reference, timing limits or quality gates.
-"""
+"""Adaptive retries and continuation-aware timeline assembly."""
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
+
+from tools.voxcpm2 import direct_timeline_compaction
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_max_quality_render.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -27,7 +24,9 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"
+TIMELINE_COMPACTION_POLICY = direct_timeline_compaction.POLICY
 _legacy_generation_profile = _legacy._generation_profile
+_legacy_build_timeline = _legacy.build_timeline
 
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
@@ -45,9 +44,43 @@ def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple
     raise ValueError(f"Неподдерживаемая попытка VoxCPM: {attempt}")
 
 
+def build_timeline(
+    fitted_segments: list[tuple[dict[str, Any], Path]],
+    output: Path,
+    total_duration: float,
+) -> None:
+    """Late-align repairable continuations, then run the original fail-closed QA."""
+    adjusted, report = direct_timeline_compaction.compact_timeline_segments(
+        fitted_segments
+    )
+    shifted = [int(item) for item in report.get("shifted_segment_ids") or []]
+    if shifted:
+        details = ", ".join(
+            "#{id} +{shift:.3f}s".format(
+                id=int(item["id"]),
+                shift=float(item.get("shift_seconds") or 0.0),
+            )
+            for item in report.get("segments") or []
+            if float(item.get("shift_seconds") or 0.0) > 0.001
+        )
+        print(
+            "🧩 Continuation timeline compaction: "
+            + details
+            + f"; target-gap={direct_timeline_compaction.TARGET_GAP_SECONDS:.3f}s",
+            flush=True,
+        )
+    _legacy_build_timeline(adjusted, output, total_duration)
+
+
 _legacy._generation_profile = _generation_profile
+_legacy.build_timeline = build_timeline
 
 __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
-    | {"ADAPTIVE_RETRY_POLICY", "_generation_profile"}
+    | {
+        "ADAPTIVE_RETRY_POLICY",
+        "TIMELINE_COMPACTION_POLICY",
+        "_generation_profile",
+        "build_timeline",
+    }
 )
