@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-POLICY = "monolithic-ready-srt-runtime-routing-v1"
+POLICY = "monolithic-ready-srt-runtime-routing-v2"
 FAIL_CLOSED_IDENTITY_POLICY = "cross-language-prosody-cannot-override-identity-v1"
 MASTER_NAME = "master_monolithic_mix.py"
 RENDERER_NAME = "voxcpm2_cpu_shorts_production.py"
