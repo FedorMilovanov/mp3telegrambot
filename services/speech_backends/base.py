@@ -7,7 +7,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-BACKEND_CONTRACT_POLICY = "speech-backend-contract-v2"
+BACKEND_CONTRACT_POLICY = "speech-backend-contract-v1"
+BACKEND_RUNTIME_PATH_POLICY = "speech-backend-runtime-paths-v1"
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class BackendRuntimePaths:
             "master_module": self.master_module,
             "final_qa_module": self.final_qa_module,
             "contract_policy": BACKEND_CONTRACT_POLICY,
+            "runtime_path_policy": BACKEND_RUNTIME_PATH_POLICY,
         }
 
 
@@ -93,6 +95,7 @@ class SpeechBackend(Protocol):
 
 __all__ = [
     "BACKEND_CONTRACT_POLICY",
+    "BACKEND_RUNTIME_PATH_POLICY",
     "BackendCapabilities",
     "BackendIdentity",
     "BackendRuntimePaths",
