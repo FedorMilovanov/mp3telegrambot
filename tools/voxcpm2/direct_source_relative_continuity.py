@@ -3,11 +3,11 @@
 """Source-relative continuity limits for independently rendered speech breaths.
 
 A large adjacent F0 change is not automatically an identity failure: the source
-speaker may genuinely raise or lower the voice at that discourse boundary.  This
-module therefore compares the generated transition with the matching transition
-in the original speaker windows.  It keeps a strict absolute fallback when
-source pitch is unavailable, while allowing source-supported emotion without
-loosening timbre or reference-identity gates.
+speaker may genuinely raise or lower the voice at that discourse boundary. This
+module compares the generated transition with the matching original-speaker
+transition. The old absolute fallback may be replaced only when both median and
+upper-range source pitch transitions are valid; partial evidence remains useful
+for diagnostics and penalties but never weakens a fallback hard gate.
 """
 from __future__ import annotations
 
@@ -151,11 +151,17 @@ def evaluate_transition(
         # Keep it as ranking evidence; timbre/anchor and jump limits remain hard gates.
         penalty += DIRECTION_MISMATCH_PENALTY
 
-    source_available = bool(source_median is not None or source_p90 is not None)
+    source_median_available = source_median is not None
+    source_p90_available = source_p90 is not None
+    # Replacing both blind fallback gates requires a complete two-metric source
+    # transition. Partial evidence must never silently remove the other gate.
+    source_available = bool(source_median_available and source_p90_available)
     return {
         "policy": POLICY,
         "available": previous_identity is not None,
         "source_available": source_available,
+        "source_median_available": source_median_available,
+        "source_p90_available": source_p90_available,
         "hard_ok": not failures,
         "failures": failures,
         "penalty": min(MAX_PENALTY, max(0.0, penalty)),
