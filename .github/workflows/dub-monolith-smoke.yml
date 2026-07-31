@@ -16,6 +16,7 @@ on:
       - "tests/test_dialogue_suppressed_master.py"
       - "tests/test_dub_health_v60_monolithic_release.py"
       - "tests/test_embedded_terminal_noise_gate.py"
+      - "tests/test_legacy_facade_module_registration.py"
       - "tests/test_monolithic_voice_and_pronunciation.py"
       - "tests/test_ready_srt_semantic_breath_grouping.py"
       - "tests/test_russian_stress_evidence_v2.py"
@@ -59,6 +60,7 @@ jobs:
             tests/test_dialogue_suppressed_master.py \
             tests/test_dub_health_v60_monolithic_release.py \
             tests/test_embedded_terminal_noise_gate.py \
+            tests/test_legacy_facade_module_registration.py \
             tests/test_monolithic_voice_and_pronunciation.py \
             tests/test_ready_srt_semantic_breath_grouping.py \
             tests/test_russian_stress_evidence_v2.py \
