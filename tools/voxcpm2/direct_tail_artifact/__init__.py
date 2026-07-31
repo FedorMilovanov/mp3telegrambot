@@ -36,6 +36,8 @@ for _name in dir(_legacy):
 POLICY = "late-broadband-tail-v5"
 VOICE_CLASSIFICATION_POLICY = "conjunctive-voiced-vs-broadband-tail-v2"
 EMBEDDED_POLICY = "quiet-dip-broadband-island-voice-residue-v1"
+BRACKETING_POLICY = "analysis-window-overlap-aware-voice-brackets-v1"
+FRAME_OVERLAP_TOLERANCE = 2
 _legacy_detect = _legacy.detect_late_broadband_tail
 
 
@@ -69,13 +71,58 @@ def _last_sustained_voice(
     return sustained[-1] if sustained else None
 
 
+def _bracketing_voice_runs(
+    voice_runs: list[tuple[int, int]],
+    *,
+    burst_start: int,
+    burst_end: int,
+) -> tuple[tuple[int, int], tuple[int, int], int, int] | None:
+    """Return voice brackets while tolerating only STFT-window boundary overlap.
+
+    Frame metrics use 20 ms windows with a 10 ms hop. A frame centred at the
+    noise-to-voice boundary can therefore be both broadband and voice-like. The
+    old strict ``following.start >= burst.end`` rule lost a real island whenever
+    that single boundary frame joined the following harmonic run. We accept at
+    most two overlapping analysis frames, require distinct runs on both sides,
+    and expose the overlap in the report instead of silently widening a gap.
+    """
+    tolerance = int(FRAME_OVERLAP_TOLERANCE)
+    previous_candidates = [
+        item
+        for item in voice_runs
+        if item[0] < burst_start and item[1] <= burst_start + tolerance
+    ]
+    following_candidates = [
+        item
+        for item in voice_runs
+        if item[1] > burst_end and item[0] >= burst_end - tolerance
+    ]
+    if not previous_candidates or not following_candidates:
+        return None
+    previous = previous_candidates[-1]
+    following = following_candidates[0]
+    if previous == following or previous[0] >= following[0]:
+        return None
+    overlap_before = max(0, int(previous[1]) - int(burst_start))
+    overlap_after = max(0, int(burst_end) - int(following[0]))
+    if overlap_before > tolerance or overlap_after > tolerance:
+        return None
+    return previous, following, overlap_before, overlap_after
+
+
 def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
     audio = _legacy._mono(samples)
     rate = max(1, int(sample_rate))
     duration = len(audio) / rate
     times, levels, zcr, high_ratio, flatness = _legacy._frame_metrics(audio, rate)
     if len(levels) < 16:
-        return {"policy": POLICY, "embedded_policy": EMBEDDED_POLICY, "suspicious": False, "reason": "too_short"}
+        return {
+            "policy": POLICY,
+            "embedded_policy": EMBEDDED_POLICY,
+            "bracketing_policy": BRACKETING_POLICY,
+            "suspicious": False,
+            "reason": "too_short",
+        }
 
     peak = float(np.percentile(levels, 95))
     active_threshold = max(-52.0, peak - 34.0)
@@ -83,7 +130,13 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
     active = levels >= active_threshold
     voice_runs = _voice_runs(active, zcr, high_ratio, flatness)
     if len(voice_runs) < 2:
-        return {"policy": POLICY, "embedded_policy": EMBEDDED_POLICY, "suspicious": False, "reason": "insufficient_voice_brackets"}
+        return {
+            "policy": POLICY,
+            "embedded_policy": EMBEDDED_POLICY,
+            "bracketing_policy": BRACKETING_POLICY,
+            "suspicious": False,
+            "reason": "insufficient_voice_brackets",
+        }
 
     broadband = active & (zcr >= 0.17) & (high_ratio >= 0.34) & (flatness >= 0.09)
     for burst_start, burst_end in _legacy._runs(broadband):
@@ -93,14 +146,16 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
             continue
         if burst_time < duration * 0.60 or duration - burst_time > 0.80:
             continue
-        previous_runs = [item for item in voice_runs if item[1] <= burst_start]
-        following_runs = [item for item in voice_runs if item[0] >= burst_end]
-        if not previous_runs or not following_runs:
+        brackets = _bracketing_voice_runs(
+            voice_runs,
+            burst_start=burst_start,
+            burst_end=burst_end,
+        )
+        if brackets is None:
             continue
-        previous = previous_runs[-1]
-        following = following_runs[0]
-        gap_before = (burst_start - previous[1]) * 0.010
-        gap_after = (following[0] - burst_end) * 0.010
+        previous, following, overlap_before, overlap_after = brackets
+        gap_before = max(0, burst_start - previous[1]) * 0.010
+        gap_after = max(0, following[0] - burst_end) * 0.010
         if gap_before > 0.18 or gap_after > 0.18:
             continue
 
@@ -140,14 +195,15 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
         followed_by_decay = bool(
             quiet_fraction >= 0.45 and active_after_seconds <= 0.20
         )
-        terminal_residue_seconds = (following[1] - following[0]) * 0.010
+        residue_start = max(int(following[0]), int(burst_end))
+        terminal_residue_seconds = max(0, following[1] - residue_start) * 0.010
         suspicious = bool(
             spectral_jump >= 0.70
             and median_zcr >= 0.22
             and median_high >= 0.50
             and valley_rebound >= 7.0
             and low_pre_fraction >= 0.20
-            and terminal_residue_seconds <= 0.34
+            and 0.04 <= terminal_residue_seconds <= 0.34
             and followed_by_decay
         )
         if not suspicious:
@@ -157,6 +213,8 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
             "base_policy": _legacy.POLICY,
             "voice_classification_policy": VOICE_CLASSIFICATION_POLICY,
             "embedded_policy": EMBEDDED_POLICY,
+            "bracketing_policy": BRACKETING_POLICY,
+            "frame_overlap_tolerance": FRAME_OVERLAP_TOLERANCE,
             "suspicious": True,
             "repairable": False,
             "artifact_type": "embedded_terminal_broadband_island",
@@ -169,6 +227,10 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
             "following_voice_end": float(times[max(following[0], following[1] - 1)] + 0.01),
             "terminal_residue_seconds": terminal_residue_seconds,
             "burst_seconds": burst_seconds,
+            "gap_before_seconds": gap_before,
+            "gap_after_seconds": gap_after,
+            "analysis_overlap_before_frames": overlap_before,
+            "analysis_overlap_after_frames": overlap_after,
             "burst_level_db": level,
             "voice_level_db": voice_level,
             "pre_quiet_level_db": pre_quiet_level,
@@ -187,6 +249,8 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
         "base_policy": _legacy.POLICY,
         "voice_classification_policy": VOICE_CLASSIFICATION_POLICY,
         "embedded_policy": EMBEDDED_POLICY,
+        "bracketing_policy": BRACKETING_POLICY,
+        "frame_overlap_tolerance": FRAME_OVERLAP_TOLERANCE,
         "suspicious": False,
         "reason": "no_embedded_terminal_broadband_island",
     }
@@ -197,6 +261,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
     if base.get("suspicious"):
         base.setdefault("facade_policy", POLICY)
         base.setdefault("voice_classification_policy", VOICE_CLASSIFICATION_POLICY)
+        base.setdefault("bracketing_policy", BRACKETING_POLICY)
         return base
     embedded = _embedded_terminal_island(samples, sample_rate)
     if embedded.get("suspicious"):
@@ -204,6 +269,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
         return embedded
     base["facade_policy"] = POLICY
     base["voice_classification_policy"] = VOICE_CLASSIFICATION_POLICY
+    base["bracketing_policy"] = BRACKETING_POLICY
     base["embedded_detector_result"] = embedded
     return base
 
@@ -232,9 +298,12 @@ _module.__class__ = _WriteThroughModule
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
+        "BRACKETING_POLICY",
         "EMBEDDED_POLICY",
+        "FRAME_OVERLAP_TOLERANCE",
         "POLICY",
         "VOICE_CLASSIFICATION_POLICY",
+        "_bracketing_voice_runs",
         "_embedded_terminal_island",
         "_last_sustained_voice",
         "detect_late_broadband_tail",
