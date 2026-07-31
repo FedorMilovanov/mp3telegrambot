@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from services import dub_title_policy
 from services.dub_worker_release import (
     EXPRESSION_POLICY,
+    FAIL_CLOSED_IDENTITY_POLICY,
     MASTER_MIX_POLICY,
     MONOLITHIC_TIMELINE_POLICY,
     MONOLITHIC_VOICE_POLICY,
@@ -28,7 +29,7 @@ def test_monolithic_static_contract_passes_current_repository() -> None:
     assert "semantic-breath ready-SRT grouping" in detail
     assert "one calm identity reference" in detail
     assert "stress evidence" in detail
-    assert "whole-timeline source-relative monolith QA" in detail
+    assert "whole-timeline" in detail
     assert "dialogue-suppressed stereo-side source bed" in detail
 
 
@@ -44,7 +45,7 @@ def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() 
     ok, detail = dub_title_policy._release_static_contract(health, REPO)
 
     assert ok is True, detail
-    assert "worker v6.1" in detail
+    assert "worker v6.2" in detail
     assert "one calm identity reference" in detail
     assert "dialogue-suppressed" in detail
 
@@ -63,11 +64,12 @@ def test_release_contract_keeps_unrelated_failure_red() -> None:
     assert "child-python-contract" in detail
 
 
-def test_shared_worker_runtime_and_policies_are_v61() -> None:
-    assert WORKER_RUNTIME == "dub-worker-quality-v6.1"
+def test_shared_worker_runtime_and_policies_are_v62() -> None:
+    assert WORKER_RUNTIME == "dub-worker-quality-v6.2"
     assert READY_SRT_GROUPING_POLICY == "ready-srt-semantic-breath-grouping-v1"
     assert MONOLITHIC_VOICE_POLICY == "single-speaker-monolithic-candidate-v1"
-    assert SOURCE_RELATIVE_CONTINUITY_POLICY == "source-relative-adjacent-voice-continuity-v1"
+    assert SOURCE_RELATIVE_CONTINUITY_POLICY == "cross-language-source-prosody-advisory-v2"
+    assert FAIL_CLOSED_IDENTITY_POLICY == "cross-language-prosody-cannot-override-identity-v1"
     assert MONOLITHIC_TIMELINE_POLICY == "assembled-monolithic-voice-v1"
     assert PRONUNCIATION_POLICY == "russian-pronunciation-overrides-v1"
     assert PRONUNCIATION_VARIANT_POLICY == "bounded-pronunciation-candidate-variants-v1"
