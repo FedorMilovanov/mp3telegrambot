@@ -11,7 +11,7 @@ from services.speech_backends import (
 from tools.voxcpm2 import preflight_json_protocol
 
 
-def test_voxcpm2_backend_owns_exact_existing_runtime_paths(tmp_path: Path) -> None:
+def test_voxcpm2_backend_owns_exact_monolithic_runtime_paths(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     request = {
         "cpu_venv": str(tmp_path / "cpu-venv"),
@@ -33,9 +33,10 @@ def test_voxcpm2_backend_owns_exact_existing_runtime_paths(tmp_path: Path) -> No
         example / "voxcpm2_cpu_shorts_production.py"
     ).resolve()
     assert runtime.master_entrypoint == (
-        example / "master_constant_mix.py"
+        repo / "tools" / "voxcpm2" / "master_monolithic_mix.py"
     ).resolve()
     assert runtime.renderer_module in runtime.import_modules
+    assert runtime.master_module == "tools.voxcpm2.master_monolithic_mix"
     assert runtime.master_module in runtime.import_modules
     assert runtime.final_qa_module in runtime.import_modules
     assert {"voxcpm", "torch", "soundfile"}.issubset(runtime.import_modules)
@@ -56,6 +57,7 @@ def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
     assert payload["runtime_path_policy"] == "speech-backend-runtime-paths-v1"
     assert isinstance(payload["import_modules"], list)
     assert isinstance(payload["cpu_python"], str)
+    assert payload["master_module"] == "tools.voxcpm2.master_monolithic_mix"
 
 
 def test_preflight_installer_routes_both_paths_and_probe() -> None:
