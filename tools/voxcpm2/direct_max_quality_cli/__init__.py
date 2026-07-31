@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 """Monolithic-voice facade for the direct VoxCPM2 candidate loop.
 
-The established CLI remains in ``direct_max_quality_cli.py``.  This package
+The established CLI remains in ``direct_max_quality_cli.py``. This package
 shadows that module for production imports and injects one-speaker continuity,
-separate synthesis text, Russian stress evidence and conservative length floors
-without weakening any existing cadence, timbre, artifact or fit gate.
+separate synthesis text, Russian stress evidence, conservative length floors and
+explicit failure diagnostics without weakening any existing quality gate.
 """
 from __future__ import annotations
 
@@ -42,6 +42,8 @@ _legacy_generate = _legacy._generate
 _legacy_source_prosody_penalty = _legacy.source_prosody_penalty
 _legacy_candidate_hard_ok = _legacy.candidate_hard_ok
 _legacy_acceptable_candidates = _legacy._acceptable_candidates
+_legacy_candidate_failure_summary = _legacy._candidate_failure_summary
+_legacy_raw_failure_evidence = _legacy._raw_failure_evidence
 
 
 def read_segments(path: Path) -> list[dict[str, Any]]:
@@ -139,6 +141,85 @@ def _acceptable_candidates(
     return result
 
 
+def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
+    evidence = candidate.get("monolith_identity")
+    if not isinstance(evidence, dict):
+        return "monolith=missing"
+    failures = ",".join(str(value) for value in evidence.get("failures") or []) or "ok"
+    identity = evidence.get("identity") or {}
+    neighbour = evidence.get("neighbour") or {}
+    start = evidence.get("start_artifact") or {}
+    stress = evidence.get("stress_evidence") or {}
+    return (
+        "monolith={failures}, anchorSim={anchor:.3f}, neighbourSim={neighbour_sim}, "
+        "adjF0={adj_f0}, f0={f0:.1f}, startLeak={start_leak}, stress={stress}"
+    ).format(
+        failures=failures,
+        anchor=float(identity.get("anchor_spectral_similarity") or 0.0),
+        neighbour_sim=(
+            f"{float(neighbour.get('spectral_similarity')):.3f}"
+            if neighbour.get("spectral_similarity") is not None
+            else "n/a"
+        ),
+        adj_f0=(
+            f"{float(neighbour.get('f0_median_ratio')):.3f}"
+            if neighbour.get("f0_median_ratio") is not None
+            else "n/a"
+        ),
+        f0=float(identity.get("f0_median") or 0.0),
+        start_leak=bool(start.get("suspicious")),
+        stress=(
+            str(stress.get("reason") or "ok")
+            if stress.get("required")
+            else "n/a"
+        ),
+    )
+
+
+def _candidate_failure_summary(
+    candidates: list[dict[str, Any]],
+    speech_slot: float,
+) -> str:
+    base = _legacy_candidate_failure_summary(candidates, speech_slot)
+    extras = [
+        f"attempt {int(item.get('attempt') or 0)}: {_monolith_diagnostic(item)}"
+        for item in candidates
+        if isinstance(item, dict)
+    ]
+    return "; ".join(value for value in (base, *extras) if value)
+
+
+def _raw_failure_evidence(
+    candidates: list[dict[str, Any]],
+    *,
+    speech_slot: float,
+    retry_epoch: int,
+) -> dict[str, Any]:
+    payload = dict(
+        _legacy_raw_failure_evidence(
+            candidates,
+            speech_slot=speech_slot,
+            retry_epoch=retry_epoch,
+        )
+    )
+    payload["monolith_policy"] = direct_monolith_contract.POLICY
+    by_attempt = {
+        int(item.get("attempt") or 0): item
+        for item in candidates
+        if isinstance(item, dict)
+    }
+    attempts = payload.get("attempts")
+    if isinstance(attempts, list):
+        for row in attempts:
+            if not isinstance(row, dict):
+                continue
+            candidate = by_attempt.get(int(row.get("attempt") or 0))
+            evidence = candidate.get("monolith_identity") if isinstance(candidate, dict) else None
+            if isinstance(evidence, dict):
+                row["monolith_identity"] = evidence
+    return payload
+
+
 # Legacy main resolves all these globals in its own module dictionary.
 _legacy.read_segments = read_segments
 _legacy.seed_for_attempt = seed_for_attempt
@@ -146,6 +227,8 @@ _legacy._generate = _generate
 _legacy.source_prosody_penalty = source_prosody_penalty
 _legacy.candidate_hard_ok = candidate_hard_ok
 _legacy._acceptable_candidates = _acceptable_candidates
+_legacy._candidate_failure_summary = _candidate_failure_summary
+_legacy._raw_failure_evidence = _raw_failure_evidence
 main = _legacy.main
 
 
@@ -174,7 +257,10 @@ __all__ = sorted(
         "POLICY",
         "SYNTHESIS_TEXT_POLICY",
         "_acceptable_candidates",
+        "_candidate_failure_summary",
         "_generate",
+        "_monolith_diagnostic",
+        "_raw_failure_evidence",
         "candidate_hard_ok",
         "main",
         "read_segments",
