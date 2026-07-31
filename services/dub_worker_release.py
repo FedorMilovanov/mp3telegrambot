@@ -8,13 +8,13 @@ replaced before it can claim another production job.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v6.2"
+WORKER_RUNTIME = "dub-worker-quality-v6.3"
 RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
 READY_SRT_GROUPING_POLICY = "ready-srt-semantic-breath-grouping-v1"
 MONOLITHIC_VOICE_POLICY = "single-speaker-monolithic-candidate-v1"
-SOURCE_RELATIVE_CONTINUITY_POLICY = "cross-language-source-prosody-advisory-v2"
+SOURCE_RELATIVE_CONTINUITY_POLICY = "cross-language-source-prosody-diagnostic-v3"
 FAIL_CLOSED_IDENTITY_POLICY = "cross-language-prosody-cannot-override-identity-v1"
 MONOLITHIC_TIMELINE_POLICY = "assembled-monolithic-voice-v1"
 PRONUNCIATION_POLICY = "russian-pronunciation-overrides-v1"
