@@ -22,6 +22,27 @@ _COMMAND_LINE = re.compile(
     r"^/(?P<name>[a-z0-9_]+)(?:@[a-z0-9_]+)?(?:\s+(?P<args>.*))?$",
     re.IGNORECASE,
 )
+_SUPPORTED_COMMANDS = frozenset(
+    {
+        "dub",
+        "dubcheck",
+        "dubnew",
+        "dubnewvideo",
+        "dubsrt",
+        "dubtranslation",
+        "dublist",
+        "dubstatus",
+        "dublog",
+        "dubrun",
+        "dubrepair",
+        "dubcancel",
+        "dubfiles",
+        "dubworker",
+        "dubsend",
+        "dubsegments",
+        "dubfix",
+    }
+)
 _PERMANENT_EDIT_ERRORS = (
     "message to edit not found",
     "message can't be edited",
@@ -42,7 +63,7 @@ def parse_dub_command_lines(text: str) -> list[tuple[str, list[str]]]:
         if match is None:
             return []
         name = str(match.group("name") or "").casefold()
-        if name not in _command_handlers():
+        if name not in _SUPPORTED_COMMANDS:
             return []
         arguments = str(match.group("args") or "").split()
         result.append((name, arguments))
@@ -52,12 +73,19 @@ def parse_dub_command_lines(text: str) -> list[tuple[str, list[str]]]:
 
 
 def _command_handlers() -> dict[str, Callable[..., Awaitable[None]]]:
+    from handlers import dub_audio_repair
     from handlers import dub_commands
+    from handlers import dub_delivery
     from handlers import dub_health
+    from handlers import dub_wizard
 
     return {
+        "dub": dub_wizard.dub_home_command,
         "dubcheck": dub_health.dubcheck_command,
         "dubnew": dub_commands.dubnew_command,
+        "dubnewvideo": dub_wizard.dubnewvideo_command,
+        "dubsrt": dub_wizard.dubsrt_command,
+        "dubtranslation": dub_wizard.dubtranslation_command,
         "dublist": dub_commands.dublist_command,
         "dubstatus": dub_commands.dubstatus_command,
         "dublog": dub_commands.dublog_command,
@@ -66,6 +94,9 @@ def _command_handlers() -> dict[str, Callable[..., Awaitable[None]]]:
         "dubcancel": dub_commands.dubcancel_command,
         "dubfiles": dub_commands.dubfiles_command,
         "dubworker": dub_commands.dubworker_command,
+        "dubsend": dub_delivery.dubsend_command,
+        "dubsegments": dub_audio_repair.dubsegments_command,
+        "dubfix": dub_audio_repair.dubfix_command,
     }
 
 
