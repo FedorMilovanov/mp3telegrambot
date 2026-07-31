@@ -43,6 +43,7 @@ for _name in dir(_legacy):
 CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"
 DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"
 MAX_AUTOMATIC_DELIVERY_RETRIES = 3
+MASTER_ENTRYPOINT_NAMES = frozenset({"master_constant_mix.py", "master_monolithic_mix.py"})
 _LAST_CHILD_STDERR = ""
 
 # Explicit bindings keep static verification aligned with the dynamically
@@ -124,7 +125,7 @@ def _is_master_command(command: Any) -> bool:
     return bool(
         _is_python_script_command(command)
         and re.split(r"[\\/]", str(command[1]))[-1].casefold()
-        == "master_constant_mix.py"
+        in MASTER_ENTRYPOINT_NAMES
     )
 
 

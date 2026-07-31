@@ -35,6 +35,14 @@ def test_real_master_entrypoint_imports_tools_from_foreign_cwd(tmp_path: Path) -
     assert core._is_master_command(command) is True
     assert core._is_master_release_command(command) is False
 
+    direct_command = [
+        sys.executable,
+        str(ROOT / "tools" / "voxcpm2" / "master_monolithic_mix.py"),
+        "--help",
+    ]
+    assert core._is_master_command(direct_command) is True
+    assert core._is_master_release_command(direct_command) is False
+
     result = core._run_child_process(
         command,
         cwd=str(tmp_path),
