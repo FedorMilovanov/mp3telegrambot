@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Compatibility facade preserving Dub title-policy monkeypatch semantics.
+"""Compatibility facade preserving Dub title-policy and health semantics.
 
 The canonical title implementation remains in ``services/dub_title_policy.py``.
 This facade mirrors health wrappers into the legacy module and verifies the
-shared worker release plus the active monolithic-voice production contract.
+shared worker release plus the active source-relative monolithic production
+contract. Static checks are implementation-backed: a superseded literal is not
+accepted merely to make ``/dubcheck`` green.
 """
 from __future__ import annotations
 
@@ -18,8 +20,10 @@ from services.dub_worker_release import (
     MONOLITHIC_TIMELINE_POLICY,
     MONOLITHIC_VOICE_POLICY,
     PRONUNCIATION_POLICY,
+    PRONUNCIATION_VARIANT_POLICY,
     READY_SRT_GROUPING_POLICY,
     RUNTIME_ROUTING_POLICY,
+    SOURCE_RELATIVE_CONTINUITY_POLICY,
     WORKER_RUNTIME,
 )
 
@@ -49,18 +53,24 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
+def _all(text: str, *markers: str) -> bool:
+    return bool(text) and all(marker in text for marker in markers)
+
+
 def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     repo = Path(repo)
     voxcpm = repo / "tools" / "voxcpm2"
-    files = {
+    paths = {
         "grouping": voxcpm / "dub_quality_v4" / "__init__.py",
         "pronunciation": voxcpm / "russian_pronunciation.py",
         "expression": voxcpm / "expressive_continuity" / "__init__.py",
+        "source_relative": voxcpm / "direct_source_relative_continuity.py",
         "candidate": voxcpm / "direct_monolith_contract.py",
         "candidate_facade": voxcpm / "direct_monolith_contract" / "__init__.py",
         "cli": voxcpm / "direct_max_quality_cli" / "__init__.py",
         "render": voxcpm / "direct_max_quality_render" / "__init__.py",
         "tail": voxcpm / "direct_tail_artifact.py",
+        "tail_facade": voxcpm / "direct_tail_artifact" / "__init__.py",
         "timeline": voxcpm / "direct_timeline_delivery_qa" / "__init__.py",
         "master": voxcpm / "master_monolithic_mix.py",
         "routing": voxcpm / "monolithic_runtime_install.py",
@@ -68,174 +78,183 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
         "backend": repo / "services" / "speech_backends" / "voxcpm2.py",
         "fingerprint": voxcpm / "clean_runtime_contract" / "__init__.py",
     }
-    text = {name: _read(path) for name, path in files.items()}
+    text = {name: _read(path) for name, path in paths.items()}
     checks = {
-        "semantic-breath-grouping": all(
-            marker in text["grouping"]
-            for marker in (
-                f'POLICY = "{READY_SRT_GROUPING_POLICY}"',
-                "TARGET_SECONDS = 4.15",
-                "MAX_INTERNAL_GAP_SECONDS = 0.38",
-                "MAX_WORDS_PER_SECOND = 5.45",
-                "def _protected_final_pronunciation(",
-                "def _candidate(",
-                "def group_ready_srt_v4(",
-                "best_cost = [float(\"inf\")]",
-                "Semantic-breath grouping изменил текст готового SRT",
-            )
+        "semantic-breath-grouping": _all(
+            text["grouping"],
+            f'POLICY = "{READY_SRT_GROUPING_POLICY}"',
+            "TARGET_SECONDS = 4.15",
+            "MAX_INTERNAL_GAP_SECONDS = 0.38",
+            "MAX_WORDS_PER_SECOND = 5.45",
+            "def _protected_final_pronunciation(",
+            "def _candidate(",
+            "def group_ready_srt_v4(",
+            "best_cost = [float(\"inf\")]",
+            "Semantic-breath grouping изменил текст готового SRT",
         ),
-        "single-identity-expression": all(
-            marker in text["expression"]
-            for marker in (
-                f'POLICY = "{EXPRESSION_POLICY}"',
-                'REFERENCE_POLICY = "single-calm-identity-reference-v1"',
-                'reference_profile="extended"',
-                'identity_reference_profile="extended"',
-                "MAX_ADJACENT_SCORE_STEP = 0.26",
-                "_legacy_plan_segments = _legacy.plan_segments",
-                "def build_controlled_expressive_reference(",
-                "return False",
-            )
+        "single-identity-expression": _all(
+            text["expression"],
+            f'POLICY = "{EXPRESSION_POLICY}"',
+            'REFERENCE_POLICY = "single-calm-identity-reference-v1"',
+            'reference_profile="extended"',
+            'identity_reference_profile="extended"',
+            "MAX_ADJACENT_SCORE_STEP = 0.26",
+            "_legacy_plan_segments = _legacy.plan_segments",
+            "def build_controlled_expressive_reference(",
+            "return False",
         ),
-        "pronunciation-evidence": all(
-            marker in text["pronunciation"]
-            for marker in (
-                f'POLICY = "{PRONUNCIATION_POLICY}"',
-                '"replacement": "гря-дёт"',
-                "def _is_final_lexical_match(",
-                "def prepare_segment(",
-                "def stress_evidence(",
-                "final_stressed_nucleus_not_supported",
-            )
+        "bounded-pronunciation-evidence": _all(
+            text["pronunciation"],
+            f'POLICY = "{PRONUNCIATION_POLICY}"',
+            f'VARIANT_POLICY = "{PRONUNCIATION_VARIANT_POLICY}"',
+            '"variants": ("грядёт", "гря-дёт")',
+            "def _is_final_lexical_match(",
+            "def prepare_segment(",
+            "def variant_for_attempt(",
+            "def stress_evidence(",
+            "final_stressed_nucleus_not_supported",
         ),
-        "candidate-monolith": all(
-            marker in text["candidate"]
-            for marker in (
-                f'POLICY = "{MONOLITHIC_VOICE_POLICY}"',
-                "ANCHOR_HARD_SIMILARITY",
-                "NEIGHBOUR_HARD_SIMILARITY",
-                "def evaluate_candidate(",
-                "adjacent_f0_median_jump",
-                "start_reference_leak",
-                "pronunciation_stress_not_verified",
-            )
-        ) and all(
-            marker in text["candidate_facade"]
-            for marker in (
-                'RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"',
-                'START_VOICE_POLICY = "first-sustained-voice-after-detached-burst-v2"',
-                "_legacy._load_previous_checkpoint",
-                "def _start_artifact(",
-                "def evaluate_candidate(",
-                'result["resume_policy"] = RESUME_POLICY',
-                "class _WriteThroughModule",
-            )
-        ) and all(
-            marker in text["cli"]
-            for marker in (
-                'POLICY = "direct-cli-monolithic-voice-v1"',
-                "direct_monolith_contract.register_segments",
-                "russian_pronunciation.synthesis_text",
-                "direct_monolith_contract.evaluate_candidate",
-                "direct_monolith_contract.candidate_hard_ok",
-                "def _candidate_failure_summary(",
-                "def _raw_failure_evidence(",
-                "class _WriteThroughModule",
-            )
+        "source-relative-transition": _all(
+            text["source_relative"],
+            f'POLICY = "{SOURCE_RELATIVE_CONTINUITY_POLICY}"',
+            "MEDIAN_SOURCE_HEADROOM_ST = 2.5",
+            "P90_SOURCE_HEADROOM_ST = 3.0",
+            "source_median_available and source_p90_available",
+            "def evaluate_transition(",
+            "source_relative_f0_median_jump",
+            "source_relative_f0_p90_jump",
         ),
-        "monolithic-assembly": all(
-            marker in text["render"]
-            for marker in (
-                'TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"',
-                'FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"',
-                "authored starts preserved",
-                "def fit_without_slowdown(",
-                "def build_timeline(",
-            )
-        ) and all(
-            marker in text["timeline"]
-            for marker in (
-                f'POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
-                "PREFERRED_CONNECTED_GAP_SECONDS = 0.18",
-                "MAX_CONNECTED_GAP_SECONDS = 0.32",
-                "adjacent_voice_timbre_discontinuity",
-                "whole_timeline_late_broadband_tail",
-                "def verify_timeline_delivery(",
-            )
+        "candidate-monolith": _all(
+            text["candidate"],
+            f'POLICY = "{MONOLITHIC_VOICE_POLICY}"',
+            "ANCHOR_HARD_SIMILARITY",
+            "NEIGHBOUR_HARD_SIMILARITY",
+            "def evaluate_candidate(",
+            "start_reference_leak",
+            "pronunciation_stress_not_verified",
+        ) and _all(
+            text["candidate_facade"],
+            'RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"',
+            f"SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
+            'START_VOICE_IMPLEMENTATION_POLICY = "short-island-before-sustained-voice-v3"',
+            "direct_source_relative_continuity.evaluate_transition(",
+            "def _apply_source_relative_transition(",
+            "_legacy._load_previous_checkpoint",
+            "def _start_artifact(",
+            "def evaluate_candidate(",
+            'result["resume_policy"] = RESUME_POLICY',
+            "class _WriteThroughModule",
+        ) and _all(
+            text["cli"],
+            'POLICY = "direct-cli-monolithic-voice-v1"',
+            f"PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY",
+            "direct_monolith_contract.register_segments",
+            "russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)",
+            "russian_pronunciation.variant_for_attempt(",
+            "direct_monolith_contract.evaluate_candidate",
+            "direct_monolith_contract.candidate_hard_ok",
+            "source_f0_median_jump_st",
+            "allowed_f0_median_jump_st",
+            "def _candidate_failure_summary(",
+            "def _raw_failure_evidence(",
+            "class _WriteThroughModule",
         ),
-        "broadband-tail-v3": all(
-            marker in text["tail"]
-            for marker in (
-                'POLICY = "late-broadband-tail-v3"',
-                "duration * 0.60",
-                "immediate_voice_to_broadband_transition",
-                "burst_spectral_flatness",
-                "spectral_jump_score",
-            )
+        "monolithic-assembly": _all(
+            text["render"],
+            'TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"',
+            'FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"',
+            "authored starts preserved",
+            "def fit_without_slowdown(",
+            "def build_timeline(",
+        ) and _all(
+            text["timeline"],
+            f'POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
+            f"SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY",
+            "PREFERRED_CONNECTED_GAP_SECONDS = 0.18",
+            "MAX_CONNECTED_GAP_SECONDS = 0.32",
+            "direct_source_relative_continuity.evaluate_transition(",
+            "adjacent_voice_timbre_discontinuity",
+            "whole_timeline_late_broadband_tail",
+            "def verify_timeline_delivery(",
         ),
-        "dialogue-suppressed-master": all(
-            marker in text["master"]
-            for marker in (
-                f'POLICY = "{MASTER_MIX_POLICY}"',
-                "CENTER_FLOOR_RATIO = 0.065",
-                "MAX_CENTER_FLOOR = 0.010",
-                "def source_bed_levels(",
-                "def build_dialogue_suppressed_mix(",
-                "pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0",
-                "original_dialogue_preserved_at_requested_level=False",
-                "_legacy.build_constant_mix = build_dialogue_suppressed_mix",
-            )
-        ) and all(
-            marker in text["routing"]
-            for marker in (
-                f'POLICY = "{RUNTIME_ROUTING_POLICY}"',
-                'MASTER_NAME = "master_monolithic_mix.py"',
-                "def _renderer_paths(",
-                "def _is_master_command(",
-                "legacy._renderer_paths = _renderer_paths",
-                "clean_production_core._is_master_command = _is_master_command",
-            )
-        ) and all(
-            marker in text["direct_main"]
-            for marker in (
-                "from tools.voxcpm2 import monolithic_runtime_install",
-                "monolithic_runtime_install.install()",
-                "independent_qa_retry.install()",
-                "main()",
-            )
-        ) and all(
-            marker in text["backend"]
-            for marker in (
-                'ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v3"',
-                '_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"',
-                'master_entrypoint=repo / "tools" / "voxcpm2" / "master_monolithic_mix.py"',
-            )
+        "broadband-tail-v5": _all(
+            text["tail"],
+            'POLICY = "late-broadband-tail-v4"',
+            "high_mask = audible_mask &",
+            "embedded_terminal_broadband_island",
+            "immediate_voice_to_broadband_transition",
+            "burst_spectral_flatness",
+            "spectral_jump_score",
+        ) and _all(
+            text["tail_facade"],
+            'POLICY = "late-broadband-tail-v5"',
+            'VOICE_CLASSIFICATION_POLICY = "conjunctive-voiced-vs-broadband-tail-v2"',
+            'EMBEDDED_POLICY = "quiet-dip-broadband-island-voice-residue-v1"',
+            "def _embedded_terminal_island(",
+            "pre_quiet_level = float(np.percentile(before, 25))",
+            '"repairable": False',
+            '"artifact_type": "embedded_terminal_broadband_island"',
+            "def detect_late_broadband_tail(",
         ),
-        "monolith-fingerprinted": all(
-            marker in text["fingerprint"]
-            for marker in (
-                '"tools/voxcpm2/dub_quality_v4/__init__.py"',
-                '"tools/voxcpm2/expressive_continuity/__init__.py"',
-                '"tools/voxcpm2/russian_pronunciation.py"',
-                '"tools/voxcpm2/direct_monolith_contract.py"',
-                '"tools/voxcpm2/direct_monolith_contract/__init__.py"',
-                '"tools/voxcpm2/direct_max_quality_cli/__init__.py"',
-                '"tools/voxcpm2/direct_timeline_delivery_qa/__init__.py"',
-                '"tools/voxcpm2/monolithic_runtime_install.py"',
-                '"tools/voxcpm2/master_monolithic_mix.py"',
-            )
+        "dialogue-suppressed-master": _all(
+            text["master"],
+            f'POLICY = "{MASTER_MIX_POLICY}"',
+            "CENTER_FLOOR_RATIO = 0.065",
+            "MAX_CENTER_FLOOR = 0.010",
+            "def source_bed_levels(",
+            "def build_dialogue_suppressed_mix(",
+            "pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0",
+            "original_dialogue_preserved_at_requested_level=False",
+            "_legacy.build_constant_mix = build_dialogue_suppressed_mix",
+        ) and _all(
+            text["routing"],
+            f'POLICY = "{RUNTIME_ROUTING_POLICY}"',
+            'MASTER_NAME = "master_monolithic_mix.py"',
+            "def _renderer_paths(",
+            "def _is_master_command(",
+            "legacy._renderer_paths = _renderer_paths",
+            "clean_production_core._is_master_command = _is_master_command",
+        ) and _all(
+            text["direct_main"],
+            "from tools.voxcpm2 import monolithic_runtime_install",
+            "monolithic_runtime_install.install()",
+            "independent_qa_retry.install()",
+            "main()",
+        ) and _all(
+            text["backend"],
+            'ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v4"',
+            'MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"',
+            "def _master_contract(",
+            'if mode == "direct"',
+            '_DIRECT_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"',
+            "master_entrypoint, master_module = _master_contract(repo, request)",
+        ),
+        "monolith-fingerprinted": _all(
+            text["fingerprint"],
+            '"tools/voxcpm2/dub_quality_v4/__init__.py"',
+            '"tools/voxcpm2/expressive_continuity/__init__.py"',
+            '"tools/voxcpm2/russian_pronunciation.py"',
+            '"tools/voxcpm2/direct_source_relative_continuity.py"',
+            '"tools/voxcpm2/direct_monolith_contract.py"',
+            '"tools/voxcpm2/direct_monolith_contract/__init__.py"',
+            '"tools/voxcpm2/direct_max_quality_cli/__init__.py"',
+            '"tools/voxcpm2/direct_tail_artifact/__init__.py"',
+            '"tools/voxcpm2/direct_timeline_delivery_qa/__init__.py"',
+            '"tools/voxcpm2/monolithic_runtime_install.py"',
+            '"tools/voxcpm2/master_monolithic_mix.py"',
         ),
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         return False, "monolithic-контракты не прошли: " + ", ".join(failed)
     return True, (
-        "semantic-breath ready-SRT grouping; one calm identity reference; bounded "
-        "neighbour-supported emotion; separate synthesis text and stress evidence; "
-        "candidate/adjacent voice continuity; resume-safe nearest checkpoint identity; no late "
-        "cue shifting; short cadence-aware fades; start-chirp and immediate broadband-tail "
-        "gates; assembled whole-timeline monolith QA; dialogue-suppressed stereo-side source "
-        "bed with bounded center floor; synthesis/release fingerprinting"
+        "semantic-breath ready-SRT grouping; one calm identity reference; source-relative "
+        "neighbour-supported emotion; bounded pronunciation variants and final stress "
+        "evidence; candidate/adjacent voice continuity; resume-safe nearest checkpoint "
+        "identity; no late cue shifting; short cadence-aware fades; detached-start and "
+        "embedded/immediate broadband-tail gates; assembled whole-timeline source-relative "
+        "monolith QA; dialogue-suppressed stereo-side source bed with bounded center floor; "
+        "synthesis/release fingerprinting"
     )
 
 
@@ -258,16 +277,11 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
         remaining = [item for item in failed if item not in superseded]
 
     repo = Path(repo)
-    release = repo / "services" / "dub_worker_release.py"
-    worker_main = repo / "tools" / "voxcpm2" / "dub_worker_hardened" / "__main__.py"
-    supervisor = repo / "services" / "dub_studio_runtime" / "__init__.py"
-    direct_main = repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime" / "__main__.py"
-    recovery = repo / "tools" / "voxcpm2" / "independent_qa_retry.py"
-    release_text = _read(release)
-    worker_text = _read(worker_main)
-    supervisor_text = _read(supervisor)
-    direct_main_text = _read(direct_main)
-    recovery_text = _read(recovery)
+    release_text = _read(repo / "services" / "dub_worker_release.py")
+    worker_text = _read(repo / "tools" / "voxcpm2" / "dub_worker_hardened" / "__main__.py")
+    supervisor_text = _read(repo / "services" / "dub_studio_runtime" / "__init__.py")
+    direct_main_text = _read(repo / "tools" / "voxcpm2" / "generic_clean_direct_runtime" / "__main__.py")
+    recovery_text = _read(repo / "tools" / "voxcpm2" / "independent_qa_retry.py")
 
     release_ok = all(
         marker in release_text
@@ -278,8 +292,10 @@ def _release_static_contract(health: object, repo: Path) -> tuple[bool, str]:
             f'INDEPENDENT_QA_RECOVERY_POLICY = "{INDEPENDENT_QA_RECOVERY_POLICY}"',
             f'READY_SRT_GROUPING_POLICY = "{READY_SRT_GROUPING_POLICY}"',
             f'MONOLITHIC_VOICE_POLICY = "{MONOLITHIC_VOICE_POLICY}"',
+            f'SOURCE_RELATIVE_CONTINUITY_POLICY = "{SOURCE_RELATIVE_CONTINUITY_POLICY}"',
             f'MONOLITHIC_TIMELINE_POLICY = "{MONOLITHIC_TIMELINE_POLICY}"',
             f'PRONUNCIATION_POLICY = "{PRONUNCIATION_POLICY}"',
+            f'PRONUNCIATION_VARIANT_POLICY = "{PRONUNCIATION_VARIANT_POLICY}"',
             f'EXPRESSION_POLICY = "{EXPRESSION_POLICY}"',
             f'MASTER_MIX_POLICY = "{MASTER_MIX_POLICY}"',
             f'RUNTIME_ROUTING_POLICY = "{RUNTIME_ROUTING_POLICY}"',
