@@ -57,7 +57,7 @@ def test_release_contract_replaces_only_superseded_worker_and_renderer_checks() 
     assert ok is True, detail
     assert "worker v6.6" in detail
     assert "Russian-only direct master" in detail
-    assert "lowest/bassiest window" in detail
+    assert "robust median F0" in detail
     assert LEGACY_IMPORT_POLICY in detail
 
 
