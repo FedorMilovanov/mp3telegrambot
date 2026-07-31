@@ -67,7 +67,10 @@ _FACADE_RELEASE_MODULES = (
     "tools/voxcpm2/preflight_json_protocol.py",
     "tools/voxcpm2/independent_qa_retry.py",
     "tools/voxcpm2/monolithic_runtime_install.py",
+    "tools/voxcpm2/spatial_bed_contract.py",
     "tools/voxcpm2/master_monolithic_mix.py",
+    "tools/voxcpm2/final_media_spatial_bed.py",
+    "tools/voxcpm2/final_media_qa/__init__.py",
     "tools/voxcpm2/generic_clean_direct_runtime/__main__.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
