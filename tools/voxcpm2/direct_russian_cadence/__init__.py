@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Stricter Russian sentence-ending and emphasis contract.
+"""Stricter Russian sentence-ending and evidence-backed emphasis contract.
 
 The sibling module performs deterministic F0 and energy analysis. This facade
-keeps those measurements and rejects the audible defects found in the real Dub
-Studio sample: unfinished declaratives, rising exclamations, strong emotion that
-bursts before a source-guided thought, and speech that cannot fit its real cue.
+keeps those measurements and rejects unfinished endings, rising exclamations,
+source-contradicting emphasis and speech that cannot fit its real cue. An early
+energy peak remains a ranking penalty by itself; it becomes a hard failure only
+when a dominant late source peak proves that the Russian delivery contradicts
+the original build.
 """
 from __future__ import annotations
 
@@ -37,6 +39,7 @@ for _name in dir(_legacy):
 
 POLICY = "russian-cadence-contour-v3"
 DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"
+EMPHASIS_EVIDENCE_POLICY = "dominant-late-source-required-v1"
 _STRONG_TIERS = {"emphatic", "passionate"}
 _SOURCE_PEAK_MIN_DOMINANCE = 0.18
 _legacy_evaluate_candidate_cadence = _legacy.evaluate_candidate_cadence
@@ -48,6 +51,11 @@ def _finite(value: Any, default: float = 0.0) -> float:
     except (TypeError, ValueError, OverflowError):
         return float(default)
     return result if math.isfinite(result) else float(default)
+
+
+def _append_unique(values: list[str], reason: str) -> None:
+    if reason not in values:
+        values.append(reason)
 
 
 def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
@@ -78,11 +86,41 @@ def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
     return peak, dominance
 
 
+def _apply_emphasis_policy(
+    *,
+    cadence: str,
+    word_count: int,
+    peak_bin: Any,
+    source_late_peak_expected: bool,
+    failures: list[str],
+) -> tuple[bool, list[str]]:
+    """Hard-gate an early exclamation peak only with source evidence.
+
+    The legacy cadence score already penalizes an early firm-terminal energy
+    peak. Without source contour evidence, Russian word order may legitimately
+    place the emotional word early, so repeating seeds cannot prove a defect.
+    """
+    early_emphasis_observed = bool(
+        cadence == "firm_terminal"
+        and word_count >= 3
+        and isinstance(peak_bin, int)
+        and peak_bin <= 1
+    )
+    advisories: list[str] = []
+    if not early_emphasis_observed:
+        return False, advisories
+    if source_late_peak_expected:
+        failures.append("emphasis_too_early")
+    else:
+        advisories.append("emphasis_too_early")
+    return True, advisories
+
+
 def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply Russian syntax, emphasis and exact-fit hard gates."""
+    """Apply Russian syntax, evidence-backed emphasis and exact-fit hard gates."""
     target_duration = _finite(segment.get("end")) - _finite(segment.get("start"))
     tail_guard = _finite(segment.get("tail_guard"))
     actual_speech_slot = speech_slot_seconds(target_duration, tail_guard)
@@ -90,7 +128,10 @@ def evaluate_candidate_cadence(
     candidate["speech_slot_policy"] = SPEECH_SLOT_POLICY
 
     result = dict(_legacy_evaluate_candidate_cadence(candidate, segment))
-    cadence = str(result.get("cadence") or _legacy.classify_cadence(str(segment.get("text") or "")))
+    cadence = str(
+        result.get("cadence")
+        or _legacy.classify_cadence(str(segment.get("text") or ""))
+    )
     delta = _finite(result.get("ending_delta_semitones"))
     ending_energy = _finite(result.get("ending_energy_delta_db"))
     peak_bin = result.get("peak_energy_bin")
@@ -114,42 +155,49 @@ def evaluate_candidate_cadence(
         else math.inf
     )
     if required_fit_tempo > MAX_TEMPO + 1e-9:
-        failures.append("fit_tempo_exceeds_hard_limit")
+        _append_unique(failures, "fit_tempo_exceeds_hard_limit")
 
     if cadence == "terminal":
         # A period may be nearly level only when energy clearly releases. A
         # shallow pitch ending with no release is the exact "будет продолжение"
         # defect heard in the supplied sample.
         if delta > -0.55 and ending_energy > -1.0:
-            if "terminal_not_resolved" not in failures:
-                failures.append("terminal_not_resolved")
+            _append_unique(failures, "terminal_not_resolved")
     elif cadence == "firm_terminal":
-        if delta > 0.35 and "terminal_rises" not in failures:
-            failures.append("terminal_rises")
+        if delta > 0.35:
+            _append_unique(failures, "terminal_rises")
         if delta > -0.75 and ending_energy > -0.50:
-            if "firm_terminal_not_resolved" not in failures:
-                failures.append("firm_terminal_not_resolved")
-        if word_count >= 3 and isinstance(peak_bin, int) and peak_bin <= 1:
-            if "emphasis_too_early" not in failures:
-                failures.append("emphasis_too_early")
+            _append_unique(failures, "firm_terminal_not_resolved")
+
+    early_emphasis_observed, emphasis_advisories = _apply_emphasis_policy(
+        cadence=cadence,
+        word_count=word_count,
+        peak_bin=peak_bin,
+        source_late_peak_expected=source_late_peak_expected,
+        failures=failures,
+    )
 
     # Russian word order can differ from English, so this is deliberately not a
     # word-level imitation rule. Only a dominant source peak in the final 40%
     # can hard-reject a Russian candidate peaking in the first 40%. A middle-bin
     # source peak, a broad plateau, or a one-bin shift stays a soft ranking signal.
-    if source_late_peak_expected and isinstance(peak_bin, int) and peak_bin <= 1:
-        if "source_emphasis_misplaced_early" not in failures:
-            failures.append("source_emphasis_misplaced_early")
+    if (
+        source_late_peak_expected
+        and isinstance(peak_bin, int)
+        and peak_bin <= 1
+        and cadence != "firm_terminal"
+    ):
+        _append_unique(failures, "source_emphasis_misplaced_early")
 
-    expected_bins: list[int] | None = None
+    preferred_bins: list[int] | None = None
     if cadence == "firm_terminal" and word_count >= 3:
-        expected_bins = [2, 3, 4]
-    elif source_late_peak_expected:
-        expected_bins = [2, 3, 4]
+        preferred_bins = [2, 3, 4]
+    expected_bins = [2, 3, 4] if source_late_peak_expected else None
 
     result.update(
         policy=POLICY,
         delivery_policy=DELIVERY_POLICY,
+        emphasis_evidence_policy=EMPHASIS_EVIDENCE_POLICY,
         failures=failures,
         hard_ok=not failures,
         russian_word_count=word_count,
@@ -158,11 +206,15 @@ def evaluate_candidate_cadence(
         source_peak_dominance=source_peak_dominance,
         source_peak_min_dominance=_SOURCE_PEAK_MIN_DOMINANCE,
         source_late_peak_expected=source_late_peak_expected,
+        early_emphasis_observed=early_emphasis_observed,
+        emphasis_hard_gate_evidence=source_late_peak_expected,
+        emphasis_advisories=emphasis_advisories,
         emphasis_peak_distance=(
             abs(source_peak - peak_bin)
             if isinstance(source_peak, int) and isinstance(peak_bin, int)
             else None
         ),
+        preferred_emphasis_bins=preferred_bins,
         expected_emphasis_bins=expected_bins,
         actual_speech_slot=actual_speech_slot,
         speech_slot_policy=SPEECH_SLOT_POLICY,
@@ -179,7 +231,9 @@ __all__ = sorted(
     set(getattr(_legacy, "__all__", ()))
     | {
         "DELIVERY_POLICY",
+        "EMPHASIS_EVIDENCE_POLICY",
         "POLICY",
+        "_apply_emphasis_policy",
         "evaluate_candidate_cadence",
     }
 )
