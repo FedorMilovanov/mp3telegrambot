@@ -58,6 +58,7 @@ _FACADE_RELEASE_MODULES = (
     "tools/voxcpm2/professional_audio_qa_v45.py",
     "tools/voxcpm2/professional_audio_qa_v45/__init__.py",
     "tools/voxcpm2/timeline_onset_repair.py",
+    "tools/voxcpm2/preflight_json_protocol.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
