@@ -13,6 +13,11 @@ from services.media_masters import (
     get_final_validator,
     get_media_master,
 )
+from services.speech_backends import (
+    DeterministicSpeechBackend,
+    register_backend,
+    unregister_backend,
+)
 
 
 def test_reference_strategy_is_selected_by_backend_not_generic_runtime():
@@ -50,36 +55,41 @@ def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
 
 
 def test_preflight_plan_consumes_backend_and_media_contracts(monkeypatch, tmp_path: Path):
-    project_root = tmp_path / "projects" / "dub-1234567890"
-    project_root.mkdir(parents=True)
-    request = {
-        "schema_version": 1,
-        "video_id": "abcdef12345",
-        "source_url": "https://youtu.be/abcdef12345",
-        "translation_mode": "direct",
-        "speech_backend": "deterministic-ci",
-        "media_master": "constant-mix",
-        "media_python": sys.executable,
-        "deterministic_archive": str(tmp_path),
-    }
-    (project_root / "request.json").write_text(
-        json.dumps(request),
-        encoding="utf-8",
-    )
-
-    import services.dub_preflight as preflight
-
-    monkeypatch.setattr(preflight, "studio_root", lambda: tmp_path)
-    plan = _runtime_plan(
-        {
-            "id": "dub-1234567890",
-            "work_root": str(project_root),
-            "recipe_id": "generic_short_v1",
+    backend = DeterministicSpeechBackend()
+    register_backend(backend)
+    try:
+        project_root = tmp_path / "projects" / "dub-1234567890"
+        project_root.mkdir(parents=True)
+        request = {
+            "schema_version": 1,
+            "video_id": "abcdef12345",
+            "source_url": "https://youtu.be/abcdef12345",
+            "translation_mode": "direct",
+            "speech_backend": backend.backend_id,
+            "media_master": "constant-mix",
+            "media_python": sys.executable,
+            "deterministic_archive": str(tmp_path),
         }
-    )
-    signature = _signature(plan)
+        (project_root / "request.json").write_text(
+            json.dumps(request),
+            encoding="utf-8",
+        )
 
-    assert signature["backend"]["backend_id"] == "deterministic-ci"
-    assert signature["speech_runtime"]["backend_id"] == "deterministic-ci"
-    assert signature["media_runtime"]["master_id"] == "constant-mix"
-    assert "services.media_masters" in signature["modules"]
+        import services.dub_preflight as preflight
+
+        monkeypatch.setattr(preflight, "studio_root", lambda: tmp_path)
+        plan = _runtime_plan(
+            {
+                "id": "dub-1234567890",
+                "work_root": str(project_root),
+                "recipe_id": "generic_short_v1",
+            }
+        )
+        signature = _signature(plan)
+
+        assert signature["backend"]["backend_id"] == backend.backend_id
+        assert signature["speech_runtime"]["backend_id"] == backend.backend_id
+        assert signature["media_runtime"]["master_id"] == "constant-mix"
+        assert "services.media_masters" in signature["modules"]
+    finally:
+        unregister_backend(backend.backend_id)
