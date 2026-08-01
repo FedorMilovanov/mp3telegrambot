@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -64,6 +66,10 @@ jobs:
 
       - name: Ruff configured checks
         run: python -m ruff check .
+
+      - name: Validate baseline update evidence
+        if: ${{ matrix.python-version == '3.11' }}
+        run: python tools/check_code_health_baseline_update.py
 
       - name: Code health advisory
         run: python tools/check_code_health.py
@@ -106,6 +112,9 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_runtime_manifest.py
+          tests/test_bot_lifecycle.py
+          tests/test_database_migrations.py
+          tests/test_backend_generation_execution_plan.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
@@ -146,6 +155,9 @@ jobs:
           handlers
           tools/voxcpm2
           tests/test_runtime_manifest.py
+          tests/test_bot_lifecycle.py
+          tests/test_database_migrations.py
+          tests/test_backend_generation_execution_plan.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
