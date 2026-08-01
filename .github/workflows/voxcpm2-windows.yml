@@ -6,6 +6,11 @@ on:
     branches: ["main"]
     paths:
       - "tools/voxcpm2/**"
+      - "services/speech_backends/**"
+      - "services/dub_worker_release.py"
+      - "services/dub_studio_runtime.py"
+      - "handlers/dub_health/**"
+      - "tests/test_speech_backend_*.py"
       - "tests/test_voxcpm2_*.py"
       - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
@@ -13,6 +18,11 @@ on:
     branches: ["main"]
     paths:
       - "tools/voxcpm2/**"
+      - "services/speech_backends/**"
+      - "services/dub_worker_release.py"
+      - "services/dub_studio_runtime.py"
+      - "handlers/dub_health/**"
+      - "tests/test_speech_backend_*.py"
       - "tests/test_voxcpm2_*.py"
       - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
@@ -54,19 +64,13 @@ jobs:
             throw "Embedded ZIP/Base64/nested launchers are forbidden in production."
           }
 
-      - name: Compile every VoxCPM2 Python tool
+      - name: Compile backend and VoxCPM2 surfaces
         shell: pwsh
         run: |
-          $Scripts = @(Get-ChildItem -LiteralPath "tools/voxcpm2" -Filter "*.py" -File -Recurse)
-          if ($Scripts.Count -eq 0) {
-            throw "No VoxCPM2 Python tools found."
-          }
-          foreach ($Script in $Scripts) {
-            Write-Host "Compiling $($Script.FullName)"
-            python -m py_compile $Script.FullName
-            if ($LASTEXITCODE -ne 0) {
-              throw "Python compile failed: $($Script.FullName)"
-            }
+          python -m compileall -q services/speech_backends handlers/dub_health tools/voxcpm2
+          python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Backend/VoxCPM2 compile failed."
           }
 
       - name: Parse every VoxCPM2 PowerShell launcher
@@ -109,10 +113,19 @@ jobs:
             throw "One or more VoxCPM2 launchers contain parse errors."
           }
 
-      - name: Run lightweight VoxCPM2 tests
+      - name: Run backend and lightweight VoxCPM2 tests
         shell: pwsh
         run: >-
           python -m pytest -q
+          tests/test_speech_backend_command_contract.py
+          tests/test_speech_backend_control_plane.py
+          tests/test_speech_backend_generation_length_plan.py
+          tests/test_speech_backend_generation_profile_plan.py
+          tests/test_speech_backend_registry.py
+          tests/test_speech_backend_request_boundary.py
+          tests/test_speech_backend_runtime_paths.py
+          tests/test_voxcpm2_typed_generation_contract.py
+          tests/test_voxcpm2_typed_session_contract.py
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
           tests/test_voxcpm2_production_preflight.py
@@ -121,11 +134,24 @@ jobs:
           tests/test_voxcpm2_cuda_probation_probe.py
           tests/test_john_piper_voxcpm2_package.py
 
-      - name: Ruff fatal checks
+      - name: Ruff configured checks
         shell: pwsh
         run: >-
-          python -m ruff check --select E9,F63,F7,F82
+          python -m ruff check
+          services/speech_backends
+          services/dub_worker_release.py
+          services/dub_studio_runtime.py
+          handlers/dub_health
           tools/voxcpm2
+          tests/test_speech_backend_command_contract.py
+          tests/test_speech_backend_control_plane.py
+          tests/test_speech_backend_generation_length_plan.py
+          tests/test_speech_backend_generation_profile_plan.py
+          tests/test_speech_backend_registry.py
+          tests/test_speech_backend_request_boundary.py
+          tests/test_speech_backend_runtime_paths.py
+          tests/test_voxcpm2_typed_generation_contract.py
+          tests/test_voxcpm2_typed_session_contract.py
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
           tests/test_voxcpm2_production_preflight.py
