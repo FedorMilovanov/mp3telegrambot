@@ -14,13 +14,15 @@ from typing import Any
 from services.speech_backends.base import (
     BackendAudioSpec,
     BackendCapabilities,
+    BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
     BackendRuntimePaths,
+    BackendSessionConfig,
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v4"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v5"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
@@ -63,53 +65,75 @@ def _needs_normalization(text: str) -> bool:
 class VoxCPM2Session:
     """Low-level VoxCPM2 model call hidden behind the backend adapter."""
 
+    supports_continuation_context = True
+
     def __init__(self, model: Any, audio_spec: BackendAudioSpec) -> None:
         self._model = model
         self.audio_spec = audio_spec
 
+    @staticmethod
+    def _legacy_request(**kwargs: Any) -> BackendGenerationRequest:
+        """Temporary compatibility seam for old callers during the v6.9 rollout."""
+        return BackendGenerationRequest(
+            text=str(kwargs.pop("text")),
+            reference_audio=Path(kwargs.pop("reference")),
+            seed=int(kwargs.pop("seed")) if kwargs.get("seed") is not None else None,
+            continuation_reference=kwargs.pop("continuation_reference", None),
+            continuation_text=str(kwargs.pop("continuation_text", "")),
+            backend_options=kwargs,
+        )
+
     def generate(
         self,
-        *,
-        text: str,
-        reference: Path,
-        cfg: float,
-        steps: int,
-        min_len: int,
-        max_len: int,
-        seed: int,
-        continuation_reference: Path | None = None,
-        continuation_text: str = "",
+        request: BackendGenerationRequest | None = None,
+        **legacy_kwargs: Any,
     ) -> Any:
+        if request is None:
+            request = self._legacy_request(**legacy_kwargs)
+        elif legacy_kwargs:
+            raise TypeError("VoxCPM2Session.generate принимает request либо legacy kwargs, но не оба.")
+        if not isinstance(request, BackendGenerationRequest):
+            raise TypeError("VoxCPM2Session.generate ожидает BackendGenerationRequest.")
+
+        cfg = request.option_float("cfg", default=1.9, low=0.1, high=10.0)
+        steps = request.option_int("steps", default=16, low=1, high=256)
+        min_len = request.option_int("min_len", default=2, low=1, high=512)
+        max_len = request.option_int("max_len", default=64, low=2, high=512)
+        if min_len >= max_len:
+            raise ValueError("VoxCPM2 min_len должен быть меньше max_len.")
+
         parameters = inspect.signature(self._model.generate).parameters
         generation_max_len = min(
             512,
-            max(int(max_len), int(math.ceil(max_len * 1.45))),
+            max(max_len, int(math.ceil(max_len * 1.45))),
         )
         kwargs: dict[str, Any] = {
-            "text": str(text),
-            "reference_wav_path": str(reference),
-            "cfg_value": float(cfg),
-            "inference_timesteps": int(steps),
-            "min_len": int(min_len),
+            "text": request.text,
+            "reference_wav_path": str(request.reference_audio),
+            "cfg_value": cfg,
+            "inference_timesteps": steps,
+            "min_len": min_len,
             "max_len": generation_max_len,
-            "normalize": _needs_normalization(str(text)),
+            "normalize": _needs_normalization(request.text),
             "denoise": False,
         }
         optional = {
             "retry_badcase": True,
             "retry_badcase_max_times": 2,
             "retry_badcase_ratio_threshold": 6.0,
-            "seed": int(seed),
+            "seed": int(request.seed) if request.seed is not None else None,
         }
+        continuation_reference = request.continuation_reference
         if continuation_reference is not None and continuation_reference.is_file():
             if "prompt_wav_path" in parameters:
                 kwargs["prompt_wav_path"] = str(continuation_reference)
-            if "prompt_text" in parameters and str(continuation_text or "").strip():
-                kwargs["prompt_text"] = str(continuation_text).strip()
-            elif "reference_text" in parameters and str(continuation_text or "").strip():
-                kwargs["reference_text"] = str(continuation_text).strip()
+            continuation_text = str(request.continuation_text or "").strip()
+            if "prompt_text" in parameters and continuation_text:
+                kwargs["prompt_text"] = continuation_text
+            elif "reference_text" in parameters and continuation_text:
+                kwargs["reference_text"] = continuation_text
         for name, value in optional.items():
-            if name in parameters:
+            if name in parameters and value is not None:
                 kwargs[name] = value
         return self._model.generate(**kwargs)
 
@@ -128,6 +152,7 @@ class VoxCPM2Backend:
             cpu_inference=True,
             pcm_output=True,
             checkpointable_segments=True,
+            continuation_context=True,
         )
 
     def process_environment(
@@ -153,6 +178,7 @@ class VoxCPM2Backend:
                 ("CUDA_DEVICE_ORDER", "PCI_BUS_ID"),
                 ("CUDA_VISIBLE_DEVICES", "-1"),
                 ("HF_HUB_OFFLINE", "1"),
+                ("TRANSFORMERS_OFFLINE", "1"),
                 ("MKL_NUM_THREADS", str(threads)),
                 ("OMP_NUM_THREADS", str(threads)),
                 ("PYTHONIOENCODING", "utf-8"),
@@ -164,21 +190,33 @@ class VoxCPM2Backend:
                 "VOXCPM_PROMPT_TEXTS_JSON",
                 "VOXCPM_RESCUE_RENDERER",
                 "VOXCPM_SEMANTIC_GUARD_VERSION",
-                "TRANSFORMERS_OFFLINE",
             ),
         )
 
     def open_session(
         self,
-        model_path: Path,
+        config: BackendSessionConfig | Path,
         *,
-        cache_length: int,
-        torch_module: Any,
+        cache_length: int | None = None,
+        torch_module: Any | None = None,
     ) -> BackendSynthesisSession:
-        """Load VoxCPM2 and expose only backend-neutral audio/session facts."""
-        if isinstance(cache_length, bool) or int(cache_length) < 2048:
-            raise RuntimeError("VoxCPM2 cache_length должен быть >= 2048.")
+        """Load VoxCPM2 while accepting the old call shape during migration."""
         del torch_module
+        if isinstance(config, BackendSessionConfig):
+            model_path = config.model_path
+            raw_cache_length = config.options.get("cache_length", 4096)
+        else:
+            model_path = Path(config)
+            raw_cache_length = 4096 if cache_length is None else cache_length
+        if isinstance(raw_cache_length, bool):
+            raise RuntimeError("VoxCPM2 cache_length не может быть bool.")
+        try:
+            resolved_cache_length = int(raw_cache_length)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError("VoxCPM2 cache_length должен быть целым числом.") from exc
+        if not 2048 <= resolved_cache_length <= 131072:
+            raise RuntimeError("VoxCPM2 cache_length должен быть в диапазоне 2048..131072.")
+
         from voxcpm import VoxCPM
 
         model = VoxCPM.from_pretrained(
@@ -191,13 +229,13 @@ class VoxCPM2Backend:
         cache_device = model.tts_model.device
         model.tts_model.base_lm.setup_cache(
             1,
-            int(cache_length),
+            resolved_cache_length,
             cache_device,
             cache_dtype,
         )
         model.tts_model.residual_lm.setup_cache(
             1,
-            int(cache_length),
+            resolved_cache_length,
             cache_device,
             cache_dtype,
         )
@@ -218,7 +256,7 @@ class VoxCPM2Backend:
                 encode_sample_rate=encode_sr,
                 output_sample_rate=output_sr,
                 seconds_per_step=seconds_per_step,
-                cache_length=int(cache_length),
+                cache_length=resolved_cache_length,
             ),
         )
 
@@ -290,7 +328,6 @@ class VoxCPM2Backend:
         *,
         values: dict[str, Any],
     ) -> list[str]:
-        """Build the stable renderer invocation without leaking it into core."""
         return [
             str(runtime.cpu_python),
             str(runtime.renderer_entrypoint),
@@ -315,7 +352,6 @@ class VoxCPM2Backend:
         *,
         values: dict[str, Any],
     ) -> list[str]:
-        """Build the selected master invocation behind the backend boundary."""
         return [
             str(runtime.cpu_python),
             str(runtime.master_entrypoint),
