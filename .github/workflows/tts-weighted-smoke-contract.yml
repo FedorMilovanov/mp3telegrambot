@@ -8,12 +8,16 @@ on:
       - '.github/workflows/tts-weighted-smoke-contract.yml'
       - 'services/tts_weighted_smoke.py'
       - 'services/tts_weighted_smoke_runner.py'
+      - 'services/tts_weighted_smoke_attestation.py'
       - 'tools/run_tts_weighted_smoke.py'
       - 'tools/check_tts_weighted_smoke_runner.py'
+      - 'tools/build_tts_weighted_smoke_attestation.py'
       - 'tests/test_tts_weighted_smoke.py'
       - 'tests/test_tts_weighted_smoke_cli.py'
       - 'tests/test_tts_weighted_smoke_runner.py'
       - 'tests/test_tts_weighted_smoke_runner_cli.py'
+      - 'tests/test_tts_weighted_smoke_attestation.py'
+      - 'tests/test_tts_weighted_smoke_attestation_cli.py'
       - 'tests/test_tts_weighted_smoke_workflow.py'
   pull_request:
     branches: ["main"]
@@ -22,12 +26,16 @@ on:
       - '.github/workflows/tts-weighted-smoke-contract.yml'
       - 'services/tts_weighted_smoke.py'
       - 'services/tts_weighted_smoke_runner.py'
+      - 'services/tts_weighted_smoke_attestation.py'
       - 'tools/run_tts_weighted_smoke.py'
       - 'tools/check_tts_weighted_smoke_runner.py'
+      - 'tools/build_tts_weighted_smoke_attestation.py'
       - 'tests/test_tts_weighted_smoke.py'
       - 'tests/test_tts_weighted_smoke_cli.py'
       - 'tests/test_tts_weighted_smoke_runner.py'
       - 'tests/test_tts_weighted_smoke_runner_cli.py'
+      - 'tests/test_tts_weighted_smoke_attestation.py'
+      - 'tests/test_tts_weighted_smoke_attestation_cli.py'
       - 'tests/test_tts_weighted_smoke_workflow.py'
 
 permissions:
@@ -67,12 +75,16 @@ jobs:
           python -m py_compile
           services/tts_weighted_smoke.py
           services/tts_weighted_smoke_runner.py
+          services/tts_weighted_smoke_attestation.py
           tools/run_tts_weighted_smoke.py
           tools/check_tts_weighted_smoke_runner.py
+          tools/build_tts_weighted_smoke_attestation.py
           tests/test_tts_weighted_smoke.py
           tests/test_tts_weighted_smoke_cli.py
           tests/test_tts_weighted_smoke_runner.py
           tests/test_tts_weighted_smoke_runner_cli.py
+          tests/test_tts_weighted_smoke_attestation.py
+          tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
       - name: Run weighted smoke contract tests
         run: >-
@@ -81,18 +93,24 @@ jobs:
           tests/test_tts_weighted_smoke_cli.py
           tests/test_tts_weighted_smoke_runner.py
           tests/test_tts_weighted_smoke_runner_cli.py
+          tests/test_tts_weighted_smoke_attestation.py
+          tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
       - name: Ruff weighted smoke surface
         run: >-
           python -m ruff check
           services/tts_weighted_smoke.py
           services/tts_weighted_smoke_runner.py
+          services/tts_weighted_smoke_attestation.py
           tools/run_tts_weighted_smoke.py
           tools/check_tts_weighted_smoke_runner.py
+          tools/build_tts_weighted_smoke_attestation.py
           tests/test_tts_weighted_smoke.py
           tests/test_tts_weighted_smoke_cli.py
           tests/test_tts_weighted_smoke_runner.py
           tests/test_tts_weighted_smoke_runner_cli.py
+          tests/test_tts_weighted_smoke_attestation.py
+          tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
       - name: Whitespace integrity
         run: git diff --check
