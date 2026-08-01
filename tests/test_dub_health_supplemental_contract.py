@@ -28,7 +28,7 @@ def test_active_health_requires_repair_and_project_barriers() -> None:
     assert callable(repair_runtime._load_segments)
     assert callable(generic_project_runtime.validate_request_payload)
     assert callable(generic_project_runtime.save_json)
-    assert generic_project_runtime.POLICY == "generic-project-runtime-write-through-v3"
+    assert generic_project_runtime.POLICY == "generic-project-runtime-write-through-v4"
 
 
 def test_active_health_requires_current_worker_release() -> None:
@@ -79,6 +79,7 @@ def test_active_health_composes_and_fingerprints_current_contracts() -> None:
     ).read_text(encoding="utf-8")
     for marker in (
         "services/speech_backends/base.py",
+        "services/speech_backends/control_plane.py",
         "tools/voxcpm2/generic_project_runtime/__init__.py",
         "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
         "tools/voxcpm2/direct_max_quality_render/__init__.py",

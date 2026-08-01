@@ -23,7 +23,11 @@ import types
 from typing import Any
 import uuid
 
-from services.speech_backends import DEFAULT_BACKEND_ID, get_backend, resolve_backend_id
+from services.speech_backends import (
+    DEFAULT_BACKEND_ID,
+    UnknownSpeechBackendError,
+    normalize_production_backend,
+)
 from tools.voxcpm2 import clean_source_download
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "generic_project_runtime.py"
@@ -41,7 +45,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "generic-project-runtime-write-through-v3"
+POLICY = "generic-project-runtime-write-through-v4"
 ATOMIC_REPLACE_POLICY = "per-path-serialized-windows-sharing-retry-v1"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
 _REPLACE_ATTEMPTS = 8
@@ -109,20 +113,14 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
     if mode not in _ALLOWED_TRANSLATION_MODES:
         raise RuntimeError(f"Некорректный translation_mode={mode!r} в request.json.")
     try:
-        backend_id = resolve_backend_id(
-            result.get("speech_backend") or DEFAULT_BACKEND_ID
+        backend_id = normalize_production_backend(
+            result.get("speech_backend"),
+            default_backend_id=DEFAULT_BACKEND_ID,
         )
-        backend = get_backend(backend_id)
-    except RuntimeError as exc:
+    except UnknownSpeechBackendError as exc:
         raise RuntimeError(
             f"Некорректный speech_backend={result.get('speech_backend')!r} в request.json."
         ) from exc
-    missing = backend.capabilities().missing()
-    if missing:
-        raise RuntimeError(
-            f"speech_backend={backend_id} не имеет обязательных production capabilities: "
-            f"{', '.join(missing)}."
-        )
     result["video_id"] = video_id
     result["source_url"] = source_url
     result["translation_mode"] = mode

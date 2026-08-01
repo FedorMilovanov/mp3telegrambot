@@ -4,7 +4,13 @@ from pathlib import Path
 
 from handlers import dub_health
 from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY, WORKER_RUNTIME
-from services.speech_backends import BACKEND_CONTRACT_POLICY, default_backend
+from services.speech_backends import (
+    BACKEND_CONTRACT_POLICY,
+    CONTROL_PLANE_POLICY,
+    DEFAULT_BACKEND_ID,
+    default_backend,
+    select_production_backend,
+)
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair_runtime
 from tools.voxcpm2 import generic_clean_direct_runtime as direct_runtime
@@ -20,6 +26,7 @@ def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
 
     assert ok, detail
     assert dub_health.QUALITY_CONTRACT_POLICY in detail
+    assert CONTROL_PLANE_POLICY in detail
     assert "speech-backend" in detail
     assert "recipe-routing" in detail
     assert "runtime-safety" in detail
@@ -27,6 +34,10 @@ def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
 
 
 def test_dub_health_checks_active_backend_and_safety_contracts() -> None:
+    selection = select_production_backend(
+        None,
+        default_backend_id=DEFAULT_BACKEND_ID,
+    )
     backend = default_backend()
     environment = backend.process_environment(
         {"threads": 1},
@@ -34,11 +45,13 @@ def test_dub_health_checks_active_backend_and_safety_contracts() -> None:
     ).as_dict()
 
     assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+    assert CONTROL_PLANE_POLICY == "speech-backend-control-plane-v1"
+    assert selection.backend is backend
     assert backend.backend_id == "voxcpm2"
     assert backend.capabilities().missing() == ()
     assert environment["HF_HUB_OFFLINE"] == "1"
     assert environment["TRANSFORMERS_OFFLINE"] == "1"
-    assert generic_project_runtime.POLICY == "generic-project-runtime-write-through-v3"
+    assert generic_project_runtime.POLICY == "generic-project-runtime-write-through-v4"
     assert direct_runtime.CHECKPOINT_MIGRATION_POLICY == (
         "signature-and-natural-tempo-checkpoint-adoption-v2"
     )
@@ -75,7 +88,9 @@ def test_runtime_fingerprint_includes_active_facades() -> None:
         ROOT / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
     ).read_text(encoding="utf-8")
     required = (
+        "services/speech_backends/__init__.py",
         "services/speech_backends/base.py",
+        "services/speech_backends/control_plane.py",
         "services/speech_backends/registry.py",
         "services/speech_backends/voxcpm2.py",
         "tools/voxcpm2/clean_runtime_contract/__init__.py",
