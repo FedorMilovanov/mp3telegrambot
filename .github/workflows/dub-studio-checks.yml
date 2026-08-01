@@ -60,6 +60,10 @@ on:
       - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
 
+concurrency:
+  group: dub-studio-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   focused-dub-studio:
     runs-on: windows-latest
@@ -74,40 +78,18 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
       - name: Install test dependencies
         run: python -m pip install -r requirements-dev.txt
-      - name: Compile production surface
+      - name: Compile production surface dynamically
         shell: pwsh
         run: |
-          python -m py_compile `
-            tools/voxcpm2/generic_clean_gemini_runtime.py `
-            tools/voxcpm2/generic_clean_direct_runtime.py `
-            tools/voxcpm2/generic_clean_audio_repair_runtime.py `
-            tools/voxcpm2/generic_clean_custom_runtime.py `
-            tools/voxcpm2/generic_project_runtime.py `
-            tools/voxcpm2/generic_project_runtime/__init__.py `
-            tools/voxcpm2/clean_production_core.py `
-            tools/voxcpm2/clean_runtime_contract.py `
-            tools/voxcpm2/clean_runtime_contract/__init__.py `
-            tools/voxcpm2/direct_max_quality_cli.py `
-            tools/voxcpm2/direct_max_quality_render.py `
-            tools/voxcpm2/dub_worker.py `
-            tools/voxcpm2/dub_worker_hardened.py `
-            handlers/dub_wizard.py `
-            handlers/dub_commands.py `
-            handlers/dub_delivery.py `
-            handlers/dub_health.py `
-            handlers/dub_health/__init__.py `
-            handlers/mode_command.py `
-            handlers/commands.py `
-            services/dub_studio.py `
-            services/dub_studio_runtime.py `
-            services/speech_backends/__init__.py `
-            services/speech_backends/base.py `
-            services/speech_backends/control_plane.py `
-            services/speech_backends/registry.py `
-            services/speech_backends/voxcpm2.py `
-            main.py
+          python -m compileall -q services/speech_backends services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          if ($LASTEXITCODE -ne 0) {
+            throw "Dub Studio production compile failed."
+          }
           python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
       - name: Validate recipe actions
         shell: pwsh
@@ -133,6 +115,8 @@ jobs:
       - name: Focused regression tests
         run: >-
           python -m pytest -q
+          tests/test_dub_execution.py
+          tests/test_dub_worker.py
           tests/test_clean_dub_production.py
           tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
@@ -155,37 +139,27 @@ jobs:
           tests/test_final_media_qa.py
           tests/test_dub_wizard_request_writer.py
           tests/test_dub_facade_write_through.py
-      - name: Ruff changed surface
+      - name: Ruff configured Dub Studio checks
         run: >-
-          python -m ruff check --select E9,F63,F7,F82
+          python -m ruff check
           services/speech_backends
-          tools/voxcpm2/clean_production_core.py
-          tools/voxcpm2/clean_production_core
-          tools/voxcpm2/clean_runtime_contract.py
-          tools/voxcpm2/clean_runtime_contract
-          tools/voxcpm2/direct_max_quality_cli.py
-          tools/voxcpm2/direct_max_quality_cli
-          tools/voxcpm2/direct_max_quality_render.py
-          tools/voxcpm2/direct_max_quality_render
-          tools/voxcpm2/generic_clean_gemini_runtime.py
-          tools/voxcpm2/generic_clean_direct_runtime.py
-          tools/voxcpm2/generic_clean_direct_runtime
-          tools/voxcpm2/generic_clean_audio_repair_runtime.py
-          tools/voxcpm2/generic_clean_audio_repair_runtime
-          tools/voxcpm2/generic_clean_custom_runtime.py
-          tools/voxcpm2/generic_project_runtime.py
-          tools/voxcpm2/generic_project_runtime
-          tools/voxcpm2/dub_worker_hardened.py
-          tools/voxcpm2/dub_worker_hardened
-          handlers/dub_wizard.py
-          handlers/dub_wizard
-          handlers/dub_health.py
-          handlers/dub_health
+          services/dub_execution.py
+          services/dub_worker.py
+          services/dub_studio.py
           services/dub_studio_runtime.py
-          services/dub_studio_runtime
+          handlers/dub_health
+          handlers/dub_wizard.py
+          handlers/dub_commands.py
+          handlers/dub_delivery.py
+          tools/voxcpm2
+          tests/test_dub_execution.py
+          tests/test_dub_worker.py
           tests/test_clean_dub_production.py
           tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
+          tests/test_clean_runtime_contract.py
+          tests/test_clean_runtime_setting_types.py
+          tests/test_clean_repair_request_contract.py
           tests/test_dub_health_supplemental_contract.py
           tests/test_dub_quality_v42_runtime_contracts.py
           tests/test_generic_project_runtime_write_through.py
