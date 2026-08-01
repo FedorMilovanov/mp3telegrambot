@@ -4,17 +4,21 @@
 
 The existing UI/state machine remains in ``handlers/dub_wizard.py``. This
 package routes URL parsing through the production single-video parser and
-replaces only project creation so ``request.json`` is validated and atomically
-written before a Gemini job can enter the queue.
+replaces project creation so ``request.json`` is validated and atomically
+written before a job can enter the queue. TTS selection is expressed as a
+backend adapter, a concrete model profile and typed JSON option maps.
 """
 from __future__ import annotations
 
 import html
 import importlib.util
+import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+from services.speech_backends import DEFAULT_BACKEND_ID, DEFAULT_MODEL_PROFILE_ID
 from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import generic_project_runtime
 
@@ -33,6 +37,8 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
+_legacy_request_payload = _legacy._request_payload
+
 
 def _extract_youtube_video_id(value: str) -> tuple[str, str]:
     raw = str(value or "").strip()
@@ -45,6 +51,64 @@ def _extract_youtube_video_id(value: str) -> tuple[str, str]:
             "watch, youtu.be, Shorts, live или embed."
         )
     return video_id, f"https://youtube.com/watch?v={video_id}"
+
+
+def _env_json_object(name: str) -> dict[str, Any]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{name} содержит некорректный JSON.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{name} должен содержать JSON-объект.")
+    return dict(payload)
+
+
+def _request_payload(video_id: str, url: str, mode: str) -> dict[str, Any]:
+    """Create a model-neutral request while preserving legacy env overrides."""
+    request = dict(_legacy_request_payload(video_id, url, mode))
+    for key in ("threads", "steps", "cfg", "cache_length", "base_seed"):
+        request.pop(key, None)
+    for key in ("vox_archive", "cpu_venv"):
+        request.pop(key, None)
+
+    request["speech_backend"] = (
+        os.getenv("DUB_SPEECH_BACKEND", DEFAULT_BACKEND_ID).strip()
+        or DEFAULT_BACKEND_ID
+    )
+    request["speech_model_profile"] = (
+        os.getenv("DUB_SPEECH_MODEL_PROFILE", DEFAULT_MODEL_PROFILE_ID).strip()
+        or DEFAULT_MODEL_PROFILE_ID
+    )
+
+    options = _env_json_object("DUB_TTS_OPTIONS_JSON")
+    legacy_options = {
+        "DUB_VOX_THREADS": ("threads", int),
+        "DUB_VOX_STEPS": ("steps", int),
+        "DUB_VOX_CFG": ("cfg", float),
+        "DUB_VOX_CACHE_LENGTH": ("cache_length", int),
+        "DUB_VOX_BASE_SEED": ("base_seed", int),
+    }
+    for env_name, (option_name, parser) in legacy_options.items():
+        if env_name in os.environ and option_name not in options:
+            try:
+                options[option_name] = parser(os.environ[env_name])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(f"{env_name} содержит некорректное значение.") from exc
+    request["speech_options"] = options
+
+    backend_config = _env_json_object("DUB_TTS_BACKEND_CONFIG_JSON")
+    legacy_config = {
+        "DUB_VOX_ARCHIVE": "vox_archive",
+        "DUB_CPU_VENV": "cpu_venv",
+    }
+    for env_name, config_name in legacy_config.items():
+        if env_name in os.environ and config_name not in backend_config:
+            backend_config[config_name] = os.environ[env_name]
+    request["speech_backend_config"] = backend_config
+    return request
 
 
 def _write_request(project_id: str, payload: Any) -> Path:
@@ -73,7 +137,7 @@ async def _create_generic_project(
         metadata={"video_id": video_id, "translation_mode": mode},
     )
     project_id = str(project["id"])
-    request = _legacy._request_payload(video_id, canonical_url, mode)
+    request = _request_payload(video_id, canonical_url, mode)
     try:
         _write_request(project_id, request)
     except Exception:
@@ -116,10 +180,17 @@ async def _create_generic_project(
 
 # Legacy callbacks resolve these globals at execution time.
 _legacy._extract_youtube_video_id = _extract_youtube_video_id
+_legacy._request_payload = _request_payload
 _legacy._write_request = _write_request
 _legacy._create_generic_project = _create_generic_project
 
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {"_create_generic_project", "_extract_youtube_video_id", "_write_request"}
+    | {
+        "_create_generic_project",
+        "_env_json_object",
+        "_extract_youtube_video_id",
+        "_request_payload",
+        "_write_request",
+    }
 )
