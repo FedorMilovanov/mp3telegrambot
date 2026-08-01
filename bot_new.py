@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -43,13 +44,15 @@ except RuntimeBootstrapError as exc:
     print(f"❌ Обязательная pre-main runtime-композиция не готова: {exc}")
     sys.exit(2)
 
+# Deliberately use module ownership rather than "from main import main": the
+# lifecycle service must execute run_bot_async exactly once in one event loop.
 import main as _main_module
 
 try:
     install_database_migrations(_main_module)
     bootstrap_post_main(_main_module)
     require_runtime_ready()
-except (RuntimeBootstrapError, OSError, RuntimeError, ValueError) as exc:
+except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError) as exc:
     print(f"❌ Обязательная runtime-композиция или миграция не готова: {exc}")
     sys.exit(3)
 
