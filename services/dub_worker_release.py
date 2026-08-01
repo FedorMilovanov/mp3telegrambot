@@ -19,7 +19,7 @@ from services.speech_backends.base import (
 )
 
 WORKER_RUNTIME = "dub-worker-quality-v6.11"
-RELEASE_POLICY = "single-source-worker-release-identity-v2"
+RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
 READY_SRT_GROUPING_POLICY = "ready-srt-semantic-breath-grouping-v1"
