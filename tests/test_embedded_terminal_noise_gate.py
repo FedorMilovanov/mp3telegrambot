@@ -67,3 +67,13 @@ def test_bracketing_rejects_overlap_beyond_analysis_window_tolerance() -> None:
     )
 
     assert result is None
+
+
+def test_bracketing_counts_both_boundary_overlaps_toward_one_budget() -> None:
+    result = direct_tail_artifact._bracketing_voice_runs(
+        [(0, 12), (13, 25)],
+        burst_start=10,
+        burst_end=15,
+    )
+
+    assert result is None

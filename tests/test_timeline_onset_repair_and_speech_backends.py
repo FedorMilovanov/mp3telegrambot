@@ -147,7 +147,7 @@ def test_non_timing_failure_is_never_repaired(tmp_path: Path) -> None:
 
 def test_speech_backend_registry_exposes_voxcpm2_as_an_adapter() -> None:
     backend = default_backend()
-    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v1"
+    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
     assert DEFAULT_BACKEND_ID == "voxcpm2"
     assert backend_ids() == ("voxcpm2",)
     assert backend.backend_id == "voxcpm2"
@@ -197,7 +197,7 @@ def test_complete_retry_round_checkpoints_are_migratable_without_audio_loss() ->
         / "__main__.py"
     ).read_text(encoding="utf-8")
     required = (
-        'CHECKPOINT_MIGRATION_POLICY = "signature-verified-complete-checkpoint-adoption-v1"',
+        'CHECKPOINT_MIGRATION_POLICY = "signature-and-natural-tempo-checkpoint-adoption-v2"',
         "MAX_ACCEPTED_SEED_ROUNDS = 12",
         "accepted_ids != list(range(1, accepted_ids[-1] + 1))",
         "accepted_ids[-1] > len(segments_payload)",

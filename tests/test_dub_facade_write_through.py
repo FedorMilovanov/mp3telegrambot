@@ -6,12 +6,13 @@ from typing import Any
 from handlers import dub_health
 from services import dub_studio_runtime
 from services import dub_title_policy
+from services.dub_worker_release import WORKER_RUNTIME
 
 
 def test_supervisor_facade_is_active_without_health_import_order_dependency() -> None:
     assert Path(dub_studio_runtime.__file__).name == "__init__.py"
-    assert dub_studio_runtime._WORKER_RUNTIME == "dub-worker-quality-v4.8"
-    assert dub_studio_runtime._legacy._WORKER_RUNTIME == "dub-worker-quality-v4.8"
+    assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_studio_runtime._legacy._WORKER_RUNTIME == WORKER_RUNTIME
 
 
 def test_supervisor_monkeypatch_assignments_reach_legacy_function_globals() -> None:
@@ -34,18 +35,18 @@ def test_title_policy_mirrors_health_wrapper_into_legacy_module(monkeypatch) -> 
     original_package = dub_health.collect_dub_health
     original_legacy = dub_health._legacy.collect_dub_health
 
-    def wrapped() -> list[dict[str, Any]]:
+    def sentinel() -> list[dict[str, Any]]:
         return [{"label": "sentinel", "ok": True, "detail": "write-through"}]
 
-    def fake_legacy_patch() -> None:
-        dub_health.collect_dub_health = wrapped
-
-    monkeypatch.setattr(dub_title_policy, "_legacy_patch_health", fake_legacy_patch)
+    monkeypatch.setattr(dub_health, "collect_dub_health", sentinel)
     try:
         dub_title_policy._patch_health()
-        assert dub_health.collect_dub_health is wrapped
-        assert dub_health._legacy.collect_dub_health is wrapped
-        assert dub_health._legacy.collect_dub_health()[0]["label"] == "sentinel"
+        assert dub_health.collect_dub_health is dub_health._legacy.collect_dub_health
+        assert dub_health.collect_dub_health()[0] == {
+            "label": "sentinel",
+            "ok": True,
+            "detail": "write-through",
+        }
     finally:
         dub_health.collect_dub_health = original_package
         dub_health._legacy.collect_dub_health = original_legacy

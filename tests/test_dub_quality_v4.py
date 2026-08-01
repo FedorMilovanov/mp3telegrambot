@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from tools.voxcpm2.dub_quality_v4 import (
+    MAX_INTERNAL_GAP_SECONDS,
     build_render_segments_v4,
     group_cues_v4,
     group_ready_srt_v4,
@@ -38,7 +39,7 @@ def test_overlong_unpunctuated_cue_is_split_without_losing_words() -> None:
     assert " ".join(item["english"] for item in groups).split() == words
 
 
-def test_ready_srt_keeps_normal_local_anchors() -> None:
+def test_ready_srt_groups_adjacent_cues_into_bounded_semantic_breaths() -> None:
     groups = group_ready_srt_v4(
         [
             _cue(0.0, 2.8, "Первая фраза."),
@@ -46,11 +47,20 @@ def test_ready_srt_keeps_normal_local_anchors() -> None:
             _cue(6.2, 9.0, "Третья фраза."),
         ]
     )
-    assert [(item["start"], item["end"]) for item in groups] == [
-        (0.0, 2.8),
-        (3.1, 5.9),
-        (6.2, 9.0),
-    ]
+
+    assert len(groups) == 2
+    assert " ".join(item["source"] for item in groups) == (
+        "Первая фраза. Вторая фраза. Третья фраза."
+    )
+    assert groups[0]["start"] == 0.0
+    assert groups[-1]["end"] == 9.0
+    assert all(float(item["end"]) - float(item["start"]) <= 7.04 for item in groups)
+    assert any(int(item["source_cue_count"]) == 2 for item in groups)
+    assert all(
+        float(gap) <= MAX_INTERNAL_GAP_SECONDS
+        for item in groups
+        for gap in item["internal_gaps"]
+    )
 
 
 def test_ready_srt_splits_long_cue_but_preserves_verbatim_word_order() -> None:

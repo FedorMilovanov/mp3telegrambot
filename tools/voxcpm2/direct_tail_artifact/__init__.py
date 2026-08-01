@@ -27,6 +27,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить late-tail detector: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -105,7 +106,10 @@ def _bracketing_voice_runs(
         return None
     overlap_before = max(0, int(previous[1]) - int(burst_start))
     overlap_after = max(0, int(burst_end) - int(following[0]))
-    if overlap_before > tolerance or overlap_after > tolerance:
+    # The policy allows two boundary frames in total, not two on each side.
+    # Otherwise a burst could be bracketed by four ambiguous frames while the
+    # report still claims to be within the two-frame tolerance.
+    if overlap_before + overlap_after > tolerance:
         return None
     return previous, following, overlap_before, overlap_after
 
@@ -237,6 +241,7 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
             "valley_rebound_db": valley_rebound,
             "low_pre_fraction": low_pre_fraction,
             "burst_median_zcr": median_zcr,
+            "burst_high_zcr": median_zcr,
             "burst_high_frequency_ratio": median_high,
             "burst_spectral_flatness": median_flatness,
             "spectral_jump_score": spectral_jump,
@@ -262,6 +267,13 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
         base.setdefault("facade_policy", POLICY)
         base.setdefault("voice_classification_policy", VOICE_CLASSIFICATION_POLICY)
         base.setdefault("bracketing_policy", BRACKETING_POLICY)
+        if "burst_high_zcr" not in base and "burst_median_zcr" in base:
+            base["burst_high_zcr"] = base["burst_median_zcr"]
+        if "trailing_quiet_seconds" not in base and base.get("burst_end") is not None:
+            base["trailing_quiet_seconds"] = max(
+                0.0,
+                len(_legacy._mono(samples)) / max(1, int(sample_rate)) - float(base["burst_end"]),
+            )
         return base
     embedded = _embedded_terminal_island(samples, sample_rate)
     if embedded.get("suspicious"):

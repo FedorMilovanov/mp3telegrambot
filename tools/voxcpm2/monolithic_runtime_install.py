@@ -22,7 +22,10 @@ def _basename(value: Any) -> str:
     return re.split(r"[\\/]", str(value or ""))[-1].casefold()
 
 
-def _renderer_paths(repo: Path) -> tuple[Path, Path]:
+def _renderer_paths(
+    repo: Path,
+    request: dict[str, Any] | None = None,
+) -> tuple[Path, Path]:
     root = Path(repo).resolve()
     renderer = (
         root

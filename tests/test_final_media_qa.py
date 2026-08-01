@@ -74,10 +74,10 @@ def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     assert '"48000"' in source
     assert "10.0 ** (float(target_tp) / 20.0)" in source
     assert "alimiter=limit={limiter_linear:.8f}:level=false:latency=true" in source
-    assert "alimiter=limit=0.985:level=false:latency=true" in source
+    assert "limiter_linear = 10.0 ** (float(target_tp) / 20.0)" in source
     assert '"limiter_auto_level": False' in source
     assert '"limiter_latency_compensated": True' in source
-    assert 'post-aac-original-bed-regression-v1' in qa
+    assert 'post-aac-original-bed-regression-v2' in qa
     assert 'estimate_original_bed' in qa
     assert 'original_bed' in qa
 

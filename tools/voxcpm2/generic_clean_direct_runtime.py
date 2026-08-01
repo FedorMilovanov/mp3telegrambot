@@ -17,6 +17,7 @@ from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import direct_max_quality_io as direct_io
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import generic_direct_runtime as production
+from tools.voxcpm2 import semantic_block_runtime
 
 
 _DIRECT_MARKER_POLICY = "direct-cli-runtime-marker-v1"
@@ -214,6 +215,7 @@ def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
         repo=repo,
         archive=archive,
         cpu_python=cpu_python,
+        backend_id=request.get("speech_backend"),
     )
     expected_direct = {
         "schema_version": 1,
@@ -331,8 +333,11 @@ def _run_clean_voxcpm_and_master(
 
 def main() -> None:
     production.hardened.install_runtime_adapters = _install_clean_runtime_adapters
-    production.group_srt_cues = clean.group_ready_srt
+    production.group_srt_cues = semantic_block_runtime.group_ready_srt
     production._build_direct_segments = _build_clean_direct_segments
+    production._run_speech_and_master = _run_clean_voxcpm_and_master
+    # Keep the legacy name write-through for old facades/tests while the
+    # generic runtime calls only the model-independent hook.
     production._run_voxcpm_and_master = _run_clean_voxcpm_and_master
     production.main()
     root, request = _current_request()

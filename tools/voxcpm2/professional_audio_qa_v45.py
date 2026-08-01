@@ -61,6 +61,9 @@ def _voice_limits(
     max_median, max_p90 = ((1.48, 1.58) if expressive else (1.35, 1.45))
     min_median, min_p90 = ((0.55, 0.50) if expressive else (0.62, 0.56))
     source = item.get("source_prosody") or {}
+    if str(item.get("source_prosody_role") or "") == "diagnostic-only-no-cross-language-ranking-v1":
+        # Source-language contour is advisory only and cannot widen identity gates.
+        source = {}
     source_median = _number(source.get("f0_median"))
     source_p90 = _number(source.get("f0_p90"))
     if reference_median > 1.0 and source_median > 1.0:

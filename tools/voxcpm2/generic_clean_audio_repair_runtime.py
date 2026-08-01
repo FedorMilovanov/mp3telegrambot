@@ -121,6 +121,7 @@ def _current_fingerprints(request: dict[str, Any]) -> dict[str, Any]:
         repo=repo,
         archive=Path(archive_value).resolve(),
         cpu_python=clean._cpu_python(request),
+        backend_id=request.get("speech_backend"),
     )
 
 

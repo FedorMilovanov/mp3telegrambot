@@ -10,6 +10,7 @@ seeds before execution and making manifest settings match rendered segments.
 from __future__ import annotations
 
 import importlib.util
+import sys
 import json
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить clean audio repair runtime: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -187,13 +189,13 @@ def _next_seed(
         raise RuntimeError("Repair seed inputs должны быть JSON-объектами.")
     initial = strict_core._strict_int(
         _legacy._request_value(request, "base_seed", 2026072800),
-        field="repair.base_seed",
+        field="Request base_seed",
         low=0,
         high=clean_runtime_contract.MAX_BASE_SEED,
     )
     previous = strict_core._strict_int(
         _legacy._request_value(marker, "base_seed", initial),
-        field="repair.marker_base_seed",
+        field="Marker base_seed",
         low=0,
         high=clean_runtime_contract.MAX_BASE_SEED,
     )
@@ -223,7 +225,7 @@ def _checkpoint_ready(
     payload = _legacy._checkpoint_payload(work_dir, expected_id)
     report = payload.get("report") if isinstance(payload, dict) else None
     if not isinstance(report, dict):
-        return False, "checkpoint report отсутствует"
+        return False, "checkpoint JSON неполон: report отсутствует"
     try:
         report_id = strict_core._strict_int(
             report.get("id"),
@@ -238,6 +240,40 @@ def _checkpoint_ready(
     return _legacy_checkpoint_ready(work_dir, expected_id)
 
 
+def _delay_evidence(path: Path) -> list[int]:
+    """Read only the fields needed to prove the rendered global delay.
+
+    Manifest repair can run against a minimal segment-evidence fixture. Full
+    timing/text validation remains mandatory in ``_load_segments`` before any
+    synthesis; deriving the already-rendered delay must not invent unrelated
+    requirements for start, end or text.
+    """
+    if not path.is_file():
+        raise RuntimeError(f"Не найден segments_ru_final.json: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Повреждён segments_ru_final.json: {path}") from exc
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError("segments_ru_final.json пуст или не является списком.")
+    raw_ids: list[Any] = []
+    delays: list[int] = []
+    for position, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"segment[{position}] должен быть JSON-объектом.")
+        raw_ids.append(item.get("id"))
+        delays.append(
+            strict_core._strict_int(
+                item.get("start_delay_ms", 0),
+                field=f"segment[{position}].start_delay_ms",
+                low=0,
+                high=1500,
+            )
+        )
+    _strict_ids(raw_ids, field="segments.id")
+    return delays
+
+
 def _dominant_segment_delay(root: Path) -> int:
     """Return the global delay proven by rendered segment data.
 
@@ -246,14 +282,11 @@ def _dominant_segment_delay(root: Path) -> int:
     the renderer, while every value still has to satisfy the clean 0..1500 ms
     contract.
     """
-    payload = _load_segments(Path(root) / "segments_ru_final.json")
-    delays = [
-        clean_request_settings.russian_delay_ms(
-            {"russian_delay_ms": item.get("start_delay_ms")}
-        )
-        for item in payload
-    ]
-    return max(delays)
+    delays = _delay_evidence(Path(root) / "segments_ru_final.json")
+    return max(
+        clean_request_settings.russian_delay_ms({"russian_delay_ms": value})
+        for value in delays
+    )
 
 
 def _update_manifest(
@@ -291,7 +324,6 @@ def main() -> None:
     _legacy.main()
 
 
-# Legacy functions resolve these globals at runtime.
 _legacy._next_seed = _next_seed
 _legacy._checkpoint_ready = _checkpoint_ready
 _legacy._update_manifest = _update_manifest
@@ -301,6 +333,7 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "_checkpoint_ready",
+        "_delay_evidence",
         "_dominant_segment_delay",
         "_load_segments",
         "_next_seed",

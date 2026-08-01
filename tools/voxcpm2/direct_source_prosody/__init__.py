@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Candidate-stage facade for repairable short continuations.
-
-The sibling module keeps speaker, pitch, source-prosody, cadence and late-tail
-checks. This facade changes only one structural decision: a syntactically linked
-short cue may reach timeline assembly, where bounded gap compaction and the final
-assembled QA can verify it. Wrong endings, excessive fit tempo and noise remain
-hard failures.
-"""
+"""Candidate-stage facade for cadence and diagnostic source-prosody evidence."""
 from __future__ import annotations
 
 import importlib.util
@@ -15,6 +8,8 @@ from pathlib import Path
 import sys
 import types
 from typing import Any
+
+from tools.voxcpm2 import source_prosody_policy
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_source_prosody.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -24,6 +19,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить source-prosody ranking: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -32,6 +28,7 @@ for _name in dir(_legacy):
 
 CANDIDATE_CONTINUATION_POLICY = "defer-short-continuation-to-timeline-v1"
 _legacy_evaluate_candidate_cadence = _legacy.evaluate_candidate_cadence
+_legacy_source_prosody_penalty = _legacy.source_prosody_penalty
 
 
 def _defer_short_continuation(result: dict[str, Any]) -> dict[str, Any]:
@@ -58,14 +55,30 @@ def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Defer only the repairable duration-ratio failure to assembled QA."""
     return _defer_short_continuation(
         dict(_legacy_evaluate_candidate_cadence(candidate, segment))
     )
 
 
+def source_prosody_penalty(
+    candidate: dict[str, Any],
+    segment: dict[str, Any],
+) -> float:
+    """Populate diagnostics but return zero for cross-language ranking."""
+    diagnostic = float(_legacy_source_prosody_penalty(candidate, segment))
+    match = candidate.get("source_prosody_match")
+    if not isinstance(match, dict):
+        match = {}
+        candidate["source_prosody_match"] = match
+    match["source_prosody_policy"] = source_prosody_policy.POLICY
+    match["diagnostic_penalty"] = diagnostic
+    diagnostic_only = source_prosody_policy.is_diagnostic_only(segment)
+    match["source_prosody_ranking_enabled"] = not diagnostic_only
+    return 0.0 if diagnostic_only else diagnostic
+
+
 _legacy.evaluate_candidate_cadence = evaluate_candidate_cadence
-source_prosody_penalty = _legacy.source_prosody_penalty
+_legacy.source_prosody_penalty = source_prosody_penalty
 candidate_pitch_evidence_ok = _legacy.candidate_pitch_evidence_ok
 
 

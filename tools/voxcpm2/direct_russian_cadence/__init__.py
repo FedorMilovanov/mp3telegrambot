@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Stricter Russian sentence-ending and evidence-backed emphasis contract.
+"""Russian sentence-ending and source-diagnostic cadence contract.
 
 The sibling module performs deterministic F0 and energy analysis. This facade
-keeps those measurements and rejects unfinished endings, rising exclamations,
-source-contradicting emphasis and speech that cannot fit its real cue. An early
-energy peak remains a ranking penalty by itself; it becomes a hard failure only
-when a dominant late source peak proves that the Russian delivery contradicts
-the original build.
+keeps those measurements and rejects unfinished Russian endings, rising
+exclamations and speech that cannot fit its real cue. Source-language contours
+remain visible in reports but never rank or hard-gate a Russian candidate.
 """
 from __future__ import annotations
 
 import importlib.util
 import math
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+from tools.voxcpm2 import source_prosody_policy
 from tools.voxcpm2.direct_max_quality_io import (
     MAX_TEMPO,
     SPEECH_SLOT_POLICY,
@@ -31,15 +31,16 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Russian cadence analysis: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "russian-cadence-contour-v3"
-DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"
-EMPHASIS_EVIDENCE_POLICY = "dominant-late-source-required-v1"
+POLICY = "russian-cadence-contour-v4"
+DELIVERY_POLICY = "russian-ending-source-diagnostic-v3"
+EMPHASIS_EVIDENCE_POLICY = "russian-only-emphasis-advisory-v2"
 _STRONG_TIERS = {"emphatic", "passionate"}
 _SOURCE_PEAK_MIN_DOMINANCE = 0.18
 _legacy_evaluate_candidate_cadence = _legacy.evaluate_candidate_cadence
@@ -54,7 +55,7 @@ def _finite(value: Any, default: float = 0.0) -> float:
 
 
 def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
-    """Return a source peak only with enough contour evidence to hard-gate it."""
+    """Return validated source contour evidence for diagnostics only."""
     source = segment.get("source_prosody")
     if not isinstance(source, dict):
         return None, 0.0
@@ -86,44 +87,33 @@ def _apply_emphasis_policy(
     cadence: str,
     word_count: int,
     peak_bin: Any,
-    source_late_peak_expected: bool,
-    failures: list[str],
 ) -> tuple[bool, list[str]]:
-    """Hard-gate an early exclamation peak only with source evidence.
-
-    The legacy cadence score already penalizes an early firm-terminal energy
-    peak. Without source contour evidence, Russian word order may legitimately
-    place the emotional word early, so repeating seeds cannot prove a defect.
-    """
+    """Report an early Russian exclamation peak without cross-language gating."""
     early_emphasis_observed = bool(
         cadence == "firm_terminal"
         and word_count >= 3
         and isinstance(peak_bin, int)
         and peak_bin <= 1
     )
-    advisories: list[str] = []
-    if not early_emphasis_observed:
-        return False, advisories
-    if source_late_peak_expected:
-        if "emphasis_too_early" not in failures:
-            failures.append("emphasis_too_early")
-    else:
-        advisories.append("emphasis_too_early")
-    return True, advisories
+    return (
+        early_emphasis_observed,
+        ["emphasis_too_early"] if early_emphasis_observed else [],
+    )
 
 
 def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply Russian syntax, evidence-backed emphasis and exact-fit hard gates."""
+    """Apply Russian syntax and exact-fit gates; retain source diagnostics."""
     target_duration = _finite(segment.get("end")) - _finite(segment.get("start"))
     tail_guard = _finite(segment.get("tail_guard"))
     actual_speech_slot = speech_slot_seconds(target_duration, tail_guard)
     candidate["actual_speech_slot"] = actual_speech_slot
     candidate["speech_slot_policy"] = SPEECH_SLOT_POLICY
 
-    result = dict(_legacy_evaluate_candidate_cadence(candidate, segment))
+    ranking_segment = source_prosody_policy.ranking_view(segment)
+    result = dict(_legacy_evaluate_candidate_cadence(candidate, ranking_segment))
     cadence = str(
         result.get("cadence")
         or _legacy.classify_cadence(str(segment.get("text") or ""))
@@ -135,8 +125,9 @@ def evaluate_candidate_cadence(
     text = str(segment.get("text") or "")
     word_count = len(re.findall(r"\w+", text, flags=re.UNICODE))
     tier = str(segment.get("expression_tier") or "").casefold()
+
     source_peak, source_peak_dominance = _source_peak_evidence(segment)
-    source_late_peak_expected = bool(
+    source_late_peak_diagnostic = bool(
         tier in _STRONG_TIERS
         and word_count >= 4
         and source_peak is not None
@@ -157,9 +148,6 @@ def evaluate_candidate_cadence(
         failures.append("fit_tempo_exceeds_hard_limit")
 
     if cadence == "terminal":
-        # A period may be nearly level only when energy clearly releases. A
-        # shallow pitch ending with no release is the exact "будет продолжение"
-        # defect heard in the supplied sample.
         if (
             delta > -0.55
             and ending_energy > -1.0
@@ -180,27 +168,11 @@ def evaluate_candidate_cadence(
         cadence=cadence,
         word_count=word_count,
         peak_bin=peak_bin,
-        source_late_peak_expected=source_late_peak_expected,
-        failures=failures,
     )
-
-    # Russian word order can differ from English, so this is deliberately not a
-    # word-level imitation rule. Only a dominant source peak in the final 40%
-    # can hard-reject a Russian candidate peaking in the first 40%. A middle-bin
-    # source peak, a broad plateau, or a one-bin shift stays a soft ranking signal.
-    if (
-        source_late_peak_expected
-        and isinstance(peak_bin, int)
-        and peak_bin <= 1
-        and cadence != "firm_terminal"
-        and "source_emphasis_misplaced_early" not in failures
-    ):
-        failures.append("source_emphasis_misplaced_early")
 
     preferred_bins: list[int] | None = None
     if cadence == "firm_terminal" and word_count >= 3:
         preferred_bins = [2, 3, 4]
-    expected_bins = [2, 3, 4] if source_late_peak_expected else None
 
     result.update(
         policy=POLICY,
@@ -210,12 +182,14 @@ def evaluate_candidate_cadence(
         hard_ok=not failures,
         russian_word_count=word_count,
         expression_tier=tier,
+        source_prosody_role=source_prosody_policy.DIAGNOSTIC_ONLY_ROLE,
         source_peak_energy_bin=source_peak,
         source_peak_dominance=source_peak_dominance,
         source_peak_min_dominance=_SOURCE_PEAK_MIN_DOMINANCE,
-        source_late_peak_expected=source_late_peak_expected,
+        source_late_peak_diagnostic=source_late_peak_diagnostic,
+        source_late_peak_expected=False,
         early_emphasis_observed=early_emphasis_observed,
-        emphasis_hard_gate_evidence=source_late_peak_expected,
+        emphasis_hard_gate_evidence=False,
         emphasis_advisories=emphasis_advisories,
         emphasis_peak_distance=(
             abs(source_peak - peak_bin)
@@ -223,7 +197,7 @@ def evaluate_candidate_cadence(
             else None
         ),
         preferred_emphasis_bins=preferred_bins,
-        expected_emphasis_bins=expected_bins,
+        expected_emphasis_bins=None,
         actual_speech_slot=actual_speech_slot,
         speech_slot_policy=SPEECH_SLOT_POLICY,
         required_fit_tempo=required_fit_tempo,

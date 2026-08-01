@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Compatibility facade extending the durable Dub Studio health contract.
+"""Active-contract facade for the durable Dub Studio health command.
 
-The proven command and environment checks remain in ``handlers/dub_health.py``.
-This facade keeps those checks, replaces only the superseded worker-v4.5 source
-assertion, and verifies the active package layers that Python resolves before
-the sibling legacy files.
+Environment, executable and worker-liveness checks remain in the sibling
+``handlers/dub_health.py`` module.  This facade replaces its historical
+source-string release gate with behavioural checks against the modules Python
+actually imports.  A refactor can therefore move implementation details
+without making ``/dubcheck`` lie, while missing capabilities, routes or safety
+transactions still fail closed.
 """
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY, WORKER_RUNTIME
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_health.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -21,443 +26,254 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить базовый Dub health: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_legacy)
+_previous_legacy = sys.modules.get(_SPEC.name)
+sys.modules[_SPEC.name] = _legacy
+try:
+    _SPEC.loader.exec_module(_legacy)
+except BaseException:
+    if _previous_legacy is None:
+        sys.modules.pop(_SPEC.name, None)
+    else:
+        sys.modules[_SPEC.name] = _previous_legacy
+    raise
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_WORKER_RUNTIME = "dub-worker-quality-v4.8"
+_WORKER_RUNTIME = WORKER_RUNTIME
 from services import dub_studio_runtime as _supervisor  # noqa: E402
 
 _supervisor._WORKER_RUNTIME = _WORKER_RUNTIME
+_supervisor._legacy._WORKER_RUNTIME = _WORKER_RUNTIME
 _legacy._WORKER_RUNTIME = _WORKER_RUNTIME
-_legacy_quality_contract = _legacy._quality_contract
+
+QUALITY_CONTRACT_POLICY = "active-dub-production-contract-v1"
 
 
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.is_file() else ""
+def _module_path(module: Any) -> Path:
+    value = getattr(module, "__file__", None)
+    return Path(value).resolve() if value else Path()
 
 
-def _texts(repo: Path) -> dict[str, str]:
-    repo = Path(repo)
-    voxcpm = repo / "tools" / "voxcpm2"
-    paths = {
-        "worker": voxcpm / "dub_worker_hardened.py",
-        "worker_facade": voxcpm / "dub_worker_hardened" / "__init__.py",
-        "worker_main": voxcpm / "dub_worker_hardened" / "__main__.py",
-        "preflight": voxcpm / "dub_job_preflight.py",
-        "preflight_facade": voxcpm / "dub_job_preflight" / "__init__.py",
-        "core_facade": voxcpm / "clean_production_core" / "__init__.py",
-        "runtime_contract": voxcpm / "clean_runtime_contract.py",
-        "runtime_facade": voxcpm / "clean_runtime_contract" / "__init__.py",
-        "direct_io": voxcpm / "direct_max_quality_io.py",
-        "direct_cli": voxcpm / "direct_max_quality_cli.py",
-        "analysis_facade": voxcpm / "direct_max_quality_analysis" / "__init__.py",
-        "render_core": voxcpm / "direct_max_quality_render.py",
-        "render_facade": voxcpm / "direct_max_quality_render" / "__init__.py",
-        "retry_epoch": voxcpm / "direct_retry_epoch.py",
-        "cadence_facade": voxcpm / "direct_russian_cadence" / "__init__.py",
-        "tail_artifact": voxcpm / "direct_tail_artifact.py",
-        "delivery_qa": voxcpm / "direct_timeline_delivery_qa.py",
-        "encoded_delivery_qa": voxcpm / "final_encoded_delivery_qa.py",
-        "zero_safe_qa": voxcpm / "final_media_qa" / "__init__.py",
-        "repair_facade": voxcpm / "generic_clean_audio_repair_runtime" / "__init__.py",
-        "repair_main": voxcpm / "generic_clean_audio_repair_runtime" / "__main__.py",
-        "request_settings": voxcpm / "clean_request_settings.py",
-        "normalizer": voxcpm / "clean_segment_normalizer.py",
-        "migration": voxcpm / "legacy_segment_migration_v45.py",
-        "source_download": voxcpm / "clean_source_download.py",
-        "source_facade": voxcpm / "clean_source_download" / "__init__.py",
-        "project_runtime": voxcpm / "generic_project_runtime" / "__init__.py",
-        "supervisor_facade": repo / "services" / "dub_studio_runtime" / "__init__.py",
-        "title_facade": repo / "services" / "dub_title_policy" / "__init__.py",
-        "wizard_facade": repo / "handlers" / "dub_wizard" / "__init__.py",
-        "repair_handler": repo / "handlers" / "dub_audio_repair" / "__init__.py",
-        "health_facade": Path(__file__).resolve(),
+def _package_facade(module: Any) -> bool:
+    path = _module_path(module)
+    return path.name == "__init__.py" and path.is_file()
+
+
+def _record(
+    checks: dict[str, tuple[bool, str]],
+    name: str,
+    predicate: bool,
+    detail: str,
+) -> None:
+    checks[name] = (bool(predicate), str(detail))
+
+
+def _safe_check(
+    checks: dict[str, tuple[bool, str]],
+    name: str,
+    callback: Callable[[], tuple[bool, str]],
+) -> None:
+    try:
+        ok, detail = callback()
+    except Exception as exc:
+        checks[name] = (False, f"{type(exc).__name__}: {exc}")
+    else:
+        checks[name] = (bool(ok), str(detail))
+
+
+def _backend_contract() -> tuple[bool, str]:
+    from services.speech_backends import (
+        BACKEND_CONTRACT_POLICY,
+        GENERATION_REQUEST_POLICY,
+        SESSION_CONFIG_POLICY,
+        BackendAudioSpec,
+        BackendGenerationRequest,
+        REQUIRED_PRODUCTION_CAPABILITIES,
+        backend_ids,
+        default_backend,
+    )
+
+    backend = default_backend()
+    capabilities = backend.capabilities()
+    missing = capabilities.missing(REQUIRED_PRODUCTION_CAPABILITIES)
+    neutral_spec = BackendAudioSpec(
+        encode_sample_rate=None,
+        output_sample_rate=48_000,
+        seconds_per_step=None,
+        cache_length=None,
+    )
+    request = BackendGenerationRequest(
+        text="Проверка backend-контракта.",
+        reference_audio=Path("reference.wav"),
+        seed=1,
+        backend_options={},
+    )
+    ok = bool(
+        BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+        and GENERATION_REQUEST_POLICY == "model-neutral-generation-request-v1"
+        and SESSION_CONFIG_POLICY == "model-neutral-session-config-v1"
+        and backend_ids() == ("voxcpm2",)
+        and backend.backend_id == "voxcpm2"
+        and not missing
+        and neutral_spec.output_sample_rate == 48_000
+        and request.text
+    )
+    detail = (
+        f"{BACKEND_CONTRACT_POLICY}; backend={backend.backend_id}; "
+        f"missing={list(missing)}"
+    )
+    return ok, detail
+
+
+def _recipe_contract() -> tuple[bool, str]:
+    from services.dub_studio import load_recipe
+
+    recipe = load_recipe("generic_short_v1")
+    expected = {
+        "render": "tools.voxcpm2.generic_clean_gemini_runtime",
+        "render_gemini": "tools.voxcpm2.generic_clean_gemini_runtime",
+        "render_direct": "tools.voxcpm2.generic_clean_direct_runtime",
+        "repair_audio": "tools.voxcpm2.generic_clean_audio_repair_runtime",
+        "prepare_custom": "tools.voxcpm2.generic_clean_custom_runtime",
+        "render_custom": "tools.voxcpm2.generic_clean_custom_runtime",
     }
-    return {name: _read(path) for name, path in paths.items()}
-
-
-def _has(text: dict[str, str], file_key: str, *markers: str) -> bool:
-    value = text.get(file_key, "")
-    return bool(value) and all(marker in value for marker in markers)
-
-
-def _v47_static_contract(repo: Path) -> tuple[bool, str]:
-    text = _texts(repo)
-    checks = {
-        "worker-agent-v47": _has(
-            text,
-            "worker_facade",
-            '_RUNTIME_VERSION = "dub-worker-quality-v4.8"',
-            "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION",
-            'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"',
-            'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
-            "MAX_JOB_QUALITY_RESTARTS = 3",
-            "def _run_with_quality_restarts(",
-            "def _execute_job_with_cancellable_preflight(",
-            "_legacy.worker.execute_job = _execute_job_with_cancellable_preflight",
-        ) and _has(
-            text,
-            "worker",
-            "from tools.voxcpm2 import dub_job_preflight",
-            "def _execute_job_with_preflight(",
-            "worker.execute_job = _execute_job_with_preflight",
-        ),
-        "worker-package-cancel-root": _has(
-            text,
-            "worker_facade",
-            'CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"',
-            'STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"',
-            "with _store_root_environment(store):",
-            "reason = _stop_reason(store, job_id)",
-            "_run_with_quality_restarts(store, worker_id, job, project)",
-            "_legacy.install_hardening()",
-        ) and _has(text, "worker_main", "from . import main", "main()"),
-        "production-preflight-v2": _has(
-            text,
-            "preflight",
-            'POLICY = "dub-production-preflight-v1"',
-        ) and _has(
-            text,
-            "preflight_facade",
-            'POLICY = "dub-production-preflight-v2"',
-            "REPORT_SCHEMA = 2",
-            '"render_custom"',
-            "generic_project_runtime.load_request(root)",
-            "def _implementation_identity(",
-            "def _cache_hit(",
-            "PREFLIGHT_HEARTBEAT_SECONDS = 5.0",
-            "def _preflight_heartbeat(",
-            "clean_runtime_contract._model_manifest(",
-            "clean_runtime_contract._voxcpm_runtime(",
-            "uuid.uuid4().hex",
-            "os.fsync(handle.fileno())",
-            "*clean_runtime_contract._RENDER_MODULES",
-            "*clean_runtime_contract._RELEASE_MODULES",
-            '"tools/voxcpm2/dub_job_preflight/__init__.py"',
-            "recipe.work_root",
-            'status="busy"',
-        ),
-        "worker-runtime-sync": _has(
-            text,
-            "health_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
-            "_supervisor._WORKER_RUNTIME = _WORKER_RUNTIME",
-            "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME",
-        ) and _has(
-            text,
-            "supervisor_facade",
-            '_WORKER_RUNTIME = "dub-worker-quality-v4.8"',
-            "class _WriteThroughModule",
-            "_module.__class__ = _WriteThroughModule",
-        ),
-        "long-form-direct-resilience": _has(
-            text,
-            "direct_io",
-            'SPEECH_SLOT_POLICY = "exact-srt-slot-minus-tail-v1"',
-            "MIN_SPEECH_SLOT_SECONDS = 0.12",
-            "def speech_slot_seconds(",
-            'item["speech_slot"] = speech_slot',
-        ) and _has(
-            text,
-            "analysis_facade",
-            'FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"',
-            'candidate.get("actual_speech_slot", speech_slot)',
-            "tempo <= float(MAX_TEMPO) + 1e-9",
-        ) and _has(
-            text,
-            "render_core",
-            "speech_slot = speech_slot_seconds(target_duration, tail_guard)",
-            '"speech_slot_policy": SPEECH_SLOT_POLICY',
-        ) and _has(
-            text,
-            "render_facade",
-            'ADAPTIVE_RETRY_POLICY = "direct-candidate-adaptive-retry-v1"',
-            "if attempt == 4:",
-            "if attempt == 5:",
-        ) and _has(
-            text,
-            "retry_epoch",
-            'POLICY = "failed-segment-seed-epoch-v1"',
-            "SEED_EPOCH_STRIDE = 1_000_000_000_000",
-            "def load_retry_epoch(",
-            "def seed_for_attempt(",
-            "def invalidate_segment_for_retry(",
-            "os.replace(temporary, path)",
-        ) and _has(
-            text,
-            "cadence_facade",
-            'DELIVERY_POLICY = "russian-ending-and-source-emphasis-hard-gate-v2"',
-            '_SOURCE_PEAK_MIN_DOMINANCE = 0.18',
-            'candidate["actual_speech_slot"] = actual_speech_slot',
-            'failures.append("fit_tempo_exceeds_hard_limit")',
-            'failures.append("terminal_not_resolved")',
-            'failures.append("firm_terminal_not_resolved")',
-            'failures.append("emphasis_too_early")',
-            'failures.append("source_emphasis_misplaced_early")',
-            "source_peak_dominance",
-        ) and _has(
-            text,
-            "direct_cli",
-            "MAX_CANDIDATE_ATTEMPTS = 5",
-            "load_retry_epoch(work_dir, segment_id)",
-            "seed_for_attempt(",
-            "invalidate_segment_for_retry(",
-            '"retry_epoch": retry_epoch',
-            "for attempt_index in range(1, MAX_CANDIDATE_ATTEMPTS + 1):",
-            '"candidate_contract": {',
-            '"selected_required_tempo"',
-            "build_timeline(fitted_segments, output, float(args.video_duration))",
-        ) and _has(
-            text,
-            "tail_artifact",
-            'POLICY = "late-broadband-tail-v2"',
-            '"artifact_type": "late_broadband_burst"',
-        ) and _has(
-            text,
-            "delivery_qa",
-            'POLICY = "assembled-russian-delivery-v3"',
-            "LINKED_MAX_GAP_SECONDS = 0.55",
-            '"linked_phrase_gap"',
-            "invalidate_segment_for_retry(",
-            "seed epochs",
-            "verify_timeline_delivery",
-            "invalidated_for_retry",
-        ) and _has(
-            text,
-            "encoded_delivery_qa",
-            'POLICY = "post-aac-russian-delivery-v2"',
-            "MAX_SEGMENT_WINDOW_SECONDS = 30.0",
-            "def verify_final_encoded_russian(",
-            "invalidate_segment_for_retry(",
-            "decode only the final SRT window",
-        ),
-        "title-health-write-through": _has(
-            text,
-            "title_facade",
-            "_legacy._patch_health = _patch_health",
-            "legacy_health.collect_dub_health = wrapped",
-        ),
-        "child-python-contract": _has(
-            text,
-            "core_facade",
-            'CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"',
-            "def _child_python_env(",
-            "def _is_master_release_command(",
-            "def _verify_post_aac_master_output(",
-            "final_encoded_delivery_qa.verify_final_encoded_russian(",
-            "def _run_child_process(",
-            "_legacy.subprocess = _SubprocessProxy()",
-        ),
-        "checkpointed-quality-retry": _has(
-            text,
-            "core_facade",
-            'DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"',
-            "MAX_AUTOMATIC_DELIVERY_RETRIES = 3",
-            "def _retryable_delivery_failure(",
-            "def _direct_failure_report(",
-            "def _delivery_failure_detail(",
-            "_legacy_render_and_master = _legacy.render_and_master",
-            "def render_and_master(",
-            "сохраняю успешные checkpoints",
-        ) and _has(
-            text,
-            "worker_facade",
-            'JOB_QUALITY_RETRY_POLICY = "worker-checkpoint-quality-restart-v1"',
-            "MAX_JOB_QUALITY_RESTARTS = 3",
-            "def _quality_failure_detail(",
-            "def _run_with_quality_restarts(",
-            "Hard-quality gate отклонил только проблемный сегмент",
-        ),
+    actual = {
+        name: str(recipe.action(name).get("module") or "")
+        for name in expected
     }
-    failed = [name for name, passed in checks.items() if not passed]
-    if failed:
-        return False, "v4.8-контракты не прошли: " + ", ".join(failed)
-    return True, (
-        "worker v4.8/preflight v2; cancellation, explicit root and job-level quality restarts; "
-        "exact SRT speech slots and fit-aware adaptive retries; durable per-segment seed epochs; "
-        "evidence-backed Russian ending/emphasis gates; linked-phrase, late-tail, assembled and "
-        "post-AAC QA; full implementation/model/runtime cache; deterministic child imports"
+    runners = {
+        name: str(recipe.action(name).get("runner") or "")
+        for name in expected
+    }
+    ok = actual == expected and set(runners.values()) == {"python_module"}
+    return ok, f"routes={actual}"
+
+
+def _worker_contract() -> tuple[bool, str]:
+    from tools.voxcpm2 import dub_worker_hardened
+
+    values = {
+        "release": WORKER_RUNTIME,
+        "health": _WORKER_RUNTIME,
+        "supervisor": _supervisor._WORKER_RUNTIME,
+        "supervisor_legacy": _supervisor._legacy._WORKER_RUNTIME,
+        "worker": dub_worker_hardened._RUNTIME_VERSION,
+        "worker_legacy": dub_worker_hardened._legacy._RUNTIME_VERSION,
+    }
+    ok = len(set(values.values())) == 1 and WORKER_RUNTIME.startswith(
+        "dub-worker-quality-v"
+    )
+    return ok, ", ".join(f"{key}={value}" for key, value in values.items())
+
+
+def _runtime_safety_contract() -> tuple[bool, str]:
+    from services.speech_backends import default_backend
+    from tools.voxcpm2 import clean_runtime_contract
+    from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair
+    from tools.voxcpm2 import generic_clean_direct_runtime as direct
+    from tools.voxcpm2 import generic_project_runtime as project
+    from tools.voxcpm2 import source_prosody_policy
+    from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
+        voxcpm2_cpu_shorts_production as wrapper,
+    )
+
+    environment = default_backend().process_environment(
+        {"threads": 1},
+        base_environment={},
+    ).as_dict()
+    required_callables = (
+        clean_runtime_contract.build_fingerprints,
+        project.validate_request_payload,
+        project.save_json,
+        repair._validate_repair_request,
+        repair._checkpoint_ready,
+        repair._delay_evidence,
+        direct._signature_valid_checkpoint_set,
+        source_prosody_policy.ranking_view,
+        wrapper.run,
+    )
+    ok = bool(
+        all(callable(value) for value in required_callables)
+        and project.POLICY == "generic-project-runtime-write-through-v3"
+        and direct.CHECKPOINT_MIGRATION_POLICY
+        == "signature-and-natural-tempo-checkpoint-adoption-v2"
+        and environment.get("HF_HUB_OFFLINE") == "1"
+        and environment.get("TRANSFORMERS_OFFLINE") == "1"
+        and wrapper.MARKER_POLICY == "direct-cli-runtime-marker-v2"
+        and wrapper.SUCCESS_MARKER_POLICY == "direct-cli-success-marker-v1"
+    )
+    return ok, (
+        f"project={project.POLICY}; checkpoints={direct.CHECKPOINT_MIGRATION_POLICY}; "
+        f"marker={wrapper.MARKER_POLICY}; offline="
+        f"{environment.get('HF_HUB_OFFLINE')}/{environment.get('TRANSFORMERS_OFFLINE')}"
     )
 
 
-def _legacy_quality_without_superseded_worker(repo: Path) -> tuple[bool, str]:
-    ok, detail = _legacy_quality_contract(repo)
-    if ok:
-        return True, detail
-    prefix = "не прошли: "
-    if not str(detail).startswith(prefix):
-        return False, detail
-    failed = [item.strip() for item in str(detail)[len(prefix):].split(",") if item.strip()]
-    failed = [item for item in failed if item != "worker-v45"]
-    if failed:
-        return False, "не прошли: " + ", ".join(failed)
-    return True, "все legacy-контракты активны; worker-v45 заменён v4.8 preflight"
+def _quality_runtime_contract() -> tuple[bool, str]:
+    from services.speech_backends import default_backend
+    from tools.voxcpm2 import direct_max_quality_cli
+    from tools.voxcpm2 import direct_max_quality_io
+    from tools.voxcpm2 import direct_max_quality_render
+    from tools.voxcpm2 import direct_timeline_delivery_qa
+    from tools.voxcpm2 import final_media_qa
+    from tools.voxcpm2 import generic_clean_audio_repair_runtime
+    from tools.voxcpm2 import generic_clean_direct_runtime
+    from tools.voxcpm2 import generic_project_runtime
+    from tools.voxcpm2 import source_prosody_policy
 
-
-def _supplemental_quality_contract(repo: Path) -> tuple[bool, str]:
-    text = _texts(repo)
-    checks = {
-        "zero-safe-post-aac-v2": _has(
-            text,
-            "zero_safe_qa",
-            'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v2"',
-            'REPORT_SCHEMA = "dub-final-media-qa-v6"',
-            "absolute_level_mode",
-            "local_required_windows",
-            "zero-safe two-branch regression",
-        ),
-        "strict-repair-request": _has(
-            text,
-            "repair_facade",
-            "def _validate_repair_request(",
-            "def _validated_sha256(",
-            "изменился после создания repair request",
-            "audio_repair.repair_all должен быть bool",
-            "manifest.audio_repairs должен быть списком",
-            "_legacy._checkpoint_ready = _checkpoint_ready",
-            "_legacy.legacy_repair._load_segments = _load_segments",
-            "def _dominant_segment_delay(",
-            "actual_delay_ms=_dominant_segment_delay(root)",
-            "_legacy._update_manifest = _update_manifest",
-        ) and _has(text, "repair_main", "from . import main"),
-        "serialized-repair-handler": _has(
-            text,
-            "repair_handler",
-            "_DUBFIX_LOCK = asyncio.Lock()",
-            "async with _DUBFIX_LOCK",
-            "os.O_CREAT | os.O_EXCL | os.O_WRONLY",
-            "def _dubfix_process_lock(",
-            "def load_repair_segments(",
-            "def _write_repair_request(",
-            '"segments_sha256": digest',
-            "_legacy.dubfix_command = dubfix_command",
-        ),
-        "truthful-request-settings": _has(
-            text,
-            "request_settings",
-            "actual_delay_ms: Any | None = None",
-            'payload["settings_delay_source"] = delay_source',
-        ),
-        "transactional-repair-preprocess": _has(
-            text,
-            "normalizer",
-            "clean_request_settings.russian_delay_ms(request)",
-            "strict_core._strict_int(",
-            "strict_core._finite(",
-            "strict_core._mark_and_validate_segments(",
-            "allow_nan=False",
-        ) and _has(
-            text,
-            "migration",
-            "clean_request_settings.russian_delay_ms(request)",
-            "strict_core._strict_int(",
-            "strict_core._finite(",
-            "strict_core._mark_and_validate_segments(",
-            "allow_nan=False",
-        ) and 'request.get("russian_delay_ms") or 420' not in text["normalizer"]
-        and 'request.get("russian_delay_ms") or 420' not in text["migration"],
-        "canonical-source-identity": _has(
-            text,
-            "source_download",
-            'for prefix in ("www.", "m.", "music.")',
-            'host == "youtube-nocookie.com"',
-            "канонической ссылкой на один YouTube-ролик",
-            "def _project_request_video_id(",
-            "Project request и скачиваемый YouTube-ролик имеют разные video ID",
-        ) and _has(
-            text,
-            "source_facade",
-            "до yt-dlp",
-            "_legacy.download_source = download_source",
-        ) and _has(
-            text,
-            "wizard_facade",
-            "clean_source_download._url_video_id(raw)",
-            "_legacy._extract_youtube_video_id = _extract_youtube_video_id",
-        ),
-        "atomic-project-request": _has(
-            text,
-            "project_runtime",
-            'POLICY = "generic-project-runtime-write-through-v2"',
-            "def validate_request_payload(",
-            "request.schema_version",
-            "uuid.uuid4().hex",
-            "os.fsync(handle.fileno())",
-            "allow_nan=False",
-            "os.replace(temporary, path)",
-            "class _WriteThroughModule",
-            "_module.__class__ = _WriteThroughModule",
-            "_legacy.validate_request_payload = validate_request_payload",
-        ) and _has(
-            text,
-            "wizard_facade",
-            "def _write_request(",
-            "generic_project_runtime.validate_request_payload(payload)",
-            "generic_project_runtime.save_json(destination, validated)",
-            "_legacy._write_request = _write_request",
-            "_legacy._create_generic_project = _create_generic_project",
-        ),
-        "strict-segment-preflight": _has(
-            text,
-            "core_facade",
-            "def _strict_int(",
-            "segment[{position}].id",
-            "start_delay_ms",
-            "не может быть bool",
-            "должен быть целым числом",
-            "_legacy._mark_and_validate_segments = _mark_and_validate_segments",
-        ),
-        "facades-fingerprinted": _has(
-            text,
-            "runtime_contract",
-            '"tools/voxcpm2/final_media_qa/__init__.py"',
-            '"tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py"',
-            '"tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py"',
-            '"tools/voxcpm2/legacy_segment_migration_v45.py"',
-            '"tools/voxcpm2/clean_source_download.py"',
-        ) and _has(
-            text,
-            "runtime_facade",
-            '"tools/voxcpm2/clean_runtime_contract/__init__.py"',
-            '"tools/voxcpm2/clean_production_core/__init__.py"',
-            '"tools/voxcpm2/generic_project_runtime/__init__.py"',
-            '"tools/voxcpm2/clean_source_download/__init__.py"',
-            '"tools/voxcpm2/direct_max_quality_analysis/__init__.py"',
-            '"tools/voxcpm2/direct_max_quality_render/__init__.py"',
-            '"tools/voxcpm2/direct_retry_epoch.py"',
-            '"tools/voxcpm2/direct_russian_cadence/__init__.py"',
-            '"tools/voxcpm2/direct_tail_artifact.py"',
-            '"tools/voxcpm2/direct_timeline_delivery_qa.py"',
-            '"tools/voxcpm2/final_encoded_delivery_qa.py"',
-            "_legacy._RENDER_MODULES",
-            "_legacy._RELEASE_MODULES",
-        ),
-        "strict-runtime-numbers": _has(
-            text,
-            "runtime_contract",
-            'raise RuntimeError(f"{field} не может быть bool.")',
-            "not value.is_integer()",
-        ),
-    }
-    failed = [name for name, passed in checks.items() if not passed]
-    if failed:
-        return False, "facade-контракты не прошли: " + ", ".join(failed)
-    return True, (
-        "zero-safe final QA; strict repair/source/segment/project contracts; "
-        "truthful 0-ms settings; transactional preprocessing; clean adapters write through; "
-        "wizard request barrier; cadence/tail/fit/retry-epoch/post-AAC gates fingerprinted"
+    facades = (
+        direct_max_quality_cli,
+        direct_max_quality_render,
+        final_media_qa,
+        generic_clean_audio_repair_runtime,
+        generic_clean_direct_runtime,
+        generic_project_runtime,
+    )
+    backend = default_backend()
+    ok = bool(
+        all(_package_facade(module) for module in facades)
+        and direct_max_quality_io.PREFERRED_MAX_TEMPO
+        <= direct_max_quality_io.MAX_TEMPO
+        and direct_max_quality_io.MAX_TEMPO <= 1.50
+        and callable(direct_max_quality_io.speech_slot_seconds)
+        and callable(direct_max_quality_cli._backend_generate)
+        and callable(direct_max_quality_render.fit_without_slowdown)
+        and callable(direct_timeline_delivery_qa.verify_timeline_delivery)
+        and callable(final_media_qa.verify_final_file)
+        and bool(getattr(backend.capabilities(), "continuation_context", False))
+        and direct_max_quality_cli.CONTINUATION_POLICY
+        == "backend-capability-gated-previous-block-prompt-v2"
+        and source_prosody_policy.POLICY == SOURCE_PROSODY_ROLE_POLICY
+    )
+    return ok, (
+        f"tempo={direct_max_quality_io.PREFERRED_MAX_TEMPO}/"
+        f"{direct_max_quality_io.MAX_TEMPO}; "
+        f"continuation={direct_max_quality_cli.CONTINUATION_POLICY}; "
+        f"source_prosody={source_prosody_policy.POLICY}; "
+        f"delivery={direct_timeline_delivery_qa.POLICY}"
     )
 
 
 def _quality_contract(repo: Path) -> tuple[bool, str]:
-    base_ok, base_detail = _legacy_quality_without_superseded_worker(repo)
-    v47_ok, v47_detail = _v47_static_contract(repo)
-    supplemental_ok, supplemental_detail = _supplemental_quality_contract(repo)
-    detail = "; ".join((base_detail, v47_detail, supplemental_detail))
-    return bool(base_ok and v47_ok and supplemental_ok), detail
+    del repo  # Active imports are the source of truth for this checkout.
+    checks: dict[str, tuple[bool, str]] = {}
+    _safe_check(checks, "speech-backend", _backend_contract)
+    _safe_check(checks, "recipe-routing", _recipe_contract)
+    _safe_check(checks, "worker-release", _worker_contract)
+    _safe_check(checks, "runtime-safety", _runtime_safety_contract)
+    _safe_check(checks, "quality-runtime", _quality_runtime_contract)
+
+    failed = [name for name, (ok, _detail) in checks.items() if not ok]
+    details = "; ".join(
+        f"{name}: {detail}" for name, (_ok, detail) in checks.items()
+    )
+    if failed:
+        return False, (
+            f"{QUALITY_CONTRACT_POLICY}; не прошли: {', '.join(failed)}; {details}"
+        )
+    return True, f"{QUALITY_CONTRACT_POLICY}; {details}"
 
 
 _legacy._quality_contract = _quality_contract
@@ -466,7 +282,14 @@ dubcheck_command = _legacy.dubcheck_command
 register_dub_health_handler = _legacy.register_dub_health_handler
 
 __all__ = [
+    "QUALITY_CONTRACT_POLICY",
     "_WORKER_RUNTIME",
+    "_backend_contract",
+    "_quality_contract",
+    "_quality_runtime_contract",
+    "_recipe_contract",
+    "_runtime_safety_contract",
+    "_worker_contract",
     "collect_dub_health",
     "dubcheck_command",
     "register_dub_health_handler",

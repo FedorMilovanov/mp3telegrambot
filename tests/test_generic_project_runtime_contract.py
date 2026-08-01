@@ -40,6 +40,7 @@ def test_request_schema_and_source_identity_fail_closed(tmp_path: Path) -> None:
         _request(source_url="https://youtube.com/watch?v=OtherId999"),
         _request(source_url="https://youtube.com/playlist?list=PL123"),
         _request(translation_mode="mystery"),
+        _request(speech_backend="unknown-backend"),
     )
     for payload in bad_payloads:
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -47,7 +48,7 @@ def test_request_schema_and_source_identity_fail_closed(tmp_path: Path) -> None:
             runtime.load_request(root)
 
 
-def test_valid_request_is_returned_without_rewriting(tmp_path: Path) -> None:
+def test_valid_request_is_canonicalized_with_default_backend(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     payload = _request(translation_mode="direct")
@@ -55,7 +56,10 @@ def test_valid_request_is_returned_without_rewriting(tmp_path: Path) -> None:
         json.dumps(payload),
         encoding="utf-8",
     )
-    assert runtime.load_request(root) == payload
+
+    loaded = runtime.load_request(root)
+
+    assert loaded == {**payload, "speech_backend": "voxcpm2"}
 
 
 def test_atomic_json_rejects_nan_without_replacing_existing_file(tmp_path: Path) -> None:

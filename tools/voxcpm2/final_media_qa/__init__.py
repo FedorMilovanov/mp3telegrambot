@@ -11,6 +11,7 @@ it actually exists, and the encoded Russian branch must remain stable.
 from __future__ import annotations
 
 import importlib.util
+import sys
 import json
 import math
 from pathlib import Path
@@ -28,6 +29,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить базовый final media QA: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -35,6 +37,10 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 _legacy_verify_final_file = _legacy.verify_final_file
+# Explicit aliases keep the dynamic facade's runtime monkeypatch seams visible
+# to static analysis as well as to verify_final_file().
+probe_media = _legacy.probe_media
+measure_loudness = _legacy.measure_loudness
 
 ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v2"
 SPATIAL_BED_POLICY = final_media_spatial_bed.POLICY
@@ -137,8 +143,14 @@ def estimate_original_bed(
         failures.append("NaN/Inf в original-bed samples")
         return result
 
+    # When expected source level is zero, source/mixed correlation is mostly
+    # noise and can select a false lag that hides a small real leak. Align to the
+    # known Russian-only branch in absolute mode; retain source alignment for
+    # nonzero legacy-bed measurements.
+    absolute_mode = expected <= ORIGINAL_ABSOLUTE_MODE_MAX_LEVEL
+    alignment_reference = russian if absolute_mode else source
     lag, correlation = _legacy._estimate_alignment_lag(
-        source,
+        alignment_reference,
         mixed,
         sample_rate=sample_rate,
     )
@@ -160,7 +172,6 @@ def estimate_original_bed(
         return result
     original, russian_gain, condition = solved
     tolerance = float(_legacy.ORIGINAL_LEVEL_TOLERANCE)
-    absolute_mode = expected <= ORIGINAL_ABSOLUTE_MODE_MAX_LEVEL
     lower_bound = -tolerance if absolute_mode else 0.0
     result.update(
         estimated_original_level=float(original),
@@ -262,6 +273,7 @@ def _project_contract(mixed_video: Path) -> dict[str, Any]:
     output_dir = Path(mixed_video).resolve().parent
     if output_dir.name.casefold() != "output":
         return {
+            "policy": ORIGINAL_BED_POLICY,
             "applicable": False,
             "passed": True,
             "reason": "mixed MP4 находится вне стандартного project/output",
@@ -297,6 +309,7 @@ def _project_contract(mixed_video: Path) -> dict[str, Any]:
         except Exception as exc:
             failures.append(f"request original_level: {exc}")
     return {
+        "policy": ORIGINAL_BED_POLICY,
         "applicable": True,
         "passed": not failures,
         "root": str(root),
@@ -448,7 +461,7 @@ def verify_final_outputs(
         if not russian_only.get("passed"):
             summaries.append(_failure_summary("russian-only", russian_only))
         if original_bed.get("applicable", True) and not original_bed.get("passed"):
-            summaries.append(_failure_summary("source-bed", original_bed))
+            summaries.append(_failure_summary("original-bed", original_bed))
         raise RuntimeError(
             "Конечный media-QA не принят. "
             + " | ".join(summaries)

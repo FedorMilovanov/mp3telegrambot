@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from tools.voxcpm2 import continuous_reference_policy as policy
 
@@ -124,7 +125,13 @@ def test_good_multiwindow_fallback_keeps_explicit_mode(
     monkeypatch.setattr(policy, "_candidate_windows", lambda *args, **kwargs: [])
 
     def good_fallback(_source, _intervals, destination, *, target_seconds):
-        Path(destination).write_bytes(b"good-reference")
+        sample_rate = 16_000
+        timeline = np.arange(sample_rate * 6, dtype=np.float32) / sample_rate
+        sf.write(
+            destination,
+            (0.14 * np.sin(2.0 * np.pi * 120.0 * timeline)).astype(np.float32),
+            sample_rate,
+        )
         Path(destination).with_suffix(".selection.json").write_text(
             json.dumps({"selected": [{**_stats()}]}),
             encoding="utf-8",

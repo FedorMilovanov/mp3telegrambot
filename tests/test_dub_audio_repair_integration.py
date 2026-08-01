@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from services.dub_studio import load_recipe
 
 
 def test_audio_repair_handlers_are_registered_and_notified() -> None:
+    from pathlib import Path
+
     runtime = Path("services/dub_studio_runtime.py").read_text(encoding="utf-8")
     commands = Path("handlers/dub_commands.py").read_text(encoding="utf-8")
     assert "register_dub_audio_repair_handlers(application)" in runtime
@@ -14,8 +16,10 @@ def test_audio_repair_handlers_are_registered_and_notified() -> None:
     assert "/dubfix" in commands
 
 
-def test_audio_repair_recipe_is_utility_not_generic_repair_button() -> None:
-    recipe = Path("tools/voxcpm2/recipes/generic_short_v1.json").read_text(encoding="utf-8")
-    assert '"repair_audio"' in recipe
-    assert '"kind": "utility"' in recipe
-    assert "generic_audio_repair_runtime" in recipe
+def test_audio_repair_recipe_is_clean_utility_action() -> None:
+    action = load_recipe("generic_short_v1").action("repair_audio")
+
+    assert action["kind"] == "utility"
+    assert action["runner"] == "python_module"
+    assert action["module"] == "tools.voxcpm2.generic_clean_audio_repair_runtime"
+    assert action.get("parameters", {}) == {}

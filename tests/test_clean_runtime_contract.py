@@ -72,6 +72,8 @@ def test_valid_runtime_settings_are_canonical() -> None:
         "cfg": 1.8,
         "base_seed": 42,
         "original_level": 0.18,
+        "speech_backend": "voxcpm2",
+        "speech_backend_policy": "explicit-request-speech-backend-v1",
     }
     assert contract.POLICY == "clean-runtime-contract-v2"
 
@@ -175,8 +177,8 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
 
 
 def test_clean_core_requires_current_marker_fingerprints() -> None:
-    source = Path(clean.__file__).read_text(encoding="utf-8")
-    contract_source = Path(contract.__file__).read_text(encoding="utf-8")
+    source = Path(clean._legacy.__file__).read_text(encoding="utf-8")
+    contract_source = Path(contract._legacy.__file__).read_text(encoding="utf-8")
     assert clean.POLICY == "clean-direct-production-v2"
     assert "render_contract_sha256" in source
     assert "release_contract_sha256" in source

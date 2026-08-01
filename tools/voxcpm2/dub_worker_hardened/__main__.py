@@ -8,7 +8,8 @@ import sys
 from services.dub_worker_release import WORKER_RUNTIME
 from tools.voxcpm2.preflight_json_protocol import install as install_preflight_json
 
-from . import _legacy, main
+from . import _legacy
+from . import main
 
 
 def activate_release_identity() -> None:

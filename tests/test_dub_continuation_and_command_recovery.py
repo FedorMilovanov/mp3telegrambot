@@ -7,6 +7,7 @@ from handlers.dub_multicommand import (
     STALE_CARD_POLICY,
     parse_dub_command_lines,
 )
+from tools.voxcpm2 import direct_max_quality_render
 from tools.voxcpm2.direct_source_prosody import _defer_short_continuation
 from tools.voxcpm2.direct_timeline_compaction import (
     MIN_COMPACTION_GAP_SECONDS,
@@ -28,7 +29,6 @@ def _evidence(_path: Path) -> dict[str, float | bool]:
 
 def test_two_dub_commands_in_one_message_are_both_parsed() -> None:
     parsed = parse_dub_command_lines("/dubworker\n/dubrun dub-bfa6ffa01b")
-
     assert parsed == [
         ("dubworker", []),
         ("dubrun", ["dub-bfa6ffa01b"]),
@@ -39,7 +39,6 @@ def test_bot_username_blank_lines_and_normal_fallback() -> None:
     parsed = parse_dub_command_lines(
         "/dubcheck@PreachingMP3Bot\n\n/dubstatus@PreachingMP3Bot last"
     )
-
     assert parsed == [
         ("dubcheck", []),
         ("dubstatus", ["last"]),
@@ -59,7 +58,6 @@ def test_candidate_stage_defers_only_repairable_short_continuation() -> None:
             "penalty": 64.0,
         }
     )
-
     assert result["hard_ok"] is True
     assert result["failures"] == []
     assert result["timeline_compaction_required"] is True
@@ -74,12 +72,11 @@ def test_candidate_stage_never_hides_wrong_ending() -> None:
             "failures": ["continuation_too_short", "continuation_closes"],
         }
     )
-
     assert result["hard_ok"] is False
     assert result["failures"] == ["continuation_closes"]
 
 
-def test_short_colon_cue_is_late_aligned_without_moving_following_cue() -> None:
+def test_short_colon_cue_can_be_diagnosed_by_compaction_utility() -> None:
     fitted = [
         (
             {
@@ -105,10 +102,7 @@ def test_short_colon_cue_is_late_aligned_without_moving_following_cue() -> None:
         ),
     ]
 
-    adjusted, report = compact_timeline_segments(
-        fitted,
-        evidence_reader=_evidence,
-    )
+    adjusted, report = compact_timeline_segments(fitted, evidence_reader=_evidence)
     first = adjusted[0][0]
     second = adjusted[1][0]
     audible_end = float(first["start"]) + 0.95
@@ -155,7 +149,6 @@ def test_natural_continuation_gap_is_not_retimed() -> None:
     ]
 
     adjusted, report = compact_timeline_segments(fitted, evidence_reader=evidence)
-
     assert MIN_COMPACTION_GAP_SECONDS == 0.32
     assert abs(2.0 - 1.70) < MIN_COMPACTION_GAP_SECONDS
     assert float(adjusted[0][0]["start"]) == 0.0
@@ -187,17 +180,13 @@ def test_terminal_cue_is_never_retimed() -> None:
     ]
 
     adjusted, report = compact_timeline_segments(fitted, evidence_reader=_evidence)
-
     assert float(adjusted[0][0]["start"]) == 0.0
     assert report["shifted_segment_ids"] == []
 
 
-def test_runtime_contract_fingerprints_new_render_layers() -> None:
+def test_runtime_fingerprints_compaction_but_production_keeps_source_timeline() -> None:
     contract = (
         ROOT / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
-    ).read_text(encoding="utf-8")
-    render = (
-        ROOT / "tools" / "voxcpm2" / "direct_max_quality_render" / "__init__.py"
     ).read_text(encoding="utf-8")
     supervisor = (
         ROOT / "services" / "dub_studio_runtime" / "__init__.py"
@@ -205,7 +194,9 @@ def test_runtime_contract_fingerprints_new_render_layers() -> None:
 
     assert '"tools/voxcpm2/direct_source_prosody/__init__.py"' in contract
     assert '"tools/voxcpm2/direct_timeline_compaction.py"' in contract
-    assert "compact_timeline_segments(" in render
-    assert "_legacy_build_timeline(adjusted, output, total_duration)" in render
+    assert direct_max_quality_render.TIMELINE_COMPACTION_POLICY == (
+        "no-late-shift-monolithic-assembly-v2"
+    )
+    assert callable(direct_max_quality_render.build_timeline)
     assert "_legacy_install_dub_studio_runtime()" in supervisor
     assert "register_dub_multicommand_handler(application)" in supervisor

@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import hashlib
 import importlib.util
+import sys
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ from typing import Any, Iterator
 import uuid
 
 from services.dub_studio import DubStore
+from services.dub_worker_release import WORKER_RUNTIME
 from tools.voxcpm2 import clean_production_core
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import generic_project_runtime
@@ -34,6 +36,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Dub production preflight: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -384,7 +387,7 @@ def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
                     status="busy",
                     current_job_id=job_id,
                     details={
-                        "runtime": "dub-worker-quality-v4.6",
+                        "runtime": WORKER_RUNTIME,
                         "project_id": project_id,
                         "action": action,
                         "progress": 1,

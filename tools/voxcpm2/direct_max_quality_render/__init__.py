@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from typing import Any
 
 from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     SPEECH_SLOT_POLICY,
@@ -25,6 +27,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить direct render utilities: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
@@ -34,11 +37,32 @@ for _name in dir(_legacy):
 ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"
 TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
+HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v2"
 _legacy_build_timeline = _legacy.build_timeline
+_DEFAULT_PROBE_DURATION = probe_duration
+_DEFAULT_RUN_CHECKED = run_checked
+_DEFAULT_TIMELINE_QA = direct_timeline_delivery_qa
+
+
+def _sync_legacy_hooks() -> None:
+    """Expose explicit facade injections without erasing direct legacy patches.
+
+    Tests and clean runtimes use both supported seams: assigning a hook on this
+    facade and assigning it on ``_legacy``.  A default facade binding must not
+    overwrite a deliberate legacy replacement immediately before execution.
+    """
+    facade_probe = globals().get("probe_duration")
+    if callable(facade_probe) and facade_probe is not _DEFAULT_PROBE_DURATION:
+        _legacy.probe_duration = facade_probe
+    facade_runner = globals().get("run_checked")
+    if callable(facade_runner) and facade_runner is not _DEFAULT_RUN_CHECKED:
+        _legacy.run_checked = facade_runner
+    facade_qa = globals().get("direct_timeline_delivery_qa")
+    if facade_qa is not None and facade_qa is not _DEFAULT_TIMELINE_QA:
+        _legacy.direct_timeline_delivery_qa = facade_qa
 
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
-    """Keep rescue trajectories close enough to one speaker identity."""
     attempt = int(attempt)
     base_cfg = float(base_cfg)
     base_steps = max(1, int(base_steps))
@@ -76,8 +100,13 @@ def fit_without_slowdown(
     fitted_path: Path,
     target_duration: float,
     tail_guard: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> dict[str, Any]:
-    clean_duration = probe_duration(Path(clean_path))
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
+    _sync_legacy_hooks()
+    clean_duration = _legacy.probe_duration(Path(clean_path))
     speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
         tempo = clean_duration / speech_slot
@@ -97,7 +126,7 @@ def fit_without_slowdown(
         f"atrim=duration={float(target_duration):.6f}",
         "asetpts=N/SR/TB",
     ]
-    run_checked(
+    _legacy.run_checked(
         [
             "ffmpeg",
             "-hide_banner",
@@ -109,7 +138,7 @@ def fit_without_slowdown(
             "-af",
             ",".join(filters),
             "-ar",
-            str(EXPECTED_OUTPUT_SR),
+            str(output_sample_rate),
             "-ac",
             "1",
             "-c:a",
@@ -132,7 +161,7 @@ def fit_without_slowdown(
         "fade_in_seconds": fade_in,
         "fade_out_start_seconds": fade_out_start,
         "fade_out_seconds": fade_out,
-        "fitted_duration": probe_duration(Path(fitted_path)),
+        "fitted_duration": _legacy.probe_duration(Path(fitted_path)),
     }
 
 
@@ -140,16 +169,26 @@ def build_timeline(
     fitted_segments: list[tuple[dict[str, Any], Path]],
     output: Path,
     total_duration: float,
+    output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> None:
-    """Assemble at authored cue starts; never disguise short speech by late shifting."""
+    output_sample_rate = int(output_sample_rate)
+    if output_sample_rate <= 0:
+        raise ValueError("output_sample_rate должен быть > 0.")
     print(
         "🧩 Monolithic timeline: authored starts preserved; linked phrases must pass "
         "duration/gap QA without late compaction",
         flush=True,
     )
-    _legacy_build_timeline(fitted_segments, output, total_duration)
+    _sync_legacy_hooks()
+    _legacy_build_timeline(
+        fitted_segments,
+        output,
+        total_duration,
+        output_sample_rate=output_sample_rate,
+    )
 
 
+_sync_legacy_hooks()
 _legacy._generation_profile = _generation_profile
 _legacy.fit_without_slowdown = fit_without_slowdown
 _legacy.build_timeline = build_timeline
@@ -159,8 +198,10 @@ __all__ = sorted(
     | {
         "ADAPTIVE_RETRY_POLICY",
         "FADE_POLICY",
+        "HOOK_SYNC_POLICY",
         "TIMELINE_COMPACTION_POLICY",
         "_generation_profile",
+        "_sync_legacy_hooks",
         "build_timeline",
         "fit_without_slowdown",
     }

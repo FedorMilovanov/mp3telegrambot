@@ -12,10 +12,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import importlib.util
+import sys
 import os
 from pathlib import Path
 import shutil
 from typing import Any, Iterator
+
+from services.dub_worker_release import WORKER_RUNTIME
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_worker_hardened.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -25,13 +28,14 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить hardened Dub worker: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-_RUNTIME_VERSION = "dub-worker-quality-v4.8"
+_RUNTIME_VERSION = WORKER_RUNTIME
 _legacy._RUNTIME_VERSION = _RUNTIME_VERSION
 CANCELLATION_POLICY = "preflight-cancel-before-runner-v1"
 STORE_ROOT_POLICY = "explicit-worker-root-propagation-v2"

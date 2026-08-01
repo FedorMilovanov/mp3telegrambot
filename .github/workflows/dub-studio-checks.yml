@@ -4,46 +4,58 @@ on:
   push:
     paths:
       - 'handlers/dub_*.py'
+      - 'handlers/dub_*/**/*.py'
       - 'handlers/mode_command.py'
       - 'handlers/commands.py'
       - 'main.py'
       - 'requirements.txt'
       - 'requirements-dev.txt'
-      - 'services/dub_studio*.py'
+      - 'services/dub_*.py'
+      - 'services/dub_*/**/*.py'
+      - 'services/speech_backends/**/*.py'
       - 'tools/voxcpm2/dub_worker*.py'
+      - 'tools/voxcpm2/dub_worker*/**/*.py'
       - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/dub_quality_v4.py'
-      - 'tools/voxcpm2/semantic_tts_guard*.py'
-      - 'tools/voxcpm2/voxcpm2_quality_v4_renderer.py'
-      - 'tools/voxcpm2/master_quality_v4.py'
-      - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
+      - 'tools/voxcpm2/generic_*/**/*.py'
+      - 'tools/voxcpm2/clean_*.py'
+      - 'tools/voxcpm2/clean_*/**/*.py'
+      - 'tools/voxcpm2/direct_*.py'
+      - 'tools/voxcpm2/direct_*/**/*.py'
+      - 'tools/voxcpm2/final_media_qa*/**/*.py'
       - 'tools/voxcpm2/recipes/*.json'
+      - 'tests/test_clean_*.py'
       - 'tests/test_dub*.py'
-      - 'tests/test_mode_navigation.py'
       - 'tests/test_generic_*.py'
-      - 'tests/test_semantic_tts_guard.py'
+      - 'tests/test_semantic_*.py'
+      - 'tests/test_speech_backend_*.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
       - 'handlers/dub_*.py'
+      - 'handlers/dub_*/**/*.py'
       - 'handlers/mode_command.py'
       - 'handlers/commands.py'
       - 'main.py'
       - 'requirements.txt'
       - 'requirements-dev.txt'
-      - 'services/dub_studio*.py'
+      - 'services/dub_*.py'
+      - 'services/dub_*/**/*.py'
+      - 'services/speech_backends/**/*.py'
       - 'tools/voxcpm2/dub_worker*.py'
+      - 'tools/voxcpm2/dub_worker*/**/*.py'
       - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/dub_quality_v4.py'
-      - 'tools/voxcpm2/semantic_tts_guard*.py'
-      - 'tools/voxcpm2/voxcpm2_quality_v4_renderer.py'
-      - 'tools/voxcpm2/master_quality_v4.py'
-      - 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py'
+      - 'tools/voxcpm2/generic_*/**/*.py'
+      - 'tools/voxcpm2/clean_*.py'
+      - 'tools/voxcpm2/clean_*/**/*.py'
+      - 'tools/voxcpm2/direct_*.py'
+      - 'tools/voxcpm2/direct_*/**/*.py'
+      - 'tools/voxcpm2/final_media_qa*/**/*.py'
       - 'tools/voxcpm2/recipes/*.json'
+      - 'tests/test_clean_*.py'
       - 'tests/test_dub*.py'
-      - 'tests/test_mode_navigation.py'
       - 'tests/test_generic_*.py'
-      - 'tests/test_semantic_tts_guard.py'
+      - 'tests/test_semantic_*.py'
+      - 'tests/test_speech_backend_*.py'
       - '.github/workflows/dub-studio-checks.yml'
 
 jobs:
@@ -66,17 +78,15 @@ jobs:
         shell: pwsh
         run: |
           python -m py_compile `
-            tools/voxcpm2/generic_short_runtime.py `
-            tools/voxcpm2/generic_direct_runtime.py `
-            tools/voxcpm2/generic_direct_checked_runtime.py `
-            tools/voxcpm2/generic_gemini_runtime.py `
+            tools/voxcpm2/generic_clean_gemini_runtime.py `
+            tools/voxcpm2/generic_clean_direct_runtime.py `
+            tools/voxcpm2/generic_clean_audio_repair_runtime.py `
+            tools/voxcpm2/generic_clean_custom_runtime.py `
             tools/voxcpm2/generic_project_runtime.py `
-            tools/voxcpm2/dub_quality_v4.py `
-            tools/voxcpm2/semantic_tts_guard.py `
-            tools/voxcpm2/semantic_tts_guard_v4.py `
-            tools/voxcpm2/voxcpm2_quality_v4_renderer.py `
-            tools/voxcpm2/master_quality_v4.py `
-            tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py `
+            tools/voxcpm2/clean_production_core.py `
+            tools/voxcpm2/clean_runtime_contract.py `
+            tools/voxcpm2/direct_max_quality_cli.py `
+            tools/voxcpm2/direct_max_quality_render.py `
             tools/voxcpm2/dub_worker.py `
             tools/voxcpm2/dub_worker_hardened.py `
             handlers/dub_wizard.py `
@@ -87,6 +97,9 @@ jobs:
             handlers/commands.py `
             services/dub_studio.py `
             services/dub_studio_runtime.py `
+            services/speech_backends/base.py `
+            services/speech_backends/registry.py `
+            services/speech_backends/voxcpm2.py `
             main.py
           python -m json.tool tools/voxcpm2/recipes/generic_short_v1.json | Out-Null
       - name: Validate recipe actions
@@ -95,51 +108,70 @@ jobs:
           @'
           from tools.voxcpm2.dub_worker import build_command
 
-          gemini, _ = build_command('generic_short_v1', 'render_gemini')
-          direct, _ = build_command('generic_short_v1', 'render_direct')
-          assert 'tools.voxcpm2.generic_gemini_runtime' in ' '.join(gemini)
-          assert 'tools.voxcpm2.generic_direct_checked_runtime' in ' '.join(direct)
+          gemini, gemini_spec = build_command('generic_short_v1', 'render_gemini')
+          direct, direct_spec = build_command('generic_short_v1', 'render_direct')
+          repair, repair_spec = build_command('generic_short_v1', 'repair_audio')
+
+          assert gemini_spec['module'] == 'tools.voxcpm2.generic_clean_gemini_runtime'
+          assert direct_spec['module'] == 'tools.voxcpm2.generic_clean_direct_runtime'
+          assert repair_spec['module'] == 'tools.voxcpm2.generic_clean_audio_repair_runtime'
+          assert gemini[1:3] == ['-m', gemini_spec['module']]
+          assert direct[1:3] == ['-m', direct_spec['module']]
+          assert repair[1:3] == ['-m', repair_spec['module']]
           assert '-Mode gemini' in ' '.join(gemini)
           assert '-Mode direct' in ' '.join(direct)
-          print('Recipe actions are separated: OK')
+          assert '-Mode' not in repair
+          print('Clean recipe action routing: OK')
           '@ | python -
       - name: Focused regression tests
         run: >-
           python -m pytest -q
-          tests/test_dub_quality_v4.py
-          tests/test_generic_direct_runtime.py
-          tests/test_generic_gemini_runtime.py
-          tests/test_semantic_tts_guard.py
-          tests/test_dub_modes.py
-          tests/test_mode_navigation.py
-          tests/test_dub_wizard.py
-          tests/test_dub_delivery.py
-          tests/test_dub_studio.py
-          tests/test_dub_worker.py
+          tests/test_clean_dub_production.py
+          tests/test_clean_request_settings.py
+          tests/test_clean_runtime_contract.py
+          tests/test_clean_runtime_setting_types.py
+          tests/test_clean_repair_request_contract.py
+          tests/test_generic_project_runtime_write_through.py
+          tests/test_speech_backend_command_contract.py
+          tests/test_speech_backend_request_boundary.py
+          tests/test_speech_backend_runtime_paths.py
+          tests/test_semantic_block_runtime.py
+          tests/test_final_media_qa.py
+          tests/test_dub_wizard_request_writer.py
+          tests/test_dub_facade_write_through.py
       - name: Ruff changed surface
         run: >-
-          python -m ruff check
-          tools/voxcpm2/generic_short_runtime.py
-          tools/voxcpm2/generic_direct_runtime.py
-          tools/voxcpm2/generic_direct_checked_runtime.py
-          tools/voxcpm2/generic_gemini_runtime.py
-          tools/voxcpm2/dub_quality_v4.py
-          tools/voxcpm2/semantic_tts_guard.py
-          tools/voxcpm2/semantic_tts_guard_v4.py
-          tools/voxcpm2/voxcpm2_quality_v4_renderer.py
-          tools/voxcpm2/master_quality_v4.py
-          tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py
+          python -m ruff check --select E9,F63,F7,F82
+          services/speech_backends
+          tools/voxcpm2/clean_production_core.py
+          tools/voxcpm2/clean_production_core
+          tools/voxcpm2/clean_runtime_contract.py
+          tools/voxcpm2/clean_runtime_contract
+          tools/voxcpm2/direct_max_quality_cli.py
+          tools/voxcpm2/direct_max_quality_cli
+          tools/voxcpm2/direct_max_quality_render.py
+          tools/voxcpm2/direct_max_quality_render
+          tools/voxcpm2/generic_clean_gemini_runtime.py
+          tools/voxcpm2/generic_clean_direct_runtime.py
+          tools/voxcpm2/generic_clean_direct_runtime
+          tools/voxcpm2/generic_clean_audio_repair_runtime.py
+          tools/voxcpm2/generic_clean_audio_repair_runtime
+          tools/voxcpm2/generic_clean_custom_runtime.py
+          tools/voxcpm2/generic_project_runtime.py
+          tools/voxcpm2/generic_project_runtime
           tools/voxcpm2/dub_worker_hardened.py
+          tools/voxcpm2/dub_worker_hardened
           handlers/dub_wizard.py
-          handlers/dub_commands.py
+          handlers/dub_wizard
           handlers/dub_health.py
-          handlers/mode_command.py
+          handlers/dub_health
           services/dub_studio_runtime.py
-          tests/test_dub_quality_v4.py
-          tests/test_generic_direct_runtime.py
-          tests/test_generic_gemini_runtime.py
-          tests/test_semantic_tts_guard.py
-          tests/test_dub_modes.py
-          tests/test_mode_navigation.py
+          services/dub_studio_runtime
+          tests/test_clean_dub_production.py
+          tests/test_clean_request_settings.py
+          tests/test_generic_project_runtime_write_through.py
+          tests/test_speech_backend_command_contract.py
+          tests/test_speech_backend_request_boundary.py
+          tests/test_speech_backend_runtime_paths.py
       - name: Whitespace integrity
         run: git diff --check

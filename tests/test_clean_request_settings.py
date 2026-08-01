@@ -27,7 +27,7 @@ def test_explicit_zero_settings_are_preserved() -> None:
 
 
 @pytest.mark.parametrize(
-    "request",
+    "request_payload",
     [
         {"original_level": True},
         {"original_level": float("nan")},
@@ -38,9 +38,9 @@ def test_explicit_zero_settings_are_preserved() -> None:
         {"russian_delay_ms": settings.MAX_RUSSIAN_DELAY_MS + 1},
     ],
 )
-def test_invalid_mix_settings_fail_closed(request) -> None:
+def test_invalid_mix_settings_fail_closed(request_payload) -> None:
     with pytest.raises(RuntimeError):
-        settings.values(request)
+        settings.values(request_payload)
 
 
 def test_manifest_is_repaired_to_actual_zero_settings(tmp_path: Path) -> None:

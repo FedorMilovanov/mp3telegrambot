@@ -53,6 +53,14 @@ def get_backend(value: object) -> SpeechBackend:
     return _REGISTRY[resolve_backend_id(value)]
 
 
+def unregister_backend(value: object) -> None:
+    backend_id = resolve_backend_id(value)
+    _REGISTRY.pop(backend_id, None)
+    for alias, owner in tuple(_ALIASES.items()):
+        if owner == backend_id:
+            _ALIASES.pop(alias, None)
+
+
 def registered_backends() -> Iterable[SpeechBackend]:
     return tuple(_REGISTRY[key] for key in sorted(_REGISTRY))
 

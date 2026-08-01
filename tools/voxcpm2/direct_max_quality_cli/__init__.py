@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Monolithic-voice facade for the direct VoxCPM2 candidate loop.
-
-The established CLI remains in ``direct_max_quality_cli.py``. This package
-shadows that module for production imports and injects one-speaker continuity,
-bounded pronunciation variants, Russian stress evidence, conservative length
-floors and explicit failure diagnostics without weakening existing quality gates.
-"""
+"""Monolithic-voice facade for the direct speech-backend candidate loop."""
 from __future__ import annotations
 
 import importlib.util
@@ -16,8 +10,10 @@ import sys
 import types
 from typing import Any
 
+from services.speech_backends import BackendGenerationRequest
 from tools.voxcpm2 import direct_monolith_contract
 from tools.voxcpm2 import russian_pronunciation
+from tools.voxcpm2 import source_prosody_policy
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "direct_max_quality_cli.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -27,16 +23,27 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить direct max-quality CLI: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "direct-cli-monolithic-voice-v1"
+POLICY = "direct-cli-monolithic-voice-v2"
 SYNTHESIS_TEXT_POLICY = russian_pronunciation.POLICY
 PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY
 _CURRENT_ATTEMPT = 1
+_CONTINUATION_REFERENCE: Path | None = None
+_CONTINUATION_TEXT = ""
+CONTINUATION_POLICY = "backend-capability-gated-previous-block-prompt-v2"
+
+
+def set_continuation_context(reference: Path | None, text: str = "") -> None:
+    global _CONTINUATION_REFERENCE, _CONTINUATION_TEXT
+    _CONTINUATION_REFERENCE = Path(reference).resolve() if reference is not None else None
+    _CONTINUATION_TEXT = str(text or "").strip()
+
 
 _legacy_read_segments = _legacy.read_segments
 _legacy_seed_for_attempt = _legacy.seed_for_attempt
@@ -50,7 +57,8 @@ _legacy_raw_failure_evidence = _legacy._raw_failure_evidence
 
 def read_segments(path: Path) -> list[dict[str, Any]]:
     segments = _legacy_read_segments(Path(path))
-    return direct_monolith_contract.register_segments(segments)
+    marked = [source_prosody_policy.mark_diagnostic_only(item) for item in segments]
+    return direct_monolith_contract.register_segments(marked)
 
 
 def seed_for_attempt(
@@ -83,6 +91,7 @@ def _generate(
     max_len: int,
     seed: int,
 ) -> Any:
+    """Compatibility seam for legacy tests; production uses ``_backend_generate``."""
     segment = direct_monolith_contract.current_segment() or {"text": text}
     synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
     cadence = str(segment.get("cadence_type") or "")
@@ -90,22 +99,77 @@ def _generate(
     minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
     controlled_min_len = max(int(min_len), int(math.floor(estimated_steps * minimum_ratio)))
     controlled_min_len = min(max(2, controlled_min_len), max(2, int(max_len) - 1))
-    return _legacy_generate(
-        model,
-        text=synthesis,
-        reference=reference,
-        cfg=cfg,
-        steps=steps,
-        min_len=controlled_min_len,
-        max_len=max_len,
-        seed=seed,
+    kwargs = {
+        "text": synthesis,
+        "reference": reference,
+        "cfg": cfg,
+        "steps": steps,
+        "min_len": controlled_min_len,
+        "max_len": max_len,
+        "seed": seed,
+    }
+    if _CONTINUATION_REFERENCE is not None:
+        return _legacy_generate(
+            model,
+            **kwargs,
+            continuation_reference=_CONTINUATION_REFERENCE,
+            continuation_text=_CONTINUATION_TEXT,
+        )
+    return _legacy_generate(model, **kwargs)
+
+
+def _backend_generate(session: Any, **kwargs: Any) -> Any:
+    """Translate orchestration facts into one model-neutral generation request."""
+    text = str(kwargs.get("text") or "")
+    reference = Path(kwargs["reference"]).resolve()
+    segment = direct_monolith_contract.current_segment() or {"text": text}
+    synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
+    cadence = str(segment.get("cadence_type") or "")
+    max_len = max(2, int(kwargs.get("max_len") or 2))
+    estimated_steps = max(2, int(math.floor(max_len / 1.40)))
+    minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
+    controlled_min_len = max(
+        int(kwargs.get("min_len") or 2),
+        int(math.floor(estimated_steps * minimum_ratio)),
     )
+    controlled_min_len = min(controlled_min_len, max(2, max_len - 1))
+
+    continuation_reference: Path | None = None
+    continuation_text = ""
+    if (
+        _CONTINUATION_REFERENCE is not None
+        and bool(getattr(session, "supports_continuation_context", False))
+    ):
+        continuation_reference = _CONTINUATION_REFERENCE
+        continuation_text = _CONTINUATION_TEXT
+
+    request = BackendGenerationRequest(
+        text=synthesis,
+        reference_audio=reference,
+        seed=int(kwargs.get("seed") or 0),
+        duration_budget=(
+            float(segment.get("speech_slot"))
+            if segment.get("speech_slot") is not None
+            else None
+        ),
+        style_instruction=str(segment.get("style_instruction") or ""),
+        continuation_reference=continuation_reference,
+        continuation_text=continuation_text,
+        backend_options={
+            "cfg": float(kwargs.get("cfg") or 0.0),
+            "steps": int(kwargs.get("steps") or 0),
+            "min_len": controlled_min_len,
+            "max_len": max_len,
+        },
+    )
+    return session.generate(request)
 
 
 def source_prosody_penalty(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> float:
+    """Keep source-language prosody as evidence, never as ranking weight."""
     pronunciation = segment.get("pronunciation")
     if not isinstance(pronunciation, dict):
         pronunciation = russian_pronunciation.prepare_segment(segment)
@@ -114,7 +178,10 @@ def source_prosody_penalty(
     display_segment["text"] = str(
         pronunciation.get("display_text") or segment.get("text") or ""
     )
-    base = float(_legacy_source_prosody_penalty(candidate, display_segment))
+    ranking_segment = source_prosody_policy.ranking_view(display_segment)
+    diagnostic_penalty = float(
+        _legacy_source_prosody_penalty(candidate, ranking_segment)
+    )
     monolith = direct_monolith_contract.evaluate_candidate(candidate, segment)
     match = candidate.get("source_prosody_match")
     if not isinstance(match, dict):
@@ -125,6 +192,9 @@ def source_prosody_penalty(
         int(candidate.get("attempt") or _CURRENT_ATTEMPT),
     )
     match["monolith_identity"] = monolith
+    match["source_prosody_policy"] = source_prosody_policy.POLICY
+    match["source_prosody_ranking_enabled"] = False
+    match["diagnostic_penalty"] = diagnostic_penalty
     match["synthesis_text_policy"] = SYNTHESIS_TEXT_POLICY
     match["pronunciation_variant_policy"] = PRONUNCIATION_VARIANT_POLICY
     match["pronunciation_variant"] = variant
@@ -132,7 +202,7 @@ def source_prosody_penalty(
     match["synthesis_text_without_control"] = str(
         variant.get("synthesis_text_without_control") or ""
     )
-    return base + direct_monolith_contract.candidate_penalty(candidate)
+    return float(direct_monolith_contract.candidate_penalty(candidate))
 
 
 def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
@@ -191,11 +261,7 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
         ),
         f0=float(identity.get("f0_median") or 0.0),
         start_leak=bool(start.get("suspicious")),
-        stress=(
-            str(stress.get("reason") or "ok")
-            if stress.get("required")
-            else "n/a"
-        ),
+        stress=(str(stress.get("reason") or "ok") if stress.get("required") else "n/a"),
         variant=int(variant.get("variant_index") or 0),
     )
 
@@ -248,10 +314,11 @@ def _raw_failure_evidence(
     return payload
 
 
-# Legacy main resolves all these globals in its own module dictionary.
 _legacy.read_segments = read_segments
 _legacy.seed_for_attempt = seed_for_attempt
 _legacy._generate = _generate
+_legacy._backend_generate = _backend_generate
+_legacy.set_continuation_context = set_continuation_context
 _legacy.source_prosody_penalty = source_prosody_penalty
 _legacy.candidate_hard_ok = candidate_hard_ok
 _legacy._acceptable_candidates = _acceptable_candidates
@@ -282,10 +349,12 @@ _module.__class__ = _WriteThroughModule
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
+        "CONTINUATION_POLICY",
         "POLICY",
         "PRONUNCIATION_VARIANT_POLICY",
         "SYNTHESIS_TEXT_POLICY",
         "_acceptable_candidates",
+        "_backend_generate",
         "_candidate_failure_summary",
         "_generate",
         "_monolith_diagnostic",
@@ -294,6 +363,7 @@ __all__ = sorted(
         "main",
         "read_segments",
         "seed_for_attempt",
+        "set_continuation_context",
         "source_prosody_penalty",
     }
 )

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from services.dub_studio import utc_now
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -348,33 +349,19 @@ def main() -> None:
     else:
         extended_reference, composite_reference = _existing_references(root)
 
-    cpu_venv = Path(
-        str(request.get("cpu_venv") or r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
-    )
-    cpu_python = cpu_venv / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
-    if not cpu_python.is_file():
-        raise RuntimeError(f"CPU Python не найден: {cpu_python}")
     repo = Path(__file__).resolve().parents[2]
-    synth_script = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "voxcpm2_cpu_shorts_production.py"
-    )
-    master_script = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "master_constant_mix.py"
-    )
-    if not synth_script.is_file() or not master_script.is_file():
-        raise RuntimeError("Production NoChew renderer/master не найдены.")
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Audio repair backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}."
+        )
+    runtime = backend.runtime_paths(repo, request)
+    cpu_python = runtime.cpu_python
+    if not cpu_python.is_file():
+        raise RuntimeError(
+            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
+        )
 
     mode = str(request.get("translation_mode") or "")
     if mode == "direct":
@@ -390,61 +377,32 @@ def main() -> None:
     stable_mixed = output_dir / "final_upload.mp4"
     stable_russian = output_dir / "russian_only.mp4"
 
-    env = dict(os.environ)
-    env.update(
-        {
-            "CUDA_VISIBLE_DEVICES": "-1",
-            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-            "HF_HUB_OFFLINE": "1",
-            "TRANSFORMERS_OFFLINE": "1",
-            "OMP_NUM_THREADS": str(threads),
-            "MKL_NUM_THREADS": str(threads),
-            "TOKENIZERS_PARALLELISM": "false",
-        }
-    )
+    env = backend.process_environment(
+        {"threads": threads, "speech_backend": backend.backend_id},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
 
-    log("=== AUDIO REPAIR: VOXCPM2 QUALITY ===")
+    log(f"=== AUDIO REPAIR: {backend.backend_id} QUALITY ===")
     log(
         f"Проект={project_id}; selected={selected_ids}; "
         f"all={repair_all}; seed={base_seed}"
     )
-    synth = [
-        str(cpu_python),
-        str(synth_script),
-        "--archive-root",
-        str(
-            Path(
-                str(
-                    request.get("vox_archive")
-                    or r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
-                )
-            ).resolve()
-        ),
-        "--extended-reference",
-        str(extended_reference),
-        "--composite-reference",
-        str(composite_reference),
-        "--segments-json",
-        str(segments_path),
-        "--work-dir",
-        str(segment_work),
-        "--output",
-        str(russian_timeline),
-        "--threads",
-        str(threads),
-        "--steps",
-        str(steps),
-        "--cfg",
-        str(cfg),
-        "--cache-length",
-        "4096",
-        "--video-duration",
-        f"{duration:.6f}",
-        "--base-seed",
-        str(base_seed),
-    ]
+    synth = backend.build_renderer_command(
+        runtime,
+        values={
+            "extended_reference": str(extended_reference),
+            "composite_reference": str(composite_reference),
+            "segments_json": str(segments_path),
+            "segment_work": str(segment_work),
+            "timeline": str(russian_timeline),
+            "threads": str(threads),
+            "steps": str(steps),
+            "cfg": str(cfg),
+            "cache_length": "4096",
+            "duration": f"{duration:.6f}",
+            "base_seed": str(base_seed),
+        },
+    )
     result = production.subprocess.run(
         synth,
         cwd=str(repo),
@@ -453,32 +411,25 @@ def main() -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"Аудиоремонт VoxCPM2 завершился с кодом {result.returncode}."
+            f"Аудиоремонт speech backend {backend.backend_id} завершился "
+            f"с кодом {result.returncode}."
         )
 
     log("=== AUDIO REPAIR: QUALITY MASTER ===")
-    master = [
-        str(cpu_python),
-        str(master_script),
-        "--source-video",
-        str(source),
-        "--russian-wav",
-        str(russian_timeline),
-        "--work-dir",
-        str(master_work),
-        "--mixed-video",
-        str(stable_mixed),
-        "--russian-only-video",
-        str(stable_russian),
-        "--original-level",
-        f"{original_level:.6f}",
-        "--target-i",
-        "-14.0",
-        "--target-lra",
-        "9.0",
-        "--target-tp",
-        "-1.0",
-    ]
+    master = backend.build_master_command(
+        runtime,
+        values={
+            "source": str(source),
+            "timeline": str(russian_timeline),
+            "master_work": str(master_work),
+            "final_mixed": str(stable_mixed),
+            "final_russian": str(stable_russian),
+            "original_level": f"{original_level:.6f}",
+            "target_i": "-14.0",
+            "target_lra": "9.0",
+            "target_tp": "-1.0",
+        },
+    )
     result = production.subprocess.run(
         master,
         cwd=str(repo),

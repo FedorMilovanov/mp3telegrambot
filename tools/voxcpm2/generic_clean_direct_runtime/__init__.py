@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 """Ready-SRT runtime facade with signature-based checkpoint migration.
 
-The sibling runtime already seeds resumable markers before clean production. Its
-historical migration accepted only an incomplete prefix and used the old 1.35
-preferred tempo boundary. This facade accepts a complete contiguous checkpoint
-set as well, but only after validating every synthesis-relevant signature and
-artifact against the current project. QA/orchestration upgrades therefore do not
-force hours of identical model inference.
+The sibling runtime already seeds resumable markers before clean production.
+This facade accepts a complete contiguous checkpoint set only after validating
+every synthesis-relevant signature, artifact and natural-tempo invariant against
+the current project. QA/orchestration upgrades therefore do not force hours of
+identical model inference, while old time-warped segments are never adopted.
 """
 from __future__ import annotations
 
@@ -25,13 +24,14 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить ready-SRT runtime: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-CHECKPOINT_MIGRATION_POLICY = "signature-verified-complete-checkpoint-adoption-v1"
+CHECKPOINT_MIGRATION_POLICY = "signature-and-natural-tempo-checkpoint-adoption-v2"
 MAX_ACCEPTED_SEED_ROUNDS = 12
 
 
@@ -109,7 +109,7 @@ def _signature_valid_checkpoint_set(
                 report.get("tail_guard"), segment.get("tail_guard")
             )
             or float(fit.get("tempo") or 999.0)
-            > float(_legacy.direct_io.MAX_TEMPO) + 1e-6
+            > float(_legacy.direct_io.PREFERRED_MAX_TEMPO) + 1e-6
         ):
             return []
 
@@ -155,8 +155,6 @@ def _signature_valid_checkpoint_set(
         return []
 
     if accepted_seed_rounds != {0}:
-        # The direct renderer expects the request base seed in checkpoint
-        # signatures. Retarget metadata only; fitted WAVs remain byte-identical.
         _legacy.clean.semantic_tts_guard_v4._retarget(
             segment_work,
             good_ids=accepted_ids,

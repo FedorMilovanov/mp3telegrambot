@@ -25,6 +25,7 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить Dub Studio supervisor: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 _WORKER_RUNTIME = WORKER_RUNTIME
@@ -61,6 +62,10 @@ def install_dub_studio_runtime() -> None:
     _legacy._WORKER_RUNTIME = WORKER_RUNTIME
     globals()["_WORKER_RUNTIME"] = WORKER_RUNTIME
     _legacy_install_dub_studio_runtime()
+    # Legacy installation imports health; reassert the shared release after all
+    # import-order side effects have completed.
+    _legacy._WORKER_RUNTIME = WORKER_RUNTIME
+    globals()["_WORKER_RUNTIME"] = WORKER_RUNTIME
     _install_multicommand_build_wrapper()
     from services.dub_release_health_v64 import install_release_health_hook
 

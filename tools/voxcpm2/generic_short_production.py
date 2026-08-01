@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""One-action YouTube Shorts -> Russian VoxCPM2 production pipeline.
+"""One-action YouTube Shorts -> Russian speech-backend production pipeline.
 
 The bot process only queues this module. This process downloads the source,
 extracts an English transcript, performs a two-pass literal-literary Russian
-translation, prepares voice references, renders VoxCPM2 on the dedicated CPU
-venv, and masters mixed/Russian-only upload-ready videos.
+translation, prepares voice references, renders the selected speech backend on
+its declared runtime, and masters mixed/Russian-only upload-ready videos.
 """
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 
 
 def configure_utf8() -> None:
@@ -470,12 +472,15 @@ def whisper_transcribe(source: Path, *, model_name: str) -> list[Cue]:
 
 def main() -> None:
     configure_utf8()
-    parser = argparse.ArgumentParser(description="Generic premium VoxCPM2 Shorts production")
+    parser = argparse.ArgumentParser(description="Generic premium speech-backend Shorts production")
+    parser.add_argument("-SpeechBackend", "--speech-backend", dest="speech_backend", default="voxcpm2")
     parser.add_argument("-SourceUrl", "--source-url", dest="source_url", required=True)
     parser.add_argument("-VideoId", "--video-id", dest="video_id", required=True)
     parser.add_argument("-WorkRoot", "--work-root", dest="work_root", required=True)
-    parser.add_argument("-VoxArchive", "--vox-archive", dest="vox_archive", default=r"C:\AI-Archive\VoxCPM2-paused-RTX3060")
-    parser.add_argument("-CpuVenv", "--cpu-venv", dest="cpu_venv", default=r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv")
+    # Legacy flag names remain accepted, but defaults belong to the selected
+    # backend adapter rather than this shared CLI.
+    parser.add_argument("-VoxArchive", "--vox-archive", dest="vox_archive", default=None)
+    parser.add_argument("-CpuVenv", "--cpu-venv", dest="cpu_venv", default=None)
     parser.add_argument("-OriginalLevel", "--original-level", dest="original_level", type=float, default=0.18)
     parser.add_argument("-RussianDelayMs", "--russian-delay-ms", dest="russian_delay_ms", type=int, default=420)
     parser.add_argument("-Threads", "--threads", dest="threads", type=int, default=10)
@@ -589,61 +594,70 @@ def main() -> None:
     log("Extended и composite voice references готовы.")
 
     repo = Path(__file__).resolve().parents[2]
-    synth_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "voxcpm2_cpu_shorts_production.py"
-    master_script = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
-    cpu_python = Path(args.cpu_venv) / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    backend = get_backend(args.speech_backend or DEFAULT_BACKEND_ID)
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Short production backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}."
+        )
+    runtime = backend.runtime_paths(
+        repo,
+        {
+            "translation_mode": "direct",
+            "speech_backend": backend.backend_id,
+            "cpu_venv": args.cpu_venv,
+            "vox_archive": args.vox_archive,
+        },
+    )
+    cpu_python = runtime.cpu_python
     if not cpu_python.is_file():
-        raise RuntimeError(f"CPU Python не найден: {cpu_python}")
-    if not synth_script.is_file() or not master_script.is_file():
-        raise RuntimeError("Production NoChew renderer/master не найдены в репозитории.")
+        raise RuntimeError(
+            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
+        )
+    env = backend.process_environment(
+        {"threads": max(1, args.threads), "speech_backend": backend.backend_id},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
 
-    env = dict(os.environ)
-    env.update({
-        "CUDA_VISIBLE_DEVICES": "-1",
-        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-        "PYTHONUTF8": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "OMP_NUM_THREADS": str(max(1, args.threads)),
-        "MKL_NUM_THREADS": str(max(1, args.threads)),
-        "TOKENIZERS_PARALLELISM": "false",
-    })
-
-    log("=== 5. VOXCPM2 CPU / NOCHEW ===")
-    synth_command = [
-        str(cpu_python), str(synth_script),
-        "--archive-root", str(Path(args.vox_archive).resolve()),
-        "--extended-reference", str(extended_reference),
-        "--composite-reference", str(composite_reference),
-        "--segments-json", str(segments_json),
-        "--work-dir", str(segment_work),
-        "--output", str(russian_timeline),
-        "--threads", str(max(1, args.threads)),
-        "--steps", str(max(1, args.steps)),
-        "--cfg", str(args.cfg),
-        "--cache-length", "4096",
-        "--video-duration", f"{duration:.6f}",
-        "--base-seed", "2026072800",
-    ]
+    log(f"=== 5. {backend.backend_id} / NOCHEW ===")
+    synth_command = backend.build_renderer_command(
+        runtime,
+        values={
+            "extended_reference": str(extended_reference),
+            "composite_reference": str(composite_reference),
+            "segments_json": str(segments_json),
+            "segment_work": str(segment_work),
+            "timeline": str(russian_timeline),
+            "threads": str(max(1, args.threads)),
+            "steps": str(max(1, args.steps)),
+            "cfg": str(args.cfg),
+            "cache_length": "4096",
+            "duration": f"{duration:.6f}",
+            "base_seed": "2026072800",
+        },
+    )
     proc = subprocess.run(synth_command, cwd=str(repo), env=env, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(f"VoxCPM2 CPU-синтез завершился с кодом {proc.returncode}.")
+        raise RuntimeError(
+            f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {proc.returncode}."
+        )
 
     log("=== 6. CONSTANT MIX / FINAL MASTER ===")
     log(f"Оригинал постоянно {args.original_level * 100:.1f}%; русский delay={args.russian_delay_ms} ms.")
-    master_command = [
-        str(cpu_python), str(master_script),
-        "--source-video", str(source),
-        "--russian-wav", str(russian_timeline),
-        "--work-dir", str(master_work),
-        "--mixed-video", str(final_mixed),
-        "--russian-only-video", str(final_ru),
-        "--original-level", f"{args.original_level:.6f}",
-        "--target-i", "-14.0",
-        "--target-lra", "9.0",
-        "--target-tp", "-1.0",
-    ]
+    master_command = backend.build_master_command(
+        runtime,
+        values={
+            "source": str(source),
+            "timeline": str(russian_timeline),
+            "master_work": str(master_work),
+            "final_mixed": str(final_mixed),
+            "final_russian": str(final_ru),
+            "original_level": f"{args.original_level:.6f}",
+            "target_i": "-14.0",
+            "target_lra": "9.0",
+            "target_tp": "-1.0",
+        },
+    )
     proc = subprocess.run(master_command, cwd=str(repo), env=env, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"Финальный master завершился с кодом {proc.returncode}.")

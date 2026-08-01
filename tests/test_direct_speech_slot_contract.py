@@ -127,3 +127,32 @@ def test_fitter_builds_atempo_for_real_short_slot_without_trimming_words(
     assert "atempo=" in filter_graph
     assert "atrim=duration=0.350000" in filter_graph
     assert "max(1.0" not in Path(render._legacy.__file__).read_text(encoding="utf-8")
+
+
+def test_fitter_accepts_backend_owned_output_sample_rate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clean = tmp_path / "clean.wav"
+    fitted = tmp_path / "fitted.wav"
+    durations = iter((0.18, 0.35))
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(render, "probe_duration", lambda _path: next(durations))
+    monkeypatch.setattr(
+        render,
+        "run_checked",
+        lambda command, **_kwargs: commands.append(list(command)),
+    )
+
+    report = render.fit_without_slowdown(
+        clean,
+        fitted,
+        0.35,
+        0.22,
+        output_sample_rate=24000,
+    )
+
+    assert report["speech_slot"] == pytest.approx(0.13)
+    command = commands[0]
+    assert command[command.index("-ar") + 1] == "24000"

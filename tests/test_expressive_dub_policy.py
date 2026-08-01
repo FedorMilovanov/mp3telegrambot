@@ -10,78 +10,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_expression_smoothing_limits_adjacent_jumps() -> None:
     values = [-2.0, 2.2, -2.1, 2.4, -1.8]
-    smoothed = expression._smooth(values)
+    smoothed = expression._monolithic_scores(values)
     assert len(smoothed) == len(values)
-    assert all(-1.65 <= value <= 1.65 for value in smoothed)
+    assert all(-0.65 <= value <= 0.68 for value in smoothed)
     assert all(
-        abs(right - left) <= 0.72 + 1e-9
-        for left, right in zip(smoothed, smoothed[1:], strict=True)
+        abs(right - left) <= expression.MAX_ADJACENT_SCORE_STEP + 1e-9
+        for left, right in zip(smoothed, smoothed[1:])
     )
 
 
-def test_stronger_arc_uses_expressive_real_reference() -> None:
-    assert expression._reference_profile("reflective") == "extended"
-    assert expression._reference_profile("warm") == "extended"
-    assert expression._reference_profile("earnest") == "extended"
-    assert expression._reference_profile("emphatic") == "composite"
-    assert expression._reference_profile("passionate") == "composite"
+def test_expression_uses_one_identity_reference() -> None:
+    assert expression.REFERENCE_POLICY == "single-calm-identity-reference-v1"
+    assert expression._tier([-0.5], 0) == "reflective"
+    assert expression._tier([-0.2], 0) == "warm"
+    assert expression._tier([0.2], 0) == "earnest"
+    assert expression._tier([0.3, 0.5], 1) == "emphatic"
 
 
-def test_high_style_is_controlled_not_shouting() -> None:
-    tier, instruction = expression._style(1.4, 0.4, "Это важно!")
-    assert tier == "passionate"
+def test_high_style_remains_controlled() -> None:
+    instruction = expression._style("emphatic", "terminal")
     assert "controlled" in instruction
-    assert "never shout" in instruction
+    assert "never theatrical" in instruction
+    assert "without a sudden emotional burst" in instruction
 
 
-def test_expressive_candidate_filter_rejects_shouting() -> None:
-    common = {
-        "active_ratio": 0.70,
-        "max_internal_gap": 0.12,
-        "rms_dbfs": -23.0,
-        "voiced_ratio": 0.55,
-        "speech_rate": 2.6,
-    }
-    segments = [
-        {
-            "id": 1,
-            "expression_score": 0.55,
-            "source_prosody": {
-                **common,
-                "start": 0.0,
-                "end": 2.4,
-                "f0_median": 105.0,
-                "f0_p90": 145.0,
-            },
-        },
-        {
-            "id": 2,
-            "expression_score": 0.82,
-            "source_prosody": {
-                **common,
-                "start": 2.5,
-                "end": 5.0,
-                "f0_median": 118.0,
-                "f0_p90": 162.0,
-            },
-        },
-        {
-            "id": 3,
-            "expression_score": 1.20,
-            "source_prosody": {
-                **common,
-                "start": 5.1,
-                "end": 7.6,
-                "f0_median": 260.0,
-                "f0_p90": 350.0,
-                "rms_dbfs": -10.0,
-            },
-        },
-    ]
-    candidates = expression._expressive_candidates(segments)
-    ids = {int(item["id"]) for item in candidates}
-    assert 2 in ids
-    assert 3 not in ids
+def test_isolated_strong_expression_is_downgraded() -> None:
+    scores = expression._monolithic_scores([0.0, 0.68, 0.0])
+    assert expression._tier(scores, 1) == "earnest"
+    assert max(
+        abs(right - left)
+        for left, right in zip(scores, scores[1:])
+    ) <= expression.MAX_ADJACENT_SCORE_STEP + 1e-9
 
 
 def test_clean_routes_apply_expression_without_tts_wrapper() -> None:
@@ -92,9 +51,15 @@ def test_clean_routes_apply_expression_without_tts_wrapper() -> None:
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
         assert "expressive_continuity.plan_json" in source
-        assert "build_controlled_expressive_reference" in source
         assert "semantic_tts_guard_v4.install" not in source
         assert "runpy.run_path" not in source
+    assert callable(expression.plan_json)
+    assert callable(expression.plan_segments)
+    assert expression.build_controlled_expressive_reference(
+        source=Path("source.mp4"),
+        segments=[],
+        output=Path("expressive.wav"),
+    ) is False
 
 
 def test_gemini_route_uses_rhetoric_preserving_translation() -> None:

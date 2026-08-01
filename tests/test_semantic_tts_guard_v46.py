@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from services.dub_studio import load_recipe
 from tools.voxcpm2 import semantic_tts_guard_v4
 from tools.voxcpm2 import semantic_tts_guard_v46 as focused
 
@@ -110,11 +111,21 @@ def test_failure_summary_names_each_quality_gate() -> None:
     assert "голос" in summary
 
 
-def test_all_v45_entrypoints_install_focused_guard() -> None:
-    for path in (
-        Path("tools/voxcpm2/generic_audio_repair_runtime_v45.py"),
-        Path("tools/voxcpm2/generic_gemini_runtime_v45.py"),
-        Path("tools/voxcpm2/generic_direct_checked_runtime_v45.py"),
-    ):
-        source = path.read_text(encoding="utf-8")
-        assert "semantic_tts_guard_v46.install()" in source
+def test_production_routes_use_clean_runtime_not_historical_v45_entrypoints() -> None:
+    recipe = load_recipe("generic_short_v1")
+    modules = {
+        recipe.action("render_gemini")["module"],
+        recipe.action("render_direct")["module"],
+        recipe.action("repair_audio")["module"],
+    }
+    assert modules == {
+        "tools.voxcpm2.generic_clean_gemini_runtime",
+        "tools.voxcpm2.generic_clean_direct_runtime",
+        "tools.voxcpm2.generic_clean_audio_repair_runtime",
+    }
+    assert all("_v45" not in module for module in modules)
+
+    direct_main = Path(
+        "tools/voxcpm2/generic_clean_direct_runtime/__main__.py"
+    ).read_text(encoding="utf-8")
+    assert "independent_qa_retry.install()" in direct_main

@@ -6,7 +6,7 @@ from tools.voxcpm2 import clean_runtime_contract as contract
 
 
 @pytest.mark.parametrize(
-    ("request", "message"),
+    ("request_payload", "message"),
     [
         ({"video_id": "x", "cfg": True}, "cfg не может быть bool"),
         ({"video_id": "x", "original_level": False}, "original_level не может быть bool"),
@@ -19,11 +19,11 @@ from tools.voxcpm2 import clean_runtime_contract as contract
     ],
 )
 def test_clean_runtime_rejects_bool_and_fractional_integer_settings(
-    request: dict,
+    request_payload: dict,
     message: str,
 ) -> None:
     with pytest.raises(RuntimeError, match=message):
-        contract.normalize_settings(request, duration=30.0)
+        contract.normalize_settings(request_payload, duration=30.0)
 
 
 def test_numeric_strings_remain_supported() -> None:

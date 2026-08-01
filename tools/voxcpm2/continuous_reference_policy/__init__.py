@@ -27,11 +27,14 @@ _SPEC = importlib.util.spec_from_file_location(
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError(f"Не удалось загрузить continuous reference policy: {_LEGACY_PATH}")
 _legacy = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _legacy
 _SPEC.loader.exec_module(_legacy)
 
 for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
+
+_window_score = _legacy._window_score
 
 POLICY = "continuous-clean-reference-v3"
 SELECTION_POLICY = "robust-typical-f0-continuous-window-v1"
@@ -94,9 +97,7 @@ def _candidate_windows(
             clip = np.asarray(audio[left:right], dtype=np.float32)
             if len(clip) < int(_legacy.MIN_SECONDS * sample_rate):
                 continue
-            pitch = _legacy.professional_audio_v45.pitch_profile(clip, sample_rate)
-            activity = _legacy.professional_audio_v45.activity_stats(clip, sample_rate)
-            stats = {**pitch, **activity}
+            _retired_score, stats = _window_score(clip, sample_rate)
             if not _legacy._usable_stats(stats):
                 continue
             candidates.append(

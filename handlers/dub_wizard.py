@@ -157,6 +157,7 @@ def _request_payload(video_id: str, url: str, mode: str) -> dict[str, Any]:
         "video_id": video_id,
         "source_url": url,
         "translation_mode": mode,
+        "speech_backend": os.getenv("DUB_SPEECH_BACKEND", "voxcpm2"),
         "original_level": 0.18,
         "russian_delay_ms": 420,
         "threads": int(os.getenv("DUB_VOX_THREADS", "10")),

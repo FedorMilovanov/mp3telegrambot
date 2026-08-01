@@ -957,3 +957,50 @@ Fixes:
   Title Case и canonical delivery filenames проверяются как прежде.
 
 Регрессия: `tests/test_dub_title_policy.py`.
+
+## 2026-07-31 — Independent review of upstream Dub v6.7
+
+- Reproduced the operator's v6.7 smoke failure on `3aa73e0`: the detector
+  implementation used `item[1] <= burst_start + tolerance`, while the new
+  release-health contract searched for the nonexistent literal
+  `previous[1] <= ...`. This was a health-contract typo, not an acoustic-test
+  failure.
+- The overlap-aware bracketing implementation also allowed two ambiguous frames
+  on each side of the broadband island, i.e. up to four total, while the policy
+  claimed a two-frame total budget. The detector now rejects when
+  `overlap_before + overlap_after > FRAME_OVERLAP_TOLERANCE` and has a regression
+  covering the four-frame adversarial bracket.
+- The focused upstream 4-file smoke and the full 11-file Dub v6.7 smoke pass
+  locally after these corrections. Full repository pytest still has three
+  collection failures caused by parametrized tests using the reserved pytest
+  fixture name `request`.
+- The upstream changes are otherwise directionally sound: transactional
+  dataclass-facade import coverage, diagnostic-only cross-language source
+  prosody, explicit tail-bracketing policy, and release invalidation to v6.7.
+
+## 2026-08-01 — v6.8 semantic blocks and replaceable backend boundary
+
+- Direct ready-SRT synthesis now uses `semantic-block-continuation-v1`: balanced
+  7–15 second semantic blocks, one complete candidate per block, original
+  cue-level subtitles retained separately, and one fixed calm identity anchor.
+- When supported by the selected engine, the previous accepted block is passed as
+  optional prompt continuation with exact prompt text. The anchor remains fixed;
+  generated audio is not silently promoted to the permanent enrollment voice.
+- Source-language F0/energy is explicitly removed from direct candidate ranking
+  through `source_prosody_policy`; it remains diagnostic evidence only and cannot
+  widen speaker identity limits.
+- Renderer/master command construction moved behind the model-independent
+  `SpeechBackend` command contract. The generic clean core no longer owns
+  VoxCPM2-specific command arguments; future engines can provide their own
+  adapter without refactoring block planning, QA or checkpoint orchestration.
+- Backend selection and identity are included in fingerprints. Worker release was
+  advanced to `dub-worker-quality-v6.8` so phrase-level checkpoints cannot be
+  mistaken for compatible block-level work.
+- Full repository test collection was repaired for pytest 8.4 by renaming three
+  parametrized arguments that used the reserved fixture name `request`.
+
+- Current focused quality suite is green; the complete historical repository suite
+  still contains 42 legacy expectation failures (old v4.8/v5 markers, obsolete
+  marker semantics and environment-dependent renderer fixtures). These are not
+  used by the new Dub v6.8 smoke, but are tracked and must not be reported as a
+  green full-repository CI run.

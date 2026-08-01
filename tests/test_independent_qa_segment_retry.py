@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from services.dub_worker_release import (
+    INDEPENDENT_QA_RECOVERY_POLICY,
+    WORKER_RUNTIME,
+)
 from tools.voxcpm2 import independent_qa_retry as recovery
 
 
@@ -62,7 +66,7 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
     return root, segments
 
 
-def test_independent_qa_recovery_advances_seed_pairs_and_only_retargets_failed_id(
+def test_recovery_advances_seed_pairs_and_retargets_only_failed_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -121,7 +125,7 @@ def test_independent_qa_recovery_advances_seed_pairs_and_only_retargets_failed_i
     assert all(item["work_dir"] == root / "segment_work" for item in retargets)
 
 
-def test_independent_qa_recovery_is_fail_closed_without_authoritative_report(
+def test_recovery_is_fail_closed_without_authoritative_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -148,7 +152,7 @@ def test_independent_qa_recovery_is_fail_closed_without_authoritative_report(
         )
 
 
-def test_ready_srt_entrypoint_installs_recovery_and_fingerprint_is_release_only() -> None:
+def test_ready_srt_entrypoint_installs_release_scoped_recovery() -> None:
     repo = Path(__file__).resolve().parents[1]
     entrypoint = (
         repo
@@ -160,7 +164,6 @@ def test_ready_srt_entrypoint_installs_recovery_and_fingerprint_is_release_only(
     contract = (
         repo / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
     ).read_text(encoding="utf-8")
-    release = (repo / "services" / "dub_worker_release.py").read_text(encoding="utf-8")
 
     assert "independent_qa_retry.install()" in entrypoint
     assert '"tools/voxcpm2/independent_qa_retry.py"' in contract
@@ -168,8 +171,7 @@ def test_ready_srt_entrypoint_installs_recovery_and_fingerprint_is_release_only(
     render_block, release_block = contract.split("_FACADE_RELEASE_MODULES", maxsplit=1)
     assert '"tools/voxcpm2/generic_clean_direct_runtime/__main__.py"' not in render_block
     assert '"tools/voxcpm2/independent_qa_retry.py"' in release_block
-    assert 'WORKER_RUNTIME = "dub-worker-quality-v5.0"' in release
-    assert (
-        'INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"'
-        in release
+    assert WORKER_RUNTIME.startswith("dub-worker-quality-v")
+    assert INDEPENDENT_QA_RECOVERY_POLICY == (
+        "bounded-independent-qa-segment-retry-v1"
     )
