@@ -95,8 +95,10 @@ jobs:
           & $env:TTS_SMOKE_PYTHON -m py_compile `
             services/tts_weighted_smoke.py `
             services/tts_weighted_smoke_runner.py `
+            services/tts_weighted_smoke_attestation.py `
             tools/run_tts_weighted_smoke.py `
-            tools/check_tts_weighted_smoke_runner.py
+            tools/check_tts_weighted_smoke_runner.py `
+            tools/build_tts_weighted_smoke_attestation.py
           if ($LASTEXITCODE -ne 0) {
             throw 'Weighted smoke surface compile failed.'
           }
@@ -140,6 +142,43 @@ jobs:
           }
           "TTS_SMOKE_WORK=$Work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Build privacy-safe attestation
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TTS_SMOKE_DOCTOR_WORK) -or [string]::IsNullOrWhiteSpace($env:TTS_SMOKE_WORK)) {
+            throw 'Doctor or synthesis work root is missing before attestation.'
+          }
+          $DoctorPath = Join-Path $env:TTS_SMOKE_DOCTOR_WORK 'report.json'
+          $ReportPath = Join-Path $env:TTS_SMOKE_WORK 'report.json'
+          $AttestationDir = Join-Path $env:GITHUB_WORKSPACE 'tts-weighted-smoke-attestation'
+          if (Test-Path -LiteralPath $AttestationDir) {
+            Remove-Item -LiteralPath $AttestationDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $AttestationDir | Out-Null
+          $AttestationPath = Join-Path $AttestationDir 'attestation.json'
+          & $env:TTS_SMOKE_PYTHON tools/build_tts_weighted_smoke_attestation.py `
+            --doctor-report $DoctorPath `
+            --smoke-report $ReportPath `
+            --output $AttestationPath
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Weighted TTS attestation build failed.'
+          }
+          if (-not (Test-Path -LiteralPath $AttestationPath -PathType Leaf)) {
+            throw 'Weighted TTS attestation was not created.'
+          }
+          "TTS_SMOKE_ATTESTATION=$AttestationPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload weighted smoke attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: tts-weighted-smoke-attestation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tts-weighted-smoke-attestation/attestation.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
       - name: Publish sanitized summary
         shell: pwsh
         run: |
@@ -151,14 +190,23 @@ jobs:
           if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
             throw 'Sanitized weighted smoke report is missing.'
           }
+          if (-not (Test-Path -LiteralPath $env:TTS_SMOKE_ATTESTATION -PathType Leaf)) {
+            throw 'Sanitized weighted smoke attestation is missing.'
+          }
           $Doctor = Get-Content -LiteralPath $DoctorPath -Raw -Encoding utf8 | ConvertFrom-Json
           $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8 | ConvertFrom-Json
-          if ($Doctor.passed -ne $true -or $Report.passed -ne $true) {
-            throw 'Runner doctor or weighted smoke report did not pass.'
+          $Attestation = Get-Content -LiteralPath $env:TTS_SMOKE_ATTESTATION -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($Doctor.passed -ne $true -or $Report.passed -ne $true -or $Attestation.result.passed -ne $true) {
+            throw 'Runner doctor, weighted smoke or attestation did not pass.'
+          }
+          if ($Attestation.subject.commit_sha -ne $env:GITHUB_SHA) {
+            throw 'Weighted smoke attestation is bound to a different commit.'
           }
           @"
           ## TTS Weighted Smoke
 
+          - Commit: ``$($Attestation.subject.commit_sha)``
+          - Run: ``$($Attestation.subject.run_id).$($Attestation.subject.run_attempt)``
           - Profile: ``$($Report.profile.profile_id)``
           - Revision: ``$($Report.profile.model_revision)``
           - Backend: ``$($Report.backend.backend_id)``
@@ -170,7 +218,9 @@ jobs:
           - Output: $($Report.output.pcm.duration_seconds) s, $($Report.output.pcm.sample_rate) Hz, mono PCM-24
           - Execution evidence: $($Report.execution_plan.present)
           - Audio retained: $($Report.output.audio_retained)
-          - Policy: ``$($Report.policy)``
+          - Attestation SHA-256: ``$($Attestation.digest_sha256)``
+          - Attestation retention: 90 days
+          - Policy: ``$($Attestation.policy)``
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Remove smoke data
@@ -183,4 +233,8 @@ jobs:
           }
           if (Test-Path -LiteralPath $RootWork) {
             Remove-Item -LiteralPath $RootWork -Recurse -Force
+          }
+          $AttestationDir = Join-Path $env:GITHUB_WORKSPACE 'tts-weighted-smoke-attestation'
+          if (Test-Path -LiteralPath $AttestationDir) {
+            Remove-Item -LiteralPath $AttestationDir -Recurse -Force
           }
