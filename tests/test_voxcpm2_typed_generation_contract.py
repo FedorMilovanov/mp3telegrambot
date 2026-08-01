@@ -50,10 +50,13 @@ def _generation_kwargs() -> dict[str, object]:
     return {
         "text": "Текст.",
         "reference": Path("reference.wav"),
-        "cfg": 1.8,
-        "steps": 16,
         "duration_budget": 4.0,
-        "backend_options": {"min_len": 2, "max_len": 40},
+        "backend_options": {
+            "min_len": 2,
+            "max_len": 40,
+            "cfg": 1.8,
+            "steps": 16,
+        },
         "seed": 11,
     }
 
@@ -157,6 +160,7 @@ def test_package_overrides_typed_factories_not_backend_execution() -> None:
     assert "base_request = _legacy_build_generation_request(session, **kwargs)" in facade_source
     assert "request = _build_generation_request(session, **kwargs)" in raw_source
     assert "return session.generate(request)" in raw_source
+    assert 'backend_options.update(' not in raw_source
 
 
 def test_adapter_source_has_no_legacy_generation_translation() -> None:
