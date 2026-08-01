@@ -5,6 +5,7 @@ import pytest
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     DEFAULT_MODEL_PROFILE_ID,
+    DeterministicSpeechBackend,
     ModelOptionSpec,
     SpeechModelConfigurationError,
     SpeechModelProfile,
@@ -13,8 +14,10 @@ from services.speech_backends import (
     UnknownSpeechModelProfileError,
     get_model_profile,
     normalize_production_speech_request,
+    register_backend,
     register_model_profile,
     select_production_speech,
+    unregister_backend,
     unregister_model_profile,
 )
 
@@ -127,6 +130,7 @@ def test_profile_can_pin_an_alternative_revision_without_new_adapter() -> None:
 
 
 def test_disabled_and_mismatched_profiles_fail_closed() -> None:
+    backend = DeterministicSpeechBackend()
     disabled = SpeechModelProfile(
         profile_id="voxcpm2-disabled-test",
         backend_id="voxcpm2",
@@ -143,6 +147,7 @@ def test_disabled_and_mismatched_profiles_fail_closed() -> None:
         model_revision="mismatch",
         required_capabilities=(),
     )
+    register_backend(backend)
     register_model_profile(disabled)
     register_model_profile(mismatch)
     try:
@@ -156,7 +161,7 @@ def test_disabled_and_mismatched_profiles_fail_closed() -> None:
             )
         with pytest.raises(SpeechModelProfileMismatchError):
             select_production_speech(
-                "deterministic-ci",
+                backend.backend_id,
                 mismatch.profile_id,
                 request={},
                 default_backend_id=DEFAULT_BACKEND_ID,
@@ -166,3 +171,4 @@ def test_disabled_and_mismatched_profiles_fail_closed() -> None:
     finally:
         unregister_model_profile(disabled.profile_id)
         unregister_model_profile(mismatch.profile_id)
+        unregister_backend(backend.backend_id)
