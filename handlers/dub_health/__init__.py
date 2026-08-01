@@ -3,9 +3,9 @@
 """Active-contract facade for the durable Dub Studio health command.
 
 Environment, executable and worker-liveness checks remain in the sibling
-``handlers/dub_health.py`` module.  This facade replaces its historical
+``handlers/dub_health.py`` module. This facade replaces its historical
 source-string release gate with behavioural checks against the modules Python
-actually imports.  A refactor can therefore move implementation details
+actually imports. A refactor can therefore move implementation details
 without making ``/dubcheck`` lie, while missing capabilities, routes or safety
 transactions still fail closed.
 """
@@ -86,17 +86,23 @@ def _safe_check(
 def _backend_contract() -> tuple[bool, str]:
     from services.speech_backends import (
         BACKEND_CONTRACT_POLICY,
+        CONTROL_PLANE_POLICY,
+        DEFAULT_BACKEND_ID,
         GENERATION_REQUEST_POLICY,
         SESSION_CONFIG_POLICY,
         BackendAudioSpec,
         BackendGenerationRequest,
         REQUIRED_PRODUCTION_CAPABILITIES,
         backend_ids,
-        default_backend,
+        select_production_backend,
     )
 
-    backend = default_backend()
-    capabilities = backend.capabilities()
+    selection = select_production_backend(
+        None,
+        default_backend_id=DEFAULT_BACKEND_ID,
+    )
+    backend = selection.backend
+    capabilities = selection.capabilities
     missing = capabilities.missing(REQUIRED_PRODUCTION_CAPABILITIES)
     neutral_spec = BackendAudioSpec(
         encode_sample_rate=None,
@@ -112,17 +118,19 @@ def _backend_contract() -> tuple[bool, str]:
     )
     ok = bool(
         BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+        and CONTROL_PLANE_POLICY == "speech-backend-control-plane-v1"
         and GENERATION_REQUEST_POLICY == "model-neutral-generation-request-v1"
         and SESSION_CONFIG_POLICY == "model-neutral-session-config-v1"
         and backend_ids() == ("voxcpm2",)
-        and backend.backend_id == "voxcpm2"
+        and selection.backend_id == "voxcpm2"
+        and backend.backend_id == selection.backend_id
         and not missing
         and neutral_spec.output_sample_rate == 48_000
         and request.text
     )
     detail = (
-        f"{BACKEND_CONTRACT_POLICY}; backend={backend.backend_id}; "
-        f"missing={list(missing)}"
+        f"{BACKEND_CONTRACT_POLICY}; control={CONTROL_PLANE_POLICY}; "
+        f"backend={selection.backend_id}; missing={list(missing)}"
     )
     return ok, detail
 
@@ -196,7 +204,7 @@ def _runtime_safety_contract() -> tuple[bool, str]:
     )
     ok = bool(
         all(callable(value) for value in required_callables)
-        and project.POLICY == "generic-project-runtime-write-through-v3"
+        and project.POLICY == "generic-project-runtime-write-through-v4"
         and direct.CHECKPOINT_MIGRATION_POLICY
         == "signature-and-natural-tempo-checkpoint-adoption-v2"
         and environment.get("HF_HUB_OFFLINE") == "1"
