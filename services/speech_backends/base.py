@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-BACKEND_CONTRACT_POLICY = "speech-backend-contract-v4"
+BACKEND_CONTRACT_POLICY = "speech-backend-contract-v5"
 BACKEND_RUNTIME_PATH_POLICY = "speech-backend-runtime-paths-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
@@ -17,6 +17,8 @@ PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v2"
 GENERATION_REQUEST_POLICY = "model-neutral-generation-request-v1"
 GENERATION_LENGTH_POLICY = "model-neutral-generation-length-plan-v1"
 GENERATION_LENGTH_REQUEST_POLICY = "model-neutral-generation-length-request-v1"
+GENERATION_PROFILE_POLICY = "model-neutral-generation-profile-plan-v1"
+GENERATION_PROFILE_REQUEST_POLICY = "model-neutral-generation-profile-request-v1"
 SESSION_CONFIG_POLICY = "model-neutral-session-config-v1"
 REQUIRED_PRODUCTION_CAPABILITIES = (
     "voice_cloning",
@@ -205,6 +207,60 @@ class BackendGenerationLengthPlan:
 
 
 @dataclass(frozen=True)
+class BackendGenerationProfileRequest:
+    """Model-neutral attempt evidence with opaque backend defaults."""
+
+    attempt: int
+    base_backend_options: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.attempt, bool) or int(self.attempt) < 1:
+            raise ValueError("attempt должен быть целым числом >= 1.")
+        object.__setattr__(self, "attempt", int(self.attempt))
+        object.__setattr__(self, "base_backend_options", dict(self.base_backend_options))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "attempt": self.attempt,
+            "base_backend_options": dict(self.base_backend_options),
+            "metadata": dict(self.metadata),
+            "generation_profile_request_policy": GENERATION_PROFILE_REQUEST_POLICY,
+        }
+
+
+@dataclass(frozen=True)
+class BackendGenerationProfilePlan:
+    """Backend-owned attempt profile expressed as opaque request options."""
+
+    backend_id: str
+    attempt: int
+    backend_options: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        backend_id = str(self.backend_id or "").casefold().strip()
+        if not backend_id:
+            raise ValueError("BackendGenerationProfilePlan.backend_id не может быть пустым.")
+        if isinstance(self.attempt, bool) or int(self.attempt) < 1:
+            raise ValueError("attempt должен быть целым числом >= 1.")
+        object.__setattr__(self, "backend_id", backend_id)
+        object.__setattr__(self, "attempt", int(self.attempt))
+        object.__setattr__(self, "backend_options", dict(self.backend_options))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "backend_id": self.backend_id,
+            "attempt": self.attempt,
+            "backend_options": dict(self.backend_options),
+            "metadata": dict(self.metadata),
+            "generation_profile_policy": GENERATION_PROFILE_POLICY,
+        }
+
+
+@dataclass(frozen=True)
 class BackendGenerationRequest:
     """Engine-neutral synthesis request passed to a backend session."""
 
@@ -374,6 +430,11 @@ class SpeechBackend(Protocol):
         request: BackendGenerationLengthRequest,
     ) -> BackendGenerationLengthPlan: ...
 
+    def plan_generation_profile(
+        self,
+        request: BackendGenerationProfileRequest,
+    ) -> BackendGenerationProfilePlan: ...
+
     def open_session(self, config: BackendSessionConfig) -> BackendSynthesisSession: ...
 
     def runtime_paths(
@@ -404,6 +465,8 @@ __all__ = [
     "BACKEND_RUNTIME_PATH_POLICY",
     "GENERATION_LENGTH_POLICY",
     "GENERATION_LENGTH_REQUEST_POLICY",
+    "GENERATION_PROFILE_POLICY",
+    "GENERATION_PROFILE_REQUEST_POLICY",
     "GENERATION_REQUEST_POLICY",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
@@ -412,6 +475,8 @@ __all__ = [
     "BackendCapabilities",
     "BackendGenerationLengthPlan",
     "BackendGenerationLengthRequest",
+    "BackendGenerationProfilePlan",
+    "BackendGenerationProfileRequest",
     "BackendGenerationRequest",
     "BackendIdentity",
     "BackendProcessEnvironment",
