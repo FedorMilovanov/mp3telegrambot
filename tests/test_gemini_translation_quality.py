@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from handlers import dub_wizard
 from tools.voxcpm2 import expressive_translation
 from tools.voxcpm2 import generic_short_runtime
 
@@ -14,7 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "tools" / "voxcpm2" / "generic_short_runtime.py"
 EXPRESSIVE = ROOT / "tools" / "voxcpm2" / "expressive_translation.py"
 GEMINI_ENTRY = ROOT / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
-WIZARD = ROOT / "handlers" / "dub_wizard.py"
 
 
 def _source(path: Path) -> str:
@@ -23,16 +23,27 @@ def _source(path: Path) -> str:
     return source
 
 
-def test_current_stable_models_have_separate_roles() -> None:
-    wizard = _source(WIZARD)
-    assert '"gemini-3.6-flash"' in wizard
-    assert '"gemini-3.5-flash-lite"' in wizard
-    request_section = wizard[
-        wizard.index("def _request_payload"):
-        wizard.index("async def _admin")
-    ]
-    assert '"translation_model": os.getenv("DUB_TRANSLATION_MODEL", "gemini-3.6-flash")' in request_section
-    assert '"title_model": os.getenv("DUB_TITLE_MODEL", "gemini-3.5-flash-lite")' in request_section
+def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
+    monkeypatch.delenv("DUB_TRANSLATION_MODEL", raising=False)
+    monkeypatch.delenv("DUB_TITLE_MODEL", raising=False)
+    payload = dub_wizard._request_payload(
+        "AbCdEf12345",
+        "https://youtube.com/watch?v=AbCdEf12345",
+        "gemini",
+    )
+    assert payload["translation_model"] == "gemini-3.6-flash"
+    assert payload["title_model"] == "gemini-3.5-flash-lite"
+    assert payload["translation_model"] != payload["title_model"]
+
+    monkeypatch.setenv("DUB_TRANSLATION_MODEL", "translation-fixture")
+    monkeypatch.setenv("DUB_TITLE_MODEL", "title-fixture")
+    overridden = dub_wizard._request_payload(
+        "AbCdEf12345",
+        "https://youtube.com/watch?v=AbCdEf12345",
+        "gemini",
+    )
+    assert overridden["translation_model"] == "translation-fixture"
+    assert overridden["title_model"] == "title-fixture"
 
 
 def test_translation_keeps_high_thinking_and_bounded_network_calls() -> None:
