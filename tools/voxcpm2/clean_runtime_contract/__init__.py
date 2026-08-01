@@ -81,6 +81,8 @@ _FACADE_RELEASE_MODULES = (
     "tools/voxcpm2/final_media_spatial_bed.py",
     "tools/voxcpm2/final_media_qa/__init__.py",
     "tools/voxcpm2/generic_clean_direct_runtime/__main__.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py",
     "tools/voxcpm2/final_encoded_delivery_qa.py",
 )
 _legacy._RENDER_MODULES = tuple(
