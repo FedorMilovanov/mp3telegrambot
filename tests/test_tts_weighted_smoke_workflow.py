@@ -7,12 +7,19 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "tts-weighted-smoke.yml"
+CONTRACT_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "tts-weighted-smoke-contract.yml"
+)
+
+
+def _load(path: Path) -> dict:
+    payload = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    assert isinstance(payload, dict)
+    return payload
 
 
 def _workflow() -> dict:
-    payload = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-    assert isinstance(payload, dict)
-    return payload
+    return _load(WORKFLOW)
 
 
 def test_weighted_smoke_is_manual_main_only_and_least_privilege() -> None:
@@ -109,3 +116,18 @@ def test_trusted_python_compiles_doctor_and_smoke_surfaces() -> None:
     assert "tools/check_tts_weighted_smoke_runner.py" in run
     assert "services/tts_weighted_smoke.py" in run
     assert "tools/run_tts_weighted_smoke.py" in run
+
+
+def test_contract_workflow_uses_only_workflow_safe_concurrency_context() -> None:
+    payload = _load(CONTRACT_WORKFLOW)
+    concurrency = payload["concurrency"]
+    group = str(concurrency["group"])
+
+    assert group == "tts-weighted-smoke-contract-${{ github.ref }}"
+    assert "matrix." not in group
+    job = payload["jobs"]["contract"]
+    assert job["strategy"]["matrix"]["os"] == [
+        "ubuntu-latest",
+        "windows-latest",
+    ]
+    assert job["runs-on"] == "${{ matrix.os }}"
