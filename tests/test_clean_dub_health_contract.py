@@ -9,8 +9,10 @@ from services.speech_backends import (
     CONTROL_PLANE_POLICY,
     DEFAULT_BACKEND_ID,
     GENERATION_LENGTH_POLICY,
+    GENERATION_LENGTH_REQUEST_POLICY,
     BackendAudioSpec,
     BackendGenerationLengthPlan,
+    BackendGenerationLengthRequest,
     default_backend,
     select_production_backend,
 )
@@ -31,6 +33,7 @@ def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
     assert dub_health.QUALITY_CONTRACT_POLICY in detail
     assert CONTROL_PLANE_POLICY in detail
     assert GENERATION_LENGTH_POLICY in detail
+    assert GENERATION_LENGTH_REQUEST_POLICY in detail
     assert "speech-backend" in detail
     assert "recipe-routing" in detail
     assert "runtime-safety" in detail
@@ -47,22 +50,29 @@ def test_dub_health_checks_active_backend_and_safety_contracts() -> None:
         {"threads": 1},
         base_environment={},
     ).as_dict()
-    plan = backend.plan_generation_length(
-        BackendAudioSpec(16_000, 48_000, 0.08, 4096),
+    length_request = BackendGenerationLengthRequest(
         duration_budget=4.0,
         attempt=3,
         previous_output_durations=(1.0, 1.5),
+    )
+    plan = backend.plan_generation_length(
+        BackendAudioSpec(16_000, 48_000, 0.08, 4096),
+        length_request,
     )
 
     assert BACKEND_CONTRACT_POLICY.startswith("speech-backend-contract-v")
     assert CONTROL_PLANE_POLICY == "speech-backend-control-plane-v1"
     assert GENERATION_LENGTH_POLICY == "model-neutral-generation-length-plan-v1"
+    assert GENERATION_LENGTH_REQUEST_POLICY == (
+        "model-neutral-generation-length-request-v1"
+    )
     assert selection.backend is backend
     assert backend.backend_id == "voxcpm2"
     assert backend.capabilities().missing() == ()
     assert isinstance(plan, BackendGenerationLengthPlan)
     assert plan.backend_id == backend.backend_id
-    assert plan.duration_budget == 4.0
+    assert plan.duration_budget == length_request.duration_budget
+    assert plan.attempt == length_request.attempt
     assert plan.backend_options
     assert environment["HF_HUB_OFFLINE"] == "1"
     assert environment["TRANSFORMERS_OFFLINE"] == "1"
