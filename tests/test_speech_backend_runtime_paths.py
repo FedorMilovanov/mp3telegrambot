@@ -30,7 +30,7 @@ def test_voxcpm2_direct_backend_owns_monolithic_runtime_paths(tmp_path: Path) ->
         "Scripts/python.exe" if os.name == "nt" else "bin/python"
     )
     example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
-    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v1"
+    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
     assert BACKEND_RUNTIME_PATH_POLICY == "speech-backend-runtime-paths-v1"
     assert runtime.backend_id == "voxcpm2"
     assert runtime.cpu_python == expected_python.resolve()
