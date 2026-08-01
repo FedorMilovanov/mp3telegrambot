@@ -108,7 +108,7 @@ def test_candidate_fit_tempo_has_preferred_and_hard_boundaries() -> None:
 
 
 def test_adaptive_profiles_add_two_bounded_rescue_attempts() -> None:
-    assert ADAPTIVE_RETRY_POLICY == "direct-candidate-adaptive-retry-v1"
+    assert ADAPTIVE_RETRY_POLICY == "stable-identity-candidate-retry-v2"
     profiles = [_generation_profile(index, 1.9, 16) for index in range(1, 6)]
 
     assert len(set(profiles)) == 5
