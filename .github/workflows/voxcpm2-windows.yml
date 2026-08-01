@@ -8,9 +8,11 @@ on:
       - "config/tts_models/*.json"
       - "requirements-lock.txt"
       - "tools/check_tts_model_catalog.py"
+      - "tools/check_tts_weighted_runner_provisioning.py"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
       - "services/tts_profile_selection.py"
+      - "services/tts_weighted_runner_provisioning.py"
       - "services/dub_preflight.py"
       - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
@@ -31,9 +33,11 @@ on:
       - "config/tts_models/*.json"
       - "requirements-lock.txt"
       - "tools/check_tts_model_catalog.py"
+      - "tools/check_tts_weighted_runner_provisioning.py"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
       - "services/tts_profile_selection.py"
+      - "services/tts_weighted_runner_provisioning.py"
       - "services/dub_preflight.py"
       - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
@@ -93,8 +97,8 @@ jobs:
       - name: Compile backend and VoxCPM2 surfaces
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/dub_preflight.py services/dub_rendering.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard tools/voxcpm2
-          python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py tools/check_tts_model_catalog.py
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/tts_weighted_runner_provisioning.py services/dub_preflight.py services/dub_rendering.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard tools/voxcpm2
+          python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py tools/check_tts_model_catalog.py tools/check_tts_weighted_runner_provisioning.py
           if ($LASTEXITCODE -ne 0) {
             throw "Backend/VoxCPM2 compile failed."
           }
@@ -155,6 +159,9 @@ jobs:
           tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_tts_profile_selection.py
+          tests/test_tts_weighted_runner_provisioning.py
+          tests/test_tts_weighted_runner_provisioning_cli.py
+          tests/test_tts_weighted_runner_provisioning_powershell.py
           tests/test_generic_project_runtime_contract.py
           tests/test_dub_wizard.py
           tests/test_dub_wizard_request_writer.py
@@ -175,6 +182,7 @@ jobs:
           python -m ruff check
           services/speech_backends
           services/tts_profile_selection.py
+          services/tts_weighted_runner_provisioning.py
           services/dub_preflight.py
           services/dub_rendering.py
           services/dub_worker_release.py
@@ -183,6 +191,7 @@ jobs:
           handlers/dub_wizard.py
           handlers/dub_wizard
           tools/check_tts_model_catalog.py
+          tools/check_tts_weighted_runner_provisioning.py
           tools/voxcpm2
           tests/test_backend_generation_execution_plan.py
           tests/test_speech_backend_command_contract.py
@@ -196,6 +205,9 @@ jobs:
           tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_tts_profile_selection.py
+          tests/test_tts_weighted_runner_provisioning.py
+          tests/test_tts_weighted_runner_provisioning_cli.py
+          tests/test_tts_weighted_runner_provisioning_powershell.py
           tests/test_generic_project_runtime_contract.py
           tests/test_dub_wizard.py
           tests/test_dub_wizard_request_writer.py
