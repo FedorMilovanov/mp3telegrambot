@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from services.dub_worker_release import WORKER_RUNTIME
+from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY, WORKER_RUNTIME
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "dub_health.py"
 _SPEC = importlib.util.spec_from_file_location(
@@ -245,8 +245,7 @@ def _quality_runtime_contract() -> tuple[bool, str]:
         and bool(getattr(backend.capabilities(), "continuation_context", False))
         and direct_max_quality_cli.CONTINUATION_POLICY
         == "backend-capability-gated-previous-block-prompt-v2"
-        and source_prosody_policy.POLICY
-        == "diagnostic-only-no-cross-language-ranking-v1"
+        and source_prosody_policy.POLICY == SOURCE_PROSODY_ROLE_POLICY
     )
     return ok, (
         f"tempo={direct_max_quality_io.PREFERRED_MAX_TEMPO}/"
