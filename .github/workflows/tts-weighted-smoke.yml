@@ -14,8 +14,7 @@ on:
         default: '4.0'
         type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: tts-weighted-smoke
@@ -26,6 +25,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64, tts-weights]
     timeout-minutes: 90
+    permissions:
+      contents: read
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
@@ -238,3 +239,159 @@ jobs:
           if (Test-Path -LiteralPath $AttestationDir) {
             Remove-Item -LiteralPath $AttestationDir -Recurse -Force
           }
+
+  acceptance-closeout:
+    name: Verify artifact and close acceptance issue
+    needs: weighted-smoke
+    if: needs.weighted-smoke.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      TTS_SMOKE_EXPECTED_PROFILE: ${{ inputs.profile_id }}
+      TTS_SMOKE_ACCEPTANCE_ISSUE: '72'
+      TTS_SMOKE_ACCEPTANCE_TITLE: Provision tts-weights runner and execute first attested weighted smoke
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Setup verifier Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install locked verifier dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+
+      - name: Download exact attestation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tts-weighted-smoke-attestation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: downloaded-attestation
+
+      - name: Verify downloaded attestation
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/verify_tts_weighted_smoke_attestation.py \
+            --artifact-directory downloaded-attestation \
+            --expected-repository "$GITHUB_REPOSITORY" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-run-id "$GITHUB_RUN_ID" \
+            --expected-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --expected-profile-id "$TTS_SMOKE_EXPECTED_PROFILE" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Close accepted weighted smoke issue
+        uses: actions/github-script@v7
+        env:
+          ATTESTATION_DIGEST: ${{ steps.verify.outputs.attestation_digest }}
+          ATTESTATION_COMMIT: ${{ steps.verify.outputs.commit_sha }}
+          ATTESTATION_RUN_ID: ${{ steps.verify.outputs.run_id }}
+          ATTESTATION_RUN_ATTEMPT: ${{ steps.verify.outputs.run_attempt }}
+          ATTESTATION_PROFILE: ${{ steps.verify.outputs.profile_id }}
+          ATTESTATION_MODEL_REVISION: ${{ steps.verify.outputs.model_revision }}
+          ATTESTATION_BACKEND: ${{ steps.verify.outputs.backend_id }}
+          ATTESTATION_DURATION: ${{ steps.verify.outputs.output_duration_seconds }}
+          ATTESTATION_SAMPLE_RATE: ${{ steps.verify.outputs.output_sample_rate }}
+          ATTESTATION_AUDIO_RETAINED: ${{ steps.verify.outputs.audio_retained }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const issueNumber = Number(process.env.TTS_SMOKE_ACCEPTANCE_ISSUE);
+            if (!Number.isSafeInteger(issueNumber) || issueNumber !== 72) {
+              throw new Error('Unexpected weighted smoke acceptance issue number.');
+            }
+            const expectedTitle = process.env.TTS_SMOKE_ACCEPTANCE_TITLE;
+            const digest = process.env.ATTESTATION_DIGEST || '';
+            const commit = process.env.ATTESTATION_COMMIT || '';
+            const runId = process.env.ATTESTATION_RUN_ID || '';
+            const runAttempt = process.env.ATTESTATION_RUN_ATTEMPT || '';
+            const profile = process.env.ATTESTATION_PROFILE || '';
+            const revision = process.env.ATTESTATION_MODEL_REVISION || '';
+            const backend = process.env.ATTESTATION_BACKEND || '';
+            const duration = process.env.ATTESTATION_DURATION || '';
+            const sampleRate = process.env.ATTESTATION_SAMPLE_RATE || '';
+            const audioRetained = process.env.ATTESTATION_AUDIO_RETAINED || '';
+            if (!/^[0-9a-f]{64}$/.test(digest) || !/^[0-9a-f]{40}$/.test(commit)) {
+              throw new Error('Invalid attestation digest or commit output.');
+            }
+            if (!/^\d+$/.test(runId) || !/^\d+$/.test(runAttempt)) {
+              throw new Error('Invalid attestation run identity output.');
+            }
+            if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,94}[A-Za-z0-9]$/.test(profile)) {
+              throw new Error('Invalid attestation profile output.');
+            }
+            if (audioRetained !== 'false') {
+              throw new Error('Attestation does not confirm audio cleanup.');
+            }
+            const response = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+            const issue = response.data;
+            if (issue.pull_request || issue.title !== expectedTitle) {
+              throw new Error('Acceptance issue identity does not match the trusted contract.');
+            }
+            if (issue.state === 'closed') {
+              core.info('Weighted smoke acceptance issue is already closed; no duplicate comment added.');
+              return;
+            }
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const artifactName = `tts-weighted-smoke-attestation-${runId}-${runAttempt}`;
+            const body = [
+              '✅ Первый реальный weighted TTS smoke прошёл и аттестация повторно проверена hosted closeout job.',
+              '',
+              `- Run: ${runUrl}`,
+              `- Commit: \`${commit}\``,
+              `- Profile: \`${profile}\``,
+              `- Revision: \`${revision}\``,
+              `- Backend: \`${backend}\``,
+              `- Output: ${duration} s, ${sampleRate} Hz, mono PCM-24`,
+              `- Audio retained: \`${audioRetained}\``,
+              `- Artifact: \`${artifactName}\``,
+              `- Attestation SHA-256: \`${digest}\``,
+              '',
+              'Issue закрыт автоматически только после успешного artifact upload, повторной digest/identity validation и подтверждения удаления generated audio.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+
+      - name: Publish acceptance closeout summary
+        shell: bash
+        run: |
+          {
+            echo '## Weighted TTS acceptance closeout'
+            echo
+            echo '- Downloaded artifact inventory: exactly one attestation.json'
+            echo '- Digest and GitHub run identity: verified'
+            echo '- Audio retained: false'
+            echo '- Acceptance issue: checked and closed when previously open'
+          } >> "$GITHUB_STEP_SUMMARY"
