@@ -23,6 +23,7 @@ from typing import Any, Iterator
 import uuid
 
 from services.dub_studio import DubStore
+from services.dub_worker_release import WORKER_RUNTIME
 from tools.voxcpm2 import clean_production_core
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import generic_project_runtime
@@ -386,7 +387,7 @@ def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
                     status="busy",
                     current_job_id=job_id,
                     details={
-                        "runtime": "dub-worker-quality-v4.6",
+                        "runtime": WORKER_RUNTIME,
                         "project_id": project_id,
                         "action": action,
                         "progress": 1,
