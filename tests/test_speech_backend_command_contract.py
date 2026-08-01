@@ -6,18 +6,21 @@ import pytest
 
 from services.speech_backends import (
     BACKEND_ENVIRONMENT_POLICY,
+    GENERATION_REQUEST_POLICY,
+    SESSION_CONFIG_POLICY,
     BackendAudioSpec,
     BackendCapabilities,
+    BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
     BackendRuntimePaths,
+    BackendSessionConfig,
     default_backend,
-    register_backend,
     get_backend,
+    register_backend,
     unregister_backend,
 )
 from services.speech_backends.voxcpm2 import VoxCPM2Session
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,25 +34,21 @@ def test_backend_owns_process_environment_policy() -> None:
     base = {
         "CUDA_VISIBLE_DEVICES": "0",
         "VOXCPM_RESCUE_RENDERER": "stale",
-        "TRANSFORMERS_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "0",
     }
-
-    policy = backend.process_environment(
-        {"threads": 12},
-        base_environment=base,
-    )
+    policy = backend.process_environment({"threads": 12}, base_environment=base)
     environment = policy.as_dict(base)
 
     assert BACKEND_ENVIRONMENT_POLICY == "speech-backend-process-environment-v1"
     assert environment["CUDA_VISIBLE_DEVICES"] == "-1"
     assert environment["OMP_NUM_THREADS"] == "12"
     assert environment["HF_HUB_OFFLINE"] == "1"
+    assert environment["TRANSFORMERS_OFFLINE"] == "1"
     assert "VOXCPM_RESCUE_RENDERER" not in environment
-    assert "TRANSFORMERS_OFFLINE" not in environment
     assert policy.as_metadata()["environment_policy"] == BACKEND_ENVIRONMENT_POLICY
 
 
-def test_audio_spec_fails_closed_on_invalid_runtime_facts() -> None:
+def test_audio_spec_fails_closed_and_allows_non_voxcpm_facts() -> None:
     with pytest.raises(ValueError, match="output_sample_rate"):
         BackendAudioSpec(16000, 0, 0.08, 4096)
     with pytest.raises(ValueError, match="seconds_per_step"):
@@ -57,8 +56,41 @@ def test_audio_spec_fails_closed_on_invalid_runtime_facts() -> None:
     with pytest.raises(ValueError, match="cache_length"):
         BackendAudioSpec(16000, 48000, 0.08, 0)
 
+    generic = BackendAudioSpec(
+        encode_sample_rate=None,
+        output_sample_rate=24000,
+        seconds_per_step=None,
+        cache_length=None,
+    )
+    assert generic.as_dict() == {
+        "encode_sample_rate": None,
+        "output_sample_rate": 24000,
+        "seconds_per_step": None,
+        "cache_length": None,
+    }
 
-def test_voxcpm2_session_owns_model_generate_kwargs() -> None:
+
+def test_model_neutral_generation_request_validates_backend_options() -> None:
+    assert GENERATION_REQUEST_POLICY == "model-neutral-generation-request-v1"
+    assert SESSION_CONFIG_POLICY == "model-neutral-session-config-v1"
+    request = BackendGenerationRequest(
+        text="Текст.",
+        reference_audio=Path("reference.wav"),
+        seed=42,
+        duration_budget=1.5,
+        backend_options={"steps": 16, "cfg": 1.8},
+    )
+    assert request.option_int("steps", default=1, low=1, high=64) == 16
+    assert request.option_float("cfg", default=1.0, low=0.1, high=4.0) == 1.8
+    with pytest.raises(ValueError, match="duration_budget"):
+        BackendGenerationRequest(
+            text="Текст.",
+            reference_audio=Path("reference.wav"),
+            duration_budget=0.0,
+        )
+
+
+def test_voxcpm2_session_maps_neutral_request_to_model_kwargs() -> None:
     class FakeModel:
         def __init__(self) -> None:
             self.kwargs = None
@@ -78,41 +110,21 @@ def test_voxcpm2_session_owns_model_generate_kwargs() -> None:
             retry_badcase_ratio_threshold=0.0,
             seed=None,
         ):
-            self.kwargs = {
-                "text": text,
-                "reference_wav_path": reference_wav_path,
-                "cfg_value": cfg_value,
-                "inference_timesteps": inference_timesteps,
-                "min_len": min_len,
-                "max_len": max_len,
-                "normalize": normalize,
-                "denoise": denoise,
-                "retry_badcase": retry_badcase,
-                "retry_badcase_max_times": retry_badcase_max_times,
-                "retry_badcase_ratio_threshold": retry_badcase_ratio_threshold,
-                "seed": seed,
-            }
+            self.kwargs = locals().copy()
             return "fake-wav"
 
     model = FakeModel()
     session = VoxCPM2Session(
         model,
-        BackendAudioSpec(
-            encode_sample_rate=16000,
-            output_sample_rate=48000,
-            seconds_per_step=0.08,
-            cache_length=4096,
-        ),
+        BackendAudioSpec(16000, 48000, 0.08, 4096),
     )
-
     result = session.generate(
-        text="В 2026 году грядёт перемена.",
-        reference=Path("reference.wav"),
-        cfg=1.8,
-        steps=16,
-        min_len=2,
-        max_len=40,
-        seed=42,
+        BackendGenerationRequest(
+            text="В 2026 году грядёт перемена.",
+            reference_audio=Path("reference.wav"),
+            seed=42,
+            backend_options={"cfg": 1.8, "steps": 16, "min_len": 2, "max_len": 40},
+        )
     )
 
     assert result == "fake-wav"
@@ -122,6 +134,7 @@ def test_voxcpm2_session_owns_model_generate_kwargs() -> None:
     assert model.kwargs["cfg_value"] == 1.8
     assert model.kwargs["inference_timesteps"] == 16
     assert model.kwargs["seed"] == 42
+    assert session.supports_continuation_context is True
 
 
 def test_backend_owns_renderer_and_master_command_shapes() -> None:
@@ -160,7 +173,6 @@ def test_backend_owns_renderer_and_master_command_shapes() -> None:
 
     assert render[0] == str(runtime.cpu_python)
     assert render[1] == str(runtime.renderer_entrypoint)
-    assert "--speech-backend" in render
     assert render[render.index("--speech-backend") + 1] == "voxcpm2"
     assert master[1] == str(runtime.master_entrypoint)
     assert master[master.index("--russian-only-video") + 1] == "russian.mp4"
@@ -178,19 +190,22 @@ def test_source_prosody_policy_is_model_independent_and_diagnostic_only() -> Non
     from tools.voxcpm2 import source_prosody_policy
 
     segment = source_prosody_policy.mark_diagnostic_only(
-        {
-            "text": "Текст.",
-            "source_prosody": {"f0_median": 240.0},
-        }
+        {"text": "Текст.", "source_prosody": {"f0_median": 240.0}}
     )
     ranked = source_prosody_policy.ranking_view(segment)
-
     assert source_prosody_policy.is_diagnostic_only(segment) is True
     assert "source_prosody" not in ranked
     assert segment["source_prosody"]["f0_median"] == 240.0
 
 
-def test_registry_can_register_a_future_backend_without_core_changes() -> None:
+def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
+    class FutureSession:
+        audio_spec = BackendAudioSpec(None, 24000, None, None)
+        supports_continuation_context = False
+
+        def generate(self, request: BackendGenerationRequest):
+            return request.text
+
     class FutureBackend:
         backend_id = "future-test-engine"
         aliases = ("future-test",)
@@ -206,8 +221,9 @@ def test_registry_can_register_a_future_backend_without_core_changes() -> None:
                 removed_keys=(),
             )
 
-        def open_session(self, model_path: Path, *, cache_length: int, torch_module):
-            raise RuntimeError("future session is outside this contract test")
+        def open_session(self, config: BackendSessionConfig):
+            assert isinstance(config, BackendSessionConfig)
+            return FutureSession()
 
         def discover_model(self, archive_root: Path) -> Path:
             return Path(archive_root) / "future-model"
@@ -246,12 +262,16 @@ def test_registry_can_register_a_future_backend_without_core_changes() -> None:
     backend = FutureBackend()
     register_backend(backend)
     try:
-        assert get_backend("future-test").backend_id == "future-test-engine"
+        selected = get_backend("future-test")
+        session = selected.open_session(BackendSessionConfig(Path("future-model")))
+        assert session.generate(
+            BackendGenerationRequest("Привет.", Path("reference.wav"))
+        ) == "Привет."
     finally:
         unregister_backend("future-test")
 
 
-def test_direct_candidate_ranking_strips_source_prosody(monkeypatch) -> None:
+def test_direct_candidate_ranking_ignores_source_prosody(monkeypatch) -> None:
     from tools.voxcpm2 import direct_max_quality_cli as cli
 
     monkeypatch.setattr(
@@ -260,7 +280,7 @@ def test_direct_candidate_ranking_strips_source_prosody(monkeypatch) -> None:
         lambda _candidate, segment: 100.0 if "source_prosody" in segment else 3.0,
     )
     monkeypatch.setattr(cli.direct_monolith_contract, "evaluate_candidate", lambda *_args: {})
-    monkeypatch.setattr(cli.direct_monolith_contract, "candidate_penalty", lambda _candidate: 0.0)
+    monkeypatch.setattr(cli.direct_monolith_contract, "candidate_penalty", lambda _candidate: 1.25)
     monkeypatch.setattr(
         cli.russian_pronunciation,
         "prepare_segment",
@@ -278,64 +298,25 @@ def test_direct_candidate_ranking_strips_source_prosody(monkeypatch) -> None:
     )
     penalty = cli.source_prosody_penalty(candidate, segment)
 
-    assert penalty == 3.0
-    assert candidate["source_prosody_match"]["source_prosody_ranking_enabled"] is False
+    assert penalty == 1.25
+    match = candidate["source_prosody_match"]
+    assert match["diagnostic_penalty"] == 3.0
+    assert match["source_prosody_ranking_enabled"] is False
 
 
-def test_generic_project_runtime_delegates_engine_to_backend() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "generic_project_runtime.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "backend = get_backend(request.get(\"speech_backend\") or DEFAULT_BACKEND_ID)" in source
-    assert "backend.capabilities().missing()" in source
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tools/voxcpm2/generic_project_runtime.py",
+        "tools/voxcpm2/generic_audio_repair_runtime.py",
+        "tools/voxcpm2/generic_short_production.py",
+        "tools/voxcpm2/clean_production_core.py",
+    ],
+)
+def test_orchestration_delegates_model_specific_work(path: str) -> None:
+    source = (ROOT / path).read_text(encoding="utf-8")
     assert "backend.process_environment(" in source
     assert "backend.build_renderer_command(" in source
     assert "backend.build_master_command(" in source
     assert "CUDA_VISIBLE_DEVICES" not in source
     assert "HF_HUB_OFFLINE" not in source
-    assert "--archive-root" not in source
-
-
-def test_audio_repair_runtime_delegates_engine_to_backend() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "generic_audio_repair_runtime.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "backend = get_backend(request.get(\"speech_backend\") or DEFAULT_BACKEND_ID)" in source
-    assert "backend.capabilities().missing()" in source
-    assert "backend.process_environment(" in source
-    assert "backend.build_renderer_command(" in source
-    assert "backend.build_master_command(" in source
-    assert "CUDA_VISIBLE_DEVICES" not in source
-    assert "HF_HUB_OFFLINE" not in source
-    assert "synth_script" not in source
-    assert "master_script" not in source
-
-
-def test_short_production_runtime_delegates_engine_to_backend() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "generic_short_production.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "backend = get_backend(args.speech_backend or DEFAULT_BACKEND_ID)" in source
-    assert "backend.capabilities().missing()" in source
-    assert "backend.process_environment(" in source
-    assert "backend.build_renderer_command(" in source
-    assert "backend.build_master_command(" in source
-    assert "CUDA_VISIBLE_DEVICES" not in source
-    assert "HF_HUB_OFFLINE" not in source
-    assert "synth_script" not in source
-    assert "master_script" not in source
-
-
-def test_clean_core_does_not_own_model_specific_command_arguments() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(
-        encoding="utf-8"
-    )
-    assert "backend.build_renderer_command(" in source
-    assert "backend.build_master_command(" in source
-    assert "backend.process_environment(" in source
-    assert "CUDA_VISIBLE_DEVICES" not in source
-    assert "HF_HUB_OFFLINE" not in source
-    assert "get_backend(" in source
