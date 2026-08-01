@@ -22,4 +22,4 @@ def test_audio_repair_recipe_is_clean_utility_action() -> None:
     assert action["kind"] == "utility"
     assert action["runner"] == "python_module"
     assert action["module"] == "tools.voxcpm2.generic_clean_audio_repair_runtime"
-    assert action.get("parameters", []) == []
+    assert action.get("parameters", {}) == {}
