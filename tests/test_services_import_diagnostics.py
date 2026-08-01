@@ -73,10 +73,33 @@ def test_bootstrap_events_are_structured_and_emitted_explicitly(monkeypatch) -> 
     assert output[1].startswith("⚠️ Fixture failure: broken")
 
 
+def test_transitive_output_is_captured_without_being_lost(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(services, "_BOOTSTRAP_EVENTS", [])
+
+    with services._capture_bootstrap_output("Fixture import"):
+        print("stdout sentinel")
+        print("stderr sentinel", file=sys.stderr)
+
+    captured = capsys.readouterr()
+    events = services.service_bootstrap_events()
+
+    assert captured.out == ""
+    assert captured.err == ""
+    assert [event["component"] for event in events] == [
+        "Fixture import captured stdout",
+        "Fixture import captured stderr",
+    ]
+    assert events[0]["detail"] == "stdout sentinel"
+    assert events[1]["detail"] == "stderr sentinel"
+
+
 def test_bot_entrypoint_configures_stdio_before_emoji_diagnostics() -> None:
     source = (ROOT / "bot_new.py").read_text(encoding="utf-8")
 
-    configure_call = source.index("_configure_stdio()")
+    configure_call = source.index("\n_configure_stdio()\n")
     first_emoji_print = min(
         source.index('print("❌'),
         source.index('print("⚠️'),
@@ -94,3 +117,4 @@ def test_services_package_has_no_import_time_print_calls() -> None:
 
     assert "print(" not in before_finder
     assert "_record_bootstrap(" in before_finder
+    assert "_capture_bootstrap_output(" in before_finder
