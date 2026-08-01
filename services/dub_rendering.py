@@ -93,6 +93,7 @@ def run_speech_master_validation(
     )
     backend = selection.backend
     capabilities = selection.capabilities
+    model_contract = selection.model_contract
     model_profile = selection.model_profile
     resolution = selection.resolution
     request = dict(resolution.request)
@@ -198,6 +199,7 @@ def run_speech_master_validation(
         "schema_version": 2,
         "policy": DUB_RENDERING_POLICY,
         "speech_backend": backend.identity(runtime.archive_root).as_dict(),
+        "speech_model_contract": model_contract.as_dict(),
         "speech_model_profile": model_profile.as_dict(),
         "speech_model_resolution": resolution.as_dict(),
         "capabilities": capabilities.as_dict(),
