@@ -89,10 +89,12 @@ def _backend_contract() -> tuple[bool, str]:
         CONTROL_PLANE_POLICY,
         DEFAULT_BACKEND_ID,
         GENERATION_LENGTH_POLICY,
+        GENERATION_LENGTH_REQUEST_POLICY,
         GENERATION_REQUEST_POLICY,
         SESSION_CONFIG_POLICY,
         BackendAudioSpec,
         BackendGenerationLengthPlan,
+        BackendGenerationLengthRequest,
         BackendGenerationRequest,
         REQUIRED_PRODUCTION_CAPABILITIES,
         backend_ids,
@@ -125,12 +127,14 @@ def _backend_contract() -> tuple[bool, str]:
         duration_budget=4.0,
         backend_options={},
     )
-    length_plan = backend.plan_generation_length(
-        planner_spec,
+    length_request = BackendGenerationLengthRequest(
         duration_budget=4.0,
         attempt=3,
         previous_output_durations=(1.0, 1.5),
+        minimum_completion_ratio=0.58,
+        metadata={"source": "health"},
     )
+    length_plan = backend.plan_generation_length(planner_spec, length_request)
     plan_payload = (
         length_plan.as_dict()
         if isinstance(length_plan, BackendGenerationLengthPlan)
@@ -140,6 +144,8 @@ def _backend_contract() -> tuple[bool, str]:
         BACKEND_CONTRACT_POLICY.startswith("speech-backend-contract-v")
         and CONTROL_PLANE_POLICY == "speech-backend-control-plane-v1"
         and GENERATION_LENGTH_POLICY == "model-neutral-generation-length-plan-v1"
+        and GENERATION_LENGTH_REQUEST_POLICY
+        == "model-neutral-generation-length-request-v1"
         and GENERATION_REQUEST_POLICY == "model-neutral-generation-request-v1"
         and SESSION_CONFIG_POLICY == "model-neutral-session-config-v1"
         and backend_ids() == ("voxcpm2",)
@@ -149,16 +155,23 @@ def _backend_contract() -> tuple[bool, str]:
         and neutral_spec.output_sample_rate == 48_000
         and request.text
         and request.duration_budget == 4.0
+        and isinstance(length_request, BackendGenerationLengthRequest)
+        and length_request.minimum_completion_ratio == 0.58
         and isinstance(length_plan, BackendGenerationLengthPlan)
         and length_plan.backend_id == backend.backend_id
-        and length_plan.duration_budget == 4.0
-        and length_plan.attempt == 3
+        and length_plan.duration_budget == length_request.duration_budget
+        and length_plan.attempt == length_request.attempt
         and bool(length_plan.backend_options)
         and plan_payload.get("generation_length_policy") == GENERATION_LENGTH_POLICY
+        and (length_plan.metadata.get("length_request") or {}).get(
+            "generation_length_request_policy"
+        )
+        == GENERATION_LENGTH_REQUEST_POLICY
     )
     detail = (
         f"{BACKEND_CONTRACT_POLICY}; control={CONTROL_PLANE_POLICY}; "
-        f"length={GENERATION_LENGTH_POLICY}; backend={selection.backend_id}; "
+        f"length={GENERATION_LENGTH_POLICY}; length_request={GENERATION_LENGTH_REQUEST_POLICY}; "
+        f"backend={selection.backend_id}; "
         f"plan={length_plan.backend_id if isinstance(length_plan, BackendGenerationLengthPlan) else 'invalid'}; "
         f"missing={list(missing)}"
     )
@@ -276,6 +289,7 @@ def _quality_runtime_contract() -> tuple[bool, str]:
         <= direct_max_quality_io.MAX_TEMPO
         and direct_max_quality_io.MAX_TEMPO <= 1.50
         and callable(direct_max_quality_io.speech_slot_seconds)
+        and callable(direct_max_quality_cli._build_generation_length_request)
         and callable(direct_max_quality_cli._backend_generate)
         and callable(direct_max_quality_render.fit_without_slowdown)
         and callable(direct_timeline_delivery_qa.verify_timeline_delivery)
