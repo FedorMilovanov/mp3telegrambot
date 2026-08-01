@@ -148,6 +148,7 @@ jobs:
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
           tests/test_voxcpm2_typed_generation_contract.py
+          tests/test_voxcpm2_typed_session_contract.py
           tests/test_semantic_block_runtime.py
           tests/test_final_media_qa.py
           tests/test_dub_wizard_request_writer.py
@@ -192,5 +193,6 @@ jobs:
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
           tests/test_voxcpm2_typed_generation_contract.py
+          tests/test_voxcpm2_typed_session_contract.py
       - name: Whitespace integrity
         run: git diff --check
