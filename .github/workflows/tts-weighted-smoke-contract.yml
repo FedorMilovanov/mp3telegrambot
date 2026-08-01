@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: tts-weighted-smoke-contract-${{ github.ref }}-${{ matrix.os }}
+  group: tts-weighted-smoke-contract-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
