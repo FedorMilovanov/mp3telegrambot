@@ -62,7 +62,14 @@ def run_speech_master_validation(
     audio_dir = root / "audio"
     segment_work = root / "segment_work"
     master_work = root / "master_work"
-    for directory in (reference_dir, audio_dir, segment_work, master_work):
+    output_dir = root / "output"
+    for directory in (
+        reference_dir,
+        audio_dir,
+        segment_work,
+        master_work,
+        output_dir,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
     references = reference_strategy_for_backend(backend.backend_id).prepare(
@@ -83,10 +90,13 @@ def run_speech_master_validation(
     cfg = float(request.get("cfg") or 1.8)
     video_id = str(request["video_id"])
     russian_timeline = audio_dir / f"{video_id}_ru_timeline.wav"
+    execution_plan_log = output_dir / "backend_generation_execution_plans.jsonl"
+    execution_plan_log.unlink(missing_ok=True)
     env = backend.process_environment(
         {"threads": threads, "speech_backend": backend.backend_id},
         base_environment=os.environ,
     ).as_dict(os.environ)
+    env["DUB_BACKEND_EXECUTION_PLAN_LOG"] = str(execution_plan_log)
 
     synth = backend.build_renderer_command(
         runtime,
@@ -110,6 +120,10 @@ def run_speech_master_validation(
         env=env,
         label=f"Speech backend {backend.backend_id}",
     )
+    if backend.backend_id == "voxcpm2" and not execution_plan_log.is_file():
+        raise RuntimeError(
+            "VoxCPM2 завершил synthesis без exact execution-plan evidence."
+        )
 
     master = get_media_master(request.get("media_master") or "constant-mix")
     master_runtime = master.runtime_paths(
@@ -128,8 +142,9 @@ def run_speech_master_validation(
         target_lra=float(request.get("target_lra") or 9.0),
         target_tp=float(request.get("target_tp") or -1.0),
     )
+    master_command = master.build_command(master_runtime, master_request)
     _run(
-        master.build_command(master_runtime, master_request),
+        master_command,
         cwd=repo,
         env=env,
         label=f"Media master {master.master_id}",
@@ -151,10 +166,13 @@ def run_speech_master_validation(
         "media_master": master_runtime.as_dict(),
         "final_validation": validation.as_dict(),
         "speech_command": synth,
-        "master_command": master.build_command(master_runtime, master_request),
+        "master_command": master_command,
+        "execution_plan_log": (
+            str(execution_plan_log) if execution_plan_log.is_file() else ""
+        ),
         "timeline": str(russian_timeline),
     }
-    _atomic_json(root / "output" / "render_architecture.json", report)
+    _atomic_json(output_dir / "render_architecture.json", report)
     return russian_timeline
 
 
