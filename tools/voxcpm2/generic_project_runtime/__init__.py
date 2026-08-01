@@ -47,7 +47,9 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "generic-project-runtime-write-through-v5"
+# The write-through facade semantics remain v4. The new speech/master/validator
+# split is versioned independently by services.dub_rendering and media_masters.
+POLICY = "generic-project-runtime-write-through-v4"
 ATOMIC_REPLACE_POLICY = "per-path-serialized-windows-sharing-retry-v1"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
 _REPLACE_ATTEMPTS = 8
