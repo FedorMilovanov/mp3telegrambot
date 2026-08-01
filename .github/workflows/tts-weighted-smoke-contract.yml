@@ -9,9 +9,12 @@ on:
       - 'services/tts_weighted_smoke.py'
       - 'services/tts_weighted_smoke_runner.py'
       - 'services/tts_weighted_smoke_attestation.py'
+      - 'services/tts_weighted_runner_provisioning.py'
       - 'tools/run_tts_weighted_smoke.py'
       - 'tools/check_tts_weighted_smoke_runner.py'
       - 'tools/build_tts_weighted_smoke_attestation.py'
+      - 'tools/check_tts_weighted_runner_provisioning.py'
+      - 'tools/voxcpm2/Prepare-TTSWeightsRunner.ps1'
       - 'tests/test_tts_weighted_smoke.py'
       - 'tests/test_tts_weighted_smoke_cli.py'
       - 'tests/test_tts_weighted_smoke_runner.py'
@@ -19,6 +22,9 @@ on:
       - 'tests/test_tts_weighted_smoke_attestation.py'
       - 'tests/test_tts_weighted_smoke_attestation_cli.py'
       - 'tests/test_tts_weighted_smoke_workflow.py'
+      - 'tests/test_tts_weighted_runner_provisioning.py'
+      - 'tests/test_tts_weighted_runner_provisioning_cli.py'
+      - 'tests/test_tts_weighted_runner_provisioning_powershell.py'
   pull_request:
     branches: ["main"]
     paths:
@@ -27,9 +33,12 @@ on:
       - 'services/tts_weighted_smoke.py'
       - 'services/tts_weighted_smoke_runner.py'
       - 'services/tts_weighted_smoke_attestation.py'
+      - 'services/tts_weighted_runner_provisioning.py'
       - 'tools/run_tts_weighted_smoke.py'
       - 'tools/check_tts_weighted_smoke_runner.py'
       - 'tools/build_tts_weighted_smoke_attestation.py'
+      - 'tools/check_tts_weighted_runner_provisioning.py'
+      - 'tools/voxcpm2/Prepare-TTSWeightsRunner.ps1'
       - 'tests/test_tts_weighted_smoke.py'
       - 'tests/test_tts_weighted_smoke_cli.py'
       - 'tests/test_tts_weighted_smoke_runner.py'
@@ -37,6 +46,9 @@ on:
       - 'tests/test_tts_weighted_smoke_attestation.py'
       - 'tests/test_tts_weighted_smoke_attestation_cli.py'
       - 'tests/test_tts_weighted_smoke_workflow.py'
+      - 'tests/test_tts_weighted_runner_provisioning.py'
+      - 'tests/test_tts_weighted_runner_provisioning_cli.py'
+      - 'tests/test_tts_weighted_runner_provisioning_powershell.py'
 
 permissions:
   contents: read
@@ -76,9 +88,11 @@ jobs:
           services/tts_weighted_smoke.py
           services/tts_weighted_smoke_runner.py
           services/tts_weighted_smoke_attestation.py
+          services/tts_weighted_runner_provisioning.py
           tools/run_tts_weighted_smoke.py
           tools/check_tts_weighted_smoke_runner.py
           tools/build_tts_weighted_smoke_attestation.py
+          tools/check_tts_weighted_runner_provisioning.py
           tests/test_tts_weighted_smoke.py
           tests/test_tts_weighted_smoke_cli.py
           tests/test_tts_weighted_smoke_runner.py
@@ -86,6 +100,31 @@ jobs:
           tests/test_tts_weighted_smoke_attestation.py
           tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
+          tests/test_tts_weighted_runner_provisioning.py
+          tests/test_tts_weighted_runner_provisioning_cli.py
+          tests/test_tts_weighted_runner_provisioning_powershell.py
+      - name: Parse provisioning PowerShell
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $Tokens = $null
+          $ParseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tools/voxcpm2/Prepare-TTSWeightsRunner.ps1').Path,
+            [ref]$Tokens,
+            [ref]$ParseErrors
+          )
+          if ($ParseErrors.Count -gt 0) {
+            foreach ($ErrorItem in $ParseErrors) {
+              Write-Host (
+                'Line {0}, column {1}: {2}' -f
+                $ErrorItem.Extent.StartLineNumber,
+                $ErrorItem.Extent.StartColumnNumber,
+                $ErrorItem.Message
+              )
+            }
+            throw 'Weighted runner provisioning PowerShell contains parse errors.'
+          }
       - name: Run weighted smoke contract tests
         run: >-
           python -m pytest -q
@@ -96,15 +135,20 @@ jobs:
           tests/test_tts_weighted_smoke_attestation.py
           tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
+          tests/test_tts_weighted_runner_provisioning.py
+          tests/test_tts_weighted_runner_provisioning_cli.py
+          tests/test_tts_weighted_runner_provisioning_powershell.py
       - name: Ruff weighted smoke surface
         run: >-
           python -m ruff check
           services/tts_weighted_smoke.py
           services/tts_weighted_smoke_runner.py
           services/tts_weighted_smoke_attestation.py
+          services/tts_weighted_runner_provisioning.py
           tools/run_tts_weighted_smoke.py
           tools/check_tts_weighted_smoke_runner.py
           tools/build_tts_weighted_smoke_attestation.py
+          tools/check_tts_weighted_runner_provisioning.py
           tests/test_tts_weighted_smoke.py
           tests/test_tts_weighted_smoke_cli.py
           tests/test_tts_weighted_smoke_runner.py
@@ -112,5 +156,8 @@ jobs:
           tests/test_tts_weighted_smoke_attestation.py
           tests/test_tts_weighted_smoke_attestation_cli.py
           tests/test_tts_weighted_smoke_workflow.py
+          tests/test_tts_weighted_runner_provisioning.py
+          tests/test_tts_weighted_runner_provisioning_cli.py
+          tests/test_tts_weighted_runner_provisioning_powershell.py
       - name: Whitespace integrity
         run: git diff --check
