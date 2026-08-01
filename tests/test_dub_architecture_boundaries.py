@@ -80,6 +80,6 @@ def test_preflight_plan_consumes_backend_and_media_contracts(monkeypatch, tmp_pa
     signature = _signature(plan)
 
     assert signature["backend"]["backend_id"] == "deterministic-ci"
-    assert signature["speech_runtime"]["output_contract"] if False else True
+    assert signature["speech_runtime"]["backend_id"] == "deterministic-ci"
     assert signature["media_runtime"]["master_id"] == "constant-mix"
     assert "services.media_masters" in signature["modules"]
