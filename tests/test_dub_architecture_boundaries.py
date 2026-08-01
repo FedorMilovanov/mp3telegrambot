@@ -14,6 +14,7 @@ from services.media_masters import (
     get_media_master,
 )
 from services.speech_backends import (
+    RUNTIME_PROFILE_SOURCE_POLICY,
     BackendCapabilities,
     DeterministicSpeechBackend,
     ModelOptionSpec,
@@ -134,6 +135,16 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
         assert signature["speech_model_contract"]["backend_id"] == backend.backend_id
         assert signature["speech_model_profile"]["profile_id"] == profile.profile_id
         assert signature["speech_model_resolution"]["options"]["sample_rate"] == 22050
+        assert signature["speech_model_source"] == {
+            "schema_version": 1,
+            "profile_id": profile.profile_id,
+            "backend_id": backend.backend_id,
+            "model_revision": "fixture-v1",
+            "source": "runtime-registration",
+            "source_kind": "runtime-registration",
+            "source_sha256": "",
+            "manifest_policy": RUNTIME_PROFILE_SOURCE_POLICY,
+        }
         assert signature["speech_runtime"]["backend_id"] == backend.backend_id
         assert signature["media_runtime"]["master_id"] == "constant-mix"
         assert "services.media_masters" in signature["modules"]
