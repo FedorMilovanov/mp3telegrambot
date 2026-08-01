@@ -6,12 +6,13 @@ from typing import Any
 from handlers import dub_health
 from services import dub_studio_runtime
 from services import dub_title_policy
+from services.dub_worker_release import WORKER_RUNTIME
 
 
 def test_supervisor_facade_is_active_without_health_import_order_dependency() -> None:
     assert Path(dub_studio_runtime.__file__).name == "__init__.py"
-    assert dub_studio_runtime._WORKER_RUNTIME == "dub-worker-quality-v6.8"
-    assert dub_studio_runtime._legacy._WORKER_RUNTIME == "dub-worker-quality-v6.8"
+    assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_studio_runtime._legacy._WORKER_RUNTIME == WORKER_RUNTIME
 
 
 def test_supervisor_monkeypatch_assignments_reach_legacy_function_globals() -> None:
