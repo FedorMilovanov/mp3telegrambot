@@ -28,6 +28,7 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+from services.database_migrations import install_database_migrations
 from services.runtime_manifest import (
     RuntimeBootstrapError,
     bootstrap_post_main,
@@ -45,10 +46,11 @@ import main as _main_module
 from main import main
 
 try:
+    install_database_migrations(_main_module)
     bootstrap_post_main(_main_module)
     require_runtime_ready()
-except RuntimeBootstrapError as exc:
-    print(f"❌ Обязательная runtime-композиция не готова: {exc}")
+except (RuntimeBootstrapError, OSError, RuntimeError, ValueError) as exc:
+    print(f"❌ Обязательная runtime-композиция или миграция не готова: {exc}")
     sys.exit(3)
 
 if __name__ == "__main__":
