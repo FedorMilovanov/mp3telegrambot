@@ -19,7 +19,9 @@ import numpy as np
 
 from services.speech_backends import (
     GENERATION_LENGTH_POLICY,
+    GENERATION_LENGTH_REQUEST_POLICY,
     BackendGenerationLengthPlan,
+    BackendGenerationLengthRequest,
     BackendGenerationRequest,
     BackendSessionConfig,
     get_backend,
@@ -74,6 +76,22 @@ from tools.voxcpm2.direct_source_prosody import (
 BASE_CANDIDATE_ATTEMPTS = 3
 MAX_CANDIDATE_ATTEMPTS = 5
 STRONG_CANDIDATE_SCORE = 85.0
+
+
+def _build_generation_length_request(
+    segment: dict[str, Any],
+    *,
+    duration_budget: float,
+    attempt: int,
+    previous_output_durations: tuple[float, ...],
+) -> BackendGenerationLengthRequest:
+    """Build model-neutral evidence before backend-specific length planning."""
+    del segment
+    return BackendGenerationLengthRequest(
+        duration_budget=duration_budget,
+        attempt=attempt,
+        previous_output_durations=previous_output_durations,
+    )
 
 
 def _build_generation_request(
@@ -195,6 +213,7 @@ def _raw_failure_evidence(
         "policy": POLICY,
         "retry_epoch_policy": RETRY_EPOCH_POLICY,
         "generation_length_policy": GENERATION_LENGTH_POLICY,
+        "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
         "failed_epoch": int(retry_epoch),
         "speech_slot": round(float(speech_slot), 6),
         "max_tempo": float(MAX_TEMPO),
@@ -204,6 +223,7 @@ def _raw_failure_evidence(
                 "seed": int(item.get("seed") or 0),
                 "score": round(float(item.get("score") or 0.0), 6),
                 "required_tempo": round(required_tempo(item, speech_slot), 6),
+                "generation_length_request": item.get("generation_length_request") or {},
                 "generation_length_plan": item.get("generation_length_plan") or {},
                 "cadence_failures": [
                     str(value)
@@ -403,6 +423,7 @@ def main() -> None:
                 "adaptive_retry_policy": ADAPTIVE_RETRY_POLICY,
                 "fit_tempo_policy": FIT_TEMPO_POLICY,
                 "generation_length_policy": GENERATION_LENGTH_POLICY,
+                "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
                 "backend_adapter_policy": backend.adapter_policy,
                 "retry_epoch_policy": RETRY_EPOCH_POLICY,
                 "base_attempts": BASE_CANDIDATE_ATTEMPTS,
@@ -470,15 +491,22 @@ def main() -> None:
                     if attempt_index >= 4:
                         break
 
-            length_plan = backend.plan_generation_length(
-                audio_spec,
+            previous_output_durations = tuple(
+                float(item["duration"])
+                for item in candidates
+            )
+            length_request = _build_generation_length_request(
+                segment,
                 duration_budget=speech_slot,
                 attempt=attempt_index,
-                previous_output_durations=tuple(
-                    float(item["duration"])
-                    for item in candidates
-                ),
+                previous_output_durations=previous_output_durations,
             )
+            if not isinstance(length_request, BackendGenerationLengthRequest):
+                raise TypeError(
+                    "Generation length request factory должен вернуть "
+                    "BackendGenerationLengthRequest."
+                )
+            length_plan = backend.plan_generation_length(audio_spec, length_request)
             if not isinstance(length_plan, BackendGenerationLengthPlan):
                 raise TypeError(
                     "Speech backend length planner должен вернуть "
@@ -488,6 +516,13 @@ def main() -> None:
                 raise RuntimeError(
                     "Speech backend length plan принадлежит другому backend: "
                     f"{length_plan.backend_id} != {backend.backend_id}."
+                )
+            if (
+                length_plan.duration_budget != length_request.duration_budget
+                or length_plan.attempt != length_request.attempt
+            ):
+                raise RuntimeError(
+                    "Speech backend length plan не соответствует typed request."
                 )
 
             cfg_value, step_count = _generation_profile(
@@ -540,6 +575,7 @@ def main() -> None:
                 "duration": len(wav_np) / sample_rate,
                 "actual_speech_slot": speech_slot,
                 "speech_slot_policy": SPEECH_SLOT_POLICY,
+                "generation_length_request": length_request.as_dict(),
                 "generation_length_plan": length_plan.as_dict(),
                 "tail_info": tail_info,
                 "leading_silence": leading,
@@ -654,6 +690,7 @@ def main() -> None:
             "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
             "fit_tempo_policy": FIT_TEMPO_POLICY,
             "generation_length_policy": GENERATION_LENGTH_POLICY,
+            "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
             "speech_slot_policy": SPEECH_SLOT_POLICY,
             "speech_slot": speech_slot,
             "retry_epoch_policy": RETRY_EPOCH_POLICY,
@@ -667,6 +704,7 @@ def main() -> None:
             "selected_required_tempo": round(float(selected["required_tempo"]), 6),
             "selected_base_score": round(float(selected["base_score"]), 6),
             "selected_score": round(float(selected["score"]), 6),
+            "selected_generation_length_request": selected["generation_length_request"],
             "selected_generation_length_plan": selected["generation_length_plan"],
             "selected_voice_match": {
                 key: round(float(value), 6)
@@ -707,6 +745,7 @@ def main() -> None:
                         "duration": item["duration"],
                         "actual_speech_slot": item["actual_speech_slot"],
                         "speech_slot_policy": item["speech_slot_policy"],
+                        "generation_length_request": item["generation_length_request"],
                         "generation_length_plan": item["generation_length_plan"],
                         "required_tempo": item["required_tempo"],
                         "fit_tempo_policy": item["fit_tempo_policy"],
@@ -754,21 +793,22 @@ def main() -> None:
     )
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.6-backend-generation-length-plan",
+        "schema_version": "5.7-typed-generation-length-request",
         "policy": POLICY,
         "speech_backend": backend.backend_id,
         "backend_environment": environment_policy.as_metadata(),
         "audio_spec": audio_spec.as_dict(),
         "strategy": (
             f"direct reference-only {backend.backend_id} + guarded references + exact SRT speech slots + "
-            "backend-owned generation length planning + bounded adaptive candidates + "
-            "durable failed-segment seed epochs + pre-selection fit-tempo/artifact/voice/cadence "
-            "hard gates + source-guided prosody ranking + assembled timeline QA + "
-            "no best-of-bad fallback"
+            "typed model-neutral generation length requests + backend-owned length planning + "
+            "bounded adaptive candidates + durable failed-segment seed epochs + "
+            "pre-selection fit-tempo/artifact/voice/cadence hard gates + source-guided prosody "
+            "ranking + assembled timeline QA + no best-of-bad fallback"
         ),
         "candidate_retry_policy": ADAPTIVE_RETRY_POLICY,
         "fit_tempo_policy": FIT_TEMPO_POLICY,
         "generation_length_policy": GENERATION_LENGTH_POLICY,
+        "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
         "speech_slot_policy": SPEECH_SLOT_POLICY,
         "retry_epoch_policy": RETRY_EPOCH_POLICY,
         "base_candidate_attempts": BASE_CANDIDATE_ATTEMPTS,
