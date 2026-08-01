@@ -22,7 +22,8 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v5"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v6"
+GENERATION_CALL_POLICY = "typed-backend-generation-request-v1"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
@@ -71,27 +72,8 @@ class VoxCPM2Session:
         self._model = model
         self.audio_spec = audio_spec
 
-    @staticmethod
-    def _legacy_request(**kwargs: Any) -> BackendGenerationRequest:
-        """Temporary compatibility seam for old callers during the v6.9 rollout."""
-        return BackendGenerationRequest(
-            text=str(kwargs.pop("text")),
-            reference_audio=Path(kwargs.pop("reference")),
-            seed=int(kwargs.pop("seed")) if kwargs.get("seed") is not None else None,
-            continuation_reference=kwargs.pop("continuation_reference", None),
-            continuation_text=str(kwargs.pop("continuation_text", "")),
-            backend_options=kwargs,
-        )
-
-    def generate(
-        self,
-        request: BackendGenerationRequest | None = None,
-        **legacy_kwargs: Any,
-    ) -> Any:
-        if request is None:
-            request = self._legacy_request(**legacy_kwargs)
-        elif legacy_kwargs:
-            raise TypeError("VoxCPM2Session.generate принимает request либо legacy kwargs, но не оба.")
+    def generate(self, request: BackendGenerationRequest) -> Any:
+        """Generate audio from the model-neutral request contract only."""
         if not isinstance(request, BackendGenerationRequest):
             raise TypeError("VoxCPM2Session.generate ожидает BackendGenerationRequest.")
 
@@ -369,6 +351,7 @@ class VoxCPM2Backend:
 
 __all__ = [
     "ADAPTER_POLICY",
+    "GENERATION_CALL_POLICY",
     "MASTER_SELECTION_POLICY",
     "VoxCPM2Backend",
     "VoxCPM2Session",

@@ -6,6 +6,7 @@ import numpy as np
 
 from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY
 from services.speech_backends import default_backend
+from services.speech_backends.voxcpm2 import ADAPTER_POLICY, GENERATION_CALL_POLICY
 from tools.voxcpm2 import source_prosody_policy
 from tools.voxcpm2.direct_max_quality_analysis import (
     candidate_hard_ok,
@@ -216,7 +217,8 @@ def test_model_specific_loading_lives_only_in_backend_adapter() -> None:
     assert "setup_cache(" not in raw_cli
     assert "VoxCPM.from_pretrained" in adapter
     assert "setup_cache(" in adapter
-    assert default_backend().adapter_policy == "voxcpm2-speech-backend-adapter-v5"
+    assert default_backend().adapter_policy == ADAPTER_POLICY
+    assert GENERATION_CALL_POLICY == "typed-backend-generation-request-v1"
     assert "from tools.voxcpm2 import direct_max_quality_cli as _direct_cli" in stable
     assert "VoxCPM.from_pretrained" not in stable
 

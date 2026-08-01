@@ -28,6 +28,7 @@ on:
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
+      - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
@@ -56,6 +57,7 @@ on:
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
+      - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
 
 jobs:
@@ -145,6 +147,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_voxcpm2_typed_generation_contract.py
           tests/test_semantic_block_runtime.py
           tests/test_final_media_qa.py
           tests/test_dub_wizard_request_writer.py
@@ -188,5 +191,6 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_voxcpm2_typed_generation_contract.py
       - name: Whitespace integrity
         run: git diff --check
