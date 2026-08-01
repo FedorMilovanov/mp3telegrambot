@@ -132,6 +132,7 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
         "selection": selection,
         "backend": backend,
         "identity": identity,
+        "model_contract": selection.model_contract,
         "model_profile": selection.model_profile,
         "model_resolution": selection.resolution,
         "speech_runtime": speech_runtime,
@@ -153,6 +154,7 @@ def _signature(plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "policy": POLICY,
         "backend": plan["identity"].as_dict(),
+        "speech_model_contract": plan["model_contract"].as_dict(),
         "speech_model_profile": plan["model_profile"].as_dict(),
         "speech_model_resolution": plan["model_resolution"].as_dict(),
         "speech_runtime": speech.as_dict(),

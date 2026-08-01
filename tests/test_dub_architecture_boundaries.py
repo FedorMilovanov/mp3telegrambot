@@ -18,9 +18,12 @@ from services.speech_backends import (
     DeterministicSpeechBackend,
     ModelOptionSpec,
     SpeechModelProfile,
+    deterministic_model_profile_contract,
     register_backend,
+    register_backend_model_contract,
     register_model_profile,
     unregister_backend,
+    unregister_backend_model_contract,
     unregister_model_profile,
 )
 
@@ -81,6 +84,7 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
     tmp_path: Path,
 ):
     backend = _ProductionDeterministicBackend()
+    contract = deterministic_model_profile_contract(backend.backend_id)
     profile = SpeechModelProfile(
         profile_id="deterministic-production-profile",
         backend_id=backend.backend_id,
@@ -94,6 +98,7 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
         backend_override_keys=("deterministic_archive",),
     )
     register_backend(backend)
+    register_backend_model_contract(contract)
     register_model_profile(profile)
     try:
         project_root = tmp_path / "projects" / "dub-1234567890"
@@ -126,6 +131,7 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
         signature = _signature(plan)
 
         assert signature["backend"]["backend_id"] == backend.backend_id
+        assert signature["speech_model_contract"]["backend_id"] == backend.backend_id
         assert signature["speech_model_profile"]["profile_id"] == profile.profile_id
         assert signature["speech_model_resolution"]["options"]["sample_rate"] == 22050
         assert signature["speech_runtime"]["backend_id"] == backend.backend_id
@@ -133,4 +139,5 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
         assert "services.media_masters" in signature["modules"]
     finally:
         unregister_model_profile(profile.profile_id)
+        unregister_backend_model_contract(backend.backend_id)
         unregister_backend(backend.backend_id)
