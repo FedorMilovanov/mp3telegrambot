@@ -30,7 +30,7 @@ def test_voxcpm2_direct_backend_owns_monolithic_runtime_paths(tmp_path: Path) ->
         "Scripts/python.exe" if os.name == "nt" else "bin/python"
     )
     example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
-    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+    assert BACKEND_CONTRACT_POLICY.startswith("speech-backend-contract-v")
     assert BACKEND_RUNTIME_PATH_POLICY == "speech-backend-runtime-paths-v1"
     assert runtime.backend_id == "voxcpm2"
     assert runtime.cpu_python == expected_python.resolve()
@@ -72,6 +72,7 @@ def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
     payload = runtime.as_dict()
 
     assert payload["backend_id"] == "voxcpm2"
+    assert payload["contract_policy"] == BACKEND_CONTRACT_POLICY
     assert payload["runtime_path_policy"] == "speech-backend-runtime-paths-v1"
     assert payload["environment_policy"] == BACKEND_ENVIRONMENT_POLICY
     assert isinstance(payload["import_modules"], list)

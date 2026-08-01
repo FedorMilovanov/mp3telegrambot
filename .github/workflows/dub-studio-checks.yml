@@ -144,6 +144,7 @@ jobs:
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
+          tests/test_speech_backend_generation_length_plan.py
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
@@ -189,6 +190,7 @@ jobs:
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
+          tests/test_speech_backend_generation_length_plan.py
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py

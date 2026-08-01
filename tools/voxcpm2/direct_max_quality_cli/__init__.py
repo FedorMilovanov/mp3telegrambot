@@ -30,8 +30,8 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "direct-cli-monolithic-voice-v3"
-GENERATION_REQUEST_FACTORY_POLICY = "typed-generation-request-factory-v1"
+POLICY = "direct-cli-monolithic-voice-v4"
+GENERATION_REQUEST_FACTORY_POLICY = "typed-generation-request-factory-v2"
 SYNTHESIS_TEXT_POLICY = russian_pronunciation.POLICY
 PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY
 _CURRENT_ATTEMPT = 1
@@ -49,6 +49,7 @@ def set_continuation_context(reference: Path | None, text: str = "") -> None:
 _legacy_read_segments = _legacy.read_segments
 _legacy_seed_for_attempt = _legacy.seed_for_attempt
 _legacy_generate = _legacy._generate
+_legacy_build_generation_request = _legacy._build_generation_request
 _legacy_source_prosody_penalty = _legacy.source_prosody_penalty
 _legacy_candidate_hard_ok = _legacy.candidate_hard_ok
 _legacy_acceptable_candidates = _legacy._acceptable_candidates
@@ -123,17 +124,24 @@ def _build_generation_request(
     session: Any,
     **kwargs: Any,
 ) -> BackendGenerationRequest:
-    """Translate orchestration facts into one model-neutral generation request."""
-    text = str(kwargs.get("text") or "")
-    reference = Path(kwargs["reference"]).resolve()
-    segment = direct_monolith_contract.current_segment() or {"text": text}
+    """Extend the neutral request without replacing the backend executor."""
+    base_request = _legacy_build_generation_request(session, **kwargs)
+    segment = direct_monolith_contract.current_segment() or {
+        "text": base_request.text,
+    }
     synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
     cadence = str(segment.get("cadence_type") or "")
-    max_len = max(2, int(kwargs.get("max_len") or 2))
+    max_len = base_request.option_int("max_len", default=2, low=2, high=512)
+    planned_min_len = base_request.option_int(
+        "min_len",
+        default=2,
+        low=1,
+        high=512,
+    )
     estimated_steps = max(2, int(math.floor(max_len / 1.40)))
     minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
     controlled_min_len = max(
-        int(kwargs.get("min_len") or 2),
+        planned_min_len,
         int(math.floor(estimated_steps * minimum_ratio)),
     )
     controlled_min_len = min(controlled_min_len, max(2, max_len - 1))
@@ -147,24 +155,17 @@ def _build_generation_request(
         continuation_reference = _CONTINUATION_REFERENCE
         continuation_text = _CONTINUATION_TEXT
 
+    backend_options = dict(base_request.backend_options)
+    backend_options["min_len"] = controlled_min_len
     return BackendGenerationRequest(
         text=synthesis,
-        reference_audio=reference,
-        seed=int(kwargs.get("seed") or 0),
-        duration_budget=(
-            float(segment.get("speech_slot"))
-            if segment.get("speech_slot") is not None
-            else None
-        ),
+        reference_audio=base_request.reference_audio,
+        seed=base_request.seed,
+        duration_budget=base_request.duration_budget,
         style_instruction=str(segment.get("style_instruction") or ""),
         continuation_reference=continuation_reference,
         continuation_text=continuation_text,
-        backend_options={
-            "cfg": float(kwargs.get("cfg") or 0.0),
-            "steps": int(kwargs.get("steps") or 0),
-            "min_len": controlled_min_len,
-            "max_len": max_len,
-        },
+        backend_options=backend_options,
     )
 
 

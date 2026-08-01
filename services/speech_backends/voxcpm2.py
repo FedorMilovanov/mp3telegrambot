@@ -14,6 +14,7 @@ from typing import Any
 from services.speech_backends.base import (
     BackendAudioSpec,
     BackendCapabilities,
+    BackendGenerationLengthPlan,
     BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
@@ -22,8 +23,9 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v7"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v8"
 GENERATION_CALL_POLICY = "typed-backend-generation-request-v1"
+GENERATION_LENGTH_POLICY = "voxcpm2-duration-to-token-window-v1"
 SESSION_CALL_POLICY = "typed-backend-session-config-v1"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
@@ -37,6 +39,13 @@ _LEGACY_MASTER_MODULE = (
 )
 _DIRECT_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"
 _FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
+
+_BASE_MIN_LEN = 2
+_RETRY_MIN_LEN = 4
+_MIN_MAX_LEN = 24
+_MAX_LEN_RATIO = 1.40
+_SHORT_OUTPUT_RATIO = 0.48
+_SHORT_RETRY_MIN_RATIO = 0.42
 
 
 def _request_path(request: dict[str, Any], key: str, default: str) -> Path:
@@ -62,6 +71,20 @@ def _master_contract(
 
 def _needs_normalization(text: str) -> bool:
     return bool(re.search(r"\d|[%№$€£]", text))
+
+
+def _previous_durations(values: tuple[float, ...]) -> tuple[float, ...]:
+    result: list[float] = []
+    for value in values:
+        if isinstance(value, bool):
+            raise ValueError("previous_output_durations не может содержать bool.")
+        number = float(value)
+        if not math.isfinite(number) or number < 0.0:
+            raise ValueError(
+                "previous_output_durations должен содержать конечные числа >= 0."
+            )
+        result.append(number)
+    return tuple(result)
 
 
 class VoxCPM2Session:
@@ -174,6 +197,62 @@ class VoxCPM2Backend:
                 "VOXCPM_RESCUE_RENDERER",
                 "VOXCPM_SEMANTIC_GUARD_VERSION",
             ),
+        )
+
+    def plan_generation_length(
+        self,
+        audio_spec: BackendAudioSpec,
+        *,
+        duration_budget: float,
+        attempt: int,
+        previous_output_durations: tuple[float, ...] = (),
+    ) -> BackendGenerationLengthPlan:
+        """Translate neutral duration evidence into VoxCPM2 token-window options."""
+        if not isinstance(audio_spec, BackendAudioSpec):
+            raise TypeError("VoxCPM2 length planner ожидает BackendAudioSpec.")
+        if audio_spec.seconds_per_step is None:
+            raise RuntimeError(
+                "VoxCPM2 length planner требует audio_spec.seconds_per_step."
+            )
+        if isinstance(attempt, bool) or int(attempt) < 1:
+            raise ValueError("VoxCPM2 attempt должен быть целым числом >= 1.")
+        budget = float(duration_budget)
+        if not math.isfinite(budget) or budget <= 0.0:
+            raise ValueError("VoxCPM2 duration_budget должен быть конечным числом > 0.")
+        previous = _previous_durations(tuple(previous_output_durations))
+        seconds_per_step = float(audio_spec.seconds_per_step)
+        desired_steps = budget / seconds_per_step
+        max_len = max(_MIN_MAX_LEN, int(math.ceil(desired_steps * _MAX_LEN_RATIO)))
+        short_retry = (
+            int(attempt) >= 3
+            and bool(previous)
+            and all(value < budget * _SHORT_OUTPUT_RATIO for value in previous)
+        )
+        min_len = _BASE_MIN_LEN
+        if short_retry:
+            min_len = max(
+                _RETRY_MIN_LEN,
+                int(math.floor(desired_steps * _SHORT_RETRY_MIN_RATIO)),
+            )
+        min_len = min(min_len, max_len - 1)
+        return BackendGenerationLengthPlan(
+            backend_id=self.backend_id,
+            duration_budget=budget,
+            attempt=int(attempt),
+            backend_options={
+                "min_len": min_len,
+                "max_len": max_len,
+            },
+            metadata={
+                "policy": GENERATION_LENGTH_POLICY,
+                "seconds_per_step": seconds_per_step,
+                "desired_steps": desired_steps,
+                "short_retry": short_retry,
+                "previous_output_durations": list(previous),
+                "short_output_ratio": _SHORT_OUTPUT_RATIO,
+                "short_retry_min_ratio": _SHORT_RETRY_MIN_RATIO,
+                "max_len_ratio": _MAX_LEN_RATIO,
+            },
         )
 
     def open_session(
@@ -347,6 +426,7 @@ class VoxCPM2Backend:
 __all__ = [
     "ADAPTER_POLICY",
     "GENERATION_CALL_POLICY",
+    "GENERATION_LENGTH_POLICY",
     "MASTER_SELECTION_POLICY",
     "SESSION_CALL_POLICY",
     "VoxCPM2Backend",

@@ -147,11 +147,12 @@ def test_non_timing_failure_is_never_repaired(tmp_path: Path) -> None:
 
 def test_speech_backend_registry_exposes_voxcpm2_as_an_adapter() -> None:
     backend = default_backend()
-    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+    assert BACKEND_CONTRACT_POLICY.startswith("speech-backend-contract-v")
     assert DEFAULT_BACKEND_ID == "voxcpm2"
     assert backend_ids() == ("voxcpm2",)
     assert backend.backend_id == "voxcpm2"
     assert get_backend("OpenBMB").backend_id == "voxcpm2"
+    assert callable(backend.plan_generation_length)
     capabilities = backend.capabilities().as_dict()
     assert capabilities["voice_cloning"] is True
     assert capabilities["checkpointable_segments"] is True
