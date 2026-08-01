@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY
 from services.speech_backends import default_backend
 from tools.voxcpm2 import source_prosody_policy
 from tools.voxcpm2.direct_max_quality_analysis import (
@@ -91,13 +92,15 @@ def test_48khz_pitch_diagnostic_keeps_male_f0() -> None:
 
 def test_nonsense_high_register_candidate_cannot_win() -> None:
     reference = {"f0_median": 105.0, "f0_p90": 145.0}
-    good = _candidate(
-        duration=3.5,
-        voiced=0.62,
-        median=108.0,
-        p90=149.0,
-        active=0.76,
-        gap=0.10,
+    good = _complete_voice_match(
+        _candidate(
+            duration=3.5,
+            voiced=0.62,
+            median=108.0,
+            p90=149.0,
+            active=0.76,
+            gap=0.10,
+        )
     )
     bad = _candidate(
         duration=0.28,
@@ -159,13 +162,27 @@ def test_bad_candidate_diagnostics_are_actionable() -> None:
     assert "srcProsody=n/a" in summary
 
 
-def test_generation_preserves_final_word_headroom() -> None:
+def test_generation_preserves_final_word_headroom_and_supported_retries() -> None:
     class FakeModel:
         def __init__(self) -> None:
             self.kwargs: dict = {}
 
-        def generate(self, **kwargs):
-            self.kwargs = kwargs
+        def generate(
+            self,
+            *,
+            retry_badcase: bool,
+            retry_badcase_max_times: int,
+            retry_badcase_ratio_threshold: float,
+            seed: int,
+            **kwargs,
+        ):
+            self.kwargs = {
+                **kwargs,
+                "retry_badcase": retry_badcase,
+                "retry_badcase_max_times": retry_badcase_max_times,
+                "retry_badcase_ratio_threshold": retry_badcase_ratio_threshold,
+                "seed": seed,
+            }
             return np.zeros(16, dtype=np.float32)
 
     model = FakeModel()
@@ -182,6 +199,8 @@ def test_generation_preserves_final_word_headroom() -> None:
     assert model.kwargs["max_len"] == 58
     assert model.kwargs["retry_badcase"] is True
     assert model.kwargs["retry_badcase_max_times"] == 2
+    assert model.kwargs["retry_badcase_ratio_threshold"] == 6.0
+    assert model.kwargs["seed"] == 7
 
 
 def test_model_specific_loading_lives_only_in_backend_adapter() -> None:
@@ -212,9 +231,7 @@ def test_source_language_prosody_is_removed_from_candidate_ranking() -> None:
 
     safe = source_prosody_policy.ranking_view(segment)
 
-    assert source_prosody_policy.POLICY == (
-        "diagnostic-only-no-cross-language-ranking-v1"
-    )
+    assert source_prosody_policy.POLICY == SOURCE_PROSODY_ROLE_POLICY
     assert source_prosody_policy.is_diagnostic_only(segment) is True
     assert "source_prosody" not in safe
     assert safe["text"] == segment["text"]
