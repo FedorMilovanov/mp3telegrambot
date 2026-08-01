@@ -288,7 +288,7 @@ def test_service_descriptor_does_not_allow_command_text(
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     (config.runner_directory / ".service").write_text(
-        "actions.runner.owner.repo.service;Remove-Item C:\\data\n",
+        "actions.runner.owner;Remove-Item.repo.service\n",
         encoding="utf-8",
     )
 
