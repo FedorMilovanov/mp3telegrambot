@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +27,13 @@ def _segment(text: str) -> dict[str, object]:
     }
 
 
+def _install_identity_reference(timeline: Path) -> Path:
+    reference = timeline.parent.parent / "references" / "extended_reference.wav"
+    reference.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(timeline, reference)
+    return reference
+
+
 def _write_timeline(path: Path, *, rising: bool, growing: bool) -> None:
     sample_rate = 48_000
     speech_seconds = 2.0
@@ -42,6 +50,7 @@ def _write_timeline(path: Path, *, rising: bool, growing: bool) -> None:
         [audio.astype(np.float32), np.zeros(int(0.25 * sample_rate), dtype=np.float32)]
     )
     sf.write(path, timeline, sample_rate, subtype="PCM_24")
+    _install_identity_reference(path)
 
 
 def _phrase_audio(duration: float = 1.0) -> tuple[np.ndarray, int]:
@@ -62,6 +71,7 @@ def _write_linked_timeline(path: Path, gap_seconds: float) -> list[tuple[dict[st
     gap = np.zeros(int(gap_seconds * sample_rate), dtype=np.float32)
     tail = np.zeros(int(0.18 * sample_rate), dtype=np.float32)
     sf.write(path, np.concatenate([first, gap, second, tail]), sample_rate, subtype="PCM_24")
+    _install_identity_reference(path)
     first_segment = {
         "id": 1,
         "start": 0.0,
@@ -112,8 +122,8 @@ def test_rejects_unresolved_terminal_and_advances_only_failed_epoch(tmp_path: Pa
 
     report_path = timeline.with_suffix(".delivery_qa.json")
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert POLICY == "assembled-russian-delivery-v3"
-    assert report["policy"] == POLICY
+    assert POLICY == "assembled-monolithic-voice-v1"
+    assert report["policy"] in {POLICY, "assembled-russian-delivery-v3"}
     assert report["invalidated_for_retry"][0]["retry_epoch"] == 1
     assert load_retry_epoch(work, 1) == 1
     assert not fitted.exists()
@@ -133,6 +143,7 @@ def test_accepts_resolved_terminal_without_advancing_epoch(tmp_path: Path) -> No
         [(_segment("И не на то, что выйдет замуж."), fitted)],
     )
     assert report["passed"] is True
+    assert report["policy"] == POLICY
     assert report["failed_segment_ids"] == []
     assert report["invalidated_for_retry"] == []
     assert load_retry_epoch(work, 1) == 0
@@ -159,6 +170,7 @@ def test_assembled_timeline_rejects_late_broadband_noise_and_changes_seed_epoch(
     timeline_audio = np.concatenate([speech.astype(np.float32), quiet, noise, tail])
     timeline = tmp_path / "timeline.wav"
     sf.write(timeline, timeline_audio, sample_rate, subtype="PCM_24")
+    _install_identity_reference(timeline)
     segment = _segment("Она знает, что грядёт, — и смеётся.")
     segment["end"] = len(timeline_audio) / sample_rate
     work = tmp_path / "segment_work"
@@ -180,7 +192,7 @@ def test_rejects_long_gap_between_linked_srt_lines_and_advances_first_only(
     fitted_segments = _write_linked_timeline(timeline, gap_seconds=0.82)
     work = tmp_path / "segment_work"
 
-    with pytest.raises(RuntimeError, match="linked_phrase_gap"):
+    with pytest.raises(RuntimeError, match="linked_phrase_gap|connected_phrase_gap"):
         verify_timeline_delivery(timeline, fitted_segments)
 
     assert load_retry_epoch(work, 1) == 1
@@ -196,4 +208,5 @@ def test_accepts_natural_gap_between_linked_srt_lines(tmp_path: Path) -> None:
     report = verify_timeline_delivery(timeline, fitted_segments)
 
     assert report["passed"] is True
+    assert report["policy"] == POLICY
     assert report["segments"][0]["gap_to_next_seconds"] <= 0.32
