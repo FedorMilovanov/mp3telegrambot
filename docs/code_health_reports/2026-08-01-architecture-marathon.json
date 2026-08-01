@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "policy": "intentional-code-health-baseline-refresh-v1",
+  "pull_request": 61,
+  "reason": "Architecture marathon adds 14 focused production modules for fail-closed runtime composition, execution leases, backend-neutral preflight/rendering, exact generation execution plans, transactional migrations, and single-loop lifecycle. Existing mega-module debt did not increase.",
+  "before": {
+    "files_scanned": 128,
+    "total_regex_markers": 691,
+    "total_postprocess_markers": 254
+  },
+  "current": {
+    "files_scanned": 142,
+    "total_regex_markers": 695,
+    "total_postprocess_markers": 254
+  },
+  "delta": {
+    "files_scanned": 14,
+    "total_regex_markers": 4,
+    "total_postprocess_markers": 0
+  },
+  "evidence": {
+    "python_3_11_pytest": "passed before baseline gate",
+    "python_3_13_pytest": "passed before baseline gate",
+    "windows_runtime_pytest": "passed before baseline gate",
+    "dub_studio_checks": "passed",
+    "voxcpm2_windows": "passed",
+    "focused_tests": [
+      "tests/test_runtime_manifest.py",
+      "tests/test_dub_execution.py",
+      "tests/test_deterministic_speech_backend.py",
+      "tests/test_dub_architecture_boundaries.py",
+      "tests/test_database_migrations.py",
+      "tests/test_bot_lifecycle.py",
+      "tests/test_backend_generation_execution_plan.py"
+    ]
+  },
+  "guardrail": "The baseline records the reviewed architecture addition only. Future regex or postprocess growth remains blocked by CI."
+}
