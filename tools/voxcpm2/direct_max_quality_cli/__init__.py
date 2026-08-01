@@ -3,14 +3,17 @@
 """Monolithic-voice facade for the direct speech-backend candidate loop."""
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib.util
-import math
 from pathlib import Path
 import sys
 import types
 from typing import Any
 
-from services.speech_backends import BackendGenerationRequest
+from services.speech_backends import (
+    BackendGenerationLengthRequest,
+    BackendGenerationRequest,
+)
 from tools.voxcpm2 import direct_monolith_contract
 from tools.voxcpm2 import russian_pronunciation
 from tools.voxcpm2 import source_prosody_policy
@@ -30,8 +33,9 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "direct-cli-monolithic-voice-v4"
-GENERATION_REQUEST_FACTORY_POLICY = "typed-generation-request-factory-v2"
+POLICY = "direct-cli-monolithic-voice-v5"
+GENERATION_REQUEST_FACTORY_POLICY = "typed-generation-request-factory-v3"
+GENERATION_LENGTH_HINT_POLICY = "cadence-minimum-completion-ratio-v1"
 SYNTHESIS_TEXT_POLICY = russian_pronunciation.POLICY
 PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY
 _CURRENT_ATTEMPT = 1
@@ -49,6 +53,7 @@ def set_continuation_context(reference: Path | None, text: str = "") -> None:
 _legacy_read_segments = _legacy.read_segments
 _legacy_seed_for_attempt = _legacy.seed_for_attempt
 _legacy_generate = _legacy._generate
+_legacy_build_generation_length_request = _legacy._build_generation_length_request
 _legacy_build_generation_request = _legacy._build_generation_request
 _legacy_source_prosody_penalty = _legacy.source_prosody_penalty
 _legacy_candidate_hard_ok = _legacy.candidate_hard_ok
@@ -93,20 +98,15 @@ def _generate(
     max_len: int,
     seed: int,
 ) -> Any:
-    """Compatibility seam for legacy tests; production uses ``_backend_generate``."""
+    """Compatibility seam; production cadence planning uses typed requests."""
     segment = direct_monolith_contract.current_segment() or {"text": text}
     synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
-    cadence = str(segment.get("cadence_type") or "")
-    estimated_steps = max(2, int(math.floor(max(2, int(max_len)) / 1.40)))
-    minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
-    controlled_min_len = max(int(min_len), int(math.floor(estimated_steps * minimum_ratio)))
-    controlled_min_len = min(max(2, controlled_min_len), max(2, int(max_len) - 1))
     kwargs = {
         "text": synthesis,
         "reference": reference,
         "cfg": cfg,
         "steps": steps,
-        "min_len": controlled_min_len,
+        "min_len": min_len,
         "max_len": max_len,
         "seed": seed,
     }
@@ -120,31 +120,46 @@ def _generate(
     return _legacy_generate(model, **kwargs)
 
 
+def _build_generation_length_request(
+    segment: dict[str, Any],
+    *,
+    duration_budget: float,
+    attempt: int,
+    previous_output_durations: tuple[float, ...],
+) -> BackendGenerationLengthRequest:
+    """Add cadence intent without interpreting backend-specific length units."""
+    base_request = _legacy_build_generation_length_request(
+        segment,
+        duration_budget=duration_budget,
+        attempt=attempt,
+        previous_output_durations=previous_output_durations,
+    )
+    cadence = str(segment.get("cadence_type") or "")
+    minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
+    metadata = dict(base_request.metadata)
+    metadata.update(
+        {
+            "policy": GENERATION_LENGTH_HINT_POLICY,
+            "cadence_type": cadence,
+        }
+    )
+    return replace(
+        base_request,
+        minimum_completion_ratio=minimum_ratio,
+        metadata=metadata,
+    )
+
+
 def _build_generation_request(
     session: Any,
     **kwargs: Any,
 ) -> BackendGenerationRequest:
-    """Extend the neutral request without replacing the backend executor."""
+    """Extend the neutral request without replacing backend length options."""
     base_request = _legacy_build_generation_request(session, **kwargs)
     segment = direct_monolith_contract.current_segment() or {
         "text": base_request.text,
     }
     synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
-    cadence = str(segment.get("cadence_type") or "")
-    max_len = base_request.option_int("max_len", default=2, low=2, high=512)
-    planned_min_len = base_request.option_int(
-        "min_len",
-        default=2,
-        low=1,
-        high=512,
-    )
-    estimated_steps = max(2, int(math.floor(max_len / 1.40)))
-    minimum_ratio = 0.58 if cadence in {"linked", "continuation"} else 0.40
-    controlled_min_len = max(
-        planned_min_len,
-        int(math.floor(estimated_steps * minimum_ratio)),
-    )
-    controlled_min_len = min(controlled_min_len, max(2, max_len - 1))
 
     continuation_reference: Path | None = None
     continuation_text = ""
@@ -155,8 +170,6 @@ def _build_generation_request(
         continuation_reference = _CONTINUATION_REFERENCE
         continuation_text = _CONTINUATION_TEXT
 
-    backend_options = dict(base_request.backend_options)
-    backend_options["min_len"] = controlled_min_len
     return BackendGenerationRequest(
         text=synthesis,
         reference_audio=base_request.reference_audio,
@@ -165,7 +178,7 @@ def _build_generation_request(
         style_instruction=str(segment.get("style_instruction") or ""),
         continuation_reference=continuation_reference,
         continuation_text=continuation_text,
-        backend_options=backend_options,
+        backend_options=base_request.backend_options,
     )
 
 
@@ -321,6 +334,7 @@ def _raw_failure_evidence(
 _legacy.read_segments = read_segments
 _legacy.seed_for_attempt = seed_for_attempt
 _legacy._generate = _generate
+_legacy._build_generation_length_request = _build_generation_length_request
 _legacy._build_generation_request = _build_generation_request
 _legacy.set_continuation_context = set_continuation_context
 _legacy.source_prosody_penalty = source_prosody_penalty
@@ -354,12 +368,14 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CONTINUATION_POLICY",
+        "GENERATION_LENGTH_HINT_POLICY",
         "GENERATION_REQUEST_FACTORY_POLICY",
         "POLICY",
         "PRONUNCIATION_VARIANT_POLICY",
         "SYNTHESIS_TEXT_POLICY",
         "_acceptable_candidates",
         "_backend_generate",
+        "_build_generation_length_request",
         "_build_generation_request",
         "_candidate_failure_summary",
         "_generate",

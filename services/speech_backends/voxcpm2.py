@@ -15,6 +15,7 @@ from services.speech_backends.base import (
     BackendAudioSpec,
     BackendCapabilities,
     BackendGenerationLengthPlan,
+    BackendGenerationLengthRequest,
     BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
@@ -23,9 +24,9 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v8"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v9"
 GENERATION_CALL_POLICY = "typed-backend-generation-request-v1"
-GENERATION_LENGTH_POLICY = "voxcpm2-duration-to-token-window-v1"
+GENERATION_LENGTH_POLICY = "voxcpm2-duration-to-token-window-v2"
 SESSION_CALL_POLICY = "typed-backend-session-config-v1"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
@@ -71,20 +72,6 @@ def _master_contract(
 
 def _needs_normalization(text: str) -> bool:
     return bool(re.search(r"\d|[%№$€£]", text))
-
-
-def _previous_durations(values: tuple[float, ...]) -> tuple[float, ...]:
-    result: list[float] = []
-    for value in values:
-        if isinstance(value, bool):
-            raise ValueError("previous_output_durations не может содержать bool.")
-        number = float(value)
-        if not math.isfinite(number) or number < 0.0:
-            raise ValueError(
-                "previous_output_durations должен содержать конечные числа >= 0."
-            )
-        result.append(number)
-    return tuple(result)
 
 
 class VoxCPM2Session:
@@ -202,29 +189,28 @@ class VoxCPM2Backend:
     def plan_generation_length(
         self,
         audio_spec: BackendAudioSpec,
-        *,
-        duration_budget: float,
-        attempt: int,
-        previous_output_durations: tuple[float, ...] = (),
+        request: BackendGenerationLengthRequest,
     ) -> BackendGenerationLengthPlan:
         """Translate neutral duration evidence into VoxCPM2 token-window options."""
         if not isinstance(audio_spec, BackendAudioSpec):
             raise TypeError("VoxCPM2 length planner ожидает BackendAudioSpec.")
+        if not isinstance(request, BackendGenerationLengthRequest):
+            raise TypeError(
+                "VoxCPM2 length planner ожидает BackendGenerationLengthRequest."
+            )
         if audio_spec.seconds_per_step is None:
             raise RuntimeError(
                 "VoxCPM2 length planner требует audio_spec.seconds_per_step."
             )
-        if isinstance(attempt, bool) or int(attempt) < 1:
-            raise ValueError("VoxCPM2 attempt должен быть целым числом >= 1.")
-        budget = float(duration_budget)
-        if not math.isfinite(budget) or budget <= 0.0:
-            raise ValueError("VoxCPM2 duration_budget должен быть конечным числом > 0.")
-        previous = _previous_durations(tuple(previous_output_durations))
+
+        budget = request.duration_budget
+        attempt = request.attempt
+        previous = request.previous_output_durations
         seconds_per_step = float(audio_spec.seconds_per_step)
         desired_steps = budget / seconds_per_step
         max_len = max(_MIN_MAX_LEN, int(math.ceil(desired_steps * _MAX_LEN_RATIO)))
         short_retry = (
-            int(attempt) >= 3
+            attempt >= 3
             and bool(previous)
             and all(value < budget * _SHORT_OUTPUT_RATIO for value in previous)
         )
@@ -234,21 +220,35 @@ class VoxCPM2Backend:
                 _RETRY_MIN_LEN,
                 int(math.floor(desired_steps * _SHORT_RETRY_MIN_RATIO)),
             )
+
+        completion_min_len = _BASE_MIN_LEN
+        if request.minimum_completion_ratio is not None:
+            estimated_steps = max(
+                _BASE_MIN_LEN,
+                int(math.floor(max_len / _MAX_LEN_RATIO)),
+            )
+            completion_min_len = max(
+                _BASE_MIN_LEN,
+                int(math.floor(estimated_steps * request.minimum_completion_ratio)),
+            )
+            min_len = max(min_len, completion_min_len)
+
         min_len = min(min_len, max_len - 1)
         return BackendGenerationLengthPlan(
             backend_id=self.backend_id,
             duration_budget=budget,
-            attempt=int(attempt),
+            attempt=attempt,
             backend_options={
                 "min_len": min_len,
                 "max_len": max_len,
             },
             metadata={
                 "policy": GENERATION_LENGTH_POLICY,
+                "length_request": request.as_dict(),
                 "seconds_per_step": seconds_per_step,
                 "desired_steps": desired_steps,
                 "short_retry": short_retry,
-                "previous_output_durations": list(previous),
+                "completion_min_len": completion_min_len,
                 "short_output_ratio": _SHORT_OUTPUT_RATIO,
                 "short_retry_min_ratio": _SHORT_RETRY_MIN_RATIO,
                 "max_len_ratio": _MAX_LEN_RATIO,
