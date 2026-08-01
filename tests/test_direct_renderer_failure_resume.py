@@ -1,36 +1,67 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def test_direct_wrapper_persists_failure_and_runtime_marker_before_synthesis() -> None:
-    source = (
-        ROOT
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "voxcpm2_cpu_shorts_production.py"
-    ).read_text(encoding="utf-8")
-
-    marker_write = source.index("marker_path.write_text(")
-    main_call = source.index("main()", marker_write)
-    assert marker_write < main_call
-    assert "direct_renderer_failure.json" in source
-    assert "_write_failure_report(work_dir, exc)" in source
-    assert "Runtime marker intentionally remains" in source
+from tools.voxcpm2 import generic_clean_direct_runtime as clean_direct
+from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
+    voxcpm2_cpu_shorts_production as direct_wrapper,
+)
 
 
-def test_ready_srt_runtime_resumes_and_surfaces_child_root_cause() -> None:
-    source = (
-        ROOT / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py"
-    ).read_text(encoding="utf-8")
+def test_direct_wrapper_persists_failure_without_losing_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    compatibility = {
+        "schema_version": 2,
+        "policy": direct_wrapper.MARKER_POLICY,
+        "speech_backend": "voxcpm2",
+        "render_contract_sha256": "a" * 64,
+        "cache_length": 4096,
+        "python_executable": "python",
+    }
+    checkpoint = tmp_path / "checkpoints" / "segment_01.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text('{"complete": true}', encoding="utf-8")
+    monkeypatch.setattr(
+        direct_wrapper,
+        "_runtime_contract",
+        lambda: (tmp_path, dict(compatibility)),
+    )
 
-    assert "force_fresh=False" in source
-    assert "_seed_resumable_clean_marker(root, request)" in source
-    assert "direct_cli_runtime.marker.json" in source
-    assert "direct_renderer_failure.json" in source
-    assert "Прямой VoxCPM2 renderer: {detail}" in source
+    def fail() -> None:
+        raise RuntimeError("synthetic render failure")
+
+    with pytest.raises(RuntimeError, match="synthetic render failure"):
+        direct_wrapper.run(fail)
+
+    marker = json.loads(
+        (tmp_path / "direct_cli_runtime.marker.json").read_text(encoding="utf-8")
+    )
+    failure = json.loads(
+        (tmp_path / "direct_renderer_failure.json").read_text(encoding="utf-8")
+    )
+    assert marker == compatibility
+    assert checkpoint.is_file()
+    assert not (tmp_path / "direct_cli_runtime.completed.json").exists()
+    assert failure["error_type"] == "RuntimeError"
+    assert failure["message"] == "synthetic render failure"
+
+
+def test_ready_srt_runtime_owns_signature_based_resume_contract() -> None:
+    assert Path(clean_direct.__file__).name == "__init__.py"
+    assert clean_direct.CHECKPOINT_MIGRATION_POLICY == (
+        "signature-and-natural-tempo-checkpoint-adoption-v2"
+    )
+    assert clean_direct.MAX_ACCEPTED_SEED_ROUNDS == 12
+    assert clean_direct._legacy._legacy_checkpoint_prefix is (
+        clean_direct._legacy_checkpoint_prefix
+    )
+    assert clean_direct._legacy._LEGACY_RESUME_POLICY == (
+        clean_direct.CHECKPOINT_MIGRATION_POLICY
+    )
+    assert callable(clean_direct._signature_valid_checkpoint_set)
+    assert callable(clean_direct.main)
