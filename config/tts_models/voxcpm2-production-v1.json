@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "profile_id": "voxcpm2-production-v1",
+  "backend_id": "voxcpm2",
+  "display_name": "VoxCPM2 production",
+  "model_family": "OpenBMB/VoxCPM2",
+  "model_revision": "local-archive-pinned-v1",
+  "aliases": [
+    "voxcpm2-default",
+    "default-tts"
+  ],
+  "production_enabled": true,
+  "required_capabilities": [
+    "voice_cloning",
+    "reference_audio",
+    "deterministic_seed",
+    "pcm_output",
+    "checkpointable_segments"
+  ],
+  "option_specs": [
+    {
+      "name": "threads",
+      "value_type": "int",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 64,
+      "choices": [],
+      "overridable": true
+    },
+    {
+      "name": "steps",
+      "value_type": "int",
+      "default": 16,
+      "minimum": 1,
+      "maximum": 256,
+      "choices": [],
+      "overridable": true
+    },
+    {
+      "name": "cfg",
+      "value_type": "float",
+      "default": 1.8,
+      "minimum": 0.1,
+      "maximum": 10.0,
+      "choices": [],
+      "overridable": true
+    },
+    {
+      "name": "cache_length",
+      "value_type": "int",
+      "default": 4096,
+      "minimum": 2048,
+      "maximum": 131072,
+      "choices": [],
+      "overridable": true
+    },
+    {
+      "name": "base_seed",
+      "value_type": "int",
+      "default": 2026072800,
+      "minimum": 0,
+      "maximum": 2147483647,
+      "choices": [],
+      "overridable": true
+    }
+  ],
+  "backend_defaults": {
+    "vox_archive": "C:\\AI-Archive\\VoxCPM2-paused-RTX3060",
+    "cpu_venv": "C:\\AI-Archive\\VoxCPM2-CPU-TEST\\.venv"
+  },
+  "backend_override_keys": [
+    "vox_archive",
+    "cpu_venv"
+  ],
+  "requires_execution_plan_evidence": true
+}
