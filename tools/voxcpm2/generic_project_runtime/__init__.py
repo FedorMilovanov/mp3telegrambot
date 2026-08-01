@@ -6,8 +6,9 @@ The established orchestration remains in ``generic_project_runtime.py``. Clean
 entrypoints configure that orchestration by assigning adapter functions before
 calling ``main()``. Assignments are mirrored into the legacy module whose
 function globals are executed. Request identity remains strict and JSON writes
-remain atomic, collision-safe and non-finite-safe. Test and adapter hooks stay
-replaceable through the same write-through seam instead of a module-level ban.
+remain atomic, collision-safe and non-finite-safe. Speech synthesis, reference
+preparation, media mastering and final validation are routed through explicit
+service contracts instead of the legacy VoxCPM-shaped helper.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ import types
 from typing import Any
 import uuid
 
+from services.dub_rendering import run_speech_master_validation
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     UnknownSpeechBackendError,
@@ -45,7 +47,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "generic-project-runtime-write-through-v4"
+POLICY = "generic-project-runtime-write-through-v5"
 ATOMIC_REPLACE_POLICY = "per-path-serialized-windows-sharing-retry-v1"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
 _REPLACE_ATTEMPTS = 8
@@ -125,6 +127,12 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
     result["source_url"] = source_url
     result["translation_mode"] = mode
     result["speech_backend"] = backend_id
+    result["media_master"] = str(
+        result.get("media_master") or "constant-mix"
+    ).casefold().strip()
+    result["final_media_validator"] = str(
+        result.get("final_media_validator") or "ffprobe-av-contract"
+    ).casefold().strip()
     return result
 
 
@@ -154,7 +162,11 @@ def _replace_atomic(temporary: Path, destination: Path) -> None:
             return
         except PermissionError as exc:
             winerror = getattr(exc, "winerror", None)
-            if os.name != "nt" or winerror not in {5, 32} or attempt + 1 >= _REPLACE_ATTEMPTS:
+            if (
+                os.name != "nt"
+                or winerror not in {5, 32}
+                or attempt + 1 >= _REPLACE_ATTEMPTS
+            ):
                 raise
             time.sleep(min(0.005 * (2**attempt), 0.160))
 
@@ -182,10 +194,16 @@ def save_json(path: Path, payload: Any) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _run_speech_and_master(**kwargs: Any) -> Path:
+    """Route production through separated application-layer components."""
+    return run_speech_master_validation(**kwargs)
+
+
 _legacy.project_root = project_root
 _legacy.validate_request_payload = validate_request_payload
 _legacy.load_request = load_request
 _legacy.save_json = save_json
+_legacy._run_speech_and_master = _run_speech_and_master
 
 
 class _WriteThroughModule(types.ModuleType):
@@ -214,6 +232,7 @@ __all__ = sorted(
         "POLICY",
         "_path_lock",
         "_replace_atomic",
+        "_run_speech_and_master",
         "load_request",
         "project_root",
         "save_json",
