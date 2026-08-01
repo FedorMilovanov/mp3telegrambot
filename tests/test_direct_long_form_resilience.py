@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from tools.voxcpm2 import source_prosody_policy
 from tools.voxcpm2.direct_max_quality_analysis import (
     FIT_TEMPO_POLICY,
     candidate_hard_ok,
@@ -128,14 +129,14 @@ def test_flat_declarative_without_energy_release_is_rejected() -> None:
     assert "terminal_not_resolved" in result["failures"]
 
 
-def test_multiword_exclamation_early_burst_is_advisory_without_source() -> None:
+def test_multiword_exclamation_early_burst_is_russian_advisory() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
 
     advisory = _cadence("Я смеюсь тебе в лицо!", early, sample_rate)
     accepted = _cadence("Я смеюсь тебе в лицо!", late, sample_rate)
 
-    assert EMPHASIS_EVIDENCE_POLICY == "dominant-late-source-required-v1"
+    assert EMPHASIS_EVIDENCE_POLICY == "russian-only-emphasis-advisory-v2"
     assert advisory["hard_ok"] is True
     assert "emphasis_too_early" not in advisory["failures"]
     assert "emphasis_too_early" in advisory["emphasis_advisories"]
@@ -146,19 +147,19 @@ def test_multiword_exclamation_early_burst_is_advisory_without_source() -> None:
     assert accepted["emphasis_advisories"] == []
 
 
-def test_exclamation_with_dominant_late_source_rejects_early_burst() -> None:
+def test_dominant_late_source_is_diagnostic_for_exclamation() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
     source_prosody = _dominant_late_source()
 
-    rejected = _cadence(
+    early_result = _cadence(
         "Я смеюсь тебе в лицо!",
         early,
         sample_rate,
         expression_tier="emphatic",
         source_prosody=source_prosody,
     )
-    accepted = _cadence(
+    late_result = _cadence(
         "Я смеюсь тебе в лицо!",
         late,
         sample_rate,
@@ -166,26 +167,29 @@ def test_exclamation_with_dominant_late_source_rejects_early_burst() -> None:
         source_prosody=source_prosody,
     )
 
-    assert rejected["hard_ok"] is False
-    assert rejected["emphasis_hard_gate_evidence"] is True
-    assert "emphasis_too_early" in rejected["failures"]
-    assert "source_emphasis_misplaced_early" not in rejected["failures"]
-    assert "emphasis_too_early" not in accepted["failures"]
+    assert early_result["hard_ok"] is True
+    assert early_result["emphasis_hard_gate_evidence"] is False
+    assert "emphasis_too_early" not in early_result["failures"]
+    assert "emphasis_too_early" in early_result["emphasis_advisories"]
+    assert early_result["source_late_peak_diagnostic"] is True
+    assert early_result["source_late_peak_expected"] is False
+    assert early_result["source_prosody_role"] == source_prosody_policy.POLICY
+    assert late_result["hard_ok"] is True
 
 
-def test_dominant_late_source_build_rejects_early_russian_burst() -> None:
+def test_dominant_late_source_cannot_reject_russian_word_order() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     late, _ = _shaped_chirp(180.0, 90.0, early_peak=False)
     source_prosody = _dominant_late_source()
 
-    rejected = _cadence(
+    early_result = _cadence(
         "Всё, что надвигается на меня, не заставит меня бояться.",
         early,
         sample_rate,
         expression_tier="emphatic",
         source_prosody=source_prosody,
     )
-    accepted = _cadence(
+    late_result = _cadence(
         "Всё, что надвигается на меня, не заставит меня бояться.",
         late,
         sample_rate,
@@ -193,14 +197,15 @@ def test_dominant_late_source_build_rejects_early_russian_burst() -> None:
         source_prosody=source_prosody,
     )
 
-    assert rejected["hard_ok"] is False
-    assert "source_emphasis_misplaced_early" in rejected["failures"]
-    assert rejected["source_peak_dominance"] >= 0.18
-    assert accepted["source_late_peak_expected"] is True
-    assert "source_emphasis_misplaced_early" not in accepted["failures"]
+    assert early_result["hard_ok"] is True
+    assert late_result["hard_ok"] is True
+    assert "source_emphasis_misplaced_early" not in early_result["failures"]
+    assert early_result["source_peak_dominance"] >= 0.18
+    assert early_result["source_late_peak_diagnostic"] is True
+    assert early_result["source_late_peak_expected"] is False
 
 
-def test_broad_or_middle_source_peak_does_not_hard_gate_russian_word_order() -> None:
+def test_broad_or_middle_source_peak_never_gates_russian_word_order() -> None:
     early, sample_rate = _shaped_chirp(180.0, 90.0, early_peak=True)
     broad_source = {
         "contour": {
@@ -230,7 +235,9 @@ def test_broad_or_middle_source_peak_does_not_hard_gate_russian_word_order() -> 
         source_prosody=middle_source,
     )
 
-    assert broad["source_late_peak_expected"] is False
-    assert middle["source_late_peak_expected"] is False
+    assert broad["hard_ok"] is True
+    assert middle["hard_ok"] is True
+    assert broad["source_late_peak_diagnostic"] is False
+    assert middle["source_late_peak_diagnostic"] is False
     assert "source_emphasis_misplaced_early" not in broad["failures"]
     assert "source_emphasis_misplaced_early" not in middle["failures"]
