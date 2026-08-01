@@ -5,7 +5,9 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "config/tts_models/*.json"
       - "requirements-lock.txt"
+      - "tools/check_tts_model_catalog.py"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
       - "services/dub_preflight.py"
@@ -22,7 +24,9 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "config/tts_models/*.json"
       - "requirements-lock.txt"
+      - "tools/check_tts_model_catalog.py"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
       - "services/dub_preflight.py"
@@ -64,6 +68,9 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
 
+      - name: Validate TTS model catalog
+        run: python tools/check_tts_model_catalog.py
+
       - name: Reject embedded runtime packages
         shell: pwsh
         run: |
@@ -79,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           python -m compileall -q services/speech_backends services/dub_preflight.py services/dub_rendering.py handlers/dub_health handlers/dub_wizard tools/voxcpm2
-          python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py
+          python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Backend/VoxCPM2 compile failed."
           }
@@ -137,6 +144,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_generic_project_runtime_contract.py
           tests/test_dub_wizard_request_writer.py
@@ -162,6 +170,7 @@ jobs:
           services/dub_studio_runtime.py
           handlers/dub_health
           handlers/dub_wizard
+          tools/check_tts_model_catalog.py
           tools/voxcpm2
           tests/test_backend_generation_execution_plan.py
           tests/test_speech_backend_command_contract.py
@@ -172,6 +181,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_generic_project_runtime_contract.py
           tests/test_dub_wizard_request_writer.py

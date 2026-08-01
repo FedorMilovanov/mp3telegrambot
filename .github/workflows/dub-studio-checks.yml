@@ -3,6 +3,7 @@ name: Dub Studio Checks
 on:
   push:
     paths:
+      - 'config/tts_models/*.json'
       - 'handlers/dub_*.py'
       - 'handlers/dub_*/**/*.py'
       - 'handlers/mode_command.py'
@@ -14,6 +15,7 @@ on:
       - 'services/dub_*.py'
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
+      - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
       - 'tools/voxcpm2/generic_*.py'
@@ -34,6 +36,7 @@ on:
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
+      - 'config/tts_models/*.json'
       - 'handlers/dub_*.py'
       - 'handlers/dub_*/**/*.py'
       - 'handlers/mode_command.py'
@@ -45,6 +48,7 @@ on:
       - 'services/dub_*.py'
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
+      - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
       - 'tools/voxcpm2/generic_*.py'
@@ -88,10 +92,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
+      - name: Validate TTS model catalog
+        run: python tools/check_tts_model_catalog.py
       - name: Compile production surface dynamically
         shell: pwsh
         run: |
           python -m compileall -q services/speech_backends services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Dub Studio production compile failed."
           }
@@ -141,6 +148,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
@@ -160,6 +168,7 @@ jobs:
           handlers/dub_wizard.py
           handlers/dub_commands.py
           handlers/dub_delivery.py
+          tools/check_tts_model_catalog.py
           tools/voxcpm2
           tests/test_dub_execution.py
           tests/test_dub_worker.py
@@ -182,6 +191,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py

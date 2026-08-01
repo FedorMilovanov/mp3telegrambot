@@ -40,7 +40,9 @@ from services.speech_backends.builtin_contracts import (
     voxcpm2_model_profile_contract,
 )
 from services.speech_backends.builtin_profiles import (
-    DEFAULT_MODEL_PROFILE_ID,
+    DEFAULT_MODEL_PROFILE_ID as CONFIGURED_DEFAULT_MODEL_PROFILE_ID,
+    builtin_model_profile_records,
+    builtin_model_profiles,
     voxcpm2_production_profile,
 )
 from services.speech_backends.control_plane import (
@@ -90,6 +92,16 @@ from services.speech_backends.profile_contracts import (
     register_backend_model_contract,
     unregister_backend_model_contract,
 )
+from services.speech_backends.profile_manifests import (
+    PROFILE_MANIFEST_POLICY,
+    PROFILE_MANIFEST_SCHEMA_VERSION,
+    ProfileManifestError,
+    ProfileManifestRecord,
+    catalog_snapshot,
+    default_profile_manifest_root,
+    load_profile_catalog,
+    load_profile_manifest,
+)
 from services.speech_backends.registry import (
     REGISTRY_POLICY,
     backend_ids,
@@ -107,8 +119,19 @@ _VOXCPM2 = AuditedVoxCPM2Backend()
 register_backend(_VOXCPM2)
 register_backend_model_contract(voxcpm2_model_profile_contract())
 register_backend_model_contract(deterministic_model_profile_contract())
-_VOXCPM2_PRODUCTION_PROFILE = voxcpm2_production_profile()
-register_model_profile(_VOXCPM2_PRODUCTION_PROFILE)
+_PROFILE_MANIFEST_RECORDS = builtin_model_profile_records()
+for _record in _PROFILE_MANIFEST_RECORDS:
+    _contract = get_backend_model_contract(_record.profile.backend_id)
+    _contract.validate_profile(_record.profile)
+    register_model_profile(_record.profile)
+DEFAULT_MODEL_PROFILE_ID = resolve_model_profile_id(CONFIGURED_DEFAULT_MODEL_PROFILE_ID)
+_DEFAULT_MODEL_PROFILE = get_model_profile(DEFAULT_MODEL_PROFILE_ID)
+if not _DEFAULT_MODEL_PROFILE.production_enabled:
+    raise RuntimeError(
+        f"Default TTS model profile отключён для production: {DEFAULT_MODEL_PROFILE_ID}"
+    )
+# Preserve the legacy revision guard even though the profile is now declarative.
+voxcpm2_production_profile()
 
 
 def default_backend() -> SpeechBackend:
@@ -117,6 +140,14 @@ def default_backend() -> SpeechBackend:
 
 def default_model_profile() -> SpeechModelProfile:
     return get_model_profile(DEFAULT_MODEL_PROFILE_ID)
+
+
+def model_profile_manifest_records() -> tuple[ProfileManifestRecord, ...]:
+    return _PROFILE_MANIFEST_RECORDS
+
+
+def model_profile_catalog_snapshot() -> dict[str, object]:
+    return catalog_snapshot(_PROFILE_MANIFEST_RECORDS)
 
 
 __all__ = [
@@ -136,9 +167,12 @@ __all__ = [
     "MODEL_OPTION_POLICY",
     "MODEL_PROFILE_CONTRACT_POLICY",
     "MODEL_PROFILE_POLICY",
+    "PROFILE_MANIFEST_POLICY",
+    "PROFILE_MANIFEST_SCHEMA_VERSION",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
     "SESSION_CONFIG_POLICY",
+    "CONFIGURED_DEFAULT_MODEL_PROFILE_ID",
     "DEFAULT_BACKEND_ID",
     "DEFAULT_MODEL_PROFILE_ID",
     "REGISTRY_POLICY",
@@ -164,6 +198,8 @@ __all__ = [
     "DeterministicSpeechBackend",
     "ModelOptionSpec",
     "ModelProfileContractError",
+    "ProfileManifestError",
+    "ProfileManifestRecord",
     "SpeechBackend",
     "SpeechBackendSelectionError",
     "SpeechModelConfigurationError",
@@ -178,13 +214,21 @@ __all__ = [
     "VoxCPM2Session",
     "backend_ids",
     "backend_model_contract_ids",
+    "builtin_model_profile_records",
+    "builtin_model_profiles",
+    "catalog_snapshot",
     "default_backend",
     "default_model_profile",
+    "default_profile_manifest_root",
     "deterministic_model_profile_contract",
     "get_backend",
     "get_backend_model_contract",
     "get_model_profile",
+    "load_profile_catalog",
+    "load_profile_manifest",
+    "model_profile_catalog_snapshot",
     "model_profile_ids",
+    "model_profile_manifest_records",
     "normalize_production_backend",
     "normalize_production_speech_request",
     "register_backend",
@@ -200,4 +244,5 @@ __all__ = [
     "unregister_backend_model_contract",
     "unregister_model_profile",
     "voxcpm2_model_profile_contract",
+    "voxcpm2_production_profile",
 ]
