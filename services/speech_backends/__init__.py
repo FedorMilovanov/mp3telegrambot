@@ -3,6 +3,11 @@
 """Public model-independent speech backend API."""
 from __future__ import annotations
 
+from services.speech_backends.audited_voxcpm2 import (
+    GENERATION_EXECUTION_CALL_POLICY,
+    AuditedVoxCPM2Backend,
+    AuditedVoxCPM2Session,
+)
 from services.speech_backends.base import (
     BACKEND_COMMAND_POLICY,
     BACKEND_CONTRACT_POLICY,
@@ -43,6 +48,10 @@ from services.speech_backends.deterministic import (
     DeterministicSession,
     DeterministicSpeechBackend,
 )
+from services.speech_backends.execution_plan import (
+    GENERATION_EXECUTION_PLAN_POLICY,
+    BackendGenerationExecutionPlan,
+)
 from services.speech_backends.registry import (
     REGISTRY_POLICY,
     backend_ids,
@@ -56,7 +65,7 @@ from services.speech_backends.voxcpm2 import VoxCPM2Backend, VoxCPM2Session
 
 DEFAULT_BACKEND_ID = "voxcpm2"
 
-_VOXCPM2 = VoxCPM2Backend()
+_VOXCPM2 = AuditedVoxCPM2Backend()
 register_backend(_VOXCPM2)
 
 
@@ -70,6 +79,8 @@ __all__ = [
     "BACKEND_ENVIRONMENT_POLICY",
     "BACKEND_RUNTIME_PATH_POLICY",
     "CONTROL_PLANE_POLICY",
+    "GENERATION_EXECUTION_CALL_POLICY",
+    "GENERATION_EXECUTION_PLAN_POLICY",
     "GENERATION_LENGTH_POLICY",
     "GENERATION_LENGTH_REQUEST_POLICY",
     "GENERATION_PROFILE_POLICY",
@@ -80,9 +91,12 @@ __all__ = [
     "SESSION_CONFIG_POLICY",
     "DEFAULT_BACKEND_ID",
     "REGISTRY_POLICY",
+    "AuditedVoxCPM2Backend",
+    "AuditedVoxCPM2Session",
     "BackendAudioSpec",
     "BackendCapabilities",
     "BackendCapabilityError",
+    "BackendGenerationExecutionPlan",
     "BackendGenerationLengthPlan",
     "BackendGenerationLengthRequest",
     "BackendGenerationProfilePlan",
