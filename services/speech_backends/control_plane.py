@@ -186,8 +186,16 @@ def select_production_speech(
             f"но выбран backend={backend_selection.backend_id}."
         )
 
+    request_payload = dict(request or {})
+    stored_fingerprint = request_payload.get("speech_profile_fingerprint")
+    current_fingerprint = profile.fingerprint()
+    if stored_fingerprint not in (None, "") and str(stored_fingerprint) != current_fingerprint:
+        raise SpeechModelConfigurationError(
+            f"speech_profile_fingerprint устарел для profile={profile.profile_id}: "
+            f"stored={stored_fingerprint}, current={current_fingerprint}."
+        )
     try:
-        resolution = profile.resolve_request(request or {})
+        resolution = profile.resolve_request(request_payload)
     except (TypeError, ValueError) as exc:
         raise SpeechModelConfigurationError(str(exc)) from exc
     return SpeechSelection(
