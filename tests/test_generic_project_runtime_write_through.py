@@ -14,7 +14,7 @@ from tools.voxcpm2 import generic_project_runtime as runtime
 
 def test_project_runtime_imports_write_through_package() -> None:
     assert Path(runtime.__file__).name == "__init__.py"
-    assert runtime.POLICY == "generic-project-runtime-write-through-v2"
+    assert runtime.POLICY == "generic-project-runtime-write-through-v3"
     source = Path(runtime.__file__).read_text(encoding="utf-8")
     assert "class _WriteThroughModule" in source
     assert "_module.__class__ = _WriteThroughModule" in source
@@ -44,8 +44,6 @@ def test_clean_route_assignment_reaches_legacy_function_globals(
         assert runtime._legacy.main.__globals__[name] is replacement
     finally:
         setattr(runtime, name, original_package)
-        # Package restoration is write-through, but retain the exact original
-        # legacy value even if an earlier test imported a configured route.
         setattr(runtime._legacy, name, original_legacy)
 
 
@@ -53,10 +51,17 @@ def test_clean_route_assignment_reaches_legacy_function_globals(
     "name",
     ["project_root", "load_request", "save_json", "validate_request_payload"],
 )
-def test_strict_project_hooks_cannot_be_replaced_from_package(name: str) -> None:
-    with pytest.raises(RuntimeError, match="cannot be replaced"):
-        setattr(runtime, name, lambda *_args, **_kwargs: None)
-    assert getattr(runtime._legacy, name) is getattr(runtime, name)
+def test_project_dependencies_are_injectable_and_restored(name: str) -> None:
+    original_package = getattr(runtime, name)
+    original_legacy = getattr(runtime._legacy, name)
+    replacement = lambda *_args, **_kwargs: None
+    try:
+        setattr(runtime, name, replacement)
+        assert getattr(runtime, name) is replacement
+        assert getattr(runtime._legacy, name) is replacement
+    finally:
+        setattr(runtime, name, original_package)
+        setattr(runtime._legacy, name, original_legacy)
 
 
 def test_atomic_json_concurrent_writers_leave_one_complete_document(
