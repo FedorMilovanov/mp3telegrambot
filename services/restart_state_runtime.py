@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clear loop-bound and orphaned LiveDub state before polling starts.
+"""Clear loop-bound state and bind final main-module runtime adapters.
 
 ``main.run_bot`` deliberately creates a brand-new asyncio event loop after an
 unexpected failure. The legacy startup already rebuilds per-video and rate-limit
@@ -10,6 +10,10 @@ later request wait forever, suppress a fallback MP3, or leak its temporary copy.
 A complete process crash loses the in-memory registry entirely, so stale files in
 ``mp3bot_livedub_deferred`` are also swept at startup. Confirmed-success TTL entries
 are intentionally preserved: only unfinished work is discarded.
+
+This required post-main binder also installs privacy-safe operator status before
+``run_bot_async`` registers Telegram handlers. Keeping that binding here avoids a
+second manifest mutation while preserving one explicit, fail-closed startup step.
 """
 from __future__ import annotations
 
@@ -138,7 +142,7 @@ def reset_cross_loop_state() -> dict[str, int]:
 
 
 def install_restart_state_runtime(main_module: ModuleType) -> None:
-    """Wrap ``run_bot_async`` so every newly created loop begins cleanly."""
+    """Wrap ``run_bot_async`` and bind operator status exactly once."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -167,5 +171,10 @@ def install_restart_state_runtime(main_module: ModuleType) -> None:
             clean_start._mp3bot_restart_state = True  # type: ignore[attr-defined]
             main_module.run_bot_async = clean_start
 
+        from services.operator_runtime_status import install_operator_runtime_status
+
+        install_operator_runtime_status(main_module)
         _INSTALLED = True
-        logger.info("🔄 Restart state runtime: loop and crash leftovers guarded")
+        logger.info(
+            "🔄 Restart state runtime: loop/crash leftovers and operator status guarded"
+        )
