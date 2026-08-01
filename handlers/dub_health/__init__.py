@@ -90,11 +90,15 @@ def _backend_contract() -> tuple[bool, str]:
         DEFAULT_BACKEND_ID,
         GENERATION_LENGTH_POLICY,
         GENERATION_LENGTH_REQUEST_POLICY,
+        GENERATION_PROFILE_POLICY,
+        GENERATION_PROFILE_REQUEST_POLICY,
         GENERATION_REQUEST_POLICY,
         SESSION_CONFIG_POLICY,
         BackendAudioSpec,
         BackendGenerationLengthPlan,
         BackendGenerationLengthRequest,
+        BackendGenerationProfilePlan,
+        BackendGenerationProfileRequest,
         BackendGenerationRequest,
         REQUIRED_PRODUCTION_CAPABILITIES,
         backend_ids,
@@ -135,9 +139,20 @@ def _backend_contract() -> tuple[bool, str]:
         metadata={"source": "health"},
     )
     length_plan = backend.plan_generation_length(planner_spec, length_request)
-    plan_payload = (
+    length_payload = (
         length_plan.as_dict()
         if isinstance(length_plan, BackendGenerationLengthPlan)
+        else {}
+    )
+    profile_request = BackendGenerationProfileRequest(
+        attempt=4,
+        base_backend_options={"cfg": 1.9, "steps": 16},
+        metadata={"source": "health"},
+    )
+    profile_plan = backend.plan_generation_profile(profile_request)
+    profile_payload = (
+        profile_plan.as_dict()
+        if isinstance(profile_plan, BackendGenerationProfilePlan)
         else {}
     )
     ok = bool(
@@ -146,6 +161,9 @@ def _backend_contract() -> tuple[bool, str]:
         and GENERATION_LENGTH_POLICY == "model-neutral-generation-length-plan-v1"
         and GENERATION_LENGTH_REQUEST_POLICY
         == "model-neutral-generation-length-request-v1"
+        and GENERATION_PROFILE_POLICY == "model-neutral-generation-profile-plan-v1"
+        and GENERATION_PROFILE_REQUEST_POLICY
+        == "model-neutral-generation-profile-request-v1"
         and GENERATION_REQUEST_POLICY == "model-neutral-generation-request-v1"
         and SESSION_CONFIG_POLICY == "model-neutral-session-config-v1"
         and backend_ids() == ("voxcpm2",)
@@ -162,17 +180,31 @@ def _backend_contract() -> tuple[bool, str]:
         and length_plan.duration_budget == length_request.duration_budget
         and length_plan.attempt == length_request.attempt
         and bool(length_plan.backend_options)
-        and plan_payload.get("generation_length_policy") == GENERATION_LENGTH_POLICY
+        and length_payload.get("generation_length_policy") == GENERATION_LENGTH_POLICY
         and (length_plan.metadata.get("length_request") or {}).get(
             "generation_length_request_policy"
         )
         == GENERATION_LENGTH_REQUEST_POLICY
+        and isinstance(profile_request, BackendGenerationProfileRequest)
+        and isinstance(profile_plan, BackendGenerationProfilePlan)
+        and profile_plan.backend_id == backend.backend_id
+        and profile_plan.attempt == profile_request.attempt
+        and bool(profile_plan.backend_options)
+        and profile_payload.get("generation_profile_policy")
+        == GENERATION_PROFILE_POLICY
+        and (profile_plan.metadata.get("profile_request") or {}).get(
+            "generation_profile_request_policy"
+        )
+        == GENERATION_PROFILE_REQUEST_POLICY
     )
     detail = (
         f"{BACKEND_CONTRACT_POLICY}; control={CONTROL_PLANE_POLICY}; "
         f"length={GENERATION_LENGTH_POLICY}; length_request={GENERATION_LENGTH_REQUEST_POLICY}; "
+        f"profile={GENERATION_PROFILE_POLICY}; "
+        f"profile_request={GENERATION_PROFILE_REQUEST_POLICY}; "
         f"backend={selection.backend_id}; "
-        f"plan={length_plan.backend_id if isinstance(length_plan, BackendGenerationLengthPlan) else 'invalid'}; "
+        f"length_plan={length_plan.backend_id if isinstance(length_plan, BackendGenerationLengthPlan) else 'invalid'}; "
+        f"profile_plan={profile_plan.backend_id if isinstance(profile_plan, BackendGenerationProfilePlan) else 'invalid'}; "
         f"missing={list(missing)}"
     )
     return ok, detail
@@ -290,11 +322,13 @@ def _quality_runtime_contract() -> tuple[bool, str]:
         and direct_max_quality_io.MAX_TEMPO <= 1.50
         and callable(direct_max_quality_io.speech_slot_seconds)
         and callable(direct_max_quality_cli._build_generation_length_request)
+        and callable(direct_max_quality_cli._build_generation_profile_request)
         and callable(direct_max_quality_cli._backend_generate)
         and callable(direct_max_quality_render.fit_without_slowdown)
         and callable(direct_timeline_delivery_qa.verify_timeline_delivery)
         and callable(final_media_qa.verify_final_file)
         and callable(backend.plan_generation_length)
+        and callable(backend.plan_generation_profile)
         and bool(getattr(backend.capabilities(), "continuation_context", False))
         and direct_max_quality_cli.CONTINUATION_POLICY
         == "backend-capability-gated-previous-block-prompt-v2"
