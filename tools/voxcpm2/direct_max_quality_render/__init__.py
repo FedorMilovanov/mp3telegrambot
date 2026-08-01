@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from services.speech_backends import BackendGenerationProfileRequest, default_backend
 from tools.voxcpm2 import direct_monolith_contract
 from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
@@ -34,7 +35,8 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"
+ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v3"
+GENERATION_PROFILE_DELEGATION_POLICY = "backend-owned-attempt-profile-v1"
 TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
 HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v2"
@@ -63,20 +65,22 @@ def _sync_legacy_hooks() -> None:
 
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
-    attempt = int(attempt)
-    base_cfg = float(base_cfg)
-    base_steps = max(1, int(base_steps))
-    if attempt == 1:
-        return base_cfg, base_steps
-    if attempt == 2:
-        return min(2.15, base_cfg + 0.08), min(30, base_steps + 6)
-    if attempt == 3:
-        return max(1.50, base_cfg - 0.08), min(32, base_steps + 10)
-    if attempt == 4:
-        return min(2.15, max(1.50, base_cfg + 0.03)), min(36, base_steps + 14)
-    if attempt == 5:
-        return max(1.45, base_cfg - 0.12), min(40, base_steps + 18)
-    raise ValueError(f"Неподдерживаемая попытка VoxCPM: {attempt}")
+    """Compatibility wrapper around the selected backend's typed planner."""
+    plan = default_backend().plan_generation_profile(
+        BackendGenerationProfileRequest(
+            attempt=attempt,
+            base_backend_options={"cfg": base_cfg, "steps": base_steps},
+            metadata={"policy": GENERATION_PROFILE_DELEGATION_POLICY},
+        )
+    )
+    try:
+        cfg = float(plan.backend_options["cfg"])
+        steps = int(plan.backend_options["steps"])
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            "Backend generation profile не содержит совместимые cfg/steps."
+        ) from exc
+    return cfg, steps
 
 
 def _fade_contract(rendered_speech_duration: float) -> tuple[float, float]:
@@ -198,6 +202,7 @@ __all__ = sorted(
     | {
         "ADAPTIVE_RETRY_POLICY",
         "FADE_POLICY",
+        "GENERATION_PROFILE_DELEGATION_POLICY",
         "HOOK_SYNC_POLICY",
         "TIMELINE_COMPACTION_POLICY",
         "_generation_profile",
