@@ -114,6 +114,7 @@ from services.speech_backends.registry import (
 from services.speech_backends.voxcpm2 import VoxCPM2Backend, VoxCPM2Session
 
 DEFAULT_BACKEND_ID = "voxcpm2"
+RUNTIME_PROFILE_SOURCE_POLICY = "runtime-registered-tts-profile-source-v1"
 
 _VOXCPM2 = AuditedVoxCPM2Backend()
 register_backend(_VOXCPM2)
@@ -146,6 +147,45 @@ def model_profile_manifest_records() -> tuple[ProfileManifestRecord, ...]:
     return _PROFILE_MANIFEST_RECORDS
 
 
+def model_profile_manifest_record(
+    value: object,
+) -> ProfileManifestRecord | None:
+    """Return repository manifest provenance for one registered profile."""
+    canonical = resolve_model_profile_id(value)
+    matches = tuple(
+        record
+        for record in _PROFILE_MANIFEST_RECORDS
+        if record.profile.profile_id == canonical
+    )
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"TTS profile {canonical} имеет несколько manifest records."
+        )
+    return matches[0] if matches else None
+
+
+def model_profile_source_evidence(value: object) -> dict[str, object]:
+    """Return safe provenance without exposing backend config or secret values."""
+    canonical = resolve_model_profile_id(value)
+    record = model_profile_manifest_record(canonical)
+    if record is not None:
+        payload = record.as_dict(root=default_profile_manifest_root())
+        payload["profile_id"] = canonical
+        payload["source_kind"] = "repository-manifest"
+        return payload
+    profile = get_model_profile(canonical)
+    return {
+        "schema_version": 1,
+        "profile_id": canonical,
+        "backend_id": profile.backend_id,
+        "model_revision": profile.model_revision,
+        "source": "runtime-registration",
+        "source_kind": "runtime-registration",
+        "source_sha256": "",
+        "manifest_policy": RUNTIME_PROFILE_SOURCE_POLICY,
+    }
+
+
 def model_profile_catalog_snapshot() -> dict[str, object]:
     return catalog_snapshot(_PROFILE_MANIFEST_RECORDS)
 
@@ -171,6 +211,7 @@ __all__ = [
     "PROFILE_MANIFEST_SCHEMA_VERSION",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
+    "RUNTIME_PROFILE_SOURCE_POLICY",
     "SESSION_CONFIG_POLICY",
     "CONFIGURED_DEFAULT_MODEL_PROFILE_ID",
     "DEFAULT_BACKEND_ID",
@@ -228,7 +269,9 @@ __all__ = [
     "load_profile_manifest",
     "model_profile_catalog_snapshot",
     "model_profile_ids",
+    "model_profile_manifest_record",
     "model_profile_manifest_records",
+    "model_profile_source_evidence",
     "normalize_production_backend",
     "normalize_production_speech_request",
     "register_backend",
