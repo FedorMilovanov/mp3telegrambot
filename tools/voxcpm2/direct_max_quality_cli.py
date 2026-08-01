@@ -20,8 +20,12 @@ import numpy as np
 from services.speech_backends import (
     GENERATION_LENGTH_POLICY,
     GENERATION_LENGTH_REQUEST_POLICY,
+    GENERATION_PROFILE_POLICY,
+    GENERATION_PROFILE_REQUEST_POLICY,
     BackendGenerationLengthPlan,
     BackendGenerationLengthRequest,
+    BackendGenerationProfilePlan,
+    BackendGenerationProfileRequest,
     BackendGenerationRequest,
     BackendSessionConfig,
     get_backend,
@@ -57,7 +61,6 @@ from tools.voxcpm2.direct_max_quality_analysis import (
 from tools.voxcpm2.direct_max_quality_render import (
     ADAPTIVE_RETRY_POLICY,
     _generate,  # noqa: F401 - legacy facade compatibility; production uses backend session
-    _generation_profile,
     build_timeline,
     fit_without_slowdown,
     set_seed,
@@ -94,6 +97,33 @@ def _build_generation_length_request(
     )
 
 
+def _build_generation_profile_request(
+    base_backend_options: Mapping[str, Any],
+    *,
+    attempt: int,
+) -> BackendGenerationProfileRequest:
+    """Build attempt evidence without interpreting backend option values."""
+    return BackendGenerationProfileRequest(
+        attempt=attempt,
+        base_backend_options=base_backend_options,
+    )
+
+
+def _merge_backend_options(*sources: Mapping[str, Any]) -> dict[str, Any]:
+    """Combine independent backend plans and fail closed on ownership overlap."""
+    merged: dict[str, Any] = {}
+    for source in sources:
+        if not isinstance(source, Mapping):
+            raise TypeError("Backend plan options должны быть mapping.")
+        overlap = sorted(set(merged).intersection(source))
+        if overlap:
+            raise RuntimeError(
+                "Backend plans конфликтуют по option keys: " + ", ".join(overlap)
+            )
+        merged.update(dict(source))
+    return merged
+
+
 def _build_generation_request(
     session: Any,
     **kwargs: Any,
@@ -102,14 +132,7 @@ def _build_generation_request(
     del session
     raw_options = kwargs.get("backend_options")
     if not isinstance(raw_options, Mapping):
-        raise TypeError("backend_options должен быть mapping из backend length plan.")
-    backend_options = dict(raw_options)
-    backend_options.update(
-        {
-            "cfg": float(kwargs.get("cfg") or 0.0),
-            "steps": int(kwargs.get("steps") or 0),
-        }
-    )
+        raise TypeError("backend_options должен быть mapping из backend plans.")
     duration_budget = kwargs.get("duration_budget")
     return BackendGenerationRequest(
         text=str(kwargs.get("text") or ""),
@@ -118,7 +141,7 @@ def _build_generation_request(
         duration_budget=(
             float(duration_budget) if duration_budget is not None else None
         ),
-        backend_options=backend_options,
+        backend_options=dict(raw_options),
     )
 
 
@@ -214,6 +237,8 @@ def _raw_failure_evidence(
         "retry_epoch_policy": RETRY_EPOCH_POLICY,
         "generation_length_policy": GENERATION_LENGTH_POLICY,
         "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
+        "generation_profile_policy": GENERATION_PROFILE_POLICY,
+        "generation_profile_request_policy": GENERATION_PROFILE_REQUEST_POLICY,
         "failed_epoch": int(retry_epoch),
         "speech_slot": round(float(speech_slot), 6),
         "max_tempo": float(MAX_TEMPO),
@@ -225,6 +250,8 @@ def _raw_failure_evidence(
                 "required_tempo": round(required_tempo(item, speech_slot), 6),
                 "generation_length_request": item.get("generation_length_request") or {},
                 "generation_length_plan": item.get("generation_length_plan") or {},
+                "generation_profile_request": item.get("generation_profile_request") or {},
+                "generation_profile_plan": item.get("generation_profile_plan") or {},
                 "cadence_failures": [
                     str(value)
                     for value in (item.get("cadence_evidence") or {}).get("failures") or []
@@ -265,6 +292,10 @@ def main() -> None:
         continuation_reset(None, "")
 
     backend = get_backend(args.speech_backend)
+    base_generation_profile_options = {
+        "cfg": float(args.cfg),
+        "steps": max(1, int(args.steps)),
+    }
     environment_policy = backend.process_environment(
         {"threads": max(1, int(args.threads))},
         base_environment=os.environ,
@@ -332,7 +363,7 @@ def main() -> None:
     log(f"Model: {model_path}")
     log(f"Model config SHA256: {config_sha}")
     log(f"CUDA доступна: {torch.cuda.is_available()} (должно быть False)")
-    log(f"Base Steps: {args.steps}; Base CFG: {args.cfg}")
+    log(f"Base backend profile options: {base_generation_profile_options}")
     log(
         "Candidate policy: 2 обязательных; 3-я при quality warning; "
         "4-я и 5-я только когда ни один кандидат не проходит hard gates"
@@ -416,14 +447,15 @@ def main() -> None:
             "start_delay_ms": int(segment.get("start_delay_ms", 0)),
             "reference_profile": profile,
             "expression": expression_signature,
-            "steps": int(args.steps),
-            "cfg": float(args.cfg),
+            "base_generation_profile_options": base_generation_profile_options,
             "base_seed": int(args.base_seed),
             "candidate_contract": {
                 "adaptive_retry_policy": ADAPTIVE_RETRY_POLICY,
                 "fit_tempo_policy": FIT_TEMPO_POLICY,
                 "generation_length_policy": GENERATION_LENGTH_POLICY,
                 "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
+                "generation_profile_policy": GENERATION_PROFILE_POLICY,
+                "generation_profile_request_policy": GENERATION_PROFILE_REQUEST_POLICY,
                 "backend_adapter_policy": backend.adapter_policy,
                 "retry_epoch_policy": RETRY_EPOCH_POLICY,
                 "base_attempts": BASE_CANDIDATE_ATTEMPTS,
@@ -525,11 +557,35 @@ def main() -> None:
                     "Speech backend length plan не соответствует typed request."
                 )
 
-            cfg_value, step_count = _generation_profile(
-                attempt_index,
-                float(args.cfg),
-                max(1, int(args.steps)),
+            profile_request = _build_generation_profile_request(
+                base_generation_profile_options,
+                attempt=attempt_index,
             )
+            if not isinstance(profile_request, BackendGenerationProfileRequest):
+                raise TypeError(
+                    "Generation profile request factory должен вернуть "
+                    "BackendGenerationProfileRequest."
+                )
+            profile_plan = backend.plan_generation_profile(profile_request)
+            if not isinstance(profile_plan, BackendGenerationProfilePlan):
+                raise TypeError(
+                    "Speech backend profile planner должен вернуть "
+                    "BackendGenerationProfilePlan."
+                )
+            if profile_plan.backend_id != backend.backend_id:
+                raise RuntimeError(
+                    "Speech backend profile plan принадлежит другому backend: "
+                    f"{profile_plan.backend_id} != {backend.backend_id}."
+                )
+            if profile_plan.attempt != profile_request.attempt:
+                raise RuntimeError(
+                    "Speech backend profile plan не соответствует typed request."
+                )
+            backend_options = _merge_backend_options(
+                length_plan.backend_options,
+                profile_plan.backend_options,
+            )
+
             seed = seed_for_attempt(
                 int(args.base_seed),
                 segment_id,
@@ -548,10 +604,8 @@ def main() -> None:
                     session,
                     text=str(segment["text"]),
                     reference=reference,
-                    cfg=cfg_value,
-                    steps=step_count,
                     duration_budget=speech_slot,
-                    backend_options=length_plan.backend_options,
+                    backend_options=backend_options,
                     seed=seed,
                 )
             elapsed = time.perf_counter() - started
@@ -567,8 +621,6 @@ def main() -> None:
                 "seed": seed,
                 "retry_epoch": retry_epoch,
                 "retry_epoch_policy": RETRY_EPOCH_POLICY,
-                "cfg": cfg_value,
-                "steps": step_count,
                 "path": str(raw_path),
                 "samples": wav_np,
                 "sample_rate": sample_rate,
@@ -577,6 +629,8 @@ def main() -> None:
                 "speech_slot_policy": SPEECH_SLOT_POLICY,
                 "generation_length_request": length_request.as_dict(),
                 "generation_length_plan": length_plan.as_dict(),
+                "generation_profile_request": profile_request.as_dict(),
+                "generation_profile_plan": profile_plan.as_dict(),
                 "tail_info": tail_info,
                 "leading_silence": leading,
                 "trailing_silence": trailing,
@@ -618,7 +672,7 @@ def main() -> None:
                 f"{source_detail}"
                 f"gap={candidate['activity']['max_internal_gap']:.3f}; "
                 f"lengthPlan={length_plan.metadata.get('policy')}; "
-                f"cfg={cfg_value:.2f}; steps={step_count}; "
+                f"profilePlan={profile_plan.metadata.get('policy')}; "
                 f"epoch={retry_epoch}; seed={seed}; CPU={elapsed:.1f}"
             )
             del wav
@@ -691,6 +745,8 @@ def main() -> None:
             "fit_tempo_policy": FIT_TEMPO_POLICY,
             "generation_length_policy": GENERATION_LENGTH_POLICY,
             "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
+            "generation_profile_policy": GENERATION_PROFILE_POLICY,
+            "generation_profile_request_policy": GENERATION_PROFILE_REQUEST_POLICY,
             "speech_slot_policy": SPEECH_SLOT_POLICY,
             "speech_slot": speech_slot,
             "retry_epoch_policy": RETRY_EPOCH_POLICY,
@@ -706,6 +762,8 @@ def main() -> None:
             "selected_score": round(float(selected["score"]), 6),
             "selected_generation_length_request": selected["generation_length_request"],
             "selected_generation_length_plan": selected["generation_length_plan"],
+            "selected_generation_profile_request": selected["generation_profile_request"],
+            "selected_generation_profile_plan": selected["generation_profile_plan"],
             "selected_voice_match": {
                 key: round(float(value), 6)
                 for key, value in selected["voice_match"].items()
@@ -740,13 +798,13 @@ def main() -> None:
                         "seed": item["seed"],
                         "retry_epoch": item["retry_epoch"],
                         "retry_epoch_policy": item["retry_epoch_policy"],
-                        "cfg": item["cfg"],
-                        "steps": item["steps"],
                         "duration": item["duration"],
                         "actual_speech_slot": item["actual_speech_slot"],
                         "speech_slot_policy": item["speech_slot_policy"],
                         "generation_length_request": item["generation_length_request"],
                         "generation_length_plan": item["generation_length_plan"],
+                        "generation_profile_request": item["generation_profile_request"],
+                        "generation_profile_plan": item["generation_profile_plan"],
                         "required_tempo": item["required_tempo"],
                         "fit_tempo_policy": item["fit_tempo_policy"],
                         "base_score": item["base_score"],
@@ -793,15 +851,15 @@ def main() -> None:
     )
     final_duration = probe_duration(output)
     report = {
-        "schema_version": "5.7-typed-generation-length-request",
+        "schema_version": "5.8-backend-generation-profile-plan",
         "policy": POLICY,
         "speech_backend": backend.backend_id,
         "backend_environment": environment_policy.as_metadata(),
         "audio_spec": audio_spec.as_dict(),
         "strategy": (
             f"direct reference-only {backend.backend_id} + guarded references + exact SRT speech slots + "
-            "typed model-neutral generation length requests + backend-owned length planning + "
-            "bounded adaptive candidates + durable failed-segment seed epochs + "
+            "typed model-neutral length/profile requests + backend-owned length and attempt profile "
+            "planning + bounded adaptive candidates + durable failed-segment seed epochs + "
             "pre-selection fit-tempo/artifact/voice/cadence hard gates + source-guided prosody "
             "ranking + assembled timeline QA + no best-of-bad fallback"
         ),
@@ -809,6 +867,8 @@ def main() -> None:
         "fit_tempo_policy": FIT_TEMPO_POLICY,
         "generation_length_policy": GENERATION_LENGTH_POLICY,
         "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
+        "generation_profile_policy": GENERATION_PROFILE_POLICY,
+        "generation_profile_request_policy": GENERATION_PROFILE_REQUEST_POLICY,
         "speech_slot_policy": SPEECH_SLOT_POLICY,
         "retry_epoch_policy": RETRY_EPOCH_POLICY,
         "base_candidate_attempts": BASE_CANDIDATE_ATTEMPTS,
@@ -817,8 +877,7 @@ def main() -> None:
         "model_config_sha256": config_sha,
         "encode_sample_rate": encode_sr,
         "output_sample_rate": output_sr,
-        "base_cfg": float(args.cfg),
-        "base_steps": int(args.steps),
+        "base_generation_profile_options": base_generation_profile_options,
         "cache_length": cache_length,
         "reference_tail_silence": REFERENCE_TAIL_SILENCE,
         "max_tempo": MAX_TEMPO,
@@ -835,8 +894,6 @@ def main() -> None:
         "timeline": str(output),
         "timeline_duration": final_duration,
         "threads": int(args.threads),
-        "steps": int(args.steps),
-        "cfg": float(args.cfg),
         "base_seed": int(args.base_seed),
         "cuda_available": bool(torch.cuda.is_available()),
     }

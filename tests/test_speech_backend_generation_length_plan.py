@@ -179,8 +179,6 @@ def test_request_factory_preserves_backend_plan_options_without_interpretation()
         object(),
         text="Текст.",
         reference=Path("reference.wav"),
-        cfg=1.8,
-        steps=16,
         duration_budget=4.0,
         backend_options={"opaque_length_unit": 77},
         seed=11,
@@ -188,11 +186,7 @@ def test_request_factory_preserves_backend_plan_options_without_interpretation()
 
     assert isinstance(request, BackendGenerationRequest)
     assert request.duration_budget == 4.0
-    assert request.backend_options == {
-        "opaque_length_unit": 77,
-        "cfg": 1.8,
-        "steps": 16,
-    }
+    assert request.backend_options == {"opaque_length_unit": 77}
 
 
 def test_candidate_loop_and_facade_contain_no_voxcpm2_length_math() -> None:
@@ -206,7 +200,7 @@ def test_candidate_loop_and_facade_contain_no_voxcpm2_length_math() -> None:
     assert "BackendGenerationLengthRequest" in raw_source
     assert "_build_generation_length_request(" in raw_source
     assert "backend.plan_generation_length(audio_spec, length_request)" in raw_source
-    assert "backend_options=length_plan.backend_options" in raw_source
+    assert "length_plan.backend_options" in raw_source
 
     assert "option_int(\"max_len\"" not in facade_source
     assert "estimated_steps" not in facade_source

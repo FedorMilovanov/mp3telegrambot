@@ -3,7 +3,8 @@
 """Timing and timeline utilities for direct speech-backend production.
 
 The low-level model call is owned by the selected backend session; the legacy
-``_generate`` helper remains only as a compatibility seam for older facades.
+``_generate`` and ``_generation_profile`` helpers remain only as compatibility
+seams for older facades.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from services.speech_backends import BackendGenerationProfileRequest, default_backend
 from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
@@ -158,11 +160,22 @@ def _generation_profile(
     base_cfg: float,
     base_steps: int,
 ) -> tuple[float, int]:
-    if attempt == 1:
-        return base_cfg, base_steps
-    if attempt == 2:
-        return min(2.20, base_cfg + 0.20), min(30, base_steps + 6)
-    return max(1.50, base_cfg - 0.15), min(30, base_steps + 10)
+    """Compatibility wrapper around the backend-owned profile planner."""
+    plan = default_backend().plan_generation_profile(
+        BackendGenerationProfileRequest(
+            attempt=attempt,
+            base_backend_options={"cfg": base_cfg, "steps": base_steps},
+            metadata={"compatibility_seam": "direct_max_quality_render"},
+        )
+    )
+    try:
+        cfg = float(plan.backend_options["cfg"])
+        steps = int(plan.backend_options["steps"])
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            "Backend generation profile не содержит совместимые cfg/steps."
+        ) from exc
+    return cfg, steps
 
 
 def _needs_normalization(text: str) -> bool:
