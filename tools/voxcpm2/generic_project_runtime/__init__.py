@@ -17,6 +17,8 @@ import math
 import os
 from pathlib import Path
 import sys
+import threading
+import time
 import types
 from typing import Any
 import uuid
@@ -40,7 +42,11 @@ for _name in dir(_legacy):
         globals().setdefault(_name, getattr(_legacy, _name))
 
 POLICY = "generic-project-runtime-write-through-v3"
+ATOMIC_REPLACE_POLICY = "per-path-serialized-windows-sharing-retry-v1"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
+_REPLACE_ATTEMPTS = 8
+_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_LOCKS: dict[str, threading.Lock] = {}
 
 
 def _strict_schema_int(value: Any, *, field: str, low: int, high: int) -> int:
@@ -136,24 +142,46 @@ def load_request(root: Path) -> dict[str, Any]:
     return validate_request_payload(payload)
 
 
+def _path_lock(path: Path) -> threading.Lock:
+    key = os.path.normcase(str(Path(path).resolve()))
+    with _PATH_LOCKS_GUARD:
+        return _PATH_LOCKS.setdefault(key, threading.Lock())
+
+
+def _replace_atomic(temporary: Path, destination: Path) -> None:
+    """Replace one file atomically, retrying only transient Windows sharing errors."""
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(temporary, destination)
+            return
+        except PermissionError as exc:
+            winerror = getattr(exc, "winerror", None)
+            if os.name != "nt" or winerror not in {5, 32} or attempt + 1 >= _REPLACE_ATTEMPTS:
+                raise
+            time.sleep(min(0.005 * (2**attempt), 0.160))
+
+
 def save_json(path: Path, payload: Any) -> None:
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
-    try:
-        encoded = json.dumps(
-            payload,
-            ensure_ascii=False,
-            indent=2,
-            allow_nan=False,
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        allow_nan=False,
+    )
+    with _path_lock(path):
+        temporary = path.with_name(
+            path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}"
         )
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            _replace_atomic(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 _legacy.project_root = project_root
@@ -184,7 +212,10 @@ _module.__class__ = _WriteThroughModule
 __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
+        "ATOMIC_REPLACE_POLICY",
         "POLICY",
+        "_path_lock",
+        "_replace_atomic",
         "load_request",
         "project_root",
         "save_json",
