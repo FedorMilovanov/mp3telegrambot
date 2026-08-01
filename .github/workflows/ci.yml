@@ -46,6 +46,9 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
 
+      - name: Validate TTS model catalog
+        run: python tools/check_tts_model_catalog.py
+
       - name: Compile all Python files
         run: python -m compileall -q .
 
@@ -98,10 +101,14 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
 
+      - name: Validate TTS model catalog
+        run: python tools/check_tts_model_catalog.py
+
       - name: Compile runtime surface dynamically
         shell: pwsh
         run: |
           python -m compileall -q bot_new.py services handlers tools/voxcpm2 tests
+          python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Runtime compile surface failed."
           }
@@ -114,6 +121,7 @@ jobs:
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
@@ -153,11 +161,13 @@ jobs:
           services
           handlers
           tools/voxcpm2
+          tools/check_tts_model_catalog.py
           tests/test_runtime_manifest.py
           tests/test_bot_lifecycle.py
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
+          tests/test_speech_model_profile_manifests.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
