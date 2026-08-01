@@ -13,13 +13,19 @@ from services.speech_backends import DEFAULT_MODEL_PROFILE_ID, default_model_pro
 
 
 def _payload(**overrides):
+    profile = default_model_profile()
     return {
         "schema_version": 1,
         "video_id": "AbCdEf12345",
         "source_url": "https://youtube.com/watch?v=AbCdEf12345",
         "translation_mode": "gemini",
-        "speech_backend": "voxcpm2",
-        "speech_model_profile": DEFAULT_MODEL_PROFILE_ID,
+        "speech_backend": profile.backend_id,
+        "speech_model_profile": profile.profile_id,
+        "speech_profile_fingerprint": profile.fingerprint(),
+        "speech_options": {
+            spec.name: spec.default for spec in profile.option_specs
+        },
+        "speech_backend_config": dict(profile.backend_defaults),
         "media_master": "constant-mix",
         "final_media_validator": "ffprobe-av-contract",
         **overrides,
@@ -48,14 +54,14 @@ def test_wizard_writes_validated_request_inside_project_root(
 
     assert path == expected
     assert saved["video_id"] == "AbCdEf12345"
-    assert saved["speech_backend"] == "voxcpm2"
-    assert saved["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert saved["speech_backend"] == profile.backend_id
+    assert saved["speech_model_profile"] == profile.profile_id
     assert saved["speech_profile_fingerprint"] == profile.fingerprint()
     assert saved["speech_options"] == {
         spec.name: spec.default for spec in profile.option_specs
     }
     assert saved["speech_backend_config"] == dict(profile.backend_defaults)
-    assert not list(path.parent.glob("request.json.tmp.*"))
+    assert not list(path.parent.glob(".request.json.*.tmp"))
 
 
 @pytest.mark.parametrize(
@@ -91,7 +97,33 @@ def test_invalid_wizard_request_is_not_written(
         / "request.json"
     )
     assert not request_path.exists()
-    assert not list(request_path.parent.glob("request.json.tmp.*"))
+    assert not list(request_path.parent.glob(".request.json.*.tmp"))
+
+
+def test_three_argument_request_call_remains_default_profile_compatible(
+    monkeypatch,
+) -> None:
+    for name in (
+        "DUB_TTS_OPTIONS_JSON",
+        "DUB_TTS_BACKEND_CONFIG_JSON",
+        "DUB_VOX_THREADS",
+        "DUB_VOX_STEPS",
+        "DUB_VOX_CFG",
+        "DUB_VOX_CACHE_LENGTH",
+        "DUB_VOX_BASE_SEED",
+        "DUB_VOX_ARCHIVE",
+        "DUB_CPU_VENV",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    payload = dub_wizard._request_payload(
+        "AbCdEf12345",
+        "https://youtube.com/watch?v=AbCdEf12345",
+        "gemini",
+    )
+
+    assert payload["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert payload["speech_profile_fingerprint"] == default_model_profile().fingerprint()
 
 
 def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) -> None:
@@ -107,25 +139,29 @@ def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) ->
         "AbCdEf12345",
         "https://youtube.com/watch?v=AbCdEf12345",
         "gemini",
+        DEFAULT_MODEL_PROFILE_ID,
     )
 
     assert payload["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
-    assert payload["speech_options"] == {"steps": 22, "cfg": 1.92, "threads": 7}
+    assert payload["speech_options"]["steps"] == 22
+    assert payload["speech_options"]["cfg"] == 1.92
+    assert payload["speech_options"]["threads"] == 7
     assert payload["speech_backend_config"] == {
         "vox_archive": "C:/models/vox-next",
         "cpu_venv": "C:/venvs/vox-next",
     }
-    assert "vox_archive" not in payload
-    assert "threads" not in payload
+    assert payload["vox_archive"] == "C:/models/vox-next"
+    assert payload["threads"] == 7
 
 
 def test_wizard_rejects_non_object_tts_env(monkeypatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", "[1, 2, 3]")
-    with pytest.raises(RuntimeError, match="JSON-объект"):
+    with pytest.raises(ValueError, match="JSON-объект"):
         dub_wizard._request_payload(
             "AbCdEf12345",
             "https://youtube.com/watch?v=AbCdEf12345",
             "gemini",
+            DEFAULT_MODEL_PROFILE_ID,
         )
 
 
@@ -158,40 +194,54 @@ def _update(order: list[str]) -> Any:
     )
 
 
-def test_gemini_job_is_enqueued_only_after_durable_request(
+def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
     monkeypatch,
-    tmp_path: Path,
 ) -> None:
     order: list[str] = []
     store = _FakeStore(order)
+    profile = default_model_profile()
     monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
     monkeypatch.setattr(
-        dub_wizard,
+        dub_wizard._legacy,
         "_extract_youtube_video_id",
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
-    monkeypatch.setattr(
-        dub_wizard._legacy,
-        "_request_payload",
-        lambda video_id, source_url, mode: _payload(
+
+    def build_request(video_id: str, source_url: str, mode: str, profile_id: str):
+        order.append("normalize")
+        assert profile_id == DEFAULT_MODEL_PROFILE_ID
+        return _payload(
             video_id=video_id,
             source_url=source_url,
             translation_mode=mode,
+        )
+
+    monkeypatch.setattr(dub_wizard._legacy, "_request_payload", build_request)
+    monkeypatch.setattr(
+        dub_wizard._legacy,
+        "production_tts_profile_choice",
+        lambda _value: SimpleNamespace(
+            profile_id=profile.profile_id,
+            backend_id=profile.backend_id,
+            display_name=profile.display_name,
+            model_revision=profile.model_revision,
+            fingerprint=profile.fingerprint(),
         ),
     )
-
-    request_path = tmp_path / "request.json"
-
-    def write_request(project_id: str, payload: dict[str, Any]) -> Path:
-        assert project_id == "dub-0123456789"
-        request_path.write_text(json.dumps(payload), encoding="utf-8")
-        order.append("request")
-        return request_path
-
-    monkeypatch.setattr(dub_wizard, "_write_request", write_request)
-    context = SimpleNamespace(
-        user_data={dub_wizard._legacy._WIZARD_KEY: {"awaiting": "url"}}
+    monkeypatch.setattr(
+        dub_wizard._legacy,
+        "_project_root",
+        lambda _project_id: Path("/tmp/dub-project"),
     )
+
+    def write_request(path: Path, payload: dict[str, Any]) -> Path:
+        assert path.name == "request.json"
+        assert payload["speech_profile_fingerprint"] == profile.fingerprint()
+        order.append("request")
+        return path
+
+    monkeypatch.setattr(dub_wizard._legacy, "write_durable_request", write_request)
+    context = SimpleNamespace(user_data={dub_wizard._legacy._WIZARD_KEY: {"awaiting": "url"}})
 
     asyncio.run(
         dub_wizard._create_generic_project(
@@ -199,27 +249,57 @@ def test_gemini_job_is_enqueued_only_after_durable_request(
             context,
             "https://youtu.be/AbCdEf12345",
             dub_wizard._legacy._GEMINI_MODE,
+            DEFAULT_MODEL_PROFILE_ID,
         )
     )
 
     assert order == [
+        "normalize",
         "create",
         "request",
         "enqueue:dub-0123456789:render_gemini",
         "reply",
     ]
-    assert request_path.is_file()
     assert context.user_data == {}
 
 
-def test_failed_request_write_never_enqueues_job(
-    monkeypatch,
-) -> None:
+def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
     order: list[str] = []
     store = _FakeStore(order)
     monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
     monkeypatch.setattr(
-        dub_wizard,
+        dub_wizard._legacy,
+        "_extract_youtube_video_id",
+        lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
+    )
+
+    def fail_request(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        order.append("normalize-failed")
+        raise RuntimeError("PROFILE_SENTINEL")
+
+    monkeypatch.setattr(dub_wizard._legacy, "_request_payload", fail_request)
+
+    with pytest.raises(RuntimeError, match="PROFILE_SENTINEL"):
+        asyncio.run(
+            dub_wizard._create_generic_project(
+                _update(order),
+                SimpleNamespace(user_data={}),
+                "https://youtu.be/AbCdEf12345",
+                dub_wizard._legacy._GEMINI_MODE,
+                DEFAULT_MODEL_PROFILE_ID,
+            )
+        )
+
+    assert order == ["normalize-failed"]
+
+
+def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
+    order: list[str] = []
+    store = _FakeStore(order)
+    profile = default_model_profile()
+    monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
+    monkeypatch.setattr(
+        dub_wizard._legacy,
         "_extract_youtube_video_id",
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
@@ -228,12 +308,28 @@ def test_failed_request_write_never_enqueues_job(
         "_request_payload",
         lambda *_args: _payload(),
     )
+    monkeypatch.setattr(
+        dub_wizard._legacy,
+        "production_tts_profile_choice",
+        lambda _value: SimpleNamespace(
+            profile_id=profile.profile_id,
+            backend_id=profile.backend_id,
+            display_name=profile.display_name,
+            model_revision=profile.model_revision,
+            fingerprint=profile.fingerprint(),
+        ),
+    )
+    monkeypatch.setattr(
+        dub_wizard._legacy,
+        "_project_root",
+        lambda _project_id: Path("/tmp/dub-project"),
+    )
 
     def fail_write(*_args: Any, **_kwargs: Any) -> Path:
         order.append("request-failed")
         raise OSError("DISK_SENTINEL")
 
-    monkeypatch.setattr(dub_wizard, "_write_request", fail_write)
+    monkeypatch.setattr(dub_wizard._legacy, "write_durable_request", fail_write)
 
     with pytest.raises(OSError, match="DISK_SENTINEL"):
         asyncio.run(
@@ -242,6 +338,7 @@ def test_failed_request_write_never_enqueues_job(
                 SimpleNamespace(user_data={}),
                 "https://youtu.be/AbCdEf12345",
                 dub_wizard._legacy._GEMINI_MODE,
+                DEFAULT_MODEL_PROFILE_ID,
             )
         )
 
@@ -249,11 +346,13 @@ def test_failed_request_write_never_enqueues_job(
     assert not any(item.startswith("enqueue:") for item in order)
 
 
-def test_wizard_facade_patches_legacy_request_and_creation_hooks() -> None:
+def test_wizard_facade_is_one_way_compatibility_only() -> None:
     assert Path(dub_wizard.__file__).name == "__init__.py"
     assert dub_wizard._legacy._request_payload is dub_wizard._request_payload
     assert dub_wizard._legacy._write_request is dub_wizard._write_request
     assert dub_wizard._legacy._create_generic_project is dub_wizard._create_generic_project
     source = Path(dub_wizard.__file__).read_text(encoding="utf-8")
     assert "generic_project_runtime.validate_request_payload(payload)" in source
-    assert "generic_project_runtime.save_json(destination, validated)" in source
+    assert "write_durable_request(target, validated)" in source
+    assert "DUB_TTS_OPTIONS_JSON" not in source
+    assert "DUB_VOX_THREADS" not in source

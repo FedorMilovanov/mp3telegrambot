@@ -100,10 +100,11 @@ def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     snapshot = model_profile_catalog_snapshot()
     record = model_profile_manifest_record(DEFAULT_MODEL_PROFILE_ID)
     evidence = model_profile_source_evidence(DEFAULT_MODEL_PROFILE_ID)
+    profile = default_model_profile()
 
     assert len(records) == 1
     assert record is records[0]
-    assert records[0].profile is default_model_profile()
+    assert records[0].profile is profile
     assert records[0].profile.profile_id == DEFAULT_MODEL_PROFILE_ID
     assert records[0].source_path.name == f"{DEFAULT_MODEL_PROFILE_ID}.json"
     assert len(records[0].source_sha256) == 64
@@ -112,13 +113,23 @@ def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     assert snapshot["profiles"][0]["profile"]["model_revision"] == (
         "local-archive-pinned-v1"
     )
-    assert evidence["profile_id"] == DEFAULT_MODEL_PROFILE_ID
-    assert evidence["source_kind"] == "repository-manifest"
-    assert evidence["source"] == f"{DEFAULT_MODEL_PROFILE_ID}.json"
-    assert evidence["source_sha256"] == records[0].source_sha256
-    assert evidence["manifest_policy"] == PROFILE_MANIFEST_POLICY
-    assert "vox_archive" not in evidence
-    assert "cpu_venv" not in evidence
+    assert evidence == {
+        "schema_version": 1,
+        "profile_id": DEFAULT_MODEL_PROFILE_ID,
+        "backend_id": profile.backend_id,
+        "model_revision": profile.model_revision,
+        "source": f"{DEFAULT_MODEL_PROFILE_ID}.json",
+        "source_kind": "repository-manifest",
+        "source_sha256": records[0].source_sha256,
+        "manifest_policy": PROFILE_MANIFEST_POLICY,
+    }
+    serialized = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    assert "backend_defaults" not in serialized
+    assert "speech_backend_config" not in serialized
+    assert "vox_archive" not in serialized
+    assert "cpu_venv" not in serialized
+    assert str(profile.backend_defaults["vox_archive"]) not in serialized
+    assert str(profile.backend_defaults["cpu_venv"]) not in serialized
     assert str(default_profile_manifest_root()) not in str(evidence["source"])
 
 
