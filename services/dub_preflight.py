@@ -14,6 +14,7 @@ from services.media_masters import get_media_master
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     DEFAULT_MODEL_PROFILE_ID,
+    model_profile_source_evidence,
     select_production_speech,
 )
 
@@ -135,6 +136,9 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
         "model_contract": selection.model_contract,
         "model_profile": selection.model_profile,
         "model_resolution": selection.resolution,
+        "model_source": model_profile_source_evidence(
+            selection.model_profile.profile_id
+        ),
         "speech_runtime": speech_runtime,
         "media_master": media_master,
         "media_runtime": media_runtime,
@@ -156,6 +160,7 @@ def _signature(plan: dict[str, Any]) -> dict[str, Any]:
         "backend": plan["identity"].as_dict(),
         "speech_model_contract": plan["model_contract"].as_dict(),
         "speech_model_profile": plan["model_profile"].as_dict(),
+        "speech_model_source": dict(plan["model_source"]),
         "speech_model_resolution": plan["model_resolution"].as_dict(),
         "speech_runtime": speech.as_dict(),
         "media_runtime": media.as_dict(),

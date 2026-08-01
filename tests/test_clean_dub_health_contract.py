@@ -8,12 +8,18 @@ from services.speech_backends import (
     BACKEND_CONTRACT_POLICY,
     CONTROL_PLANE_POLICY,
     DEFAULT_BACKEND_ID,
+    DEFAULT_MODEL_PROFILE_ID,
     GENERATION_LENGTH_POLICY,
     GENERATION_LENGTH_REQUEST_POLICY,
+    MODEL_CATALOG_POLICY,
+    MODEL_PROFILE_CONTRACT_POLICY,
+    PROFILE_MANIFEST_POLICY,
     BackendAudioSpec,
     BackendGenerationLengthPlan,
     BackendGenerationLengthRequest,
     default_backend,
+    default_model_profile,
+    model_profile_source_evidence,
     select_production_backend,
 )
 from tools.voxcpm2 import clean_runtime_contract
@@ -34,10 +40,31 @@ def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
     assert CONTROL_PLANE_POLICY in detail
     assert GENERATION_LENGTH_POLICY in detail
     assert GENERATION_LENGTH_REQUEST_POLICY in detail
+    assert MODEL_CATALOG_POLICY in detail
+    assert MODEL_PROFILE_CONTRACT_POLICY in detail
+    assert PROFILE_MANIFEST_POLICY in detail
     assert "speech-backend" in detail
+    assert "tts-model-catalog" in detail
     assert "recipe-routing" in detail
     assert "runtime-safety" in detail
     assert "quality-runtime" in detail
+
+
+def test_dub_health_reports_active_model_revision_without_runtime_paths() -> None:
+    ok, detail = dub_health._model_catalog_contract()
+    profile = default_model_profile()
+    source = model_profile_source_evidence(profile.profile_id)
+
+    assert ok, detail
+    assert f"profile={DEFAULT_MODEL_PROFILE_ID}" in detail
+    assert f"backend={profile.backend_id}" in detail
+    assert f"revision={profile.model_revision}" in detail
+    assert Path(str(source["source"])).name in detail
+    assert str(source["source_sha256"])[:12] in detail
+    assert profile.fingerprint()[:12] in detail
+    assert "C:\\AI-Archive" not in detail
+    assert "cpu_venv" not in detail
+    assert "vox_archive" not in detail
 
 
 def test_dub_health_checks_active_backend_and_safety_contracts() -> None:

@@ -210,6 +210,62 @@ def _backend_contract() -> tuple[bool, str]:
     return ok, detail
 
 
+def _model_catalog_contract() -> tuple[bool, str]:
+    from services.speech_backends import (
+        DEFAULT_BACKEND_ID,
+        DEFAULT_MODEL_PROFILE_ID,
+        MODEL_CATALOG_POLICY,
+        MODEL_PROFILE_CONTRACT_POLICY,
+        PROFILE_MANIFEST_POLICY,
+        default_model_profile,
+        get_backend_model_contract,
+        model_profile_ids,
+        model_profile_source_evidence,
+        select_production_speech,
+    )
+
+    profile = default_model_profile()
+    selection = select_production_speech(
+        None,
+        DEFAULT_MODEL_PROFILE_ID,
+        request={},
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+    )
+    contract = get_backend_model_contract(selection.backend_id)
+    contract.validate_profile(profile)
+    source = model_profile_source_evidence(profile.profile_id)
+    source_sha = str(source.get("source_sha256") or "")
+    source_name = Path(str(source.get("source") or "runtime-registration")).name
+    fingerprint = profile.fingerprint()
+    option_names = tuple(spec.name for spec in profile.option_specs)
+    registered = model_profile_ids()
+    ok = bool(
+        selection.model_profile is profile
+        and selection.model_contract is contract
+        and profile.profile_id == DEFAULT_MODEL_PROFILE_ID
+        and profile.production_enabled
+        and profile.profile_id in registered
+        and selection.backend_id == profile.backend_id
+        and tuple(selection.resolution.options) == option_names
+        and set(selection.resolution.backend_config) == set(profile.backend_defaults)
+        and len(fingerprint) == 64
+        and source.get("source_kind") == "repository-manifest"
+        and len(source_sha) == 64
+        and MODEL_CATALOG_POLICY
+        and MODEL_PROFILE_CONTRACT_POLICY
+        and PROFILE_MANIFEST_POLICY
+    )
+    detail = (
+        f"profile={profile.profile_id}; backend={profile.backend_id}; "
+        f"revision={profile.model_revision}; manifest={source_name}@{source_sha[:12]}; "
+        f"fingerprint={fingerprint[:12]}; profiles={len(registered)}; "
+        f"options={len(option_names)}; contract={MODEL_PROFILE_CONTRACT_POLICY}; "
+        f"catalog={MODEL_CATALOG_POLICY}; manifest-policy={PROFILE_MANIFEST_POLICY}"
+    )
+    return ok, detail
+
+
 def _recipe_contract() -> tuple[bool, str]:
     from services.dub_studio import load_recipe
 
@@ -347,6 +403,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     del repo  # Active imports are the source of truth for this checkout.
     checks: dict[str, tuple[bool, str]] = {}
     _safe_check(checks, "speech-backend", _backend_contract)
+    _safe_check(checks, "tts-model-catalog", _model_catalog_contract)
     _safe_check(checks, "recipe-routing", _recipe_contract)
     _safe_check(checks, "worker-release", _worker_contract)
     _safe_check(checks, "runtime-safety", _runtime_safety_contract)
@@ -363,6 +420,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
     return True, f"{QUALITY_CONTRACT_POLICY}; {details}"
 
 
+_legacy._model_catalog_contract = _model_catalog_contract
 _legacy._quality_contract = _quality_contract
 collect_dub_health = _legacy.collect_dub_health
 dubcheck_command = _legacy.dubcheck_command
@@ -372,6 +430,7 @@ __all__ = [
     "QUALITY_CONTRACT_POLICY",
     "_WORKER_RUNTIME",
     "_backend_contract",
+    "_model_catalog_contract",
     "_quality_contract",
     "_quality_runtime_contract",
     "_recipe_contract",
