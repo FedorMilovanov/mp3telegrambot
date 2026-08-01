@@ -7,6 +7,7 @@ from services.dub_title_policy import (
     canonical_delivery_filename,
     canonical_media_title,
 )
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,11 +85,18 @@ def test_title_health_accepts_resumable_direct_route() -> None:
     assert "готовый SRT продолжает проверенные checkpoints" in detail
 
 
-def test_bot_installs_title_policy_after_dub_handlers() -> None:
-    source = (ROOT / "bot_new.py").read_text(encoding="utf-8")
-    dub_runtime = source.index("install_dub_studio_runtime()")
-    title_policy = source.index("install_dub_title_policy()")
-    assert dub_runtime < title_policy
+def test_manifest_installs_title_policy_after_dub_runtime() -> None:
+    order = {
+        feature.feature_id: index
+        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
+    }
+    assert order["dub-studio-runtime"] < order["dub-title-policy"]
+    title_feature = next(
+        feature
+        for feature in DEFAULT_RUNTIME_FEATURES
+        if feature.feature_id == "dub-title-policy"
+    )
+    assert title_feature.required is True
 
 
 def test_title_policy_is_runtime_wide_and_health_checked() -> None:
