@@ -137,7 +137,7 @@ async def _create_generic_project(
         metadata={"video_id": video_id, "translation_mode": mode},
     )
     project_id = str(project["id"])
-    request = _request_payload(video_id, canonical_url, mode)
+    request = _legacy._request_payload(video_id, canonical_url, mode)
     try:
         _write_request(project_id, request)
     except Exception:
