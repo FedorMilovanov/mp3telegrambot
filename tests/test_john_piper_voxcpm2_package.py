@@ -4,6 +4,12 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
+from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
+    voxcpm2_cpu_shorts_production as direct_wrapper,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = (
@@ -77,14 +83,51 @@ def test_subtitle_bounds_do_not_exceed_video_duration() -> None:
         assert max(values) <= 62.514 + 0.001
 
 
-def test_synthesis_supports_resumable_checkpoints() -> None:
-    source = (EXAMPLE / "voxcpm2_cpu_shorts_production.py").read_text(
-        encoding="utf-8-sig"
+def test_synthesis_supports_transactional_resumable_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    compatibility = {
+        "schema_version": 2,
+        "policy": direct_wrapper.MARKER_POLICY,
+        "speech_backend": "voxcpm2",
+        "render_contract_sha256": "a" * 64,
+        "cache_length": 4096,
+        "python_executable": "python",
+    }
+    checkpoint = tmp_path / "checkpoints" / "segment_01.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text('{"complete": true}', encoding="utf-8")
+    monkeypatch.setattr(
+        direct_wrapper,
+        "_runtime_contract",
+        lambda: (tmp_path, dict(compatibility)),
     )
-    assert 'work_dir / "checkpoints"' in source
-    assert "checkpoint_path.is_file()" in source
-    assert "повторный CPU-синтез не нужен" in source
-    assert '"--force-segments"' in source
+
+    assert direct_wrapper.run(lambda: "rendered") == "rendered"
+    marker = json.loads(
+        (tmp_path / "direct_cli_runtime.marker.json").read_text(encoding="utf-8")
+    )
+    completed = json.loads(
+        (tmp_path / "direct_cli_runtime.completed.json").read_text(encoding="utf-8")
+    )
+    assert marker == compatibility
+    assert completed["compatibility"] == compatibility
+    assert checkpoint.is_file()
+
+    def fail() -> None:
+        raise RuntimeError("render failed")
+
+    with pytest.raises(RuntimeError, match="render failed"):
+        direct_wrapper.run(fail)
+    assert checkpoint.is_file()
+    assert (tmp_path / "direct_cli_runtime.marker.json").is_file()
+    assert not (tmp_path / "direct_cli_runtime.completed.json").exists()
+    failure = json.loads(
+        (tmp_path / "direct_renderer_failure.json").read_text(encoding="utf-8")
+    )
+    assert failure["error_type"] == "RuntimeError"
+    assert failure["message"] == "render failed"
 
     launcher = (EXAMPLE / "Run-John-Piper-FINAL-CPU.ps1").read_text(
         encoding="utf-8-sig"
