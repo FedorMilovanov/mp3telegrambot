@@ -95,7 +95,7 @@ def test_verifier_accepts_single_exact_artifact_and_returns_safe_outputs(
         "profile_id": PROFILE,
         "model_revision": "local-archive-pinned-v1",
         "backend_id": "voxcpm2",
-        "output_duration_seconds": "4.0",
+        "output_duration_seconds": "4",
         "output_sample_rate": "24000",
         "audio_retained": "false",
     }
@@ -164,7 +164,21 @@ def test_verifier_rejects_github_output_injection_even_with_valid_digest(
     payload = {**statement, "digest_sha256": _digest_payload(statement)}
     directory = _artifact(tmp_path, payload)
 
-    with pytest.raises(RuntimeError, match="Unsafe GitHub output"):
+    with pytest.raises(RuntimeError, match="Unsafe identifier output"):
+        _verify(directory)
+
+
+def test_verifier_rejects_markdown_delimiters_even_with_valid_digest(
+    tmp_path: Path,
+) -> None:
+    payload = _attestation()
+    statement = copy.deepcopy(payload)
+    statement.pop("digest_sha256")
+    statement["result"]["model_revision"] = "unsafe`revision"
+    payload = {**statement, "digest_sha256": _digest_payload(statement)}
+    directory = _artifact(tmp_path, payload)
+
+    with pytest.raises(RuntimeError, match="Unsafe identifier output"):
         _verify(directory)
 
 
