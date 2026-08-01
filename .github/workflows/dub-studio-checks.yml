@@ -15,6 +15,7 @@ on:
       - 'services/dub_*.py'
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
+      - 'services/tts_profile_selection.py'
       - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
@@ -32,6 +33,7 @@ on:
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
       - 'tests/test_speech_model_*.py'
+      - 'tests/test_tts_*.py'
       - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
@@ -48,6 +50,7 @@ on:
       - 'services/dub_*.py'
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
+      - 'services/tts_profile_selection.py'
       - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
@@ -65,6 +68,7 @@ on:
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
       - 'tests/test_speech_model_*.py'
+      - 'tests/test_tts_*.py'
       - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
 
@@ -97,7 +101,7 @@ jobs:
       - name: Compile production surface dynamically
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
           python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Dub Studio production compile failed."
@@ -150,22 +154,26 @@ jobs:
           tests/test_speech_backend_runtime_paths.py
           tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
+          tests/test_tts_profile_selection.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
           tests/test_semantic_block_runtime.py
           tests/test_final_media_qa.py
+          tests/test_dub_wizard.py
           tests/test_dub_wizard_request_writer.py
           tests/test_dub_facade_write_through.py
       - name: Ruff configured Dub Studio checks
         run: >-
           python -m ruff check
           services/speech_backends
+          services/tts_profile_selection.py
           services/dub_execution.py
           services/dub_worker.py
           services/dub_studio.py
           services/dub_studio_runtime.py
           handlers/dub_health
           handlers/dub_wizard.py
+          handlers/dub_wizard
           handlers/dub_commands.py
           handlers/dub_delivery.py
           tools/check_tts_model_catalog.py
@@ -193,7 +201,10 @@ jobs:
           tests/test_speech_backend_runtime_paths.py
           tests/test_speech_model_profile_manifests.py
           tests/test_speech_model_profiles.py
+          tests/test_tts_profile_selection.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
+          tests/test_dub_wizard.py
+          tests/test_dub_wizard_request_writer.py
       - name: Whitespace integrity
         run: git diff --check
