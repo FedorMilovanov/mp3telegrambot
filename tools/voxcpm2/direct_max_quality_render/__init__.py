@@ -35,7 +35,7 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v3"
+ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"
 GENERATION_PROFILE_DELEGATION_POLICY = "backend-owned-attempt-profile-v1"
 TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
