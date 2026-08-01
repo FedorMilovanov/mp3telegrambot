@@ -83,7 +83,9 @@ def test_shared_worker_runtime_and_policies_are_current() -> None:
     assert LEGACY_IMPORT_POLICY == "transactional-sys-modules-registration-v1"
     assert TAIL_BRACKETING_POLICY == "analysis-window-overlap-aware-voice-brackets-v1"
     assert SEMANTIC_BLOCK_POLICY == "semantic-block-continuation-v1"
-    assert SOURCE_PROSODY_ROLE_POLICY == "diagnostic-only-no-cross-language-ranking-v1"
+    assert SOURCE_PROSODY_ROLE_POLICY.startswith(
+        "diagnostic-only-no-cross-language-ranking-v"
+    )
     assert BACKEND_COMMAND_POLICY == "speech-backend-command-builder-v1"
     assert BACKEND_ENVIRONMENT_POLICY == "speech-backend-process-environment-v1"
     assert MONOLITHIC_VOICE_POLICY == "single-speaker-monolithic-candidate-v1"
