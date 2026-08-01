@@ -122,6 +122,7 @@ jobs:
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
           tests/test_speech_model_profile_manifests.py
+          tests/test_services_import_diagnostics.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
@@ -168,6 +169,7 @@ jobs:
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
           tests/test_speech_model_profile_manifests.py
+          tests/test_services_import_diagnostics.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
