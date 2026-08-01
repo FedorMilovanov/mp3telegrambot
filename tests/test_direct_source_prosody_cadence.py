@@ -60,24 +60,27 @@ def _segment(text: str):
     }
 
 
-def test_cadence_evidence_controls_candidate_acceptance():
+def test_russian_cadence_controls_acceptance_while_source_penalty_stays_zero():
     rising = _candidate(80.0, 200.0)
     falling = _candidate(200.0, 80.0)
 
     rising_penalty = source_prosody_penalty(rising, _segment("Завершение."))
     falling_penalty = source_prosody_penalty(falling, _segment("Завершение."))
 
+    assert rising_penalty == 0.0
+    assert falling_penalty == 0.0
     assert rising["cadence_hard_ok"] is False
     assert rising["source_prosody_match"]["cadence"]["cadence"] == "terminal"
-    assert rising_penalty > falling_penalty
+    assert rising["source_prosody_match"]["source_prosody_ranking_enabled"] is False
     assert candidate_pitch_evidence_ok(rising) is False
     assert falling["cadence_hard_ok"] is True
     assert candidate_pitch_evidence_ok(falling) is True
 
 
-def test_linked_phrase_underfill_is_fail_closed():
+def test_linked_phrase_underfill_is_deferred_to_timeline_without_cross_language_score():
     candidate = _candidate(100.0, 150.0)
     candidate["duration"] = 0.95
+
     result = source_prosody_penalty(
         candidate,
         {
@@ -88,11 +91,15 @@ def test_linked_phrase_underfill_is_fail_closed():
     )
 
     cadence = candidate["source_prosody_match"]["cadence"]
+    assert result == 0.0
     assert cadence["cadence"] == "linked"
     assert cadence["duration_ratio"] < 0.50
     assert "continuation_too_short" not in cadence["failures"]
     assert cadence["timeline_compaction_required"] is True
-    assert cadence["candidate_continuation_policy"] == "defer-short-continuation-to-timeline-v1"
+    assert cadence["candidate_continuation_policy"] == (
+        "defer-short-continuation-to-timeline-v1"
+    )
     assert candidate["cadence_hard_ok"] is True
     assert candidate_pitch_evidence_ok(candidate) is True
-    assert result >= cadence["penalty"]
+    assert candidate["source_prosody_match"]["diagnostic_penalty"] >= cadence["penalty"]
+    assert candidate["source_prosody_match"]["source_prosody_ranking_enabled"] is False
