@@ -17,6 +17,11 @@ from services.speech_backends.model_profiles import (
     SpeechModelResolution,
     get_model_profile,
 )
+from services.speech_backends.profile_contracts import (
+    BackendModelProfileContract,
+    ModelProfileContractError,
+    get_backend_model_contract,
+)
 from services.speech_backends.registry import get_backend, resolve_backend_id
 
 # Keep the public selection-plane policy stable. Concrete model-profile
@@ -71,11 +76,12 @@ class BackendSelection:
 
 @dataclass(frozen=True)
 class SpeechSelection:
-    """Validated adapter + pinned concrete model profile + effective request."""
+    """Validated adapter + profile contract + model profile + effective request."""
 
     backend_id: str
     backend: SpeechBackend
     capabilities: BackendCapabilities
+    model_contract: BackendModelProfileContract
     model_profile: SpeechModelProfile
     resolution: SpeechModelResolution
 
@@ -84,6 +90,7 @@ class SpeechSelection:
             "backend_id": self.backend_id,
             "adapter_policy": str(getattr(self.backend, "adapter_policy", "")),
             "capabilities": self.capabilities.as_dict(),
+            "model_contract": self.model_contract.as_dict(),
             "model_profile": self.model_profile.as_dict(),
             "resolution": self.resolution.as_dict(),
             "control_plane_policy": CONTROL_PLANE_POLICY,
@@ -188,6 +195,12 @@ def select_production_speech(
             f"но выбран backend={backend_selection.backend_id}."
         )
 
+    try:
+        model_contract = get_backend_model_contract(backend_selection.backend_id)
+        model_contract.validate_profile(profile)
+    except ModelProfileContractError as exc:
+        raise SpeechModelConfigurationError(str(exc)) from exc
+
     request_payload = dict(request or {})
     stored_fingerprint = request_payload.get("speech_profile_fingerprint")
     current_fingerprint = profile.fingerprint()
@@ -204,6 +217,7 @@ def select_production_speech(
         backend_id=backend_selection.backend_id,
         backend=backend_selection.backend,
         capabilities=backend_selection.capabilities,
+        model_contract=model_contract,
         model_profile=profile,
         resolution=resolution,
     )
