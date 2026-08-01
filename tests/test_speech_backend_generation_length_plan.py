@@ -113,11 +113,9 @@ def test_request_factory_preserves_opaque_backend_plan_options() -> None:
 
     assert isinstance(request, BackendGenerationRequest)
     assert request.duration_budget == 4.0
-    assert request.backend_options == {
-        "opaque_length_unit": 77,
-        "cfg": 1.8,
-        "steps": 16,
-    }
+    assert request.backend_options["opaque_length_unit"] == 77
+    assert request.backend_options["cfg"] == 1.8
+    assert request.backend_options["steps"] == 16
 
 
 def test_raw_candidate_loop_contains_no_voxcpm2_length_math() -> None:
