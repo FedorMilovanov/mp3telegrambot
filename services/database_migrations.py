@@ -63,12 +63,18 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     return row is not None
 
 
+def _row_value(row: sqlite3.Row | tuple[object, ...], key: str, index: int) -> object:
+    if isinstance(row, sqlite3.Row):
+        return row[key]
+    return row[index]
+
+
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     table = _ident(table)
     if not _table_exists(conn, table):
         raise RuntimeError(f"Required SQLite table is missing: {table}")
     return {
-        str(row["name"])
+        str(_row_value(row, "name", 1))
         for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
     }
 
@@ -124,9 +130,12 @@ def run_migrations(
 
     applied_now: list[int] = []
     with _connect(Path(path)) as conn:
+        # The journal is infrastructure, not an application migration. Persist it
+        # first so a rolled-back migration still leaves auditable empty history.
+        _ensure_journal(conn)
+        conn.commit()
         conn.execute("BEGIN IMMEDIATE")
         try:
-            _ensure_journal(conn)
             existing = {
                 int(row["version"]): row
                 for row in conn.execute(
@@ -244,7 +253,7 @@ MAIN_MIGRATIONS = (
 
 
 def _dub_v1_execution_leases(conn: sqlite3.Connection) -> None:
-    conn.executescript(
+    conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dub_execution_leases (
             job_id INTEGER PRIMARY KEY,
@@ -257,9 +266,13 @@ def _dub_v1_execution_leases(conn: sqlite3.Connection) -> None:
             heartbeat_at TEXT NOT NULL,
             state TEXT NOT NULL,
             details_json TEXT NOT NULL DEFAULT '{}'
-        );
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_dub_execution_leases_state_heartbeat
-        ON dub_execution_leases(state, heartbeat_at);
+        ON dub_execution_leases(state, heartbeat_at)
         """
     )
 
