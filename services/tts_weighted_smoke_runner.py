@@ -13,7 +13,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import importlib
-import math
 import os
 from pathlib import Path
 import platform
@@ -21,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 from typing import Any
 
 from services.speech_backends import BackendIdentity
@@ -91,9 +91,11 @@ def _probe_imports(identity: BackendIdentity) -> dict[str, Any]:
         try:
             module = importlib.import_module(name)
         except Exception as exc:
+            # Import exceptions may embed private venv/repository paths. Preserve
+            # only the module and exception class in any workflow-visible message.
             raise RuntimeError(
-                f"Weighted smoke runner не импортирует required module {name}: "
-                f"{type(exc).__name__}: {exc}"
+                "Weighted smoke runner не импортирует required module "
+                f"{name}: {type(exc).__name__}"
             ) from exc
         modules[name] = module
         imported.append({"name": name, "version": _module_version(module)})
@@ -127,9 +129,9 @@ def _probe_ffprobe() -> dict[str, Any]:
         check=False,
     )
     if process.returncode != 0:
+        # Do not copy stderr: custom ffprobe wrappers may print private paths.
         raise RuntimeError(
-            "ffprobe -version завершился с кодом "
-            f"{process.returncode}: {(process.stderr or '')[-300:]}"
+            f"ffprobe -version завершился с кодом {process.returncode}."
         )
     first_line = (process.stdout or "").splitlines()[0:1]
     match = _VERSION_RE.match(first_line[0].strip() if first_line else "")
@@ -194,7 +196,11 @@ def _environment_facts(runtime: WeightedTTSSmokeRuntime) -> dict[str, Any]:
     )
     values = dict(environment.set_values)
     thread_value = runtime.resolution.options.get("threads")
-    threads = int(thread_value) if isinstance(thread_value, int) and not isinstance(thread_value, bool) else None
+    threads = (
+        int(thread_value)
+        if isinstance(thread_value, int) and not isinstance(thread_value, bool)
+        else None
+    )
     return {
         "backend_id": environment.backend_id,
         "set_keys": sorted(str(key) for key in values),
@@ -235,12 +241,7 @@ def run_weighted_tts_runner_doctor(
         raise TypeError("config должен быть WeightedTTSSmokeRunnerConfig.")
     _validate_expected_python(config.expected_python)
     runtime = runtime or resolve_weighted_smoke_runtime(
-        # The resolver only consumes identity fields from this compatible object.
-        type(
-            "_ResolverConfig",
-            (),
-            {"profile_id": config.profile_id},
-        )()
+        SimpleNamespace(profile_id=config.profile_id)
     )
     if runtime.profile.profile_id != config.profile_id:
         raise RuntimeError("Runner doctor runtime разрешил другой profile_id.")
