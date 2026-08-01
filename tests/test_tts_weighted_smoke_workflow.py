@@ -22,7 +22,7 @@ def _workflow() -> dict:
     return _load(WORKFLOW)
 
 
-def test_weighted_smoke_is_manual_main_only_and_least_privilege() -> None:
+def test_weighted_smoke_is_manual_main_only_with_job_scoped_permissions() -> None:
     payload = _workflow()
     triggers = payload["on"]
     assert set(triggers) == {"workflow_dispatch"}
@@ -30,30 +30,47 @@ def test_weighted_smoke_is_manual_main_only_and_least_privilege() -> None:
     assert "pull_request" not in triggers
     assert "pull_request_target" not in triggers
     assert "schedule" not in triggers
-    assert payload["permissions"] == {"contents": "read"}
+    assert payload["permissions"] == {}
 
-    job = payload["jobs"]["weighted-smoke"]
-    assert job["if"] == "github.ref == 'refs/heads/main'"
-    assert job["runs-on"] == ["self-hosted", "Windows", "X64", "tts-weights"]
-    assert job["timeout-minutes"] == "90"
-    assert job["env"]["TTS_SMOKE_PROFILE_ID_INPUT"] == "${{ inputs.profile_id }}"
-    assert job["env"]["TTS_SMOKE_DURATION_INPUT"] == "${{ inputs.duration_budget }}"
+    weighted = payload["jobs"]["weighted-smoke"]
+    assert weighted["if"] == "github.ref == 'refs/heads/main'"
+    assert weighted["runs-on"] == ["self-hosted", "Windows", "X64", "tts-weights"]
+    assert weighted["timeout-minutes"] == "90"
+    assert weighted["permissions"] == {"contents": "read"}
+    assert weighted["env"]["TTS_SMOKE_PROFILE_ID_INPUT"] == "${{ inputs.profile_id }}"
+    assert weighted["env"]["TTS_SMOKE_DURATION_INPUT"] == "${{ inputs.duration_budget }}"
+
+    closeout = payload["jobs"]["acceptance-closeout"]
+    assert closeout["needs"] == "weighted-smoke"
+    assert "if" not in closeout
+    assert closeout["runs-on"] == "ubuntu-latest"
+    assert closeout["permissions"] == {
+        "actions": "read",
+        "contents": "read",
+        "issues": "write",
+    }
+    assert closeout["env"]["TTS_SMOKE_ACCEPTANCE_ISSUE"] == "72"
 
 
-def test_dispatch_inputs_are_never_interpolated_into_shell_scripts() -> None:
+def test_dispatch_inputs_are_never_interpolated_into_shell_or_scripts() -> None:
     payload = _workflow()
-    steps = payload["jobs"]["weighted-smoke"]["steps"]
-    run_blocks = "\n".join(str(step.get("run") or "") for step in steps)
+    blocks: list[str] = []
+    for job in payload["jobs"].values():
+        for step in job["steps"]:
+            blocks.append(str(step.get("run") or ""))
+            blocks.append(str((step.get("with") or {}).get("script") or ""))
+    source = "\n".join(blocks)
 
-    assert "${{ inputs.profile_id }}" not in run_blocks
-    assert "${{ inputs.duration_budget }}" not in run_blocks
-    assert run_blocks.count("--profile-id $env:TTS_SMOKE_PROFILE_ID_INPUT") == 2
-    assert "--duration-budget $env:TTS_SMOKE_DURATION_INPUT" in run_blocks
-    assert "TTS_SMOKE_PROFILE_ID_INPUT -notmatch" in run_blocks
-    assert "TryParse" in run_blocks
+    assert "${{ inputs.profile_id }}" not in source
+    assert "${{ inputs.duration_budget }}" not in source
+    assert source.count("--profile-id $env:TTS_SMOKE_PROFILE_ID_INPUT") == 2
+    assert "--duration-budget $env:TTS_SMOKE_DURATION_INPUT" in source
+    assert "TTS_SMOKE_PROFILE_ID_INPUT -notmatch" in source
+    assert "TryParse" in source
+    assert '--expected-profile-id "$TTS_SMOKE_EXPECTED_PROFILE"' in source
 
 
-def test_attestation_is_a_hard_precondition_for_summary_and_cleanup() -> None:
+def test_attestation_is_a_hard_precondition_for_upload_and_cleanup() -> None:
     payload = _workflow()
     steps = payload["jobs"]["weighted-smoke"]["steps"]
     names = [str(step.get("name") or "") for step in steps]
@@ -90,7 +107,7 @@ def test_attestation_is_a_hard_precondition_for_summary_and_cleanup() -> None:
     assert "$Attestation.digest_sha256" in summary["run"]
 
 
-def test_workflow_uploads_only_one_fixed_privacy_safe_attestation() -> None:
+def test_weighted_job_uploads_only_one_fixed_privacy_safe_attestation() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     payload = _workflow()
     steps = payload["jobs"]["weighted-smoke"]["steps"]
@@ -127,6 +144,71 @@ def test_workflow_uploads_only_one_fixed_privacy_safe_attestation() -> None:
     assert checkout["with"]["ref"] == "${{ github.sha }}"
 
 
+def test_hosted_closeout_downloads_verifies_then_updates_exact_issue() -> None:
+    payload = _workflow()
+    steps = payload["jobs"]["acceptance-closeout"]["steps"]
+    names = [str(step.get("name") or "") for step in steps]
+    download_index = names.index("Download exact attestation artifact")
+    verify_index = names.index("Verify downloaded attestation")
+    close_index = names.index("Close accepted weighted smoke issue")
+    assert download_index < verify_index < close_index
+
+    actions = [str(step.get("uses") or "") for step in steps if step.get("uses")]
+    assert actions == [
+        "actions/checkout@v4",
+        "actions/setup-python@v5",
+        "actions/download-artifact@v4",
+        "actions/github-script@v7",
+    ]
+    download = steps[download_index]
+    assert download["with"]["name"] == (
+        "tts-weighted-smoke-attestation-${{ github.run_id }}-"
+        "${{ github.run_attempt }}"
+    )
+    assert download["with"]["path"] == "downloaded-attestation"
+
+    verify = steps[verify_index]
+    run = str(verify["run"])
+    assert "tools/verify_tts_weighted_smoke_attestation.py" in run
+    assert "--artifact-directory downloaded-attestation" in run
+    assert '--expected-repository "$GITHUB_REPOSITORY"' in run
+    assert '--expected-commit "$GITHUB_SHA"' in run
+    assert '--expected-run-id "$GITHUB_RUN_ID"' in run
+    assert '--expected-run-attempt "$GITHUB_RUN_ATTEMPT"' in run
+    assert '--github-output "$GITHUB_OUTPUT"' in run
+
+    close = steps[close_index]
+    script = str(close["with"]["script"])
+    assert "issueNumber !== 72" in script
+    assert "issue.title !== expectedTitle" in script
+    assert "issue.pull_request" in script
+    assert "issue.state === 'closed'" in script
+    assert script.index("issues.createComment") < script.index("issues.update")
+    assert "state_reason: 'completed'" in script
+    assert "audioRetained !== 'false'" in script
+    assert "Attestation SHA-256" in script
+    assert "weighted-smoke.wav" not in script
+    assert "TTS_SMOKE_MODEL_ROOT" not in script
+    assert "TTS_SMOKE_REFERENCE_WAV" not in script
+
+
+def test_issue_write_token_never_reaches_self_hosted_job() -> None:
+    payload = _workflow()
+    weighted = payload["jobs"]["weighted-smoke"]
+    closeout = payload["jobs"]["acceptance-closeout"]
+    assert "issues" not in weighted["permissions"]
+    assert "actions" not in weighted["permissions"]
+    assert closeout["permissions"]["issues"] == "write"
+
+    weighted_source = "\n".join(
+        str(step.get("run") or "") + str(step.get("with") or "")
+        for step in weighted["steps"]
+    )
+    assert "github.token" not in weighted_source
+    assert "issues.createComment" not in weighted_source
+    assert "issues.update" not in weighted_source
+
+
 def test_workflow_uses_runner_and_github_environment_not_repository_secrets() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "secrets." not in source
@@ -138,6 +220,7 @@ def test_workflow_uses_runner_and_github_environment_not_repository_secrets() ->
     assert "Get-Content -LiteralPath $ReportPath" in source
     assert "Get-Content -LiteralPath $env:TTS_SMOKE_ATTESTATION" in source
     assert "audio_retained" in source
+    assert "github-token: ${{ github.token }}" in source
 
 
 def test_trusted_python_compiles_doctor_smoke_and_attestation_surfaces() -> None:
