@@ -10,10 +10,13 @@ from services.speech_backends import (
     PROFILE_MANIFEST_POLICY,
     ProfileManifestError,
     default_model_profile,
+    default_profile_manifest_root,
     load_profile_catalog,
     load_profile_manifest,
     model_profile_catalog_snapshot,
+    model_profile_manifest_record,
     model_profile_manifest_records,
+    model_profile_source_evidence,
 )
 from tools.check_tts_model_catalog import validate_catalog
 
@@ -95,8 +98,11 @@ def _write(root: Path, payload: dict, *, filename: str | None = None) -> Path:
 def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     records = model_profile_manifest_records()
     snapshot = model_profile_catalog_snapshot()
+    record = model_profile_manifest_record(DEFAULT_MODEL_PROFILE_ID)
+    evidence = model_profile_source_evidence(DEFAULT_MODEL_PROFILE_ID)
 
     assert len(records) == 1
+    assert record is records[0]
     assert records[0].profile is default_model_profile()
     assert records[0].profile.profile_id == DEFAULT_MODEL_PROFILE_ID
     assert records[0].source_path.name == f"{DEFAULT_MODEL_PROFILE_ID}.json"
@@ -106,6 +112,14 @@ def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     assert snapshot["profiles"][0]["profile"]["model_revision"] == (
         "local-archive-pinned-v1"
     )
+    assert evidence["profile_id"] == DEFAULT_MODEL_PROFILE_ID
+    assert evidence["source_kind"] == "repository-manifest"
+    assert evidence["source"] == f"{DEFAULT_MODEL_PROFILE_ID}.json"
+    assert evidence["source_sha256"] == records[0].source_sha256
+    assert evidence["manifest_policy"] == PROFILE_MANIFEST_POLICY
+    assert "vox_archive" not in evidence
+    assert "cpu_venv" not in evidence
+    assert str(default_profile_manifest_root()) not in str(evidence["source"])
 
 
 def test_valid_custom_catalog_passes_adapter_conformance(tmp_path: Path) -> None:
