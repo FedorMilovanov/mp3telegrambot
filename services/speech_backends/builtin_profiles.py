@@ -13,7 +13,11 @@ _DEFAULT_ARCHIVE = r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
 
 
 def voxcpm2_production_profile() -> SpeechModelProfile:
-    """Return the currently pinned production deployment of VoxCPM2."""
+    """Return the currently pinned production deployment of VoxCPM2.
+
+    Profile identity is host-independent. Machine-specific archive/venv paths
+    are explicit request overrides and are recorded in the preflight signature.
+    """
     return SpeechModelProfile(
         profile_id=DEFAULT_MODEL_PROFILE_ID,
         backend_id="voxcpm2",
@@ -41,8 +45,8 @@ def voxcpm2_production_profile() -> SpeechModelProfile:
             ),
         ),
         backend_defaults={
-            "vox_archive": os.getenv("DUB_VOX_ARCHIVE", _DEFAULT_ARCHIVE),
-            "cpu_venv": os.getenv("DUB_CPU_VENV", _DEFAULT_CPU_VENV),
+            "vox_archive": _DEFAULT_ARCHIVE,
+            "cpu_venv": _DEFAULT_CPU_VENV,
         },
         backend_override_keys=("vox_archive", "cpu_venv"),
         requires_execution_plan_evidence=True,
