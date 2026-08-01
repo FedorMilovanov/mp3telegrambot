@@ -69,8 +69,11 @@ def _package_facade(module: Any) -> bool:
 
 
 def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
-    from services.speech_backends import default_backend
-    from services.speech_backends import voxcpm2 as backend_module
+    from services.speech_backends import (
+        BACKEND_COMMAND_POLICY as ACTIVE_BACKEND_COMMAND_POLICY,
+        BACKEND_ENVIRONMENT_POLICY as ACTIVE_BACKEND_ENVIRONMENT_POLICY,
+        default_backend,
+    )
     from tools.voxcpm2 import direct_max_quality_cli
     from tools.voxcpm2 import direct_max_quality_render
     from tools.voxcpm2 import direct_monolith_contract
@@ -84,7 +87,7 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
     from tools.voxcpm2 import russian_pronunciation
     from tools.voxcpm2 import source_prosody_policy
 
-    repo = Path(repo)
+    repo = Path(repo).resolve()
     facades = (
         dub_quality_v4,
         expressive_continuity,
@@ -150,9 +153,11 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             == FAIL_CLOSED_IDENTITY_POLICY
         ),
         "backend": (
-            backend_module.ADAPTER_POLICY.startswith("voxcpm2-speech-backend-adapter-v")
-            and backend_module.BACKEND_COMMAND_POLICY == BACKEND_COMMAND_POLICY
-            and backend_module.BACKEND_ENVIRONMENT_POLICY == BACKEND_ENVIRONMENT_POLICY
+            str(getattr(backend, "adapter_policy", "")).startswith(
+                "voxcpm2-speech-backend-adapter-v"
+            )
+            and ACTIVE_BACKEND_COMMAND_POLICY == BACKEND_COMMAND_POLICY
+            and ACTIVE_BACKEND_ENVIRONMENT_POLICY == BACKEND_ENVIRONMENT_POLICY
             and bool(getattr(capabilities, "continuation_context", False))
         ),
         "fingerprints": all(
@@ -220,7 +225,7 @@ def _patch_health() -> None:
 
     def wrapped() -> list[dict[str, Any]]:
         checks = original()
-        repo = Path(__file__).resolve().parent.parent
+        repo = Path(__file__).resolve().parents[2]
         title_ok, title_detail = _legacy._title_health_contract(repo)
         release_ok, release_detail = _release_static_contract(health, repo)
         for item in checks:
