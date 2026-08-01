@@ -16,6 +16,8 @@ on:
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
       - 'services/tts_profile_selection.py'
+      - 'services/operator_runtime_status.py'
+      - 'services/restart_state_runtime.py'
       - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
@@ -35,6 +37,8 @@ on:
       - 'tests/test_speech_model_*.py'
       - 'tests/test_tts_*.py'
       - 'tests/test_voxcpm2_*.py'
+      - 'tests/test_operator_runtime_status.py'
+      - 'tests/test_restart_state_runtime.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
     paths:
@@ -51,6 +55,8 @@ on:
       - 'services/dub_*/**/*.py'
       - 'services/speech_backends/**/*.py'
       - 'services/tts_profile_selection.py'
+      - 'services/operator_runtime_status.py'
+      - 'services/restart_state_runtime.py'
       - 'tools/check_tts_model_catalog.py'
       - 'tools/voxcpm2/dub_worker*.py'
       - 'tools/voxcpm2/dub_worker*/**/*.py'
@@ -70,6 +76,8 @@ on:
       - 'tests/test_speech_model_*.py'
       - 'tests/test_tts_*.py'
       - 'tests/test_voxcpm2_*.py'
+      - 'tests/test_operator_runtime_status.py'
+      - 'tests/test_restart_state_runtime.py'
       - '.github/workflows/dub-studio-checks.yml'
 
 concurrency:
@@ -101,7 +109,7 @@ jobs:
       - name: Compile production surface dynamically
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/operator_runtime_status.py services/restart_state_runtime.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
           python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Dub Studio production compile failed."
@@ -131,6 +139,8 @@ jobs:
       - name: Focused regression tests
         run: >-
           python -m pytest -q
+          tests/test_operator_runtime_status.py
+          tests/test_restart_state_runtime.py
           tests/test_dub_execution.py
           tests/test_dub_worker.py
           tests/test_dub_architecture_boundaries.py
@@ -165,6 +175,8 @@ jobs:
       - name: Ruff configured Dub Studio checks
         run: >-
           python -m ruff check
+          services/operator_runtime_status.py
+          services/restart_state_runtime.py
           services/speech_backends
           services/tts_profile_selection.py
           services/dub_execution.py
@@ -178,6 +190,8 @@ jobs:
           handlers/dub_delivery.py
           tools/check_tts_model_catalog.py
           tools/voxcpm2
+          tests/test_operator_runtime_status.py
+          tests/test_restart_state_runtime.py
           tests/test_dub_execution.py
           tests/test_dub_worker.py
           tests/test_dub_architecture_boundaries.py
