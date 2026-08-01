@@ -29,6 +29,8 @@ jobs:
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
+      TTS_SMOKE_PROFILE_ID_INPUT: ${{ inputs.profile_id }}
+      TTS_SMOKE_DURATION_INPUT: ${{ inputs.duration_budget }}
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@v4
@@ -43,7 +45,9 @@ jobs:
           $Required = @(
             'TTS_SMOKE_PYTHON',
             'TTS_SMOKE_MODEL_ROOT',
-            'TTS_SMOKE_REFERENCE_WAV'
+            'TTS_SMOKE_REFERENCE_WAV',
+            'TTS_SMOKE_PROFILE_ID_INPUT',
+            'TTS_SMOKE_DURATION_INPUT'
           )
           foreach ($Name in $Required) {
             $Value = [Environment]::GetEnvironmentVariable($Name)
@@ -59,6 +63,21 @@ jobs:
           }
           if (-not (Test-Path -LiteralPath $env:TTS_SMOKE_REFERENCE_WAV -PathType Leaf)) {
             throw 'Configured TTS smoke reference WAV is not a file.'
+          }
+          if ($env:TTS_SMOKE_PROFILE_ID_INPUT -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{1,94}[A-Za-z0-9]$') {
+            throw 'TTS smoke profile input has invalid syntax.'
+          }
+          $Duration = 0.0
+          if (-not [double]::TryParse(
+            $env:TTS_SMOKE_DURATION_INPUT,
+            [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$Duration
+          )) {
+            throw 'TTS smoke duration input is not a finite invariant number.'
+          }
+          if ([double]::IsNaN($Duration) -or [double]::IsInfinity($Duration) -or $Duration -lt 0.2 -or $Duration -gt 30.0) {
+            throw 'TTS smoke duration input must be within 0.2..30.0 seconds.'
           }
           $Version = & $env:TTS_SMOKE_PYTHON -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
           if ($LASTEXITCODE -ne 0) {
@@ -85,16 +104,13 @@ jobs:
           if (Test-Path -LiteralPath $Work) {
             Remove-Item -LiteralPath $Work -Recurse -Force
           }
-          New-Item -ItemType Directory -Path $Work | Out-Null
-          # The service requires an empty directory; remove the just-created shell.
-          Remove-Item -LiteralPath $Work -Recurse -Force
           & $env:TTS_SMOKE_PYTHON tools/run_tts_weighted_smoke.py `
-            --profile-id "${{ inputs.profile_id }}" `
+            --profile-id $env:TTS_SMOKE_PROFILE_ID_INPUT `
             --model-root $env:TTS_SMOKE_MODEL_ROOT `
             --reference-wav $env:TTS_SMOKE_REFERENCE_WAV `
             --work-dir $Work `
             --expected-python $env:TTS_SMOKE_PYTHON `
-            --duration-budget "${{ inputs.duration_budget }}"
+            --duration-budget $env:TTS_SMOKE_DURATION_INPUT
           if ($LASTEXITCODE -ne 0) {
             throw 'Real weighted TTS smoke failed.'
           }
