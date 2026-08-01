@@ -183,6 +183,10 @@ def _generate(
     continuation_text: str = "",
 ) -> Any:
     parameters = inspect.signature(model.generate).parameters
+    accepts_keyword_options = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
     generation_max_len = min(
         512,
         max(int(max_len), int(math.ceil(max_len * 1.45))),
@@ -204,13 +208,15 @@ def _generate(
         "seed": int(seed),
     }
     if continuation_reference is not None and continuation_reference.is_file():
-        if "prompt_wav_path" in parameters:
+        if accepts_keyword_options or "prompt_wav_path" in parameters:
             kwargs["prompt_wav_path"] = str(continuation_reference)
-        if "prompt_text" in parameters and str(continuation_text or "").strip():
+        if (
+            accepts_keyword_options or "prompt_text" in parameters
+        ) and str(continuation_text or "").strip():
             kwargs["prompt_text"] = str(continuation_text).strip()
         elif "reference_text" in parameters and str(continuation_text or "").strip():
             kwargs["reference_text"] = str(continuation_text).strip()
     for name, value in optional.items():
-        if name in parameters:
+        if accepts_keyword_options or name in parameters:
             kwargs[name] = value
     return model.generate(**kwargs)
