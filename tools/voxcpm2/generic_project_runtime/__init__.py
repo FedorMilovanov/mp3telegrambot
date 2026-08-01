@@ -27,8 +27,9 @@ import uuid
 from services.dub_rendering import run_speech_master_validation
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
-    UnknownSpeechBackendError,
-    normalize_production_backend,
+    DEFAULT_MODEL_PROFILE_ID,
+    SpeechBackendSelectionError,
+    normalize_production_speech_request,
 )
 from tools.voxcpm2 import clean_source_download
 
@@ -47,8 +48,8 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-# The write-through facade semantics remain v4. The new speech/master/validator
-# split is versioned independently by services.dub_rendering and media_masters.
+# The write-through facade semantics remain v4. The speech model catalog is
+# versioned independently by services.speech_backends.model_profiles.
 POLICY = "generic-project-runtime-write-through-v4"
 ATOMIC_REPLACE_POLICY = "per-path-serialized-windows-sharing-retry-v1"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
@@ -116,19 +117,21 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
     mode = str(result.get("translation_mode") or "").strip().lower()
     if mode not in _ALLOWED_TRANSLATION_MODES:
         raise RuntimeError(f"Некорректный translation_mode={mode!r} в request.json.")
-    try:
-        backend_id = normalize_production_backend(
-            result.get("speech_backend"),
-            default_backend_id=DEFAULT_BACKEND_ID,
-        )
-    except UnknownSpeechBackendError as exc:
-        raise RuntimeError(
-            f"Некорректный speech_backend={result.get('speech_backend')!r} в request.json."
-        ) from exc
+
     result["video_id"] = video_id
     result["source_url"] = source_url
     result["translation_mode"] = mode
-    result["speech_backend"] = backend_id
+    try:
+        result = normalize_production_speech_request(
+            result,
+            default_backend_id=DEFAULT_BACKEND_ID,
+            default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+        )
+    except SpeechBackendSelectionError as exc:
+        raise RuntimeError(
+            "Некорректная TTS-конфигурация в request.json: " + str(exc)
+        ) from exc
+
     result["media_master"] = str(
         result.get("media_master") or "constant-mix"
     ).casefold().strip()
