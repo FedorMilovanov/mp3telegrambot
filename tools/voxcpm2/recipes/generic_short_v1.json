@@ -50,5 +50,58 @@
       "parameters": {"Mode": "custom"}
     }
   },
-  "outputs": {}
+  "outputs": {
+    "manifest": {
+      "label": "Production manifest",
+      "path": "{work_root}/output/manifest.json",
+      "required": true,
+      "min_bytes": 128,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio", "prepare_custom"]
+    },
+    "mixed_video": {
+      "label": "Основной mixed MP4",
+      "path": "{work_root}/output/final_upload.mp4",
+      "required": true,
+      "primary": true,
+      "media": "av",
+      "min_bytes": 102400,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+    },
+    "russian_only_video": {
+      "label": "Russian-only MP4",
+      "path": "{work_root}/output/russian_only.mp4",
+      "required": true,
+      "media": "av",
+      "min_bytes": 102400,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+    },
+    "russian_srt": {
+      "label": "Russian SRT",
+      "path": "{work_root}/output/russian_subtitles.srt",
+      "required": true,
+      "min_bytes": 32,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+    },
+    "translation": {
+      "label": "Russian translation",
+      "path": "{work_root}/output/russian_translation.txt",
+      "required": true,
+      "min_bytes": 32,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+    },
+    "translation_qa": {
+      "label": "Translation QA report",
+      "path": "{work_root}/output/translation_qa.txt",
+      "required": true,
+      "min_bytes": 16,
+      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+    },
+    "translation_template": {
+      "label": "Custom translation template",
+      "path": "{work_root}/output/translation_template.txt",
+      "required": true,
+      "min_bytes": 32,
+      "actions": ["prepare_custom"]
+    }
+  }
 }
