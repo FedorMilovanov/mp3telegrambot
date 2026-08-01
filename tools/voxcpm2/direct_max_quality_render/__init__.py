@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     SPEECH_SLOT_POLICY,
@@ -36,11 +37,18 @@ for _name in dir(_legacy):
 ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"
 TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
+HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v1"
 _legacy_build_timeline = _legacy.build_timeline
 
 
+def _sync_legacy_hooks() -> None:
+    """Make facade monkeypatches and injected IO visible inside legacy globals."""
+    _legacy.probe_duration = probe_duration
+    _legacy.run_checked = run_checked
+    _legacy.direct_timeline_delivery_qa = direct_timeline_delivery_qa
+
+
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
-    """Keep rescue trajectories close enough to one speaker identity."""
     attempt = int(attempt)
     base_cfg = float(base_cfg)
     base_steps = max(1, int(base_steps))
@@ -148,7 +156,6 @@ def build_timeline(
     total_duration: float,
     output_sample_rate: int = EXPECTED_OUTPUT_SR,
 ) -> None:
-    """Assemble at authored cue starts; never disguise short speech by late shifting."""
     output_sample_rate = int(output_sample_rate)
     if output_sample_rate <= 0:
         raise ValueError("output_sample_rate должен быть > 0.")
@@ -157,17 +164,16 @@ def build_timeline(
         "duration/gap QA without late compaction",
         flush=True,
     )
-    if output_sample_rate == EXPECTED_OUTPUT_SR:
-        _legacy_build_timeline(fitted_segments, output, total_duration)
-    else:
-        _legacy_build_timeline(
-            fitted_segments,
-            output,
-            total_duration,
-            output_sample_rate=output_sample_rate,
-        )
+    _sync_legacy_hooks()
+    _legacy_build_timeline(
+        fitted_segments,
+        output,
+        total_duration,
+        output_sample_rate=output_sample_rate,
+    )
 
 
+_sync_legacy_hooks()
 _legacy._generation_profile = _generation_profile
 _legacy.fit_without_slowdown = fit_without_slowdown
 _legacy.build_timeline = build_timeline
@@ -177,8 +183,10 @@ __all__ = sorted(
     | {
         "ADAPTIVE_RETRY_POLICY",
         "FADE_POLICY",
+        "HOOK_SYNC_POLICY",
         "TIMELINE_COMPACTION_POLICY",
         "_generation_profile",
+        "_sync_legacy_hooks",
         "build_timeline",
         "fit_without_slowdown",
     }
