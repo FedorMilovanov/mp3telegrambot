@@ -100,9 +100,14 @@ def test_production_candidate_hook_builds_neutral_request() -> None:
     assert captured[0].text
     assert captured[0].reference_audio.name == "reference.wav"
     assert captured[0].duration_budget == 4.0
-    assert captured[0].backend_options["max_len"] == 40
+    assert captured[0].backend_options == {
+        "min_len": 2,
+        "max_len": 40,
+        "cfg": 1.8,
+        "steps": 16,
+    }
     assert direct_max_quality_cli.GENERATION_REQUEST_FACTORY_POLICY == (
-        "typed-generation-request-factory-v2"
+        "typed-generation-request-factory-v3"
     )
 
 
@@ -137,12 +142,16 @@ def test_raw_cli_generation_boundary_does_not_depend_on_package_override() -> No
     assert captured[0].backend_options["min_len"] == 2
 
 
-def test_package_overrides_request_factory_not_backend_execution() -> None:
+def test_package_overrides_typed_factories_not_backend_execution() -> None:
     facade_source = (
         ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli" / "__init__.py"
     ).read_text(encoding="utf-8")
     raw_source = RAW_CLI.read_text(encoding="utf-8")
 
+    assert (
+        "_legacy._build_generation_length_request = _build_generation_length_request"
+        in facade_source
+    )
     assert "_legacy._build_generation_request = _build_generation_request" in facade_source
     assert "_legacy._backend_generate =" not in facade_source
     assert "base_request = _legacy_build_generation_request(session, **kwargs)" in facade_source
