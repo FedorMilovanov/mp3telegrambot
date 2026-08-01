@@ -16,6 +16,8 @@ from services.speech_backends.base import (
     BackendCapabilities,
     BackendGenerationLengthPlan,
     BackendGenerationLengthRequest,
+    BackendGenerationProfilePlan,
+    BackendGenerationProfileRequest,
     BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
@@ -24,9 +26,10 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v9"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v10"
 GENERATION_CALL_POLICY = "typed-backend-generation-request-v1"
 GENERATION_LENGTH_POLICY = "voxcpm2-duration-to-token-window-v2"
+GENERATION_PROFILE_POLICY = "voxcpm2-adaptive-generation-profile-v1"
 SESSION_CALL_POLICY = "typed-backend-session-config-v1"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
@@ -47,6 +50,11 @@ _MIN_MAX_LEN = 24
 _MAX_LEN_RATIO = 1.40
 _SHORT_OUTPUT_RATIO = 0.48
 _SHORT_RETRY_MIN_RATIO = 0.42
+_PROFILE_MAX_ATTEMPT = 5
+_PROFILE_CFG_MIN = 0.1
+_PROFILE_CFG_MAX = 10.0
+_PROFILE_STEPS_MIN = 1
+_PROFILE_STEPS_MAX = 256
 
 
 def _request_path(request: dict[str, Any], key: str, default: str) -> Path:
@@ -72,6 +80,50 @@ def _master_contract(
 
 def _needs_normalization(text: str) -> bool:
     return bool(re.search(r"\d|[%№$€£]", text))
+
+
+def _profile_float(
+    options: Mapping[str, Any],
+    name: str,
+    *,
+    default: float,
+    low: float,
+    high: float,
+) -> float:
+    value = options.get(name, default)
+    if isinstance(value, bool):
+        raise ValueError(f"base_backend_options.{name} не может быть bool.")
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"base_backend_options.{name} должен быть числом.") from exc
+    if not math.isfinite(result) or not low <= result <= high:
+        raise ValueError(
+            f"base_backend_options.{name} должен быть в диапазоне {low}..{high}."
+        )
+    return result
+
+
+def _profile_int(
+    options: Mapping[str, Any],
+    name: str,
+    *,
+    default: int,
+    low: int,
+    high: int,
+) -> int:
+    value = options.get(name, default)
+    if isinstance(value, bool):
+        raise ValueError(f"base_backend_options.{name} не может быть bool.")
+    try:
+        result = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"base_backend_options.{name} должен быть целым числом.") from exc
+    if not low <= result <= high:
+        raise ValueError(
+            f"base_backend_options.{name} должен быть в диапазоне {low}..{high}."
+        )
+    return result
 
 
 class VoxCPM2Session:
@@ -255,6 +307,61 @@ class VoxCPM2Backend:
             },
         )
 
+    def plan_generation_profile(
+        self,
+        request: BackendGenerationProfileRequest,
+    ) -> BackendGenerationProfilePlan:
+        """Translate an attempt number into the active VoxCPM2 quality profile."""
+        if not isinstance(request, BackendGenerationProfileRequest):
+            raise TypeError(
+                "VoxCPM2 profile planner ожидает BackendGenerationProfileRequest."
+            )
+        attempt = request.attempt
+        if attempt > _PROFILE_MAX_ATTEMPT:
+            raise ValueError(f"Неподдерживаемая попытка VoxCPM2: {attempt}")
+
+        base_cfg = _profile_float(
+            request.base_backend_options,
+            "cfg",
+            default=1.9,
+            low=_PROFILE_CFG_MIN,
+            high=_PROFILE_CFG_MAX,
+        )
+        base_steps = _profile_int(
+            request.base_backend_options,
+            "steps",
+            default=16,
+            low=_PROFILE_STEPS_MIN,
+            high=_PROFILE_STEPS_MAX,
+        )
+
+        if attempt == 1:
+            cfg, steps = base_cfg, base_steps
+        elif attempt == 2:
+            cfg, steps = min(2.15, base_cfg + 0.08), min(30, base_steps + 6)
+        elif attempt == 3:
+            cfg, steps = max(1.50, base_cfg - 0.08), min(32, base_steps + 10)
+        elif attempt == 4:
+            cfg, steps = (
+                min(2.15, max(1.50, base_cfg + 0.03)),
+                min(36, base_steps + 14),
+            )
+        else:
+            cfg, steps = max(1.45, base_cfg - 0.12), min(40, base_steps + 18)
+
+        return BackendGenerationProfilePlan(
+            backend_id=self.backend_id,
+            attempt=attempt,
+            backend_options={"cfg": cfg, "steps": steps},
+            metadata={
+                "policy": GENERATION_PROFILE_POLICY,
+                "profile_request": request.as_dict(),
+                "base_cfg": base_cfg,
+                "base_steps": base_steps,
+                "max_attempt": _PROFILE_MAX_ATTEMPT,
+            },
+        )
+
     def open_session(
         self,
         config: BackendSessionConfig,
@@ -427,6 +534,7 @@ __all__ = [
     "ADAPTER_POLICY",
     "GENERATION_CALL_POLICY",
     "GENERATION_LENGTH_POLICY",
+    "GENERATION_PROFILE_POLICY",
     "MASTER_SELECTION_POLICY",
     "SESSION_CALL_POLICY",
     "VoxCPM2Backend",
