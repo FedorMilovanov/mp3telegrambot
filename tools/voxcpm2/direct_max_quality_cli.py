@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from services.speech_backends import get_backend
+from services.speech_backends import BackendSessionConfig, get_backend
 from tools.voxcpm2.direct_max_quality_io import (
     POLICY,
     EXPECTED_ENCODE_SR,
@@ -290,9 +290,10 @@ def main() -> None:
     load_started = time.perf_counter()
     cache_length = max(2048, int(args.cache_length))
     session = backend.open_session(
-        model_path,
-        cache_length=cache_length,
-        torch_module=torch,
+        BackendSessionConfig(
+            model_path=model_path,
+            options={"cache_length": cache_length},
+        )
     )
     audio_spec = session.audio_spec
     encode_sr = int(audio_spec.encode_sample_rate)
