@@ -165,15 +165,29 @@ def model_profile_manifest_record(
 
 
 def model_profile_source_evidence(value: object) -> dict[str, object]:
-    """Return safe provenance without exposing backend config or secret values."""
+    """Return a strict provenance allowlist with no profile config payload."""
     canonical = resolve_model_profile_id(value)
+    profile = get_model_profile(canonical)
     record = model_profile_manifest_record(canonical)
     if record is not None:
-        payload = record.as_dict(root=default_profile_manifest_root())
-        payload["profile_id"] = canonical
-        payload["source_kind"] = "repository-manifest"
-        return payload
-    profile = get_model_profile(canonical)
+        source_path = record.source_path
+        root = default_profile_manifest_root().resolve()
+        try:
+            source = str(source_path.relative_to(root))
+        except ValueError as exc:
+            raise RuntimeError(
+                f"TTS manifest source escaped catalog root: {source_path}"
+            ) from exc
+        return {
+            "schema_version": int(record.schema_version),
+            "profile_id": canonical,
+            "backend_id": profile.backend_id,
+            "model_revision": profile.model_revision,
+            "source": source,
+            "source_kind": "repository-manifest",
+            "source_sha256": record.source_sha256,
+            "manifest_policy": PROFILE_MANIFEST_POLICY,
+        }
     return {
         "schema_version": 1,
         "profile_id": canonical,
