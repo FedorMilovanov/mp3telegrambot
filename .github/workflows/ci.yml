@@ -124,6 +124,7 @@ jobs:
           tests/test_speech_model_profile_manifests.py
           tests/test_services_import_diagnostics.py
           tests/test_gemini_startup_diagnostics.py
+          tests/test_operator_runtime_status.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py
@@ -171,6 +172,7 @@ jobs:
           tests/test_speech_model_profile_manifests.py
           tests/test_services_import_diagnostics.py
           tests/test_gemini_startup_diagnostics.py
+          tests/test_operator_runtime_status.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py

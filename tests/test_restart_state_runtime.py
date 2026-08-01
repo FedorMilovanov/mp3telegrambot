@@ -6,6 +6,7 @@ from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
+from services import operator_runtime_status as operator_status
 from services import restart_state_runtime as restart
 
 
@@ -88,15 +89,20 @@ def test_process_crash_cleanup_deletes_only_stale_deferred_files(tmp_path: Path)
     assert root.exists()
 
 
-def test_installer_resets_before_every_new_loop(monkeypatch):
+def test_installer_resets_before_every_new_loop_and_binds_status(monkeypatch):
     order: list[str] = []
 
     async def original():
         order.append("run")
         return "ok"
 
-    stub = SimpleNamespace(run_bot_async=original)
+    async def status_command(update, context):
+        del update, context
+        return "status"
+
+    stub = SimpleNamespace(run_bot_async=original, status_command=status_command)
     monkeypatch.setattr(restart, "_INSTALLED", False)
+    monkeypatch.setattr(operator_status, "_INSTALLED", False)
     monkeypatch.setattr(
         restart,
         "reset_cross_loop_state",
@@ -109,10 +115,13 @@ def test_installer_resets_before_every_new_loop(monkeypatch):
     )
 
     restart.install_restart_state_runtime(stub)
-    wrapper = stub.run_bot_async
+    run_wrapper = stub.run_bot_async
+    status_wrapper = stub.status_command
+    assert getattr(status_wrapper, "_mp3bot_operator_runtime_status") is True
     assert asyncio.run(stub.run_bot_async()) == "ok"
     assert asyncio.run(stub.run_bot_async()) == "ok"
     assert order == ["reset", "run", "reset", "run"]
 
     restart.install_restart_state_runtime(stub)
-    assert stub.run_bot_async is wrapper
+    assert stub.run_bot_async is run_wrapper
+    assert stub.status_command is status_wrapper
