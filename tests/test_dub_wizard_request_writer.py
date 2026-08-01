@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from handlers import dub_wizard
+from services.speech_backends import DEFAULT_MODEL_PROFILE_ID, default_model_profile
 
 
 def _payload(**overrides):
@@ -18,6 +19,7 @@ def _payload(**overrides):
         "source_url": "https://youtube.com/watch?v=AbCdEf12345",
         "translation_mode": "gemini",
         "speech_backend": "voxcpm2",
+        "speech_model_profile": DEFAULT_MODEL_PROFILE_ID,
         "media_master": "constant-mix",
         "final_media_validator": "ffprobe-av-contract",
         **overrides,
@@ -41,8 +43,18 @@ def test_wizard_writes_validated_request_inside_project_root(
         / "dub-0123456789"
         / "request.json"
     ).resolve()
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    profile = default_model_profile()
+
     assert path == expected
-    assert json.loads(path.read_text(encoding="utf-8")) == _payload()
+    assert saved["video_id"] == "AbCdEf12345"
+    assert saved["speech_backend"] == "voxcpm2"
+    assert saved["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert saved["speech_profile_fingerprint"] == profile.fingerprint()
+    assert saved["speech_options"] == {
+        spec.name: spec.default for spec in profile.option_specs
+    }
+    assert saved["speech_backend_config"] == dict(profile.backend_defaults)
     assert not list(path.parent.glob("request.json.tmp.*"))
 
 
@@ -55,6 +67,8 @@ def test_wizard_writes_validated_request_inside_project_root(
         _payload(source_url="https://youtube.com/playlist?list=PL123"),
         _payload(translation_mode="unknown"),
         _payload(speech_backend="future-neural-engine"),
+        _payload(speech_model_profile="future-neural-model"),
+        _payload(speech_options={"temperature": 0.7}),
     ],
 )
 def test_invalid_wizard_request_is_not_written(
@@ -78,6 +92,41 @@ def test_invalid_wizard_request_is_not_written(
     )
     assert not request_path.exists()
     assert not list(request_path.parent.glob("request.json.tmp.*"))
+
+
+def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", '{"steps":22,"cfg":1.92}')
+    monkeypatch.setenv("DUB_VOX_THREADS", "7")
+    monkeypatch.setenv(
+        "DUB_TTS_BACKEND_CONFIG_JSON",
+        '{"vox_archive":"C:/models/vox-next"}',
+    )
+    monkeypatch.setenv("DUB_CPU_VENV", "C:/venvs/vox-next")
+
+    payload = dub_wizard._request_payload(
+        "AbCdEf12345",
+        "https://youtube.com/watch?v=AbCdEf12345",
+        "gemini",
+    )
+
+    assert payload["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert payload["speech_options"] == {"steps": 22, "cfg": 1.92, "threads": 7}
+    assert payload["speech_backend_config"] == {
+        "vox_archive": "C:/models/vox-next",
+        "cpu_venv": "C:/venvs/vox-next",
+    }
+    assert "vox_archive" not in payload
+    assert "threads" not in payload
+
+
+def test_wizard_rejects_non_object_tts_env(monkeypatch) -> None:
+    monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", "[1, 2, 3]")
+    with pytest.raises(RuntimeError, match="JSON-объект"):
+        dub_wizard._request_payload(
+            "AbCdEf12345",
+            "https://youtube.com/watch?v=AbCdEf12345",
+            "gemini",
+        )
 
 
 class _FakeMessage:
@@ -202,6 +251,7 @@ def test_failed_request_write_never_enqueues_job(
 
 def test_wizard_facade_patches_legacy_request_and_creation_hooks() -> None:
     assert Path(dub_wizard.__file__).name == "__init__.py"
+    assert dub_wizard._legacy._request_payload is dub_wizard._request_payload
     assert dub_wizard._legacy._write_request is dub_wizard._write_request
     assert dub_wizard._legacy._create_generic_project is dub_wizard._create_generic_project
     source = Path(dub_wizard.__file__).read_text(encoding="utf-8")
