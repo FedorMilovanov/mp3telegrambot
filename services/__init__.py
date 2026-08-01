@@ -4,19 +4,23 @@ The package is imported by ``bot_new.py`` only after ``load_dotenv()``. That
 makes it the earliest reliable place to select project-wide policies before
 ``core.globals`` creates external clients. Runtime hooks still install during
 package import for compatibility, but import never writes to stdout/stderr.
-Diagnostics are recorded structurally and emitted explicitly by the entrypoint.
+Diagnostics and transitive import output are recorded structurally and emitted
+explicitly by the entrypoint.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import importlib.abc
 import importlib.util
+from io import StringIO
 import sys
 import threading
 from types import ModuleType
 from typing import Any
 
 SERVICE_BOOTSTRAP_DIAGNOSTICS_POLICY = "recorded-explicit-service-bootstrap-v1"
+_CAPTURED_OUTPUT_LIMIT = 8000
 _BOOTSTRAP_EVENT_LOCK = threading.RLock()
 _BOOTSTRAP_EVENTS: list[dict[str, Any]] = []
 
@@ -38,6 +42,39 @@ def _record_bootstrap(component: str, *, ok: bool, detail: object) -> None:
                 "policy": SERVICE_BOOTSTRAP_DIAGNOSTICS_POLICY,
             }
         )
+
+
+def _compact_captured_output(value: str) -> str:
+    lines = [line.strip() for line in str(value or "").splitlines() if line.strip()]
+    compact = " | ".join(lines)
+    if len(compact) > _CAPTURED_OUTPUT_LIMIT:
+        compact = "…" + compact[-_CAPTURED_OUTPUT_LIMIT:]
+    return compact
+
+
+@contextmanager
+def _capture_bootstrap_output(component: str) -> Iterator[None]:
+    """Capture import/installer output without hiding it from diagnostics."""
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            yield
+    finally:
+        stdout_value = _compact_captured_output(stdout_buffer.getvalue())
+        stderr_value = _compact_captured_output(stderr_buffer.getvalue())
+        if stdout_value:
+            _record_bootstrap(
+                f"{component} captured stdout",
+                ok=True,
+                detail=stdout_value,
+            )
+        if stderr_value:
+            _record_bootstrap(
+                f"{component} captured stderr",
+                ok=True,
+                detail=stderr_value,
+            )
 
 
 def service_bootstrap_events() -> tuple[dict[str, Any], ...]:
@@ -62,9 +99,12 @@ def emit_service_bootstrap_diagnostics(
 
 
 try:
-    from services.polling_reliability_runtime import install_polling_reliability_runtime
+    with _capture_bootstrap_output("Polling reliability runtime"):
+        from services.polling_reliability_runtime import (
+            install_polling_reliability_runtime,
+        )
 
-    _polling_reliability = install_polling_reliability_runtime()
+        _polling_reliability = install_polling_reliability_runtime()
     _record_bootstrap(
         "Polling reliability runtime",
         ok=True,
@@ -78,22 +118,23 @@ except Exception as _polling_reliability_error:
     )
 
 try:
-    from services.gemini_max_quality import configure_max_quality_env
-    from services.gemini_qa_policy import configure_gemini_qa_policy
-    from services.livedub_quality_runtime import (
-        configure_gemini_network,
-        configure_gemini_policy,
-    )
+    with _capture_bootstrap_output("Gemini policy/route"):
+        from services.gemini_max_quality import configure_max_quality_env
+        from services.gemini_qa_policy import configure_gemini_qa_policy
+        from services.livedub_quality_runtime import (
+            configure_gemini_network,
+            configure_gemini_policy,
+        )
 
-    _gemini_qa_policy = configure_gemini_qa_policy()
-    _gemini_quality = configure_max_quality_env()
-    _gemini_policy = configure_gemini_policy()
+        _gemini_qa_policy = configure_gemini_qa_policy()
+        _gemini_quality = configure_max_quality_env()
+        _gemini_policy = configure_gemini_policy()
+        _gemini_route = configure_gemini_network()
     _record_bootstrap(
         "Gemini policy",
         ok=True,
         detail=f"{_gemini_policy}; {_gemini_quality}; {_gemini_qa_policy}",
     )
-    _gemini_route = configure_gemini_network()
     if _gemini_route:
         _record_bootstrap("Gemini route", ok=True, detail=_gemini_route)
 except Exception as _gemini_route_error:
@@ -107,9 +148,10 @@ try:
     # Install before services.shorts_video / render_clips_montage copy the helper
     # with ``from services.ffmpeg import _is_static_video``. Moving footage keeps
     # crop_zoom; only confidently static slides receive the centred blur layout.
-    from services.shorts_static_runtime import install_short_static_runtime
+    with _capture_bootstrap_output("Shorts visual policy"):
+        from services.shorts_static_runtime import install_short_static_runtime
 
-    _shorts_static_policy = install_short_static_runtime()
+        _shorts_static_policy = install_short_static_runtime()
     _record_bootstrap(
         "Shorts visual policy",
         ok=True,
@@ -128,49 +170,54 @@ try:
     # concise teacherly runtime prompt. The large source prompt stays available
     # to old regression contracts; the telegraph_pages import hook swaps only
     # the effective module-level prompt used for live generation.
-    from core import content_audit as _content_audit
-    from core import prompts as _prompts
-    from core import structured_blocks as _structured_blocks
-    from services import conspect_quality_contract as _conspect_quality_module
-    from services.conspect_audit_runtime import install_conspect_audit_runtime
-    from services.conspect_quality_contract import install_conspect_quality_contract
-    from services.study_synthesis_runtime import install_teacherly_study_runtime
+    with _capture_bootstrap_output("Conspect quality"):
+        from core import content_audit as _content_audit
+        from core import prompts as _prompts
+        from core import structured_blocks as _structured_blocks
+        from services import conspect_quality_contract as _conspect_quality_module
+        from services.conspect_audit_runtime import install_conspect_audit_runtime
+        from services.conspect_quality_contract import install_conspect_quality_contract
+        from services.study_synthesis_runtime import install_teacherly_study_runtime
 
-    _conspect_contract = install_conspect_quality_contract()
-    _conspect_audit = install_conspect_audit_runtime()
+        _conspect_contract = install_conspect_quality_contract()
+        _conspect_audit = install_conspect_audit_runtime()
 
-    _legacy_effective_study_prompt = _prompts.STUDY_ANALYSIS_PROMPT
-    _legacy_word_study_normalizer = _conspect_quality_module.normalize_word_study_block
+        _legacy_effective_study_prompt = _prompts.STUDY_ANALYSIS_PROMPT
+        _legacy_word_study_normalizer = (
+            _conspect_quality_module.normalize_word_study_block
+        )
 
-    _study_synthesis = install_teacherly_study_runtime()
+        _study_synthesis = install_teacherly_study_runtime()
 
-    # Preserve historical source-level contracts and direct helper behavior for
-    # archives/tests. services.telegraph_pages is patched after import and still
-    # receives TEACHERLY_STUDY_PROMPT for the actual live Study request.
-    _prompts.STUDY_ANALYSIS_PROMPT = _legacy_effective_study_prompt
-    _conspect_quality_module.normalize_word_study_block = _legacy_word_study_normalizer
+        # Preserve historical source-level contracts and direct helper behavior for
+        # archives/tests. services.telegraph_pages is patched after import and still
+        # receives TEACHERLY_STUDY_PROMPT for the actual live Study request.
+        _prompts.STUDY_ANALYSIS_PROMPT = _legacy_effective_study_prompt
+        _conspect_quality_module.normalize_word_study_block = (
+            _legacy_word_study_normalizer
+        )
 
-    # The teacherly renderer intentionally returns None for a thin word study.
-    # content_audit historically used ``normalize(...) or raw``; convert None to
-    # the same explicit drop marker used by conspect_audit_runtime so incomplete
-    # decorative blocks cannot be resurrected.
-    _teacherly_normalizer = _structured_blocks.normalize_structured_block
+        # The teacherly renderer intentionally returns None for a thin word study.
+        # content_audit historically used ``normalize(...) or raw``; convert None to
+        # the same explicit drop marker used by conspect_audit_runtime so incomplete
+        # decorative blocks cannot be resurrected.
+        _teacherly_normalizer = _structured_blocks.normalize_structured_block
 
-    def _normalize_teacherly_with_drop(raw):
-        normalized = _teacherly_normalizer(raw)
-        if normalized is None and isinstance(raw, dict):
-            btype = str(raw.get("type") or "").strip().lower()
-            if btype in {"word_study", "wordstudy"}:
-                return {
-                    "type": "paragraph",
-                    "text": "__DROP_INCOMPLETE_WORD_STUDY__",
-                    "_drop_word_study": True,
-                }
-        return normalized
+        def _normalize_teacherly_with_drop(raw):
+            normalized = _teacherly_normalizer(raw)
+            if normalized is None and isinstance(raw, dict):
+                btype = str(raw.get("type") or "").strip().lower()
+                if btype in {"word_study", "wordstudy"}:
+                    return {
+                        "type": "paragraph",
+                        "text": "__DROP_INCOMPLETE_WORD_STUDY__",
+                        "_drop_word_study": True,
+                    }
+            return normalized
 
-    _normalize_teacherly_with_drop._teacherly_study_runtime = True  # type: ignore[attr-defined]
-    _structured_blocks.normalize_structured_block = _normalize_teacherly_with_drop
-    _content_audit.normalize_structured_block = _normalize_teacherly_with_drop
+        _normalize_teacherly_with_drop._teacherly_study_runtime = True  # type: ignore[attr-defined]
+        _structured_blocks.normalize_structured_block = _normalize_teacherly_with_drop
+        _content_audit.normalize_structured_block = _normalize_teacherly_with_drop
 
     _record_bootstrap(
         "Conspect quality",
@@ -195,17 +242,21 @@ class _AfterImportLoader(importlib.abc.Loader):
         return create(spec) if create else None
 
     def exec_module(self, module: ModuleType) -> None:
-        self._loader.exec_module(module)
+        with _capture_bootstrap_output("livedub_audio_dedupe import"):
+            self._loader.exec_module(module)
         try:
             sys.meta_path.remove(self._finder)
         except ValueError:
             pass
         try:
-            from services.gemini_max_quality import install_max_quality_runtime
-            from services.livedub_quality_runtime import install_livedub_quality_runtime
+            with _capture_bootstrap_output("Gemini/LiveDub quality runtime"):
+                from services.gemini_max_quality import install_max_quality_runtime
+                from services.livedub_quality_runtime import (
+                    install_livedub_quality_runtime,
+                )
 
-            max_quality = install_max_quality_runtime()
-            livedub_quality = install_livedub_quality_runtime()
+                max_quality = install_max_quality_runtime()
+                livedub_quality = install_livedub_quality_runtime()
             _record_bootstrap(
                 "Gemini/LiveDub quality runtime",
                 ok=True,
