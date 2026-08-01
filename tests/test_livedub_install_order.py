@@ -1,28 +1,23 @@
-from pathlib import Path
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
+
+
+def _feature_order() -> dict[str, int]:
+    return {
+        feature.feature_id: index
+        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
+    }
 
 
 def test_transactional_audio_layers_are_final_before_capturing_wrappers():
-    src = Path("bot_new.py").read_text(encoding="utf-8")
+    order = _feature_order()
 
-    companion = src.index("install_livedub_audio_companion()")
-    cache_recovery = src.index("install_livedub_audio_cache_recovery()")
-    quality = src.index("install_livedub_audio_quality_guard()")
-    provenance = src.index("install_livedub_ru_provenance()")
-    new_atomic = src.index("install_livedub_new_delivery_atomicity()")
-    cached_atomic = src.index("install_livedub_cached_delivery_atomicity()")
-    dedupe = src.index("install_livedub_audio_dedupe()")
-    deep = src.index("install_livedub_deep_audit()")
-
-    # Cache helpers must be recoverable before any later runtime uses them. Quality
-    # establishes roles, provenance selects the exact VOT artifact, and transactional
-    # senders remain final before dedupe/deep-audit capture their callables.
     assert (
-        companion
-        < cache_recovery
-        < quality
-        < provenance
-        < new_atomic
-        < cached_atomic
-        < dedupe
-        < deep
+        order["livedub-audio-companion"]
+        < order["livedub-audio-cache-recovery"]
+        < order["livedub-audio-quality"]
+        < order["livedub-ru-provenance"]
+        < order["livedub-new-delivery-atomicity"]
+        < order["livedub-cached-delivery-atomicity"]
+        < order["livedub-audio-dedupe"]
+        < order["livedub-deep-audit"]
     )

@@ -1,17 +1,8 @@
 """Narrow runtime hardening for the long-running Telegram bot process.
 
-The production pipeline is large and intentionally stable.  This module fixes a
-small set of cross-cutting reliability problems without copying or rewriting that
-pipeline:
-
-* acquire the process singleton atomically before heavy imports;
-* bound the LiveDub title cache;
-* isolate optional Shorts/Clips/Montage/Highlights failures;
-* make the legacy 64-kbps MP3 conversion atomic and validate its output;
-* expire cached MP3 files together with the SQLite cache lifetime.
-
-All adapters are idempotent and can be disabled with
-``PROJECT_RUNTIME_HARDENING=0`` for emergency rollback.
+This module owns cross-cutting invariants that must hold even when no later
+LiveDub installer runs: process singleton, bounded caches, atomic MP3
+conversion, optional-stage isolation and stale audio cleanup.
 """
 from __future__ import annotations
 
@@ -37,6 +28,7 @@ _FALSE = {"0", "false", "no", "off"}
 _INSTALLED = False
 _EARLY_LOCK_ACQUIRED = False
 _LOCK_PATH = Path(__file__).resolve().parent.parent / "bot.lock"
+_CONVERSION_POSTCONDITION = "atomic-mp3-conversion-postcondition-v1"
 
 
 def _enabled(name: str = "PROJECT_RUNTIME_HARDENING", default: bool = True) -> bool:
@@ -51,7 +43,7 @@ def _enabled(name: str = "PROJECT_RUNTIME_HARDENING", default: bool = True) -> b
 
 
 def singleton_lock_path() -> Path:
-    """Return one absolute lock path, independent of the launch working directory."""
+    """Return one absolute lock path, independent of launch working directory."""
     return _LOCK_PATH
 
 
@@ -101,12 +93,7 @@ def release_early_singleton() -> None:
 
 
 def acquire_early_singleton() -> bool:
-    """Atomically reserve the bot process before Local API and heavy imports.
-
-    ``main.py`` historically used a check-then-write lock, so two starts in the
-    same instant could both win.  ``O_EXCL`` closes that race.  A stale lock is
-    removed only after confirming that its PID is no longer alive.
-    """
+    """Atomically reserve the process before Local API and heavy imports."""
     global _EARLY_LOCK_ACQUIRED
     if not _enabled() or not _enabled("MP3BOT_EARLY_SINGLETON", True):
         return True
@@ -130,7 +117,6 @@ def acquire_early_singleton() -> bool:
                 )
                 return False
             try:
-                # Re-read before unlinking so a newly acquired lock is not removed.
                 if _read_lock_pid(path) == old_pid:
                     path.unlink()
             except OSError:
@@ -158,7 +144,7 @@ def acquire_early_singleton() -> bool:
 
 
 def bind_main_singleton(main_module: ModuleType) -> None:
-    """Make the legacy main singleton reuse the same absolute early lock."""
+    """Make the legacy singleton reuse the absolute early lock."""
     if hasattr(main_module, "_SINGLETON_LOCK_PATH"):
         main_module._SINGLETON_LOCK_PATH = singleton_lock_path()
 
@@ -209,16 +195,14 @@ def _active_video_ids() -> set[str]:
 
 def _belongs_to_active_video(path: Path, active_ids: Iterable[str]) -> bool:
     name = path.name
-    return any(name == f"{video_id}.mp3" or name.startswith(f"{video_id}_") for video_id in active_ids)
+    return any(
+        name == f"{video_id}.mp3" or name.startswith(f"{video_id}_")
+        for video_id in active_ids
+    )
 
 
 def cleanup_stale_cached_audio(max_age_days: int | None = None) -> int:
-    """Delete expired MP3 cache files without touching active processing.
-
-    ``cleanup_files`` intentionally keeps MP3 for fast repeat requests, but the
-    old periodic maintenance only expired video files.  This aligns disk files
-    with ``CACHE_TTL_DAYS`` instead of letting every historical MP3 live forever.
-    """
+    """Delete expired MP3 cache files without touching active processing."""
     try:
         import core.database as database
         import core.globals as globals_module
@@ -249,7 +233,11 @@ def cleanup_stale_cached_audio(max_age_days: int | None = None) -> int:
         except OSError:
             continue
     if deleted:
-        logger.info("🧹 Audio cache: удалено %d MP3 старше %d дней", deleted, max_age_days)
+        logger.info(
+            "🧹 Audio cache: удалено %d MP3 старше %d дней",
+            deleted,
+            max_age_days,
+        )
     return deleted
 
 
@@ -282,7 +270,10 @@ def _ffprobe_audio_ok(path: Path) -> bool:
             return False
         payload = json.loads(proc.stdout or "{}")
         duration = float((payload.get("format") or {}).get("duration") or 0)
-        has_audio = any(stream.get("codec_type") == "audio" for stream in payload.get("streams") or [])
+        has_audio = any(
+            stream.get("codec_type") == "audio"
+            for stream in payload.get("streams") or []
+        )
         return has_audio and duration > 0
     except Exception:
         return False
@@ -311,8 +302,17 @@ def _guarded_mp3_command(command: Any) -> tuple[list[str], Path, Path] | None:
     return cmd, source, output
 
 
+def _append_process_error(stderr: Any, message: str) -> Any:
+    if isinstance(stderr, bytes):
+        separator = b"\n" if stderr else b""
+        return stderr + separator + message.encode("utf-8")
+    return f"{stderr or ''}\n{message}".strip()
+
+
 class _SubprocessProxy:
-    """Delegate subprocess except for the one legacy MP3 conversion call."""
+    """Delegate subprocess except for one atomic legacy MP3 conversion call."""
+
+    conversion_postcondition_policy = _CONVERSION_POSTCONDITION
 
     def __getattr__(self, name: str) -> Any:
         return getattr(_subprocess, name)
@@ -325,14 +325,20 @@ class _SubprocessProxy:
 
         cmd, source, output = guarded
         output.parent.mkdir(parents=True, exist_ok=True)
-        if output.exists() and output.stat().st_mtime >= source.stat().st_mtime and _ffprobe_audio_ok(output):
+        if (
+            output.exists()
+            and output.stat().st_mtime >= source.stat().st_mtime
+            and _ffprobe_audio_ok(output)
+        ):
             return _subprocess.CompletedProcess(cmd, 0, b"", b"")
 
         try:
             output.unlink(missing_ok=True)
         except OSError:
             pass
-        temp = output.with_name(f"{output.stem}.part-{os.getpid()}-{uuid.uuid4().hex[:8]}.mp3")
+        temp = output.with_name(
+            f"{output.stem}.part-{os.getpid()}-{uuid.uuid4().hex[:8]}.mp3"
+        )
         guarded_cmd = list(cmd)
         guarded_cmd[-1] = str(temp)
         guarded_args = (guarded_cmd, *args[1:]) if args else args
@@ -342,16 +348,30 @@ class _SubprocessProxy:
 
         try:
             proc = _subprocess.run(*guarded_args, **guarded_kwargs)
-            if proc.returncode == 0 and _ffprobe_audio_ok(temp):
+            valid_output = _ffprobe_audio_ok(temp)
+            if proc.returncode == 0 and valid_output:
                 os.replace(temp, output)
-            else:
-                logger.warning(
-                    "MP3 64k conversion rejected: rc=%s valid=%s source=%s",
-                    proc.returncode,
-                    _ffprobe_audio_ok(temp),
-                    source.name,
-                )
-            return proc
+                return proc
+
+            logger.warning(
+                "MP3 64k conversion rejected: rc=%s valid=%s source=%s",
+                proc.returncode,
+                valid_output,
+                source.name,
+            )
+            if proc.returncode != 0:
+                return proc
+
+            message = (
+                "MP3 conversion returned success without a valid output: "
+                f"{output}"
+            )
+            return _subprocess.CompletedProcess(
+                proc.args,
+                1,
+                proc.stdout,
+                _append_process_error(proc.stderr, message),
+            )
         finally:
             try:
                 temp.unlink(missing_ok=True)
@@ -359,7 +379,11 @@ class _SubprocessProxy:
                 pass
 
 
-def _safe_optional_wrapper(name: str, original: Callable[..., Any], default: Any) -> Callable[..., Any]:
+def _safe_optional_wrapper(
+    name: str,
+    original: Callable[..., Any],
+    default: Any,
+) -> Callable[..., Any]:
     if getattr(original, "_mp3bot_optional_isolation", False):
         return original
 
@@ -372,7 +396,12 @@ def _safe_optional_wrapper(name: str, original: Callable[..., Any], default: Any
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error("Optional stage %s failed but pipeline continues: %s", name, exc, exc_info=True)
+            logger.error(
+                "Optional stage %s failed but pipeline continues: %s",
+                name,
+                exc,
+                exc_info=True,
+            )
             return default() if callable(default) else default
 
     safe._mp3bot_optional_isolation = True  # type: ignore[attr-defined]
@@ -387,10 +416,15 @@ def _install_pipeline_adapters() -> list[str]:
     current_cache = getattr(pipeline, "_LIVEDUB_TITLE_CACHE", None)
     if isinstance(current_cache, dict) and not isinstance(current_cache, BoundedLRUDict):
         try:
-            max_entries = int(os.getenv("LIVEDUB_TITLE_CACHE_MAX", "256").strip() or "256")
+            max_entries = int(
+                os.getenv("LIVEDUB_TITLE_CACHE_MAX", "256").strip() or "256"
+            )
         except ValueError:
             max_entries = 256
-        pipeline._LIVEDUB_TITLE_CACHE = BoundedLRUDict(current_cache, max_entries=max_entries)
+        pipeline._LIVEDUB_TITLE_CACHE = BoundedLRUDict(
+            current_cache,
+            max_entries=max_entries,
+        )
         installed.append(f"title-cache<={max(8, max_entries)}")
 
     optional_defaults: dict[str, Any] = {
@@ -405,7 +439,11 @@ def _install_pipeline_adapters() -> list[str]:
     }
     for name, default in optional_defaults.items():
         original = getattr(pipeline, name, None)
-        if callable(original) and not getattr(original, "_mp3bot_optional_isolation", False):
+        if callable(original) and not getattr(
+            original,
+            "_mp3bot_optional_isolation",
+            False,
+        ):
             setattr(pipeline, name, _safe_optional_wrapper(name, original, default))
             installed.append(f"isolate:{name}")
 
@@ -419,7 +457,11 @@ def _install_periodic_audio_cleanup() -> bool:
     import core.utils as utils
 
     original = getattr(utils, "cleanup_stale_downloads", None)
-    if not callable(original) or getattr(original, "_mp3bot_audio_cache_cleanup", False):
+    if not callable(original) or getattr(
+        original,
+        "_mp3bot_audio_cache_cleanup",
+        False,
+    ):
         return False
 
     def cleanup_with_audio(*args: Any, **kwargs: Any) -> int:
@@ -431,7 +473,9 @@ def _install_periodic_audio_cleanup() -> bool:
     return True
 
 
-def install_project_runtime_hardening(main_module: ModuleType | None = None) -> None:
+def install_project_runtime_hardening(
+    main_module: ModuleType | None = None,
+) -> None:
     """Install all post-import adapters exactly once."""
     global _INSTALLED
     if _INSTALLED or not _enabled():
@@ -442,4 +486,7 @@ def install_project_runtime_hardening(main_module: ModuleType | None = None) -> 
     if _install_periodic_audio_cleanup():
         installed.append("audio-cache-expiry")
     _INSTALLED = True
-    logger.info("🛡 Project runtime hardening: ✅ %s", ", ".join(installed) or "already installed")
+    logger.info(
+        "🛡 Project runtime hardening: ✅ %s",
+        ", ".join(installed) or "already installed",
+    )

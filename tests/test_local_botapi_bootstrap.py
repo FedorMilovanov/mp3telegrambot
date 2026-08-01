@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import services.local_botapi_bootstrap as bootstrap
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
 
 
 class _RunningProcess:
@@ -140,11 +141,17 @@ def test_wait_loop_uses_one_real_deadline_and_short_probes():
 
 
 def test_entrypoint_requires_local_before_main_without_cloud_fallback():
-    source = Path("bot_new.py").read_text(encoding="utf-8")
-    required_pos = source.index("from services.local_botapi_required import")
-    call_pos = source.index("require_local_bot_api()")
-    main_import_pos = source.index("from main import main")
+    feature = next(
+        item
+        for item in DEFAULT_RUNTIME_FEATURES
+        if item.feature_id == "local-bot-api"
+    )
+    assert feature.module == "services.local_botapi_required"
+    assert feature.installer == "require_local_bot_api"
+    assert feature.phase is RuntimePhase.PRE_MAIN
+    assert feature.required is True
 
-    assert required_pos < call_pos < main_import_pos
+    source = Path("bot_new.py").read_text(encoding="utf-8")
+    assert source.index("bootstrap_pre_main()") < source.index("import main as _main_module")
     assert "install_cloud_media_fallback" not in source
-    assert "sys.exit(3)" in source
+    assert "sys.exit(2)" in source

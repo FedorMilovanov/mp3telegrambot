@@ -18,6 +18,8 @@ def _payload(**overrides):
         "source_url": "https://youtube.com/watch?v=AbCdEf12345",
         "translation_mode": "gemini",
         "speech_backend": "voxcpm2",
+        "media_master": "constant-mix",
+        "final_media_validator": "ffprobe-av-contract",
         **overrides,
     }
 

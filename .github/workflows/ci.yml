@@ -5,13 +5,11 @@ on:
   push:
     branches: ["main"]
     paths-ignore:
-      - "docs/**"
       - "**/*.md"
       - ".gitignore"
   pull_request:
     branches: ["main"]
     paths-ignore:
-      - "docs/**"
       - "**/*.md"
       - ".gitignore"
 
@@ -32,20 +30,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements-lock.txt
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
 
       - name: Compile all Python files
         run: python -m compileall -q .
@@ -64,8 +63,12 @@ jobs:
           path: pytest-output.txt
           retention-days: 7
 
-      - name: Ruff fatal checks
-        run: python -m ruff check --select E9,F63,F7,F82 .
+      - name: Ruff configured checks
+        run: python -m ruff check .
+
+      - name: Validate baseline update evidence
+        if: ${{ matrix.python-version == '3.11' }}
+        run: python tools/check_code_health_baseline_update.py
 
       - name: Code health advisory
         run: python tools/check_code_health.py
@@ -87,50 +90,30 @@ jobs:
         with:
           python-version: "3.13"
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements-lock.txt
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
 
-      - name: Compile runtime modules
+      - name: Compile runtime surface dynamically
+        shell: pwsh
         run: |
-          python -m py_compile bot_new.py
-          python -m py_compile services/gemini_startup_diagnostics.py
-          python -m py_compile services/restart_state_runtime.py
-          python -m py_compile services/livedub_audio_cache_recovery.py
-          python -m py_compile services/livedub_ru_provenance.py
-          python -m py_compile services/livedub_new_delivery_atomicity.py
-          python -m py_compile services/livedub_cached_delivery_atomicity.py
-          python -m py_compile services/livedub_publication_error_diagnostics.py
-          python -m py_compile services/local_botapi_bootstrap.py
-          python -m py_compile services/local_botapi_runtime.py
-          python -m py_compile services/local_botapi_required.py
-          python -m py_compile services/cloud_media_fallback.py
-          python -m py_compile services/project_runtime_hardening.py
-          python -m py_compile services/livedub_quality_runtime.py
-          python -m py_compile services/livedub_audio_companion.py
-          python -m py_compile services/livedub_audio_quality_guard.py
-          python -m py_compile services/livedub_delivery_hardening.py
-          python -m py_compile services/livedub_dual_audio_policy.py
-          python -m py_compile services/livedub_help_runtime.py
-          python -m py_compile services/livedub_long_qa.py
-          python -m py_compile services/livedub_output_policy.py
-          python -m py_compile services/livedub_publication.py
-          python -m py_compile services/livedub_publication_core.py
-          python -m py_compile services/livedub_qa_trust.py
-          python -m py_compile services/livedub_qa_hardening.py
-          python -m py_compile services/livedub_deep_audit.py
-          python -m py_compile tools/voxcpm2/segmented_cpu_dub.py
-          python -m py_compile tools/voxcpm2/validate_run.py
-          python -m py_compile tools/voxcpm2/quality_sweep.py
+          python -m compileall -q bot_new.py services handlers tools/voxcpm2 tests
+          if ($LASTEXITCODE -ne 0) {
+            throw "Runtime compile surface failed."
+          }
 
       - name: Run Windows-sensitive regression tests
         run: >-
           python -m pytest -q
+          tests/test_runtime_manifest.py
+          tests/test_bot_lifecycle.py
+          tests/test_database_migrations.py
+          tests/test_backend_generation_execution_plan.py
+          tests/test_requirements_lock.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
@@ -163,38 +146,18 @@ jobs:
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
 
-      - name: Ruff fatal checks for runtime files
+      - name: Ruff configured runtime checks
         run: >-
-          python -m ruff check --select E9,F63,F7,F82
+          python -m ruff check
           bot_new.py
-          services/gemini_startup_diagnostics.py
-          services/restart_state_runtime.py
-          services/livedub_audio_cache_recovery.py
-          services/livedub_ru_provenance.py
-          services/livedub_new_delivery_atomicity.py
-          services/livedub_cached_delivery_atomicity.py
-          services/livedub_publication_error_diagnostics.py
-          services/local_botapi_bootstrap.py
-          services/local_botapi_runtime.py
-          services/local_botapi_required.py
-          services/cloud_media_fallback.py
-          services/project_runtime_hardening.py
-          services/livedub_quality_runtime.py
-          services/livedub_audio_companion.py
-          services/livedub_audio_quality_guard.py
-          services/livedub_delivery_hardening.py
-          services/livedub_dual_audio_policy.py
-          services/livedub_help_runtime.py
-          services/livedub_long_qa.py
-          services/livedub_output_policy.py
-          services/livedub_publication.py
-          services/livedub_publication_core.py
-          services/livedub_qa_trust.py
-          services/livedub_qa_hardening.py
-          services/livedub_deep_audit.py
-          tools/voxcpm2/segmented_cpu_dub.py
-          tools/voxcpm2/validate_run.py
-          tools/voxcpm2/quality_sweep.py
+          services
+          handlers
+          tools/voxcpm2
+          tests/test_runtime_manifest.py
+          tests/test_bot_lifecycle.py
+          tests/test_database_migrations.py
+          tests/test_backend_generation_execution_plan.py
+          tests/test_requirements_lock.py
           tests/test_gemini_startup_diagnostics.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py

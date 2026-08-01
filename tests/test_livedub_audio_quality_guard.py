@@ -8,6 +8,7 @@ import pytest
 
 from services import livedub_audio_companion as companion
 from services import livedub_audio_quality_guard as guard
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
 
 
 def test_clean_selector_ignores_newer_derived_mp3s(tmp_path: Path):
@@ -19,7 +20,6 @@ def test_clean_selector_ignores_newer_derived_mp3s(tmp_path: Path):
     stale_legacy = tmp_path / "sermon.ru-audio.mp3"
     stale_legacy.write_bytes(b"legacy" * 400)
 
-    # Make generated outputs newer than the genuine Yandex track.
     os.utime(clean, (10, 10))
     os.utime(stale_mix, (30, 30))
     os.utime(stale_legacy, (20, 20))
@@ -109,12 +109,22 @@ def test_same_physical_file_cannot_be_sent_as_both_variants(monkeypatch, tmp_pat
     assert sent == ["clean"]
 
 
-def test_entrypoint_installs_quality_guard_before_dedupe_and_deep_audit():
-    source = Path("bot_new.py").read_text(encoding="utf-8")
-    quality = source.index("install_livedub_audio_quality_guard()")
-    dedupe = source.index("install_livedub_audio_dedupe()")
-    deep = source.index("install_livedub_deep_audit()")
-    assert quality < dedupe < deep
+def test_manifest_installs_quality_before_dedupe_and_deep_audit():
+    order = {
+        feature.feature_id: index
+        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
+    }
+    assert (
+        order["livedub-audio-quality"]
+        < order["livedub-audio-dedupe"]
+        < order["livedub-deep-audit"]
+    )
+    quality = next(
+        feature
+        for feature in DEFAULT_RUNTIME_FEATURES
+        if feature.feature_id == "livedub-audio-quality"
+    )
+    assert quality.required is True
 
 
 def test_runtime_patch_applies_same_clean_selector_to_mix_and_vot(tmp_path: Path):

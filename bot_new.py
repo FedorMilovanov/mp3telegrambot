@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Validated entry point for MP3Bot. Run this file instead of main.py."""
+"""Validated, fail-closed entry point for MP3Bot. Run this file instead of main.py."""
+
+from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -26,196 +29,32 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+from services.bot_lifecycle import run_bot_process
+from services.database_migrations import install_database_migrations
+from services.runtime_manifest import (
+    RuntimeBootstrapError,
+    bootstrap_post_main,
+    bootstrap_pre_main,
+    require_runtime_ready,
+)
+
 try:
-    from services.project_runtime_hardening import acquire_early_singleton
+    bootstrap_pre_main()
+except RuntimeBootstrapError as exc:
+    print(f"❌ Обязательная pre-main runtime-композиция не готова: {exc}")
+    sys.exit(2)
 
-    if not acquire_early_singleton():
-        print("❌ Бот уже запущен в другом процессе. Новый экземпляр завершён.")
-        sys.exit(2)
-except Exception as _singleton_error:
-    print(f"⚠️ Ранний singleton guard недоступен: {_singleton_error}")
+# Deliberately use module ownership rather than "from main import main": the
+# lifecycle service must execute run_bot_async exactly once in one event loop.
+import main as _main_module
 
 try:
-    from services.local_botapi_required import require_local_bot_api
-
-    require_local_bot_api()
-except Exception as _local_error:
-    print(f"❌ Local Bot API не поднялся: {_local_error}")
-    print("   Включи системный TUN/VPN и запусти бот снова.")
+    install_database_migrations(_main_module)
+    bootstrap_post_main(_main_module)
+    require_runtime_ready()
+except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError) as exc:
+    print(f"❌ Обязательная runtime-композиция или миграция не готова: {exc}")
     sys.exit(3)
 
-try:
-    from services.livedub_info_guard import install_livedub_info_guard
-
-    install_livedub_info_guard()
-except Exception as _info_guard_error:
-    print(f"⚠️ Grounding описаний LiveDub не установлен: {_info_guard_error}")
-
-try:
-    from services.livedub_info_presentation import install_livedub_info_presentation
-
-    install_livedub_info_presentation()
-except Exception as _info_presentation_error:
-    print(f"⚠️ Оформление русских заголовков LiveDub не установлено: {_info_presentation_error}")
-
-try:
-    from services.livedub_long_qa import install_livedub_long_qa
-
-    install_livedub_long_qa()
-except Exception as _long_qa_error:
-    print(f"⚠️ Сегментная проверка длинных LiveDub не установлена: {_long_qa_error}")
-
-try:
-    from services.livedub_qa_trust import install_livedub_qa_trust
-
-    install_livedub_qa_trust()
-except Exception as _qa_trust_error:
-    print(f"⚠️ Аудиопроверка точности LiveDub не установлена: {_qa_trust_error}")
-
-try:
-    from services.livedub_delivery_hardening import install_livedub_delivery_hardening
-
-    install_livedub_delivery_hardening()
-except Exception as _delivery_hardening_error:
-    print(f"⚠️ Усиление доставки LiveDub не установлено: {_delivery_hardening_error}")
-
-import main as _main_module
-from main import main
-
-try:
-    from services.gemini_startup_diagnostics import install_gemini_startup_diagnostics
-
-    install_gemini_startup_diagnostics(_main_module)
-except Exception as _gemini_diagnostics_error:
-    print(f"⚠️ Актуальная Gemini startup-диагностика не установлена: {_gemini_diagnostics_error}")
-
-try:
-    from services.livedub_help_runtime import install_livedub_help_runtime
-
-    install_livedub_help_runtime(_main_module)
-except Exception as _help_runtime_error:
-    print(f"⚠️ Актуальная справка LiveDub не установлена: {_help_runtime_error}")
-
-try:
-    from services.livedub_output_policy import install_livedub_output_policy
-
-    install_livedub_output_policy()
-except Exception as _output_policy_error:
-    print(f"⚠️ Русские заголовки LiveDub не установлены: {_output_policy_error}")
-
-try:
-    from services.livedub_publication import install_livedub_publication
-
-    install_livedub_publication()
-except Exception as _publication_error:
-    print(f"⚠️ Публикационная карточка LiveDub не установлена: {_publication_error}")
-
-try:
-    from services.livedub_publication_error_diagnostics import (
-        install_livedub_publication_error_diagnostics,
-    )
-
-    install_livedub_publication_error_diagnostics()
-except Exception as _publication_diagnostics_error:
-    print(f"⚠️ Диагностика ошибок публикации LiveDub не установлена: {_publication_diagnostics_error}")
-
-try:
-    from services.livedub_audio_companion import install_livedub_audio_companion
-
-    install_livedub_audio_companion()
-except Exception as _livedub_audio_error:
-    print(f"⚠️ MP3-компаньон LiveDub не установлен: {_livedub_audio_error}")
-
-try:
-    from services.livedub_audio_cache_recovery import install_livedub_audio_cache_recovery
-
-    install_livedub_audio_cache_recovery()
-except Exception as _audio_cache_recovery_error:
-    print(f"⚠️ Self-recovery кэша двух MP3 LiveDub не установлен: {_audio_cache_recovery_error}")
-
-try:
-    from services.livedub_audio_quality_guard import install_livedub_audio_quality_guard
-
-    install_livedub_audio_quality_guard()
-except Exception as _audio_quality_guard_error:
-    print(f"⚠️ Контроль качества двух MP3 LiveDub не установлен: {_audio_quality_guard_error}")
-
-try:
-    from services.livedub_ru_provenance import install_livedub_ru_provenance
-
-    install_livedub_ru_provenance()
-except Exception as _ru_provenance_error:
-    print(f"⚠️ Provenance чистой RU-дорожки LiveDub не установлен: {_ru_provenance_error}")
-
-try:
-    from services.livedub_new_delivery_atomicity import install_livedub_new_delivery_atomicity
-
-    install_livedub_new_delivery_atomicity()
-except Exception as _new_atomicity_error:
-    print(f"⚠️ Transactional отправка новых MP3 LiveDub не установлена: {_new_atomicity_error}")
-
-try:
-    from services.livedub_cached_delivery_atomicity import install_livedub_cached_delivery_atomicity
-
-    install_livedub_cached_delivery_atomicity()
-except Exception as _cached_atomicity_error:
-    print(f"⚠️ Transactional rollback кэшированного LiveDub не установлен: {_cached_atomicity_error}")
-
-try:
-    from services.livedub_audio_dedupe import install_livedub_audio_dedupe
-
-    install_livedub_audio_dedupe()
-except Exception as _livedub_dedupe_error:
-    print(f"⚠️ Защита от исходного английского MP3 не установлена: {_livedub_dedupe_error}")
-
-try:
-    from services.livedub_output_policy import harden_livedub_audio_dedupe
-
-    harden_livedub_audio_dedupe()
-except Exception as _dedupe_hardening_error:
-    print(f"⚠️ Усиленная защита от английского MP3 не установлена: {_dedupe_hardening_error}")
-
-try:
-    from services.livedub_deep_audit import install_livedub_deep_audit
-
-    install_livedub_deep_audit()
-except Exception as _deep_audit_error:
-    print(f"⚠️ Глубокая защита публикации и QA LiveDub не установлена: {_deep_audit_error}")
-
-try:
-    from services.livedub_dual_audio_policy import install_livedub_dual_audio_policy
-
-    install_livedub_dual_audio_policy()
-except Exception as _dual_audio_policy_error:
-    print(f"⚠️ Раздельное оформление двух MP3 LiveDub не установлено: {_dual_audio_policy_error}")
-
-try:
-    from services.project_runtime_hardening import install_project_runtime_hardening
-
-    install_project_runtime_hardening(_main_module)
-except Exception as _runtime_hardening_error:
-    print(f"⚠️ Project runtime hardening не установлен: {_runtime_hardening_error}")
-
-try:
-    from services.dub_studio_runtime import install_dub_studio_runtime
-
-    install_dub_studio_runtime()
-except Exception as _dub_studio_error:
-    print(f"⚠️ VoxCPM2 Dub Studio не установлена: {_dub_studio_error}")
-
-try:
-    from services.dub_title_policy import install_dub_title_policy
-
-    install_dub_title_policy()
-except Exception as _dub_title_error:
-    print(f"⚠️ Единая политика русских названий не установлена: {_dub_title_error}")
-
-try:
-    from services.restart_state_runtime import install_restart_state_runtime
-
-    install_restart_state_runtime(_main_module)
-except Exception as _restart_state_error:
-    print(f"⚠️ Очистка LiveDub state между event loop не установлена: {_restart_state_error}")
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_bot_process(_main_module))

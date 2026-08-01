@@ -2,6 +2,8 @@ import asyncio
 import importlib.util
 from pathlib import Path
 
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
+
 
 def _load(name: str, filename: str):
     path = Path(__file__).parents[1] / "services" / filename
@@ -192,12 +194,19 @@ def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
     assert second["source_url"].endswith("two")
 
 
-def test_entrypoint_installs_deep_audit_after_quality_hook_target():
-    src = (Path(__file__).parents[1] / "bot_new.py").read_text(encoding="utf-8")
-    assert "install_livedub_deep_audit" in src
-    assert src.index("install_livedub_audio_dedupe()") < src.index(
-        "install_livedub_deep_audit()"
+def test_manifest_installs_deep_audit_after_dedupe_before_hardening():
+    order = {
+        feature.feature_id: index
+        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
+    }
+    assert (
+        order["livedub-audio-dedupe"]
+        < order["livedub-deep-audit"]
+        < order["project-runtime-hardening"]
     )
-    assert src.index("install_livedub_deep_audit()") < src.index(
-        "install_project_runtime_hardening"
+    deep = next(
+        feature
+        for feature in DEFAULT_RUNTIME_FEATURES
+        if feature.feature_id == "livedub-deep-audit"
     )
+    assert deep.required is True
