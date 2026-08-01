@@ -37,15 +37,29 @@ for _name in dir(_legacy):
 ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"
 TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
-HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v1"
+HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v2"
 _legacy_build_timeline = _legacy.build_timeline
+_DEFAULT_PROBE_DURATION = probe_duration
+_DEFAULT_RUN_CHECKED = run_checked
+_DEFAULT_TIMELINE_QA = direct_timeline_delivery_qa
 
 
 def _sync_legacy_hooks() -> None:
-    """Make facade monkeypatches and injected IO visible inside legacy globals."""
-    _legacy.probe_duration = probe_duration
-    _legacy.run_checked = run_checked
-    _legacy.direct_timeline_delivery_qa = direct_timeline_delivery_qa
+    """Expose explicit facade injections without erasing direct legacy patches.
+
+    Tests and clean runtimes use both supported seams: assigning a hook on this
+    facade and assigning it on ``_legacy``.  A default facade binding must not
+    overwrite a deliberate legacy replacement immediately before execution.
+    """
+    facade_probe = globals().get("probe_duration")
+    if callable(facade_probe) and facade_probe is not _DEFAULT_PROBE_DURATION:
+        _legacy.probe_duration = facade_probe
+    facade_runner = globals().get("run_checked")
+    if callable(facade_runner) and facade_runner is not _DEFAULT_RUN_CHECKED:
+        _legacy.run_checked = facade_runner
+    facade_qa = globals().get("direct_timeline_delivery_qa")
+    if facade_qa is not None and facade_qa is not _DEFAULT_TIMELINE_QA:
+        _legacy.direct_timeline_delivery_qa = facade_qa
 
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
@@ -91,7 +105,8 @@ def fit_without_slowdown(
     output_sample_rate = int(output_sample_rate)
     if output_sample_rate <= 0:
         raise ValueError("output_sample_rate должен быть > 0.")
-    clean_duration = probe_duration(Path(clean_path))
+    _sync_legacy_hooks()
+    clean_duration = _legacy.probe_duration(Path(clean_path))
     speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
         tempo = clean_duration / speech_slot
@@ -111,7 +126,7 @@ def fit_without_slowdown(
         f"atrim=duration={float(target_duration):.6f}",
         "asetpts=N/SR/TB",
     ]
-    run_checked(
+    _legacy.run_checked(
         [
             "ffmpeg",
             "-hide_banner",
@@ -146,7 +161,7 @@ def fit_without_slowdown(
         "fade_in_seconds": fade_in,
         "fade_out_start_seconds": fade_out_start,
         "fade_out_seconds": fade_out,
-        "fitted_duration": probe_duration(Path(fitted_path)),
+        "fitted_duration": _legacy.probe_duration(Path(fitted_path)),
     }
 
 
