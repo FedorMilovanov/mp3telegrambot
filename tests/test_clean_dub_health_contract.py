@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from handlers import dub_health
-from services.dub_worker_release import WORKER_RUNTIME
+from services.dub_worker_release import SOURCE_PROSODY_ROLE_POLICY, WORKER_RUNTIME
 from services.speech_backends import BACKEND_CONTRACT_POLICY, default_backend
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair_runtime
@@ -42,9 +42,7 @@ def test_dub_health_checks_active_backend_and_safety_contracts() -> None:
     assert direct_runtime.CHECKPOINT_MIGRATION_POLICY == (
         "signature-and-natural-tempo-checkpoint-adoption-v2"
     )
-    assert source_prosody_policy.POLICY == (
-        "diagnostic-only-no-cross-language-ranking-v1"
-    )
+    assert source_prosody_policy.POLICY == SOURCE_PROSODY_ROLE_POLICY
     assert callable(repair_runtime._validate_repair_request)
     assert callable(repair_runtime._checkpoint_ready)
     assert callable(repair_runtime._delay_evidence)
