@@ -9,13 +9,14 @@ import math
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-BACKEND_CONTRACT_POLICY = "speech-backend-contract-v3"
+BACKEND_CONTRACT_POLICY = "speech-backend-contract-v4"
 BACKEND_RUNTIME_PATH_POLICY = "speech-backend-runtime-paths-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
 PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v2"
 GENERATION_REQUEST_POLICY = "model-neutral-generation-request-v1"
 GENERATION_LENGTH_POLICY = "model-neutral-generation-length-plan-v1"
+GENERATION_LENGTH_REQUEST_POLICY = "model-neutral-generation-length-request-v1"
 SESSION_CONFIG_POLICY = "model-neutral-session-config-v1"
 REQUIRED_PRODUCTION_CAPABILITIES = (
     "voice_cloning",
@@ -115,6 +116,56 @@ class BackendAudioSpec:
                 else None
             ),
             "cache_length": int(self.cache_length) if self.cache_length is not None else None,
+        }
+
+
+@dataclass(frozen=True)
+class BackendGenerationLengthRequest:
+    """Model-neutral duration and completion evidence for backend planning."""
+
+    duration_budget: float
+    attempt: int
+    previous_output_durations: tuple[float, ...] = ()
+    minimum_completion_ratio: float | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        budget = float(self.duration_budget)
+        if not math.isfinite(budget) or budget <= 0.0:
+            raise ValueError("duration_budget должен быть конечным числом > 0.")
+        if isinstance(self.attempt, bool) or int(self.attempt) < 1:
+            raise ValueError("attempt должен быть целым числом >= 1.")
+        previous: list[float] = []
+        for value in self.previous_output_durations:
+            if isinstance(value, bool):
+                raise ValueError("previous_output_durations не может содержать bool.")
+            number = float(value)
+            if not math.isfinite(number) or number < 0.0:
+                raise ValueError(
+                    "previous_output_durations должен содержать конечные числа >= 0."
+                )
+            previous.append(number)
+        minimum_ratio = self.minimum_completion_ratio
+        if minimum_ratio is not None:
+            minimum_ratio = float(minimum_ratio)
+            if not math.isfinite(minimum_ratio) or not 0.0 <= minimum_ratio < 1.0:
+                raise ValueError(
+                    "minimum_completion_ratio должен быть конечным числом в диапазоне 0..1."
+                )
+        object.__setattr__(self, "duration_budget", budget)
+        object.__setattr__(self, "attempt", int(self.attempt))
+        object.__setattr__(self, "previous_output_durations", tuple(previous))
+        object.__setattr__(self, "minimum_completion_ratio", minimum_ratio)
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "duration_budget": self.duration_budget,
+            "attempt": self.attempt,
+            "previous_output_durations": list(self.previous_output_durations),
+            "minimum_completion_ratio": self.minimum_completion_ratio,
+            "metadata": dict(self.metadata),
+            "generation_length_request_policy": GENERATION_LENGTH_REQUEST_POLICY,
         }
 
 
@@ -320,10 +371,7 @@ class SpeechBackend(Protocol):
     def plan_generation_length(
         self,
         audio_spec: BackendAudioSpec,
-        *,
-        duration_budget: float,
-        attempt: int,
-        previous_output_durations: tuple[float, ...] = (),
+        request: BackendGenerationLengthRequest,
     ) -> BackendGenerationLengthPlan: ...
 
     def open_session(self, config: BackendSessionConfig) -> BackendSynthesisSession: ...
@@ -355,6 +403,7 @@ __all__ = [
     "BACKEND_ENVIRONMENT_POLICY",
     "BACKEND_RUNTIME_PATH_POLICY",
     "GENERATION_LENGTH_POLICY",
+    "GENERATION_LENGTH_REQUEST_POLICY",
     "GENERATION_REQUEST_POLICY",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
@@ -362,6 +411,7 @@ __all__ = [
     "BackendAudioSpec",
     "BackendCapabilities",
     "BackendGenerationLengthPlan",
+    "BackendGenerationLengthRequest",
     "BackendGenerationRequest",
     "BackendIdentity",
     "BackendProcessEnvironment",
