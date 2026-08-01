@@ -29,7 +29,10 @@ def test_registry_contains_real_and_deterministic_backends():
 
 def test_deterministic_backend_is_not_selectable_for_production():
     with pytest.raises(BackendCapabilityError):
-        select_production_backend("deterministic-ci")
+        select_production_backend(
+            "deterministic-ci",
+            default_backend_id="voxcpm2",
+        )
 
 
 def test_deterministic_backend_has_different_audio_and_no_model_knobs(tmp_path: Path):
