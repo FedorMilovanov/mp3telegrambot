@@ -57,9 +57,7 @@ from services.speech_backends.voxcpm2 import VoxCPM2Backend, VoxCPM2Session
 DEFAULT_BACKEND_ID = "voxcpm2"
 
 _VOXCPM2 = VoxCPM2Backend()
-_DETERMINISTIC_CI = DeterministicSpeechBackend()
 register_backend(_VOXCPM2)
-register_backend(_DETERMINISTIC_CI)
 
 
 def default_backend() -> SpeechBackend:
