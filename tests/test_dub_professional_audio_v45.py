@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
+from services.dub_studio import load_recipe
 from tools.voxcpm2 import legacy_segment_migration_v45
+from tools.voxcpm2 import professional_audio_qa_v45 as qa
 from tools.voxcpm2 import professional_audio_v45 as policy
 
 
@@ -74,47 +76,75 @@ def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
     assert " ".join(item["text"] for item in old).split() == " ".join(
         item["text"] for item in migrated
     ).split()
-    assert max(
-        float(item["end"]) - float(item["start"])
-        for item in migrated
-    ) <= 5.6
-    assert all(
-        item["quality_timing"] == "global-delay-v4.5"
-        for item in migrated
-    )
+    assert max(float(item["end"]) - float(item["start"]) for item in migrated) <= 5.6
+    assert all(item["quality_timing"] == "global-delay-v4.5" for item in migrated)
     assert (tmp_path / "segments_ru_final.pre_v45.json").is_file()
 
 
-def test_professional_recipe_and_master_are_selected() -> None:
-    recipe = Path("tools/voxcpm2/recipes/generic_short_v1.json").read_text(
-        encoding="utf-8"
+def test_recipe_routes_all_modes_through_clean_runtime() -> None:
+    recipe = load_recipe("generic_short_v1")
+    assert recipe.action("render_gemini")["module"] == (
+        "tools.voxcpm2.generic_clean_gemini_runtime"
     )
-    assert "generic_gemini_runtime_v45" in recipe
-    assert "generic_direct_checked_runtime_v45" in recipe
-    assert "generic_audio_repair_runtime_v45" in recipe
-    master = Path("tools/voxcpm2/master_quality_v45.py").read_text(
-        encoding="utf-8"
+    assert recipe.action("render_direct")["module"] == (
+        "tools.voxcpm2.generic_clean_direct_runtime"
     )
-    assert '_replace("--target-i", "-16.0")' in master
-    assert '_replace("--target-tp", "-1.5")' in master
+    assert recipe.action("repair_audio")["module"] == (
+        "tools.voxcpm2.generic_clean_audio_repair_runtime"
+    )
 
 
-def test_renderer_uses_safe_retry_for_bad_voice_candidates() -> None:
-    adapter = Path(
-        "tools/voxcpm2/voxcpm2_professional_adapter_v45.py"
-    ).read_text(encoding="utf-8")
+def test_voice_gate_is_fail_closed_and_expression_aware() -> None:
+    calm_limits = qa._voice_limits(
+        {"expression_tier": "warm", "expression_score": 0.0},
+        profile_name="extended",
+        reference_median=110.0,
+        reference_p90=145.0,
+    )
+    expressive_limits = qa._voice_limits(
+        {"expression_tier": "emphatic", "expression_score": 0.5},
+        profile_name="composite",
+        reference_median=110.0,
+        reference_p90=145.0,
+    )
+    assert expressive_limits["max_median_ratio"] > calm_limits["max_median_ratio"]
+    assert expressive_limits["max_p90_ratio"] > calm_limits["max_p90_ratio"]
+
+    item = {"expression_tier": "warm", "expression_score": 0.0}
+    accepted = qa._voice_evaluation(
+        item,
+        profile_name="extended",
+        reference={"voiced_ratio": 0.7, "f0_median": 110.0, "f0_p90": 145.0},
+        candidate={"voiced_ratio": 0.6, "f0_median": 114.0, "f0_p90": 150.0},
+    )
+    missing = qa._voice_evaluation(
+        item,
+        profile_name="extended",
+        reference=None,
+        candidate={"voiced_ratio": 0.6, "f0_median": 114.0, "f0_p90": 150.0},
+    )
+    out_of_range = qa._voice_evaluation(
+        item,
+        profile_name="extended",
+        reference={"voiced_ratio": 0.7, "f0_median": 110.0, "f0_p90": 145.0},
+        candidate={"voiced_ratio": 0.6, "f0_median": 190.0, "f0_p90": 245.0},
+    )
+
+    assert qa.POLICY == "clean-expression-aware-qa-v3"
+    assert qa.VOICE_EVIDENCE_POLICY == "fail-closed-reference-f0-v1"
+    assert accepted["passed"] is True
+    assert missing["passed"] is False
+    assert missing["failure_reason"] == "missing_reference_profile"
+    assert out_of_range["passed"] is False
+    assert out_of_range["failure_reason"] == "pitch_ratio_out_of_range"
+
+
+def test_renderer_adapter_keeps_acoustic_rejection_evidence() -> None:
+    adapter = Path("tools/voxcpm2/voxcpm2_professional_adapter_v45.py").read_text(
+        encoding="utf-8"
+    )
     assert "max_internal_gap" in adapter
     assert "f0_median_ratio" in adapter
     assert "cut_risk" in adapter
     assert 'candidate["clipping_ratio"] = max(measured_clipping, 0.000501)' in adapter
     assert 'tail_info"]["suspicious"] = True' not in adapter
-
-
-def test_release_gate_checks_voice_register_and_continuity() -> None:
-    qa = Path("tools/voxcpm2/professional_audio_qa_v45.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'check["continuity_v45"]' in qa
-    assert 'check["voice_match_v45"]' in qa
-    assert "median_ratio <= 1.25" in qa
-    assert "p90_ratio <= 1.35" in qa
