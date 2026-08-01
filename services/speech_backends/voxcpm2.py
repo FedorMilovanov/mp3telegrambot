@@ -22,8 +22,9 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
 )
 
-ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v6"
+ADAPTER_POLICY = "voxcpm2-speech-backend-adapter-v7"
 GENERATION_CALL_POLICY = "typed-backend-generation-request-v1"
+SESSION_CALL_POLICY = "typed-backend-session-config-v1"
 MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
@@ -177,19 +178,13 @@ class VoxCPM2Backend:
 
     def open_session(
         self,
-        config: BackendSessionConfig | Path,
-        *,
-        cache_length: int | None = None,
-        torch_module: Any | None = None,
+        config: BackendSessionConfig,
     ) -> BackendSynthesisSession:
-        """Load VoxCPM2 while accepting the old call shape during migration."""
-        del torch_module
-        if isinstance(config, BackendSessionConfig):
-            model_path = config.model_path
-            raw_cache_length = config.options.get("cache_length", 4096)
-        else:
-            model_path = Path(config)
-            raw_cache_length = 4096 if cache_length is None else cache_length
+        """Load VoxCPM2 from the model-neutral session configuration."""
+        if not isinstance(config, BackendSessionConfig):
+            raise TypeError("VoxCPM2Backend.open_session ожидает BackendSessionConfig.")
+        model_path = config.model_path
+        raw_cache_length = config.options.get("cache_length", 4096)
         if isinstance(raw_cache_length, bool):
             raise RuntimeError("VoxCPM2 cache_length не может быть bool.")
         try:
@@ -353,6 +348,7 @@ __all__ = [
     "ADAPTER_POLICY",
     "GENERATION_CALL_POLICY",
     "MASTER_SELECTION_POLICY",
+    "SESSION_CALL_POLICY",
     "VoxCPM2Backend",
     "VoxCPM2Session",
 ]
