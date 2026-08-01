@@ -29,6 +29,7 @@ from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     DEFAULT_MODEL_PROFILE_ID,
     SpeechBackendSelectionError,
+    UnknownSpeechBackendError,
     normalize_production_speech_request,
 )
 from tools.voxcpm2 import clean_source_download
@@ -127,6 +128,10 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
             default_backend_id=DEFAULT_BACKEND_ID,
             default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
         )
+    except UnknownSpeechBackendError as exc:
+        raise RuntimeError(
+            "Некорректный speech_backend в request.json: " + str(exc)
+        ) from exc
     except SpeechBackendSelectionError as exc:
         raise RuntimeError(
             "Некорректная TTS-конфигурация в request.json: " + str(exc)
