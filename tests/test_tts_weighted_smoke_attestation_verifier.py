@@ -125,18 +125,18 @@ def test_verifier_rejects_digest_tamper(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "match"),
+    ("keyword", "value", "match"),
     [
-        ("repository", "other/repo", "repository"),
-        ("commit", "e" * 40, "commit"),
-        ("run_id", RUN_ID + 1, "run identity"),
-        ("run_attempt", 2, "run identity"),
-        ("profile", "other-profile", "profile"),
+        ("expected_repository", "other/repo", "repository"),
+        ("expected_commit", "e" * 40, "commit"),
+        ("expected_run_id", RUN_ID + 1, "run identity"),
+        ("expected_run_attempt", 2, "run identity"),
+        ("expected_profile_id", "other-profile", "profile"),
     ],
 )
 def test_verifier_rejects_expected_identity_mismatch(
     tmp_path: Path,
-    field: str,
+    keyword: str,
     value,
     match: str,
 ) -> None:
@@ -148,7 +148,7 @@ def test_verifier_rejects_expected_identity_mismatch(
         "expected_run_attempt": RUN_ATTEMPT,
         "expected_profile_id": PROFILE,
     }
-    kwargs[f"expected_{field}"] = value
+    kwargs[keyword] = value
 
     with pytest.raises(ValueError, match=match):
         verify_downloaded_attestation(directory, **kwargs)
