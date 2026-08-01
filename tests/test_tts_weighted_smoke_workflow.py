@@ -42,7 +42,7 @@ def test_weighted_smoke_is_manual_main_only_with_job_scoped_permissions() -> Non
 
     closeout = payload["jobs"]["acceptance-closeout"]
     assert closeout["needs"] == "weighted-smoke"
-    assert closeout["if"] == "needs.weighted-smoke.result == 'success'"
+    assert "if" not in closeout
     assert closeout["runs-on"] == "ubuntu-latest"
     assert closeout["permissions"] == {
         "actions": "read",
