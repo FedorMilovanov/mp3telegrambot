@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import services.local_botapi_required as required
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
 
 
 class _RunningProcess:
@@ -117,14 +118,21 @@ def test_timeout_leaves_running_server_alive(monkeypatch):
         lambda: stops.append(True) or [],
     )
     monkeypatch.setattr(required.probe_runtime, "_wait_until_port_closes", lambda *_: None)
-    monkeypatch.setattr(required.process_runtime, "_start_server", lambda *_: (running, "botapi-server.log"))
+    monkeypatch.setattr(
+        required.process_runtime,
+        "_start_server",
+        lambda *_: (running, "botapi-server.log"),
+    )
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (False, "timeout"))
-    monkeypatch.setattr(required.process_runtime, "_read_log_tail", lambda *_args, **_kwargs: "TDLib warming")
+    monkeypatch.setattr(
+        required.process_runtime,
+        "_read_log_tail",
+        lambda *_args, **_kwargs: "TDLib warming",
+    )
 
     with pytest.raises(required.LocalBotApiRequiredError, match="сервер оставлен запущенным"):
         required.require_local_bot_api()
 
-    # One pre-start cleanup only; no second kill after the timeout.
     assert len(stops) == 1
     assert os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] == "0"
     assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "0"
@@ -138,9 +146,17 @@ def test_exited_server_reports_exit_without_cloud_fallback(monkeypatch):
     monkeypatch.setattr(required, "_cloud_logout", lambda *_: None)
     monkeypatch.setattr(required.process_runtime, "_terminate_managed_server", lambda: [])
     monkeypatch.setattr(required.probe_runtime, "_wait_until_port_closes", lambda *_: None)
-    monkeypatch.setattr(required.process_runtime, "_start_server", lambda *_: (_ExitedProcess(), "botapi-server.log"))
+    monkeypatch.setattr(
+        required.process_runtime,
+        "_start_server",
+        lambda *_: (_ExitedProcess(), "botapi-server.log"),
+    )
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (False, "exited"))
-    monkeypatch.setattr(required.process_runtime, "_read_log_tail", lambda *_args, **_kwargs: "fatal")
+    monkeypatch.setattr(
+        required.process_runtime,
+        "_read_log_tail",
+        lambda *_args, **_kwargs: "fatal",
+    )
 
     with pytest.raises(required.LocalBotApiRequiredError, match="завершился с кодом 7"):
         required.require_local_bot_api()
@@ -157,11 +173,17 @@ def test_socks5h_proxy_is_normalized_for_httpx():
 
 
 def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapter():
-    source = Path("bot_new.py").read_text(encoding="utf-8")
-    local_import = source.index("from services.local_botapi_required import")
-    local_call = source.index("require_local_bot_api()")
-    main_import = source.index("from main import main")
+    feature = next(
+        item
+        for item in DEFAULT_RUNTIME_FEATURES
+        if item.feature_id == "local-bot-api"
+    )
+    assert feature.module == "services.local_botapi_required"
+    assert feature.installer == "require_local_bot_api"
+    assert feature.phase is RuntimePhase.PRE_MAIN
+    assert feature.required is True
 
-    assert local_import < local_call < main_import
+    source = Path("bot_new.py").read_text(encoding="utf-8")
+    assert source.index("bootstrap_pre_main()") < source.index("import main as _main_module")
     assert "install_cloud_media_fallback" not in source
-    assert "sys.exit(3)" in source
+    assert "sys.exit(2)" in source
