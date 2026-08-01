@@ -9,12 +9,13 @@ import math
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-BACKEND_CONTRACT_POLICY = "speech-backend-contract-v2"
+BACKEND_CONTRACT_POLICY = "speech-backend-contract-v3"
 BACKEND_RUNTIME_PATH_POLICY = "speech-backend-runtime-paths-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
 PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v2"
 GENERATION_REQUEST_POLICY = "model-neutral-generation-request-v1"
+GENERATION_LENGTH_POLICY = "model-neutral-generation-length-plan-v1"
 SESSION_CONFIG_POLICY = "model-neutral-session-config-v1"
 REQUIRED_PRODUCTION_CAPABILITIES = (
     "voice_cloning",
@@ -114,6 +115,41 @@ class BackendAudioSpec:
                 else None
             ),
             "cache_length": int(self.cache_length) if self.cache_length is not None else None,
+        }
+
+
+@dataclass(frozen=True)
+class BackendGenerationLengthPlan:
+    """Backend-owned translation from duration facts to model-specific options."""
+
+    backend_id: str
+    duration_budget: float
+    attempt: int
+    backend_options: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        backend_id = str(self.backend_id or "").casefold().strip()
+        if not backend_id:
+            raise ValueError("BackendGenerationLengthPlan.backend_id не может быть пустым.")
+        if not math.isfinite(float(self.duration_budget)) or float(self.duration_budget) <= 0.0:
+            raise ValueError("duration_budget должен быть конечным числом > 0.")
+        if isinstance(self.attempt, bool) or int(self.attempt) < 1:
+            raise ValueError("attempt должен быть целым числом >= 1.")
+        object.__setattr__(self, "backend_id", backend_id)
+        object.__setattr__(self, "duration_budget", float(self.duration_budget))
+        object.__setattr__(self, "attempt", int(self.attempt))
+        object.__setattr__(self, "backend_options", dict(self.backend_options))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "backend_id": self.backend_id,
+            "duration_budget": self.duration_budget,
+            "attempt": self.attempt,
+            "backend_options": dict(self.backend_options),
+            "metadata": dict(self.metadata),
+            "generation_length_policy": GENERATION_LENGTH_POLICY,
         }
 
 
@@ -281,6 +317,15 @@ class SpeechBackend(Protocol):
         base_environment: Mapping[str, str] | None = None,
     ) -> BackendProcessEnvironment: ...
 
+    def plan_generation_length(
+        self,
+        audio_spec: BackendAudioSpec,
+        *,
+        duration_budget: float,
+        attempt: int,
+        previous_output_durations: tuple[float, ...] = (),
+    ) -> BackendGenerationLengthPlan: ...
+
     def open_session(self, config: BackendSessionConfig) -> BackendSynthesisSession: ...
 
     def runtime_paths(
@@ -309,12 +354,14 @@ __all__ = [
     "BACKEND_CONTRACT_POLICY",
     "BACKEND_ENVIRONMENT_POLICY",
     "BACKEND_RUNTIME_PATH_POLICY",
+    "GENERATION_LENGTH_POLICY",
     "GENERATION_REQUEST_POLICY",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
     "SESSION_CONFIG_POLICY",
     "BackendAudioSpec",
     "BackendCapabilities",
+    "BackendGenerationLengthPlan",
     "BackendGenerationRequest",
     "BackendIdentity",
     "BackendProcessEnvironment",
