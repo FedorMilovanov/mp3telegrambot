@@ -1,0 +1,153 @@
+name: TTS Weighted Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile_id:
+        description: Production TTS profile ID
+        required: true
+        default: voxcpm2-production-v1
+        type: string
+      duration_budget:
+        description: Short synthesis duration budget in seconds
+        required: true
+        default: '4.0'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tts-weighted-smoke
+  cancel-in-progress: false
+
+jobs:
+  weighted-smoke:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64, tts-weights]
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      TTS_SMOKE_PROFILE_ID_INPUT: ${{ inputs.profile_id }}
+      TTS_SMOKE_DURATION_INPUT: ${{ inputs.duration_budget }}
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Validate trusted runner configuration
+        shell: pwsh
+        run: |
+          $Required = @(
+            'TTS_SMOKE_PYTHON',
+            'TTS_SMOKE_MODEL_ROOT',
+            'TTS_SMOKE_REFERENCE_WAV',
+            'TTS_SMOKE_PROFILE_ID_INPUT',
+            'TTS_SMOKE_DURATION_INPUT'
+          )
+          foreach ($Name in $Required) {
+            $Value = [Environment]::GetEnvironmentVariable($Name)
+            if ([string]::IsNullOrWhiteSpace($Value)) {
+              throw "Trusted runner environment variable is missing: $Name"
+            }
+          }
+          if (-not (Test-Path -LiteralPath $env:TTS_SMOKE_PYTHON -PathType Leaf)) {
+            throw 'Configured TTS smoke Python is not a file.'
+          }
+          if (-not (Test-Path -LiteralPath $env:TTS_SMOKE_MODEL_ROOT)) {
+            throw 'Configured TTS smoke model root does not exist.'
+          }
+          if (-not (Test-Path -LiteralPath $env:TTS_SMOKE_REFERENCE_WAV -PathType Leaf)) {
+            throw 'Configured TTS smoke reference WAV is not a file.'
+          }
+          if ($env:TTS_SMOKE_PROFILE_ID_INPUT -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{1,94}[A-Za-z0-9]$') {
+            throw 'TTS smoke profile input has invalid syntax.'
+          }
+          $Duration = 0.0
+          if (-not [double]::TryParse(
+            $env:TTS_SMOKE_DURATION_INPUT,
+            [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$Duration
+          )) {
+            throw 'TTS smoke duration input is not a finite invariant number.'
+          }
+          if ([double]::IsNaN($Duration) -or [double]::IsInfinity($Duration) -or $Duration -lt 0.2 -or $Duration -gt 30.0) {
+            throw 'TTS smoke duration input must be within 0.2..30.0 seconds.'
+          }
+          $Version = & $env:TTS_SMOKE_PYTHON -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Configured TTS smoke Python could not start.'
+          }
+          Write-Host "Trusted TTS runtime Python version: $Version"
+
+      - name: Validate repository contracts with trusted Python
+        shell: pwsh
+        run: |
+          & $env:TTS_SMOKE_PYTHON tools/check_tts_model_catalog.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'TTS model catalog validation failed.'
+          }
+          & $env:TTS_SMOKE_PYTHON -m py_compile services/tts_weighted_smoke.py tools/run_tts_weighted_smoke.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Weighted smoke compile failed.'
+          }
+
+      - name: Run real weighted synthesis
+        shell: pwsh
+        run: |
+          $Work = Join-Path $env:RUNNER_TEMP "tts-weighted-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+          if (Test-Path -LiteralPath $Work) {
+            Remove-Item -LiteralPath $Work -Recurse -Force
+          }
+          & $env:TTS_SMOKE_PYTHON tools/run_tts_weighted_smoke.py `
+            --profile-id $env:TTS_SMOKE_PROFILE_ID_INPUT `
+            --model-root $env:TTS_SMOKE_MODEL_ROOT `
+            --reference-wav $env:TTS_SMOKE_REFERENCE_WAV `
+            --work-dir $Work `
+            --expected-python $env:TTS_SMOKE_PYTHON `
+            --duration-budget $env:TTS_SMOKE_DURATION_INPUT
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Real weighted TTS smoke failed.'
+          }
+          "TTS_SMOKE_WORK=$Work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish sanitized summary
+        shell: pwsh
+        run: |
+          $ReportPath = Join-Path $env:TTS_SMOKE_WORK 'report.json'
+          if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
+            throw 'Sanitized weighted smoke report is missing.'
+          }
+          $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($Report.passed -ne $true) {
+            throw 'Weighted smoke report did not pass.'
+          }
+          @"
+          ## TTS Weighted Smoke
+
+          - Profile: ``$($Report.profile.profile_id)``
+          - Revision: ``$($Report.profile.model_revision)``
+          - Backend: ``$($Report.backend.backend_id)``
+          - Model config SHA-256: ``$($Report.model.config_sha256)``
+          - Output: $($Report.output.pcm.duration_seconds) s, $($Report.output.pcm.sample_rate) Hz, mono PCM-24
+          - Execution evidence: $($Report.execution_plan.present)
+          - Audio retained: $($Report.output.audio_retained)
+          - Policy: ``$($Report.policy)``
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Remove smoke data
+        if: always()
+        shell: pwsh
+        run: |
+          $Work = $env:TTS_SMOKE_WORK
+          if ([string]::IsNullOrWhiteSpace($Work)) {
+            $Work = Join-Path $env:RUNNER_TEMP "tts-weighted-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+          }
+          if (Test-Path -LiteralPath $Work) {
+            Remove-Item -LiteralPath $Work -Recurse -Force
+          }

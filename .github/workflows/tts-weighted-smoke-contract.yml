@@ -1,0 +1,80 @@
+name: TTS Weighted Smoke Contract
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/tts-weighted-smoke.yml'
+      - '.github/workflows/tts-weighted-smoke-contract.yml'
+      - 'services/tts_weighted_smoke.py'
+      - 'tools/run_tts_weighted_smoke.py'
+      - 'tests/test_tts_weighted_smoke.py'
+      - 'tests/test_tts_weighted_smoke_cli.py'
+      - 'tests/test_tts_weighted_smoke_workflow.py'
+  pull_request:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/tts-weighted-smoke.yml'
+      - '.github/workflows/tts-weighted-smoke-contract.yml'
+      - 'services/tts_weighted_smoke.py'
+      - 'tools/run_tts_weighted_smoke.py'
+      - 'tests/test_tts_weighted_smoke.py'
+      - 'tests/test_tts_weighted_smoke_cli.py'
+      - 'tests/test_tts_weighted_smoke_workflow.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tts-weighted-smoke-contract-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+      - name: Compile weighted smoke surface
+        run: >-
+          python -m py_compile
+          services/tts_weighted_smoke.py
+          tools/run_tts_weighted_smoke.py
+          tests/test_tts_weighted_smoke.py
+          tests/test_tts_weighted_smoke_cli.py
+          tests/test_tts_weighted_smoke_workflow.py
+      - name: Run weighted smoke contract tests
+        run: >-
+          python -m pytest -q
+          tests/test_tts_weighted_smoke.py
+          tests/test_tts_weighted_smoke_cli.py
+          tests/test_tts_weighted_smoke_workflow.py
+      - name: Ruff weighted smoke surface
+        run: >-
+          python -m ruff check
+          services/tts_weighted_smoke.py
+          tools/run_tts_weighted_smoke.py
+          tests/test_tts_weighted_smoke.py
+          tests/test_tts_weighted_smoke_cli.py
+          tests/test_tts_weighted_smoke_workflow.py
+      - name: Whitespace integrity
+        run: git diff --check
