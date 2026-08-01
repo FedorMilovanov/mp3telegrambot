@@ -28,6 +28,7 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+from services.bot_lifecycle import run_bot_process
 from services.database_migrations import install_database_migrations
 from services.runtime_manifest import (
     RuntimeBootstrapError,
@@ -43,7 +44,6 @@ except RuntimeBootstrapError as exc:
     sys.exit(2)
 
 import main as _main_module
-from main import main
 
 try:
     install_database_migrations(_main_module)
@@ -54,4 +54,4 @@ except (RuntimeBootstrapError, OSError, RuntimeError, ValueError) as exc:
     sys.exit(3)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_bot_process(_main_module))
