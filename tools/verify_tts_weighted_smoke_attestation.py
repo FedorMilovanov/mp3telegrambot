@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -29,6 +30,7 @@ _OUTPUT_KEYS = (
     "output_sample_rate",
     "audio_retained",
 )
+_MARKDOWN_FORBIDDEN = set("`<>[](){}\\")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -78,9 +80,66 @@ def _positive_int(value: int, label: str) -> int:
     return int(value)
 
 
+def _hex_scalar(value: object, *, length: int, label: str) -> str:
+    text = str(value or "").strip().casefold()
+    if len(text) != length or any(char not in "0123456789abcdef" for char in text):
+        raise RuntimeError(f"Unsafe hex output scalar: {label}.")
+    return text
+
+
+def _identifier_scalar(
+    value: object,
+    *,
+    label: str,
+    maximum: int,
+    extra: str,
+) -> str:
+    text = str(value or "").strip()
+    if not 1 <= len(text) <= maximum:
+        raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
+    allowed_extra = set(extra)
+    if any(
+        not (char.isascii() and (char.isalnum() or char in allowed_extra))
+        for char in text
+    ):
+        raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
+    if not text[0].isalnum() or not text[-1].isalnum():
+        raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
+    return text
+
+
+def _duration_scalar(value: object) -> str:
+    if isinstance(value, bool):
+        raise RuntimeError("Unsafe duration output scalar.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("Unsafe duration output scalar.") from exc
+    if not math.isfinite(number) or not 0.2 <= number <= 45.0:
+        raise RuntimeError("Unsafe duration output scalar.")
+    return f"{number:.6f}".rstrip("0").rstrip(".")
+
+
+def _sample_rate_scalar(value: object) -> str:
+    if isinstance(value, bool):
+        raise RuntimeError("Unsafe sample-rate output scalar.")
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("Unsafe sample-rate output scalar.") from exc
+    if not 8_000 <= number <= 192_000:
+        raise RuntimeError("Unsafe sample-rate output scalar.")
+    return str(number)
+
+
 def _safe_scalar(value: object, label: str) -> str:
     text = str(value)
-    if not text or len(text) > 256 or "\n" in text or "\r" in text or "=" in text:
+    if (
+        not text
+        or len(text) > 256
+        or "=" in text
+        or any(ord(char) < 32 or char in _MARKDOWN_FORBIDDEN for char in text)
+    ):
         raise RuntimeError(f"Unsafe GitHub output scalar: {label}.")
     return text
 
@@ -117,24 +176,47 @@ def verify_downloaded_attestation(
         raise ValueError("Attestation profile не совпадает с dispatch profile.")
     if result.get("passed") is not True or result.get("audio_retained") is not False:
         raise ValueError("Attestation не подтверждает passed/audio cleanup invariants.")
+
     outputs = {
-        "attestation_digest": str(payload["digest_sha256"]),
-        "commit_sha": str(subject["commit_sha"]),
-        "run_id": str(subject["run_id"]),
-        "run_attempt": str(subject["run_attempt"]),
-        "profile_id": str(result["profile_id"]),
-        "model_revision": str(result["model_revision"]),
-        "backend_id": str(result["backend_id"]),
-        "output_duration_seconds": str(result["output_duration_seconds"]),
-        "output_sample_rate": str(result["output_sample_rate"]),
+        "attestation_digest": _hex_scalar(
+            payload["digest_sha256"], length=64, label="attestation_digest"
+        ),
+        "commit_sha": _hex_scalar(
+            subject["commit_sha"], length=40, label="commit_sha"
+        ),
+        "run_id": str(_positive_int(subject["run_id"], "run_id")),
+        "run_attempt": str(
+            _positive_int(subject["run_attempt"], "run_attempt")
+        ),
+        "profile_id": _identifier_scalar(
+            result["profile_id"],
+            label="profile_id",
+            maximum=96,
+            extra="-_",
+        ),
+        "model_revision": _identifier_scalar(
+            result["model_revision"],
+            label="model_revision",
+            maximum=128,
+            extra="-_.:+/",
+        ),
+        "backend_id": _identifier_scalar(
+            result["backend_id"],
+            label="backend_id",
+            maximum=96,
+            extra="-_",
+        ),
+        "output_duration_seconds": _duration_scalar(
+            result["output_duration_seconds"]
+        ),
+        "output_sample_rate": _sample_rate_scalar(
+            result["output_sample_rate"]
+        ),
         "audio_retained": "false",
     }
     if set(outputs) != set(_OUTPUT_KEYS):
         raise AssertionError("Verifier output contract drifted.")
-    return {
-        key: _safe_scalar(outputs[key], key)
-        for key in _OUTPUT_KEYS
-    }
+    return {key: _safe_scalar(outputs[key], key) for key in _OUTPUT_KEYS}
 
 
 def _append_github_outputs(path: Path, outputs: dict[str, str]) -> None:
