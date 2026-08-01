@@ -17,10 +17,10 @@ from typing import Any
 from services.speech_backends import (
     BACKEND_ENVIRONMENT_POLICY,
     DEFAULT_BACKEND_ID,
-    PRODUCTION_CAPABILITY_POLICY,
     BackendIdentity,
     default_backend,
     get_backend,
+    select_production_backend,
 )
 
 _LEGACY_PATH = Path(__file__).resolve().parents[1] / "clean_runtime_contract.py"
@@ -37,6 +37,7 @@ _SPEC.loader.exec_module(_legacy)
 _FACADE_RENDER_MODULES = (
     "services/speech_backends/__init__.py",
     "services/speech_backends/base.py",
+    "services/speech_backends/control_plane.py",
     "services/speech_backends/registry.py",
     "services/speech_backends/voxcpm2.py",
     "tools/voxcpm2/clean_runtime_contract/__init__.py",
@@ -112,8 +113,11 @@ def normalize_settings(
     duration: Any,
 ) -> dict[str, Any]:
     settings = dict(_legacy_normalize_settings(request, duration=duration))
-    raw_backend = request.get("speech_backend") or DEFAULT_BACKEND_ID
-    backend = get_backend(raw_backend)
+    selection = select_production_backend(
+        request.get("speech_backend"),
+        default_backend_id=DEFAULT_BACKEND_ID,
+    )
+    backend = selection.backend
     if (
         not callable(getattr(backend, "build_renderer_command", None))
         or not callable(getattr(backend, "build_master_command", None))
@@ -124,13 +128,7 @@ def normalize_settings(
             "Speech backend не реализует model-independent process/command/session contract: "
             f"{backend.backend_id}."
         )
-    missing = backend.capabilities().missing()
-    if missing:
-        raise RuntimeError(
-            f"Speech backend {backend.backend_id} не проходит "
-            f"{PRODUCTION_CAPABILITY_POLICY}: {', '.join(missing)}."
-        )
-    settings["speech_backend"] = backend.backend_id
+    settings["speech_backend"] = selection.backend_id
     settings["speech_backend_policy"] = BACKEND_SELECTION_POLICY
     return settings
 
