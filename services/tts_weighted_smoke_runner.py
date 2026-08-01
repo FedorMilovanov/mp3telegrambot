@@ -16,7 +16,6 @@ import importlib
 import os
 from pathlib import Path
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -37,7 +36,7 @@ from services.tts_weighted_smoke import (
 TTS_WEIGHTED_SMOKE_RUNNER_POLICY = "trusted-weighted-tts-runner-doctor-v1"
 TTS_WEIGHTED_SMOKE_RUNNER_REPORT_POLICY = "privacy-safe-runner-doctor-report-v1"
 _PROBE_BYTES = b"tts-weighted-smoke-runner-doctor-v1\n"
-_VERSION_RE = re.compile(r"^ffprobe version\s+(\S+)", re.IGNORECASE)
+_FFPROBE_VERSION_PREFIX = "ffprobe version "
 
 
 @dataclass(frozen=True)
@@ -134,12 +133,15 @@ def _probe_ffprobe() -> dict[str, Any]:
             f"ffprobe -version завершился с кодом {process.returncode}."
         )
     first_line = (process.stdout or "").splitlines()[0:1]
-    match = _VERSION_RE.match(first_line[0].strip() if first_line else "")
-    if match is None:
+    line = first_line[0].strip() if first_line else ""
+    if not line.casefold().startswith(_FFPROBE_VERSION_PREFIX):
         raise RuntimeError("ffprobe -version вернул неизвестный формат.")
+    fields = line.split()
+    if len(fields) < 3 or fields[0].casefold() != "ffprobe" or fields[1].casefold() != "version":
+        raise RuntimeError("ffprobe -version не содержит version token.")
     return {
         "available": True,
-        "version": _safe_version(match.group(1)),
+        "version": _safe_version(fields[2]),
     }
 
 
