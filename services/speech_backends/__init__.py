@@ -35,6 +35,10 @@ from services.speech_backends.base import (
     BackendSynthesisSession,
     SpeechBackend,
 )
+from services.speech_backends.builtin_contracts import (
+    deterministic_model_profile_contract,
+    voxcpm2_model_profile_contract,
+)
 from services.speech_backends.builtin_profiles import (
     DEFAULT_MODEL_PROFILE_ID,
     voxcpm2_production_profile,
@@ -77,6 +81,15 @@ from services.speech_backends.model_profiles import (
     resolve_model_profile_id,
     unregister_model_profile,
 )
+from services.speech_backends.profile_contracts import (
+    MODEL_PROFILE_CONTRACT_POLICY,
+    BackendModelProfileContract,
+    ModelProfileContractError,
+    backend_model_contract_ids,
+    get_backend_model_contract,
+    register_backend_model_contract,
+    unregister_backend_model_contract,
+)
 from services.speech_backends.registry import (
     REGISTRY_POLICY,
     backend_ids,
@@ -92,6 +105,8 @@ DEFAULT_BACKEND_ID = "voxcpm2"
 
 _VOXCPM2 = AuditedVoxCPM2Backend()
 register_backend(_VOXCPM2)
+register_backend_model_contract(voxcpm2_model_profile_contract())
+register_backend_model_contract(deterministic_model_profile_contract())
 _VOXCPM2_PRODUCTION_PROFILE = voxcpm2_production_profile()
 register_model_profile(_VOXCPM2_PRODUCTION_PROFILE)
 
@@ -119,6 +134,7 @@ __all__ = [
     "GENERATION_REQUEST_POLICY",
     "MODEL_CATALOG_POLICY",
     "MODEL_OPTION_POLICY",
+    "MODEL_PROFILE_CONTRACT_POLICY",
     "MODEL_PROFILE_POLICY",
     "PRODUCTION_CAPABILITY_POLICY",
     "REQUIRED_PRODUCTION_CAPABILITIES",
@@ -138,6 +154,7 @@ __all__ = [
     "BackendGenerationProfileRequest",
     "BackendGenerationRequest",
     "BackendIdentity",
+    "BackendModelProfileContract",
     "BackendProcessEnvironment",
     "BackendRuntimePaths",
     "BackendSelection",
@@ -146,6 +163,7 @@ __all__ = [
     "DeterministicSession",
     "DeterministicSpeechBackend",
     "ModelOptionSpec",
+    "ModelProfileContractError",
     "SpeechBackend",
     "SpeechBackendSelectionError",
     "SpeechModelConfigurationError",
@@ -159,14 +177,18 @@ __all__ = [
     "VoxCPM2Backend",
     "VoxCPM2Session",
     "backend_ids",
+    "backend_model_contract_ids",
     "default_backend",
     "default_model_profile",
+    "deterministic_model_profile_contract",
     "get_backend",
+    "get_backend_model_contract",
     "get_model_profile",
     "model_profile_ids",
     "normalize_production_backend",
     "normalize_production_speech_request",
     "register_backend",
+    "register_backend_model_contract",
     "register_model_profile",
     "registered_backends",
     "registered_model_profiles",
@@ -175,5 +197,7 @@ __all__ = [
     "select_production_backend",
     "select_production_speech",
     "unregister_backend",
+    "unregister_backend_model_contract",
     "unregister_model_profile",
+    "voxcpm2_model_profile_contract",
 ]
