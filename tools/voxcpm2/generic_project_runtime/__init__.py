@@ -3,11 +3,11 @@
 """Strict write-through facade for the universal Dub project runtime.
 
 The established orchestration remains in ``generic_project_runtime.py``. Clean
-Gemini/custom entrypoints configure that orchestration by assigning adapter
-functions immediately before calling ``main()``. Because this package shadows
-the sibling module, assignments must be mirrored into the legacy module whose
-function globals are actually executed. This facade also keeps request identity
-strict and JSON writes atomic, collision-safe and non-finite-safe.
+entrypoints configure that orchestration by assigning adapter functions before
+calling ``main()``. Assignments are mirrored into the legacy module whose
+function globals are executed. Request identity remains strict and JSON writes
+remain atomic, collision-safe and non-finite-safe. Test and adapter hooks stay
+replaceable through the same write-through seam instead of a module-level ban.
 """
 from __future__ import annotations
 
@@ -39,13 +39,11 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "generic-project-runtime-write-through-v2"
+POLICY = "generic-project-runtime-write-through-v3"
 _ALLOWED_TRANSLATION_MODES = {"gemini", "custom", "direct"}
-_PROTECTED_HOOKS = {"project_root", "load_request", "save_json", "validate_request_payload"}
 
 
 def _strict_schema_int(value: Any, *, field: str, low: int, high: int) -> int:
-    """Validate control-plane integers without importing the synthesis engine."""
     if isinstance(value, bool):
         raise RuntimeError(f"{field} не может быть bool.")
     if isinstance(value, float) and (
@@ -113,10 +111,11 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
         raise RuntimeError(
             f"Некорректный speech_backend={result.get('speech_backend')!r} в request.json."
         ) from exc
-    if backend.capabilities().missing():
-        missing = ", ".join(backend.capabilities().missing())
+    missing = backend.capabilities().missing()
+    if missing:
         raise RuntimeError(
-            f"speech_backend={backend_id} не имеет обязательных production capabilities: {missing}."
+            f"speech_backend={backend_id} не имеет обязательных production capabilities: "
+            f"{', '.join(missing)}."
         )
     result["video_id"] = video_id
     result["source_url"] = source_url
@@ -140,9 +139,7 @@ def load_request(root: Path) -> dict[str, Any]:
 def save_json(path: Path, payload: Any) -> None:
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}"
-    )
+    temporary = path.with_name(path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
     try:
         encoded = json.dumps(
             payload,
@@ -159,7 +156,6 @@ def save_json(path: Path, payload: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
-# Legacy orchestration resolves these globals at call time.
 _legacy.project_root = project_root
 _legacy.validate_request_payload = validate_request_payload
 _legacy.load_request = load_request
@@ -167,13 +163,9 @@ _legacy.save_json = save_json
 
 
 class _WriteThroughModule(types.ModuleType):
-    """Mirror clean-route adapter assignments into legacy function globals."""
+    """Mirror adapter and test dependency assignments into legacy globals."""
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in _PROTECTED_HOOKS:
-            expected = globals().get(name)
-            if expected is not None and value is not expected:
-                raise RuntimeError(f"Strict project runtime hook {name} cannot be replaced.")
         types.ModuleType.__setattr__(self, name, value)
         if name in {"_legacy", "__class__"} or name.startswith("__"):
             return
