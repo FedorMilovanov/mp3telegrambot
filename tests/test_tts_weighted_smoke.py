@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 import os
 from pathlib import Path
@@ -36,12 +35,7 @@ class _FakeSession:
     supports_continuation_context = False
 
     def __init__(self, *, write_evidence: bool = True, invalid: str = "") -> None:
-        self.audio_spec = BackendAudioSpec(
-            encode_sample_rate=16_000,
-            output_sample_rate=24_000,
-            seconds_per_step=0.08,
-            cache_length=4096,
-        )
+        self.audio_spec = BackendAudioSpec(16_000, 24_000, 0.08, 4096)
         self.write_evidence = write_evidence
         self.invalid = invalid
         self.requests: list[Any] = []
@@ -77,8 +71,7 @@ class _FakeSession:
             return np.zeros(24_000, dtype=np.float32)
         if self.invalid == "ambiguous":
             return np.zeros((32, 32), dtype=np.float32)
-        total = 24_000
-        index = np.arange(total, dtype=np.float32)
+        index = np.arange(24_000, dtype=np.float32)
         return 0.08 * np.sin(2.0 * math.pi * 220.0 * index / 24_000.0)
 
 
@@ -150,20 +143,8 @@ def _profile(*, evidence: bool = True) -> SpeechModelProfile:
             ModelOptionSpec("threads", "int", 1, minimum=1, maximum=64),
             ModelOptionSpec("steps", "int", 12, minimum=1, maximum=256),
             ModelOptionSpec("cfg", "float", 1.8, minimum=0.1, maximum=10.0),
-            ModelOptionSpec(
-                "cache_length",
-                "int",
-                4096,
-                minimum=2048,
-                maximum=131072,
-            ),
-            ModelOptionSpec(
-                "base_seed",
-                "int",
-                123,
-                minimum=0,
-                maximum=2_147_483_647,
-            ),
+            ModelOptionSpec("cache_length", "int", 4096, minimum=2048, maximum=131072),
+            ModelOptionSpec("base_seed", "int", 123, minimum=0, maximum=2_147_483_647),
         ),
         requires_execution_plan_evidence=evidence,
     )
@@ -246,10 +227,9 @@ def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(
 
     monkeypatch.setattr(smoke, "_ffprobe_output", _fake_probe)
     session = _FakeSession(write_evidence=True)
-    runtime = _runtime(session)
     config = _config(tmp_path)
 
-    report = run_weighted_tts_smoke(config, runtime=runtime)
+    report = run_weighted_tts_smoke(config, runtime=_runtime(session))
     report_path = config.work_dir / "report.json"
     serialized = report_path.read_text(encoding="utf-8")
 
@@ -258,6 +238,7 @@ def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(
     assert report["profile"]["profile_id"] == "fake-weighted-profile"
     assert report["execution_plan"]["present"] is True
     assert report["execution_plan"]["model_scalar_arguments"]["cfg_value"] == 1.8
+    assert "reference_wav_path" in report["execution_plan"]["model_kwarg_names"]
     assert report["output"]["audio_retained"] is False
     assert report["output"]["pcm"]["sample_rate"] == 24_000
     assert len(session.requests) == 1
@@ -271,8 +252,9 @@ def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(
         Path(sys.executable),
     ):
         assert str(private) not in serialized
-    assert "reference_wav_path" not in serialized
-    assert "model_path" not in serialized
+    # Parameter names are useful evidence; path-bearing values and keys are not.
+    assert '"reference_wav_path":' not in serialized
+    assert '"model_path":' not in serialized
     assert "backend_defaults" not in serialized
 
 
@@ -305,10 +287,7 @@ def test_weighted_smoke_rejects_invalid_pcm(
     monkeypatch.setattr(smoke, "_ffprobe_output", _fake_probe)
     config = _config(tmp_path)
     with pytest.raises(RuntimeError):
-        run_weighted_tts_smoke(
-            config,
-            runtime=_runtime(_FakeSession(invalid=invalid)),
-        )
+        run_weighted_tts_smoke(config, runtime=_runtime(_FakeSession(invalid=invalid)))
     assert not (config.work_dir / "weighted-smoke.wav").exists()
 
 
