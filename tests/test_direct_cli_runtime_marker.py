@@ -32,10 +32,7 @@ def _patch_contract(monkeypatch, tmp_path: Path, *, fingerprint: str = "render-c
     )
 
 
-def test_stale_manual_marker_clears_checkpoint_state(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
+def test_stale_compatibility_marker_clears_checkpoint_state(monkeypatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
     work = tmp_path / "work"
     for name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
@@ -48,22 +45,19 @@ def test_stale_manual_marker_clears_checkpoint_state(
         json.dumps({"policy": entrypoint.MARKER_POLICY, "render_contract_sha256": "old"}),
         encoding="utf-8",
     )
+    (work / "direct_cli_runtime.completed.json").write_text("{}", encoding="utf-8")
 
     marker_path, expected = entrypoint._prepare_runtime_marker()
 
     assert marker_path == marker
+    assert json.loads(marker.read_text(encoding="utf-8")) == expected
     assert expected["render_contract_sha256"] == "render-current"
-    assert not marker.exists()
-    assert not (work / "checkpoints").exists()
-    assert not (work / "segments_clean").exists()
-    assert not (work / "segments_fitted").exists()
-    assert not (work / "attempts").exists()
+    assert not (work / "direct_cli_runtime.completed.json").exists()
+    for name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
+        assert not (work / name).exists()
 
 
-def test_current_manual_marker_keeps_checkpoint_state(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
+def test_current_compatibility_marker_keeps_checkpoint_state(monkeypatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
     work, expected = entrypoint._runtime_contract()
     checkpoint = work / "checkpoints" / "segment_01.json"
@@ -75,45 +69,40 @@ def test_current_manual_marker_keeps_checkpoint_state(
     entrypoint._prepare_runtime_marker()
 
     assert checkpoint.exists()
-    assert not marker.exists()
+    assert json.loads(marker.read_text(encoding="utf-8")) == expected
 
 
-def test_failed_manual_render_does_not_commit_marker(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    marker = tmp_path / "direct_cli_runtime.marker.json"
-    monkeypatch.setattr(
-        entrypoint,
-        "_prepare_runtime_marker",
-        lambda: (marker, {"policy": entrypoint.MARKER_POLICY}),
-    )
+def test_failed_render_keeps_compatibility_but_not_success(monkeypatch, tmp_path: Path) -> None:
+    _patch_contract(monkeypatch, tmp_path)
 
     def fail() -> None:
-        marker.write_text("partial", encoding="utf-8")
         raise RuntimeError("render failed")
 
     with pytest.raises(RuntimeError, match="render failed"):
         entrypoint.run(fail)
-    assert not marker.exists()
+
+    work = tmp_path / "work"
+    assert (work / "direct_cli_runtime.marker.json").is_file()
+    assert not (work / "direct_cli_runtime.completed.json").exists()
+    report = json.loads((work / "direct_renderer_failure.json").read_text(encoding="utf-8"))
+    assert report["error_type"] == "RuntimeError"
+    assert report["message"] == "render failed"
 
 
-def test_successful_manual_render_commits_strict_marker(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    marker = tmp_path / "direct_cli_runtime.marker.json"
-    expected = {
-        "schema_version": 1,
-        "policy": entrypoint.MARKER_POLICY,
-        "render_contract_sha256": "render-current",
-        "cache_length": 4096,
-        "python_executable": "python.exe",
-    }
-    monkeypatch.setattr(entrypoint, "_prepare_runtime_marker", lambda: (marker, expected))
-    entrypoint.run(lambda: None)
-    assert json.loads(marker.read_text(encoding="utf-8")) == expected
-    assert "NaN" not in marker.read_text(encoding="utf-8")
+def test_successful_render_commits_separate_success_marker(monkeypatch, tmp_path: Path) -> None:
+    _patch_contract(monkeypatch, tmp_path)
+    entrypoint.run(lambda: "done")
+
+    work = tmp_path / "work"
+    compatibility = json.loads(
+        (work / "direct_cli_runtime.marker.json").read_text(encoding="utf-8")
+    )
+    completed = json.loads(
+        (work / "direct_cli_runtime.completed.json").read_text(encoding="utf-8")
+    )
+    assert completed["policy"] == entrypoint.SUCCESS_MARKER_POLICY
+    assert completed["compatibility"] == compatibility
+    assert not (work / "direct_renderer_failure.json").exists()
 
 
 @pytest.mark.parametrize("cache_length", ["0", "2047", "131073", "nan"])
@@ -122,11 +111,7 @@ def test_manual_cache_length_contract_rejects_invalid_values(
     tmp_path: Path,
     cache_length: str,
 ) -> None:
-    monkeypatch.setattr(
-        entrypoint.sys,
-        "argv",
-        _arguments(tmp_path, cache_length=cache_length),
-    )
+    monkeypatch.setattr(entrypoint.sys, "argv", _arguments(tmp_path, cache_length=cache_length))
     monkeypatch.setattr(
         entrypoint.clean_runtime_contract,
         "build_fingerprints",
