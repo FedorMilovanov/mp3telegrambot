@@ -15,29 +15,46 @@ from services.speech_backends import (
     BackendGenerationProfileRequest,
     BackendGenerationRequest,
     BackendSessionConfig,
+    DeterministicSpeechBackend,
     backend_ids,
     get_backend,
+    register_backend,
     select_production_backend,
+    unregister_backend,
 )
 
 
-def test_registry_contains_real_and_deterministic_backends():
+@pytest.fixture
+def deterministic_backend():
+    backend = DeterministicSpeechBackend()
+    register_backend(backend)
+    try:
+        yield backend
+    finally:
+        unregister_backend(backend.backend_id)
+
+
+def test_registry_accepts_a_distinct_second_backend(deterministic_backend):
     assert backend_ids() == ("deterministic-ci", "voxcpm2")
-    assert get_backend("deterministic").backend_id == "deterministic-ci"
+    assert get_backend("deterministic") is deterministic_backend
     assert get_backend("vox-cpm2").backend_id == "voxcpm2"
 
 
-def test_deterministic_backend_is_not_selectable_for_production():
+def test_deterministic_backend_is_not_selectable_for_production(
+    deterministic_backend,
+):
     with pytest.raises(BackendCapabilityError):
         select_production_backend(
-            "deterministic-ci",
+            deterministic_backend.backend_id,
             default_backend_id="voxcpm2",
         )
 
 
-def test_deterministic_backend_has_different_audio_and_no_model_knobs(tmp_path: Path):
-    backend = get_backend("deterministic-ci")
-    session = backend.open_session(
+def test_deterministic_backend_has_different_audio_and_no_model_knobs(
+    deterministic_backend,
+    tmp_path: Path,
+):
+    session = deterministic_backend.open_session(
         BackendSessionConfig(
             model_path=tmp_path,
             options={"sample_rate": 22_050},
@@ -60,11 +77,11 @@ def test_deterministic_backend_has_different_audio_and_no_model_knobs(tmp_path: 
     assert first == second
     assert any(abs(value) > 0.001 for value in first)
 
-    length = backend.plan_generation_length(
+    length = deterministic_backend.plan_generation_length(
         session.audio_spec,
         BackendGenerationLengthRequest(duration_budget=1.0, attempt=1),
     )
-    profile = backend.plan_generation_profile(
+    profile = deterministic_backend.plan_generation_profile(
         BackendGenerationProfileRequest(attempt=1),
     )
     assert length.backend_options == {}
