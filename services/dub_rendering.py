@@ -16,6 +16,7 @@ from services.media_masters import (
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     DEFAULT_MODEL_PROFILE_ID,
+    model_profile_source_evidence,
     select_production_speech,
 )
 
@@ -95,6 +96,7 @@ def run_speech_master_validation(
     capabilities = selection.capabilities
     model_contract = selection.model_contract
     model_profile = selection.model_profile
+    model_source = model_profile_source_evidence(model_profile.profile_id)
     resolution = selection.resolution
     request = dict(resolution.request)
 
@@ -201,6 +203,7 @@ def run_speech_master_validation(
         "speech_backend": backend.identity(runtime.archive_root).as_dict(),
         "speech_model_contract": model_contract.as_dict(),
         "speech_model_profile": model_profile.as_dict(),
+        "speech_model_source": model_source,
         "speech_model_resolution": resolution.as_dict(),
         "capabilities": capabilities.as_dict(),
         "references": references.as_dict(),
