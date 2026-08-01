@@ -241,12 +241,12 @@ def _quality_runtime_contract() -> tuple[bool, str]:
         and callable(direct_max_quality_cli._backend_generate)
         and callable(direct_max_quality_render.fit_without_slowdown)
         and callable(direct_timeline_delivery_qa.verify_timeline_delivery)
-        and callable(final_media_qa.verify_final_media)
+        and callable(final_media_qa.verify_final_file)
         and bool(getattr(backend.capabilities(), "continuation_context", False))
         and direct_max_quality_cli.CONTINUATION_POLICY
         == "backend-capability-gated-previous-block-prompt-v2"
         and source_prosody_policy.POLICY
-        == "source-language-prosody-diagnostic-only-v1"
+        == "diagnostic-only-no-cross-language-ranking-v1"
     )
     return ok, (
         f"tempo={direct_max_quality_io.PREFERRED_MAX_TEMPO}/"
