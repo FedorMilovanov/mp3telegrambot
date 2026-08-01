@@ -61,6 +61,7 @@ for _name in dir(_legacy):
 
 _legacy_patch_health = _legacy._patch_health
 RELEASE_CONTRACT_POLICY = "active-monolithic-dub-release-v1"
+_TARGET_HEALTH_LABEL = "Clean Expressive NoChew + независимый QA"
 
 
 def _package_facade(module: Any) -> bool:
@@ -158,6 +159,10 @@ def _monolithic_static_contract(repo: Path) -> tuple[bool, str]:
             )
             and ACTIVE_BACKEND_COMMAND_POLICY == BACKEND_COMMAND_POLICY
             and ACTIVE_BACKEND_ENVIRONMENT_POLICY == BACKEND_ENVIRONMENT_POLICY
+            and callable(getattr(backend, "build_renderer_command", None))
+            and callable(getattr(backend, "build_master_command", None))
+            and callable(getattr(backend, "process_environment", None))
+            and callable(getattr(backend, "open_session", None))
             and bool(getattr(capabilities, "continuation_context", False))
         ),
         "fingerprints": all(
@@ -225,22 +230,26 @@ def _patch_health() -> None:
 
     def wrapped() -> list[dict[str, Any]]:
         checks = original()
+        target = next(
+            (item for item in checks if item.get("label") == _TARGET_HEALTH_LABEL),
+            None,
+        )
+        if target is None:
+            return checks
+
         repo = Path(__file__).resolve().parents[2]
         title_ok, title_detail = _legacy._title_health_contract(repo)
         release_ok, release_detail = _release_static_contract(health, repo)
-        for item in checks:
-            if item.get("label") == "Clean Expressive NoChew + независимый QA":
-                item["ok"] = bool(item.get("ok")) and title_ok and release_ok
-                item["detail"] = "; ".join(
-                    value
-                    for value in (
-                        str(item.get("detail") or ""),
-                        title_detail,
-                        release_detail,
-                    )
-                    if value
-                )
-                break
+        target["ok"] = bool(target.get("ok")) and title_ok and release_ok
+        target["detail"] = "; ".join(
+            value
+            for value in (
+                str(target.get("detail") or ""),
+                title_detail,
+                release_detail,
+            )
+            if value
+        )
         return checks
 
     wrapped._canonical_media_title = True  # type: ignore[attr-defined]
