@@ -48,7 +48,9 @@ def test_request_schema_and_source_identity_fail_closed(tmp_path: Path) -> None:
             runtime.load_request(root)
 
 
-def test_valid_request_is_canonicalized_with_default_backend(tmp_path: Path) -> None:
+def test_valid_request_is_canonicalized_with_explicit_component_defaults(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "project"
     root.mkdir()
     payload = _request(translation_mode="direct")
@@ -59,7 +61,12 @@ def test_valid_request_is_canonicalized_with_default_backend(tmp_path: Path) -> 
 
     loaded = runtime.load_request(root)
 
-    assert loaded == {**payload, "speech_backend": "voxcpm2"}
+    assert loaded == {
+        **payload,
+        "speech_backend": "voxcpm2",
+        "media_master": "constant-mix",
+        "final_media_validator": "ffprobe-av-contract",
+    }
 
 
 def test_atomic_json_rejects_nan_without_replacing_existing_file(tmp_path: Path) -> None:
