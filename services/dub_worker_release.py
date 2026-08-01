@@ -4,12 +4,22 @@
 
 The Telegram supervisor and detached worker must agree on this marker. A major
 voice/render contract change advances the release so an idle stale process is
-replaced before it can claim another production job.
+replaced before it can claim another production job. Shared backend constants
+are imported from the active contract rather than copied here.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v6.10"
-RELEASE_POLICY = "single-source-worker-release-identity-v1"
+from services.speech_backends.base import (
+    BACKEND_COMMAND_POLICY,
+    BACKEND_CONTRACT_POLICY,
+    BACKEND_ENVIRONMENT_POLICY,
+    GENERATION_REQUEST_POLICY,
+    PRODUCTION_CAPABILITY_POLICY,
+    SESSION_CONFIG_POLICY,
+)
+
+WORKER_RUNTIME = "dub-worker-quality-v6.11"
+RELEASE_POLICY = "single-source-worker-release-identity-v2"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
 READY_SRT_GROUPING_POLICY = "ready-srt-semantic-breath-grouping-v1"
@@ -19,12 +29,6 @@ LEGACY_IMPORT_POLICY = "transactional-sys-modules-registration-v1"
 TAIL_BRACKETING_POLICY = "analysis-window-overlap-aware-voice-brackets-v1"
 SEMANTIC_BLOCK_POLICY = "semantic-block-continuation-v1"
 SOURCE_PROSODY_ROLE_POLICY = "diagnostic-only-no-cross-language-ranking-v2"
-BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
-BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
-BACKEND_CONTRACT_POLICY = "speech-backend-contract-v2"
-GENERATION_REQUEST_POLICY = "model-neutral-generation-request-v1"
-SESSION_CONFIG_POLICY = "model-neutral-session-config-v1"
-PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v2"
 CONTINUATION_POLICY = "backend-capability-gated-previous-block-prompt-v2"
 RENDER_MARKER_POLICY = "direct-cli-runtime-marker-v2"
 RENDER_SUCCESS_POLICY = "direct-cli-success-marker-v1"
