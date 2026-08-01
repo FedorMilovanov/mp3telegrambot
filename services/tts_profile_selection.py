@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Safe selection and durable binding of production TTS model profiles."""
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import secrets
+from typing import Any
+
+from services.speech_backends import (
+    DEFAULT_BACKEND_ID,
+    DEFAULT_MODEL_PROFILE_ID,
+    SpeechModelProfile,
+    get_model_profile,
+    model_profile_source_evidence,
+    normalize_production_speech_request,
+    registered_model_profiles,
+    select_production_speech,
+)
+
+TTS_PROFILE_SELECTION_POLICY = "durable-production-tts-profile-selection-v1"
+_MAX_REQUEST_BYTES = 1_000_000
+_TTS_RESERVED_KEYS = {
+    "speech_backend",
+    "speech_model_profile",
+    "speech_options",
+    "speech_backend_config",
+    "speech_profile_fingerprint",
+}
+
+
+@dataclass(frozen=True)
+class ProductionTTSProfileChoice:
+    profile_id: str
+    backend_id: str
+    display_name: str
+    model_family: str
+    model_revision: str
+    fingerprint: str
+    is_default: bool
+    source_kind: str
+    source: str
+    source_sha256: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "profile_id": self.profile_id,
+            "backend_id": self.backend_id,
+            "display_name": self.display_name,
+            "model_family": self.model_family,
+            "model_revision": self.model_revision,
+            "fingerprint": self.fingerprint,
+            "is_default": self.is_default,
+            "source_kind": self.source_kind,
+            "source": self.source,
+            "source_sha256": self.source_sha256,
+            "selection_policy": TTS_PROFILE_SELECTION_POLICY,
+        }
+
+
+def _choice(profile: SpeechModelProfile) -> ProductionTTSProfileChoice:
+    # Selection is exercised here, not merely inferred from registry presence.
+    selection = select_production_speech(
+        profile.backend_id,
+        profile.profile_id,
+        request={"speech_model_profile": profile.profile_id},
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+    )
+    evidence = model_profile_source_evidence(profile.profile_id)
+    return ProductionTTSProfileChoice(
+        profile_id=selection.model_profile.profile_id,
+        backend_id=selection.backend_id,
+        display_name=selection.model_profile.display_name,
+        model_family=selection.model_profile.model_family,
+        model_revision=selection.model_profile.model_revision,
+        fingerprint=selection.model_profile.fingerprint(),
+        is_default=selection.model_profile.profile_id == DEFAULT_MODEL_PROFILE_ID,
+        source_kind=str(evidence.get("source_kind") or ""),
+        source=str(evidence.get("source") or ""),
+        source_sha256=str(evidence.get("source_sha256") or ""),
+    )
+
+
+def production_tts_profile_choices() -> tuple[ProductionTTSProfileChoice, ...]:
+    """Return every selectable production profile, default first."""
+    choices = tuple(
+        _choice(profile)
+        for profile in registered_model_profiles()
+        if profile.production_enabled
+    )
+    if not choices:
+        raise RuntimeError("Нет ни одного production-enabled TTS model profile.")
+    if not any(choice.profile_id == DEFAULT_MODEL_PROFILE_ID for choice in choices):
+        raise RuntimeError(
+            f"Default TTS profile отсутствует в production catalog: {DEFAULT_MODEL_PROFILE_ID}"
+        )
+    return tuple(
+        sorted(
+            choices,
+            key=lambda item: (
+                not item.is_default,
+                item.display_name.casefold(),
+                item.profile_id,
+            ),
+        )
+    )
+
+
+def production_tts_profile_choice(value: object) -> ProductionTTSProfileChoice:
+    profile = get_model_profile(value)
+    if not profile.production_enabled:
+        raise RuntimeError(f"TTS profile отключён для production: {profile.profile_id}")
+    return _choice(profile)
+
+
+def _all_tts_flat_keys() -> set[str]:
+    result = set(_TTS_RESERVED_KEYS)
+    for profile in registered_model_profiles():
+        result.update(spec.name for spec in profile.option_specs)
+        result.update(str(key) for key in profile.backend_defaults)
+    return result
+
+
+def rebind_production_tts_profile(
+    payload: Mapping[str, Any],
+    profile_value: object,
+) -> dict[str, Any]:
+    """Replace old TTS-owned fields and return one normalized durable request."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("Dub request должен быть JSON-объектом.")
+    profile = get_model_profile(profile_value)
+    if not profile.production_enabled:
+        raise RuntimeError(f"TTS profile отключён для production: {profile.profile_id}")
+
+    request = dict(payload)
+    for key in _all_tts_flat_keys():
+        request.pop(key, None)
+    request["speech_backend"] = profile.backend_id
+    request["speech_model_profile"] = profile.profile_id
+    normalized = normalize_production_speech_request(
+        request,
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+    )
+    if normalized.get("speech_model_profile") != profile.profile_id:
+        raise RuntimeError("TTS profile normalizer вернул другой profile_id.")
+    if normalized.get("speech_backend") != profile.backend_id:
+        raise RuntimeError("TTS profile normalizer вернул другой backend_id.")
+    return normalized
+
+
+def normalize_new_production_tts_request(
+    payload: Mapping[str, Any],
+    profile_value: object,
+) -> dict[str, Any]:
+    """Normalize a new request while retaining explicitly supplied TTS overrides."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("Dub request должен быть JSON-объектом.")
+    profile = get_model_profile(profile_value)
+    if not profile.production_enabled:
+        raise RuntimeError(f"TTS profile отключён для production: {profile.profile_id}")
+    request = dict(payload)
+    request.pop("speech_profile_fingerprint", None)
+    request["speech_backend"] = profile.backend_id
+    request["speech_model_profile"] = profile.profile_id
+    return normalize_production_speech_request(
+        request,
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+    )
+
+
+def _reject_constant(value: str) -> Any:
+    raise ValueError(f"JSON constant запрещён: {value}")
+
+
+def _object_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"JSON содержит дублирующийся ключ: {key}")
+        result[key] = value
+    return result
+
+
+def read_durable_request(path: Path) -> dict[str, Any]:
+    target = Path(path)
+    if not target.is_file():
+        raise FileNotFoundError(f"request.json не найден: {target}")
+    size = target.stat().st_size
+    if not 1 <= size <= _MAX_REQUEST_BYTES:
+        raise ValueError(f"Некорректный размер request.json: {size} bytes.")
+    try:
+        payload = json.loads(
+            target.read_text(encoding="utf-8-sig"),
+            object_pairs_hook=_object_without_duplicates,
+            parse_constant=_reject_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"Некорректный request.json: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("request.json должен содержать JSON-объект.")
+    return payload
+
+
+def write_durable_request(path: Path, payload: Mapping[str, Any]) -> None:
+    if not isinstance(payload, Mapping):
+        raise ValueError("Durable request должен быть JSON-объектом.")
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(
+        dict(payload),
+        ensure_ascii=False,
+        indent=2,
+        allow_nan=False,
+    ) + "\n"
+    if len(serialized.encode("utf-8")) > _MAX_REQUEST_BYTES:
+        raise ValueError("Durable request превышает допустимый размер.")
+    temporary = target.with_name(
+        f".{target.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp"
+    )
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(serialized)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def rebind_durable_request_file(path: Path, profile_value: object) -> dict[str, Any]:
+    current = read_durable_request(path)
+    rebound = rebind_production_tts_profile(current, profile_value)
+    write_durable_request(path, rebound)
+    return rebound
+
+
+__all__ = [
+    "TTS_PROFILE_SELECTION_POLICY",
+    "ProductionTTSProfileChoice",
+    "normalize_new_production_tts_request",
+    "production_tts_profile_choice",
+    "production_tts_profile_choices",
+    "read_durable_request",
+    "rebind_durable_request_file",
+    "rebind_production_tts_profile",
+    "write_durable_request",
+]
