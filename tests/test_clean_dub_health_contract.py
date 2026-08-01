@@ -2,140 +2,60 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from handlers import dub_health
+from services.dub_worker_release import WORKER_RUNTIME
+from services.speech_backends import BACKEND_CONTRACT_POLICY, default_backend
+from tools.voxcpm2 import clean_runtime_contract
+from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair_runtime
+from tools.voxcpm2 import generic_clean_direct_runtime as direct_runtime
+from tools.voxcpm2 import generic_project_runtime
+from tools.voxcpm2 import source_prosody_policy
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_quality_contract_accepts_current_strong_runtime_versions() -> None:
-    from handlers import dub_health
-
     ok, detail = dub_health._quality_contract(ROOT)
 
     assert ok, detail
+    assert dub_health.QUALITY_CONTRACT_POLICY in detail
+    assert "speech-backend" in detail
+    assert "recipe-routing" in detail
+    assert "runtime-safety" in detail
+    assert "quality-runtime" in detail
 
 
-def test_dub_health_checks_clean_entrypoints_only() -> None:
-    source = (ROOT / "handlers" / "dub_health.py").read_text(encoding="utf-8")
-    assert "tools.voxcpm2.generic_clean_gemini_runtime" in source
-    assert "tools.voxcpm2.generic_clean_direct_runtime" in source
-    assert "tools.voxcpm2.generic_clean_audio_repair_runtime" in source
-    assert "generic_short_runtime.py" in source
-    assert "generic_gemini_runtime.py" in source
-    assert "clean_runtime_contract.py" in source
-    assert "clean_source_download.py" in source
-    assert "clean_request_settings.py" in source
-    assert "strict_translation_payload.py" in source
-    assert "expressive_continuity.py" in source
-    assert "continuous_reference_policy.py" in source
-    assert "controlled_reference_gate.py" in source
-    assert "russian_spoken_numbers.py" in source
-    assert "expressive_translation.py" in source
-    assert "direct_source_prosody.py" in source
-    assert "direct_timbre_analysis.py" in source
-    assert "final_media_qa.py" in source
-    assert 'POLICY = "clean-runtime-contract-v2"' in source
-    assert "sampled_sha256_file" in source
-    assert '"sampled-begin-middle-end-v1"' in source
-    assert 'root.rglob("*.py")' in source
-    assert "'request.get(\"base_seed\") or' not in text[\"runtime_contract\"]" in source
-    assert '"tools/voxcpm2/direct_source_prosody.py"' in source
-    assert '"tools/voxcpm2/clean_source_download.py"' in source
-    assert '"tools/voxcpm2/clean_request_settings.py"' in source
-    assert '"tools/voxcpm2/strict_translation_payload.py"' in source
-    assert "verified-source-cache" in source
-    assert 'POLICY = "clean-source-download-manifest-v1"' in source
-    assert "def _url_video_id(" in source
-    assert "def _sampled_sha256(" in source
-    assert "hardened.download_source = clean_source_download.download_source" in source
-    assert "hardened.pipeline.download_source = clean_source_download.download_source" in source
-    assert "truthful-request-settings" in source
-    assert 'POLICY = "clean-request-settings-v1"' in source
-    assert "def repair_manifest(" in source
-    assert "clean_request_settings.russian_delay_ms(request)" in source
-    assert "clean_request_settings.repair_manifest(root, request)" in source
-    assert "creator-vtt-integrity" in source
-    assert "def _merge_creator_caption_lines(" in source
-    assert "Do not deduplicate against the whole cue" in source
-    assert "production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in source
-    assert "strict-translation-payload" in source
-    assert 'POLICY = "strict-translation-payload-v1"' in source
-    assert "def validate_full(" in source
-    assert "def validate_subset(" in source
-    assert "strict_translation_payload.validate_full(value, groups)" in source
-    assert "strict_translation_payload.validate_subset(" in source
-    assert "production._validate_translation_payload = strict_translation_payload.validate_full" in source
-    assert "production.acquire_transcript = _acquire_transcript_with_actual_language" in source
-    assert 'POLICY = "source-prosody-candidate-ranking-v2"' in source
-    assert "source-prosody-ranking" in source
-    assert "def candidate_pitch_evidence_ok(" in source
-    assert "def _acceptable_candidates(" in source
-    assert "and candidate_pitch_evidence_ok(item)" in source
-    assert "source_prosody_penalty(candidate, segment)" in source
-    assert '"expression": expression_signature' in source
-    assert '"selected_raw_pitch_evidence_ok": True' in source
-    assert '"selected_source_prosody_match"' in source
-    assert '"schema_version": "5.5-direct-durable-seed-epochs"' in source
-    assert 'if candidate.get("cadence_hard_ok") is False:' in source
-    assert "detect_late_broadband_tail(" in source
-    assert "rawPitch=" in source
-    assert "srcF0×=" in source
-    assert 'POLICY = "continuous-clean-reference-v2"' in source
-    assert 'POLICY = "expressive-spoken-translation-v2"' in source
-    assert "translation-v2-bounded-gemini" in source
-    assert "DUB_GEMINI_REQUEST_TIMEOUT_SEC" in source
-    assert "DUB_GEMINI_PASS_TIMEOUT_SEC" in source
-    assert "types.HttpOptions(timeout=" in source
-    assert "time.monotonic() + pass_timeout" in source
-    assert "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in source
-    assert "load_dotenv(override=False)" in source
-    assert "перевод 1/3" in source
-    assert "сверка 2/3" in source
-    assert "редактура 3/3" in source
-    assert 'POLICY: Final = "russian-spoken-numbers-v2"' in source
-    assert 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in source
-    assert 'IDENTITY_POLICY = "calm-and-expressive-identity-v2"' in source
-    assert '"single-continuous-window"' in source
-    assert '"multi-window-fallback"' in source
-    assert "_report_has_usable_selection" in source
-    assert "continuous_reference_policy.build_calm_references" in source
-    assert "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in source
-    assert "identity_reference=extended" in source
-    assert "numeric_anchors_passed" in source
-    assert "MAX_START_DELAY_MS = 1500" in source
-    assert "_finite_voice_metric" in source
-    assert "MAX_TIMBRE_PENALTY" in source
-    assert "pre-model-reference-hard-floor-v1" in source
-    assert "afade=t=in" in source
-    assert "afade=t=out" in source
-    assert "fixed-original-post-russian-master-v1" in source
-    assert '"post_mix_loudnorm": False' in source
-    assert '"post_mix_limiter": False' in source
-    assert 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"' in source
-    assert "def estimate_original_bed(" in source
-    assert "def _estimate_alignment_lag(" in source
-    assert "alignment_lag_ms" in source
-    assert "local_spread_db" in source
-    assert '"schema_version": "dub-final-media-qa-v5"' in source
-    assert "verify_final_outputs" in source
-    assert "final_media_verification.json" in source
-    assert "worker-v45" in source
-    assert "dub-worker-quality-v4.5" in source
-    assert "_recover_abandoned_with_terminal_events" in source
-    assert "_FINAL_JOB_STATES" in source
-    assert "status in _FINAL_JOB_STATES" in source
-    assert "Clean Expressive NoChew + независимый QA" in source
-    assert "NoChew Quality v4.2 + аудиоремонт" not in source
-    assert "generic_direct_checked_runtime" not in source
-    assert 'semantic_tts_guard_v4.install()" in contract_text' not in source
+def test_dub_health_checks_active_backend_and_safety_contracts() -> None:
+    backend = default_backend()
+    environment = backend.process_environment(
+        {"threads": 1},
+        base_environment={},
+    ).as_dict()
+
+    assert BACKEND_CONTRACT_POLICY == "speech-backend-contract-v2"
+    assert backend.backend_id == "voxcpm2"
+    assert backend.capabilities().missing() == ()
+    assert environment["HF_HUB_OFFLINE"] == "1"
+    assert environment["TRANSFORMERS_OFFLINE"] == "1"
+    assert generic_project_runtime.POLICY == "generic-project-runtime-write-through-v3"
+    assert direct_runtime.CHECKPOINT_MIGRATION_POLICY == (
+        "signature-and-natural-tempo-checkpoint-adoption-v2"
+    )
+    assert source_prosody_policy.POLICY == (
+        "diagnostic-only-no-cross-language-ranking-v1"
+    )
+    assert callable(repair_runtime._validate_repair_request)
+    assert callable(repair_runtime._checkpoint_ready)
+    assert callable(repair_runtime._delay_evidence)
 
 
-def test_dub_health_keeps_fourteen_logical_checks() -> None:
+def test_dub_health_keeps_environment_and_worker_checks() -> None:
     source = (ROOT / "handlers" / "dub_health.py").read_text(encoding="utf-8")
     labels = (
         "Recipe: Gemini MAX",
         "Recipe: готовый SRT",
         "Recipe: чистый аудиоремонт",
-        "Clean Expressive NoChew + независимый QA",
         "Whisper semantic QA",
         "SoundFile WAV I/O",
         "VoxCPM2 CPU Python",
@@ -148,29 +68,26 @@ def test_dub_health_keeps_fourteen_logical_checks() -> None:
     for label in labels:
         assert label in source
     assert 'for binary in ("ffmpeg", "ffprobe")' in source
+    assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_health._legacy._WORKER_RUNTIME == WORKER_RUNTIME
 
 
-def test_dub_health_facade_requires_zero_safe_qa_and_truthful_repair() -> None:
-    facade = (ROOT / "handlers" / "dub_health" / "__init__.py").read_text(
-        encoding="utf-8"
+def test_runtime_fingerprint_includes_active_facades() -> None:
+    source = (
+        ROOT / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
+    ).read_text(encoding="utf-8")
+    required = (
+        "services/speech_backends/base.py",
+        "services/speech_backends/registry.py",
+        "services/speech_backends/voxcpm2.py",
+        "tools/voxcpm2/clean_runtime_contract/__init__.py",
+        "tools/voxcpm2/clean_production_core/__init__.py",
+        "tools/voxcpm2/generic_project_runtime/__init__.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
+        "tools/voxcpm2/direct_max_quality_cli/__init__.py",
+        "tools/voxcpm2/direct_max_quality_render/__init__.py",
+        "tools/voxcpm2/final_media_qa/__init__.py",
     )
-    runtime = (ROOT / "tools" / "voxcpm2" / "clean_runtime_contract.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v2"' in facade
-    assert 'REPORT_SCHEMA = "dub-final-media-qa-v6"' in facade
-    assert "local_required_windows" in facade
-    assert "def _dominant_segment_delay(" in facade
-    assert "actual_delay_ms=_dominant_segment_delay(root)" in facade
-    assert "facades-fingerprinted" in facade
-    assert "strict-runtime-numbers" in facade
-    assert "_legacy._quality_contract = _quality_contract" in facade
-    assert '"tools/voxcpm2/final_media_qa/__init__.py"' in runtime
-    assert (
-        '"tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py"'
-        in runtime
-    )
-    assert (
-        '"tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py"'
-        in runtime
-    )
+    for marker in required:
+        assert marker in source
+    assert callable(clean_runtime_contract.build_fingerprints)
