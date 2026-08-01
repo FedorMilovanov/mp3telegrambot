@@ -11,6 +11,7 @@ from pathlib import Path
 import secrets
 from typing import Any
 
+from services.dub_studio import DubStore, utc_now
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     DEFAULT_MODEL_PROFILE_ID,
@@ -19,11 +20,15 @@ from services.speech_backends import (
     model_profile_source_evidence,
     normalize_production_speech_request,
     registered_model_profiles,
+    resolve_model_profile_id,
     select_production_speech,
 )
 
 TTS_PROFILE_SELECTION_POLICY = "durable-production-tts-profile-selection-v1"
+TTS_PROJECT_REBIND_POLICY = "inactive-project-tts-profile-rebind-v1"
 _MAX_REQUEST_BYTES = 1_000_000
+_REBINDABLE_PROJECT_STATES = {"draft", "failed", "cancelled"}
+_ACTIVE_JOB_STATES = {"queued", "running", "cancel_requested"}
 _TTS_RESERVED_KEYS = {
     "speech_backend",
     "speech_model_profile",
@@ -59,6 +64,28 @@ class ProductionTTSProfileChoice:
             "source": self.source,
             "source_sha256": self.source_sha256,
             "selection_policy": TTS_PROFILE_SELECTION_POLICY,
+        }
+
+
+@dataclass(frozen=True)
+class ProjectTTSProfileRebindResult:
+    project_id: str
+    previous_profile_id: str
+    choice: ProductionTTSProfileChoice
+    changed: bool
+    request: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "request", dict(self.request))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "project_id": self.project_id,
+            "previous_profile_id": self.previous_profile_id,
+            "choice": self.choice.as_dict(),
+            "changed": self.changed,
+            "request": dict(self.request),
+            "rebind_policy": TTS_PROJECT_REBIND_POLICY,
         }
 
 
@@ -241,14 +268,172 @@ def rebind_durable_request_file(path: Path, profile_value: object) -> dict[str, 
     return rebound
 
 
+def rebind_inactive_project_tts_profile(
+    store: DubStore,
+    project_id: str,
+    *,
+    owner_user_id: int,
+    request_path: Path,
+    profile_value: object,
+) -> ProjectTTSProfileRebindResult:
+    """Rebind one inactive project with a durable file/DB compensation barrier."""
+    if not isinstance(store, DubStore):
+        raise TypeError("store должен быть DubStore.")
+    project = store.get_project(project_id)
+    if int(project.get("owner_user_id") or 0) != int(owner_user_id):
+        raise PermissionError("Это не ваш Dub Studio проект.")
+    project_status = str(project.get("status") or "").strip().lower()
+    if project_status not in _REBINDABLE_PROJECT_STATES:
+        raise RuntimeError(
+            "TTS-профиль можно менять только у draft/failed/cancelled проекта; "
+            f"текущий status={project_status or 'unknown'}."
+        )
+
+    target = Path(request_path).resolve()
+    current = read_durable_request(target)
+    choice = production_tts_profile_choice(profile_value)
+    previous_raw = current.get("speech_model_profile") or DEFAULT_MODEL_PROFILE_ID
+    try:
+        previous_profile_id = resolve_model_profile_id(previous_raw)
+    except (RuntimeError, ValueError):
+        previous_profile_id = str(previous_raw or "unknown")
+    current_fingerprint = str(current.get("speech_profile_fingerprint") or "")
+    if (
+        previous_profile_id == choice.profile_id
+        and current_fingerprint == choice.fingerprint
+    ):
+        return ProjectTTSProfileRebindResult(
+            project_id=str(project["id"]),
+            previous_profile_id=previous_profile_id,
+            choice=choice,
+            changed=False,
+            request=current,
+        )
+
+    rebound = rebind_production_tts_profile(current, choice.profile_id)
+    request_written = False
+    try:
+        with store.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """
+                SELECT owner_user_id, status, metadata_json
+                FROM dub_projects WHERE id=?
+                """,
+                (str(project["id"]),),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Проект не найден: {project['id']}")
+            if int(row["owner_user_id"] or 0) != int(owner_user_id):
+                raise PermissionError("Владелец проекта изменился во время TTS rebind.")
+            locked_status = str(row["status"] or "").strip().lower()
+            if locked_status not in _REBINDABLE_PROJECT_STATES:
+                raise RuntimeError(
+                    "Project status изменился во время TTS rebind: "
+                    f"{locked_status or 'unknown'}."
+                )
+            active = conn.execute(
+                """
+                SELECT id, status FROM dub_jobs
+                WHERE project_id=? AND status IN ('queued','running','cancel_requested')
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(project["id"]),),
+            ).fetchone()
+            if active is not None:
+                raise RuntimeError(
+                    "Нельзя менять TTS-профиль при active job "
+                    f"#{int(active['id'])} ({active['status']})."
+                )
+
+            try:
+                metadata = json.loads(str(row["metadata_json"] or "{}"))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("metadata_json проекта повреждён.") from exc
+            if not isinstance(metadata, dict):
+                raise RuntimeError("metadata_json проекта должен быть JSON-объектом.")
+            metadata.update(
+                {
+                    "speech_backend": choice.backend_id,
+                    "speech_model_profile": choice.profile_id,
+                    "speech_model_revision": choice.model_revision,
+                    "speech_profile_fingerprint": choice.fingerprint,
+                }
+            )
+
+            write_durable_request(target, rebound)
+            request_written = True
+            now = utc_now()
+            conn.execute(
+                """
+                UPDATE dub_projects
+                SET metadata_json=?, stage='tts_profile_rebound', progress=0,
+                    last_error='', updated_at=?
+                WHERE id=?
+                """,
+                (
+                    json.dumps(
+                        metadata,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ),
+                    now,
+                    str(project["id"]),
+                ),
+            )
+            store._insert_event(
+                conn,
+                str(project["id"]),
+                None,
+                "tts_profile_rebound",
+                "info",
+                (
+                    f"TTS profile изменён: {previous_profile_id} -> "
+                    f"{choice.profile_id} ({choice.model_revision})"
+                ),
+                {
+                    "previous_profile_id": previous_profile_id,
+                    "profile_id": choice.profile_id,
+                    "backend_id": choice.backend_id,
+                    "model_revision": choice.model_revision,
+                    "profile_fingerprint": choice.fingerprint,
+                    "policy": TTS_PROJECT_REBIND_POLICY,
+                },
+            )
+            conn.commit()
+    except Exception as exc:
+        if request_written:
+            try:
+                write_durable_request(target, current)
+            except Exception as restore_exc:
+                raise RuntimeError(
+                    "TTS rebind не завершён, и старый request.json не удалось "
+                    "восстановить. Требуется ручная проверка проекта."
+                ) from restore_exc
+        raise exc
+
+    return ProjectTTSProfileRebindResult(
+        project_id=str(project["id"]),
+        previous_profile_id=previous_profile_id,
+        choice=choice,
+        changed=True,
+        request=rebound,
+    )
+
+
 __all__ = [
     "TTS_PROFILE_SELECTION_POLICY",
+    "TTS_PROJECT_REBIND_POLICY",
     "ProductionTTSProfileChoice",
+    "ProjectTTSProfileRebindResult",
     "normalize_new_production_tts_request",
     "production_tts_profile_choice",
     "production_tts_profile_choices",
     "read_durable_request",
     "rebind_durable_request_file",
+    "rebind_inactive_project_tts_profile",
     "rebind_production_tts_profile",
     "write_durable_request",
 ]
