@@ -8,7 +8,7 @@ replaced before it can claim another production job.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v6.9"
+WORKER_RUNTIME = "dub-worker-quality-v6.10"
 RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
@@ -18,7 +18,7 @@ REFERENCE_SELECTION_POLICY = "robust-typical-f0-continuous-window-v1"
 LEGACY_IMPORT_POLICY = "transactional-sys-modules-registration-v1"
 TAIL_BRACKETING_POLICY = "analysis-window-overlap-aware-voice-brackets-v1"
 SEMANTIC_BLOCK_POLICY = "semantic-block-continuation-v1"
-SOURCE_PROSODY_ROLE_POLICY = "diagnostic-only-no-cross-language-ranking-v1"
+SOURCE_PROSODY_ROLE_POLICY = "diagnostic-only-no-cross-language-ranking-v2"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
 BACKEND_CONTRACT_POLICY = "speech-backend-contract-v2"
