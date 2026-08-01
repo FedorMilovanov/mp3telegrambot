@@ -8,7 +8,7 @@ replaced before it can claim another production job.
 """
 from __future__ import annotations
 
-WORKER_RUNTIME = "dub-worker-quality-v6.8"
+WORKER_RUNTIME = "dub-worker-quality-v6.9"
 RELEASE_POLICY = "single-source-worker-release-identity-v1"
 PREFLIGHT_TRANSPORT_POLICY = "marked-preflight-json-transport-v1"
 INDEPENDENT_QA_RECOVERY_POLICY = "bounded-independent-qa-segment-retry-v1"
@@ -21,7 +21,13 @@ SEMANTIC_BLOCK_POLICY = "semantic-block-continuation-v1"
 SOURCE_PROSODY_ROLE_POLICY = "diagnostic-only-no-cross-language-ranking-v1"
 BACKEND_COMMAND_POLICY = "speech-backend-command-builder-v1"
 BACKEND_ENVIRONMENT_POLICY = "speech-backend-process-environment-v1"
-PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v1"
+BACKEND_CONTRACT_POLICY = "speech-backend-contract-v2"
+GENERATION_REQUEST_POLICY = "model-neutral-generation-request-v1"
+SESSION_CONFIG_POLICY = "model-neutral-session-config-v1"
+PRODUCTION_CAPABILITY_POLICY = "production-speech-capability-gate-v2"
+CONTINUATION_POLICY = "backend-capability-gated-previous-block-prompt-v2"
+RENDER_MARKER_POLICY = "direct-cli-runtime-marker-v2"
+RENDER_SUCCESS_POLICY = "direct-cli-success-marker-v1"
 MONOLITHIC_VOICE_POLICY = "single-speaker-monolithic-candidate-v1"
 SOURCE_RELATIVE_CONTINUITY_POLICY = "cross-language-source-prosody-diagnostic-v3"
 FAIL_CLOSED_IDENTITY_POLICY = "cross-language-prosody-cannot-override-identity-v1"
@@ -35,28 +41,34 @@ RUNTIME_ROUTING_POLICY = "monolithic-ready-srt-runtime-routing-v2"
 
 
 __all__ = [
+    "BACKEND_COMMAND_POLICY",
+    "BACKEND_CONTRACT_POLICY",
+    "BACKEND_ENVIRONMENT_POLICY",
+    "CONTINUATION_POLICY",
     "EXPRESSION_POLICY",
     "FAIL_CLOSED_IDENTITY_POLICY",
+    "GENERATION_REQUEST_POLICY",
     "INDEPENDENT_QA_RECOVERY_POLICY",
     "LEGACY_IMPORT_POLICY",
     "MASTER_MIX_POLICY",
     "MONOLITHIC_TIMELINE_POLICY",
     "MONOLITHIC_VOICE_POLICY",
     "PREFLIGHT_TRANSPORT_POLICY",
+    "PRODUCTION_CAPABILITY_POLICY",
     "PRONUNCIATION_POLICY",
     "PRONUNCIATION_VARIANT_POLICY",
     "READY_SRT_GROUPING_POLICY",
     "REFERENCE_POLICY",
     "REFERENCE_SELECTION_POLICY",
     "RELEASE_POLICY",
+    "RENDER_MARKER_POLICY",
+    "RENDER_SUCCESS_POLICY",
     "RUNTIME_ROUTING_POLICY",
+    "SESSION_CONFIG_POLICY",
     "SOURCE_BED_POLICY",
     "SOURCE_PROSODY_ROLE_POLICY",
     "SOURCE_RELATIVE_CONTINUITY_POLICY",
     "SEMANTIC_BLOCK_POLICY",
-    "BACKEND_COMMAND_POLICY",
-    "BACKEND_ENVIRONMENT_POLICY",
-    "PRODUCTION_CAPABILITY_POLICY",
     "TAIL_BRACKETING_POLICY",
     "WORKER_RUNTIME",
 ]
