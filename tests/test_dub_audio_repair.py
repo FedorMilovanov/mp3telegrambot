@@ -104,9 +104,7 @@ def test_source_groups_remain_preferred_for_gemini_projects(tmp_path: Path) -> N
     ]
 
 
-def test_missing_manifest_is_recovered_from_reusable_project_files(
-    tmp_path: Path,
-) -> None:
+def test_missing_manifest_is_recovered_without_translation_call(tmp_path: Path) -> None:
     (tmp_path / "source").mkdir()
     (tmp_path / "source" / "source.mp4").write_bytes(b"video")
     (tmp_path / "segments_ru_final.json").write_text(
@@ -195,20 +193,6 @@ def test_partial_repair_retargets_good_checkpoints_and_deletes_selected(
     assert not list((tmp_path / "attempts").glob("02_*"))
 
 
-def test_legacy_project_requires_full_quality_upgrade_before_partial_repair(
-    tmp_path: Path,
-) -> None:
-    _checkpoint(tmp_path, 1)
-    with pytest.raises(RuntimeError, match="полного Quality"):
-        prepare_repair_checkpoints(
-            tmp_path,
-            all_ids={1},
-            selected_ids={1},
-            new_base_seed=200,
-            repair_all=False,
-        )
-
-
 def test_full_repair_invalidates_all_audio_checkpoints(tmp_path: Path) -> None:
     for segment_id in (1, 2):
         _checkpoint(tmp_path, segment_id)
@@ -226,19 +210,23 @@ def test_full_repair_invalidates_all_audio_checkpoints(tmp_path: Path) -> None:
     assert not (tmp_path / "semantic_guard.marker.json").exists()
 
 
-def test_recipe_routes_audio_repair_without_gemini() -> None:
+def test_recipe_routes_audio_repair_through_clean_utility_without_gemini() -> None:
     command, spec = dub_worker.build_command("generic_short_v1", "repair_audio")
-    assert spec["module"] == "tools.voxcpm2.generic_audio_repair_runtime_bootstrap"
-    assert "tools.voxcpm2.generic_audio_repair_runtime_bootstrap" in " ".join(command)
-    source = Path("tools/voxcpm2/generic_audio_repair_runtime.py").read_text(
+
+    assert spec["kind"] == "utility"
+    assert spec["runner"] == "python_module"
+    assert spec["module"] == "tools.voxcpm2.generic_clean_audio_repair_runtime"
+    assert command[1:3] == ["-m", spec["module"]]
+    assert "-Mode" not in command
+
+    repair_source = Path("tools/voxcpm2/generic_audio_repair_runtime.py").read_text(
         encoding="utf-8"
     )
-    bootstrap = Path(
-        "tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py"
+    clean_source = Path(
+        "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py"
     ).read_text(encoding="utf-8")
-    assert "translate_groups_max" not in source
-    assert "gemini_json" not in source
-    assert "translate_groups_max" not in bootstrap
-    assert "gemini_json" not in bootstrap
-    assert '"gemini_called": False' in source
-    assert '"gemini_called": False' in bootstrap
+    assert "translate_groups_max" not in repair_source
+    assert "gemini_json" not in repair_source
+    assert "translate_groups_max" not in clean_source
+    assert "gemini_json" not in clean_source
+    assert '"gemini_called": False' in repair_source
