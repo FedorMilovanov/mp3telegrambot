@@ -7,6 +7,17 @@ import os
 import sqlite3
 import sys
 
+
+def _configure_stdio() -> None:
+    """Make every early startup diagnostic safe on Windows legacy consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, OSError):
+            pass
+
+
+_configure_stdio()
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 if sys.version_info < (3, 11):
@@ -29,6 +40,7 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+from services import emit_service_bootstrap_diagnostics
 from services.bot_lifecycle import run_bot_process
 from services.database_migrations import install_database_migrations
 from services.runtime_manifest import (
@@ -41,6 +53,7 @@ from services.runtime_manifest import (
 try:
     bootstrap_pre_main()
 except RuntimeBootstrapError as exc:
+    emit_service_bootstrap_diagnostics()
     print(f"❌ Обязательная pre-main runtime-композиция не готова: {exc}")
     sys.exit(2)
 
@@ -53,8 +66,11 @@ try:
     bootstrap_post_main(_main_module)
     require_runtime_ready()
 except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError) as exc:
+    emit_service_bootstrap_diagnostics()
     print(f"❌ Обязательная runtime-композиция или миграция не готова: {exc}")
     sys.exit(3)
+
+emit_service_bootstrap_diagnostics()
 
 if __name__ == "__main__":
     raise SystemExit(run_bot_process(_main_module))
