@@ -14,10 +14,12 @@ from tools.voxcpm2 import generic_project_runtime as runtime
 
 def test_project_runtime_imports_write_through_package() -> None:
     assert Path(runtime.__file__).name == "__init__.py"
-    assert runtime.POLICY == "generic-project-runtime-write-through-v3"
+    assert runtime.POLICY == "generic-project-runtime-write-through-v4"
     source = Path(runtime.__file__).read_text(encoding="utf-8")
     assert "class _WriteThroughModule" in source
     assert "_module.__class__ = _WriteThroughModule" in source
+    assert "normalize_production_backend(" in source
+    assert "backend.capabilities().missing()" not in source
 
 
 @pytest.mark.parametrize(
