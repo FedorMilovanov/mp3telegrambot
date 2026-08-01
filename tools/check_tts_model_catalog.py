@@ -9,6 +9,17 @@ from pathlib import Path
 import sys
 from typing import Any
 
+
+def _configure_stdio() -> None:
+    """Make service import diagnostics safe on Windows legacy consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, OSError):
+            pass
+
+
+_configure_stdio()
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
