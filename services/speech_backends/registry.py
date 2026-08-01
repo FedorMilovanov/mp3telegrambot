@@ -7,7 +7,7 @@ from typing import Iterable
 
 from services.speech_backends.base import SpeechBackend
 
-REGISTRY_POLICY = "explicit-speech-backend-registry-v1"
+REGISTRY_POLICY = "explicit-speech-backend-registry-v2"
 _REGISTRY: dict[str, SpeechBackend] = {}
 _ALIASES: dict[str, str] = {}
 
@@ -16,21 +16,37 @@ def _normalized(value: object) -> str:
     return str(value or "").strip().casefold().replace("_", "-")
 
 
+def _backend_aliases(backend: SpeechBackend, backend_id: str) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_alias in (backend_id, *tuple(getattr(backend, "aliases", ()))):
+        alias = _normalized(raw_alias)
+        if not alias or alias in seen:
+            continue
+        seen.add(alias)
+        normalized.append(alias)
+    return tuple(normalized)
+
+
 def register_backend(backend: SpeechBackend) -> None:
+    """Register one backend atomically after validating every alias."""
+
     backend_id = _normalized(getattr(backend, "backend_id", ""))
     if not backend_id:
         raise RuntimeError("Speech backend должен иметь непустой backend_id.")
     existing = _REGISTRY.get(backend_id)
     if existing is not None and existing is not backend:
         raise RuntimeError(f"Speech backend уже зарегистрирован: {backend_id}")
-    _REGISTRY[backend_id] = backend
-    for raw_alias in (backend_id, *tuple(getattr(backend, "aliases", ()))):
-        alias = _normalized(raw_alias)
-        if not alias:
-            continue
+
+    aliases = _backend_aliases(backend, backend_id)
+    for alias in aliases:
         owner = _ALIASES.get(alias)
         if owner is not None and owner != backend_id:
             raise RuntimeError(f"Alias speech backend уже занят: {alias}")
+
+    # Commit only after the complete registration set has passed validation.
+    _REGISTRY[backend_id] = backend
+    for alias in aliases:
         _ALIASES[alias] = backend_id
 
 
@@ -72,4 +88,5 @@ __all__ = [
     "register_backend",
     "registered_backends",
     "resolve_backend_id",
+    "unregister_backend",
 ]
