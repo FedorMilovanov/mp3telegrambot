@@ -203,7 +203,7 @@ def _output_report(
     work_root: str,
     action_name: str,
     *,
-    job_started_at: str,
+    job_started_at: str = "1970-01-01T00:00:00+00:00",
 ) -> dict[str, Any]:
     recipe = load_recipe(recipe_id)
     return validate_recipe_outputs(
@@ -315,7 +315,6 @@ def execute_job(store: DubStore, worker_id: str, job: dict[str, Any]) -> None:
     )
     started_monotonic = time.monotonic()
     job_started_at = utc_now()
-    lease_recorded = False
     recent_lines: list[str] = []
 
     with log_path.open("w", encoding="utf-8", errors="replace") as log_file:
@@ -347,7 +346,6 @@ def execute_job(store: DubStore, worker_id: str, job: dict[str, Any]) -> None:
                     "action": action_name,
                 },
             )
-            lease_recorded = True
         except Exception:
             _terminate_process(proc)
             raise
@@ -543,8 +541,6 @@ def run_worker(
             try:
                 execute_job(store, worker_id, job)
             except Exception as exc:
-                if lease_recorded := False:
-                    log(str(lease_recorded))
                 _finish_lease_safely(
                     store,
                     int(job["id"]),
