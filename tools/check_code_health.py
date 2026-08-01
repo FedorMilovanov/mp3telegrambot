@@ -9,6 +9,7 @@ therefore visible but does not block unrelated work.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.code_health import (  # noqa: E402
+    code_health_snapshot,
     collect_code_health,
     compare_code_health,
     format_code_health_report,
@@ -73,6 +75,13 @@ def _regression_exit_code(root: Path, baseline_path: str | Path | None) -> int:
         f"postprocess_delta={delta.total_postprocess_delta} allowance={post_allowance}"
     )
     if regex_bad or post_bad:
+        snapshot = json.dumps(
+            code_health_snapshot(report),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        _safe_print(f"CODE_HEALTH_CURRENT_SNAPSHOT {snapshot}")
         _safe_print(
             "CODE_HEALTH_REGRESSION_FAILED: review the new deterministic layer, "
             "add focused regression tests, then intentionally refresh the baseline."
