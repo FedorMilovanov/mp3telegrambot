@@ -23,6 +23,11 @@ def test_direct_wrapper_persists_failure_without_losing_checkpoints(
         "cache_length": 4096,
         "python_executable": "python",
     }
+    marker_path = tmp_path / "direct_cli_runtime.marker.json"
+    marker_path.write_text(
+        json.dumps(compatibility, ensure_ascii=False),
+        encoding="utf-8",
+    )
     checkpoint = tmp_path / "checkpoints" / "segment_01.json"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_text('{"complete": true}', encoding="utf-8")
@@ -38,9 +43,7 @@ def test_direct_wrapper_persists_failure_without_losing_checkpoints(
     with pytest.raises(RuntimeError, match="synthetic render failure"):
         direct_wrapper.run(fail)
 
-    marker = json.loads(
-        (tmp_path / "direct_cli_runtime.marker.json").read_text(encoding="utf-8")
-    )
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
     failure = json.loads(
         (tmp_path / "direct_renderer_failure.json").read_text(encoding="utf-8")
     )
