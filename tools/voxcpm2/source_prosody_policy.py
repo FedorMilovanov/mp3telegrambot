@@ -5,23 +5,26 @@ from __future__ import annotations
 
 from typing import Any
 
-POLICY = "diagnostic-only-no-cross-language-ranking-v1"
+POLICY = "diagnostic-only-no-cross-language-ranking-v2"
 ROLE_KEY = "source_prosody_role"
 DIAGNOSTIC_ONLY_ROLE = POLICY
 
 
 def is_diagnostic_only(segment: dict[str, Any] | None) -> bool:
-    return bool(
-        isinstance(segment, dict)
-        and str(segment.get(ROLE_KEY) or "") == DIAGNOSTIC_ONLY_ROLE
-    )
+    """Source-language prosody is always diagnostic in the Russian pipeline."""
+    return isinstance(segment, dict)
 
 
 def ranking_view(segment: dict[str, Any]) -> dict[str, Any]:
-    """Return a safe ranking view with source prosody removed by default."""
+    """Return a fail-closed ranking view without source-language prosody.
+
+    Callers cannot opt into cross-language ranking by omitting a marker. The
+    original evidence remains available on the source object for reporting,
+    while every candidate-selection and hard-gate view removes it.
+    """
     result = dict(segment)
-    if is_diagnostic_only(segment):
-        result.pop("source_prosody", None)
+    result.pop("source_prosody", None)
+    result[ROLE_KEY] = DIAGNOSTIC_ONLY_ROLE
     return result
 
 
