@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 """Stable PowerShell/bot CLI for the direct VoxCPM2 max-quality renderer.
 
-The entrypoint maintains a renderer-runtime marker in the work directory. Old
-checkpoints are removed when the executable modules, model snapshot, CPU-venv
-VoxCPM runtime or cache-length contract changes. This protects both bot and
-manual PowerShell launches without patching VoxCPM internals.
+``direct_cli_runtime.marker.json`` proves checkpoint compatibility and is written
+before synthesis so completed segments remain resumable after a later failure.
+``direct_cli_runtime.completed.json`` is a separate transactional success marker
+written only after the renderer returns successfully. This prevents a failed
+run from being mistaken for a completed render without sacrificing resumability.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import shutil
 import sys
@@ -27,10 +29,6 @@ from tools.voxcpm2.direct_max_quality_io import (
     PREFERRED_MAX_TEMPO,
 )
 
-# A candidate above the preferred ceiling must trigger another synthesis attempt
-# instead of being accepted merely because its acoustic score is good. The tiny
-# hard margin preserves the validated atempo=1.358 boundary case while anything
-# materially faster still fails closed.
 _ORIGINAL_CANDIDATE_SCORE = _direct_cli.candidate_score
 
 
@@ -63,7 +61,10 @@ _direct_cli.candidate_score = _fit_aware_candidate_score
 _direct_cli.MAX_TEMPO = HARD_MAX_TEMPO
 main = _direct_cli.main
 
-MARKER_POLICY = "direct-cli-runtime-marker-v1"
+MARKER_POLICY = "direct-cli-runtime-marker-v2"
+SUCCESS_MARKER_POLICY = "direct-cli-success-marker-v1"
+_COMPATIBILITY_MARKER = "direct_cli_runtime.marker.json"
+_SUCCESS_MARKER = "direct_cli_runtime.completed.json"
 _FAILURE_JSON = "direct_renderer_failure.json"
 _FAILURE_TEXT = "direct_renderer_failure.txt"
 
@@ -90,6 +91,19 @@ def _read_marker(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _clear_checkpoint_state(work_dir: Path) -> None:
     for name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
         target = work_dir / name
@@ -114,7 +128,7 @@ def _runtime_contract() -> tuple[Path, dict[str, Any]]:
         backend_id=speech_backend,
     )
     return work_dir, {
-        "schema_version": 1,
+        "schema_version": 2,
         "policy": MARKER_POLICY,
         "speech_backend": speech_backend,
         "render_contract_sha256": fingerprints["render_contract_sha256"],
@@ -142,17 +156,16 @@ def _write_failure_report(work_dir: Path, exc: BaseException) -> None:
         "traceback": trace,
     }
     json_path, text_path = _failure_paths(work_dir)
-    json_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    _write_json_atomic(json_path, payload)
     text_path.write_text(trace.rstrip() + "\n", encoding="utf-8")
 
 
 def _prepare_runtime_marker() -> tuple[Path, dict[str, Any]]:
     work_dir, expected = _runtime_contract()
     work_dir.mkdir(parents=True, exist_ok=True)
-    marker_path = work_dir / "direct_cli_runtime.marker.json"
+    marker_path = work_dir / _COMPATIBILITY_MARKER
+    success_path = work_dir / _SUCCESS_MARKER
+    success_path.unlink(missing_ok=True)
     current = _read_marker(marker_path)
     checkpoints_exist = any((work_dir / "checkpoints").glob("segment_*.json"))
     if checkpoints_exist and current != expected:
@@ -163,44 +176,44 @@ def _prepare_runtime_marker() -> tuple[Path, dict[str, Any]]:
         )
         _clear_checkpoint_state(work_dir)
     _clear_failure_report(work_dir)
-    # Маркер описывает совместимость checkpoints, а не факт успешного завершения.
-    # Пишем его до синтеза: если поздний сегмент упадёт, уже готовые сегменты
-    # останутся безопасно возобновляемыми при следующем запуске.
-    marker_path.write_text(
-        json.dumps(expected, ensure_ascii=False, indent=2, allow_nan=False),
-        encoding="utf-8",
-    )
+    _write_json_atomic(marker_path, expected)
     return marker_path, expected
 
 
-if __name__ == "__main__":
-    marker_path: Path | None = None
-    marker_payload: dict[str, Any] | None = None
-    work_dir: Path | None = None
+def _commit_success_marker(marker_path: Path, compatibility: dict[str, Any]) -> Path:
+    success_path = marker_path.parent / _SUCCESS_MARKER
+    payload = {
+        "schema_version": 1,
+        "policy": SUCCESS_MARKER_POLICY,
+        "compatibility": compatibility,
+    }
+    _write_json_atomic(success_path, payload)
+    return success_path
+
+
+def run(render: Callable[[], Any]) -> Any:
+    """Run the renderer with explicit compatibility and success transactions."""
+    marker_path, marker_payload = _prepare_runtime_marker()
+    work_dir = marker_path.parent
     try:
-        marker_path, marker_payload = _prepare_runtime_marker()
-        work_dir = marker_path.parent
-        main()
-        marker_path.write_text(
-            json.dumps(marker_payload, ensure_ascii=False, indent=2, allow_nan=False),
-            encoding="utf-8",
-        )
-        _clear_failure_report(work_dir)
+        result = render()
+    except BaseException as exc:
+        (work_dir / _SUCCESS_MARKER).unlink(missing_ok=True)
+        if isinstance(exc, Exception):
+            _write_failure_report(work_dir, exc)
+        raise
+    _commit_success_marker(marker_path, marker_payload)
+    _clear_failure_report(work_dir)
+    return result
+
+
+if __name__ == "__main__":
+    try:
+        run(main)
     except KeyboardInterrupt:
         print("Остановлено пользователем.", file=sys.stderr)
         raise SystemExit(130)
     except Exception as exc:
-        if work_dir is None:
-            try:
-                work_dir = Path(_flag("--work-dir")).resolve()
-            except Exception:
-                work_dir = None
-        if work_dir is not None:
-            try:
-                _write_failure_report(work_dir, exc)
-            except Exception as report_exc:
-                print(f"Не удалось сохранить failure report: {report_exc}", file=sys.stderr)
-        # Runtime marker intentionally remains: it proves checkpoint compatibility.
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         traceback.print_exc()
         raise SystemExit(1)
