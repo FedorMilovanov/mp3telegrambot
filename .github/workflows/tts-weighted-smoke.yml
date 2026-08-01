@@ -243,7 +243,6 @@ jobs:
   acceptance-closeout:
     name: Verify artifact and close acceptance issue
     needs: weighted-smoke
-    if: needs.weighted-smoke.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
