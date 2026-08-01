@@ -30,7 +30,8 @@ for _name in dir(_legacy):
     if not _name.startswith("__"):
         globals().setdefault(_name, getattr(_legacy, _name))
 
-POLICY = "direct-cli-monolithic-voice-v2"
+POLICY = "direct-cli-monolithic-voice-v3"
+GENERATION_REQUEST_FACTORY_POLICY = "typed-generation-request-factory-v1"
 SYNTHESIS_TEXT_POLICY = russian_pronunciation.POLICY
 PRONUNCIATION_VARIANT_POLICY = russian_pronunciation.VARIANT_POLICY
 _CURRENT_ATTEMPT = 1
@@ -118,7 +119,10 @@ def _generate(
     return _legacy_generate(model, **kwargs)
 
 
-def _backend_generate(session: Any, **kwargs: Any) -> Any:
+def _build_generation_request(
+    session: Any,
+    **kwargs: Any,
+) -> BackendGenerationRequest:
     """Translate orchestration facts into one model-neutral generation request."""
     text = str(kwargs.get("text") or "")
     reference = Path(kwargs["reference"]).resolve()
@@ -143,7 +147,7 @@ def _backend_generate(session: Any, **kwargs: Any) -> Any:
         continuation_reference = _CONTINUATION_REFERENCE
         continuation_text = _CONTINUATION_TEXT
 
-    request = BackendGenerationRequest(
+    return BackendGenerationRequest(
         text=synthesis,
         reference_audio=reference,
         seed=int(kwargs.get("seed") or 0),
@@ -162,7 +166,6 @@ def _backend_generate(session: Any, **kwargs: Any) -> Any:
             "max_len": max_len,
         },
     )
-    return session.generate(request)
 
 
 def source_prosody_penalty(
@@ -317,7 +320,7 @@ def _raw_failure_evidence(
 _legacy.read_segments = read_segments
 _legacy.seed_for_attempt = seed_for_attempt
 _legacy._generate = _generate
-_legacy._backend_generate = _backend_generate
+_legacy._build_generation_request = _build_generation_request
 _legacy.set_continuation_context = set_continuation_context
 _legacy.source_prosody_penalty = source_prosody_penalty
 _legacy.candidate_hard_ok = candidate_hard_ok
@@ -350,11 +353,13 @@ __all__ = sorted(
     set(name for name in dir(_legacy) if not name.startswith("__"))
     | {
         "CONTINUATION_POLICY",
+        "GENERATION_REQUEST_FACTORY_POLICY",
         "POLICY",
         "PRONUNCIATION_VARIANT_POLICY",
         "SYNTHESIS_TEXT_POLICY",
         "_acceptable_candidates",
         "_backend_generate",
+        "_build_generation_request",
         "_candidate_failure_summary",
         "_generate",
         "_monolith_diagnostic",

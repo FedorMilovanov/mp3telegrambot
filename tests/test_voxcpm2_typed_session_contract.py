@@ -92,7 +92,7 @@ def test_production_cli_builds_typed_session_config() -> None:
         encoding="utf-8"
     )
 
-    assert "from services.speech_backends import BackendSessionConfig, get_backend" in source
+    assert "BackendSessionConfig" in source
     assert "session = backend.open_session(\n        BackendSessionConfig(" in source
     assert 'options={"cache_length": cache_length}' in source
     assert "torch_module=torch" not in source

@@ -16,7 +16,11 @@ from typing import Any
 
 import numpy as np
 
-from services.speech_backends import BackendSessionConfig, get_backend
+from services.speech_backends import (
+    BackendGenerationRequest,
+    BackendSessionConfig,
+    get_backend,
+)
 from tools.voxcpm2.direct_max_quality_io import (
     POLICY,
     EXPECTED_ENCODE_SR,
@@ -69,9 +73,31 @@ MAX_CANDIDATE_ATTEMPTS = 5
 STRONG_CANDIDATE_SCORE = 85.0
 
 
+def _build_generation_request(
+    session: Any,
+    **kwargs: Any,
+) -> BackendGenerationRequest:
+    """Build the model-neutral request used by every direct CLI entrypoint."""
+    del session
+    return BackendGenerationRequest(
+        text=str(kwargs.get("text") or ""),
+        reference_audio=Path(kwargs["reference"]).resolve(),
+        seed=int(kwargs.get("seed") or 0),
+        backend_options={
+            "cfg": float(kwargs.get("cfg") or 0.0),
+            "steps": int(kwargs.get("steps") or 0),
+            "min_len": int(kwargs.get("min_len") or 2),
+            "max_len": int(kwargs.get("max_len") or 2),
+        },
+    )
+
+
 def _backend_generate(session: Any, **kwargs: Any) -> Any:
-    """Neutral hook allowing the monolithic facade to wrap a backend session."""
-    return session.generate(**kwargs)
+    """Generate through the typed request boundary, independent of import order."""
+    request = _build_generation_request(session, **kwargs)
+    if not isinstance(request, BackendGenerationRequest):
+        raise TypeError("Generation request factory должен вернуть BackendGenerationRequest.")
+    return session.generate(request)
 
 
 def _report_mapping(value: Any) -> dict[str, Any]:
