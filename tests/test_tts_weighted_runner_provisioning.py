@@ -27,7 +27,7 @@ def _write_runner(
     github_url: str = "https://github.com/FedorMilovanov/mp3telegrambot",
     ephemeral: bool = False,
 ) -> None:
-    (root / "bin").mkdir(parents=True)
+    (root / "bin").mkdir(parents=True, exist_ok=True)
     for relative in ("config.cmd", "run.cmd", "bin/Runner.Listener.exe"):
         (root / relative).write_bytes(b"fixture")
     payload = {
