@@ -18,7 +18,7 @@ def test_project_runtime_imports_write_through_package() -> None:
     source = Path(runtime.__file__).read_text(encoding="utf-8")
     assert "class _WriteThroughModule" in source
     assert "_module.__class__ = _WriteThroughModule" in source
-    assert "normalize_production_backend(" in source
+    assert "normalize_production_speech_request(" in source
     assert "backend.capabilities().missing()" not in source
 
 
