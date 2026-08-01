@@ -19,7 +19,9 @@ from services.speech_backends.model_profiles import (
 )
 from services.speech_backends.registry import get_backend, resolve_backend_id
 
-CONTROL_PLANE_POLICY = "speech-backend-control-plane-v2"
+# Keep the public selection-plane policy stable. Concrete model-profile
+# versioning is owned by MODEL_PROFILE_POLICY and MODEL_CATALOG_POLICY.
+CONTROL_PLANE_POLICY = "speech-backend-control-plane-v1"
 
 
 class SpeechBackendSelectionError(RuntimeError):
