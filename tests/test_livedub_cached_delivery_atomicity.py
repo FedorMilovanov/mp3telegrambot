@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from services import livedub_cached_delivery_atomicity as atomicity
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
 
 
 class _Message:
@@ -229,14 +229,17 @@ def test_new_local_video_is_not_deleted_when_mp3_companion_fails():
     assert bot.deleted is False
 
 
-def test_entrypoint_keeps_cached_transaction_final_before_capturing_wrappers():
-    source = Path("bot_new.py").read_text(encoding="utf-8")
-    companion = source.index("install_livedub_audio_companion()")
-    quality = source.index("install_livedub_audio_quality_guard()")
-    provenance = source.index("install_livedub_ru_provenance()")
-    new_atomic = source.index("install_livedub_new_delivery_atomicity()")
-    cached_atomic = source.index("install_livedub_cached_delivery_atomicity()")
-    dedupe = source.index("install_livedub_audio_dedupe()")
-    deep = source.index("install_livedub_deep_audit()")
-
-    assert companion < quality < provenance < new_atomic < cached_atomic < dedupe < deep
+def test_manifest_keeps_cached_transaction_before_capturing_wrappers():
+    order = {
+        feature.feature_id: index
+        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
+    }
+    assert (
+        order["livedub-audio-companion"]
+        < order["livedub-audio-quality"]
+        < order["livedub-ru-provenance"]
+        < order["livedub-new-delivery-atomicity"]
+        < order["livedub-cached-delivery-atomicity"]
+        < order["livedub-audio-dedupe"]
+        < order["livedub-deep-audit"]
+    )
