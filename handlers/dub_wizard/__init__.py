@@ -139,7 +139,9 @@ async def dubtts_command(update: Any, context: Any) -> None:
     project_id, profile_id = args[0].casefold(), args[1]
     try:
         store = _legacy.DubStore()
-        request_path = _legacy._project_root(project_id) / "request.json"
+        # Do not call _project_root here: it creates directories. The service
+        # validates the project before reading this deterministic path.
+        request_path = store.root / "projects" / project_id / "request.json"
         result = rebind_inactive_project_tts_profile(
             store,
             project_id,
