@@ -35,18 +35,18 @@ def test_title_policy_mirrors_health_wrapper_into_legacy_module(monkeypatch) -> 
     original_package = dub_health.collect_dub_health
     original_legacy = dub_health._legacy.collect_dub_health
 
-    def wrapped() -> list[dict[str, Any]]:
+    def sentinel() -> list[dict[str, Any]]:
         return [{"label": "sentinel", "ok": True, "detail": "write-through"}]
 
-    def fake_legacy_patch() -> None:
-        dub_health.collect_dub_health = wrapped
-
-    monkeypatch.setattr(dub_title_policy, "_legacy_patch_health", fake_legacy_patch)
+    monkeypatch.setattr(dub_health, "collect_dub_health", sentinel)
     try:
         dub_title_policy._patch_health()
-        assert dub_health.collect_dub_health is wrapped
-        assert dub_health._legacy.collect_dub_health is wrapped
-        assert dub_health._legacy.collect_dub_health()[0]["label"] == "sentinel"
+        assert dub_health.collect_dub_health is dub_health._legacy.collect_dub_health
+        assert dub_health.collect_dub_health()[0] == {
+            "label": "sentinel",
+            "ok": True,
+            "detail": "write-through",
+        }
     finally:
         dub_health.collect_dub_health = original_package
         dub_health._legacy.collect_dub_health = original_legacy
