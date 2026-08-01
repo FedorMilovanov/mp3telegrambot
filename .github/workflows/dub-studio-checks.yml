@@ -29,6 +29,7 @@ on:
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
+      - 'tests/test_speech_model_*.py'
       - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
   pull_request:
@@ -59,6 +60,7 @@ on:
       - 'tests/test_generic_*.py'
       - 'tests/test_semantic_*.py'
       - 'tests/test_speech_backend_*.py'
+      - 'tests/test_speech_model_*.py'
       - 'tests/test_voxcpm2_*.py'
       - '.github/workflows/dub-studio-checks.yml'
 
@@ -120,6 +122,7 @@ jobs:
           python -m pytest -q
           tests/test_dub_execution.py
           tests/test_dub_worker.py
+          tests/test_dub_architecture_boundaries.py
           tests/test_clean_dub_production.py
           tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
@@ -128,6 +131,7 @@ jobs:
           tests/test_clean_repair_request_contract.py
           tests/test_dub_health_supplemental_contract.py
           tests/test_dub_quality_v42_runtime_contracts.py
+          tests/test_generic_project_runtime_contract.py
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
@@ -136,6 +140,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profiles.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
           tests/test_semantic_block_runtime.py
@@ -157,6 +162,7 @@ jobs:
           tools/voxcpm2
           tests/test_dub_execution.py
           tests/test_dub_worker.py
+          tests/test_dub_architecture_boundaries.py
           tests/test_clean_dub_production.py
           tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
@@ -165,6 +171,7 @@ jobs:
           tests/test_clean_repair_request_contract.py
           tests/test_dub_health_supplemental_contract.py
           tests/test_dub_quality_v42_runtime_contracts.py
+          tests/test_generic_project_runtime_contract.py
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
@@ -173,6 +180,7 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profiles.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
       - name: Whitespace integrity

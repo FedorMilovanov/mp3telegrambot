@@ -11,9 +11,13 @@ from typing import Any
 
 from services.dub_studio import repo_root, studio_root
 from services.media_masters import get_media_master
-from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
+from services.speech_backends import (
+    DEFAULT_BACKEND_ID,
+    DEFAULT_MODEL_PROFILE_ID,
+    select_production_speech,
+)
 
-POLICY = "backend-neutral-dub-production-preflight-v2"
+POLICY = "backend-neutral-dub-production-preflight-v3"
 _ACTIONS = {"render", "render_direct", "render_gemini", "repair_audio"}
 
 
@@ -93,8 +97,16 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             f"Preflight: request.json отсутствует или повреждён: {request_path}"
         )
+    selection = select_production_speech(
+        request.get("speech_backend"),
+        request.get("speech_model_profile"),
+        request=request,
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+    )
+    request = dict(selection.resolution.request)
     repo = repo_root().resolve()
-    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    backend = selection.backend
     speech_runtime = backend.runtime_paths(repo, request)
     media_master = get_media_master(request.get("media_master") or "constant-mix")
     media_runtime = media_master.runtime_paths(
@@ -117,8 +129,11 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
         "request_path": request_path,
         "request": request,
         "repo": repo,
+        "selection": selection,
         "backend": backend,
         "identity": identity,
+        "model_profile": selection.model_profile,
+        "model_resolution": selection.resolution,
         "speech_runtime": speech_runtime,
         "media_master": media_master,
         "media_runtime": media_runtime,
@@ -138,6 +153,8 @@ def _signature(plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "policy": POLICY,
         "backend": plan["identity"].as_dict(),
+        "speech_model_profile": plan["model_profile"].as_dict(),
+        "speech_model_resolution": plan["model_resolution"].as_dict(),
         "speech_runtime": speech.as_dict(),
         "media_runtime": media.as_dict(),
         "speech_renderer_sha256": _sha256(Path(speech.renderer_entrypoint)),
@@ -229,7 +246,7 @@ def run(project: dict[str, Any], action: str) -> dict[str, Any]:
 
     probe = _probe_imports(plan)
     report = {
-        "schema_version": 2,
+        "schema_version": 3,
         "policy": POLICY,
         "passed": True,
         "skipped": False,

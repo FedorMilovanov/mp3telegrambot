@@ -13,9 +13,13 @@ from services.media_masters import (
     get_final_validator,
     get_media_master,
 )
-from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
+from services.speech_backends import (
+    DEFAULT_BACKEND_ID,
+    DEFAULT_MODEL_PROFILE_ID,
+    select_production_speech,
+)
 
-DUB_RENDERING_POLICY = "separated-speech-master-validator-orchestration-v1"
+DUB_RENDERING_POLICY = "separated-speech-master-validator-orchestration-v2"
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -34,6 +38,36 @@ def _run(command: list[str], *, cwd: Path, env: dict[str, str], label: str) -> N
         raise RuntimeError(f"{label} завершился с кодом {result.returncode}.")
 
 
+def _renderer_values(
+    *,
+    resolution: Any,
+    references: Any,
+    segments_json: Path,
+    segment_work: Path,
+    russian_timeline: Path,
+    duration: float,
+) -> dict[str, str]:
+    values = {
+        "extended_reference": str(references.extended_reference or ""),
+        "composite_reference": str(references.composite_reference or ""),
+        "segments_json": str(segments_json),
+        "segment_work": str(segment_work),
+        "timeline": str(russian_timeline),
+        "duration": f"{duration:.6f}",
+    }
+    for mapping in (resolution.backend_config, resolution.options):
+        for raw_key, raw_value in mapping.items():
+            key = str(raw_key)
+            value = str(raw_value)
+            existing = values.get(key)
+            if existing is not None and existing != value:
+                raise RuntimeError(
+                    f"TTS model profile option {key} конфликтует с orchestration value."
+                )
+            values[key] = value
+    return values
+
+
 def run_speech_master_validation(
     *,
     root: Path,
@@ -46,17 +80,22 @@ def run_speech_master_validation(
     final_russian: Path,
     require_production_capabilities: bool = True,
 ) -> Path:
-    """Run three explicit components without assigning media ownership to TTS."""
+    """Run explicit speech, media-master and validator components."""
     root = Path(root).resolve()
     repo = Path(__file__).resolve().parent.parent
-    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
-    capabilities = backend.capabilities()
-    missing = capabilities.missing()
-    if require_production_capabilities and missing:
-        raise RuntimeError(
-            f"Speech backend {backend.backend_id} lacks production capabilities: "
-            f"{', '.join(missing)}."
-        )
+    selection = select_production_speech(
+        request.get("speech_backend"),
+        request.get("speech_model_profile"),
+        request=request,
+        default_backend_id=DEFAULT_BACKEND_ID,
+        default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
+        required_capabilities=() if not require_production_capabilities else selection_required_capabilities(),
+    )
+    backend = selection.backend
+    capabilities = selection.capabilities
+    model_profile = selection.model_profile
+    resolution = selection.resolution
+    request = dict(resolution.request)
 
     reference_dir = root / "references"
     audio_dir = root / "audio"
@@ -85,44 +124,42 @@ def run_speech_master_validation(
             f"{runtime.cpu_python}"
         )
 
-    threads = max(1, int(request.get("threads") or 10))
-    steps = max(1, int(request.get("steps") or 16))
-    cfg = float(request.get("cfg") or 1.8)
     video_id = str(request["video_id"])
     russian_timeline = audio_dir / f"{video_id}_ru_timeline.wav"
     execution_plan_log = output_dir / "backend_generation_execution_plans.jsonl"
     execution_plan_log.unlink(missing_ok=True)
     env = backend.process_environment(
-        {"threads": threads, "speech_backend": backend.backend_id},
+        request,
         base_environment=os.environ,
     ).as_dict(os.environ)
-    env["DUB_BACKEND_EXECUTION_PLAN_LOG"] = str(execution_plan_log)
+    if model_profile.requires_execution_plan_evidence:
+        env["DUB_BACKEND_EXECUTION_PLAN_LOG"] = str(execution_plan_log)
 
-    synth = backend.build_renderer_command(
-        runtime,
-        values={
-            "extended_reference": str(references.extended_reference or ""),
-            "composite_reference": str(references.composite_reference or ""),
-            "segments_json": str(segments_json),
-            "segment_work": str(segment_work),
-            "timeline": str(russian_timeline),
-            "threads": str(threads),
-            "steps": str(steps),
-            "cfg": str(cfg),
-            "cache_length": str(int(request.get("cache_length") or 4096)),
-            "duration": f"{duration:.6f}",
-            "base_seed": str(int(request.get("base_seed") or 2026072800)),
-        },
+    renderer_values = _renderer_values(
+        resolution=resolution,
+        references=references,
+        segments_json=segments_json,
+        segment_work=segment_work,
+        russian_timeline=russian_timeline,
+        duration=duration,
     )
+    synth = backend.build_renderer_command(runtime, values=renderer_values)
     _run(
         synth,
         cwd=repo,
         env=env,
-        label=f"Speech backend {backend.backend_id}",
+        label=(
+            f"Speech backend {backend.backend_id} "
+            f"profile {model_profile.profile_id}"
+        ),
     )
-    if backend.backend_id == "voxcpm2" and not execution_plan_log.is_file():
+    if (
+        model_profile.requires_execution_plan_evidence
+        and not execution_plan_log.is_file()
+    ):
         raise RuntimeError(
-            "VoxCPM2 завершил synthesis без exact execution-plan evidence."
+            f"TTS profile {model_profile.profile_id} завершил synthesis без "
+            "exact execution-plan evidence."
         )
 
     master = get_media_master(request.get("media_master") or "constant-mix")
@@ -158,9 +195,11 @@ def run_speech_master_validation(
         russian_only_video=Path(final_russian),
     )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "policy": DUB_RENDERING_POLICY,
         "speech_backend": backend.identity(runtime.archive_root).as_dict(),
+        "speech_model_profile": model_profile.as_dict(),
+        "speech_model_resolution": resolution.as_dict(),
         "capabilities": capabilities.as_dict(),
         "references": references.as_dict(),
         "media_master": master_runtime.as_dict(),
@@ -176,4 +215,15 @@ def run_speech_master_validation(
     return russian_timeline
 
 
-__all__ = ["DUB_RENDERING_POLICY", "run_speech_master_validation"]
+def selection_required_capabilities() -> tuple[str, ...]:
+    """Late import avoids duplicating the production capability constant."""
+    from services.speech_backends import REQUIRED_PRODUCTION_CAPABILITIES
+
+    return REQUIRED_PRODUCTION_CAPABILITIES
+
+
+__all__ = [
+    "DUB_RENDERING_POLICY",
+    "run_speech_master_validation",
+    "selection_required_capabilities",
+]

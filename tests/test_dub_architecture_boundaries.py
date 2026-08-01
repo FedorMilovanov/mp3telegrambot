@@ -14,10 +14,32 @@ from services.media_masters import (
     get_media_master,
 )
 from services.speech_backends import (
+    BackendCapabilities,
     DeterministicSpeechBackend,
+    ModelOptionSpec,
+    SpeechModelProfile,
     register_backend,
+    register_model_profile,
     unregister_backend,
+    unregister_model_profile,
 )
+
+
+class _ProductionDeterministicBackend(DeterministicSpeechBackend):
+    backend_id = "deterministic-production-test"
+    aliases = ("deterministic-production-test",)
+
+    def capabilities(self) -> BackendCapabilities:
+        return BackendCapabilities(
+            voice_cloning=True,
+            reference_audio=True,
+            deterministic_seed=True,
+            style_instruction=True,
+            cpu_inference=True,
+            pcm_output=True,
+            checkpointable_segments=True,
+            continuation_context=False,
+        )
 
 
 def test_reference_strategy_is_selected_by_backend_not_generic_runtime():
@@ -54,9 +76,25 @@ def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
     assert FINAL_MEDIA_VALIDATOR_POLICY.startswith("backend-neutral")
 
 
-def test_preflight_plan_consumes_backend_and_media_contracts(monkeypatch, tmp_path: Path):
-    backend = DeterministicSpeechBackend()
+def test_preflight_plan_consumes_backend_model_and_media_contracts(
+    monkeypatch,
+    tmp_path: Path,
+):
+    backend = _ProductionDeterministicBackend()
+    profile = SpeechModelProfile(
+        profile_id="deterministic-production-profile",
+        backend_id=backend.backend_id,
+        display_name="Deterministic production fixture",
+        model_family="deterministic-contract-fixture",
+        model_revision="fixture-v1",
+        option_specs=(
+            ModelOptionSpec("sample_rate", "int", 22050, minimum=8000, maximum=96000),
+        ),
+        backend_defaults={"deterministic_archive": str(tmp_path)},
+        backend_override_keys=("deterministic_archive",),
+    )
     register_backend(backend)
+    register_model_profile(profile)
     try:
         project_root = tmp_path / "projects" / "dub-1234567890"
         project_root.mkdir(parents=True)
@@ -66,9 +104,9 @@ def test_preflight_plan_consumes_backend_and_media_contracts(monkeypatch, tmp_pa
             "source_url": "https://youtu.be/abcdef12345",
             "translation_mode": "direct",
             "speech_backend": backend.backend_id,
+            "speech_model_profile": profile.profile_id,
             "media_master": "constant-mix",
             "media_python": sys.executable,
-            "deterministic_archive": str(tmp_path),
         }
         (project_root / "request.json").write_text(
             json.dumps(request),
@@ -88,8 +126,11 @@ def test_preflight_plan_consumes_backend_and_media_contracts(monkeypatch, tmp_pa
         signature = _signature(plan)
 
         assert signature["backend"]["backend_id"] == backend.backend_id
+        assert signature["speech_model_profile"]["profile_id"] == profile.profile_id
+        assert signature["speech_model_resolution"]["options"]["sample_rate"] == 22050
         assert signature["speech_runtime"]["backend_id"] == backend.backend_id
         assert signature["media_runtime"]["master_id"] == "constant-mix"
         assert "services.media_masters" in signature["modules"]
     finally:
+        unregister_model_profile(profile.profile_id)
         unregister_backend(backend.backend_id)

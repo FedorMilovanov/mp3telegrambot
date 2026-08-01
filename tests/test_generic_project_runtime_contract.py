@@ -5,6 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from services.speech_backends import (
+    DEFAULT_MODEL_PROFILE_ID,
+    default_model_profile,
+)
 from tools.voxcpm2 import generic_project_runtime as runtime
 
 
@@ -41,6 +45,8 @@ def test_request_schema_and_source_identity_fail_closed(tmp_path: Path) -> None:
         _request(source_url="https://youtube.com/playlist?list=PL123"),
         _request(translation_mode="mystery"),
         _request(speech_backend="unknown-backend"),
+        _request(speech_model_profile="unknown-model-profile"),
+        _request(speech_options={"temperature": 0.7}),
     )
     for payload in bad_payloads:
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -48,7 +54,7 @@ def test_request_schema_and_source_identity_fail_closed(tmp_path: Path) -> None:
             runtime.load_request(root)
 
 
-def test_valid_request_is_canonicalized_with_explicit_component_defaults(
+def test_valid_request_is_canonicalized_with_pinned_tts_profile(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "project"
@@ -60,13 +66,24 @@ def test_valid_request_is_canonicalized_with_explicit_component_defaults(
     )
 
     loaded = runtime.load_request(root)
+    profile = default_model_profile()
+    expected_options = {spec.name: spec.default for spec in profile.option_specs}
 
-    assert loaded == {
-        **payload,
-        "speech_backend": "voxcpm2",
-        "media_master": "constant-mix",
-        "final_media_validator": "ffprobe-av-contract",
-    }
+    assert loaded["schema_version"] == 1
+    assert loaded["video_id"] == payload["video_id"]
+    assert loaded["source_url"] == payload["source_url"]
+    assert loaded["translation_mode"] == "direct"
+    assert loaded["speech_backend"] == "voxcpm2"
+    assert loaded["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert loaded["speech_profile_fingerprint"] == profile.fingerprint()
+    assert loaded["speech_options"] == expected_options
+    assert loaded["speech_backend_config"] == dict(profile.backend_defaults)
+    for key, value in expected_options.items():
+        assert loaded[key] == value
+    for key, value in profile.backend_defaults.items():
+        assert loaded[key] == value
+    assert loaded["media_master"] == "constant-mix"
+    assert loaded["final_media_validator"] == "ffprobe-av-contract"
 
 
 def test_atomic_json_rejects_nan_without_replacing_existing_file(tmp_path: Path) -> None:

@@ -8,10 +8,14 @@ on:
       - "requirements-lock.txt"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
+      - "services/dub_preflight.py"
+      - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
       - "services/dub_studio_runtime.py"
       - "handlers/dub_health/**"
+      - "handlers/dub_wizard/**"
       - "tests/test_speech_backend_*.py"
+      - "tests/test_speech_model_*.py"
       - "tests/test_voxcpm2_*.py"
       - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
@@ -21,10 +25,14 @@ on:
       - "requirements-lock.txt"
       - "tools/voxcpm2/**"
       - "services/speech_backends/**"
+      - "services/dub_preflight.py"
+      - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
       - "services/dub_studio_runtime.py"
       - "handlers/dub_health/**"
+      - "handlers/dub_wizard/**"
       - "tests/test_speech_backend_*.py"
+      - "tests/test_speech_model_*.py"
       - "tests/test_voxcpm2_*.py"
       - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
@@ -70,7 +78,7 @@ jobs:
       - name: Compile backend and VoxCPM2 surfaces
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends handlers/dub_health tools/voxcpm2
+          python -m compileall -q services/speech_backends services/dub_preflight.py services/dub_rendering.py handlers/dub_health handlers/dub_wizard tools/voxcpm2
           python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py
           if ($LASTEXITCODE -ne 0) {
             throw "Backend/VoxCPM2 compile failed."
@@ -128,6 +136,10 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profiles.py
+          tests/test_generic_project_runtime_contract.py
+          tests/test_dub_wizard_request_writer.py
+          tests/test_dub_architecture_boundaries.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
           tests/test_voxcpm2_tools.py
@@ -143,9 +155,12 @@ jobs:
         run: >-
           python -m ruff check
           services/speech_backends
+          services/dub_preflight.py
+          services/dub_rendering.py
           services/dub_worker_release.py
           services/dub_studio_runtime.py
           handlers/dub_health
+          handlers/dub_wizard
           tools/voxcpm2
           tests/test_backend_generation_execution_plan.py
           tests/test_speech_backend_command_contract.py
@@ -155,6 +170,10 @@ jobs:
           tests/test_speech_backend_registry.py
           tests/test_speech_backend_request_boundary.py
           tests/test_speech_backend_runtime_paths.py
+          tests/test_speech_model_profiles.py
+          tests/test_generic_project_runtime_contract.py
+          tests/test_dub_wizard_request_writer.py
+          tests/test_dub_architecture_boundaries.py
           tests/test_voxcpm2_typed_generation_contract.py
           tests/test_voxcpm2_typed_session_contract.py
           tests/test_voxcpm2_tools.py
