@@ -86,6 +86,7 @@ jobs:
             tools/voxcpm2/generic_project_runtime/__init__.py `
             tools/voxcpm2/clean_production_core.py `
             tools/voxcpm2/clean_runtime_contract.py `
+            tools/voxcpm2/clean_runtime_contract/__init__.py `
             tools/voxcpm2/direct_max_quality_cli.py `
             tools/voxcpm2/direct_max_quality_render.py `
             tools/voxcpm2/dub_worker.py `
@@ -94,6 +95,7 @@ jobs:
             handlers/dub_commands.py `
             handlers/dub_delivery.py `
             handlers/dub_health.py `
+            handlers/dub_health/__init__.py `
             handlers/mode_command.py `
             handlers/commands.py `
             services/dub_studio.py `
@@ -130,10 +132,13 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_clean_dub_production.py
+          tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
           tests/test_clean_runtime_contract.py
           tests/test_clean_runtime_setting_types.py
           tests/test_clean_repair_request_contract.py
+          tests/test_dub_health_supplemental_contract.py
+          tests/test_dub_quality_v42_runtime_contracts.py
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
@@ -173,7 +178,10 @@ jobs:
           services/dub_studio_runtime.py
           services/dub_studio_runtime
           tests/test_clean_dub_production.py
+          tests/test_clean_dub_health_contract.py
           tests/test_clean_request_settings.py
+          tests/test_dub_health_supplemental_contract.py
+          tests/test_dub_quality_v42_runtime_contracts.py
           tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
