@@ -35,6 +35,27 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _redacted_failure(exc: BaseException, config: WeightedTTSSmokeConfig) -> str:
+    message = " ".join(str(exc or type(exc).__name__).split())
+    replacements = {
+        str(config.model_root): "<MODEL_ROOT>",
+        str(config.reference_wav): "<REFERENCE_WAV>",
+        str(config.work_dir): "<WORK_DIR>",
+        str(config.expected_python or ""): "<EXPECTED_PYTHON>",
+        str(Path(sys.executable).resolve()): "<CURRENT_PYTHON>",
+        str(Path.cwd().resolve()): "<REPOSITORY>",
+    }
+    for raw, marker in sorted(
+        replacements.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if raw:
+            message = message.replace(raw, marker)
+            message = message.replace(raw.replace("\\", "/"), marker)
+    return message[:2000] or type(exc).__name__
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     config = WeightedTTSSmokeConfig(
@@ -47,7 +68,16 @@ def main(argv: list[str] | None = None) -> int:
         duration_budget=args.duration_budget,
         seed=args.seed,
     )
-    report = run_weighted_tts_smoke(config)
+    try:
+        report = run_weighted_tts_smoke(config)
+    except Exception as exc:
+        print(
+            f"TTS_WEIGHTED_SMOKE_FAILED {type(exc).__name__}: "
+            f"{_redacted_failure(exc, config)}",
+            file=sys.stderr,
+        )
+        return 1
+
     output = report.get("output") or {}
     pcm = output.get("pcm") or {}
     profile = report.get("profile") or {}
@@ -71,9 +101,3 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except KeyboardInterrupt:
         raise SystemExit(130) from None
-    except Exception as exc:
-        print(
-            f"TTS_WEIGHTED_SMOKE_FAILED {type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
-        raise SystemExit(1) from None
