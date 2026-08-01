@@ -5,16 +5,74 @@ from pathlib import Path
 
 import pytest
 
-from services.speech_backends import DEFAULT_MODEL_PROFILE_ID, default_model_profile
+from services.dub_studio import DubStore
+from services.speech_backends import (
+    DEFAULT_MODEL_PROFILE_ID,
+    SpeechModelProfile,
+    default_model_profile,
+    register_model_profile,
+    unregister_model_profile,
+)
 from services.tts_profile_selection import (
     TTS_PROFILE_SELECTION_POLICY,
+    TTS_PROJECT_REBIND_POLICY,
     normalize_new_production_tts_request,
     production_tts_profile_choice,
     production_tts_profile_choices,
     read_durable_request,
+    rebind_inactive_project_tts_profile,
     rebind_production_tts_profile,
     write_durable_request,
 )
+
+
+@pytest.fixture
+def alternate_profile() -> SpeechModelProfile:
+    base = default_model_profile()
+    profile = SpeechModelProfile(
+        profile_id="voxcpm2-rebind-test-v2",
+        backend_id=base.backend_id,
+        display_name="VoxCPM2 rebind test",
+        model_family=base.model_family,
+        model_revision="fixture-rebind-v2",
+        production_enabled=True,
+        required_capabilities=base.required_capabilities,
+        option_specs=base.option_specs,
+        backend_defaults=base.backend_defaults,
+        backend_override_keys=base.backend_override_keys,
+        requires_execution_plan_evidence=base.requires_execution_plan_evidence,
+    )
+    register_model_profile(profile)
+    try:
+        yield profile
+    finally:
+        unregister_model_profile(profile.profile_id)
+
+
+def _project_with_request(tmp_path: Path) -> tuple[DubStore, dict, Path, dict]:
+    store = DubStore(tmp_path / "studio")
+    project = store.create_project(
+        "generic_short_v1",
+        owner_user_id=123,
+        owner_chat_id=456,
+        metadata={
+            "video_id": "abcdefghijk",
+            "translation_mode": "direct",
+            "speech_model_profile": DEFAULT_MODEL_PROFILE_ID,
+        },
+    )
+    request = normalize_new_production_tts_request(
+        {
+            "schema_version": 1,
+            "video_id": "abcdefghijk",
+            "source_url": "https://youtube.com/watch?v=abcdefghijk",
+            "translation_mode": "direct",
+        },
+        DEFAULT_MODEL_PROFILE_ID,
+    )
+    path = store.root / "projects" / str(project["id"]) / "request.json"
+    write_durable_request(path, request)
+    return store, project, path, request
 
 
 def test_production_choices_are_validated_default_first_and_safe() -> None:
@@ -119,3 +177,114 @@ def test_durable_request_reader_rejects_duplicate_keys_and_non_objects(
 def test_durable_request_writer_rejects_non_finite_values(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         write_durable_request(tmp_path / "request.json", {"cfg": float("nan")})
+
+
+def test_inactive_project_rebind_updates_request_metadata_and_event(
+    tmp_path: Path,
+    alternate_profile: SpeechModelProfile,
+) -> None:
+    store, project, path, previous = _project_with_request(tmp_path)
+
+    result = rebind_inactive_project_tts_profile(
+        store,
+        str(project["id"]),
+        owner_user_id=123,
+        request_path=path,
+        profile_value=alternate_profile.profile_id,
+    )
+    saved = read_durable_request(path)
+    updated = store.get_project(str(project["id"]))
+
+    assert result.changed is True
+    assert result.previous_profile_id == DEFAULT_MODEL_PROFILE_ID
+    assert result.choice.profile_id == alternate_profile.profile_id
+    assert result.as_dict()["rebind_policy"] == TTS_PROJECT_REBIND_POLICY
+    assert saved["speech_model_profile"] == alternate_profile.profile_id
+    assert saved["speech_profile_fingerprint"] == alternate_profile.fingerprint()
+    assert saved["speech_options"] == {
+        spec.name: spec.default for spec in alternate_profile.option_specs
+    }
+    assert saved != previous
+    assert updated["metadata"]["speech_model_profile"] == alternate_profile.profile_id
+    assert updated["metadata"]["speech_model_revision"] == (
+        alternate_profile.model_revision
+    )
+    assert updated["stage"] == "tts_profile_rebound"
+    with store.connect() as conn:
+        event = conn.execute(
+            """
+            SELECT event_type, payload_json FROM dub_events
+            WHERE project_id=? ORDER BY id DESC LIMIT 1
+            """,
+            (str(project["id"]),),
+        ).fetchone()
+    assert event["event_type"] == "tts_profile_rebound"
+    assert json.loads(event["payload_json"])["policy"] == TTS_PROJECT_REBIND_POLICY
+
+
+def test_same_current_profile_is_a_noop(tmp_path: Path) -> None:
+    store, project, path, previous = _project_with_request(tmp_path)
+
+    result = rebind_inactive_project_tts_profile(
+        store,
+        str(project["id"]),
+        owner_user_id=123,
+        request_path=path,
+        profile_value=DEFAULT_MODEL_PROFILE_ID,
+    )
+
+    assert result.changed is False
+    assert read_durable_request(path) == previous
+    assert store.get_project(str(project["id"]))["stage"] == "created"
+
+
+def test_project_rebind_rejects_wrong_owner_and_active_project(
+    tmp_path: Path,
+    alternate_profile: SpeechModelProfile,
+) -> None:
+    store, project, path, _previous = _project_with_request(tmp_path)
+
+    with pytest.raises(PermissionError, match="не ваш"):
+        rebind_inactive_project_tts_profile(
+            store,
+            str(project["id"]),
+            owner_user_id=999,
+            request_path=path,
+            profile_value=alternate_profile.profile_id,
+        )
+
+    store.enqueue_job(str(project["id"]), "render_direct")
+    with pytest.raises(RuntimeError, match="draft/failed/cancelled"):
+        rebind_inactive_project_tts_profile(
+            store,
+            str(project["id"]),
+            owner_user_id=123,
+            request_path=path,
+            profile_value=alternate_profile.profile_id,
+        )
+
+
+def test_project_rebind_restores_request_when_db_event_fails(
+    monkeypatch,
+    tmp_path: Path,
+    alternate_profile: SpeechModelProfile,
+) -> None:
+    store, project, path, previous = _project_with_request(tmp_path)
+
+    def fail_event(*_args, **_kwargs) -> None:
+        raise RuntimeError("EVENT_SENTINEL")
+
+    monkeypatch.setattr(store, "_insert_event", fail_event)
+    with pytest.raises(RuntimeError, match="EVENT_SENTINEL"):
+        rebind_inactive_project_tts_profile(
+            store,
+            str(project["id"]),
+            owner_user_id=123,
+            request_path=path,
+            profile_value=alternate_profile.profile_id,
+        )
+
+    assert read_durable_request(path) == previous
+    unchanged = store.get_project(str(project["id"]))
+    assert unchanged["metadata"]["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
+    assert unchanged["stage"] == "created"
