@@ -44,6 +44,19 @@ def _record_bootstrap(component: str, *, ok: bool, detail: object) -> None:
         )
 
 
+def _runtime_install_detail(result: object, *, installed_label: str = "installed") -> str:
+    """Render installer results without leaking Python's meaningless ``None``.
+
+    Runtime installers commonly signal success by returning normally rather than
+    by returning a status string.  A successful ``None`` result is therefore an
+    installation state, not diagnostic payload.
+    """
+    if result is None:
+        return installed_label
+    text = str(result).strip()
+    return text or installed_label
+
+
 def _compact_captured_output(value: str) -> str:
     lines = [line.strip() for line in str(value or "").splitlines() if line.strip()]
     compact = " | ".join(lines)
@@ -260,7 +273,12 @@ class _AfterImportLoader(importlib.abc.Loader):
             _record_bootstrap(
                 "Gemini/LiveDub quality runtime",
                 ok=True,
-                detail=f"{max_quality}; {livedub_quality}",
+                detail=(
+                    "Gemini="
+                    + _runtime_install_detail(max_quality, installed_label="installed")
+                    + "; LiveDub="
+                    + _runtime_install_detail(livedub_quality, installed_label="installed")
+                ),
             )
         except Exception as exc:
             _record_bootstrap(
