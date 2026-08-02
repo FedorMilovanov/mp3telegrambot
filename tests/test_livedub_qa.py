@@ -1350,6 +1350,7 @@ def test_video_cpu_preset_knob(monkeypatch):
     import services.ffmpeg as ff
     monkeypatch.setattr(ff, "_VIDEO_ENCODER", None)
     monkeypatch.setenv("WHISPER_FORCE_CPU", "1")
+    monkeypatch.setenv("VIDEO_FORCE_CPU", "1")
     monkeypatch.setenv("VIDEO_CPU_PRESET", "medium")
     _, _, preset = ff._get_video_encoder()
     assert preset == ["-preset", "medium"]
@@ -1504,8 +1505,14 @@ def test_db_backup_creates_and_rotates(tmp_path, monkeypatch):
     assert out and Path(out).exists()
     assert db.db_backup() == ""  # одна копия в сутки
     import sqlite3
-    row = sqlite3.connect(out).execute(
-        "SELECT audio_file_id FROM video_cache WHERE video_id=?", ("v1",)).fetchone()
+    check_conn = sqlite3.connect(out)
+    try:
+        row = check_conn.execute(
+            "SELECT audio_file_id FROM video_cache WHERE video_id=?",
+            ("v1",),
+        ).fetchone()
+    finally:
+        check_conn.close()
     assert row and row[0] == "fid"  # копия валидна и полна
     # ротация: старые копии удаляются
     for d in ("20200101", "20200102", "20200103"):
