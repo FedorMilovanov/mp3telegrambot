@@ -1,0 +1,102 @@
+{
+  "policy": "intentional-code-health-baseline-refresh-v1",
+  "reason": "PR #77 adds bounded, fail-closed deterministic publication contracts for title evidence, Synopsis time reconciliation, Telegraph error classification, Russian public-text polish, final Shorts observability, and actual-transcript Highlights boundary/coherence verification. The added regex/postprocess markers are not silent debt: each new class is covered by focused regression tests, while the live MP4 audit demonstrated that text-only Gemini timestamps without source-speech verification produced broken public edits.",
+  "previous": {
+    "files_scanned": 142,
+    "total_regex_markers": 695,
+    "total_postprocess_markers": 254
+  },
+  "current": {
+    "files_scanned": 157,
+    "source_title_registry_entries": 198,
+    "structured_block_normalizer": true,
+    "top_files": [
+      {
+        "lines": 2926,
+        "path": "converters/md_telegraph.py",
+        "postprocess_markers": 22,
+        "regex_markers": 194
+      },
+      {
+        "lines": 691,
+        "path": "core/content_audit.py",
+        "postprocess_markers": 29,
+        "regex_markers": 40
+      },
+      {
+        "lines": 1967,
+        "path": "services/telegraph_pages.py",
+        "postprocess_markers": 32,
+        "regex_markers": 30
+      },
+      {
+        "lines": 673,
+        "path": "core/text_utils.py",
+        "postprocess_markers": 7,
+        "regex_markers": 44
+      },
+      {
+        "lines": 1576,
+        "path": "services/telegraph.py",
+        "postprocess_markers": 27,
+        "regex_markers": 24
+      },
+      {
+        "lines": 1938,
+        "path": "services/pdf_generator.py",
+        "postprocess_markers": 0,
+        "regex_markers": 50
+      },
+      {
+        "lines": 238,
+        "path": "core/code_health.py",
+        "postprocess_markers": 27,
+        "regex_markers": 6
+      },
+      {
+        "lines": 763,
+        "path": "core/source_titles.py",
+        "postprocess_markers": 0,
+        "regex_markers": 32
+      },
+      {
+        "lines": 229,
+        "path": "core/page_audit.py",
+        "postprocess_markers": 15,
+        "regex_markers": 9
+      },
+      {
+        "lines": 2994,
+        "path": "pipelines/main_pipeline.py",
+        "postprocess_markers": 10,
+        "regex_markers": 12
+      }
+    ],
+    "total_postprocess_markers": 266,
+    "total_regex_markers": 720,
+    "typed_source_cards": true,
+    "typo_replacements": 50
+  },
+  "delta": {
+    "files_scanned": 15,
+    "total_regex_markers": 25,
+    "total_postprocess_markers": 12
+  },
+  "evidence": {
+    "focused_tests": [
+      "tests/test_highlights_quality.py",
+      "tests/test_shorts_public_caption_observability.py",
+      "tests/test_shorts_caption_separator_contract.py",
+      "tests/test_caption_sentence_punctuation.py",
+      "tests/test_russian_style_polish.py",
+      "tests/test_synopsis_timestamp_reconciliation.py",
+      "tests/test_telegraph_edit_classification.py",
+      "tests/test_telegraph_service_edit_integration.py",
+      "tests/test_title_topic_audit_evidence.py",
+      "tests/test_clips_candidate_budget.py",
+      "tests/test_service_bootstrap_diagnostic_detail.py"
+    ],
+    "full_suite": "Python 3.11 and 3.13 pytest passed on head 10ee3c2794dc0351d44143e35f3ee6a35a653351 before the baseline refresh; Ruff and Windows runtime checks also passed.",
+    "live_artifact": "6кусков-vq7fH7ANUs_highlights_sub.mp4: 78.1-second public reel with multi-second internal silences, context-dependent starts, broken scripture/quote fragments, repeated meaning, and hard semantic cuts."
+  }
+}
