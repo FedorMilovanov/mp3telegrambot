@@ -29,10 +29,19 @@ def test_caption_polishes_main_topic_and_timestamp_topics() -> None:
         ai_data={
             "real_author": "Пол Вошер",
             "real_title": "Люди Слова",
-            "main_topic": "Готовность к духовным испытаниям ⚔️.",
-            "timestamps": "0:00 Бодрствуйте ⚔️!",
+            "main_topic": (
+                "Призыв к духовному укомплектованию мужей и готовности "
+                "к духовным испытаниям ⚔️."
+            ),
+            "timestamps": (
+                "0:00 Приветствие и духовное укомплектование мужей\n"
+                "1:10 Бодрствуйте ⚔️!"
+            ),
         },
     )
-    assert "Готовность к духовным испытаниям. ⚔️" in caption
-    assert "0:00 Бодрствуйте! ⚔️" in caption
+    assert "духовная подготовка мужчин" in caption
+    assert "духовного укомплектования мужей" not in caption
+    assert "Готовности к духовным испытаниям. ⚔️" in caption
+    assert "0:00 Приветствие и духовная подготовка мужчин" in caption
+    assert "1:10 Бодрствуйте! ⚔️" in caption
     assert "⚔️." not in caption
