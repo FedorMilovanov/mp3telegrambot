@@ -20,4 +20,7 @@ install_global_polish()
 install_generic_preflight(globals())
 
 if _ORIGINAL_NAME == "__main__":
-    main()
+    _main = globals().get("main")
+    if not callable(_main):
+        raise RuntimeError("Clean direct runtime base did not export main().")
+    _main()
