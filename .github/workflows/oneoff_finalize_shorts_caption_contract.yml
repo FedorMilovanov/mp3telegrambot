@@ -4,13 +4,17 @@ on:
   push:
     branches:
       - agent/shorts-caption-separator-contract-20260802
+  pull_request:
+    branches:
+      - main
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   finalize:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/shorts-caption-separator-contract-20260802' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,13 +64,16 @@ install_short_caption_contract_runtime()
 
 from services.shorts_video import (  # noqa: E402
 '''
-          replacement = '''from services.shorts_video import (
-'''
           if prefix in test_text:
-              test_text = test_text.replace(prefix, replacement, 1)
+              test_text = test_text.replace(prefix, 'from services.shorts_video import (\n', 1)
           tests.write_text(test_text, encoding="utf-8")
 
-          Path(".github/workflows/oneoff_finalize_shorts_caption_contract.yml").unlink()
+          for temporary in (
+              Path(".github/workflows/oneoff_finalize_shorts_caption_contract.yml"),
+              Path(".github/trigger_pr75_finalize"),
+          ):
+              if temporary.exists():
+                  temporary.unlink()
           PY
 
       - name: Validate focused behavior
