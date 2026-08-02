@@ -26,3 +26,9 @@ def test_highlights_no_longer_auto_merge_by_clock_proximity() -> None:
     assert "refined = _merge_adjacent_fragments(refined)" not in source
     assert '"actual-transcript-highlights-quality-v2"' in source
     assert 'report["reason"] = f"transcription_error:' in source
+
+
+def test_final_artifact_contract_checks_audio_codec_and_probe_failures() -> None:
+    source = (ROOT / "services" / "media_delivery_probe.py").read_text(encoding="utf-8")
+    assert 'reasons.append("unexpected_audio_codec")' in source
+    assert '"silence_probe_failed"' in source
