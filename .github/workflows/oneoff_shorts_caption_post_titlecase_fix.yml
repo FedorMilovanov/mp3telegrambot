@@ -56,3 +56,5 @@ jobs:
           git add services/shorts_video.py
           git commit -m "Preserve internal em dash after title casing"
           git push origin HEAD:agent/shorts-caption-separator-contract-20260802
+
+# trigger: 2026-08-02 focused retry
