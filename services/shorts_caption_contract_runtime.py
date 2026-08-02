@@ -16,7 +16,9 @@ import re
 from typing import Callable
 
 _INSTALLED = False
-_SENTINEL = "\ue000SHORTS_EM_DASH\ue001"
+# One private-use code point contains no letters, digits or punctuation that the
+# project-wide title-case normalizer can recase or reinterpret.
+_SENTINEL = "\ue000"
 _SPACED_DASH_RE = re.compile(r"(?<=\S)\s+(?:-|–|—)\s+(?=\S)")
 
 
