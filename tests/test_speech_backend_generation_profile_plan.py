@@ -19,7 +19,7 @@ from tools.voxcpm2 import direct_max_quality_render
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
+RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
 RAW_RENDER = ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py"
 RENDER_FACADE = (
     ROOT / "tools" / "voxcpm2" / "direct_max_quality_render" / "__init__.py"
@@ -133,7 +133,7 @@ def test_candidate_loop_builds_and_merges_opaque_profile_plans() -> None:
     assert request.base_backend_options == {"cfg": 1.9, "steps": 16}
     assert merged == {"opaque_length": 70, "opaque_profile": 26}
 
-    with pytest.raises(RuntimeError, match="conflict|конфликт",):
+    with pytest.raises(RuntimeError, match="conflict|конфликт"):
         direct_max_quality_cli._merge_backend_options(
             {"same": 1},
             {"same": 2},

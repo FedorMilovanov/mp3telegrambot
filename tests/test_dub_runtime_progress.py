@@ -11,7 +11,7 @@ from tools.voxcpm2 import dub_worker_hardened
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "services" / "dub_studio_runtime.py"
 RUNTIME_FACADE = ROOT / "services" / "dub_studio_runtime" / "__init__.py"
-WORKER = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened.py"
+WORKER = ROOT / "tools" / "voxcpm2" / "_dub_worker_hardened_base.py"
 WORKER_FACADE = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened" / "__init__.py"
 
 

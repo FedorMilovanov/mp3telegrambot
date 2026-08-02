@@ -51,7 +51,7 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
 def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
     for name in (
         "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
+        "_generic_clean_direct_runtime_base.py",
         "generic_clean_custom_runtime.py",
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")

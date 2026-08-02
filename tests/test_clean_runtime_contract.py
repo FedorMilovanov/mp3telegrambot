@@ -9,6 +9,9 @@ from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_runtime_contract as contract
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def test_runtime_settings_reject_nonfinite_and_absurd_values() -> None:
     request = {"video_id": "project", "cfg": float("nan")}
     with pytest.raises(RuntimeError, match="cfg должен быть конечным"):
@@ -178,7 +181,9 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
 
 def test_clean_core_requires_current_marker_fingerprints() -> None:
     source = Path(clean._legacy.__file__).read_text(encoding="utf-8")
-    contract_source = Path(contract._legacy.__file__).read_text(encoding="utf-8")
+    contract_source = (
+        ROOT / "tools" / "voxcpm2" / "_clean_runtime_contract_base.py"
+    ).read_text(encoding="utf-8")
     assert clean.POLICY == "clean-direct-production-v2"
     assert "render_contract_sha256" in source
     assert "release_contract_sha256" in source

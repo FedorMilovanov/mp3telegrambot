@@ -35,6 +35,12 @@ _QUALITY_VERSION = "voxcpm2-quality-v4.2"
 _PROGRESS_PREFIX = "DUB_PROGRESS "
 _SEGMENT_LINE_RE = re.compile(r"^\[(\d+)\s*/\s*(\d+)\]")
 _ATTEMPT_LINE_RE = re.compile(r"^attempt\s+(\d+):", flags=re.I)
+_REQUIRED_RENDER_HOOKS = (
+    "candidate_score",
+    "fit_without_slowdown",
+    "log",
+    "set_seed",
+)
 
 
 def log(message: str) -> None:
@@ -50,16 +56,50 @@ def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., An
     return value
 
 
-def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
-    """Return the globals actually used by functions loaded with runpy.
+def _has_render_hooks(namespace: object) -> bool:
+    return isinstance(namespace, dict) and all(
+        callable(namespace.get(name)) for name in _REQUIRED_RENDER_HOOKS
+    )
 
-    ``runpy.run_path`` may return a dictionary distinct from ``function.__globals__``.
-    Mutating only the returned dictionary can therefore look successful while the
-    executed renderer continues using its original unpatched hooks.
+
+def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
+    """Find globals used by the underlying renderer through wrapper closures.
+
+    Active production wraps ``main`` for failure recovery. Its immediate
+    ``__globals__`` therefore belongs to the wrapper module, while the captured
+    original function owns candidate scoring, fitting, logging and seeding.
+    Traverse callable closure cells fail-closed instead of patching a dictionary
+    that the renderer never reads.
     """
     main_hook = _required_callable(namespace, "main")
-    globals_dict = getattr(main_hook, "__globals__", None)
-    return globals_dict if isinstance(globals_dict, dict) else namespace
+    queue: list[Callable[..., Any]] = [main_hook]
+    seen: set[int] = set()
+    while queue:
+        hook = queue.pop(0)
+        identity = id(hook)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        globals_dict = getattr(hook, "__globals__", None)
+        if _has_render_hooks(globals_dict):
+            return globals_dict
+        closure = getattr(hook, "__closure__", None) or ()
+        for cell in closure:
+            try:
+                captured = cell.cell_contents
+            except ValueError:
+                continue
+            if callable(captured):
+                queue.append(captured)
+    if _has_render_hooks(namespace):
+        return namespace
+    missing = [
+        name for name in _REQUIRED_RENDER_HOOKS if not callable(namespace.get(name))
+    ]
+    raise RuntimeError(
+        "Не найден active renderer namespace с обязательными hooks: "
+        + ", ".join(missing)
+    )
 
 
 def _emit_progress(progress: int, stage: str, message: str) -> None:
@@ -187,21 +227,34 @@ def main() -> None:
     original_set_seed = _required_callable(base_globals, "set_seed")
     progress_state = {"position": 0, "total": 0, "attempt": 0}
 
-    def quality_score(candidate: dict[str, Any], speech_slot: float) -> float:
-        return float(original_score(candidate, speech_slot)) + _initial_artifact_score(candidate)
+    def quality_score(
+        candidate: dict[str, Any],
+        speech_slot: float,
+        *extra: Any,
+    ) -> float:
+        return float(original_score(candidate, speech_slot, *extra)) + _initial_artifact_score(candidate)
 
     def quality_fit(
         clean_path: Path,
         fitted_path: Path,
         target_duration: float,
         tail_guard: float,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         samples, sample_rate = sf.read(clean_path, dtype="float32")
         if np.asarray(samples).ndim > 1:
             samples = np.asarray(samples, dtype=np.float32).mean(axis=1)
         trimmed, trim_report = trim_candidate_edges(np.asarray(samples), int(sample_rate))
         sf.write(clean_path, trimmed, int(sample_rate), subtype="PCM_24")
-        report = dict(original_fit(clean_path, fitted_path, target_duration, tail_guard))
+        report = dict(
+            original_fit(
+                clean_path,
+                fitted_path,
+                target_duration,
+                tail_guard,
+                **kwargs,
+            )
+        )
         report.update(trim_report)
         report["quality_version"] = _QUALITY_VERSION
         return report
@@ -264,8 +317,6 @@ def main() -> None:
             _emit_progress(progress, stage, "CPU выполняет VoxCPM2-синтез; процесс может молчать несколько минут")
         original_set_seed(seed, torch_module)
 
-    # Patch the dictionary actually referenced by loaded functions. Assigning to
-    # the dictionary returned by runpy alone is insufficient on supported CPython.
     base_globals["candidate_score"] = quality_score
     base_globals["fit_without_slowdown"] = quality_fit
     base_globals["log"] = progress_log

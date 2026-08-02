@@ -12,6 +12,7 @@ from services.speech_backends.voxcpm2 import SESSION_CALL_POLICY
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
 
 
 class _Cache:
@@ -85,9 +86,7 @@ def test_voxcpm2_backend_accepts_only_typed_session_config(monkeypatch) -> None:
 
 
 def test_production_cli_builds_typed_session_config() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(
-        encoding="utf-8"
-    )
+    source = RAW_CLI.read_text(encoding="utf-8")
     adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(
         encoding="utf-8"
     )

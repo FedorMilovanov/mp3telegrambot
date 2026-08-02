@@ -13,15 +13,21 @@ globals()["__name__"] = _ORIGINAL_NAME
 
 from tools.voxcpm2.direct_universal_runtime import install_runtime_fingerprint
 
+_BASE_RENDER_MODULES = tuple(globals().get("_RENDER_MODULES", ()))
+if not _BASE_RENDER_MODULES:
+    raise RuntimeError("Clean runtime base did not export _RENDER_MODULES.")
+
 install_runtime_fingerprint(globals())
 _RENDER_MODULES = tuple(
     dict.fromkeys(
         (
-            *_RENDER_MODULES,
+            *_BASE_RENDER_MODULES,
             "tools/voxcpm2/direct_failure_recovery.py",
+            "tools/voxcpm2/direct_final_audit_v3.py",
             "tools/voxcpm2/direct_surgical_guard.py",
             "tools/voxcpm2/direct_surgical_io.py",
             "tools/voxcpm2/direct_surgical_runtime.py",
+            "tools/voxcpm2/direct_surgical_polish_v2.py",
             "services/speech_backends/audited_voxcpm2.py",
             "services/speech_backends/base.py",
             "services/speech_backends/control_plane.py",

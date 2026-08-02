@@ -8,7 +8,7 @@ reference cannot poison a newly edited job that happens to reuse a segment ID.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -20,14 +20,39 @@ globals()["__name__"] = "tools.voxcpm2._direct_retry_epoch_base_exec"
 exec(compile(_BASE.read_text(encoding="utf-8-sig"), str(_BASE), "exec"), globals())
 globals()["__name__"] = _ORIGINAL_NAME
 
-BASE_POLICY = POLICY
+
+def _required_export(name: str) -> Any:
+    value = globals().get(name)
+    if value is None:
+        raise RuntimeError(f"Direct retry base export is missing: {name}")
+    return value
+
+
+def _required_callable(name: str) -> Callable[..., Any]:
+    value = _required_export(name)
+    if not callable(value):
+        raise RuntimeError(f"Direct retry base export is not callable: {name}")
+    return value
+
+
+BASE_POLICY = str(_required_export("POLICY"))
+MAX_RETRY_EPOCH = int(_required_export("MAX_RETRY_EPOCH"))
+MAX_SEGMENT_ID = int(_required_export("MAX_SEGMENT_ID"))
+SEED_EPOCH_STRIDE = int(_required_export("SEED_EPOCH_STRIDE"))
+_strict_segment_id = _required_callable("_strict_segment_id")
+_read_payload = _required_callable("_read_payload")
+_now = _required_callable("_now")
+_atomic_write = _required_callable("_atomic_write")
+retry_epoch_path = _required_callable("retry_epoch_path")
+seed_for_attempt = _required_callable("seed_for_attempt")
+invalidate_segment_for_retry = _required_callable("invalidate_segment_for_retry")
+_base_load_retry_epoch = _required_callable("load_retry_epoch")
+_base_advance_retry_epoch = _required_callable("advance_retry_epoch")
+
 POLICY = "failed-segment-seed-epoch-scope-v2"
 MAX_SCOPE_EPOCH = 3
 _SCOPE_EPOCHS_KEY = "scope_epochs"
 _SCOPE_FINGERPRINT_KEY = "failure_scope_fingerprint"
-
-_base_load_retry_epoch = load_retry_epoch
-_base_advance_retry_epoch = advance_retry_epoch
 
 
 def _scope_fingerprint(evidence: Mapping[str, Any] | None) -> str:

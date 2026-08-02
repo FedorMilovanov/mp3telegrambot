@@ -1,0 +1,50 @@
+name: VoxCPM2 contract checks
+
+on:
+  pull_request:
+    paths:
+      - "tools/voxcpm2/**"
+      - "tests/test_direct_*.py"
+      - ".github/workflows/voxcpm2-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/voxcpm2/**"
+      - "tests/test_direct_*.py"
+      - ".github/workflows/voxcpm2-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  focused-contracts:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Compile active direct layers
+        run: >-
+          python -m py_compile
+          tools/voxcpm2/direct_final_audit_v3.py
+          tools/voxcpm2/direct_surgical_polish_v2.py
+          tools/voxcpm2/direct_max_quality_cli.py
+          tools/voxcpm2/generic_clean_direct_runtime.py
+          tools/voxcpm2/clean_runtime_contract.py
+
+      - name: Run isolated audit contracts
+        run: >-
+          python -m pytest -q
+          tests/test_direct_surgical_polish_v2.py
+          tests/test_direct_final_audit_v3.py
