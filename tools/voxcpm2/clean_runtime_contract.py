@@ -22,6 +22,7 @@ _RENDER_MODULES = tuple(
             "tools/voxcpm2/direct_surgical_guard.py",
             "tools/voxcpm2/direct_surgical_io.py",
             "tools/voxcpm2/direct_surgical_runtime.py",
+            "tools/voxcpm2/direct_surgical_polish_v2.py",
             "services/speech_backends/audited_voxcpm2.py",
             "services/speech_backends/base.py",
             "services/speech_backends/control_plane.py",

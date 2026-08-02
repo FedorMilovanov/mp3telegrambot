@@ -14,11 +14,13 @@ globals()["__name__"] = _ORIGINAL_NAME
 from tools.voxcpm2.direct_surgical_guard import install_guard_contract
 from tools.voxcpm2.direct_universal_runtime import install_direct_runtime
 from tools.voxcpm2.direct_surgical_runtime import install_surgical_runtime
+from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
 from tools.voxcpm2.direct_failure_recovery import install_main_failure_recovery
 
 install_guard_contract()
 install_direct_runtime(globals())
 install_surgical_runtime(globals())
+install_global_polish()
 install_main_failure_recovery(globals())
 
 if _ORIGINAL_NAME == "__main__":
