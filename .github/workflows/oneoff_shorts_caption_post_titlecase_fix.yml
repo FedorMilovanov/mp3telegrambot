@@ -4,13 +4,17 @@ on:
   push:
     branches:
       - agent/shorts-caption-separator-contract-20260802
+  pull_request:
+    branches:
+      - main
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/shorts-caption-separator-contract-20260802' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,5 +60,3 @@ jobs:
           git add services/shorts_video.py
           git commit -m "Preserve internal em dash after title casing"
           git push origin HEAD:agent/shorts-caption-separator-contract-20260802
-
-# trigger: 2026-08-02 focused retry
