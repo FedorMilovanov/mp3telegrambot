@@ -132,10 +132,7 @@ async def _run_montage_or_highlights_pipeline(
                     )
                     and poster_path.exists()
                 ):
-                    thumb_buf = InputFile(
-                        poster_path.read_bytes(),
-                        filename=poster_path.name,
-                    )
+                    thumb_buf = InputFile(poster_path.read_bytes(), filename=poster_path.name)
             except Exception:
                 pass
         if thumb_buf is None and do_snapshot:
@@ -148,10 +145,7 @@ async def _run_montage_or_highlights_pipeline(
                     )
                     and snapshot_path.exists()
                 ):
-                    thumb_buf = InputFile(
-                        snapshot_path.read_bytes(),
-                        filename=snapshot_path.name,
-                    )
+                    thumb_buf = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
             except Exception:
                 pass
 
