@@ -21,10 +21,28 @@ from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.nam
 
 import asyncio
 import logging
+import os
 from io import BytesIO    # FIX pipeline_clips
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _clips_candidate_budget_seconds() -> float:
+    """Wall-clock budget for the optional Gemini candidate search.
+
+    Clips run after the primary delivery and must never keep the whole job alive
+    through a long chain of overload retries.  The shared Gemini retry policy is
+    intentionally left untouched; this boundary applies only to the optional
+    Clips feature.
+    """
+    raw = (os.getenv("CLIPS_CANDIDATE_BUDGET_SECONDS", "90") or "90").strip()
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = 90.0
+    return max(15.0, min(value, 300.0))
+
 
 async def process_and_send_clips(
     url: str,
@@ -58,15 +76,28 @@ async def process_and_send_clips(
     snap_paths: list[Path] = []
     try:
         # ── Шаг 1: найти кандидатов ──────────────────────────
-        candidates = await create_clips_candidates(
-            mp3_path=mp3_path,
-            ai_data=ai_data,
-            title=title,
-            performer=performer,
-            duration=duration,
-            existing_audio_part=existing_audio_part,
-            existing_client=existing_client,
-        )
+        candidate_budget = _clips_candidate_budget_seconds()
+        try:
+            candidates = await asyncio.wait_for(
+                create_clips_candidates(
+                    mp3_path=mp3_path,
+                    ai_data=ai_data,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    existing_audio_part=existing_audio_part,
+                    existing_client=existing_client,
+                ),
+                timeout=candidate_budget,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Clips: optional candidate search exceeded %.0fs budget — "
+                "skipping Clips without delaying the completed primary delivery",
+                candidate_budget,
+            )
+            return
+
         if not candidates:
             logger.info("Clips: кандидаты не найдены")
             return
