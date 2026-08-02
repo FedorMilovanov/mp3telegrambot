@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.structured_blocks import normalize_structured_block
+from core.synopsis_timestamps import reconcile_synopsis_timestamps
 from core.text_utils import (
     find_mixed_greek_cyrillic_tokens,
     normalize_common_typos,
@@ -571,6 +572,28 @@ def audit_expanded_sections(
         oi["title"] = new_title
         new_outline.append(oi)
 
+    # Synopsis has two independently generated views of one timeline: section
+    # starts and inline anchors.  Reconcile them at the audit boundary so both
+    # the initial generation and a later density retry return the same fixed
+    # point to every downstream renderer.  Other page types keep their original
+    # semantics and are not touched.
+    if str(label or "").lower().startswith("synopsis"):
+        new_sections, new_outline, timestamp_issues = reconcile_synopsis_timestamps(
+            new_sections,
+            new_outline,
+        )
+        for timestamp_issue in timestamp_issues:
+            issues.append(ContentAuditIssue(
+                code=timestamp_issue.code,
+                location=(
+                    f"{label or 'Synopsis'}.sections["
+                    f"{timestamp_issue.section_index}]"
+                ),
+                message=timestamp_issue.message,
+                before=timestamp_issue.before,
+                after=timestamp_issue.after,
+            ))
+
     return new_sections, new_outline, issues
 
 
@@ -584,6 +607,8 @@ _WARNING_CODES = {
     "source_relevance_missing_warning",
     "lexicon_role_thin_warning",
     "application_anchor_missing_warning",
+    "section_time_reconcile_blocked",
+    "section_start_non_monotonic",
 }
 
 
