@@ -26,4 +26,7 @@ install_final_audit(globals())
 install_main_failure_recovery(globals())
 
 if _ORIGINAL_NAME == "__main__":
-    main()
+    _main = globals().get("main")
+    if not callable(_main):
+        raise RuntimeError("Direct renderer base did not export main().")
+    _main()
