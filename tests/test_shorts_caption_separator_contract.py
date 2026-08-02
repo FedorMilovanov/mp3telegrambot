@@ -1,3 +1,4 @@
+import services.shorts_video as shorts_video
 from services.shorts_video import _prepare_short_hook, build_short_caption
 
 
@@ -9,6 +10,14 @@ def _caption(hook: str, *, kind: str = "") -> str:
         real_event="",
         format_name="sermon",
     )
+
+
+def test_internal_title_pipeline_preserves_em_dash_before_outer_formatting() -> None:
+    prepared = _prepare_short_hook("Сомнение - Это не слабость", "Пол Вошер")
+    assert prepared == "Сомнение — Это не слабость"
+    titled = shorts_video.title_case_fragment(prepared)
+    assert titled == "Сомнение — Это не Слабость"
+    assert shorts_video.html_mod.escape(titled) == "Сомнение — Это не Слабость"
 
 
 def test_internal_pause_uses_em_dash_and_author_boundary_uses_hyphen() -> None:
