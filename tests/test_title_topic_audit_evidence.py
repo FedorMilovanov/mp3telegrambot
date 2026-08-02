@@ -6,23 +6,31 @@ from core.title_topic_audit import (
 )
 
 
-def test_two_term_editorial_title_is_inconclusive_not_an_error() -> None:
-    assert audit_title_topic_consistency(
+def test_two_term_editorial_title_is_inconclusive_warning_not_error() -> None:
+    issue = audit_title_topic_consistency(
         "Люди Слова",
         "Кризис духовной зрелости и ответственность мужчины за семью",
         [{"topic": "Борьба за веру, святость и семью"}],
-    ) is None
+    )
+    assert issue is not None
+    assert issue.code == "title_topic_inconclusive_short_title"
+    assert issue.confidence == "inconclusive"
+    assert issue.raw_overlap == 0.0
+    assert issue.overlap == 0.05
 
 
-def test_metaphorical_two_term_title_is_not_rejected_by_lexical_overlap() -> None:
-    assert audit_title_topic_consistency(
+def test_metaphorical_two_term_title_is_warning_not_rejected() -> None:
+    issue = audit_title_topic_consistency(
         "Узкие врата",
         "Призыв исследовать подлинность обращения и плод покаяния",
         [],
-    ) is None
+    )
+    assert issue is not None
+    assert issue.confidence == "inconclusive"
+    assert issue.overlap == 0.05
 
 
-def test_descriptive_title_with_enough_evidence_is_still_audited() -> None:
+def test_descriptive_title_with_enough_evidence_is_still_audited_strongly() -> None:
     issue = audit_title_topic_consistency(
         "История церковной архитектуры Европы",
         "Проповедь о духовной зрелости, семье и стойкости в испытаниях",
@@ -30,7 +38,9 @@ def test_descriptive_title_with_enough_evidence_is_still_audited() -> None:
     )
     assert issue is not None
     assert issue.code == "title_topic_low_overlap"
+    assert issue.confidence == "strong"
     assert issue.overlap == 0.0
+    assert issue.raw_overlap == 0.0
 
 
 def test_safe_fallback_requires_measurably_better_topic_alignment() -> None:
