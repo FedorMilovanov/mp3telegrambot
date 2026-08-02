@@ -11,8 +11,8 @@ from core.text_utils import (
 )
 from converters.md_telegraph import (
     _section_to_nodes_v2, _build_toc_nodes_v2, _build_nav_nodes_v2,
-    _split_sections_smart, _create_telegraph_page_single, _edit_telegraph_page,
-    _final_telegraph_polish,
+    _split_sections_smart, _create_telegraph_page_single,
+    _final_telegraph_polish, _postprocess_telegraph_nodes,
     _HEADING_BOLD_STRIP_RE,   # FIX telegraph
     _estimate_nodes_v2,       # FIX telegraph
     _extract_partial_sections,# FIX telegraph
@@ -40,9 +40,16 @@ from core.synopsis_quality import (
     format_synopsis_quality_issues, get_synopsis_density_profile,
     should_retry_synopsis_density, synopsis_density_score,
 )
+from core.synopsis_timestamps import format_timestamp_issues, unresolved_timestamp_issues
 from core.prompt_compactor import compact_prompt_for_generation
 from core.generated_pages import aget_related_materials, extract_scripture_refs
+from core.page_audit import audit_telegraph_page, format_audit_issues, should_abort_for_page_audit
 from converters.md_telegraph import _build_related_materials_nodes
+from services.telegraph_edit import (
+    TelegraphEditResult,
+    edit_telegraph_page_once,
+    run_telegraph_edit_with_retry,
+)
 
 import asyncio
 import json      # FIX telegraph
@@ -63,6 +70,60 @@ logger = logging.getLogger(__name__)
 
 
 SYNOPSIS_REASONING_FIRST_NOTE = build_synopsis_reasoning_note()
+
+
+async def _edit_telegraph_page_classified(
+    page_url: str,
+    title: str,
+    author: str,
+    nodes: list,
+    loop,
+    *,
+    author_url: str = "",
+) -> TelegraphEditResult:
+    """Edit one page with the same cleaning/audit contract as legacy editPage.
+
+    The transport returns a structured outcome. Identical requests are retried
+    only for transient network/FLOOD_WAIT/5xx failures; deterministic
+    CONTENT_TOO_BIG is returned after the first call so the caller can rebuild a
+    smaller payload immediately.
+    """
+    if not TELEGRAPH_TOKEN:
+        return TelegraphEditResult(ok=False, error="no_token", retryable=False)
+
+    prepared = _clean_telegraph_nodes(nodes)
+    prepared = _postprocess_telegraph_nodes(prepared)
+    prepared = _final_telegraph_polish(prepared)
+    page_audit = audit_telegraph_page(title, prepared, page_type="edit")
+    if page_audit:
+        audit_summary = format_audit_issues(page_audit)
+        logger.warning("Telegraph editPage audit for %s: %s", page_url, audit_summary)
+        if should_abort_for_page_audit(page_audit):
+            return TelegraphEditResult(
+                ok=False,
+                error="page_audit_strict: " + audit_summary[:300],
+                retryable=False,
+            )
+
+    async def _operation() -> TelegraphEditResult:
+        return await edit_telegraph_page_once(
+            page_url,
+            title,
+            author,
+            prepared,
+            loop,
+            author_url=author_url,
+            token=TELEGRAPH_TOKEN,
+        )
+
+    result = await run_telegraph_edit_with_retry(_operation, max_attempts=3)
+    if result.ok:
+        try:
+            from services.pdf_generator import invalidate_telegraph_url
+            invalidate_telegraph_url(page_url)
+        except Exception:
+            pass
+    return result
 
 
 
@@ -1063,11 +1124,6 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return None, None
 
         _syn_quality_issues = audit_synopsis_density(sections, _duration)
-        # AUDIT #023: validate inline timestamps don't precede section.time
-        from core.synopsis_quality import audit_inline_timestamp_order
-        _ts_order_issues = audit_inline_timestamp_order(sections)
-        if _ts_order_issues:
-            logger.warning("Synopsis v2: inline timestamp order: %s", format_synopsis_quality_issues(_ts_order_issues))
         if _syn_quality_issues:
             logger.warning("Synopsis v2: density/coverage audit: %s", format_synopsis_quality_issues(_syn_quality_issues))
 
@@ -1130,6 +1186,12 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         label="SynopsisDensityRetry",
                         expected_author=author,
                     )
+                    if _retry_audit and _audit_mode != "off":
+                        _retry_log = logger.warning if has_content_audit_warnings(_retry_audit) else logger.info
+                        _retry_log(
+                            "Synopsis v2: density retry content audit: %s",
+                            format_content_audit_issues(_retry_audit),
+                        )
                     _retry_quality_issues = audit_synopsis_density(_retry_sections, _duration)
                     _old_score = synopsis_density_score(sections, _duration)
                     _new_score = synopsis_density_score(_retry_sections, _duration)
@@ -1152,6 +1214,15 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             except Exception as _density_retry_err:
                 logger.warning("Synopsis v2: density retry failed non-fatally: %s", str(_density_retry_err)[:180])
 
+        # Final fixed-point verification runs after the density retry decision,
+        # because the accepted retry becomes the actual publication payload.
+        _ts_order_issues = unresolved_timestamp_issues(sections)
+        if _ts_order_issues:
+            logger.warning(
+                "Synopsis v2: unresolved timestamp order after reconciliation: %s",
+                format_timestamp_issues(_ts_order_issues),
+            )
+
         # ── Валидация плотности sections (BP-04) ─────────────
         _thin_count = sum(1 for s in sections if len(((s.get("content") or "").strip() or s.get("blocks"))) < 100)
         if _thin_count > 0:
@@ -1166,17 +1237,15 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         # Дополняем outline этими секциями явно, чтобы они попали в оглавление
         # без таймкода и без ложного rebuild-предупреждения.
         outline_rebuilt = False
-        # Всегда строим финальный outline из sections — sections является единственным
-        # источником правды. outline от Gemini используем только для извлечения таймкодов
-        # (Gemini иногда пропускает последний раздел или путает порядок).
+        # sections is the authoritative timeline after deterministic audit.
+        # The Gemini outline may fill a missing time only; it can never overwrite
+        # a reconciled section start.
         if outline and len(outline) == len(sections):
-            # Синхронизируем: берём title/time из sections, но если outline дал таймкод
-            # для этой позиции — доверяем ему (он точнее при QA-формате)
             merged = []
             for sec, oi in zip(sections, outline):
                 merged.append({
                     "title": sec.get("title", ""),
-                    "time":  (oi.get("time") or sec.get("time") or ""),
+                    "time":  (sec.get("time") or oi.get("time") or ""),
                 })
             outline = merged
         else:
@@ -1339,17 +1408,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             # но не возвращаем ссылку — бот не покажет Конспект в caption
             return None, None
 
-        # AUDIT R16 (вопрос оператора: «можно ли 2 и 3 части объединить?»):
-        # _publish_recursive делит sections пополам по КОЛИЧЕСТВУ, а не по
-        # реальному размеру — из-за этого хвостовые части выходят заметно
-        # тоньше соседних (наблюдалось 4+2+3 вместо более компактного расклада).
-        # Пробуем СЛИТЬ последнюю часть с предпоследней РЕАЛЬНЫМ editPage —
-        # решение принимает сам Telegraph (CONTENT_TOO_BIG), а не догадка по
-        # числу нод. При неудаче part'ы остаются как есть, публикация не теряется.
-        # editPage возвращает False сразу на CONTENT_TOO_BIG (без лишних retry),
-        # так что цена одной неудачной попытки — один быстрый API-вызов.
-        # Пауза перед первым editPage — тот же rate-limit, что и в V3-P16 ниже
-        # (editPage сразу после createPage падает 3/3 без паузы).
+        # Try merging the final two parts using the exact API outcome. A
+        # deterministic overflow simply means the current split is already the
+        # compact safe layout; transient failures may retry inside the helper.
         if len(published_parts) >= 2:
             await asyncio.sleep(2)
         while len(published_parts) >= 2:
@@ -1363,8 +1424,15 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _combined_nodes.extend(_section_to_nodes_v2(
                     _csec, yt_url=url, rutube_url=rutube_url, vk_url=vk_url, duration=duration,
                 ))
-            _merged_ok = await _edit_telegraph_page(_prev_url, tg_title, author, _combined_nodes, loop)
-            if not _merged_ok:
+            _merged_result = await _edit_telegraph_page_classified(
+                _prev_url, tg_title, author, _combined_nodes, loop
+            )
+            if not _merged_result.ok:
+                if _merged_result.error != "CONTENT_TOO_BIG":
+                    logger.warning(
+                        "Synopsis v2: merge edit failed for %s: %s",
+                        _prev_url, _merged_result.error,
+                    )
                 break
             logger.info(
                 "Synopsis v2: слил хвостовую часть (%d secs) в предыдущую — частей стало %d вместо %d",
@@ -1383,10 +1451,6 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         # V3-P16: пауза перед editPage — Telegraph rate limit после быстрой публикации.
         # Без паузы editPage падает 3/3 при >50 nodes (0.7с между create и edit).
 
-        # AUDIT R19 (лог 2026-07-09, «Что такое Евангелие?»): вынесено в
-        # хелпер, чтобы одну и ту же сборку nodes_edit можно было ПОВТОРНО
-        # вызвать после сжатия части (см. ниже) без дублирования кода TOC/
-        # mini-outline/nav/related-materials.
         async def _build_part_nodes_edit(i: int, part_secs: list, part_title: str,
                                           *, include_outline: bool = True) -> list:
             _nodes: list = []
@@ -1460,49 +1524,35 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 part_title = tg_title[:256 - len(_sfx)] + _sfx
 
             nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title)
+            edit_result = await _edit_telegraph_page_classified(
+                page_url, part_title, author, nodes_edit, loop
+            )
+            ok = edit_result.ok
 
-            ok = False
-            for retry_attempt in range(3):
-                ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
-                if ok:
-                    break
-                wait_time = 3 * (2 ** retry_attempt)  # 3 → 6 → 12 сек
+            # CONTENT_TOO_BIG is deterministic for an identical payload. Do not
+            # spend 3/6/12 seconds repeating it; rebuild once without optional
+            # outline nodes while preserving all section content and navigation.
+            if not ok and edit_result.error == "CONTENT_TOO_BIG":
                 logger.warning(
-                    f"Synopsis v2: editPage часть {part_num}/{total} "
-                    f"попытка {retry_attempt + 1}/3 failed для {page_url}, жду {wait_time}с..."
-                )
-                await asyncio.sleep(wait_time)
-
-            # AUDIT R19 (лог 2026-07-09, «Что такое Евангелие?»): editPage с
-            # TOC/mini-outline может не влезть после publish-time splitting
-            # (часть 1 упала: "editPage часть 1/3 упала с TOC" в реальном
-            # логе). Раньше мы СРАЗУ выбрасывали оглавление целиком — читатель
-            # терял навигацию по разделам без веской причины. Теперь СНАЧАЛА
-            # пробуем сжать часть, перенеся её последнюю секцию в начало
-            # следующей части (следующая часть точно существует, если i <
-            # total-1) — оглавление остаётся, решение всё так же принимает
-            # сам Telegraph через editPage, а не догадка по числу нод.
-            # Оглавление выбрасываем только если сжимать больше некуда
-            # (осталась 1 секция) или сжимать некуда физически (последняя
-            # часть, следующей нет).
-            # AUDIT R39: НЕ переносим секции между частями (это теряло секцию при
-            # двойном overflow — перенесённая секция могла не попасть ни на одну
-            # страницу, а пайплайн рапортовал успех). Просто пере-издаём часть
-            # без оглавления: контент create-фазы гарантированно влезает.
-            if not ok:
-                logger.warning(
-                    "Synopsis v2: editPage часть %d/%d упала с оглавлением — повтор без него (контент сохраняем)",
+                    "Synopsis v2: editPage часть %d/%d CONTENT_TOO_BIG — "
+                    "сразу пересобираю без оглавления (контент сохраняем)",
                     part_num, total,
                 )
-                await asyncio.sleep(2)
-                nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title, include_outline=False)
-                ok = await _edit_telegraph_page(page_url, part_title, author, nodes_edit, loop)
+                nodes_edit = await _build_part_nodes_edit(
+                    i, part_secs, part_title, include_outline=False
+                )
+                edit_result = await _edit_telegraph_page_classified(
+                    page_url, part_title, author, nodes_edit, loop
+                )
+                ok = edit_result.ok
 
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")
             else:
                 logger.warning(
-                    f"Synopsis v2: editPage часть {part_num}/{total} окончательно failed, page content may stay outdated: {page_url}"
+                    "Synopsis v2: editPage часть %d/%d окончательно failed (%s), "
+                    "page content may stay outdated: %s",
+                    part_num, total, edit_result.error, page_url,
                 )
 
         return parts_urls[0], outline
