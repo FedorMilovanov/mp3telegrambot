@@ -1,0 +1,78 @@
+name: Windows full-suite regressions
+
+on:
+  pull_request:
+    paths:
+      - "core/database.py"
+      - "services/ffmpeg.py"
+      - "services/mp3_chapters.py"
+      - "tools/voxcpm2/dub_job_preflight/**"
+      - "tests/test_dub_job_preflight_v2.py"
+      - "tests/test_livedub_qa.py"
+      - "tests/test_windows_full_suite_regressions.py"
+      - ".github/workflows/windows-full-suite-regressions.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "core/database.py"
+      - "services/ffmpeg.py"
+      - "services/mp3_chapters.py"
+      - "tools/voxcpm2/dub_job_preflight/**"
+      - "tests/test_dub_job_preflight_v2.py"
+      - "tests/test_livedub_qa.py"
+      - "tests/test_windows_full_suite_regressions.py"
+      - ".github/workflows/windows-full-suite-regressions.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-regressions:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+
+      - name: Compile changed surfaces
+        run: >-
+          python -m py_compile
+          core/database.py
+          services/ffmpeg.py
+          services/mp3_chapters.py
+          tools/voxcpm2/dub_job_preflight/__init__.py
+          tests/test_windows_full_suite_regressions.py
+
+      - name: Run Windows regression contracts
+        run: >-
+          python -m pytest -q
+          tests/test_windows_full_suite_regressions.py
+          tests/test_dub_job_preflight_v2.py::test_atomic_preflight_reports_do_not_share_temp_names
+          tests/test_livedub_qa.py::test_ytdlp_env_browser_cookie_source_can_override_dead_config
+          tests/test_livedub_qa.py::test_video_force_cpu_explicit_only
+          tests/test_livedub_qa.py::test_video_cpu_preset_knob
+          tests/test_livedub_qa.py::test_mp3_chapters_embed_and_validate
+          tests/test_livedub_qa.py::test_db_backup_creates_and_rotates
+
+      - name: Ruff changed surfaces
+        run: >-
+          python -m ruff check
+          core/database.py
+          services/ffmpeg.py
+          services/mp3_chapters.py
+          tools/voxcpm2/dub_job_preflight/__init__.py
+          tests/test_windows_full_suite_regressions.py
