@@ -1,3 +1,6 @@
+import inspect
+
+import core.text_utils as text_utils
 import services.shorts_video as shorts_video
 from services.shorts_video import _prepare_short_hook, build_short_caption
 
@@ -12,11 +15,24 @@ def _caption(hook: str, *, kind: str = "") -> str:
     )
 
 
+def _title_runtime_diagnostic() -> str:
+    fn = shorts_video.title_case_fragment
+    try:
+        source = inspect.getsource(fn)
+    except Exception as exc:
+        source = f"<source unavailable: {type(exc).__name__}: {exc}>"
+    return (
+        f"shorts_fn={fn!r}; module={getattr(fn, '__module__', '')}; "
+        f"qualname={getattr(fn, '__qualname__', '')}; "
+        f"same_as_core={fn is text_utils.title_case_fragment}; source={source}"
+    )
+
+
 def test_internal_title_pipeline_preserves_em_dash_before_outer_formatting() -> None:
     prepared = _prepare_short_hook("Сомнение - Это не слабость", "Пол Вошер")
     assert prepared == "Сомнение — Это не слабость"
     titled = shorts_video.title_case_fragment(prepared)
-    assert titled == "Сомнение — Это не Слабость"
+    assert titled == "Сомнение — Это не Слабость", _title_runtime_diagnostic()
     assert shorts_video.html_mod.escape(titled) == "Сомнение — Это не Слабость"
 
 
