@@ -9,6 +9,21 @@ def test_spiritual_equipping_calque_is_rewritten_naturally() -> None:
     assert fixes[0].before == "духовное укомплектование мужей"
 
 
+def test_inflected_calque_forms_preserve_russian_case() -> None:
+    cases = {
+        "призыв к духовному укомплектованию мужей":
+            "призыв к духовной подготовке мужчин",
+        "необходимость духовного укомплектования мужчин":
+            "необходимость духовной подготовки мужчин",
+        "заниматься духовным укомплектованием мужей":
+            "заниматься духовной подготовкой мужчин",
+        "говорить о духовном укомплектовании мужчин":
+            "говорить о духовной подготовке мужчин",
+    }
+    for source, expected in cases.items():
+        assert polish_public_russian_text(source) == expected
+
+
 def test_capitalization_is_preserved_at_phrase_start() -> None:
     assert polish_public_russian_text(
         "Духовное укомплектование мужчин начинается со Слова"
