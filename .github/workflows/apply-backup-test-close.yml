@@ -1,9 +1,9 @@
 name: Apply backup test close fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/windows-full-suite-fixes-20260803
+      - main
     paths:
       - ".github/scripts/close_backup_test_connection.py"
       - ".github/workflows/apply-backup-test-close.yml"
@@ -22,6 +22,7 @@ jobs:
         with:
           ref: agent/windows-full-suite-fixes-20260803
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Apply exact test patch
         run: python .github/scripts/close_backup_test_connection.py
