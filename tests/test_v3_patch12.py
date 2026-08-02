@@ -1,9 +1,12 @@
-"""Tests for v3 patch 12 — editPage reliability: API error logging + exponential backoff.
+"""Tests for v3 patch 12 — editPage reliability and retry classification.
 
-Changes:
-- converters/md_telegraph.py: log Telegraph API error message when editPage returns ok=False
-- services/telegraph_pages.py: exponential backoff in editPage retry (3s, 6s, 12s)
+Legacy editPage loops used source-local 3/6/12 sleeps. Synopsis now delegates to
+``services.telegraph_edit`` so deterministic API failures such as
+CONTENT_TOO_BIG return immediately while transient failures retain exponential
+backoff.
 """
+
+from services.telegraph_edit import TelegraphEditResult, telegraph_retry_delay
 
 
 def test_edit_telegraph_page_logs_api_error():
@@ -30,9 +33,17 @@ def test_telegraph_pages_backoff_logged():
         "telegraph_pages must log backoff duration"
 
 
-def test_synopsis_already_has_exponential_backoff():
-    """Synopsis editPage in telegraph.py already had exponential backoff — must stay."""
+def test_synopsis_retry_policy_is_centralized_and_exponential_for_transient_failures():
     src = open("services/telegraph.py", encoding="utf-8").read()
-    assert "3 * (2 ** retry_attempt)" in src, \
-        "telegraph.py Synopsis editPage must have exponential backoff"
+    assert "run_telegraph_edit_with_retry" in src
+    transient = TelegraphEditResult(ok=False, error="upstream", retryable=True)
+    assert [telegraph_retry_delay(transient, i) for i in range(3)] == [3, 6, 12]
 
+
+def test_synopsis_deterministic_overflow_has_no_retry_delay():
+    overflow = TelegraphEditResult(
+        ok=False,
+        error="CONTENT_TOO_BIG",
+        retryable=False,
+    )
+    assert telegraph_retry_delay(overflow, 0) == 0
