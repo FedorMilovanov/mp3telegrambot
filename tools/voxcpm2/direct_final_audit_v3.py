@@ -3,7 +3,7 @@
 """Final fail-closed audit layer for every direct VoxCPM2 CLI invocation.
 
 This layer closes gaps that can exist between raw JSON input, the already
-normalised renderer state and the outer bot preflight.  It deliberately wraps
+normalised renderer state and the outer bot preflight. It deliberately wraps
 only public direct-CLI boundaries and keeps the previously audited base
 implementations unchanged.
 """
@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, Callable
@@ -93,7 +92,10 @@ def _module_sha256(hash_file: Callable[[Path], str]) -> str:
     return _MODULE_SHA256
 
 
-def _model_context(model_path: Path, hash_file: Callable[[Path], str]) -> dict[str, Any]:
+def _model_context(
+    model_path: Path,
+    hash_file: Callable[[Path], str],
+) -> dict[str, Any]:
     model = Path(model_path).resolve()
     config = model / "config.json"
     config_sha = str(hash_file(config)).strip().casefold() if config.is_file() else ""
@@ -257,7 +259,11 @@ def install_final_audit(namespace: MutableMapping[str, Any]) -> None:
 
     def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
         target = Path(output).resolve()
-        work = target.parent.parent if target.parent.name == "references_guarded" else target.parent
+        work = (
+            target.parent.parent
+            if target.parent.name == "references_guarded"
+            else target.parent
+        )
         state["work_dir"] = work
         if not bool(state.get("preflight_done")):
             segments = list(state.get("segments") or [])
