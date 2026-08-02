@@ -147,7 +147,7 @@ def audit_title_topic_consistency(
     """Return a lexical consistency issue with evidence-calibrated severity.
 
     Every non-empty title remains auditable, including legacy two-word tests.
-    However, one-to-three-word editorial/metaphorical titles do not provide
+    However, one- and two-word editorial/metaphorical titles do not provide
     enough independent lexical evidence for an ERROR. They return an
     ``inconclusive_short_title`` warning with the exact value in ``raw_overlap``.
     Longer descriptive titles retain the strong low-overlap signal.
@@ -169,7 +169,7 @@ def audit_title_topic_consistency(
     if raw_overlap >= _STRONG_MISMATCH_THRESHOLD:
         return None
 
-    is_short_or_weak = _raw_title_word_count(real_title) <= 3 or len(title_terms) <= 1
+    is_short_or_weak = _raw_title_word_count(real_title) <= 2
     if is_short_or_weak:
         # ``overlap`` is intentionally floored at the existing parser's warning
         # boundary; ``raw_overlap`` remains the exact diagnostic value.
