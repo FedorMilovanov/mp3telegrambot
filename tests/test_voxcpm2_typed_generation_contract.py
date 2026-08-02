@@ -16,7 +16,7 @@ from tools.voxcpm2 import direct_max_quality_cli
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
+RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
 
 
 class _FakeModel:
@@ -160,7 +160,7 @@ def test_package_overrides_typed_factories_not_backend_execution() -> None:
     assert "base_request = _legacy_build_generation_request(session, **kwargs)" in facade_source
     assert "request = _build_generation_request(session, **kwargs)" in raw_source
     assert "return session.generate(request)" in raw_source
-    assert 'backend_options.update(' not in raw_source
+    assert "backend_options.update(" not in raw_source
 
 
 def test_adapter_source_has_no_legacy_generation_translation() -> None:
