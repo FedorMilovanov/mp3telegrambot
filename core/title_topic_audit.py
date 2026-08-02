@@ -11,6 +11,12 @@ _STOP = {
     "часть", "разбор", "вопросы", "ответы", "бог", "христос", "иисус", "святой",
 }
 
+# Lexical overlap is meaningful only when a title carries enough independent
+# content words. One- and two-term names are often series/brand/metaphorical
+# titles (for example «Люди Слова» or «Узкие врата»); zero overlap there is not
+# evidence that Gemini analysed the wrong audio.
+_MIN_AUDITABLE_TITLE_TERMS = 3
+
 
 @dataclass(frozen=True)
 class TitleTopicIssue:
@@ -23,8 +29,6 @@ class TitleTopicIssue:
 def _terms(text: str) -> set[str]:
     words = re.findall(r"[А-Яа-яЁёA-Za-z]{4,}", str(text or "").lower().replace("ё", "е"))
     return {w for w in words if w not in _STOP}
-
-
 
 
 def _overlap_score(title: str, body: str) -> float:
@@ -47,10 +51,22 @@ def _body_for_ai(ai_data: dict | None) -> str:
         body += " " + str(ts or "")
     return body
 
-def audit_title_topic_consistency(real_title: str, main_topic: str = "", timestamps: Any = None) -> TitleTopicIssue | None:
+
+def audit_title_topic_consistency(
+    real_title: str,
+    main_topic: str = "",
+    timestamps: Any = None,
+) -> TitleTopicIssue | None:
+    """Return an issue only when lexical evidence is strong enough to audit.
+
+    Short/metaphorical/series titles are deliberately treated as inconclusive,
+    not as errors. Descriptive titles with at least three substantive terms are
+    still checked and can trigger the safe fallback-title comparison.
+    """
     title_terms = _terms(real_title)
-    if len(title_terms) < 1:
+    if len(title_terms) < _MIN_AUDITABLE_TITLE_TERMS:
         return None
+
     body = str(main_topic or "")
     if isinstance(timestamps, list):
         body += " " + " ".join(str(x.get("topic", "")) for x in timestamps if isinstance(x, dict))
@@ -59,6 +75,7 @@ def audit_title_topic_consistency(real_title: str, main_topic: str = "", timesta
     body_terms = _terms(body)
     if not body_terms:
         return None
+
     overlap = len(title_terms & body_terms) / max(len(title_terms), 1)
     # One shared generic/weak word should not silence the audit; use ratio, not
     # a boolean intersection guard.
@@ -73,18 +90,16 @@ def audit_title_topic_consistency(real_title: str, main_topic: str = "", timesta
 
 
 def choose_safe_public_title(ai_data: dict | None, fallback_title: str = "") -> str:
-    """Return safer display title when title-topic audit flagged real_title.
+    """Return a safer display title when a descriptive AI title is inconsistent.
 
-    If Gemini title appears inconsistent with its own main_topic/timestamps,
-    prefer the platform title. This is intentionally conservative: it only acts
-    when parser already stored `title_topic_warning`.
+    The parser records ``title_topic_warning`` only for auditable titles. The
+    platform title wins solely when it is measurably more aligned with the same
+    topic/timestamps; short editorial or series titles therefore remain intact.
     """
     ai_data = ai_data or {}
     fallback = str(fallback_title or "").strip()
     current = str(ai_data.get("real_title") or "").strip()
     if ai_data.get("title_topic_warning") and len(fallback) >= 8:
-        # Do not blindly overwrite a human/editorial current title. Fallback is
-        # safer only when it is measurably more aligned with topic/timestamps.
         body = _body_for_ai(ai_data)
         fallback_score = _overlap_score(fallback, body)
         current_score = _overlap_score(current, body)
