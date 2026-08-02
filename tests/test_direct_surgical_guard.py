@@ -1,19 +1,27 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from tools.voxcpm2 import direct_surgical_guard as polish
+from tools.voxcpm2 import direct_surgical_guard as surgical_guard
+from tools.voxcpm2 import direct_surgical_polish_v2
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-polish.install_guard_contract()
+surgical_guard.install_guard_contract()
+direct_surgical_polish_v2.install_global_polish()
 
 
 def seg(text="Текст.", **extra):
-    return {"id": 1, "text": text, "start": 0.0, "end": 4.0, "tail_guard": 0.18, **extra}
+    return {
+        "id": 1,
+        "text": text,
+        "start": 0.0,
+        "end": 4.0,
+        "tail_guard": 0.18,
+        **extra,
+    }
 
 
 def test_structure_validation_runs_before_base_guard(tmp_path: Path) -> None:
@@ -53,7 +61,8 @@ def test_marker_repeat_is_strict_and_does_not_mutate_input(tmp_path: Path) -> No
         retry_epoch=1,
         evidence=evidence,
     )
-    assert marker["schema_version"] == 2
+    assert marker["schema_version"] == 3
+    assert marker["policy"] == direct_surgical_polish_v2.TIMING_MARKER_POLICY
     assert guard.load_matching_timing_block(
         tmp_path,
         segment=item,
