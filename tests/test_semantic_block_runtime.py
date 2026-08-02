@@ -44,9 +44,9 @@ def test_one_full_candidate_unit_keeps_original_subtitle_cues() -> None:
 
 
 def test_direct_entrypoint_uses_block_runtime_and_not_phrase_runtime() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "generic_clean_direct_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        ROOT / "tools" / "voxcpm2" / "_generic_clean_direct_runtime_base.py"
+    ).read_text(encoding="utf-8")
     assert "semantic_block_runtime.group_ready_srt" in source
     assert "clean.build_direct_segments(" in source
     core = (ROOT / "tools" / "voxcpm2" / "clean_production_core" / "__init__.py").read_text(
