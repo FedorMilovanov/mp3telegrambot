@@ -1558,6 +1558,31 @@ def _build_links_block(yt_url: str = "", rutube_url: str = "", vk_url: str = "")
     return "<b>Полное видео:</b>\n" + "\n".join(lines)
 
 
+_SHORT_TITLE_SPACED_DASH_RE = re.compile(r"(?<=\S)\s+(?:-|–|—)\s+(?=\S)")
+
+
+def _prepare_short_hook(hook: str, author_label: str = "") -> str:
+    """Normalize one Shorts headline without touching hyphens inside words.
+
+    Channel contract:
+    - an internal semantic pause uses `` — ``;
+    - the outer headline/author boundary is added later as `` - ``.
+
+    Strip only an exact trailing author suffix before normalizing internal
+    spaced dash variants. This prevents duplicate authors without removing a
+    name that is legitimately part of the headline itself.
+    """
+    title = re.sub(r"\s+", " ", str(hook or "")).strip()
+    author = re.sub(r"\s+", " ", str(author_label or "")).strip()
+    if title and author:
+        trailing_author = re.compile(
+            rf"\s+(?:-|–|—)\s+{re.escape(author)}(?:[.!?])?$",
+            re.IGNORECASE,
+        )
+        title = trailing_author.sub("", title).rstrip()
+    return _SHORT_TITLE_SPACED_DASH_RE.sub(" — ", title)
+
+
 def build_short_caption(
     candidate: dict,
     performer: str,
@@ -1577,18 +1602,17 @@ def build_short_caption(
     tags         = candidate.get("hashtags") or []
     author_label = real_author or performer or ""
 
-    hook_tc = html_mod.escape(title_case_fragment(hook)) if hook else ""
+    prepared_hook = _prepare_short_hook(hook, author_label)
+    hook_tc = html_mod.escape(title_case_fragment(prepared_hook)) if prepared_hook else ""
     if kind == "quote":
         hook_tc = f"«{hook_tc}»" if hook_tc and not hook_tc.startswith("«") else hook_tc
 
     author_safe = html_mod.escape(author_label) if author_label else ""
 
     if hook_tc and author_safe:
-        # Если заголовок уже заканчивается на вопросительный/восклицательный знак — разделитель не нужен
-        if hook_tc[-1] in ("?", "!"):
-            first_line = f"{hook_tc} {author_safe}"
-        else:
-            first_line = f"{hook_tc} — {author_safe}"
+        # Канальный контракт: внутренний смысловой разрыв = « — »,
+        # граница «заголовок - автор» = обычный дефис с пробелами.
+        first_line = f"{hook_tc} - {author_safe}"
     else:
         first_line = hook_tc or author_safe
 
