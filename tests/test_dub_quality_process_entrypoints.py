@@ -15,14 +15,7 @@ from tools.voxcpm2.generic_audio_repair_runtime_bootstrap import (
 def test_quality_renderer_runs_as_file_outside_repo_cwd(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[1]
     renderer = repo / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"
-    original = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "examples"
-        / "john_piper_z20py4yqhyq"
-        / "voxcpm2_cpu_shorts_production.py"
-    )
+    original = repo / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
     env = dict(os.environ)
     env["VOXCPM_ORIGINAL_RENDERER"] = str(original)
 

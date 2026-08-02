@@ -52,7 +52,7 @@ def test_active_health_requires_long_form_delivery_resilience() -> None:
     assert direct_max_quality_render.ADAPTIVE_RETRY_POLICY == (
         "stable-identity-candidate-retry-v2"
     )
-    assert direct_retry_epoch.POLICY == "failed-segment-seed-epoch-v1"
+    assert direct_retry_epoch.POLICY == "failed-segment-seed-epoch-scope-v2"
     assert callable(direct_retry_epoch.invalidate_segment_for_retry)
     assert direct_timeline_delivery_qa.POLICY == "assembled-monolithic-voice-v1"
     assert callable(direct_timeline_delivery_qa.verify_timeline_delivery)
