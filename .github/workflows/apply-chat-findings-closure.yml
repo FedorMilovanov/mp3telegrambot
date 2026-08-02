@@ -1,0 +1,50 @@
+name: Apply chat findings closure
+
+on:
+  push:
+    branches:
+      - agent/chat-findings-final-closure-20260803
+    paths:
+      - tools/apply_chat_findings_closure.py
+      - .github/workflows/apply-chat-findings-closure.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'Apply final chat findings closure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/chat-findings-final-closure-20260803
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply exact source transformations
+        run: python tools/apply_chat_findings_closure.py
+      - name: Compile changed Python files
+        run: >-
+          python -m py_compile
+          main.py
+          pipelines/shorts.py
+          pipelines/montage.py
+          services/highlights_quality.py
+          services/media_delivery_probe.py
+          services/gemini_model_status.py
+          tests/test_media_delivery_probe.py
+          tests/test_gemini_model_status.py
+          tests/test_chat_findings_delivery_contract.py
+      - name: Commit generated closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'chat-findings-closure-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Apply final chat findings closure'
+          git push origin HEAD:agent/chat-findings-final-closure-20260803
