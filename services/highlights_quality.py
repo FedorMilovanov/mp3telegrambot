@@ -897,179 +897,128 @@ async def render_verified_highlights(
     *,
     visual_mode: str = "full_frame_vertical",
 ) -> bool:
-    """Render verified fragments with frame-accurate cuts and micro audio fades."""
+    """Render all verified cuts from source in one encode.
+
+    Each fragment is an independently seeked input, then video/audio are joined
+    by the concat filter. This avoids the old chain “encode every part → concat
+    → encode again”, removes per-part AAC delay accumulation and keeps the
+    transcript-derived boundaries stable. Only a 35–45 ms audio edge fade is
+    used to suppress cut clicks; it is too short to conceal a bad semantic cut.
+    """
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg or not source_video_path.exists() or not fragments:
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_parts: list[Path] = []
-    concat_path = output_path.parent / f"{output_path.stem}_verified_concat.txt"
     loop = asyncio.get_running_loop()
     try:
         encoder, quality, preset = _get_video_encoder()
+        input_args: list[str] = []
+        filters: list[str] = []
+        concat_inputs: list[str] = []
+
         for index, fragment in enumerate(fragments):
             start = float(fragment["start_seconds"])
             end = float(fragment["end_seconds"])
             duration = end - start
             if duration <= 0:
                 return False
-            part = output_path.parent / f"{output_path.stem}_verified_part{index}.mp4"
-            temp_parts.append(part)
-            fade_out_start = max(0.0, duration - 0.045)
-            audio_filter = (
-                "aresample=48000,"
-                "afade=t=in:st=0:d=0.035,"
-                f"afade=t=out:st={fade_out_start:.3f}:d=0.045"
+
+            input_args.extend(
+                [
+                    "-ss",
+                    f"{start:.3f}",
+                    "-t",
+                    f"{duration:.3f}",
+                    "-i",
+                    str(source_video_path),
+                ]
             )
+            fade_out_start = max(0.0, duration - 0.045)
+
             if visual_mode == "crop_zoom":
-                video_args = [
-                    "-vf",
+                filters.append(
+                    f"[{index}:v]"
                     "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,"
-                    "scale=720:1280,fps=30,format=yuv420p",
-                ]
+                    "scale=720:1280,fps=30,format=yuv420p,"
+                    f"setpts=PTS-STARTPTS[v{index}]"
+                )
             else:
-                filter_complex = (
-                    "[0:v]split=2[bg][fg];"
-                    "[bg]scale=720:1280:force_original_aspect_ratio=increase,"
-                    "crop=720:1280,gblur=sigma=20,setsar=1[blurred];"
-                    "[fg]scale=720:1280:force_original_aspect_ratio=decrease,"
-                    "setsar=1[small];"
-                    "[blurred][small]overlay=(W-w)/2:(H-h)/2,"
-                    "fps=30,format=yuv420p[out]"
+                filters.extend(
+                    [
+                        f"[{index}:v]split=2[bg{index}][fg{index}]",
+                        f"[bg{index}]"
+                        "scale=720:1280:force_original_aspect_ratio=increase,"
+                        f"crop=720:1280,gblur=sigma=20,setsar=1[blurred{index}]",
+                        f"[fg{index}]"
+                        "scale=720:1280:force_original_aspect_ratio=decrease,"
+                        f"setsar=1[small{index}]",
+                        f"[blurred{index}][small{index}]"
+                        "overlay=(W-w)/2:(H-h)/2,fps=30,format=yuv420p,"
+                        f"setpts=PTS-STARTPTS[v{index}]",
+                    ]
                 )
-                video_args = [
-                    "-filter_complex",
-                    filter_complex,
-                    "-map",
-                    "[out]",
-                    "-map",
-                    "0:a?",
-                ]
-            cmd = [
-                ffmpeg,
-                "-i",
-                str(source_video_path),
-                "-ss",
-                f"{start:.3f}",
-                "-t",
-                f"{duration:.3f}",
-                *video_args,
-                "-c:v",
-                encoder,
-                *preset,
-                *quality,
-                "-af",
-                audio_filter,
-                "-c:a",
-                "aac",
-                "-b:a",
-                "160k",
-                "-ar",
-                "48000",
-                "-movflags",
-                "+faststart",
-                "-y",
-                str(part),
-            ]
-            from core.resource_scheduler import scheduler as resource_scheduler
 
-            async with resource_scheduler.gpu_render:
-                proc = await loop.run_in_executor(
-                    None,
-                    lambda c=cmd: subprocess.run(
-                        c,
-                        capture_output=True,
-                        text=True,
-                        timeout=180,
-                    ),
-                )
-            if proc.returncode != 0 or not part.exists() or part.stat().st_size == 0:
-                logger.warning(
-                    "Verified highlights part %d failed: %s",
-                    index,
-                    (proc.stderr or "")[-500:],
-                )
-                return False
+            filters.append(
+                f"[{index}:a]"
+                "aresample=48000,asetpts=PTS-STARTPTS,"
+                "afade=t=in:st=0:d=0.035,"
+                f"afade=t=out:st={fade_out_start:.3f}:d=0.045[a{index}]"
+            )
+            concat_inputs.append(f"[v{index}][a{index}]")
 
-        concat_path.write_text(
-            "".join(f"file '{part.resolve()}'\n" for part in temp_parts),
-            encoding="utf-8",
+        filters.append(
+            "".join(concat_inputs)
+            + f"concat=n={len(fragments)}:v=1:a=1[outv][outa]"
         )
-        copy_cmd = [
+        cmd = [
             ffmpeg,
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_path),
-            "-c",
-            "copy",
-            "-fflags",
-            "+genpts",
-            "-avoid_negative_ts",
-            "make_zero",
+            *input_args,
+            "-filter_complex",
+            ";".join(filters),
+            "-map",
+            "[outv]",
+            "-map",
+            "[outa]",
+            "-c:v",
+            encoder,
+            *preset,
+            *quality,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-ar",
+            "48000",
             "-movflags",
             "+faststart",
             "-y",
             str(output_path),
         ]
-        proc = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                copy_cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
-            ),
-        )
-        if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
-            fallback_cmd = [
-                ffmpeg,
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_path),
-                "-c:v",
-                encoder,
-                *preset,
-                *quality,
-                "-c:a",
-                "aac",
-                "-b:a",
-                "160k",
-                "-ar",
-                "48000",
-                "-movflags",
-                "+faststart",
-                "-y",
-                str(output_path),
-            ]
-            from core.resource_scheduler import scheduler as resource_scheduler
 
-            async with resource_scheduler.gpu_render:
-                proc = await loop.run_in_executor(
-                    None,
-                    lambda: subprocess.run(
-                        fallback_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                    ),
-                )
+        from core.resource_scheduler import scheduler as resource_scheduler
+
+        async with resource_scheduler.gpu_render:
+            proc = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                ),
+            )
         if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
             logger.warning(
-                "Verified highlights concat failed: %s",
-                (proc.stderr or "")[-500:],
+                "Verified highlights render failed: %s",
+                (proc.stderr or "")[-1000:],
             )
             return False
+
         logger.info(
             "Verified highlights rendered: %s fragments=%d size=%.1fMB",
             output_path.name,
-            len(temp_parts),
+            len(fragments),
             output_path.stat().st_size / (1024 * 1024),
         )
         return True
@@ -1083,16 +1032,6 @@ async def render_verified_highlights(
             str(exc)[:240],
         )
         return False
-    finally:
-        for path in temp_parts:
-            try:
-                path.unlink(missing_ok=True)
-            except Exception:
-                pass
-        try:
-            concat_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
 __all__ = [
