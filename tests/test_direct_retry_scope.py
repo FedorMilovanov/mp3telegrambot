@@ -53,18 +53,24 @@ def load_wrapper(tmp_path: Path):
     (package / "direct_retry_epoch.py").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     (package / "_direct_retry_epoch_base.py").write_text(BASE_STUB, encoding="utf-8")
     sys.path.insert(0, str(tmp_path))
+    name = "tools.voxcpm2.direct_retry_epoch"
+    previous = sys.modules.get(name)
     try:
         spec = importlib.util.spec_from_file_location(
-            "tools.voxcpm2.direct_retry_epoch",
+            name,
             package / "direct_retry_epoch.py",
         )
         module = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
-        sys.modules[spec.name] = module
+        sys.modules[name] = module
         spec.loader.exec_module(module)
         return module
     finally:
         sys.path.remove(str(tmp_path))
+        if previous is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
 
 
 def test_new_text_scope_starts_from_zero(tmp_path: Path) -> None:

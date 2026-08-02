@@ -12,8 +12,10 @@ exec(compile(_BASE.read_text(encoding="utf-8-sig"), str(_BASE), "exec"), globals
 globals()["__name__"] = _ORIGINAL_NAME
 
 from tools.voxcpm2.direct_universal_runtime import install_direct_runtime
+from tools.voxcpm2.direct_failure_recovery import install_main_failure_recovery
 
 install_direct_runtime(globals())
+install_main_failure_recovery(globals())
 
 if _ORIGINAL_NAME == "__main__":
     main()

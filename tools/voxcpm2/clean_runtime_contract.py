@@ -14,3 +14,4 @@ globals()["__name__"] = _ORIGINAL_NAME
 from tools.voxcpm2.direct_universal_runtime import install_runtime_fingerprint
 
 install_runtime_fingerprint(globals())
+_RENDER_MODULES = tuple(dict.fromkeys((*_RENDER_MODULES, "tools/voxcpm2/direct_failure_recovery.py")))
