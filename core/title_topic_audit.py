@@ -11,11 +11,12 @@ _STOP = {
     "часть", "разбор", "вопросы", "ответы", "бог", "христос", "иисус", "святой",
 }
 
-# Lexical overlap is meaningful only when a title carries enough independent
-# content words. One- and two-term names are often series/brand/metaphorical
-# titles (for example «Люди Слова» or «Узкие врата»); zero overlap there is not
-# evidence that Gemini analysed the wrong audio.
-_MIN_AUDITABLE_TITLE_TERMS = 3
+# The parser historically escalates overlap < 0.05 to ERROR. A very short,
+# metaphorical or editorial title cannot support that confidence from lexical
+# overlap alone, so its compatibility-facing overlap is floored at the warning
+# boundary while ``raw_overlap`` preserves the exact measurement.
+_SHORT_TITLE_WARNING_FLOOR = 0.05
+_STRONG_MISMATCH_THRESHOLD = 0.34
 
 _SESSION_RE = re.compile(
     r"(?i)(?<!\w)(сессия|часть|выпуск|эпизод|урок|лекция)\s*"
@@ -23,6 +24,7 @@ _SESSION_RE = re.compile(
 )
 _BRACKETED_SERIES_RE = re.compile(r"^\s*[\[【]\s*([^\]】]{2,100}?)\s*[\]】]")
 _QUOTED_TITLE_RE = re.compile(r"[«\"]\s*([^«»\"]{2,140}?)\s*[»\"]")
+_RAW_TITLE_WORD_RE = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,8 @@ class TitleTopicIssue:
     message: str
     overlap: float
     title_terms: tuple[str, ...]
+    raw_overlap: float = 0.0
+    confidence: str = "strong"
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,10 @@ def enrich_source_title_context(ai_data: dict | None, source_title: str) -> dict
     return ai
 
 
+def _raw_title_word_count(text: str) -> int:
+    return len(_RAW_TITLE_WORD_RE.findall(str(text or "")))
+
+
 def _terms(text: str) -> set[str]:
     words = re.findall(r"[А-Яа-яЁёA-Za-z]{4,}", str(text or "").lower().replace("ё", "е"))
     return {w for w in words if w not in _STOP}
@@ -136,14 +144,16 @@ def audit_title_topic_consistency(
     main_topic: str = "",
     timestamps: Any = None,
 ) -> TitleTopicIssue | None:
-    """Return an issue only when lexical evidence is strong enough to audit.
+    """Return a lexical consistency issue with evidence-calibrated severity.
 
-    Short/metaphorical/series titles are deliberately treated as inconclusive,
-    not as errors. Descriptive titles with at least three substantive terms are
-    still checked and can trigger the safe fallback-title comparison.
+    Every non-empty title remains auditable, including legacy two-word tests.
+    However, one-to-three-word editorial/metaphorical titles do not provide
+    enough independent lexical evidence for an ERROR. They return an
+    ``inconclusive_short_title`` warning with the exact value in ``raw_overlap``.
+    Longer descriptive titles retain the strong low-overlap signal.
     """
     title_terms = _terms(real_title)
-    if len(title_terms) < _MIN_AUDITABLE_TITLE_TERMS:
+    if not title_terms:
         return None
 
     body = str(main_topic or "")
@@ -155,27 +165,46 @@ def audit_title_topic_consistency(
     if not body_terms:
         return None
 
-    overlap = len(title_terms & body_terms) / max(len(title_terms), 1)
-    # One shared generic/weak word should not silence the audit; use ratio, not
-    # a boolean intersection guard.
-    if overlap < 0.34:
+    raw_overlap = len(title_terms & body_terms) / max(len(title_terms), 1)
+    if raw_overlap >= _STRONG_MISMATCH_THRESHOLD:
+        return None
+
+    is_short_or_weak = _raw_title_word_count(real_title) <= 3 or len(title_terms) <= 1
+    if is_short_or_weak:
+        # ``overlap`` is intentionally floored at the existing parser's warning
+        # boundary; ``raw_overlap`` remains the exact diagnostic value.
+        escalation_overlap = max(raw_overlap, _SHORT_TITLE_WARNING_FLOOR)
         return TitleTopicIssue(
-            code="title_topic_low_overlap",
-            message="real_title has low lexical overlap with main_topic/timestamps",
-            overlap=overlap,
+            code="title_topic_inconclusive_short_title",
+            message=(
+                "short/editorial title has low lexical overlap, but lexical evidence "
+                f"is inconclusive (raw_overlap={raw_overlap:.2f})"
+            ),
+            overlap=escalation_overlap,
+            raw_overlap=raw_overlap,
+            confidence="inconclusive",
             title_terms=tuple(sorted(title_terms)),
         )
-    return None
+
+    return TitleTopicIssue(
+        code="title_topic_low_overlap",
+        message="real_title has low lexical overlap with main_topic/timestamps",
+        overlap=raw_overlap,
+        raw_overlap=raw_overlap,
+        confidence="strong",
+        title_terms=tuple(sorted(title_terms)),
+    )
 
 
 def choose_safe_public_title(ai_data: dict | None, fallback_title: str = "") -> str:
     """Return a safer display title and preserve source editorial hierarchy.
 
-    The parser records ``title_topic_warning`` only for auditable titles. The
-    platform title wins solely when it is measurably more aligned with the same
-    topic/timestamps; short editorial or series titles therefore remain intact.
-    Source series/session metadata is recovered into dedicated fields before
-    the display decision, so it is retained without contaminating ``real_title``.
+    The parser records ``title_topic_warning`` for both strong and inconclusive
+    findings. The platform title wins solely when it is measurably more aligned
+    with the same topic/timestamps; short editorial or series titles therefore
+    remain intact. Source series/session metadata is recovered into dedicated
+    fields before the display decision, so it is retained without contaminating
+    ``real_title``.
     """
     ai_data = ai_data if isinstance(ai_data, dict) else {}
     fallback = str(fallback_title or "").strip()
@@ -186,6 +215,6 @@ def choose_safe_public_title(ai_data: dict | None, fallback_title: str = "") -> 
         body = _body_for_ai(ai_data)
         fallback_score = _overlap_score(fallback, body)
         current_score = _overlap_score(current, body)
-        if fallback_score >= 0.34 and fallback_score > current_score:
+        if fallback_score >= _STRONG_MISMATCH_THRESHOLD and fallback_score > current_score:
             return fallback
     return current or fallback
