@@ -1,4 +1,10 @@
-from services.shorts_video import (
+from services.shorts_caption_contract_runtime import (
+    install_short_caption_contract_runtime,
+)
+
+install_short_caption_contract_runtime()
+
+from services.shorts_video import (  # noqa: E402
     _prepare_short_hook,
     build_short_caption,
 )
