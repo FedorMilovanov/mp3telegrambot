@@ -62,7 +62,7 @@ def test_marker_repeat_is_strict_and_does_not_mutate_input(tmp_path: Path) -> No
         evidence=evidence,
     )
     assert marker["schema_version"] == 3
-    assert marker["policy"] == direct_surgical_polish_v2.TIMING_MARKER_POLICY
+    assert marker["policy"] == direct_surgical_polish_v2.MARKER_POLICY
     assert guard.load_matching_timing_block(
         tmp_path,
         segment=item,
