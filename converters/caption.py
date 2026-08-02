@@ -7,6 +7,7 @@ from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_author_name,
     normalize_title_text, title_case_fragment, BAD_META_PATTERNS, normalize_common_typos,  # FIX #7
 )
+from core.russian_style import polish_public_russian_text
 from core.url_utils import get_youtube_timestamp_url    # FIX #7
 from services.search import build_platform_links, build_telegraph_links  # FIX #7
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils (разрыв циклов)
@@ -46,6 +47,13 @@ def _polish_caption_sentence_punctuation(text: str) -> str:
             f"{match.group('punct')}{match.group('space')}{match.group('emoji')}"
         ),
         value,
+    )
+
+
+def _polish_public_caption_text(text: str) -> str:
+    """Apply narrow Russian style fixes, then punctuation polish."""
+    return _polish_caption_sentence_punctuation(
+        polish_public_russian_text(text)
     )
 
 
@@ -115,7 +123,7 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
         parts.append("⏱ Таймкоды сокращены; полный список в конспекте.")
 
     # Краткое описание (main_topic) — между шапкой и таймкодами
-    main_topic = _polish_caption_sentence_punctuation(
+    main_topic = _polish_public_caption_text(
         _scrub_inline((ai_data or {}).get("main_topic", ""))
     )
     if main_topic:
@@ -166,7 +174,7 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
             # (DEEP-QUALITY FIX [C] добавил только комментарий, но не заменил код — исправлено)
             _p = line.split(' ', 1)
             time_str = _p[0]
-            topic_str = _polish_caption_sentence_punctuation(
+            topic_str = _polish_public_caption_text(
                 _p[1].strip() if len(_p) == 2 else ""
             )
 
