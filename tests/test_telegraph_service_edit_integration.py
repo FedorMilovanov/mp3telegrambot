@@ -78,13 +78,6 @@ async def test_service_edit_retries_transient_transport_and_invalidates_on_succe
     async def no_sleep(_delay: float) -> None:
         return None
 
-    async def retry_without_real_sleep(operation, **_kwargs):
-        return await telegraph.run_telegraph_edit_with_retry(
-            operation,
-            max_attempts=3,
-            sleep=no_sleep,
-        )
-
     monkeypatch.setattr(telegraph, "edit_telegraph_page_once", edit_once)
     original_retry = telegraph.run_telegraph_edit_with_retry
 
