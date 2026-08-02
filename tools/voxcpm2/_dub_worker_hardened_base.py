@@ -1,0 +1,452 @@
+#!/usr/bin/env python3
+"""Hardened Dub Studio worker entrypoint with exact progress stages."""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import threading
+import time
+from typing import Any
+
+from services.dub_studio import DubStore, utc_now
+from tools.voxcpm2 import dub_job_preflight
+from tools.voxcpm2 import dub_worker as worker
+
+_RUNTIME_VERSION = "dub-worker-quality-v4.6"
+_PROGRESS_PREFIX = "DUB_PROGRESS "
+_QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
+_MILESTONES = (25, 50, 75, 90)
+_PULSE_SECONDS = 15.0
+_FINAL_JOB_STATES = {"succeeded", "failed", "cancelled"}
+_ORIGINAL_REGISTER = DubStore.register_worker
+_ORIGINAL_HEARTBEAT = DubStore.worker_heartbeat
+_ORIGINAL_UPDATE_JOB_PROGRESS = DubStore.update_job_progress
+_ORIGINAL_FINISH_JOB = DubStore.finish_job
+_ORIGINAL_RECOVER_ABANDONED = DubStore.recover_abandoned_jobs
+_ORIGINAL_TERMINATE = worker._terminate_process
+_ORIGINAL_EXECUTE_JOB = worker.execute_job
+_LAST_JOB_PULSE: dict[int, float] = {}
+_FINISH_LOCK = threading.RLock()
+
+
+def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is not None:
+        return
+    if os.name != "nt":
+        _ORIGINAL_TERMINATE(proc)
+        return
+
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+            creationflags=creationflags,
+        )
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    try:
+        proc.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _versioned_details(details: dict[str, Any] | None) -> dict[str, Any]:
+    payload = dict(details or {})
+    payload["runtime"] = _RUNTIME_VERSION
+    return payload
+
+
+def _register_versioned_worker(
+    self: DubStore,
+    worker_id: str,
+    *,
+    pid: int,
+    status: str,
+    current_job_id: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    _ORIGINAL_REGISTER(
+        self,
+        worker_id,
+        pid=pid,
+        status=status,
+        current_job_id=current_job_id,
+        details=_versioned_details(details),
+    )
+
+
+def _elapsed_label(seconds: float) -> str:
+    total = max(0, int(seconds))
+    minutes, rest = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours} ч {minutes:02d} мин"
+    if minutes:
+        return f"{minutes} мин {rest:02d} сек"
+    return f"{rest} сек"
+
+
+def _heartbeat_versioned_worker(
+    self: DubStore,
+    worker_id: str,
+    *,
+    status: str,
+    current_job_id: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Keep runtime marker and pulse a silent CPU stage into project status."""
+    payload = _versioned_details(details)
+    _ORIGINAL_HEARTBEAT(
+        self,
+        worker_id,
+        status=status,
+        current_job_id=current_job_id,
+        details=payload,
+    )
+
+    if str(status) != "busy" or current_job_id is None:
+        return
+    job_id = int(current_job_id)
+    now = time.monotonic()
+    if now - _LAST_JOB_PULSE.get(job_id, 0.0) < _PULSE_SECONDS:
+        return
+    progress = max(1, min(int(payload.get("progress") or 1), 99))
+    stage = str(payload.get("stage") or "CPU-рендер")[:160]
+    elapsed = float(payload.get("elapsed_seconds") or 0.0)
+    self.update_job_progress(
+        job_id,
+        progress=progress,
+        stage=stage,
+        message=(
+            f"{stage}: CPU-процесс активен; прошло {_elapsed_label(elapsed)}. "
+            "Процент обновится на следующем подтверждённом шаге модели."
+        ),
+    )
+    _LAST_JOB_PULSE[job_id] = now
+
+
+def _highest_crossed_milestone(previous: int, current: int) -> int | None:
+    crossed = [value for value in _MILESTONES if previous < value <= current]
+    return max(crossed) if crossed else None
+
+
+def _update_progress_with_milestones(
+    self: DubStore,
+    job_id: int,
+    *,
+    progress: int,
+    stage: str,
+    message: str = "",
+) -> None:
+    previous = 0
+    project_id = ""
+    status = ""
+    with self.connect() as conn:
+        row = conn.execute(
+            "SELECT project_id, progress, status FROM dub_jobs WHERE id=?",
+            (int(job_id),),
+        ).fetchone()
+        if row is not None:
+            previous = int(row["progress"] or 0)
+            project_id = str(row["project_id"])
+            status = str(row["status"] or "").lower()
+    if status in _FINAL_JOB_STATES:
+        _LAST_JOB_PULSE.pop(int(job_id), None)
+        return
+
+    _ORIGINAL_UPDATE_JOB_PROGRESS(
+        self,
+        job_id,
+        progress=progress,
+        stage=stage,
+        message=message,
+    )
+
+    milestone = _highest_crossed_milestone(previous, int(progress))
+    if milestone is None or not project_id:
+        return
+    event_type = f"job_progress_{milestone}"
+    with self.connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM dub_events WHERE job_id=? AND event_type=? LIMIT 1",
+            (int(job_id), event_type),
+        ).fetchone()
+        if exists is None:
+            self._insert_event(
+                conn,
+                project_id,
+                int(job_id),
+                event_type,
+                "info",
+                f"Задание #{job_id}: {milestone}% — {str(stage)[:160]}",
+                {
+                    "progress": milestone,
+                    "stage": str(stage)[:160],
+                    "message": str(message)[:800],
+                },
+            )
+            conn.commit()
+
+
+def _recover_abandoned_with_terminal_events(
+    self: DubStore,
+    stale_seconds: int = 180,
+) -> int:
+    """Finish recovered cancellations and emit one durable terminal event."""
+    recovered = _ORIGINAL_RECOVER_ABANDONED(self, stale_seconds)
+    now = utc_now()
+    with self.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            """
+            SELECT id, project_id FROM dub_jobs
+            WHERE status='cancelled'
+              AND cancel_requested=1
+              AND finished_at=''
+            ORDER BY id
+            """
+        ).fetchall()
+        for row in rows:
+            job_id = int(row["id"])
+            project_id = str(row["project_id"])
+            conn.execute(
+                """
+                UPDATE dub_jobs
+                SET progress=0, stage='cancelled', finished_at=?, updated_at=?
+                WHERE id=? AND status='cancelled' AND finished_at=''
+                """,
+                (now, now, job_id),
+            )
+            conn.execute(
+                """
+                UPDATE dub_projects
+                SET status='cancelled', stage='cancelled', progress=0, updated_at=?
+                WHERE id=?
+                """,
+                (now, project_id),
+            )
+            exists = conn.execute(
+                """
+                SELECT 1 FROM dub_events
+                WHERE job_id=? AND event_type='job_cancelled'
+                LIMIT 1
+                """,
+                (job_id,),
+            ).fetchone()
+            if exists is None:
+                self._insert_event(
+                    conn,
+                    project_id,
+                    job_id,
+                    "job_cancelled",
+                    "warning",
+                    f"Задание #{job_id} отменено после остановки worker.",
+                    {"recovered_after_worker_stop": True},
+                )
+        conn.commit()
+    return recovered
+
+
+def _progress_from_line_v44(line: str, current: int) -> tuple[int, str]:
+    """Parse only explicit production signals, never traceback function names."""
+    text = str(line or "").strip()
+    if not text:
+        return current, ""
+
+    if text.startswith(_PROGRESS_PREFIX):
+        try:
+            payload = json.loads(text[len(_PROGRESS_PREFIX) :])
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            progress = max(0, min(int(payload.get("progress") or current), 94))
+            stage = str(
+                payload.get("stage")
+                or payload.get("message")
+                or "CPU-рендер"
+            )[:160]
+            return max(current, progress), stage
+
+    lowered = text.casefold()
+    qa_round = _QA_ROUND_RE.search(text)
+    if qa_round:
+        index = max(1, int(qa_round.group(1)))
+        total = max(index, int(qa_round.group(2)))
+        return max(current, 88), f"Независимая QA: раунд {index}/{total}"
+    if (
+        "все реплики прошли акустическую" in lowered
+        or "акустическая qa пройдена" in lowered
+    ):
+        return max(current, 93), "Независимая QA пройдена"
+    if (
+        "qa отклонил" in lowered
+        or "clean_qa" in lowered
+        or "независим" in lowered and "qa" in lowered
+    ):
+        return max(current, 88), "Независимая QA"
+
+    explicit_master = (
+        "создаю постоянный микс" in lowered
+        or "двухпроходный loudness-master" in lowered
+        or "собираю upload-ready" in lowered
+        or lowered.startswith("=== master")
+        or lowered.startswith("=== мастер")
+    )
+    if explicit_master:
+        return max(current, 94), "master"
+
+    stage_match = worker._STAGE_RE.match(text)
+    if stage_match:
+        stage = stage_match.group(1)[:160]
+        return max(current, 3), stage
+
+    segment = worker._SEGMENT_RE.search(text)
+    if segment:
+        index = max(1, int(segment.group(1)))
+        total = max(index, int(segment.group(2)))
+        return (
+            max(current, min(92, 8 + round(index / total * 78))),
+            f"segment {index}/{total}",
+        )
+
+    percentage = worker._PERCENT_RE.search(text)
+    if percentage:
+        value = max(0, min(int(percentage.group(1)), 100))
+        return max(current, min(94, 8 + round(value * 0.72))), "synthesis"
+
+    # In particular, lines such as ``clean.render_and_master(...)`` and
+    # ``master_constant_mix.py`` inside a traceback must not change the stage.
+    return current, ""
+
+
+def _deepest_error_line(error: str) -> str:
+    lines = [line.strip() for line in str(error or "").splitlines() if line.strip()]
+    if not lines:
+        return "Неизвестная ошибка runner."
+    prefixes = (
+        "RuntimeError:",
+        "TypeError:",
+        "ValueError:",
+        "AttributeError:",
+        "FileNotFoundError:",
+        "ModuleNotFoundError:",
+        "ImportError:",
+        "OSError:",
+        "ОШИБКА:",
+    )
+    for line in reversed(lines):
+        if line.startswith(prefixes) or "Error:" in line:
+            return line
+    return lines[-1]
+
+
+def _finish_job_with_root_cause(
+    self: DubStore,
+    job_id: int,
+    *,
+    status: str,
+    result: dict[str, Any] | None = None,
+    error: str = "",
+) -> None:
+    requested_status = str(status).lower()
+    if requested_status not in _FINAL_JOB_STATES:
+        _ORIGINAL_FINISH_JOB(
+            self,
+            job_id,
+            status=status,
+            result=result,
+            error=error,
+        )
+        return
+
+    with _FINISH_LOCK:
+        try:
+            current = self.get_job(int(job_id))
+        except KeyError:
+            _LAST_JOB_PULSE.pop(int(job_id), None)
+            return
+        if str(current.get("status") or "").lower() in _FINAL_JOB_STATES:
+            _LAST_JOB_PULSE.pop(int(job_id), None)
+            return
+
+        payload = str(error or "")
+        if requested_status == "failed" and payload:
+            cause = _deepest_error_line(payload)
+            if not payload.startswith("Точная причина:"):
+                payload = f"Точная причина: {cause}\n\n{payload}"
+        _LAST_JOB_PULSE.pop(int(job_id), None)
+        _ORIGINAL_FINISH_JOB(
+            self,
+            job_id,
+            status=requested_status,
+            result=result,
+            error=payload,
+        )
+
+
+def _execute_job_with_preflight(
+    store: DubStore,
+    worker_id: str,
+    job: dict[str, Any],
+) -> None:
+    """Reject broken runtime/import contracts before a long VoxCPM render starts."""
+    job_id = int(job["id"])
+    try:
+        project = store.get_project(str(job["project_id"]))
+        if not project:
+            raise RuntimeError(f"Preflight: проект не найден: {job['project_id']}")
+        store.update_job_progress(
+            job_id,
+            progress=1,
+            stage="preflight",
+            message="Проверяю CPU Python, модель, FFmpeg и production imports до синтеза.",
+        )
+        report = dub_job_preflight.run(project, str(job.get("action") or ""))
+        if not report.get("skipped"):
+            store.update_job_progress(
+                job_id,
+                progress=2,
+                stage="preflight:ok",
+                message="Production preflight пройден; запускаю runner.",
+            )
+    except Exception as exc:
+        log_path = store.logs_dir / f"job-{job_id:06d}.log"
+        store.set_job_log_path(job_id, log_path)
+        detail = f"Preflight остановил задание до синтеза: {type(exc).__name__}: {exc}"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(detail + "\n", encoding="utf-8", errors="replace")
+        store.finish_job(job_id, status="failed", error=detail)
+        return
+    _ORIGINAL_EXECUTE_JOB(store, worker_id, job)
+
+
+def install_hardening() -> None:
+    worker._terminate_process = _terminate_process_tree
+    worker._progress_from_line = _progress_from_line_v44
+    worker.execute_job = _execute_job_with_preflight
+    DubStore.register_worker = _register_versioned_worker
+    DubStore.worker_heartbeat = _heartbeat_versioned_worker
+    DubStore.update_job_progress = _update_progress_with_milestones
+    DubStore.recover_abandoned_jobs = _recover_abandoned_with_terminal_events
+    DubStore.finish_job = _finish_job_with_root_cause
+
+
+def main() -> None:
+    install_hardening()
+    worker.main()
+
+
+if __name__ == "__main__":
+    main()
