@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Narrow deterministic polish for public Russian editorial text.
 
-This is not a free-form rewriter.  It corrects only high-confidence calques
+This is not a free-form rewriter. It corrects only high-confidence calques
 observed in production output and keeps legitimate technical/military uses
-untouched.  Generative prompts still own style; this module is the publication
+untouched. Generative prompts still own style; this module is the publication
 boundary that prevents a known awkward phrase from reaching subscribers.
 """
 from __future__ import annotations
@@ -20,14 +20,27 @@ class RussianStyleFix:
 
 
 # English “equipping men” in sermon/conference metadata was rendered as
-# «духовное укомплектование мужей».  «Укомплектование» is natural for staffing
-# units or supplying equipment, not for spiritual formation.  The guard
-# requires both the spiritual adjective and a male-audience noun, so legitimate
-# phrases such as «укомплектование подразделения» are not touched.
+# «духовное укомплектование мужей». «Укомплектование» is natural for staffing
+# units or supplying equipment, not for spiritual formation. The guard requires
+# both the spiritual adjective and a male-audience noun, so legitimate phrases
+# such as «укомплектование подразделения» are not touched.
 _SPIRITUAL_EQUIPPING_RE = re.compile(
-    r"(?i)\bдуховн(?:ое|ая|ого|ой)\s+укомплектовани(?:е|я|ю|ем)\s+"
-    r"(?P<men>мужей|мужчин)\b"
+    r"(?i)\b(?P<form>"
+    r"духовное\s+укомплектование|"
+    r"духовного\s+укомплектования|"
+    r"духовному\s+укомплектованию|"
+    r"духовным\s+укомплектованием|"
+    r"духовном\s+укомплектовании"
+    r")\s+(?:мужей|мужчин)\b"
 )
+
+_SPIRITUAL_EQUIPPING_REPLACEMENTS = {
+    "духовное укомплектование": "духовная подготовка мужчин",
+    "духовного укомплектования": "духовной подготовки мужчин",
+    "духовному укомплектованию": "духовной подготовке мужчин",
+    "духовным укомплектованием": "духовной подготовкой мужчин",
+    "духовном укомплектовании": "духовной подготовке мужчин",
+}
 
 
 def polish_public_russian(text: str) -> tuple[str, tuple[RussianStyleFix, ...]]:
@@ -37,9 +50,8 @@ def polish_public_russian(text: str) -> tuple[str, tuple[RussianStyleFix, ...]]:
 
     def replace_spiritual_equipping(match: re.Match[str]) -> str:
         before = match.group(0)
-        # «мужчины» is the neutral audience noun in modern Russian; «мужи» can
-        # sound biblical/archaic and is preserved elsewhere when authorial.
-        after = "духовная подготовка мужчин"
+        form = match.group("form").lower()
+        after = _SPIRITUAL_EQUIPPING_REPLACEMENTS[form]
         if before[:1].isupper():
             after = after[:1].upper() + after[1:]
         fixes.append(
