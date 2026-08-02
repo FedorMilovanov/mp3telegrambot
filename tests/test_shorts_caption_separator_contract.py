@@ -1,5 +1,6 @@
 import inspect
 
+import core.person_names as person_names
 import core.text_utils as text_utils
 import services.shorts_video as shorts_video
 from services.shorts_video import _prepare_short_hook, build_short_caption
@@ -15,17 +16,42 @@ def _caption(hook: str, *, kind: str = "") -> str:
     )
 
 
-def _title_runtime_diagnostic() -> str:
-    fn = shorts_video.title_case_fragment
+def _source(value) -> str:
     try:
-        source = inspect.getsource(fn)
+        return inspect.getsource(value)
     except Exception as exc:
-        source = f"<source unavailable: {type(exc).__name__}: {exc}>"
+        return f"<source unavailable: {type(exc).__name__}: {exc}>"
+
+
+def _title_runtime_diagnostic() -> str:
+    title_fn = shorts_video.title_case_fragment
+    sentence_fn = text_utils.sentence_case_russian_title
+    text_name_fn = text_utils.normalize_person_names
+    canonical_name_fn = person_names.normalize_person_names
     return (
-        f"shorts_fn={fn!r}; module={getattr(fn, '__module__', '')}; "
-        f"qualname={getattr(fn, '__qualname__', '')}; "
-        f"same_as_core={fn is text_utils.title_case_fragment}; source={source}"
+        f"title_fn={title_fn!r}; title_module={getattr(title_fn, '__module__', '')}; "
+        f"same_title_as_core={title_fn is text_utils.title_case_fragment}; "
+        f"sentence_fn={sentence_fn!r}; sentence_module={getattr(sentence_fn, '__module__', '')}; "
+        f"text_name_fn={text_name_fn!r}; canonical_name_fn={canonical_name_fn!r}; "
+        f"same_name_fn={text_name_fn is canonical_name_fn}; "
+        f"title_source={_source(title_fn)}; "
+        f"sentence_source={_source(sentence_fn)}; "
+        f"text_name_source={_source(text_name_fn)}"
     )
+
+
+def test_name_normalization_preserves_semantic_em_dash() -> None:
+    value = "Сомнение — Это не Слабость"
+    assert person_names.normalize_person_names(value) == value, _title_runtime_diagnostic()
+    assert text_utils.normalize_person_names(value) == value, _title_runtime_diagnostic()
+
+
+def test_russian_title_case_preserves_semantic_em_dash() -> None:
+    value = "Сомнение — Это не слабость"
+    assert text_utils.sentence_case_russian_title(
+        value,
+        aggressive_title_case=True,
+    ) == "Сомнение — Это не Слабость", _title_runtime_diagnostic()
 
 
 def test_internal_title_pipeline_preserves_em_dash_before_outer_formatting() -> None:
