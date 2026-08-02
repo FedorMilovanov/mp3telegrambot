@@ -277,22 +277,22 @@ def refine_fragment_from_transcript(
     min_coverage = _env_float("HIGHLIGHTS_MIN_SPEECH_COVERAGE", 0.52, 0.30, 0.85)
 
     reason = ""
-    if word_count < 8:
-        reason = "too_few_words"
-    elif duration < 4.0:
+    if duration < 4.0:
         reason = "too_short_after_refine"
     elif duration > 30.0:
         reason = "too_long_after_refine"
+    elif max_gap > max_silence:
+        reason = "internal_silence"
+    elif speech_coverage < min_coverage:
+        reason = "low_speech_coverage"
     elif _needs_left_context(text):
         reason = "unresolved_left_context"
     elif not _ends_cleanly(text):
         reason = "unfinished_ending"
     elif not _has_balanced_quotes(text):
         reason = "unbalanced_quote"
-    elif max_gap > max_silence:
-        reason = "internal_silence"
-    elif speech_coverage < min_coverage:
-        reason = "low_speech_coverage"
+    elif word_count < 8:
+        reason = "too_few_words"
 
     evidence = {
         "reason": reason or "accepted",
