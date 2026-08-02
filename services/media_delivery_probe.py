@@ -19,6 +19,7 @@ class MediaProbe:
     width: int = 0
     height: int = 0
     audio_sample_rate: int = 0
+    audio_codec: str = ""
     has_video: bool = False
     has_audio: bool = False
     size_mb: float = 0.0
@@ -80,6 +81,7 @@ def _probe_from_payload(path: Path, payload: dict[str, Any]) -> MediaProbe:
         width=_positive_int(video.get("width")),
         height=_positive_int(video.get("height")),
         audio_sample_rate=_positive_int(audio.get("sample_rate")),
+        audio_codec=str(audio.get("codec_name") or "").strip().lower(),
         has_video=bool(video),
         has_audio=bool(audio),
         size_mb=file_size_mb(path),
@@ -95,7 +97,7 @@ def probe_media(path: Path, *, timeout: int = 20) -> MediaProbe | None:
         "-v",
         "error",
         "-show_entries",
-        "format=duration:stream=codec_type,duration,width,height,sample_rate",
+        "format=duration:stream=codec_type,codec_name,duration,width,height,sample_rate",
         "-of",
         "json",
         str(path),
@@ -202,6 +204,8 @@ def evaluate_highlights_delivery(
         reasons.append("unexpected_dimensions")
     if probe.audio_sample_rate != 48000:
         reasons.append("unexpected_audio_sample_rate")
+    if probe.audio_codec != "aac":
+        reasons.append("unexpected_audio_codec")
 
     expected = max(0.0, _finite_float(expected_duration))
     tolerance = max(0.75, expected * 0.015)
@@ -215,7 +219,7 @@ def evaluate_highlights_delivery(
         touches_edge = start <= 0.35 or end >= probe.duration - 0.35
         if touches_edge and silence_duration <= 0.55:
             continue
-        if silence_duration > max_internal_silence:
+        if silence_duration >= max(0.0, max_internal_silence - 0.02):
             bad_silences.append(
                 {
                     "start": round(start, 3),
@@ -297,6 +301,14 @@ async def verify_highlights_delivery(
             "accepted": False,
             "reasons": [f"silence_probe_error:{type(exc).__name__}"],
             "probe": asdict(probe),
+        }
+    if process.returncode != 0:
+        return {
+            "policy": "final-render-highlights-delivery-v2",
+            "accepted": False,
+            "reasons": ["silence_probe_failed"],
+            "probe": asdict(probe),
+            "stderr_tail": (process.stderr or "")[-800:],
         }
     intervals = parse_silencedetect(process.stderr, duration=probe.duration)
     return evaluate_highlights_delivery(

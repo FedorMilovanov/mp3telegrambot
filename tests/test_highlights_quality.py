@@ -1,5 +1,6 @@
 from services.highlights_quality import (
     _drop_overlaps_and_repeats,
+    _map_probe_segments_to_source,
     build_delivery_subtitles,
     refine_fragment_from_transcript,
     scale_subtitle_segments,
@@ -162,3 +163,51 @@ def test_delivery_subtitles_are_mapped_across_fragments_and_scaled() -> None:
     scaled = scale_subtitle_segments(mapped, 2.0)
     assert scaled[0]["start"] == 0.25
     assert scaled[1]["start"] == 2.5
+
+
+
+def test_probe_mapping_drops_no_word_segment_crossing_window_edge() -> None:
+    windows = [
+        {
+            "index": 0,
+            "probe_start": 0.0,
+            "probe_end": 10.0,
+            "source_start": 100.0,
+            "source_end": 110.0,
+        }
+    ]
+    mapped = _map_probe_segments_to_source(
+        [{"start": -0.6, "end": 1.0, "text": "Чужой контекст.", "words": []}],
+        windows,
+    )
+    assert mapped[0] == []
+
+
+def test_probe_mapping_clips_word_evidence_to_exact_window() -> None:
+    windows = [
+        {
+            "index": 0,
+            "probe_start": 0.0,
+            "probe_end": 10.0,
+            "source_start": 100.0,
+            "source_end": 110.0,
+        }
+    ]
+    mapped = _map_probe_segments_to_source(
+        [
+            {
+                "start": -0.3,
+                "end": 1.0,
+                "text": "Лишнее Проснитесь.",
+                "words": [
+                    {"start": -0.2, "end": -0.05, "word": "Лишнее"},
+                    {"start": 0.1, "end": 0.8, "word": "Проснитесь."},
+                ],
+            }
+        ],
+        windows,
+    )
+    assert len(mapped[0]) == 1
+    assert mapped[0][0]["text"] == "Проснитесь."
+    assert mapped[0][0]["start"] == 100.0
+    assert mapped[0][0]["words"][0]["start"] == 100.1

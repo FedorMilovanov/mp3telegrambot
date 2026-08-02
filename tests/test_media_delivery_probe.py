@@ -40,6 +40,7 @@ def test_old_washer_highlights_signature_is_rejected() -> None:
         width=720,
         height=1280,
         audio_sample_rate=96000,
+        audio_codec="aac",
         has_video=True,
         has_audio=True,
         size_mb=16.8,
@@ -72,6 +73,7 @@ def test_tiny_edge_silence_is_allowed() -> None:
         width=720,
         height=1280,
         audio_sample_rate=48000,
+        audio_codec="aac",
         has_video=True,
         has_audio=True,
     )
@@ -82,3 +84,24 @@ def test_tiny_edge_silence_is_allowed() -> None:
         max_internal_silence=2.8,
     )
     assert report["accepted"] is True
+
+
+
+def test_non_aac_final_highlights_are_rejected() -> None:
+    probe = MediaProbe(
+        duration=20.0,
+        width=720,
+        height=1280,
+        audio_sample_rate=48000,
+        audio_codec="opus",
+        has_video=True,
+        has_audio=True,
+    )
+    report = evaluate_highlights_delivery(
+        probe,
+        [],
+        expected_duration=20.0,
+        max_internal_silence=2.8,
+    )
+    assert report["accepted"] is False
+    assert "unexpected_audio_codec" in report["reasons"]
