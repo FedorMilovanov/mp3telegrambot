@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot branch patch; removed by its workflow after success.
 
 path = Path("tests/test_livedub_qa.py")
 source = path.read_text(encoding="utf-8")
