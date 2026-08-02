@@ -40,6 +40,43 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _finalize_short_caption_for_delivery(
+    caption: str,
+    *,
+    media_id: str,
+    index: int,
+    total: int,
+    start: object = "",
+    end: object = "",
+) -> str:
+    """Trim once and log the exact public caption that will be sent.
+
+    The log is intentionally placed at the final delivery boundary, after every
+    formatter and Telegram-size trim. It records only text that is already
+    public, so live regressions can be reproduced without guessing which
+    intermediate hook/title survived the pipeline.
+    """
+    final_caption = str(caption or "")
+    raw_visible_len = visible_length(final_caption)
+    if raw_visible_len > 1024:
+        final_caption = safe_trim_caption(final_caption, 1024)
+    final_visible_len = visible_length(final_caption)
+    logger.info(
+        "Shorts public caption: media_id=%s index=%d/%d range=%s-%s "
+        "raw_visible_len=%d final_visible_len=%d caption=%r",
+        media_id,
+        index,
+        total,
+        start,
+        end,
+        raw_visible_len,
+        final_visible_len,
+        final_caption,
+    )
+    return final_caption
+
+
 async def process_and_send_shorts(
     url: str,
     media_id: str,
@@ -74,13 +111,9 @@ async def process_and_send_shorts(
     video_path = None
     short_paths: list[Path] = []
     poster_paths: list[Path] = []
-    # AUDIT M4: ashorts_speed_get вместо синхронного — не блокирует event loop
     speed = float(await ashorts_speed_get())
-    # Читаем заранее — используется в finally (await там нельзя).
-    # Если исключение случится до строки внутри try где это читалось — UnboundLocalError.
-    _keep_for_montage = False  # будет перезаписан внутри try после загрузки видео
+    _keep_for_montage = False
     try:
-        # ── Шаг 1: найти кандидатов ──────────────────────────
         candidates = await create_shorts_candidates(
             mp3_path=mp3_path,
             ai_data=ai_data,
@@ -97,8 +130,6 @@ async def process_and_send_shorts(
 
         logger.info(f"Shorts: найдено {len(candidates)} кандидатов, скачиваю видео...")
 
-        # ── Шаг 2: скачать видео ─────────────────────────────
-        # ENG mode: prefer the translated (LiveDub) video for shorts
         if livedub_video_path and livedub_video_path.exists():
             video_path = livedub_video_path
             logger.info(f"Shorts: using LiveDub video: {video_path.name}")
@@ -109,7 +140,6 @@ async def process_and_send_shorts(
             await update.message.reply_text("✂️ Не удалось скачать видео для Shorts.")
             return
 
-        # ── Настройки ─────────────────────────────────────────
         format_name      = (ai_data or {}).get("format", "other") or "other"
         real_author      = (ai_data or {}).get("real_author", "") or performer or ""
         real_event       = (ai_data or {}).get("real_event", "") or ""
@@ -120,11 +150,6 @@ async def process_and_send_shorts(
         do_subtitles     = await asettings_get("shorts_subtitles")
         do_boundary_pad  = await asettings_get("shorts_boundary_padding")
         do_title_poster  = await asettings_get("shorts_title_poster")
-        # speed читается в начале функции — не повторяем здесь
-        # Читаем заранее — используется в finally (await там нельзя)
-        # FIX AUDIT R4: clips тоже переиспользуют это видео — иначе после
-        # шортов clips перекачивал оригинал (в ENG-режиме — молча рендерил
-        # клипы из английского видео вместо перевода).
         _keep_for_montage = (
             await asettings_get("shorts_montage")
             or await asettings_get("shorts_highlights")
@@ -137,7 +162,6 @@ async def process_and_send_shorts(
             f"subtitles={do_subtitles} title_poster={do_title_poster}"
         )
 
-        # Для multi-speaker форматов субтитры работают, но могут ошибаться
         if do_subtitles and format_name in ("qa", "discussion", "interview"):
             logger.info("Shorts subtitles: формат multi-speaker — субтитры могут ошибаться")
 
@@ -159,11 +183,6 @@ async def process_and_send_shorts(
                 f"({c['start']}–{c['end']}) '{c['title']}' [{visual_mode}]"
             )
 
-            # ── Шаг 3: вырезать ──────────────────────────────
-            # Если будет ускорение, расширяем окно конца клипа чтобы
-            # после speed пользователь слышал завершённую мысль.
-            # Пример: speed=1.1, end=808s → реально берём до 808+5=813s,
-            # после ускорения это ужмётся обратно до ~807s.
             try:
                 render_start = max(0.0, float(c.get("start_seconds", 0)))
                 source_end = float(c.get("end_seconds", 0))
@@ -209,7 +228,6 @@ async def process_and_send_shorts(
                 )
                 continue
 
-            # ── Шаг 4: постобработка ─────────────────────────
             need_post = do_normalize or (abs(speed - 1.0) > 0.01)
             current_path = raw_path
             if need_post:
@@ -220,7 +238,6 @@ async def process_and_send_shorts(
                 )
                 if post_ok:
                     current_path = post_path
-                    # Логируем итоговую длительность после speed/normalize
                     _orig_dur = c["duration_seconds"]
                     _final_dur = round(_orig_dur / speed) if abs(speed - 1.0) > 0.01 else _orig_dur
                     logger.info(
@@ -232,10 +249,8 @@ async def process_and_send_shorts(
                         f"Shorts: постобработка {i}/{total} не удалась, использую raw"
                     )
 
-            # ── Шаг 5: субтитры (опционально) ────────────────
             subtitles_applied = False
-            nosub_path = None  # Путь к файлу ДО субтитров
-            # Сохраняем копию до субтитров (для кнопки 🚫Sub)
+            nosub_path = None
             if do_subtitles and HAS_FASTER_WHISPER:
                 nosub_save_path = DOWNLOAD_DIR / f"{media_id}_short_{i}_nosub.mp4"
                 try:
@@ -278,7 +293,6 @@ async def process_and_send_shorts(
                                     f"Shorts {i}/{total}: burn-in не удался, "
                                     "продолжаем без субтитров"
                                 )
-                                # burn-in упал — nosub-копия бесполезна, удаляем сразу
                                 if nosub_path:
                                     try:
                                         nosub_path.unlink(missing_ok=True)
@@ -290,7 +304,6 @@ async def process_and_send_shorts(
                                 f"Shorts {i}/{total}: транскрипция вернула пустой список — "
                                 "субтитры пропущены (см. логи выше)"
                             )
-                            # транскрипция пустая — nosub-копия тоже не нужна
                             if nosub_path:
                                 try:
                                     nosub_path.unlink(missing_ok=True)
@@ -302,7 +315,6 @@ async def process_and_send_shorts(
                             f"Shorts {i}/{total}: subtitle pipeline exception "
                             f"({type(sub_err).__name__}): {sub_err}"
                         )
-                        # исключение — nosub-копия не нужна
                         if nosub_path:
                             try:
                                 nosub_path.unlink(missing_ok=True)
@@ -310,7 +322,6 @@ async def process_and_send_shorts(
                                 pass
                             nosub_path = None
 
-            # ── Шаг 6: постер с заголовком (опционально) ─────
             thumb_buf = None
             if do_title_poster:
                 try:
@@ -324,7 +335,6 @@ async def process_and_send_shorts(
                 except Exception as poster_err:
                     logger.warning(f"Shorts {i}/{total}: title poster error: {poster_err}")
 
-            # ── Шаг 7: snapshot (fallback, если постер не создан) ─
             if thumb_buf is None and do_snapshot:
                 try:
                     snap_ok = await create_short_snapshot(
@@ -335,7 +345,6 @@ async def process_and_send_shorts(
                 except Exception as snap_err:
                     logger.warning(f"Shorts {i}/{total}: snapshot error: {snap_err}")
 
-            # ── Шаг 8: caption ───────────────────────────────
             caption = build_short_caption(
                 candidate=c,
                 performer=performer,
@@ -346,20 +355,18 @@ async def process_and_send_shorts(
                 vk_url=vk_url,
                 rutube_url=rutube_url,
             )
-            if visible_length(caption) > 1024:
-                caption = safe_trim_caption(caption, 1024)
+            caption = _finalize_short_caption_for_delivery(
+                caption,
+                media_id=media_id,
+                index=i,
+                total=total,
+                start=c.get("start"),
+                end=c.get("end"),
+            )
 
-            # ── Шаг 9: отправить ─────────────────────────────
             try:
                 logger.info(f"Shorts: отправляю {i}/{total}")
-                # Сохраняем данные для trim-кнопок
                 short_id = uuid.uuid4().hex[:16]
-                # FIX AUDIT R4: в trim-записи хранится ИСХОДНОЕ видео, а не
-                # отрендеренный 20-60с клип. start/end_seconds — абсолютные
-                # координаты исходника; клип к тому же удаляется в finally,
-                # поэтому все trim-кнопки были мертвы («Исходное видео не
-                # найдено»). Если исходник удалят позже — callback перекачает
-                # его заново по yt_url.
                 short_trim_save(
                     short_id=short_id,
                     video_path=str(video_path),
@@ -375,8 +382,8 @@ async def process_and_send_shorts(
                     format_name=format_name,
                     candidate_json=json.dumps(c, ensure_ascii=False),
                     video_path_nosub=str(nosub_path) if nosub_path else "",
-                    nosub_expiry=int(time.time()) + 86400 if nosub_path else 0,  # #31: 24ч
-                    source_duration=int(duration or 0),  # AUDIT M5: для ограничения end_s при ретриме
+                    nosub_expiry=int(time.time()) + 86400 if nosub_path else 0,
+                    source_duration=int(duration or 0),
                 )
                 _nosub_buttons = []
                 if subtitles_applied:
@@ -387,7 +394,6 @@ async def process_and_send_shorts(
                     InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{short_id}"),
                     *_nosub_buttons,
                 ]])
-                # Path: file:// при local_mode (см. fix LIVEDUB)
                 await update.message.reply_video(
                     video=current_path,
                     caption=caption,
@@ -405,7 +411,6 @@ async def process_and_send_shorts(
                 logger.info(
                     f"Shorts: отправлен {i}/{total} ({c['start']}–{c['end']}) '{c['title']}'"
                 )
-                # Уведомляем если субтитры были включены но не применились
                 if do_subtitles and not subtitles_applied and HAS_FASTER_WHISPER:
                     try:
                         await update.message.reply_text(
@@ -416,12 +421,7 @@ async def process_and_send_shorts(
                         pass
             except Exception as send_err:
                 logger.warning(f"Shorts: ошибка отправки {i}/{total}: {send_err}")
-            finally:
-                # AUDIT R25: thumb_buf теперь InputFile (данные в памяти) —
-                # закрывать нечего.
-                pass
 
-        # ── Шаг 9: итог ──────────────────────────────────────
         if sent == 0:
             logger.warning("Shorts: ни один short не был отправлен")
         else:
@@ -448,8 +448,6 @@ async def process_and_send_shorts(
                 pass
         if video_path:
             try:
-                # FIX AUDIT R4: LiveDub-видео принадлежит основному пайплайну
-                # (ld_work), shorts его лишь одалживает — не удаляем чужое.
                 _borrowed = livedub_video_path is not None and video_path == livedub_video_path
                 if not _keep_for_montage and not _borrowed:
                     video_path.unlink(missing_ok=True)
@@ -458,5 +456,3 @@ async def process_and_send_shorts(
 
 
 # ─── Montage Short & Highlights Reel ─────────────────────────
-
-
