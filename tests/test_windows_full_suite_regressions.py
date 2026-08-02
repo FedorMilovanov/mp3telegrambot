@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def test_atomic_json_retries_transient_permission_error(
     tmp_path: Path,
@@ -29,6 +31,34 @@ def test_atomic_json_retries_transient_permission_error(
 
     assert attempts == 3
     assert json.loads(destination.read_text(encoding="utf-8"))["value"] == "ok"
+    assert not list(tmp_path.glob("production_preflight.json.tmp.*"))
+
+
+def test_atomic_json_exhausts_retry_and_cleans_temp(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools.voxcpm2 import dub_job_preflight as preflight
+
+    destination = tmp_path / "production_preflight.json"
+    attempts = 0
+
+    def blocked_replace(_source, _target):
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError(13, "persistent Windows sharing violation")
+
+    monkeypatch.setattr(preflight.os, "replace", blocked_replace)
+    monkeypatch.setattr(preflight.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(PermissionError):
+        preflight._atomic_json(
+            destination,
+            {"schema_version": 2, "value": "blocked"},
+        )
+
+    assert attempts == 20
+    assert not destination.exists()
     assert not list(tmp_path.glob("production_preflight.json.tmp.*"))
 
 
