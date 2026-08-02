@@ -16,4 +16,7 @@ from tools.voxcpm2.direct_universal_runtime import install_worker_progress
 install_worker_progress(globals())
 
 if _ORIGINAL_NAME == "__main__":
-    main()
+    _main = globals().get("main")
+    if not callable(_main):
+        raise RuntimeError("Dub worker base did not export main().")
+    _main()
