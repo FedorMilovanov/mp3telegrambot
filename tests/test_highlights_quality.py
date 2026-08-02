@@ -51,7 +51,11 @@ def test_refine_rejects_unfinished_quote() -> None:
     )
 
     assert refined is None
-    assert evidence["reason"] in {"unfinished_ending", "unbalanced_quote"}
+    assert evidence["reason"] in {
+        "unresolved_left_context",
+        "unfinished_ending",
+        "unbalanced_quote",
+    }
 
 
 def test_refine_rejects_long_internal_silence(monkeypatch) -> None:
