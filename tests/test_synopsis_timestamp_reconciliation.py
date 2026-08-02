@@ -1,3 +1,4 @@
+from core.content_audit import audit_expanded_sections
 from core.synopsis_timestamps import (
     reconcile_synopsis_timestamps,
     section_anchor_seconds,
@@ -91,3 +92,25 @@ def test_outline_time_never_overrides_reconciled_section_time() -> None:
     reconciled, final_outline, _ = reconcile_synopsis_timestamps(sections, outline)
     assert reconciled[0]["time"] == "8:34"
     assert final_outline == [{"title": "Раздел", "time": "8:34"}]
+
+
+def test_synopsis_content_audit_returns_one_reconciled_timeline() -> None:
+    sections = [
+        {"title": "Первый", "time": "0:00", "content": "Начало ⏱ 0:00."},
+        {"title": "Второй", "time": "12:00", "content": "Переход ⏱ 10:34."},
+    ]
+    outline = [
+        {"title": "Первый", "time": "0:00"},
+        {"title": "Второй", "time": "12:00"},
+    ]
+
+    audited_sections, audited_outline, issues = audit_expanded_sections(
+        sections,
+        outline,
+        label="SynopsisDensityRetry",
+        expected_author="Пол Вошер",
+    )
+
+    assert audited_sections[1]["time"] == "10:34"
+    assert audited_outline[1] == {"title": "Второй", "time": "10:34"}
+    assert any(item.code == "section_time_reconciled" for item in issues)
