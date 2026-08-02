@@ -16,6 +16,8 @@ import tempfile
 
 from tools.voxcpm2 import direct_final_audit_v3 as final
 from tools.voxcpm2 import direct_retry_epoch as retry
+from tools.voxcpm2 import direct_surgical_guard
+from tools.voxcpm2 import direct_surgical_polish_v2
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
@@ -73,6 +75,8 @@ with tempfile.TemporaryDirectory() as raw:
         "log": lambda message: events.append("log:" + str(message)),
     }
 
+    direct_surgical_guard.install_guard_contract()
+    direct_surgical_polish_v2.install_global_polish()
     original_preflight = guard.run_pre_model_guard
 
     def fake_preflight(segments, *, work_dir, max_tempo, signature_context):
