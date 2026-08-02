@@ -15,9 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_explicit_zero_settings_are_preserved() -> None:
-    assert settings.values(
-        {"original_level": 0, "russian_delay_ms": 0}
-    ) == {
+    assert settings.values({"original_level": 0, "russian_delay_ms": 0}) == {
         "policy": settings.POLICY,
         "original_level": 0.0,
         "russian_delay_ms": 0,
@@ -203,7 +201,7 @@ def test_all_clean_routes_repair_manifest_and_override_delay() -> None:
     expected = {
         "generic_clean_gemini_runtime.py": "_build_clean_render_segments",
         "generic_clean_custom_runtime.py": "_build_clean_render_segments",
-        "generic_clean_direct_runtime.py": "_build_clean_direct_segments",
+        "_generic_clean_direct_runtime_base.py": "_build_clean_direct_segments",
     }
     for filename, builder in expected.items():
         source = (ROOT / "tools" / "voxcpm2" / filename).read_text(encoding="utf-8")
