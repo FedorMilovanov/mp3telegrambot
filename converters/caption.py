@@ -7,6 +7,7 @@ from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_author_name,
     normalize_title_text, title_case_fragment, BAD_META_PATTERNS, normalize_common_typos,  # FIX #7
 )
+from core.russian_style import polish_public_russian_text
 from core.url_utils import get_youtube_timestamp_url    # FIX #7
 from services.search import build_platform_links, build_telegraph_links  # FIX #7
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils (разрыв циклов)
@@ -21,6 +22,40 @@ from core.core_utils import (                           # FIX: circular imports
 from core.globals import html_mod                       # FIX #7: html_mod = html as html_mod в globals
 
 import re
+
+
+_TRAILING_EMOJI_PUNCT_RE = re.compile(
+    r"(?P<space>[ \t]+)"
+    r"(?P<emoji>[\U0001F300-\U0001FAFF\u2600-\u27BF]"
+    r"(?:\ufe0f|\u200d[\U0001F300-\U0001FAFF\u2600-\u27BF]\ufe0f?)*)"
+    r"(?P<punct>[.!?…])(?=\s|$)"
+)
+
+
+def _polish_caption_sentence_punctuation(text: str) -> str:
+    """Place sentence punctuation before a trailing emoji.
+
+    Gemini sometimes emits ``испытаниям ⚔️.``. In Russian editorial text the
+    punctuation belongs to the sentence and the emoji follows it:
+    ``испытаниям. ⚔️``. The rule is deliberately narrow: it only touches a
+    sentence-final emoji immediately followed by ``.!?…`` and leaves ordinary
+    symbols, links and emoji inside a sentence unchanged.
+    """
+    value = str(text or "")
+    return _TRAILING_EMOJI_PUNCT_RE.sub(
+        lambda match: (
+            f"{match.group('punct')}{match.group('space')}{match.group('emoji')}"
+        ),
+        value,
+    )
+
+
+def _polish_public_caption_text(text: str) -> str:
+    """Apply narrow Russian style fixes, then punctuation polish."""
+    return _polish_caption_sentence_punctuation(
+        polish_public_russian_text(text)
+    )
+
 
 def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrate="128", url="", telegraph_url="", rutube_url="", vk_url="", quotes_tg_url="", questions_tg_url="", terms_tg_url="", study_tg_url="", reflection_tg_url="", full_mode=False):
     parts = []
@@ -88,7 +123,9 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
         parts.append("⏱ Таймкоды сокращены; полный список в конспекте.")
 
     # Краткое описание (main_topic) — между шапкой и таймкодами
-    main_topic = _scrub_inline((ai_data or {}).get("main_topic", ""))
+    main_topic = _polish_public_caption_text(
+        _scrub_inline((ai_data or {}).get("main_topic", ""))
+    )
     if main_topic:
         def _topic_to_html(text: str) -> str:
             """Конвертирует **жирный** из Gemini в <b>жирный</b> для Telegram HTML."""
@@ -137,7 +174,9 @@ def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrat
             # (DEEP-QUALITY FIX [C] добавил только комментарий, но не заменил код — исправлено)
             _p = line.split(' ', 1)
             time_str = _p[0]
-            topic_str = _p[1].strip() if len(_p) == 2 else ""
+            topic_str = _polish_public_caption_text(
+                _p[1].strip() if len(_p) == 2 else ""
+            )
 
             def _topic_bold_to_html(t: str) -> str:
                 """Конвертирует **bold** → <b>bold</b>, остальное экранирует.
@@ -232,4 +271,3 @@ def _split_into_sentences(text: str) -> list[str]:
     # Разбиваем по границе предложения: символ конца + пробел + заглавная/цифра/«
     parts = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z«""\d\-—])', text)
     return [p.strip() for p in parts if p.strip()]
-

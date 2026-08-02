@@ -35,6 +35,15 @@ def test_acronyms_and_internal_case_are_preserved() -> None:
     assert canonical_media_title("Q&A О LSB И МакАртуре") == "Q&A о LSB и МакАртуре"
 
 
+def test_title_policy_changes_case_but_not_semantic_punctuation() -> None:
+    assert canonical_media_title(
+        "Сомнение — Это Не Просто Слабость - Пол Вошер"
+    ) == "Сомнение — Это не Просто Слабость - Пол Вошер"
+    assert canonical_media_title(
+        "Сомнение – Это Не Просто Слабость - Пол Вошер"
+    ) == "Сомнение – Это не Просто Слабость - Пол Вошер"
+
+
 def test_historical_manifest_filename_is_fixed_without_rerender() -> None:
     filename = (
         "Сила И Достоинство Благочестивой Женщины - Джон Пайпер "
@@ -54,6 +63,10 @@ def test_core_patch_preserves_existing_english_title_case() -> None:
     assert (
         text_utils.title_case_fragment("Сила И Достоинство")
         == "Сила и Достоинство"
+    )
+    assert (
+        text_utils.title_case_fragment("Сомнение — Это Не Слабость")
+        == "Сомнение — Это не Слабость"
     )
 
 

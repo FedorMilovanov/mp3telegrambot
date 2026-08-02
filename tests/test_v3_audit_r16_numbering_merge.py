@@ -4,10 +4,9 @@
    и НЕ продолжал сквозную нумерацию материала — разный визуальный формат
    оглавления на разных страницах одного конспекта. Пронумеровано сквозно.
 2. _publish_recursive делит sections пополам по КОЛИЧЕСТВУ (не по размеру) —
-   дало неровный расклад 4+2+3 секции по 3 частям (часть 2 была заметно
-   тоньше соседних). Оператор спросил: «можно ли 2 и 3 объединить?» —
-   добавлена попытка слияния хвостовых частей РЕАЛЬНЫМ editPage (решение
-   принимает сам Telegraph через CONTENT_TOO_BIG, не догадка по числу нод).
+   дало неровный расклад 4+2+3 секции по 3 частям. Хвостовые части объединяются
+   только после реального editPage. Structured edit outcome distinguishes
+   CONTENT_TOO_BIG from transient transport failures.
 """
 from pathlib import Path
 
@@ -24,9 +23,9 @@ def test_global_numbering_formula_matches_expected_sequence():
     """Точная симуляция скриншота: части [4]+[2]+[3] секций → части 2 и 3
     должны продолжить нумерацию с 5 и с 7, а не начинать заново с 1."""
     parts = [
-        [{"title": f"T{i}"} for i in range(4)],   # part 1: sections 1-4
-        [{"title": "A"}, {"title": "B"}],          # part 2: sections 5-6
-        [{"title": "C"}, {"title": "D"}, {"title": "E"}],  # part 3: sections 7-9
+        [{"title": f"T{i}"} for i in range(4)],
+        [{"title": "A"}, {"title": "B"}],
+        [{"title": "C"}, {"title": "D"}, {"title": "E"}],
     ]
     expected = {1: [5, 6], 2: [7, 8, 9]}
     for i in (1, 2):
@@ -45,7 +44,6 @@ def test_mini_outline_uses_global_numbering_not_bullets():
 
 
 def test_mini_outline_still_builds_real_link_after_r16_edit():
-    """R15b (кликабельность) не должна была сломаться правкой нумерации R16."""
     src = _telegraph_src()
     block = src.split("elif total > 1:", 1)[1].split("for sec_idx, sec in enumerate(part_secs):", 1)[0]
     assert '"tag": "a"' in block
@@ -54,28 +52,26 @@ def test_mini_outline_still_builds_real_link_after_r16_edit():
 
 # ── 2. Слияние тонких хвостовых частей через реальный editPage ──
 
-def test_merge_loop_present_and_uses_real_editpage_as_ground_truth():
+def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth():
     src = _telegraph_src()
     block = src.split("success = await _publish_recursive(sections)", 1)[1].split(
         "total      = len(published_parts)", 1
     )[0]
     assert "while len(published_parts) >= 2:" in block
-    assert "_edit_telegraph_page(_prev_url, tg_title, author, _combined_nodes, loop)" in block
-    assert "if not _merged_ok:" in block and "break" in block
+    assert "_edit_telegraph_page_classified(" in block
+    assert "if not _merged_result.ok:" in block and "break" in block
+    assert "_merged_result.error != \"CONTENT_TOO_BIG\"" in block
     assert "published_parts.pop()" in block
     assert "published_parts[-2] = (_combined_secs, _prev_url)" in block
 
 
 def test_merge_loop_combines_sections_in_correct_order():
-    """_combined_secs должен идти [prev..., last...] — не переставлять порядок."""
     src = _telegraph_src()
-    block = src.split("while len(published_parts) >= 2:", 1)[1][:800]
+    block = src.split("while len(published_parts) >= 2:", 1)[1][:1000]
     assert "_combined_secs = _prev_secs + _last_secs" in block
 
 
 def test_merge_loop_has_ratelimit_pause_before_first_attempt():
-    """editPage сразу после createPage падает без паузы (задокументированный
-    rate-limit V3-P16) — merge-петля должна ждать перед первой попыткой."""
     src = _telegraph_src()
     block = src.split("success = await _publish_recursive(sections)", 1)[1].split(
         "while len(published_parts) >= 2:", 1

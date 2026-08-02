@@ -60,6 +60,7 @@ _PRESERVE_CASE = {
 
 _EDGE_RE = re.compile(r"^([^А-Яа-яЁёA-Za-z0-9]*)(.*?)([^А-Яа-яЁёA-Za-z0-9]*)$")
 _CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
+_SPACED_DASH_RE = re.compile(r"\s+([—–-])\s+")
 _DELIVERY_MARKERS = tuple(
     sorted(
         {
@@ -91,13 +92,21 @@ def _capitalize(word: str) -> str:
 
 
 def canonical_media_title(value: Any) -> str:
-    """Return canonical Russian media-title casing.
+    """Return canonical Russian media-title casing without changing punctuation.
 
     Service words are tested before acronym/proper-case preservation. Thus an
     internal uppercase ``И`` is a conjunction, not a one-letter acronym.
+
+    This function owns *casing*, not semantic separators. Earlier it converted
+    every spaced em/en dash to an ASCII hyphen. Because the function is patched
+    into ``core.text_utils`` globally, that silently destroyed the distinction
+    between an internal title pause (`` — ``) and a field boundary
+    (``Title - Author``). Whitespace is normalized while the original dash code
+    point is preserved; the formatter that owns each public surface decides
+    which separator belongs at its own boundary.
     """
     text = re.sub(r"\s+", " ", str(value or "")).strip(" .—–-")
-    text = re.sub(r"\s+[—–-]\s+", " - ", text)
+    text = _SPACED_DASH_RE.sub(lambda match: f" {match.group(1)} ", text)
     if not text or not _CYRILLIC_RE.search(text):
         return text
 

@@ -17,7 +17,10 @@ def test_r39_metaphorical_title_not_zeroed():
     p = _parse_gemini_response(resp, 600)
     assert p.get("real_title") == "Трус и лжец"        # не обнулено
     assert p.get("title_topic_warning")                # гейт всё равно взведён
-    assert p.get("real_title_ai_rejected") == "Трус и лжец"
+    # R39 originally kept a legacy "ai_rejected" marker even though the title
+    # was not rejected. Evidence-aware audit now calls a two-word metaphorical
+    # title inconclusive, so it is warned and preserved without a false reject.
+    assert not p.get("real_title_ai_rejected")
 
 
 # ── Gemini-F3: cue-подстрока внутри слова не теряется ──────────────────────
@@ -61,7 +64,7 @@ def test_r39_qa_info_survive_string_shapes():
     assert isinstance(msg, str)
 
 
-# ── Persist-F1: элементы JSON-списков в архиве приводятся к str ─────────────
+# ── Persist-F1: элементы JSON-списков в архиве приводятся к str ───────────────
 def test_r39_archive_rows_coerce_list_elements():
     from core.generated_pages import _RECORD_KEYS, _rows_to_dicts
     row = tuple("[1,2]" if k == "hashtags" else "" for k in _RECORD_KEYS)
