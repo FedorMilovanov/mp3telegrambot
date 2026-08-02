@@ -86,6 +86,14 @@ def embed_chapters(
         except ID3NoHeaderError:
             tags = ID3()
 
+        metadata_requested = bool(
+            str(title or "").strip()
+            or str(performer or "").strip()
+            or str(comment or "").strip()
+            or (thumb_path and Path(thumb_path).exists())
+        )
+        chapters_embedded = False
+
         # 1. Базовые теги
         if title:
             tags.add(TIT2(encoding=3, text=[title]))
@@ -147,8 +155,11 @@ def embed_chapters(
                     element_id="toc", flags=CTOCFlags.TOP_LEVEL | CTOCFlags.ORDERED,
                     child_element_ids=child_ids, sub_frames=[],
                 ))
+                chapters_embedded = True
                 logger.info("MP3 metadata: вшито %d глав", len(child_ids))
 
+        if not chapters_embedded and not metadata_requested:
+            return False
         tags.save(str(mp3_path))
         return True
     except Exception as e:

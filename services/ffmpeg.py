@@ -63,6 +63,14 @@ def _extract_cookies_from_browser_specs(conf_text: str) -> list[str]:
     return [s for s in specs if s]
 
 
+def _browser_profile_from_spec(spec: str) -> str:
+    """Extract BROWSER[:PROFILE][::KEYRING] without truncating Windows drives."""
+    _browser, separator, remainder = str(spec or "").partition(":")
+    if not separator:
+        return ""
+    return remainder.split("::", 1)[0].strip()
+
+
 def _firefox_cookie_source_available(spec: str = "firefox") -> bool:
     """Есть ли локальный Firefox cookie-store для yt-dlp.
 
@@ -71,10 +79,9 @@ def _firefox_cookie_source_available(spec: str = "firefox") -> bool:
     firefox` иначе валит все скачивания ошибкой "could not find firefox
     cookies database". Если указан абсолютный путь профиля — проверяем его.
     """
-    profile = ""
-    if ":" in spec:
-        # yt-dlp: BROWSER[:PROFILE][::KEYRING]
-        profile = spec.split(":", 1)[1].split(":", 1)[0].strip()
+    # yt-dlp: BROWSER[:PROFILE][::KEYRING]. Preserve the colon in
+    # absolute Windows paths such as firefox:C:\\Users\\... .
+    profile = _browser_profile_from_spec(spec)
     if profile:
         pp = Path(profile).expanduser()
         if pp.is_absolute():

@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import shutil
 import threading
+import time
 from typing import Any, Iterator
 import uuid
 
@@ -95,7 +96,14 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        for attempt in range(20):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt >= 19:
+                    raise
+                time.sleep(min(0.005 * (attempt + 1), 0.05))
     finally:
         temporary.unlink(missing_ok=True)
 
