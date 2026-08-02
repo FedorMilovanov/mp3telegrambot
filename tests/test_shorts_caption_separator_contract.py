@@ -1,6 +1,7 @@
 from services.shorts_video import (
     _prepare_short_hook,
     build_short_caption,
+    title_case_fragment,
 )
 
 
@@ -12,6 +13,12 @@ def _caption(hook: str, *, kind: str = "") -> str:
         real_event="",
         format_name="sermon",
     )
+
+
+def test_internal_pause_survives_title_case_stage() -> None:
+    prepared = _prepare_short_hook("Сомнение - Это оскорбление Бога", "Пол Вошер")
+    assert prepared == "Сомнение — Это оскорбление Бога"
+    assert title_case_fragment(prepared) == "Сомнение — Это Оскорбление Бога"
 
 
 def test_internal_pause_uses_em_dash_and_author_boundary_uses_hyphen() -> None:
