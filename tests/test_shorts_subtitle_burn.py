@@ -1,4 +1,3 @@
-import ast
 import asyncio
 import shutil
 import subprocess
@@ -21,46 +20,6 @@ class _ObservedTemporaryDirectory:
         shutil.rmtree(self.path)
 
 
-class _GracefulChild:
-    def __init__(self) -> None:
-        self.returncode = None
-        self.terminate_calls = 0
-        self.kill_calls = 0
-        self.wait_calls = 0
-
-    def terminate(self) -> None:
-        self.terminate_calls += 1
-
-    def kill(self) -> None:
-        self.kill_calls += 1
-
-    async def wait(self) -> int:
-        self.wait_calls += 1
-        self.returncode = -15
-        return self.returncode
-
-
-class _HungChild:
-    def __init__(self) -> None:
-        self.returncode = None
-        self.terminate_calls = 0
-        self.kill_calls = 0
-        self.wait_calls = 0
-
-    def terminate(self) -> None:
-        self.terminate_calls += 1
-
-    def kill(self) -> None:
-        self.kill_calls += 1
-
-    async def wait(self) -> int:
-        self.wait_calls += 1
-        if self.wait_calls == 1:
-            raise asyncio.TimeoutError
-        self.returncode = -9
-        return self.returncode
-
-
 def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subtitle_burn.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(
@@ -81,27 +40,24 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_terminate_process_waits_for_graceful_exit() -> None:
-    process = _GracefulChild()
+async def test_burn_command_delegates_to_shared_process_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
 
-    await subtitle_burn._terminate_process(process)
+    async def _shared_owner(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    assert process.terminate_calls == 1
-    assert process.kill_calls == 0
-    assert process.wait_calls == 1
-    assert process.returncode == -15
+    monkeypatch.setattr(subtitle_burn, "run_cancellable_process", _shared_owner)
 
+    result = await subtitle_burn._run_burn_command(["ffmpeg", "-version"])
 
-@pytest.mark.asyncio
-async def test_terminate_process_kills_after_grace_period() -> None:
-    process = _HungChild()
-
-    await subtitle_burn._terminate_process(process)
-
-    assert process.terminate_calls == 1
-    assert process.kill_calls == 1
-    assert process.wait_calls == 2
-    assert process.returncode == -9
+    assert result.returncode == 0
+    assert captured["command"] == ["ffmpeg", "-version"]
+    assert captured["timeout"] == 600.0
+    assert captured["text"] is True
 
 
 @pytest.mark.asyncio
@@ -216,18 +172,11 @@ def test_active_pipelines_use_transactional_subtitle_owner() -> None:
         assert "burn_subtitles_into_short" not in shorts_import
 
 
-def test_child_process_is_stopped_before_temp_cleanup() -> None:
+def test_subtitle_burn_has_no_second_child_process_policy() -> None:
     source = Path(subtitle_burn.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    called_names: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Attribute):
-            called_names.append(node.func.attr)
-        elif isinstance(node.func, ast.Name):
-            called_names.append(node.func.id)
 
-    assert "create_subprocess_exec" in called_names
-    assert called_names.count("_terminate_process") == 2
-    assert "run_in_executor" not in called_names
+    assert "from services.async_process import run_cancellable_process" in source
+    assert "await run_cancellable_process(" in source
+    assert "create_subprocess_exec" not in source
+    assert "def _terminate_process" not in source
+    assert "run_in_executor" not in source
