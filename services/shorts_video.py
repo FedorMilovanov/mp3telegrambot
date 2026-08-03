@@ -70,7 +70,6 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: O
             "--output", str(DOWNLOAD_DIR / f"{media_id}_video.%(ext)s"),
             url,
         ]
-        loop = asyncio.get_running_loop()
         proc = await run_cancellable_process(cmd, timeout=900, text=True)
         if proc.returncode != 0:
             logger.warning(f"Shorts video download failed: {proc.stderr[-300:]}")
@@ -1137,7 +1136,6 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
             ffmpeg, "-i", str(video_path),
             "-ar", "16000", "-ac", "1", "-f", "wav", "-y", str(wav_path),
         ]
-        loop = asyncio.get_running_loop()
         proc = await run_cancellable_process(cmd, timeout=120)
 
         if proc.returncode != 0:
@@ -1295,7 +1293,6 @@ async def _unowned_burn_subtitles_into_short(
             "-c:v", _enc, *_preset, *_quality,
             "-c:a", "copy", "-movflags", "+faststart", "-y", str(output_path),
         ]
-        loop = asyncio.get_running_loop()
         # AUDIT R29b: burn-in субтитров — самый длинный NVENC-проход пайплайна;
         # серилизуем через GPU-семафор, чтобы не драться за карту с рендером/
         # постобработкой параллельных видео.
@@ -1376,7 +1373,6 @@ async def _unowned_create_short_title_poster(
             ffmpeg, "-ss", str(seek_time), "-i", str(video_path),
             "-vframes", "1", "-q:v", "2", "-y", str(frame_path),
         ]
-        loop = asyncio.get_running_loop()
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
             frame_path.unlink(missing_ok=True)

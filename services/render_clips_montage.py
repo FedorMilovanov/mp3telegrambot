@@ -257,7 +257,6 @@ async def render_montage_short(
         if not ffmpeg or not source_video_path.exists() or not fragments:
             return False
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        loop = asyncio.get_running_loop()
 
         # AUDIT R28: статичная картинка-заставка при crop в 9:16 режется криво —
         # вписываем целиком (full_frame_blur). Реальное видео остаётся на crop.
