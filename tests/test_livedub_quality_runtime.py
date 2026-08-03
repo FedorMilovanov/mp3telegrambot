@@ -50,7 +50,7 @@ def test_light_work_uses_current_flash_lite():
     assert "gemini-3.5-flash-lite" in src
 
 
-def test_gemini_31_is_retired_not_an_active_fallback():
+def test_gemini_31_is_not_an_active_project_fallback():
     src = _runtime_source()
     assert '"gemini-3.1-flash-lite"' in src.split("_RETIRED_MODELS", 1)[1]
     assert 'f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}"' in src
@@ -70,9 +70,12 @@ def test_yandex_tts_fallback_is_enabled_but_explicitly_marked():
     assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' in src
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert ".voice_style_tts" in mix
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "LIVEDUB_TTS_FALLBACK=1" in env
+    assert "LIVEDUB_TTS_FALLBACK=0" not in env
 
 
-def test_retired_models_are_filtered():
+def test_project_obsolete_models_are_filtered():
     src = _runtime_source()
     assert "_RETIRED_MODELS" in src
     assert "value not in _RETIRED_MODELS" in src
