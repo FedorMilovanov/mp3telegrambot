@@ -133,6 +133,24 @@ async def test_noop_transform_preserves_same_path_input(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_filtered_transform_rejects_same_path_without_deleting_input(
+    tmp_path: Path,
+) -> None:
+    media_path = tmp_path / "same.mp4"
+    media_path.write_bytes(b"same path media")
+
+    result = await shorts_video._unowned_short_transform(
+        media_path,
+        media_path,
+        normalize_audio=True,
+        speed=1.0,
+    )
+
+    assert result is False
+    assert media_path.read_bytes() == b"same path media"
+
+
+@pytest.mark.asyncio
 async def test_transform_cancellation_removes_partial_output(
     monkeypatch,
     tmp_path: Path,
