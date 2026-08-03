@@ -13,7 +13,7 @@ from services import render_clips_montage
 
 
 TARGETS = {
-    Path("services/shorts_video.py"): {
+    Path("services/shorts_video_impl.py"): {
         "_unowned_render_short_clip",
         "_unowned_short_transform",
         "_unowned_burn_subtitles_into_short",
@@ -53,7 +53,7 @@ def test_all_async_encoder_call_sites_use_owned_threads() -> None:
 
 
 def test_whisper_owned_worker_format_is_readable() -> None:
-    source = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    source = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert (
         "            segments, audio_duration, detected_lang, lang_prob = await await_owned_coroutine(\n"
         "                asyncio.to_thread(_run_whisper)\n"
