@@ -162,6 +162,30 @@ async def test_transform_cancellation_removes_partial_output(
 
 
 @pytest.mark.asyncio
+async def test_transform_without_ffmpeg_removes_stale_output(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "input.mp4"
+    output_path = tmp_path / "processed.mp4"
+    input_path.write_bytes(b"input")
+    output_path.write_bytes(b"old processed")
+
+    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: None)
+
+    result = await shorts_video._unowned_short_transform(
+        input_path,
+        output_path,
+        normalize_audio=True,
+        speed=1.0,
+    )
+
+    assert result is False
+    assert output_path.exists() is False
+    assert input_path.read_bytes() == b"input"
+
+
+@pytest.mark.asyncio
 async def test_poster_ffmpeg_failure_removes_stale_poster(
     monkeypatch,
     tmp_path: Path,
