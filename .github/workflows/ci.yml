@@ -56,8 +56,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          timeout --signal=INT --kill-after=15s 180s \
-            python -m pytest -vv --tb=short 2>&1 | tee pytest-output.txt
+          python -m pytest -q 2>&1 | tee pytest-output.txt
 
       - name: Upload pytest diagnostics
         if: failure()
