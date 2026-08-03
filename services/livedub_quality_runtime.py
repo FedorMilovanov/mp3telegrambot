@@ -40,7 +40,11 @@ def configure_gemini_policy() -> str:
     Existing installations commonly pin the former default ``gemini-3.5-flash``
     in ``.env``. The owner explicitly requested migration to 3.6 everywhere
     quality matters, so that exact former default is upgraded automatically.
-    Retired 3.1/2.x light models are replaced with 3.5 Flash-Lite.
+    Project-obsolete 3.1/2.x light models are migrated to 3.5 Flash-Lite.
+
+    Voice transport policy is intentionally not changed here. In particular,
+    ordinary Yandex TTS remains an explicit operator opt-in; this model-policy
+    bootstrap must never silently turn a Live-voice request into another voice.
     """
     current_main = os.getenv("GEMINI_MODEL", "").strip()
     if not current_main or current_main == _STRONG_FALLBACK_MODEL:
@@ -60,10 +64,6 @@ def configure_gemini_policy() -> str:
     os.environ.setdefault("LIVEDUB_QUICK_QA_MODEL", _PRIMARY_MODEL)
     os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _STRONG_FALLBACK_MODEL)
     os.environ.setdefault("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
-
-    # The user approved trying ordinary Yandex voices when Live voices are not
-    # available. The generated result is explicitly marked as TTS elsewhere.
-    os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")
 
     return (
         f"main={os.environ.get('GEMINI_MODEL', _PRIMARY_MODEL)}, "
