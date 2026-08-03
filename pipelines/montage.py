@@ -22,6 +22,7 @@ from services.shorts_video import (
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.media_delivery_probe import (
     file_size_mb,
+    media_probe_is_deliverable,
     probe_media_async,
     select_delivery_file,
     verify_highlights_delivery,
@@ -175,19 +176,41 @@ async def _run_montage_or_highlights_pipeline(
             )
 
         final_probe = await probe_media_async(current_path)
-        if (
-            final_probe is None
-            or final_probe.duration <= 0
-            or not final_probe.has_video
-            or not final_probe.has_audio
-        ):
-            logger.warning(
-                "%s: финальный media probe не подтвердил video+audio и "
-                "положительную длительность",
-                prefix,
-            )
-            return False
+        if not media_probe_is_deliverable(final_probe):
+            if current_path != pre_subtitle_path:
+                fallback_selection = select_delivery_file(
+                    pre_subtitle_path,
+                    None,
+                    max_size_mb=max_upload_mb,
+                )
+                fallback_probe = (
+                    await probe_media_async(fallback_selection.path)
+                    if fallback_selection.path is not None
+                    else None
+                )
+                if (
+                    fallback_selection.path is not None
+                    and media_probe_is_deliverable(fallback_probe)
+                ):
+                    logger.warning(
+                        "%s: subtitle-артефакт не прошёл media probe; "
+                        "использую проверенный pre-subtitle файл. probe=%r",
+                        prefix,
+                        final_probe,
+                    )
+                    current_path = fallback_selection.path
+                    final_probe = fallback_probe
+                    delivery_selection = "fallback"
+                    delivery_reason = "fallback_after_primary_media_probe_rejection"
+            if not media_probe_is_deliverable(final_probe):
+                logger.warning(
+                    "%s: ни primary, ни fallback media probe не подтвердили "
+                    "пригодный video+audio файл",
+                    prefix,
+                )
+                return False
 
+        assert final_probe is not None
         delivery_duration = final_probe.duration
         delivery_report = None
         if verified_highlights:
@@ -219,8 +242,9 @@ async def _run_montage_or_highlights_pipeline(
                         )
                         current_path = fallback_selection.path
                         final_probe = await probe_media_async(current_path)
-                        if final_probe is None or final_probe.duration <= 0:
+                        if not media_probe_is_deliverable(final_probe):
                             return False
+                        assert final_probe is not None
                         delivery_duration = final_probe.duration
                         delivery_report = fallback_report
                         delivery_selection = "fallback"
