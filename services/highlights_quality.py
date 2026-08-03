@@ -31,6 +31,7 @@ from core.globals import (
     gemini_generate,
     make_text_config_smart,
 )
+from services.async_process import run_cancellable_process
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import HAS_FASTER_WHISPER, transcribe_short_clip
 
@@ -44,6 +45,8 @@ _DANGLING_END_RE = re.compile(
 )
 _LEFT_CONTEXT_RE = re.compile(
     r'(?i)^(?:и|а|но|или|потому|поэтому|однако|ведь|тогда|так что|в смысле|'
+    r'то есть|иными словами|другими словами|например|кроме того|более того|'
+    r'таким образом|с другой стороны|'
     r'этот|эта|это|эти|такой|такая|такие|он|она|они|его|ее|её|их|'
     r'который|которая|которые|что|когда|если|поскольку|хотя)\b'
 )
@@ -505,14 +508,9 @@ async def _build_audio_probe(
         "-y",
         str(separator_path),
     ]
-    loop = asyncio.get_running_loop()
-    separator_proc = await loop.run_in_executor(
-        None,
-        lambda: subprocess.run(
-            separator_cmd,
-            capture_output=True,
-            timeout=30,
-        ),
+    separator_proc = await run_cancellable_process(
+        separator_cmd,
+        timeout=30,
     )
     if separator_proc.returncode != 0 or not separator_path.exists():
         return None
@@ -539,10 +537,7 @@ async def _build_audio_probe(
             "-y",
             str(part_path),
         ]
-        proc = await loop.run_in_executor(
-            None,
-            lambda c=cmd: subprocess.run(c, capture_output=True, timeout=90),
-        )
+        proc = await run_cancellable_process(cmd, timeout=90)
         if proc.returncode != 0 or not part_path.exists() or part_path.stat().st_size < 1024:
             return None
 
@@ -571,10 +566,7 @@ async def _build_audio_probe(
         "-y",
         str(probe_path),
     ]
-    proc = await loop.run_in_executor(
-        None,
-        lambda: subprocess.run(concat_cmd, capture_output=True, timeout=120),
-    )
+    proc = await run_cancellable_process(concat_cmd, timeout=120)
     if proc.returncode != 0 or not probe_path.exists() or probe_path.stat().st_size < 1024:
         return None
     return probe_path
@@ -902,20 +894,19 @@ async def render_verified_highlights(
     *,
     visual_mode: str = "full_frame_vertical",
 ) -> bool:
-    """Render all verified cuts from source in one encode.
+    """Render all verified cuts from source in one owned encode.
 
     Each fragment is an independently seeked input, then video/audio are joined
-    by the concat filter. This avoids the old chain “encode every part → concat
-    → encode again”, removes per-part AAC delay accumulation and keeps the
-    transcript-derived boundaries stable. Only a 35–45 ms audio edge fade is
-    used to suppress cut clicks; it is too short to conceal a bad semantic cut.
+    by the concat filter. The child remains owned through timeout or coroutine
+    cancellation, so the GPU semaphore and output path cannot be released while
+    FFmpeg is still writing in a background executor thread.
     """
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg or not source_video_path.exists() or not fragments:
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    loop = asyncio.get_running_loop()
+    output_path.unlink(missing_ok=True)
     try:
         encoder, quality, preset = _get_video_encoder()
         input_args: list[str] = []
@@ -1004,20 +995,17 @@ async def render_verified_highlights(
         from core.resource_scheduler import scheduler as resource_scheduler
 
         async with resource_scheduler.gpu_render:
-            proc = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
-                ),
+            proc = await run_cancellable_process(
+                cmd,
+                timeout=600,
+                text=True,
             )
         if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
             logger.warning(
                 "Verified highlights render failed: %s",
                 (proc.stderr or "")[-1000:],
             )
+            output_path.unlink(missing_ok=True)
             return False
 
         logger.info(
@@ -1027,10 +1015,15 @@ async def render_verified_highlights(
             output_path.stat().st_size / (1024 * 1024),
         )
         return True
+    except asyncio.CancelledError:
+        output_path.unlink(missing_ok=True)
+        raise
     except subprocess.TimeoutExpired:
+        output_path.unlink(missing_ok=True)
         logger.warning("render_verified_highlights: ffmpeg timeout")
         return False
     except Exception as exc:
+        output_path.unlink(missing_ok=True)
         logger.warning(
             "render_verified_highlights error: %s: %s",
             type(exc).__name__,
