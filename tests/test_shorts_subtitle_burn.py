@@ -21,6 +21,46 @@ class _ObservedTemporaryDirectory:
         shutil.rmtree(self.path)
 
 
+class _GracefulChild:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.wait_calls = 0
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        self.returncode = -15
+        return self.returncode
+
+
+class _HungChild:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.wait_calls = 0
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise asyncio.TimeoutError
+        self.returncode = -9
+        return self.returncode
+
+
 def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subtitle_burn.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(
@@ -38,6 +78,30 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         "_get_video_encoder",
         lambda: ("libx264", ["-crf", "23"], ["-preset", "veryfast"]),
     )
+
+
+@pytest.mark.asyncio
+async def test_terminate_process_waits_for_graceful_exit() -> None:
+    process = _GracefulChild()
+
+    await subtitle_burn._terminate_process(process)
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.wait_calls == 1
+    assert process.returncode == -15
+
+
+@pytest.mark.asyncio
+async def test_terminate_process_kills_after_grace_period() -> None:
+    process = _HungChild()
+
+    await subtitle_burn._terminate_process(process)
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert process.wait_calls == 2
+    assert process.returncode == -9
 
 
 @pytest.mark.asyncio
