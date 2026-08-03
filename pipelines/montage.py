@@ -19,6 +19,7 @@ from services.shorts_video import (
     get_shorts_visual_mode,       # FIX montage
 )
 from services.shorts_subtitle_burn import burn_subtitles_into_short
+from services.highlights_candidate_gate import verify_highlights_candidate
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.media_delivery_probe import (
     file_size_mb,
@@ -466,9 +467,7 @@ async def process_and_send_highlights(
         # The extras pass only proposes approximate times from compressed text.
         # Before touching the public renderer, prove actual speech boundaries and
         # thematic coherence from one source-context Whisper probe.
-        from services.highlights_quality import refine_highlights_candidate
-
-        verified_cand, quality_report = await refine_highlights_candidate(
+        verified_cand, quality_report = await verify_highlights_candidate(
             video_path,
             cand,
             ai_data=ai_data,
