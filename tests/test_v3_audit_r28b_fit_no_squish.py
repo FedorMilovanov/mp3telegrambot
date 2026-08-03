@@ -12,7 +12,7 @@ R28 переключал статичную заставку с crop на full_f
 """
 from pathlib import Path
 
-SHORTS = Path("services/shorts_video.py").read_text(encoding="utf-8")
+SHORTS = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
 MONTAGE = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
 
 
