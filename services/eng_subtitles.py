@@ -4,13 +4,14 @@ import asyncio
 import json
 import logging
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional
 
 from core.globals import GEMINI_CLIENTS
 from core.database import GEMINI_MODEL
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 
 logger = logging.getLogger(__name__)
 
@@ -67,19 +68,27 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     return None
 
 
-def _get_audio_duration(path: Path) -> float:
+async def _get_audio_duration(path: Path) -> float:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return 0.0
     try:
-        ffprobe = shutil.which("ffprobe")
-        if ffprobe:
-            result = subprocess.run(
-                [ffprobe, "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                capture_output=True, text=True, timeout=30
-            )
-            return float(result.stdout.strip())
-    except Exception:
-        pass
-    return 0.0
+        result = await run_cancellable_process(
+            [
+                ffprobe, "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            timeout=30,
+            text=True,
+        )
+        if result.returncode != 0:
+            return 0.0
+        return float((result.stdout or "").strip())
+    except Exception as exc:
+        logger.debug("[EngSubtitles] ffprobe duration failed: %s", exc)
+        return 0.0
 
 
 async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0, lang: str = "") -> Optional[Path]:
@@ -109,20 +118,9 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     cmd = YTDLP_BASE_ARGS + ["--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
     logger.info(f"[EngSubtitles] Скачиваем аудио: {' '.join(cmd)}")
 
-    def _run_cmd(t):
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        # Check if cmd[0] is sys.executable or a standalone binary
-        _shell = False
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            # If we use python -m yt_dlp, it's safer
-            if "yt-dlp" in cmd[0].lower() and not cmd[0].lower().endswith(".exe"):
-                 _shell = True
-        
-        return subprocess.run(cmd, timeout=t, shell=_shell, **kwargs)
-
-    loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
+    proc = await run_cancellable_process(
+        cmd, timeout=300, text=True
+    )
 
     # FIX AUDIT R4: проверяем код выхода yt-dlp и пропускаем обломки
     # недокачанного файла (.part/.ytdl) — иначе Whisper транскрибировал
@@ -143,7 +141,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
         raise RuntimeError(f"Не удалось скачать аудио. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
 
     # 2. Длительность — если больше лимита, субтитры не делаем
-    audio_duration = _get_audio_duration(actual_audio)
+    audio_duration = await _get_audio_duration(actual_audio)
     if audio_duration > _MAX_SUBTITLE_AUDIO_SECONDS:
         logger.info(
             "[EngSubtitles] Аудио слишком длинное (%.1f сек > %d сек) — субтитры пропущены.",
@@ -170,7 +168,9 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
         segs_gen, _ = model.transcribe(str(actual_audio), **transcribe_args)
         return list(segs_gen)
 
-    segments = await loop.run_in_executor(None, _run_whisper)
+    segments = await await_owned_coroutine(
+        asyncio.to_thread(_run_whisper)
+    )
 
     if not segments:
         logger.warning("[EngSubtitles] Whisper не нашел речь.")
@@ -308,14 +308,14 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
     ]
     logger.info("[EngSubtitles] Скачиваем оригинальное видео (<=1080p, base args)...")
 
-    def _run_cmd(t):
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        return subprocess.run(cmd, timeout=t, **kwargs)
-
-    loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: _run_cmd(900))
+    proc = await run_cancellable_process(
+        cmd, timeout=900, text=True
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Не удалось скачать оригинальное видео (yt-dlp rc={proc.returncode}). "
+            f"stderr: {proc.stderr[-500:] if proc.stderr else ''}"
+        )
     
     actual_video = None
     for file in sorted(workdir.glob("original_video.*")):
@@ -349,15 +349,16 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Opti
         "-movflags", "+faststart",
         "-y", str(output_path),
     ]
-    def _run(t):
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        return subprocess.run(cmd, timeout=t, **kwargs)
-    loop = asyncio.get_running_loop()
+    output_path.unlink(missing_ok=True)
     try:
-        proc = await loop.run_in_executor(None, lambda: _run(600))
+        proc = await run_cancellable_process(
+            cmd, timeout=600, text=True
+        )
+    except asyncio.CancelledError:
+        output_path.unlink(missing_ok=True)
+        raise
     except Exception as e:
+        output_path.unlink(missing_ok=True)
         logger.warning("[EngSubtitles] hardsub exception: %s", e)
         return None
     if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 10240:
@@ -365,6 +366,7 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Opti
         return output_path
     logger.warning("[EngSubtitles] hardsub rc=%s: %s", proc.returncode,
                    (proc.stderr or "")[-300:])
+    output_path.unlink(missing_ok=True)
     return None
 
 
@@ -404,14 +406,14 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
     
     logger.info(f"[EngSubtitles] Склейка субтитров: {' '.join(cmd)}")
 
-    def _run_cmd(t):
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        return subprocess.run(cmd, timeout=t, **kwargs)
-
-    loop = asyncio.get_running_loop()
-    proc = await loop.run_in_executor(None, lambda: _run_cmd(300))
+    output_path.unlink(missing_ok=True)
+    try:
+        proc = await run_cancellable_process(
+            cmd, timeout=300, text=True
+        )
+    except BaseException:
+        output_path.unlink(missing_ok=True)
+        raise
 
     # AUDIT R40: проверяем returncode, а не только размер — ffmpeg с -y пишет
     # заголовок контейнера и при сбое mux (конфликт субтитр-потока) оставляет
@@ -428,15 +430,17 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         "-y", str(output_path)
     ]
 
-    def _run_cmd_fallback(t):
-        kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        return subprocess.run(cmd_fallback, timeout=t, **kwargs)
-
-    proc2 = await loop.run_in_executor(None, lambda: _run_cmd_fallback(300))
+    output_path.unlink(missing_ok=True)
+    try:
+        proc2 = await run_cancellable_process(
+            cmd_fallback, timeout=300, text=True
+        )
+    except BaseException:
+        output_path.unlink(missing_ok=True)
+        raise
     if proc2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
         
     logger.error(f"[EngSubtitles] Полный отказ склейки. stderr: {proc2.stderr[-300:] if proc2.stderr else ''}")
+    output_path.unlink(missing_ok=True)
     return video_path
