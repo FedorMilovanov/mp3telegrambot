@@ -113,7 +113,7 @@ def test_eng_fast_qa_mode_registered_and_wired():
     assert "apply_qa_audio_fixes" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
-    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite" in env
+    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash" in env
     assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env
 
 
@@ -911,7 +911,8 @@ def test_livedub_light_model_default_fallbacks_are_alive_models(monkeypatch):
     fallbacks = get_light_model_fallbacks()
     assert "gemini-3.1-flash-lite-preview" not in fallbacks
     assert "gemini-2.5-flash-lite" not in fallbacks
-    assert any("3.1-flash-lite" in m or "3.5-flash" in m for m in fallbacks)
+    assert "gemini-3.1-flash-lite" not in fallbacks
+    assert any("3.5-flash" in m for m in fallbacks)
 
 
 def test_livedub_info_message_uses_safe_html_trim():
@@ -948,8 +949,8 @@ def test_livedub_info_card_wired_for_eng_quick_and_quick_qa():
 
 def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env
-    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite" in env
+    assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" in env
     # выключенные модели не должны стоять ЗНАЧЕНИЕМ fallback-цепочки
     assert "FALLBACK_MODELS=gemini-3.1-flash-lite-preview" not in env
     assert not any(
@@ -959,7 +960,7 @@ def test_livedub_light_model_env_documented():
     assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
-    assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme
+    assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in readme
 
 
 # ── Заход 9: обслуживание диска + flood control ──────────────────
@@ -1909,5 +1910,5 @@ def test_vot_token_is_documented_in_readme_help_and_status():
 def test_env_example_gemini_model_is_not_truncated():
     """Копирование .env.example не должно ставить несуществующую модель из-за опечатки."""
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_MODEL=gemini-3.5-flash" in env
-    assert "gemini-3.5-flas\n" not in env
+    assert "GEMINI_MODEL=gemini-3.6-flash" in env
+    assert "gemini-3.6-flas\n" not in env
