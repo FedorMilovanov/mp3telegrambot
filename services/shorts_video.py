@@ -294,7 +294,7 @@ async def _unowned_render_short_clip(
         return False
 
 
-async def _unowned_postprocess_short(
+async def _unowned_short_transform(
     input_path: Path,
     output_path: Path,
     *,
@@ -1676,7 +1676,7 @@ async def postprocess_short(
     speed: float = 1.0,
 ) -> bool:
     return await await_owned_coroutine(
-        _unowned_postprocess_short(
+        _unowned_short_transform(
             input_path,
             output_path,
             normalize_audio=normalize_audio,
