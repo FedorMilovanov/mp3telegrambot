@@ -79,6 +79,35 @@ class _KillLookupRace:
         return 0
 
 
+class _SlowCleanupProcess:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.terminated = 0
+        self.killed = 0
+        self.wait_started = asyncio.Event()
+        self.release_wait = asyncio.Event()
+        self.wait_cancelled = False
+
+    def terminate(self) -> None:
+        self.terminated += 1
+
+    def kill(self) -> None:
+        self.killed += 1
+        self.returncode = -9
+        self.release_wait.set()
+
+    async def wait(self) -> int:
+        self.wait_started.set()
+        try:
+            await self.release_wait.wait()
+        except asyncio.CancelledError:
+            self.wait_cancelled = True
+            raise
+        if self.returncode is None:
+            self.returncode = -15
+        return int(self.returncode)
+
+
 @pytest.mark.asyncio
 async def test_terminate_lookup_race_is_still_reaped() -> None:
     process = _TerminateLookupRace()
@@ -146,6 +175,91 @@ async def test_cancellation_stops_child_before_task_finishes(monkeypatch) -> Non
     assert process.terminated == 1
     assert process.wait_calls == 1
     assert process.returncode == -15
+
+
+@pytest.mark.asyncio
+async def test_repeated_cancellation_cannot_cancel_child_cleanup() -> None:
+    process = _SlowCleanupProcess()
+    task = asyncio.create_task(
+        async_process._stop_before_returning(process, grace_seconds=1.0)
+    )
+    await process.wait_started.wait()
+
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0)
+
+    assert not task.done()
+    assert process.wait_cancelled is False
+    process.release_wait.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert process.terminated == 1
+    assert process.killed == 0
+    assert process.returncode == -15
+    assert process.wait_cancelled is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_timeout", ["not-a-number", float("inf"), float("nan")])
+async def test_invalid_timeout_is_rejected_before_spawn(monkeypatch, bad_timeout) -> None:
+    create_calls = 0
+
+    async def fake_create(*args, **kwargs):
+        nonlocal create_calls
+        create_calls += 1
+        return _FakeProcess()
+
+    monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
+
+    with pytest.raises(ValueError, match="timeout must be a finite number"):
+        await async_process.run_cancellable_process(
+            ["ffmpeg", "-version"],
+            timeout=bad_timeout,
+        )
+
+    assert create_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_invalid_grace_is_rejected_before_spawn(monkeypatch) -> None:
+    create_calls = 0
+
+    async def fake_create(*args, **kwargs):
+        nonlocal create_calls
+        create_calls += 1
+        return _FakeProcess()
+
+    monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
+
+    with pytest.raises(ValueError, match="grace_seconds must be a finite number"):
+        await async_process.run_cancellable_process(
+            ["ffmpeg", "-version"],
+            timeout=60,
+            grace_seconds=float("inf"),
+        )
+
+    assert create_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_empty_command_is_rejected_before_spawn(monkeypatch) -> None:
+    create_calls = 0
+
+    async def fake_create(*args, **kwargs):
+        nonlocal create_calls
+        create_calls += 1
+        return _FakeProcess()
+
+    monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
+
+    with pytest.raises(ValueError, match="command must not be empty"):
+        await async_process.run_cancellable_process([], timeout=60)
+
+    assert create_calls == 0
 
 
 @pytest.mark.asyncio
