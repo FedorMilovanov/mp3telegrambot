@@ -23,6 +23,7 @@ from converters.md_telegraph import visible_length, safe_trim_caption
 from services.media_delivery_probe import (
     file_size_mb,
     probe_media_async,
+    select_delivery_file,
     verify_highlights_delivery,
 )
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
@@ -116,6 +117,7 @@ async def _run_montage_or_highlights_pipeline(
         expected_delivery_duration = (
             raw_duration / speed if speed_applied and speed > 0 else raw_duration
         )
+        pre_subtitle_path = current_path
 
         if do_subtitles and HAS_FASTER_WHISPER:
             try:
@@ -142,26 +144,83 @@ async def _run_montage_or_highlights_pipeline(
             except Exception as sub_err:
                 logger.warning("%s: subtitle error: %s", prefix, sub_err)
 
-        final_probe = await probe_media_async(current_path)
-        delivery_duration = (
-            final_probe.duration
-            if final_probe is not None and final_probe.duration > 0
-            else expected_delivery_duration
+        max_upload_mb = get_max_file_size_mb()
+        selection = select_delivery_file(
+            current_path,
+            pre_subtitle_path if current_path != pre_subtitle_path else None,
+            max_size_mb=max_upload_mb,
         )
-        final_size = file_size_mb(current_path)
-        if final_size > get_max_file_size_mb():
+        if selection.path is None:
             logger.warning(
-                "%s: финальный файл %.1fMB > %sMB после всех этапов — пропускаю",
+                "%s: нет пригодного финального файла: reason=%s primary=%.1fMB "
+                "fallback=%.1fMB limit=%sMB",
                 prefix,
-                final_size,
-                get_max_file_size_mb(),
+                selection.reason,
+                selection.primary_size_mb,
+                selection.fallback_size_mb,
+                max_upload_mb,
             )
             return False
+        current_path = selection.path
+        if selection.selected == "fallback":
+            logger.warning(
+                "%s: subtitle-артефакт отклонён (%s, %.1fMB); "
+                "использую pre-subtitle файл %.1fMB",
+                prefix,
+                selection.reason,
+                selection.primary_size_mb,
+                selection.fallback_size_mb,
+            )
+
+        final_probe = await probe_media_async(current_path)
+        if (
+            final_probe is None
+            or final_probe.duration <= 0
+            or not final_probe.has_video
+            or not final_probe.has_audio
+        ):
+            logger.warning(
+                "%s: финальный media probe не подтвердил video+audio и "
+                "положительную длительность",
+                prefix,
+            )
+            return False
+
+        delivery_duration = final_probe.duration
+        delivery_report = None
         if verified_highlights:
             delivery_report = await verify_highlights_delivery(
                 current_path,
                 expected_duration=expected_delivery_duration,
             )
+            if (
+                not delivery_report.get("accepted")
+                and current_path != pre_subtitle_path
+            ):
+                fallback_selection = select_delivery_file(
+                    pre_subtitle_path,
+                    None,
+                    max_size_mb=max_upload_mb,
+                )
+                if fallback_selection.path is not None:
+                    fallback_report = await verify_highlights_delivery(
+                        fallback_selection.path,
+                        expected_duration=expected_delivery_duration,
+                    )
+                    if fallback_report.get("accepted"):
+                        logger.warning(
+                            "%s: subtitle-версия не прошла final QA; "
+                            "pre-subtitle версия прошла и будет доставлена. "
+                            "subtitle_report=%s",
+                            prefix,
+                            json.dumps(delivery_report, ensure_ascii=False)[:3000],
+                        )
+                        current_path = fallback_selection.path
+                        final_probe = await probe_media_async(current_path)
+                        if final_probe is None or final_probe.duration <= 0:
+                            return False
+                        delivery_duration = final_probe.duration
+                        delivery_report = fallback_report
             if not delivery_report.get("accepted"):
                 logger.warning(
                     "%s: final delivery QA rejected: %s",
@@ -174,6 +233,16 @@ async def _run_montage_or_highlights_pipeline(
                 prefix,
                 json.dumps(delivery_report, ensure_ascii=False)[:5000],
             )
+
+        logger.info(
+            "%s: delivery evidence selected=%s reason=%s duration=%.3fs "
+            "size=%.1fMB",
+            prefix,
+            "fallback" if current_path == pre_subtitle_path and sub_path.exists() else selection.selected,
+            selection.reason,
+            delivery_duration,
+            file_size_mb(current_path),
+        )
 
         thumb_buf = None
         if do_poster:
