@@ -4,7 +4,11 @@ Main Pipeline — process_single_video.
 Извлечено из bot.py строки 12470–13446.
 """
 from services.ffmpeg import YTDLP_BASE_ARGS                   # FIX #23: нужен результат, не функция
-from services.async_worker import await_owned_with_soft_timeout
+from services.async_process import run_cancellable_process
+from services.async_worker import (
+    await_owned_coroutine,
+    await_owned_with_soft_timeout,
+)
 from core.globals import (
     DOWNLOAD_DIR, THUMBS_DIR, HAS_GEMINI, HAS_PILLOW, DB_PATH,
     GEMINI_CLIENTS, TELEGRAPH_TOKEN,                  # FIX #11
@@ -439,8 +443,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         if info_dict is None:
             try:
-                info_proc = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: subprocess.run(info_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_info_timeout)
+                info_proc = await run_cancellable_process(
+                    info_cmd, timeout=_info_timeout, text=True
                 )
             except subprocess.TimeoutExpired as _ytdlp_timeout:
                 logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
@@ -1407,8 +1411,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         "--convert-thumbnails", "jpg",
                         "--output", str(THUMBS_DIR / f"{media_id}_thumb.%(ext)s"), url,
                     ]
-                    _thumb_proc = await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: subprocess.run(thumb_cmd, capture_output=True, text=True, timeout=30)
+                    _thumb_proc = await run_cancellable_process(
+                        thumb_cmd, timeout=30, text=True
                     )
                     if _thumb_proc.returncode != 0:
                         _thumb_err = (_thumb_proc.stderr or "").strip()[-300:]
@@ -1440,12 +1444,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     "--embed-metadata", "--embed-thumbnail",
                     "--no-playlist", "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"), url,
                 ]
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: subprocess.run(dl_cmd, capture_output=True, timeout=1800))
+                _cached_audio_proc = await run_cancellable_process(
+                    dl_cmd, timeout=1800, text=True
+                )
+                if _cached_audio_proc.returncode != 0:
+                    _cached_audio_error = (_cached_audio_proc.stderr or '')[-500:]
+                    raise RuntimeError(
+                        f"Кэш аудио yt-dlp rc={_cached_audio_proc.returncode}: "
+                        f"{_cached_audio_error or 'unknown error'}"
+                    )
                 if mp3_path.exists():
                     from services.ffmpeg import normalize_mp3_lossless
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: normalize_mp3_lossless(mp3_path))
+                    await await_owned_coroutine(
+                        asyncio.to_thread(normalize_mp3_lossless, mp3_path)
+                    )
             if not mp3_path.exists():
                 raise Exception("Не удалось скачать аудио")
             file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
@@ -1457,12 +1469,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ffmpeg = shutil.which("ffmpeg")
                 # AUDIT R39: не пере-сжимаем сам в себя (вход==выход) — потеря файла.
                 if ffmpeg and mp3_path.name != mp3_64_path.name:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: subprocess.run(
-                            [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
-                            capture_output=True, timeout=300))
+                    mp3_64_path.unlink(missing_ok=True)
+                    _recompress_proc = await run_cancellable_process(
+                        [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
+                        timeout=300,
+                    )
+                    if _recompress_proc.returncode != 0:
+                        logger.warning(
+                            "ffmpeg 64k rc=%s: %s",
+                            _recompress_proc.returncode,
+                            (_recompress_proc.stderr or b"")[-300:],
+                        )
                     # FIX: verify re-encoded file is not empty/corrupt
-                    if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:
+                    if (
+                        _recompress_proc.returncode == 0
+                        and mp3_64_path.exists()
+                        and mp3_64_path.stat().st_size > 10240
+                    ):
                         mp3_path.unlink(missing_ok=True)
                         mp3_path = mp3_64_path
                         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
@@ -1772,8 +1795,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     "--output", str(THUMBS_DIR / f"{media_id}_thumb.%(ext)s"),
                     url,
                 ]
-                _thumb_proc = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: subprocess.run(thumb_cmd, capture_output=True, text=True, timeout=30)
+                _thumb_proc = await run_cancellable_process(
+                    thumb_cmd, timeout=30, text=True
                 )
                 if _thumb_proc.returncode != 0:
                     _thumb_err = (_thumb_proc.stderr or "").strip()[-300:]
@@ -1805,16 +1828,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"),
                 url,
             ]
-            proc = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: subprocess.run(audio_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+            proc = await run_cancellable_process(
+                audio_cmd, timeout=600, text=True
             )
             if proc.returncode != 0:
                 raise Exception(proc.stderr[-500:] if proc.stderr else "yt-dlp error")
             _mp3_after_dl = DOWNLOAD_DIR / f"{media_id}.mp3"
             if _mp3_after_dl.exists():
                 from services.ffmpeg import normalize_mp3_lossless
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: normalize_mp3_lossless(_mp3_after_dl))
+                await await_owned_coroutine(
+                    asyncio.to_thread(normalize_mp3_lossless, _mp3_after_dl)
+                )
 
             mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
             if not mp3_path.exists():
@@ -1835,16 +1859,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # (а ниже unlink удалил бы оригинал → потеря аудио + краш stat()). Он и
             # так 64 kbps — повторное сжатие бессмысленно, пропускаем к «слишком большой».
             if ffmpeg and mp3_path.name != mp3_64_path.name:
-                proc = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: subprocess.run(
-                        [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
-                        capture_output=True, timeout=300
-                    )
+                mp3_64_path.unlink(missing_ok=True)
+                _recompress_proc = await run_cancellable_process(
+                    [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
+                    timeout=300,
                 )
+                if _recompress_proc.returncode != 0:
+                    logger.warning(
+                        "ffmpeg 64k rc=%s: %s",
+                        _recompress_proc.returncode,
+                        (_recompress_proc.stderr or b"")[-300:],
+                    )
                 # FIX: verify re-encoded file is not empty/corrupt before
                 # deleting the good original. ffmpeg can create 0-byte output
                 # on disk errors or corrupt input.
-                if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:
+                if (
+                    _recompress_proc.returncode == 0
+                    and mp3_64_path.exists()
+                    and mp3_64_path.stat().st_size > 10240
+                ):
                     mp3_path.unlink(missing_ok=True)
                     mp3_path = mp3_64_path
                     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
