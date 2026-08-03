@@ -1246,7 +1246,10 @@ def test_startup_tool_diagnostics():
     src = Path("main.py").read_text(encoding="utf-8")
     for tool in ("ffmpeg", "ffprobe", "VOT helper (@vot.js/node)", "vot-cli-live fallback"):
         assert tool in src
-    assert "молча деградирует" in src
+    assert "обязательная возможность недоступна" in src
+    assert "явно отклонены, а не молча ухудшены" in src
+    assert "опционально недоступен" in src
+    assert "без скрытой деградации" in src
 
 
 def test_probe_meta_ffmpeg_fallback(tmp_path):
