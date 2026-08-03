@@ -85,7 +85,10 @@ async def test_transcribe_wrapper_forwards_arguments(monkeypatch, tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_render_wrapper_does_not_cancel_inner_work(monkeypatch, tmp_path: Path) -> None:
+async def test_render_wrapper_survives_repeated_outer_cancellation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     started = asyncio.Event()
     release = asyncio.Event()
     inner_cancelled = False
@@ -110,6 +113,8 @@ async def test_render_wrapper_does_not_cancel_inner_work(monkeypatch, tmp_path: 
         )
     )
     await started.wait()
+    task.cancel()
+    await asyncio.sleep(0)
     task.cancel()
     await asyncio.sleep(0)
 
