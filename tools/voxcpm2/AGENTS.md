@@ -19,6 +19,7 @@ Project: `dub-ba15009b7a`, ready-SRT direct mode.
 5. **Final media QA produced a false rejection.** The direct master used only the Russian branch, but the post-AAC regression compared differently processed signals: the final branch had additional high-pass/gain processing while the control branch did not. With a cloned voice from the same speaker, waveform correlation can be misattributed to residual source dialogue.
 6. **Source-leakage QA must compare equivalent signal graphs.** Prefer final AAC versus its actual pre-encode master, or apply the identical processing chain to the control branch. Do not infer English leakage only from regression against a same-speaker cloned Russian track.
 7. **The first MOSS Nano CPU quick test hit the frame cap, not a normal stop.** Custom settings `greedy`, `voice_clone_max_text_tokens=512`, and `max_new_frames=850` produced two chunks and exactly `1700 = 2 × 850` frames. The 136.24-second WAV contained useful speech around 36.35–68.81 and 119.70–136.24 seconds, separated by very long digital-silence regions. The test wrapper then trimmed the first 46.277 seconds, hiding most generated speech. Do not trim/pad a runaway generation into a deliverable. Reject frame-cap hits and implausible duration/silence before muxing.
+8. **Upstream chunking alone did not solve duration instability.** A later sampled `fixed` CPU run split 682 normalized characters into eight chunks and returned 1048 frames / 85.52 seconds for a 46.277-second source. Upstream inter-chunk pauses are only short fractions of a second, so the excess duration was generated inside individual chunks. Alternative-model diagnostics must synthesize and retain each semantic phrase separately, validate each phrase against its authored slot, and reject only the offending phrase instead of losing the whole monologue.
 
 ## Fast comparison protocol
 
@@ -29,8 +30,9 @@ For quick perceptual comparison before bot integration:
 - use one clean 7–12 second source-voice reference;
 - generate one candidate per chunk, not 3–5 variants;
 - prefer the model's sampled `fixed` mode over forced greedy for cross-language voice cloning;
-- keep text chunks bounded (roughly the upstream default scale), use full decode for diagnostics, and cap frames per chunk;
-- fail closed when every chunk reaches `max_new_frames`, output duration is implausible, or long digital silence dominates;
+- synthesize complete semantic phrases as separate retained artifacts rather than one opaque long-text call;
+- keep text chunks bounded, use full decode for diagnostics, and cap frames per phrase;
+- fail closed on phrase-level duration/repetition anomalies; do not trim a runaway aggregate into a deliverable;
 - evaluate voice similarity, pronunciation, noise, continuity, duration, and endings before adding any backend to the bot.
 
 This protocol is an experiment, not permission to make MOSS the production default.
