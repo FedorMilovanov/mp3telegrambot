@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-POLICY = "official-gemini-model-status-2026-08-03-v1"
+POLICY = "official-gemini-model-status-2026-08-03-v2"
 
 _CURRENT_GA = {
     "gemini-3.6-flash",
@@ -56,10 +56,17 @@ class GeminiModelDiagnostic:
 
 def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
     model = str(model_name or "").strip().lower()
-    if model in _CURRENT_GA or model in {"gemini-flash-latest"}:
+    if model in _CURRENT_GA:
         return GeminiModelDiagnostic(
             "info",
             f"GEMINI_MODEL='{model}' — актуальная production-модель Gemini API.",
+        )
+    if model == "gemini-flash-latest":
+        return GeminiModelDiagnostic(
+            "warning",
+            "GEMINI_MODEL='gemini-flash-latest' — плавающий alias может быть "
+            "переключён на новую версию; для воспроизводимого production "
+            "зафиксируйте gemini-3.6-flash.",
         )
     if model in _CURRENT_PREVIEW:
         replacement = "gemini-3.6-flash" if "flash" in model else "gemini-3.1-pro-preview"
