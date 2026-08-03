@@ -28,6 +28,7 @@ from converters.md_telegraph import visible_length, safe_trim_caption
 from services.shorts_candidates import create_shorts_candidates
 from services.media_delivery_probe import (
     file_size_mb,
+    media_probe_is_deliverable,
     probe_media_async,
     resolve_delivery_timing,
     select_delivery_file,
@@ -370,6 +371,10 @@ async def process_and_send_shorts(
                     except Exception:
                         pass
                 continue
+
+            current_path = selection.path
+            delivery_selection = selection.selected
+            delivery_reason = selection.reason
             if selection.selected == "fallback":
                 logger.warning(
                     "Shorts %d/%d: subtitle-версия отклонена (%s, %.1fMB); "
@@ -380,7 +385,6 @@ async def process_and_send_shorts(
                     selection.primary_size_mb,
                     selection.fallback_size_mb,
                 )
-                current_path = selection.path
                 subtitles_applied = False
                 subtitle_fallback_notice = (
                     "⚠️ Субтитры сняты: версия с ними превысила допустимый размер "
@@ -392,29 +396,61 @@ async def process_and_send_shorts(
                     except Exception:
                         pass
                     nosub_path = None
-            else:
-                current_path = selection.path
 
             final_probe = await probe_media_async(current_path)
-            if (
-                final_probe is None
-                or final_probe.duration <= 0
-                or not final_probe.has_video
-                or not final_probe.has_audio
-            ):
-                logger.warning(
-                    "Shorts %d/%d: финальный media probe не подтвердил video+audio "
-                    "и положительную длительность — отправка отменена",
-                    i,
-                    total,
-                )
-                if nosub_path:
-                    try:
-                        nosub_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                continue
+            if not media_probe_is_deliverable(final_probe):
+                if current_path != pre_subtitle_path:
+                    fallback_selection = select_delivery_file(
+                        pre_subtitle_path,
+                        None,
+                        max_size_mb=max_upload_mb,
+                    )
+                    fallback_probe = (
+                        await probe_media_async(fallback_selection.path)
+                        if fallback_selection.path is not None
+                        else None
+                    )
+                    if (
+                        fallback_selection.path is not None
+                        and media_probe_is_deliverable(fallback_probe)
+                    ):
+                        logger.warning(
+                            "Shorts %d/%d: subtitle-версия не прошла media probe; "
+                            "использую проверенную pre-subtitle версию. probe=%r",
+                            i,
+                            total,
+                            final_probe,
+                        )
+                        current_path = fallback_selection.path
+                        final_probe = fallback_probe
+                        delivery_selection = "fallback"
+                        delivery_reason = "fallback_after_primary_media_probe_rejection"
+                        subtitles_applied = False
+                        subtitle_fallback_notice = (
+                            "⚠️ Субтитры сняты: версия с ними превысила допустимый размер "
+                            "или не сохранилась корректно. Видео отправлено без потери основного материала."
+                        )
+                        if nosub_path:
+                            try:
+                                nosub_path.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                            nosub_path = None
+                if not media_probe_is_deliverable(final_probe):
+                    logger.warning(
+                        "Shorts %d/%d: ни primary, ни fallback media probe не "
+                        "подтвердили пригодный video+audio файл — отправка отменена",
+                        i,
+                        total,
+                    )
+                    if nosub_path:
+                        try:
+                            nosub_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    continue
 
+            assert final_probe is not None
             timing = resolve_delivery_timing(
                 source_start=render_start,
                 raw_duration=raw_duration,
@@ -431,8 +467,8 @@ async def process_and_send_shorts(
                 "_raw_duration_seconds": timing.raw_duration,
                 "_delivery_duration_seconds": timing.delivery_duration,
                 "_speed_applied": timing.speed_applied,
-                "_delivery_file_selection": selection.selected,
-                "_delivery_file_reason": selection.reason,
+                "_delivery_file_selection": delivery_selection,
+                "_delivery_file_reason": delivery_reason,
             }
             final_size = file_size_mb(current_path)
             logger.info(
@@ -446,8 +482,8 @@ async def process_and_send_shorts(
                 timing.delivery_duration,
                 timing.speed_applied,
                 final_size,
-                selection.selected,
-                selection.reason,
+                delivery_selection,
+                delivery_reason,
             )
 
             thumb_buf = None
