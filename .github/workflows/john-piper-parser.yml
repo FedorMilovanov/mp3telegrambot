@@ -71,30 +71,30 @@ jobs:
           Write-Host "Python compile: OK"
 
           @'
-import json
-import pathlib
-import sys
+          import json
+          import pathlib
+          import sys
 
-path = pathlib.Path(sys.argv[1])
-segments = json.loads(path.read_text(encoding="utf-8-sig"))
-if not isinstance(segments, list) or not segments:
-    raise SystemExit("segments_ru_final.json must be a non-empty list")
-previous_end = 0.0
-for index, item in enumerate(segments, 1):
-    start = float(item["start"])
-    end = float(item["end"])
-    text = str(item["text"]).strip()
-    if start < previous_end - 0.001:
-        raise SystemExit(f"segment {index} overlaps the previous segment")
-    if end <= start:
-        raise SystemExit(f"segment {index} has invalid duration")
-    if not text:
-        raise SystemExit(f"segment {index} has empty text")
-    previous_end = end
-if previous_end > 65.0:
-    raise SystemExit(f"timeline ends too late: {previous_end}")
-print(f"segments JSON: OK ({len(segments)} segments, end={previous_end:.3f}s)")
-'@ | python - $segments
+          path = pathlib.Path(sys.argv[1])
+          segments = json.loads(path.read_text(encoding="utf-8-sig"))
+          if not isinstance(segments, list) or not segments:
+              raise SystemExit("segments_ru_final.json must be a non-empty list")
+          previous_end = 0.0
+          for index, item in enumerate(segments, 1):
+              start = float(item["start"])
+              end = float(item["end"])
+              text = str(item["text"]).strip()
+              if start < previous_end - 0.001:
+                  raise SystemExit(f"segment {index} overlaps the previous segment")
+              if end <= start:
+                  raise SystemExit(f"segment {index} has invalid duration")
+              if not text:
+                  raise SystemExit(f"segment {index} has empty text")
+              previous_end = end
+          if previous_end > 65.0:
+              raise SystemExit(f"timeline ends too late: {previous_end}")
+          print(f"segments JSON: OK ({len(segments)} segments, end={previous_end:.3f}s)")
+          '@ | python - $segments
           if ($LASTEXITCODE -ne 0) {
               throw "Segments validation failed."
           }
