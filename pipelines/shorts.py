@@ -20,10 +20,10 @@ from services.shorts_video import (
     build_short_caption, HAS_FASTER_WHISPER,
     download_video_for_shorts,      # FIX shorts
     transcribe_short_clip,          # FIX shorts
-    burn_subtitles_into_short,      # FIX shorts
     create_short_title_poster,      # FIX shorts
     get_shorts_visual_mode,         # FIX shorts
 )
+from services.shorts_subtitle_burn import burn_subtitles_into_short
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.shorts_candidates import create_shorts_candidates
 from services.media_delivery_probe import (
