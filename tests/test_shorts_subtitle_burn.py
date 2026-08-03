@@ -149,3 +149,10 @@ def test_active_pipelines_use_transactional_subtitle_owner() -> None:
         ) in source
         shorts_import = source.split("from services.shorts_video import (", 1)[1].split(")", 1)[0]
         assert "burn_subtitles_into_short" not in shorts_import
+
+
+def test_child_process_is_stopped_before_temp_cleanup() -> None:
+    source = Path(subtitle_burn.__file__).read_text(encoding="utf-8")
+    assert "asyncio.create_subprocess_exec" in source
+    assert source.count("await _terminate_process(process)") == 2
+    assert "run_in_executor" not in source
