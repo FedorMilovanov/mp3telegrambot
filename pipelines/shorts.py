@@ -30,6 +30,7 @@ from services.media_delivery_probe import (
     file_size_mb,
     probe_media_async,
     resolve_delivery_timing,
+    select_delivery_file,
 )
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
@@ -271,7 +272,9 @@ async def process_and_send_shorts(
                         speed,
                     )
 
+            pre_subtitle_path = current_path
             subtitles_applied = False
+            subtitle_fallback_notice = ""
             nosub_path = None
             if do_subtitles and HAS_FASTER_WHISPER:
                 nosub_save_path = DOWNLOAD_DIR / f"{media_id}_short_{i}_nosub.mp4"
@@ -344,19 +347,81 @@ async def process_and_send_shorts(
                                 pass
                             nosub_path = None
 
-            final_probe = await probe_media_async(current_path)
-            measured_final_duration = (
-                final_probe.duration
-                if final_probe is not None and final_probe.duration > 0
-                else 0.0
+            max_upload_mb = get_max_file_size_mb()
+            selection = select_delivery_file(
+                current_path,
+                pre_subtitle_path if current_path != pre_subtitle_path else None,
+                max_size_mb=max_upload_mb,
             )
+            if selection.path is None:
+                logger.warning(
+                    "Shorts %d/%d: нет пригодного финального файла: reason=%s "
+                    "primary=%.1fMB fallback=%.1fMB limit=%sMB",
+                    i,
+                    total,
+                    selection.reason,
+                    selection.primary_size_mb,
+                    selection.fallback_size_mb,
+                    max_upload_mb,
+                )
+                if nosub_path:
+                    try:
+                        nosub_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                continue
+            if selection.selected == "fallback":
+                logger.warning(
+                    "Shorts %d/%d: subtitle-версия отклонена (%s, %.1fMB); "
+                    "доставляю проверенную pre-subtitle версию %.1fMB",
+                    i,
+                    total,
+                    selection.reason,
+                    selection.primary_size_mb,
+                    selection.fallback_size_mb,
+                )
+                current_path = selection.path
+                subtitles_applied = False
+                subtitle_fallback_notice = (
+                    "⚠️ Субтитры сняты: версия с ними превысила допустимый размер "
+                    "или не сохранилась корректно. Видео отправлено без потери основного материала."
+                )
+                if nosub_path:
+                    try:
+                        nosub_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    nosub_path = None
+            else:
+                current_path = selection.path
+
+            final_probe = await probe_media_async(current_path)
+            if (
+                final_probe is None
+                or final_probe.duration <= 0
+                or not final_probe.has_video
+                or not final_probe.has_audio
+            ):
+                logger.warning(
+                    "Shorts %d/%d: финальный media probe не подтвердил video+audio "
+                    "и положительную длительность — отправка отменена",
+                    i,
+                    total,
+                )
+                if nosub_path:
+                    try:
+                        nosub_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                continue
+
             timing = resolve_delivery_timing(
                 source_start=render_start,
                 raw_duration=raw_duration,
                 source_duration=float(duration or 0),
                 speed=speed,
                 speed_applied=speed_applied,
-                final_duration=measured_final_duration,
+                final_duration=final_probe.duration,
             )
             delivery_duration = timing.delivery_duration
             delivery_candidate = {
@@ -366,26 +431,13 @@ async def process_and_send_shorts(
                 "_raw_duration_seconds": timing.raw_duration,
                 "_delivery_duration_seconds": timing.delivery_duration,
                 "_speed_applied": timing.speed_applied,
+                "_delivery_file_selection": selection.selected,
+                "_delivery_file_reason": selection.reason,
             }
             final_size = file_size_mb(current_path)
-            if final_size > get_max_file_size_mb():
-                logger.warning(
-                    "Shorts %d/%d: финальный файл %.1fMB > %sMB после всех "
-                    "этапов — не отправляю заведомо невалидный upload",
-                    i,
-                    total,
-                    final_size,
-                    get_max_file_size_mb(),
-                )
-                if nosub_path:
-                    try:
-                        nosub_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                continue
             logger.info(
                 "Shorts %d/%d delivery evidence: source=%.3f-%.3f raw=%.3fs "
-                "final=%.3fs speed_applied=%s size=%.1fMB",
+                "final=%.3fs speed_applied=%s size=%.1fMB selected=%s reason=%s",
                 i,
                 total,
                 timing.source_start,
@@ -394,6 +446,8 @@ async def process_and_send_shorts(
                 timing.delivery_duration,
                 timing.speed_applied,
                 final_size,
+                selection.selected,
+                selection.reason,
             )
 
             thumb_buf = None
@@ -491,7 +545,12 @@ async def process_and_send_shorts(
                     c["title"],
                     delivery_duration,
                 )
-                if do_subtitles and not subtitles_applied and HAS_FASTER_WHISPER:
+                if subtitle_fallback_notice:
+                    try:
+                        await update.message.reply_text(subtitle_fallback_notice)
+                    except Exception:
+                        pass
+                elif do_subtitles and not subtitles_applied and HAS_FASTER_WHISPER:
                     try:
                         await update.message.reply_text(
                             "⚠️ Субтитры для этого Short не удалось создать "
