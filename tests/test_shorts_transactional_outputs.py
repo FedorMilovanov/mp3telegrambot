@@ -34,7 +34,7 @@ def _configure_render(monkeypatch, owner) -> None:
     async def no_snap(path, target, search_window=5.0):
         return target
 
-    async def no_crop(path):
+    async def no_crop(path, start_seconds=0.0):
         return ""
 
     monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "ffmpeg")
