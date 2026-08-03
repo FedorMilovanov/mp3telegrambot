@@ -24,8 +24,9 @@ Project: `dub-ba15009b7a`, ready-SRT direct mode.
 10. **V4 confirmed text-dependent EOS failure.** Block 1 ended naturally at `80/102` frames; block 2 reached exactly `90/90` and expanded to 7.10 seconds for a 4.20-second slot. A frame count equal to the configured maximum is a cap hit and must fail even if post-trim audio exists.
 11. **Short-text repetition and punctuation loss are known Nano ONNX defects.** Merge very short clauses into complete thoughts, end every TTS input with simple punctuation, avoid curly quotes/em dashes in the synthesis text, and keep chunks near 40–60 text tokens. Permit at most one targeted retry for the failed block, not a broad 5–10-candidate search.
 12. **Reference audio needs an explicit A/B policy.** Use a clean, clear, stable reference with minimal processing. Test a short 3–4 second reference against a longer reference before assuming more audio improves similarity. Aggressive denoise and dynamic normalization can alter timbre. A rolling prompt from the previous generated tail is experimental continuity conditioning and must not silently replace the original-speaker identity anchor.
-13. **Frame-cap checks must be per hidden text chunk, never aggregate.** The standard `infer_onnx.py` log reports total frames across every internal voice-clone chunk, while `max_new_frames` applies separately to each chunk. V5 incorrectly rejected totals such as `268/191` and `231/191`; the second candidate had a plausible cleaned duration of 10.095 seconds for a 9.32-second slot. Read `result["chunk_results"]`, compare each chunk independently with the per-chunk limit, and keep duration/repetition checks separate from cap detection.
-14. **Windows redirected stdout can fail after successful synthesis.** V6 generated WAV and wrote its UTF-8 JSON report, then Python 3.13 raised `UnicodeEncodeError` while printing Russian JSON through a `cp1252` redirected console. Treat on-disk WAV/report artifacts as authoritative when they were written before the print failure. Force `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, write full UTF-8 reports to files, and keep machine-readable stdout ASCII-safe with `json.dumps(..., ensure_ascii=True)`.
+13. **Frame-cap checks must be per hidden text chunk, never aggregate.** The standard `infer_onnx.py` log reports total frames across every internal voice-clone chunk, while `max_new_frames` applies separately to each chunk. V5 incorrectly rejected totals such as `268/191` and `231/191`; read `result["chunk_results"]` and compare each chunk independently.
+14. **Windows redirected stdout can fail after successful synthesis.** V6 generated WAV and wrote its UTF-8 JSON report, then Python 3.13 raised `UnicodeEncodeError` while printing Russian JSON through a `cp1252` redirected console. Force `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, write full reports to UTF-8 files, and keep machine-readable stdout ASCII-safe.
+15. **V7 proved that passing duration checks is not enough.** Every accepted semantic block was internally split into two independent voice-clone chunks, six blocks used separate processes/seeds, and the final mix omitted the original source audio entirely. The result changed speaker identity/accent across the monologue; block 6 also accepted only 3.93 seconds for a 6.84-second slot and padded the remainder. For identity-sensitive dubbing, use one persistent runtime/RNG, one direct single-chunk call per authored block, a longer minimally processed identity reference, and explicitly mix the original speaker at the operator-specified 18% level with the Russian track delayed by the configured lead-in.
 
 ## Fast comparison protocol
 
@@ -33,13 +34,16 @@ For quick perceptual comparison before bot integration:
 
 - use **MOSS-TTS-Nano ONNX on CPU**, not the 8B dialogue model and not CUDA;
 - force `execution-provider=cpu` and `CUDA_VISIBLE_DEVICES=-1`;
-- start with one clean minimally processed 3–4 second source-voice reference, then A/B a longer reference only if needed;
+- for identity-sensitive tests, use a minimally processed 7–10 second original-speaker reference; shorter references remain an A/B diagnostic, not the default;
+- keep one persistent runtime and RNG across the monologue; do not launch a new sampled process/seed for every block;
+- call `synthesize_single_chunk` directly for each authored block when internal splitting changes voice identity;
 - merge ultra-short phrases into complete semantic blocks and retain each block as a separate artifact;
 - use `sample-mode=full` when changing sampling parameters; do not assume `fixed` accepted the CLI overrides;
 - keep synthesis text around 40–60 tokens, use simple terminal punctuation, and keep decorative quotation marks only in subtitles;
 - generate one primary candidate and at most one targeted retry for a failed block;
-- give generation a frame budget larger than the authored slot, but fail closed only when an individual hidden chunk reaches its own frame cap; never compare aggregate frames with a per-chunk limit;
-- write full diagnostic JSON to UTF-8 files and keep redirected stdout ASCII-safe on Windows;
+- give generation a frame budget larger than the authored slot, but fail closed only when the relevant single chunk reaches the cap;
+- reject implausibly short accepted speech as well as runaway speech; do not hide missing or rushed content with long `apad` tails;
+- final mix QA must verify that the original source track is actually present at the requested level and that the Russian lead-in delay was applied;
 - use full decode for diagnostics, trim only edge silence, and validate duration/repetition before muxing;
 - evaluate voice similarity, pronunciation, noise, continuity, duration, and endings before adding any backend to the bot.
 
