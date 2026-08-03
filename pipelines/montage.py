@@ -14,11 +14,11 @@ from services.shorts_video import (
     download_video_for_shorts,    # FIX montage
     postprocess_short,            # FIX montage
     transcribe_short_clip,        # FIX montage
-    burn_subtitles_into_short,    # FIX montage
     create_short_snapshot,        # FIX montage
     create_short_title_poster,    # FIX montage
     get_shorts_visual_mode,       # FIX montage
 )
+from services.shorts_subtitle_burn import burn_subtitles_into_short
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.media_delivery_probe import (
     file_size_mb,
