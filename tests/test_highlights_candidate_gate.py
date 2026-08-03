@@ -51,6 +51,26 @@ async def test_unreaped_child_becomes_distinct_structured_reason(
 
 
 @pytest.mark.asyncio
+async def test_unrelated_runtime_error_is_not_mislabelled_as_process_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def _runtime_error(*args, **kwargs):
+        raise RuntimeError("resource scheduler unavailable")
+
+    monkeypatch.setattr(gate, "refine_highlights_candidate", _runtime_error)
+
+    candidate, report = await gate.verify_highlights_candidate(
+        tmp_path / "source.mp4",
+        {"fragments": []},
+    )
+
+    assert candidate is None
+    assert report["reason"] == "quality_gate_error:RuntimeError"
+    assert report["detail"] == "resource scheduler unavailable"
+
+
+@pytest.mark.asyncio
 async def test_unexpected_quality_failure_is_structured(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
