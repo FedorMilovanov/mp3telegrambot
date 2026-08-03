@@ -43,7 +43,7 @@ _DANGLING_END_RE = re.compile(
     r'поскольку|хотя|ведь|как|к|с|в|на|для|из|по|от|у)\s*)["»”’)]*$'
 )
 _LEFT_CONTEXT_RE = re.compile(
-    r'(?i)^(?:и|а|но|или|потому|поэтому|однако|ведь|тогда|так что|'
+    r'(?i)^(?:и|а|но|или|потому|поэтому|однако|ведь|тогда|так что|в смысле|'
     r'этот|эта|это|эти|такой|такая|такие|он|она|они|его|ее|её|их|'
     r'который|которая|которые|что|когда|если|поскольку|хотя)\b'
 )
@@ -244,7 +244,10 @@ def refine_fragment_from_transcript(
     while (
         first_index > 0
         and context_hops < 3
-        and _needs_left_context(items[first_index]["text"])
+        and (
+            _needs_left_context(items[first_index]["text"])
+            or not _ends_cleanly(items[first_index - 1]["text"])
+        )
         and items[first_index]["start"] - items[first_index - 1]["end"] <= 1.8
         and items[first_index - 1]["start"] >= window_start
     ):
