@@ -279,9 +279,19 @@ async def render_montage_short(
     """Склеивает несколько фрагментов в один Short 9:16 через ffmpeg concat."""
     # FIX AUDIT R4: temp_parts/concat_list_path объявляем ДО try — except ниже
     # их итерирует, и OSError из mkdir превращался в NameError из хендлера.
-    temp_parts: list[Path] = []
-    concat_list_path: Path | None = None
-    _unlink_render_paths(output_path)
+    temp_parts = [
+        output_path.parent / f"{output_path.stem}_part{i}.mp4"
+        for i in range(len(fragments))
+    ]
+    concat_list_path: Path | None = (
+        output_path.parent / f"{output_path.stem}_concat.txt"
+    )
+    stale_parts = list(
+        output_path.parent.glob(f"{output_path.stem}_part*.mp4")
+    )
+    _unlink_render_paths(
+        *stale_parts, *temp_parts, concat_list_path, output_path
+    )
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not source_video_path.exists() or not fragments:
@@ -316,9 +326,7 @@ async def render_montage_short(
         )
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):
-            part_path = output_path.parent / f"{output_path.stem}_part{i}.mp4"
-            _unlink_render_paths(part_path)
-            temp_parts.append(part_path)
+            part_path = temp_parts[i]
             start_s = frag["start_seconds"]
             end_s   = frag["end_seconds"]
             dur     = end_s - start_s
@@ -354,8 +362,7 @@ async def render_montage_short(
             _unlink_render_paths(*temp_parts, concat_list_path, output_path)
             return False
 
-        concat_list_path = output_path.parent / f"{output_path.stem}_concat.txt"
-        _unlink_render_paths(concat_list_path)
+        assert concat_list_path is not None
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for part_path in existing_parts:
                 f.write(f"file '{part_path.resolve()}'\n")
