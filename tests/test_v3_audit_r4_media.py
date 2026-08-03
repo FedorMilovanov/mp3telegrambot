@@ -5,6 +5,7 @@ source_url, livedub QA temp-file leak, parse_mmss 3-digit minutes,
 shorts workdir reuse, eng_subtitles rc/.part, montage NameError, VK
 groups.getById format/token.
 """
+import ast
 import sys
 from pathlib import Path
 
@@ -60,9 +61,26 @@ def test_parse_mmss_accepts_three_digit_minutes():
 
 def test_shorts_workdir_reuse_validates_video_stream():
     src = Path("services/shorts_video.py").read_text(encoding="utf-8")
-    reuse = src.split("def download_video_for_shorts", 1)[1][:1600]
+    tree = ast.parse(src)
+    implementation = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "_unowned_download_video_for_shorts"
+    )
+    public_wrapper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "download_video_for_shorts"
+    )
+    reuse = ast.get_source_segment(src, implementation) or ""
+    wrapper = ast.get_source_segment(src, public_wrapper) or ""
+
     assert "_has_video_stream" in reuse
     assert '".part"' in reuse and '".ytdl"' in reuse
+    assert "await_owned_coroutine" in wrapper
+    assert "_unowned_download_video_for_shorts" in wrapper
 
 
 def test_eng_subtitles_checks_ytdlp_exit_code():
