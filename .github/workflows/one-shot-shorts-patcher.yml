@@ -1,0 +1,34 @@
+name: One-shot Shorts Transaction Patcher
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    name: Patch PR 105 branch exactly once
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/shorts-transactional-outputs-20260803
+
+      - name: Apply fail-closed patch and remove patcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tools/apply_shorts_transactional_outputs.py
+          python tools/apply_shorts_transactional_outputs.py
+          rm tools/apply_shorts_transactional_outputs.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/shorts_video.py tests/test_shorts_transactional_outputs.py tools/apply_shorts_transactional_outputs.py
+          git diff --cached --check
+          git commit -m "Make active Shorts outputs transactional"
+          git push origin HEAD:agent/shorts-transactional-outputs-20260803
