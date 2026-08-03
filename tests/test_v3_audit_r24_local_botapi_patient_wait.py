@@ -29,24 +29,27 @@ def test_required_pre_main_gate_replaces_optional_patient_flag():
 def test_required_readiness_window_is_bounded_and_defaults_to_five_minutes():
     assert 'os.getenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "300")' in REQUIRED
     assert "max(60, min(value, 600))" in REQUIRED
-    assert "time.monotonic() + timeout" in REQUIRED
+    assert "time.monotonic() + timeout_sec" in REQUIRED
     assert "сервер оставлен запущенным" in REQUIRED
 
 
 def test_cloud_media_fallback_is_disabled_before_any_probe():
     function = REQUIRED[REQUIRED.index("def require_local_bot_api"):]
-    assert function.index('os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"') < function.index("_probe_getme")
-    assert function.index('os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"') < function.index("_probe_getme")
-    assert 'os.environ.pop("MP3BOT_EFFECTIVE_BOT_API", None)' in function
+    assert function.index("_disable_cloud_transport()") < function.index("probe_runtime._probe_getme")
+    helper = REQUIRED[REQUIRED.index("def _disable_cloud_transport"):REQUIRED.index("def _mark_local_ready")]
+    assert 'os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"' in helper
+    assert 'os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"' in helper
+    assert 'os.environ.pop("MP3BOT_EFFECTIVE_BOT_API", None)' in helper
     assert 'MP3BOT_EFFECTIVE_BOT_API"] = "cloud"' not in REQUIRED
 
 
 def test_warming_server_is_reused_and_cold_start_is_single_attempt():
-    assert "local port already open; waiting without restart/logout" in REQUIRED
-    assert "cold start: cloud logOut -> one local server start" in REQUIRED
-    assert "_cloud_logout" in REQUIRED
-    assert "_terminate_managed_server" in REQUIRED
-    assert "_start_server" in REQUIRED
+    assert "if probe_runtime._tcp_open(host, port, timeout_sec=0.5):" in REQUIRED
+    assert "жду /getMe" in REQUIRED
+    assert "без перезапуска" in REQUIRED
+    assert REQUIRED.count("_cloud_logout(token, _cloud_proxy())") == 1
+    assert REQUIRED.count("process_runtime._terminate_managed_server()") == 1
+    assert REQUIRED.count("process_runtime._start_server(host, port)") == 1
 
 
 def test_env_documents_only_the_current_required_contract():
