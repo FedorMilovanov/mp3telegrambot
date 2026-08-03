@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Transactional ASS subtitle burn for public Shorts-family video outputs.
 
-The legacy implementation created a delete=False temporary ``.ass`` file and
-removed it only after FFmpeg returned normally. A timeout or exception could
-therefore leak the ASS file and leave a partial output MP4 behind. This module
-owns the active publication path and scopes every temporary artifact to a
-``TemporaryDirectory`` that is removed on success, rejection, timeout and
-cancellation.
+The active burn path owns no independent child-process policy. FFmpeg lifetime,
+timeout, stdin, cancellation and reap semantics are delegated to the shared
+``run_cancellable_process`` contract so every public video renderer follows the
+same process-ownership rules.
 """
 from __future__ import annotations
 
@@ -17,6 +15,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from services.async_process import run_cancellable_process
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import (
     _generate_ass_from_segments,
@@ -26,58 +25,16 @@ from services.shorts_video import (
 logger = logging.getLogger(__name__)
 
 
-async def _terminate_process(process: asyncio.subprocess.Process) -> None:
-    """Stop FFmpeg and wait until it no longer owns temp/output files."""
-    if process.returncode is not None:
-        return
-    try:
-        process.terminate()
-        await asyncio.wait_for(process.wait(), timeout=5.0)
-        return
-    except (ProcessLookupError, asyncio.TimeoutError):
-        pass
-    if process.returncode is None:
-        try:
-            process.kill()
-        except ProcessLookupError:
-            return
-        await process.wait()
-
-
 async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run one encoded burn under the shared GPU semaphore.
-
-    An asyncio-owned child process is used instead of ``run_in_executor`` so a
-    task cancellation can terminate FFmpeg before the ASS directory and partial
-    output are cleaned. This is especially important on Windows, where an open
-    file handle can otherwise make cleanup fail.
-    """
+    """Run one encoded burn while retaining the shared GPU semaphore."""
     from core.resource_scheduler import scheduler as resource_scheduler
 
     async with resource_scheduler.gpu_render:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        return await run_cancellable_process(
+            command,
+            timeout=600.0,
+            text=True,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=600.0,
-            )
-        except asyncio.TimeoutError as exc:
-            await _terminate_process(process)
-            raise subprocess.TimeoutExpired(command, timeout=600) from exc
-        except asyncio.CancelledError:
-            await _terminate_process(process)
-            raise
-
-    return subprocess.CompletedProcess(
-        command,
-        int(process.returncode or 0),
-        stdout.decode("utf-8", errors="replace"),
-        stderr.decode("utf-8", errors="replace"),
-    )
 
 
 def _remove_partial_output(path: Path) -> None:
