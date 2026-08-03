@@ -3,6 +3,7 @@ from pathlib import Path
 from services.media_delivery_probe import (
     MediaProbe,
     evaluate_highlights_delivery,
+    media_probe_is_deliverable,
     parse_silencedetect,
     resolve_delivery_timing,
     select_delivery_file,
@@ -92,6 +93,31 @@ def test_delivery_selector_fails_closed_for_missing_files_or_bad_limit(
     assert "primary_missing_or_empty" in no_file.reason
     assert bad_limit.path is None
     assert bad_limit.reason == "no_usable_file_after_primary_invalid_size_limit"
+
+
+def test_delivery_probe_requires_real_video_audio_evidence() -> None:
+    accepted = MediaProbe(
+        duration=10.0,
+        width=720,
+        height=1280,
+        audio_sample_rate=48000,
+        audio_codec="aac",
+        has_video=True,
+        has_audio=True,
+    )
+    corrupt_subtitle_artifact = MediaProbe(
+        duration=10.0,
+        width=720,
+        height=1280,
+        audio_sample_rate=0,
+        audio_codec="",
+        has_video=True,
+        has_audio=False,
+    )
+
+    assert media_probe_is_deliverable(accepted) is True
+    assert media_probe_is_deliverable(corrupt_subtitle_artifact) is False
+    assert media_probe_is_deliverable(None) is False
 
 
 def test_old_washer_highlights_signature_is_rejected() -> None:
