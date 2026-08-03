@@ -1,0 +1,99 @@
+name: PR81 comment contract polish
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr81-comment-contract-polish
+  cancel-in-progress: false
+
+jobs:
+  polish:
+    if: github.event.pull_request.number == 81 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_REF }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Align stale model comments with active policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$HEAD_REF" | awk '{print $1}')"
+          if [[ "$remote_head" != "$EXPECTED_HEAD" ]]; then
+            echo "PR head moved: expected $EXPECTED_HEAD, got $remote_head" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> bool:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if old not in text:
+                  if new in text:
+                      return False
+                  raise SystemExit(f"missing expected text in {path}: {old!r}")
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one match in {path}: {old!r}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+              return True
+
+          changed = False
+          changed |= replace_once(
+              "core/database.py",
+              "# ─── Gemini модели (v10, 2026-05-21) ────────────────────────────────────",
+              "# ─── Gemini модели (актуализировано 2026-08-03) ─────────────────────────",
+          )
+          changed |= replace_once(
+              "core/database.py",
+              "# Резерв при 429: gemini-3.1-flash-lite (в _gemini_text_request);\n# 2.5-flash-lite выключена Google ~22.07.2026\n# ВАЖНО: gemini-3.1-pro ПЛАТНАЯ — не использовать как fallback",
+              "# Сильный fallback: gemini-3.5-flash; механические задачи: gemini-3.5-flash-lite.\n# gemini-3.1-flash-lite не используется проектом и имеет запланированную миграцию.\n# Preview/legacy-модели не используются как production fallback.",
+          )
+          changed |= replace_once(
+              "services/gemini_qa_policy.py",
+              "survived and only translation QA kept using the retired Lite model.",
+              "survived and translation QA kept using a weak scheduled-migration Lite model.",
+          )
+          changed |= replace_once(
+              "services/gemini_qa_policy.py",
+              "known weak/retired QA model overrides",
+              "known weak or project-obsolete QA model overrides",
+          )
+
+          marker = Path(".github/pr81-comment-contract-refresh.txt")
+          if marker.exists():
+              marker.unlink()
+              changed = True
+          if not changed:
+              raise SystemExit("nothing to polish")
+          PY
+          python -m compileall -q core services tests
+          git diff --check
+          if grep -F '2.5-flash-lite выключена Google ~22.07.2026' core/database.py; then exit 1; fi
+          if grep -F 'retired Lite model' services/gemini_qa_policy.py; then exit 1; fi
+
+      - name: Commit comment contract cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/database.py services/gemini_qa_policy.py
+          git add -u .github/pr81-comment-contract-refresh.txt || true
+          git commit -m "Align Gemini policy comments with current runtime"
+          git push origin "HEAD:$HEAD_REF"
