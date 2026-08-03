@@ -11,6 +11,7 @@ from core.globals import (
 )
 from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars, _is_static_video  # FIX shorts_video
 from services.async_worker import await_owned_coroutine
+from services.async_process import run_cancellable_process
 from core.database import settings_get   # FIX shorts_video
 from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
 from core.url_utils import get_youtube_video_url # FIX shorts_video
@@ -69,11 +70,7 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: O
             "--output", str(DOWNLOAD_DIR / f"{media_id}_video.%(ext)s"),
             url,
         ]
-        loop = asyncio.get_running_loop()
-        proc = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=900),
-        )
+        proc = await run_cancellable_process(cmd, timeout=900, text=True)
         if proc.returncode != 0:
             logger.warning(f"Shorts video download failed: {proc.stderr[-300:]}")
             return None
@@ -255,10 +252,7 @@ async def _unowned_render_short_clip(
         # одну видеокарту (иначе h264_nvenc упирался в 15-мин таймаут).
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
-            proc = await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
-            )
+            proc = await run_cancellable_process(cmd, timeout=600, text=True)
 
         if proc.returncode != 0:
             stderr = (proc.stderr or "")[-1000:]
@@ -375,10 +369,7 @@ async def _unowned_short_transform(
         # гонка за видеокарту, ради которой вводился R29.
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
-            proc = await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600),
-            )
+            proc = await run_cancellable_process(cmd, timeout=600, text=True)
         if proc.returncode != 0:
             logger.warning(f"postprocess_short ffmpeg error: {(proc.stderr or '')[-800:]}")
             return False
@@ -1145,10 +1136,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
             ffmpeg, "-i", str(video_path),
             "-ar", "16000", "-ac", "1", "-f", "wav", "-y", str(wav_path),
         ]
-        loop = asyncio.get_running_loop()
-        proc = await loop.run_in_executor(
-            None, lambda: subprocess.run(cmd, capture_output=True, timeout=120)
-        )
+        proc = await run_cancellable_process(cmd, timeout=120)
 
         if proc.returncode != 0:
             logger.warning(
@@ -1227,7 +1215,9 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         # тремя large-v3 транскрипциями разом (иначе каждая тянется 3-8 мин).
         from core.resource_scheduler import scheduler as _sched
         async with _sched.whisper:
-            segments, audio_duration, detected_lang, lang_prob = await loop.run_in_executor(None, _run_whisper)
+            segments, audio_duration, detected_lang, lang_prob = await await_owned_coroutine(
+            asyncio.to_thread(_run_whisper)
+        )
         wav_path.unlink(missing_ok=True)
         wav_path = None
 
@@ -1303,15 +1293,12 @@ async def _unowned_burn_subtitles_into_short(
             "-c:v", _enc, *_preset, *_quality,
             "-c:a", "copy", "-movflags", "+faststart", "-y", str(output_path),
         ]
-        loop = asyncio.get_running_loop()
         # AUDIT R29b: burn-in субтитров — самый длинный NVENC-проход пайплайна;
         # серилизуем через GPU-семафор, чтобы не драться за карту с рендером/
         # постобработкой параллельных видео.
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
-            proc = await loop.run_in_executor(
-                None, lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            )
+            proc = await run_cancellable_process(cmd, timeout=600, text=True)
         ass_path.unlink(missing_ok=True)
         if proc.returncode != 0:
             logger.warning(f"burn_subtitles ffmpeg error: {(proc.stderr or '')[-500:]}")
@@ -1386,10 +1373,7 @@ async def _unowned_create_short_title_poster(
             ffmpeg, "-ss", str(seek_time), "-i", str(video_path),
             "-vframes", "1", "-q:v", "2", "-y", str(frame_path),
         ]
-        loop = asyncio.get_running_loop()
-        proc = await loop.run_in_executor(
-            None, lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        )
+        proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
             frame_path.unlink(missing_ok=True)
             return False
@@ -1482,7 +1466,9 @@ async def _unowned_create_short_title_poster(
                 logger.warning(f"_draw_poster error: {e}")
                 return False
 
-        result = await loop.run_in_executor(None, _draw_poster)
+        result = await await_owned_coroutine(
+            asyncio.to_thread(_draw_poster)
+        )
         frame_path.unlink(missing_ok=True)
 
         if result and poster_path.exists() and poster_path.stat().st_size > 0:
@@ -1528,10 +1514,7 @@ async def _unowned_create_short_snapshot(
             "-y",
             str(snapshot_path),
         ]
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=60),
-        )
+        proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
             logger.warning(f"create_short_snapshot: не удалось извлечь кадр из {video_path.name}")
             return False
@@ -1631,13 +1614,11 @@ def build_short_caption(
 
 
 
-# ─── Cancellation ownership boundary for legacy executor work ────────────────
+# ─── Public transaction boundary for render work ─────────────────────────────
 #
-# The implementations above predate the shared asyncio process owner and still
-# contain a few bounded ``run_in_executor`` calls. Cancelling their asyncio
-# Future cannot stop native thread work. Public callers therefore use a shielded
-# ownership boundary: the inner operation and its semaphore/temp-file cleanup
-# finish first, then caller cancellation is propagated.
+# External processes use the shared process-tree owner and native threads use
+# await_owned_coroutine. Public wrappers retain the outer transaction boundary
+# so semaphore and temporary-file cleanup completes before cancellation returns.
 
 async def download_video_for_shorts(
     url: str,
