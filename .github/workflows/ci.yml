@@ -138,6 +138,8 @@ jobs:
           tests/test_local_botapi_required.py
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
+          tests/test_async_process.py
+          tests/test_async_process_tree.py
           tests/test_audio_conversion_postcondition.py
           tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py
@@ -186,6 +188,8 @@ jobs:
           tests/test_local_botapi_required.py
           tests/test_cloud_media_fallback.py
           tests/test_project_runtime_hardening.py
+          tests/test_async_process.py
+          tests/test_async_process_tree.py
           tests/test_audio_conversion_postcondition.py
           tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py

@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-"""Cancellation-safe ownership of long-running child processes."""
+"""Cancellation-safe ownership of long-running process trees."""
 from __future__ import annotations
 
 import asyncio
 import math
 import os
+import signal
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+
+_WINDOWS_CREATE_NEW_PROCESS_GROUP = getattr(
+    subprocess,
+    "CREATE_NEW_PROCESS_GROUP",
+    0x00000200,
+)
+_WINDOWS_CREATE_NO_WINDOW = getattr(
+    subprocess,
+    "CREATE_NO_WINDOW",
+    0x08000000,
+)
 
 
 def _finite_seconds(value: Any, *, name: str) -> float:
@@ -22,28 +35,97 @@ def _finite_seconds(value: Any, *, name: str) -> float:
     return max(0.1, seconds)
 
 
-async def _stop_process(
-    process: asyncio.subprocess.Process,
-    *,
-    grace_seconds: float = 3.0,
-) -> None:
-    """Terminate a child and do not return while it may still be running.
+def _process_pid(process: asyncio.subprocess.Process) -> int | None:
+    """Return a usable process/group id without assuming a concrete transport."""
+    try:
+        pid = int(process.pid)
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+    return pid if pid > 0 else None
 
-    ``ProcessLookupError`` only says that the signal could not be delivered;
-    it does not prove the asyncio child watcher has reaped the process. We
-    therefore still await ``wait()`` after a failed terminate/kill attempt.
-    """
+
+def _spawn_group_kwargs() -> dict[str, Any]:
+    """Isolate every command so cancellation can target its complete tree."""
+    if os.name == "nt":
+        return {"creationflags": _WINDOWS_CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _signal_posix_tree(
+    process: asyncio.subprocess.Process,
+    sig: signal.Signals,
+) -> None:
+    """Signal the isolated POSIX group, falling back to the direct child."""
+    pid = _process_pid(process)
+    if pid is not None:
+        try:
+            os.killpg(pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except (PermissionError, OSError):
+            # A mocked/non-session child or an unusual platform can still be
+            # cleaned up directly. Real owned processes are always sessions.
+            pass
+
     if process.returncode is not None:
         return
+    try:
+        if sig == signal.SIGKILL:
+            process.kill()
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        pass
 
-    grace = _finite_seconds(grace_seconds, name="grace_seconds")
+
+async def _taskkill_windows_tree(pid: int, *, timeout: float) -> bool:
+    """Force-stop a Windows process and all descendants with the OS tool."""
+    try:
+        killer = await asyncio.create_subprocess_exec(
+            "taskkill",
+            "/PID",
+            str(pid),
+            "/T",
+            "/F",
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=_WINDOWS_CREATE_NO_WINDOW,
+        )
+    except (FileNotFoundError, OSError):
+        return False
+
+    try:
+        await asyncio.wait_for(killer.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        try:
+            killer.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            await asyncio.wait_for(killer.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return False
+        return False
+    return killer.returncode == 0
+
+
+async def _stop_direct_process_fallback(
+    process: asyncio.subprocess.Process,
+    *,
+    grace_seconds: float,
+) -> None:
+    """Preserve terminate→grace→kill semantics when tree tooling fails."""
+    if process.returncode is not None:
+        return
     try:
         process.terminate()
     except ProcessLookupError:
         pass
 
     try:
-        await asyncio.wait_for(process.wait(), timeout=grace)
+        await asyncio.wait_for(process.wait(), timeout=grace_seconds)
         return
     except asyncio.TimeoutError:
         pass
@@ -55,13 +137,77 @@ async def _stop_process(
             pass
 
     try:
-        await asyncio.wait_for(process.wait(), timeout=grace)
+        await asyncio.wait_for(process.wait(), timeout=grace_seconds)
     except asyncio.TimeoutError as exc:
-        # The OS or child watcher still owns the process. The caller must see a
-        # hard failure, not proceed as if cleanup/resource release were safe.
         raise RuntimeError(
-            "child process did not stop after terminate/kill"
+            "direct child did not stop after terminate/kill fallback"
         ) from exc
+
+
+async def _stop_windows_tree(
+    process: asyncio.subprocess.Process,
+    *,
+    grace_seconds: float,
+) -> None:
+    """Stop a Windows tree before its leader can orphan descendants."""
+    pid = _process_pid(process)
+    tree_stopped = False
+    if pid is not None:
+        tree_stopped = await _taskkill_windows_tree(pid, timeout=grace_seconds)
+
+    if not tree_stopped:
+        await _stop_direct_process_fallback(
+            process,
+            grace_seconds=grace_seconds,
+        )
+        return
+
+    if process.returncode is None:
+        try:
+            await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError(
+                "Windows process tree did not stop after taskkill"
+            ) from exc
+
+
+async def _stop_posix_tree(
+    process: asyncio.subprocess.Process,
+    *,
+    grace_seconds: float,
+) -> None:
+    """Gracefully stop, then force-sweep the complete isolated POSIX group."""
+    if process.returncode is None:
+        _signal_posix_tree(process, signal.SIGTERM)
+        try:
+            await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+        except asyncio.TimeoutError:
+            pass
+
+    # Always sweep the group with SIGKILL. The leader may have exited after
+    # SIGTERM while a grandchild ignored it and kept stdout/stderr pipes open.
+    _signal_posix_tree(process, signal.SIGKILL)
+
+    if process.returncode is None:
+        try:
+            await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError(
+                "POSIX process tree did not stop after SIGTERM/SIGKILL"
+            ) from exc
+
+
+async def _stop_process(
+    process: asyncio.subprocess.Process,
+    *,
+    grace_seconds: float = 3.0,
+) -> None:
+    """Stop and reap the complete owned process tree before returning."""
+    grace = _finite_seconds(grace_seconds, name="grace_seconds")
+    if os.name == "nt":
+        await _stop_windows_tree(process, grace_seconds=grace)
+    else:
+        await _stop_posix_tree(process, grace_seconds=grace)
 
 
 async def _stop_before_returning(
@@ -69,7 +215,7 @@ async def _stop_before_returning(
     *,
     grace_seconds: float,
 ) -> None:
-    """Finish child cleanup before propagating one or many cancellations."""
+    """Finish tree cleanup before propagating one or many cancellations."""
     stop_task = asyncio.create_task(
         _stop_process(process, grace_seconds=grace_seconds)
     )
@@ -105,8 +251,9 @@ async def run_cancellable_process(
     """Run one command and retain ownership through timeout or cancellation.
 
     Unlike ``run_in_executor(subprocess.run(...))``, cancelling the coroutine
-    cannot release a semaphore or remove temporary files while the child keeps
-    running in a worker thread. The child is stopped and reaped first.
+    cannot release a semaphore or remove temporary files while yt-dlp, FFmpeg,
+    or another descendant keeps running. The isolated process tree is stopped
+    and its direct child is reaped first.
     """
     deadline = _finite_seconds(timeout, name="timeout")
     cleanup_grace = _finite_seconds(grace_seconds, name="grace_seconds")
@@ -121,6 +268,7 @@ async def run_cancellable_process(
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        **_spawn_group_kwargs(),
     )
     try:
         stdout, stderr = await asyncio.wait_for(
