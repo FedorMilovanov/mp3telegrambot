@@ -26,21 +26,58 @@ from services.shorts_video import (
 logger = logging.getLogger(__name__)
 
 
+async def _terminate_process(process: asyncio.subprocess.Process) -> None:
+    """Stop FFmpeg and wait until it no longer owns temp/output files."""
+    if process.returncode is not None:
+        return
+    try:
+        process.terminate()
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+        return
+    except (ProcessLookupError, asyncio.TimeoutError):
+        pass
+    if process.returncode is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            return
+        await process.wait()
+
+
 async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run one encoded burn under the shared GPU semaphore."""
+    """Run one encoded burn under the shared GPU semaphore.
+
+    An asyncio-owned child process is used instead of ``run_in_executor`` so a
+    task cancellation can terminate FFmpeg before the ASS directory and partial
+    output are cleaned. This is especially important on Windows, where an open
+    file handle can otherwise make cleanup fail.
+    """
     from core.resource_scheduler import scheduler as resource_scheduler
 
-    loop = asyncio.get_running_loop()
     async with resource_scheduler.gpu_render:
-        return await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            ),
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=600.0,
+            )
+        except asyncio.TimeoutError as exc:
+            await _terminate_process(process)
+            raise subprocess.TimeoutExpired(command, timeout=600) from exc
+        except asyncio.CancelledError:
+            await _terminate_process(process)
+            raise
+
+    return subprocess.CompletedProcess(
+        command,
+        int(process.returncode or 0),
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+    )
 
 
 def _remove_partial_output(path: Path) -> None:
