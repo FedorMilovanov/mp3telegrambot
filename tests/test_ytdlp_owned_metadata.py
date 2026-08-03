@@ -4,9 +4,15 @@ import ast
 from pathlib import Path
 
 
-def _function_source(path: Path, name: str) -> str:
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
+PATH = Path("pipelines/main_pipeline.py")
+
+
+def _module() -> tuple[str, ast.Module]:
+    source = PATH.read_text(encoding="utf-8")
+    return source, ast.parse(source)
+
+
+def _function_source(source: str, tree: ast.Module, name: str) -> str:
     node = next(
         item
         for item in tree.body
@@ -15,12 +21,23 @@ def _function_source(path: Path, name: str) -> str:
     return ast.get_source_segment(source, node) or ""
 
 
-def test_inprocess_ytdlp_metadata_uses_owned_soft_timeout() -> None:
-    path = Path("pipelines/main_pipeline.py")
-    source = path.read_text(encoding="utf-8")
-    function = _function_source(path, "_ytdlp_info_inprocess")
+def _imported_names(tree: ast.Module, module: str) -> set[str]:
+    return {
+        alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == module
+        for alias in node.names
+    }
 
-    assert "from services.async_worker import await_owned_with_soft_timeout" in source
+
+def test_inprocess_ytdlp_metadata_uses_owned_soft_timeout() -> None:
+    source, tree = _module()
+    function = _function_source(source, tree, "_ytdlp_info_inprocess")
+
+    assert "await_owned_with_soft_timeout" in _imported_names(
+        tree,
+        "services.async_worker",
+    )
     assert "await await_owned_with_soft_timeout(" in function
     assert "asyncio.to_thread(_run)" in function
     assert "run_in_executor" not in function
@@ -28,10 +45,8 @@ def test_inprocess_ytdlp_metadata_uses_owned_soft_timeout() -> None:
 
 
 def test_late_inprocess_metadata_result_is_used_before_fallback() -> None:
-    function = _function_source(
-        Path("pipelines/main_pipeline.py"),
-        "_ytdlp_info_inprocess",
-    )
+    source, tree = _module()
+    function = _function_source(source, tree, "_ytdlp_info_inprocess")
 
     assert "deadline_exceeded" in function
     assert "использую поздний результат" in function
