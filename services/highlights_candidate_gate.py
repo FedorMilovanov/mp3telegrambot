@@ -12,6 +12,8 @@ from services.highlights_quality import refine_highlights_candidate
 
 logger = logging.getLogger(__name__)
 
+_PROCESS_NOT_REAPED_MESSAGE = "child process did not stop after terminate/kill"
+
 
 def _failure_report(reason: str, *, detail: str = "") -> dict[str, Any]:
     report: dict[str, Any] = {
@@ -59,15 +61,22 @@ async def verify_highlights_candidate(
             detail=f"timeout={exc.timeout}",
         )
     except RuntimeError as exc:
-        # The shared child owner raises RuntimeError only when it cannot prove
-        # that a terminated/killed process has actually been reaped.
-        logger.error(
-            "Highlights source-context probe ownership failed: %s",
-            str(exc)[:240],
+        detail = str(exc)
+        if _PROCESS_NOT_REAPED_MESSAGE in detail:
+            logger.error(
+                "Highlights source-context probe ownership failed: %s",
+                detail[:240],
+            )
+            return None, _failure_report(
+                "probe_process_not_reaped",
+                detail=detail,
+            )
+        logger.exception(
+            "Highlights quality gate raised an unrelated RuntimeError"
         )
         return None, _failure_report(
-            "probe_process_not_reaped",
-            detail=str(exc),
+            "quality_gate_error:RuntimeError",
+            detail=detail,
         )
     except Exception as exc:
         logger.exception(
