@@ -1,0 +1,178 @@
+name: PR81 runtime env contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr81-runtime-env-contract
+  cancel-in-progress: false
+
+jobs:
+  align:
+    if: github.event.pull_request.number == 81 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_REF }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Align env documentation with mandatory runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$HEAD_REF" | awk '{print $1}')"
+          if [[ "$remote_head" != "$EXPECTED_HEAD" ]]; then
+            echo "PR head moved: expected $EXPECTED_HEAD, got $remote_head" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> bool:
+              file_path = Path(path)
+              source = file_path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count == 0:
+                  if new in source:
+                      return False
+                  raise SystemExit(f"Missing expected text in {path}: {old!r}")
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, got {count}: {old!r}")
+              file_path.write_text(source.replace(old, new), encoding="utf-8")
+              return True
+
+          changed = False
+          changed |= replace_once(
+              ".env.example",
+              "# Отключить автостарт: LOCAL_BOT_API_AUTOSTART=0",
+              "# bot_new.py запускает обязательный сервер автоматически; тихое отключение автостарта не поддерживается.",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# Локальный Telegram Bot API сервер (опционально).\n# Если задан — бот шлёт запросы через него: лимит отправки растёт с 50 МБ до 2000 МБ.\n# Перед переключением один раз вызови https://api.telegram.org/bot<TOKEN>/logOut\n# LOCAL_BOT_API_URL=http://127.0.0.1:8081",
+              "# Локальный Telegram Bot API обязателен для production-точки bot_new.py.\n# При холодном старте бот сам выполняет cloud logOut и поднимает один локальный сервер.\n# Продолжение разрешено только после успешного local /getMe; облачного media-fallback нет.\n# LOCAL_BOT_API_URL=http://127.0.0.1:8081",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# Лимит размера отправляемых файлов в МБ (опционально).\n# По умолчанию: 50 (облачный API) или 2000 (если задан LOCAL_BOT_API_URL).\n# MAX_FILE_SIZE_MB=2000",
+              "# Production Local Bot API даёт лимит 2000 МБ. Указывать вручную нужно\n# только более строгий локальный предел; облачный лимит production не использует.\n# MAX_FILE_SIZE_MB=2000",
+          )
+
+          env_path = Path(".env.example")
+          env = env_path.read_text(encoding="utf-8")
+          start_marker = "# ── Работа без TUN/VPN: proxy-настройки Telegram"
+          end_marker = "# ── LiveDub Pro-микс (режимы ENG)"
+          new_network = """# ── Сеть и обязательный Local Bot API ────────────────────────────
+# После bootstrap Telegram-транспорт Python-бота идёт только в localhost.
+# TELEGRAM_PROXY_URL нужен для обязательного cloud logOut при холодном старте;
+# он также может быть переиспользован Gemini/yt-dlp, но не заменяет сетевой
+# маршрут самого telegram-bot-api.exe.
+# TELEGRAM_PROXY_URL=socks5h://127.0.0.1:10808
+#
+# Официальный telegram-bot-api не принимает SOCKS/MTProto TDLib-флаги.
+# Для соединения локального сервера с Telegram нужен системный TUN/VPN.
+# HTTP --proxy поддерживается главным образом для webhook-запросов:
+# LOCAL_BOT_API_PROXY_URL=http://user:pass@127.0.0.1:8080
+#
+# Cloud media fallback и автоматическое сжатие production запрещены.
+# LOCAL_BOT_API_CLOUD_FALLBACK=0
+# CLOUD_MEDIA_AUTO_COMPRESS=0
+# Сколько ждать настоящий local /getMe: 60..600 секунд, по умолчанию 300.
+# LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300
+#
+# yt-dlp — отдельный процесс; без TUN ему можно задать mixed HTTP proxy:
+# YTDLP_PROXY_URL=http://127.0.0.1:10808
+# YTDLP_INFO_TIMEOUT=180
+# Gemini использует httpx; отдельный маршрут задаётся так:
+# GEMINI_PROXY_URL=http://127.0.0.1:10808
+
+"""
+          if start_marker in env:
+              start = env.index(start_marker)
+              end = env.index(end_marker, start)
+              env = env[:start] + new_network + env[end:]
+              env_path.write_text(env, encoding="utf-8")
+              changed = True
+          elif new_network.strip() not in env:
+              raise SystemExit("Network section markers are missing")
+
+          changed |= replace_once(
+              ".env.example",
+              "# Аварийный fallback на обычные голоса (tts). По умолчанию ВЫКЛЮЧЕН:\n# режим ENG должен выдавать только «Живые голоса» или честную ошибку.\n# Включайте только если осознанно согласны на НЕживой перевод.\n# LIVEDUB_TTS_FALLBACK=0",
+              "# Обычные голоса Яндекса — разрешённый и явно маркированный fallback,\n# когда Live voice недоступен. По умолчанию включён; строгий режим только Live: 0.\n# LIVEDUB_TTS_FALLBACK=1",
+          )
+          changed |= replace_once(
+              "services/livedub_quality_runtime.py",
+              "Retired 3.1/2.x light models are replaced with 3.5 Flash-Lite.",
+              "Project-obsolete 3.1/2.x light models are migrated to 3.5 Flash-Lite.",
+          )
+
+          local_test = Path("tests/test_local_botapi_required.py")
+          local_source = local_test.read_text(encoding="utf-8")
+          local_contract = '''\n\ndef test_env_example_matches_mandatory_local_transport_contract():\n    env = Path(".env.example").read_text(encoding="utf-8")\n    assert "Local Bot API обязателен" in env\n    assert "LOCAL_BOT_API_CLOUD_FALLBACK=0" in env\n    assert "CLOUD_MEDIA_AUTO_COMPRESS=0" in env\n    assert "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300" in env\n    assert "LOCAL_BOT_API_CLOUD_FALLBACK=1" not in env\n    assert "LOCAL_BOT_API_GETME_TIMEOUT_SEC" not in env\n'''
+          if "test_env_example_matches_mandatory_local_transport_contract" not in local_source:
+              local_test.write_text(local_source.rstrip() + local_contract + "\n", encoding="utf-8")
+              changed = True
+
+          quality_test = Path("tests/test_livedub_quality_runtime.py")
+          quality_source = quality_test.read_text(encoding="utf-8")
+          old_quality = '''def test_yandex_tts_fallback_is_enabled_but_explicitly_marked():\n    src = _runtime_source()\n    assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' in src\n    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")\n    assert ".voice_style_tts" in mix\n'''
+          new_quality = '''def test_yandex_tts_fallback_is_enabled_but_explicitly_marked():\n    src = _runtime_source()\n    assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' in src\n    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")\n    assert ".voice_style_tts" in mix\n    env = Path(".env.example").read_text(encoding="utf-8")\n    assert "LIVEDUB_TTS_FALLBACK=1" in env\n    assert "LIVEDUB_TTS_FALLBACK=0" not in env\n'''
+          if old_quality in quality_source:
+              quality_test.write_text(quality_source.replace(old_quality, new_quality), encoding="utf-8")
+              changed = True
+          elif new_quality not in quality_source:
+              raise SystemExit("LiveDub TTS fallback test contract not found")
+
+          marker = Path(".github/pr81-runtime-env-refresh.txt")
+          if marker.exists():
+              marker.unlink()
+              changed = True
+
+          if not changed:
+              Path(".github/pr81-runtime-env-noop").write_text("already aligned\n", encoding="utf-8")
+          PY
+
+          if [[ -f .github/pr81-runtime-env-noop ]]; then
+            rm .github/pr81-runtime-env-noop
+            echo "Runtime env contract already aligned."
+            exit 0
+          fi
+
+          python -m compileall -q services tests
+          git diff --check
+          grep -F 'Local Bot API обязателен' .env.example
+          grep -F 'LOCAL_BOT_API_CLOUD_FALLBACK=0' .env.example
+          grep -F 'LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300' .env.example
+          grep -F 'LIVEDUB_TTS_FALLBACK=1' .env.example
+          if grep -F 'LOCAL_BOT_API_CLOUD_FALLBACK=1' .env.example; then exit 1; fi
+          if grep -F 'LIVEDUB_TTS_FALLBACK=0' .env.example; then exit 1; fi
+
+      - name: Commit runtime documentation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .env.example services/livedub_quality_runtime.py tests/test_local_botapi_required.py tests/test_livedub_quality_runtime.py
+          git add -u .github/pr81-runtime-env-refresh.txt || true
+          git commit -m "Align runtime environment documentation with production"
+          git push origin "HEAD:$HEAD_REF"
