@@ -121,42 +121,66 @@ def main() -> None:
         label="fresh mp3gain ownership",
     )
 
-    recompress_pattern = (
-        r"(?P<i>^[ \t]+)(?:proc = )?await asyncio\.get_running_loop\(\)\.run_in_executor\(\n"
-        r"(?P=i)    None, lambda: subprocess\.run\(\n"
-        r"(?P=i)        \[ffmpeg, \"-i\", str\(mp3_path\), \"-b:a\", \"64k\", \"-y\", str\(mp3_64_path\)\],\n"
-        r"(?P=i)        capture_output=True, timeout=300\)?\n"
-        r"(?P=i)\)\)?"
+    cached_recompress_old = (
+        "                    await asyncio.get_running_loop().run_in_executor(\n"
+        "                        None, lambda: subprocess.run(\n"
+        "                            [ffmpeg, \"-i\", str(mp3_path), \"-b:a\", \"64k\", \"-y\", str(mp3_64_path)],\n"
+        "                            capture_output=True, timeout=300))"
+    )
+    cached_recompress_new = (
+        "                    mp3_64_path.unlink(missing_ok=True)\n"
+        "                    _recompress_proc = await run_cancellable_process(\n"
+        "                        [ffmpeg, \"-i\", str(mp3_path), \"-b:a\", \"64k\", \"-y\", str(mp3_64_path)],\n"
+        "                        timeout=300,\n"
+        "                    )\n"
+        "                    if _recompress_proc.returncode != 0:\n"
+        "                        logger.warning(\n"
+        "                            \"ffmpeg 64k rc=%s: %s\",\n"
+        "                            _recompress_proc.returncode,\n"
+        "                            (_recompress_proc.stderr or b\"\")[-300:],\n"
+        "                        )"
+    )
+    source = _replace_exact(
+        source,
+        cached_recompress_old,
+        cached_recompress_new,
+        expected=1,
+        label="cached ffmpeg recompression",
     )
 
-    def _recompress_replacement(match: re.Match[str]) -> str:
-        indent = match.group("i")
-        return (
-            f"{indent}mp3_64_path.unlink(missing_ok=True)\n"
-            f"{indent}_recompress_proc = await run_cancellable_process(\n"
-            f"{indent}    [ffmpeg, \"-i\", str(mp3_path), \"-b:a\", \"64k\", \"-y\", str(mp3_64_path)],\n"
-            f"{indent}    timeout=300,\n"
-            f"{indent})\n"
-            f"{indent}if _recompress_proc.returncode != 0:\n"
-            f"{indent}    logger.warning(\n"
-            f"{indent}        \"ffmpeg 64k rc=%s: %s\",\n"
-            f"{indent}        _recompress_proc.returncode,\n"
-            f"{indent}        (_recompress_proc.stderr or b\"\")[-300:],\n"
-            f"{indent}    )"
-        )
-
-    source = _replace_regex(
+    fresh_recompress_old = (
+        "                proc = await asyncio.get_running_loop().run_in_executor(\n"
+        "                    None, lambda: subprocess.run(\n"
+        "                        [ffmpeg, \"-i\", str(mp3_path), \"-b:a\", \"64k\", \"-y\", str(mp3_64_path)],\n"
+        "                        capture_output=True, timeout=300\n"
+        "                    )\n"
+        "                )"
+    )
+    fresh_recompress_new = (
+        "                mp3_64_path.unlink(missing_ok=True)\n"
+        "                _recompress_proc = await run_cancellable_process(\n"
+        "                    [ffmpeg, \"-i\", str(mp3_path), \"-b:a\", \"64k\", \"-y\", str(mp3_64_path)],\n"
+        "                    timeout=300,\n"
+        "                )\n"
+        "                if _recompress_proc.returncode != 0:\n"
+        "                    logger.warning(\n"
+        "                        \"ffmpeg 64k rc=%s: %s\",\n"
+        "                        _recompress_proc.returncode,\n"
+        "                        (_recompress_proc.stderr or b\"\")[-300:],\n"
+        "                    )"
+    )
+    source = _replace_exact(
         source,
-        recompress_pattern,
-        _recompress_replacement,
-        expected=2,
-        label="ffmpeg recompression subprocesses",
+        fresh_recompress_old,
+        fresh_recompress_new,
+        expected=1,
+        label="fresh ffmpeg recompression",
     )
 
     source = _replace_exact(
         source,
-        "if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:",
-        "if (\n"
+        "                    if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:",
+        "                    if (\n"
         "                        _recompress_proc.returncode == 0\n"
         "                        and mp3_64_path.exists()\n"
         "                        and mp3_64_path.stat().st_size > 10240\n"
@@ -166,8 +190,8 @@ def main() -> None:
     )
     source = _replace_exact(
         source,
-        "if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:",
-        "if (\n"
+        "                if mp3_64_path.exists() and mp3_64_path.stat().st_size > 10240:",
+        "                if (\n"
         "                    _recompress_proc.returncode == 0\n"
         "                    and mp3_64_path.exists()\n"
         "                    and mp3_64_path.stat().st_size > 10240\n"
