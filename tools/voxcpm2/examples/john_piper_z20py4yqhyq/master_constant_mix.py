@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.voxcpm2.final_media_qa import (
+    LOUDNESS_TOLERANCE_LU,
     TARGET_I_RANGE,
     TARGET_LRA_RANGE,
     TARGET_TP_RANGE,
@@ -347,7 +348,10 @@ def calibrate_russian_gain(
             target_lra=target_lra,
             target_tp=target_tp,
         )
-        if measured["integrated_lufs"] > target_i + 0.90 or measured["true_peak_dbtp"] > -1.0:
+        if (
+            measured["integrated_lufs"] > target_i + LOUDNESS_TOLERANCE_LU
+            or measured["true_peak_dbtp"] > -1.0
+        ):
             raise RuntimeError(
                 "Даже минимальная русская громкость не позволяет сохранить постоянный "
                 f"оригинал {original_level * 100:.1f}% и пройти master-QA: {measured}"
@@ -370,10 +374,12 @@ def calibrate_russian_gain(
         target_tp=target_tp,
     )
     candidate.unlink(missing_ok=True)
-    if abs(final_measured["integrated_lufs"] - target_i) > 0.90:
+    loudness_error = abs(final_measured["integrated_lufs"] - target_i)
+    if loudness_error > LOUDNESS_TOLERANCE_LU:
         raise RuntimeError(
             "Постоянный микс не попал в допуск loudness без изменения английских 18%: "
-            f"{final_measured['integrated_lufs']:.2f} LUFS при цели {target_i:.2f}."
+            f"{final_measured['integrated_lufs']:.2f} LUFS при цели {target_i:.2f} "
+            f"(отклонение {loudness_error:.2f} LU, допуск ±{LOUDNESS_TOLERANCE_LU:.2f})."
         )
     if final_measured["true_peak_dbtp"] > -1.0:
         raise RuntimeError(
@@ -389,6 +395,7 @@ def calibrate_russian_gain(
         "post_mix_limiter": False,
         "russian_gain": gain,
         "safe_peak_target_dbtp": safe_peak,
+        "loudness_tolerance_lu": LOUDNESS_TOLERANCE_LU,
         "measurement": final_measured,
         "attempts": attempts,
         "filter": final_graph or graph,
