@@ -25,6 +25,7 @@ Project: `dub-ba15009b7a`, ready-SRT direct mode.
 11. **Short-text repetition and punctuation loss are known Nano ONNX defects.** Merge very short clauses into complete thoughts, end every TTS input with simple punctuation, avoid curly quotes/em dashes in the synthesis text, and keep chunks near 40–60 text tokens. Permit at most one targeted retry for the failed block, not a broad 5–10-candidate search.
 12. **Reference audio needs an explicit A/B policy.** Use a clean, clear, stable reference with minimal processing. Test a short 3–4 second reference against a longer reference before assuming more audio improves similarity. Aggressive denoise and dynamic normalization can alter timbre. A rolling prompt from the previous generated tail is experimental continuity conditioning and must not silently replace the original-speaker identity anchor.
 13. **Frame-cap checks must be per hidden text chunk, never aggregate.** The standard `infer_onnx.py` log reports total frames across every internal voice-clone chunk, while `max_new_frames` applies separately to each chunk. V5 incorrectly rejected totals such as `268/191` and `231/191`; the second candidate had a plausible cleaned duration of 10.095 seconds for a 9.32-second slot. Read `result["chunk_results"]`, compare each chunk independently with the per-chunk limit, and keep duration/repetition checks separate from cap detection.
+14. **Windows redirected stdout can fail after successful synthesis.** V6 generated WAV and wrote its UTF-8 JSON report, then Python 3.13 raised `UnicodeEncodeError` while printing Russian JSON through a `cp1252` redirected console. Treat on-disk WAV/report artifacts as authoritative when they were written before the print failure. Force `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, write full UTF-8 reports to files, and keep machine-readable stdout ASCII-safe with `json.dumps(..., ensure_ascii=True)`.
 
 ## Fast comparison protocol
 
@@ -38,6 +39,7 @@ For quick perceptual comparison before bot integration:
 - keep synthesis text around 40–60 tokens, use simple terminal punctuation, and keep decorative quotation marks only in subtitles;
 - generate one primary candidate and at most one targeted retry for a failed block;
 - give generation a frame budget larger than the authored slot, but fail closed only when an individual hidden chunk reaches its own frame cap; never compare aggregate frames with a per-chunk limit;
+- write full diagnostic JSON to UTF-8 files and keep redirected stdout ASCII-safe on Windows;
 - use full decode for diagnostics, trim only edge silence, and validate duration/repetition before muxing;
 - evaluate voice similarity, pronunciation, noise, continuity, duration, and endings before adding any backend to the bot.
 
