@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -16,41 +17,43 @@ def _replace_once(source: str, old: str, new: str, *, label: str) -> str:
     return source.replace(old, new, 1)
 
 
-def main() -> None:
-    source = PATH.read_text(encoding="utf-8")
-
-    source = _replace_once(
-        source,
-        "logger = logging.getLogger(__name__)\n\nasync def render_clip(\n",
-        "logger = logging.getLogger(__name__)\n\n\n"
-        "def _unlink_render_paths(*paths: Path | None) -> None:\n"
-        "    \"\"\"Remove stale/partial render artifacts without masking the main result.\"\"\"\n"
-        "    for path in paths:\n"
-        "        if path is None:\n"
-        "            continue\n"
-        "        try:\n"
-        "            path.unlink(missing_ok=True)\n"
-        "        except OSError as exc:\n"
-        "            logger.warning(\"render cleanup failed for %s: %s\", path, exc)\n\n\n"
-        "async def render_clip(\n",
-        label="render cleanup helper",
+def _function_bounds(source: str, name: str) -> tuple[int, int]:
+    tree = ast.parse(source)
+    node = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
     )
+    lines = source.splitlines(keepends=True)
+    start = sum(len(line) for line in lines[: node.lineno - 1])
+    end = sum(len(line) for line in lines[: node.end_lineno])
+    return start, end
 
-    source = _replace_once(
-        source,
-        "    Возвращает True при успехе.\n"
-        "    \"\"\"\n"
-        "    try:\n"
-        "        ffmpeg = shutil.which(\"ffmpeg\")\n",
-        "    Возвращает True при успехе.\n"
-        "    \"\"\"\n"
+
+def _transform(
+    source: str,
+    name: str,
+    transform: Callable[[str], str],
+) -> str:
+    start, end = _function_bounds(source, name)
+    original = source[start:end]
+    updated = transform(original)
+    if updated == original:
+        raise SystemExit(f"{name}: transform made no change")
+    return source[:start] + updated + source[end:]
+
+
+def _patch_render_clip(function: str) -> str:
+    function = _replace_once(
+        function,
+        "    try:\n        ffmpeg = shutil.which(\"ffmpeg\")\n",
         "    _unlink_render_paths(output_path)\n"
         "    try:\n"
         "        ffmpeg = shutil.which(\"ffmpeg\")\n",
         label="render clip pre-delete",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "            else:\n"
         "                logger.warning(f\"render_clip ffmpeg error: {stderr_tail}\")\n"
         "                return False\n",
@@ -60,8 +63,8 @@ def main() -> None:
         "                return False\n",
         label="render clip nonzero cleanup",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "        if not output_path.exists() or output_path.stat().st_size == 0:\n"
         "            logger.warning(\"render_clip: выходной файл не создан или пуст\")\n"
         "            return False\n",
@@ -71,8 +74,8 @@ def main() -> None:
         "            return False\n",
         label="render clip postcondition cleanup",
     )
-    source = _replace_once(
-        source,
+    return _replace_once(
+        function,
         "    except subprocess.TimeoutExpired:\n"
         "        logger.warning(\"render_clip: ffmpeg timeout\")\n"
         "        return False\n"
@@ -93,23 +96,18 @@ def main() -> None:
         label="render clip exception cleanup",
     )
 
-    source = _replace_once(
-        source,
-        "    Возвращает True при успехе.\n"
-        "    \"\"\"\n"
-        "    try:\n"
-        "        ffmpeg = shutil.which(\"ffmpeg\")\n"
-        "        if not ffmpeg or not video_path.exists():\n",
-        "    Возвращает True при успехе.\n"
-        "    \"\"\"\n"
+
+def _patch_snapshot(function: str) -> str:
+    function = _replace_once(
+        function,
+        "    try:\n        ffmpeg = shutil.which(\"ffmpeg\")\n",
         "    _unlink_render_paths(snapshot_path)\n"
         "    try:\n"
-        "        ffmpeg = shutil.which(\"ffmpeg\")\n"
-        "        if not ffmpeg or not video_path.exists():\n",
+        "        ffmpeg = shutil.which(\"ffmpeg\")\n",
         label="snapshot pre-delete",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "        if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:\n"
         "            logger.warning(f\"create_clip_snapshot: не удалось извлечь кадр из {video_path.name}\")\n"
         "            return False\n",
@@ -119,8 +117,8 @@ def main() -> None:
         "            return False\n",
         label="snapshot failure cleanup",
     )
-    source = _replace_once(
-        source,
+    return _replace_once(
+        function,
         "    except Exception as e:\n"
         "        logger.warning(f\"create_clip_snapshot error: {type(e).__name__}: {e}\")\n"
         "        return False\n",
@@ -134,8 +132,10 @@ def main() -> None:
         label="snapshot exception cleanup",
     )
 
-    source = _replace_once(
-        source,
+
+def _patch_montage(function: str) -> str:
+    function = _replace_once(
+        function,
         "    temp_parts: list[Path] = []\n"
         "    concat_list_path: Path | None = None\n"
         "    try:\n",
@@ -145,8 +145,8 @@ def main() -> None:
         "    try:\n",
         label="montage final pre-delete",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "            part_path = output_path.parent / f\"{output_path.stem}_part{i}.mp4\"\n"
         "            temp_parts.append(part_path)\n",
         "            part_path = output_path.parent / f\"{output_path.stem}_part{i}.mp4\"\n"
@@ -154,8 +154,8 @@ def main() -> None:
         "            temp_parts.append(part_path)\n",
         label="montage part pre-delete",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "            if proc.returncode != 0 or not part_path.exists():\n"
         "                logger.warning(f\"Montage: фрагмент {i} не отрендерен\")\n"
         "                for p in temp_parts: p.unlink(missing_ok=True)\n"
@@ -170,8 +170,8 @@ def main() -> None:
         "                return False\n",
         label="montage part failure cleanup",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "        if len(existing_parts) < 2:\n"
         "            for p in temp_parts: p.unlink(missing_ok=True)\n"
         "            return False\n\n"
@@ -185,8 +185,8 @@ def main() -> None:
         "        with open(concat_list_path, \"w\", encoding=\"utf-8\") as f:\n",
         label="montage concat pre-delete",
     )
-    source = _replace_once(
-        source,
+    function = _replace_once(
+        function,
         "        for p in temp_parts: p.unlink(missing_ok=True)\n"
         "        concat_list_path.unlink(missing_ok=True)\n\n"
         "        if proc.returncode != 0 or not output_path.exists():\n"
@@ -203,8 +203,8 @@ def main() -> None:
         "            return False\n",
         label="montage concat cleanup",
     )
-    source = _replace_once(
-        source,
+    return _replace_once(
+        function,
         "    except subprocess.TimeoutExpired:\n"
         "        logger.warning(\"render_montage_short: ffmpeg timeout\")\n"
         "        for p in temp_parts:\n"
@@ -237,12 +237,43 @@ def main() -> None:
         label="montage exception cleanup",
     )
 
+
+def main() -> None:
+    source = PATH.read_text(encoding="utf-8")
+    source = _replace_once(
+        source,
+        "logger = logging.getLogger(__name__)\n\nasync def render_clip(\n",
+        "logger = logging.getLogger(__name__)\n\n\n"
+        "def _unlink_render_paths(*paths: Path | None) -> None:\n"
+        "    \"\"\"Remove stale/partial render artifacts without masking the main result.\"\"\"\n"
+        "    for path in paths:\n"
+        "        if path is None:\n"
+        "            continue\n"
+        "        try:\n"
+        "            path.unlink(missing_ok=True)\n"
+        "        except OSError as exc:\n"
+        "            logger.warning(\"render cleanup failed for %s: %s\", path, exc)\n\n\n"
+        "async def render_clip(\n",
+        label="render cleanup helper",
+    )
+    source = _transform(source, "render_clip", _patch_render_clip)
+    source = _transform(source, "create_clip_snapshot", _patch_snapshot)
+    source = _transform(source, "render_montage_short", _patch_montage)
+
     ast.parse(source)
-    if source.count("_unlink_render_paths(output_path)") < 7:
-        raise SystemExit("output cleanup coverage changed")
-    if source.count("except asyncio.CancelledError:") < 3:
-        raise SystemExit("cancellation cleanup coverage changed")
-    if "for p in temp_parts: p.unlink" in source:
+    clip_start, clip_end = _function_bounds(source, "render_clip")
+    snapshot_start, snapshot_end = _function_bounds(source, "create_clip_snapshot")
+    montage_start, montage_end = _function_bounds(source, "render_montage_short")
+    clip = source[clip_start:clip_end]
+    snapshot = source[snapshot_start:snapshot_end]
+    montage = source[montage_start:montage_end]
+    if clip.count("_unlink_render_paths(output_path)") < 4:
+        raise SystemExit("render clip cleanup coverage changed")
+    if snapshot.count("_unlink_render_paths(snapshot_path)") < 3:
+        raise SystemExit("snapshot cleanup coverage changed")
+    if montage.count("_unlink_render_paths(") < 7:
+        raise SystemExit("montage cleanup coverage changed")
+    if "for p in temp_parts: p.unlink" in montage:
         raise SystemExit("legacy montage cleanup remains")
 
     PATH.write_text(source, encoding="utf-8")
