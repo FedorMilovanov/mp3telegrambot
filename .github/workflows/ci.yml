@@ -1,6 +1,9 @@
 name: Apply Transactional Shorts Outputs
 
 on:
+  push:
+    branches:
+      - agent/shorts-transactional-outputs-20260803
   pull_request:
     branches:
       - main
@@ -11,7 +14,9 @@ permissions:
 jobs:
   apply:
     name: Make active Shorts outputs transactional
-    if: github.head_ref == 'agent/shorts-transactional-outputs-20260803'
+    if: >-
+      github.head_ref == 'agent/shorts-transactional-outputs-20260803' ||
+      github.ref_name == 'agent/shorts-transactional-outputs-20260803'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current branch
