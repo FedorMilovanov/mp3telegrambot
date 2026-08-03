@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""AUDIT R31 (живой баг: `python.exe Application Error 0xc0000142` +
-`yt-dlp info error` на 10%): бот спавнит `sys.executable -m yt_dlp` для
-получения метаданных, и дочерний python.exe падает на инициализации DLL
-(0xc0000142) — при этом `python -m yt_dlp --version` из чистого терминала
-работает. Причина — PATH процесса-бота (DLL-каталог, добавленный
-лаунчером, перебивает системную DLL нового процесса).
+"""AUDIT R31: in-process yt-dlp metadata first, owned subprocess fallback second.
 
-Фикс: сначала берём метаданные через yt-dlp Python API В ПРОЦЕССЕ (без
-спавна нового python.exe), и лишь при неудаче откатываемся на subprocess.
+The original live failure was ``python.exe Application Error 0xc0000142`` when
+metadata was always fetched by spawning ``sys.executable -m yt_dlp``. The bot
+therefore tries the yt-dlp Python API in-process first. If that completed with
+an actual failure, the fallback remains available but must be owned by the
+shared cancellation-safe subprocess lifecycle.
 """
 from pathlib import Path
 
@@ -16,35 +14,32 @@ SRC = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
 
 def test_inprocess_info_helper_exists():
     assert "async def _ytdlp_info_inprocess(" in SRC
-    # использует Python API, а не спавн
     assert "yt_dlp.YoutubeDL(opts)" in SRC
     assert "extract_info(url, download=False)" in SRC
 
 
-def test_inprocess_tried_before_subprocess():
-    """In-process попытка обязана идти ДО subprocess-ветки, а subprocess —
-    остаться как fallback (поведение сохранено)."""
+def test_inprocess_tried_before_owned_subprocess_fallback():
     inproc = SRC.find("info_dict = await _ytdlp_info_inprocess(url, _info_timeout)")
-    subproc = SRC.find("subprocess.run(info_cmd")
-    assert inproc != -1 and subproc != -1
-    assert inproc < subproc, "in-process должен идти раньше subprocess-fallback"
-    # subprocess вызывается только если in-process не дал результата
-    assert "if info_dict is None:" in SRC
+    condition = SRC.find("if info_dict is None:", inproc)
+    fallback = SRC.find("info_proc = await run_cancellable_process(", condition)
+    fallback_command = SRC.find("info_cmd, timeout=_info_timeout, text=True", fallback)
+
+    assert min(inproc, condition, fallback, fallback_command) != -1
+    assert inproc < condition < fallback < fallback_command
+    assert "subprocess.run(info_cmd" not in SRC
 
 
 def test_inprocess_carries_cookies_and_proxy():
-    """Метаданные YouTube в no-TUN требуют proxy/cookies И js-runtime для
-    n-challenge. AUDIT R31b (in-process ВСЕГДА падал на YouTube «Only images»):
-    берём тот же набор из YTDLP_BASE_ARGS через parse_options — точный паритет
-    с рабочим subprocess, а не хардкод неполного набора."""
-    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:2600]
-    assert "YTDLP_BASE_ARGS" in seg          # тот же источник флагов, что и subprocess
-    assert "parse_options" in seg            # cookies+proxy+js-runtimes из флагов
+    """The in-process attempt must retain cookie/proxy/js-runtime parity."""
+    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:3000]
+    assert "YTDLP_BASE_ARGS" in seg
+    assert "parse_options" in seg
     assert 'opts["noplaylist"] = True' in seg
-    # прежний баг: жёсткий player_client=web без js-runtime — не должно вернуться
     assert "player_client" not in seg
 
 
-def test_inprocess_returns_none_on_failure_for_fallback():
-    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:2500]
+def test_inprocess_returns_none_on_finished_failure_for_fallback():
+    seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:3000]
     assert "return None" in seg
+    assert "except asyncio.CancelledError:" in seg
+    assert "raise" in seg
