@@ -56,6 +56,9 @@ def test_active_short_outputs_have_transactional_contract() -> None:
     assert "def _unlink_short_paths(" in source
     assert selected.count("except asyncio.CancelledError:") == 4
     assert selected.count("_unlink_short_paths(") >= 14
+    assert "protected=(source_video_path,)" in selected
+    assert "protected=(input_path,)" in selected
+    assert "protected=(video_path,)" in selected
     assert "_same_short_path(input_path, output_path)" in selected
 
 
