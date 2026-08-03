@@ -24,6 +24,8 @@ from services.shorts_video import (
 
 logger = logging.getLogger(__name__)
 
+_BURN_TIMEOUT_SECONDS = 600.0
+
 
 async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     """Run one encoded burn while retaining the shared GPU semaphore."""
@@ -32,7 +34,7 @@ async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[s
     async with resource_scheduler.gpu_render:
         return await run_cancellable_process(
             command,
-            timeout=600.0,
+            timeout=_BURN_TIMEOUT_SECONDS,
             text=True,
         )
 
