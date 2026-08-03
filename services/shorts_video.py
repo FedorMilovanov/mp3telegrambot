@@ -10,6 +10,7 @@ from core.globals import (
     html_mod,                     # FIX shorts_video
 )
 from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars, _is_static_video  # FIX shorts_video
+from services.async_worker import await_owned_coroutine
 from core.database import settings_get   # FIX shorts_video
 from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
 from core.url_utils import get_youtube_video_url # FIX shorts_video
@@ -37,7 +38,7 @@ def _pick_video_file(media_id: str) -> Optional[Path]:
     return None
 
 
-async def download_video_for_shorts(url: str, media_id: str, workdir: Optional[Path] = None) -> Optional[Path]:
+async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: Optional[Path] = None) -> Optional[Path]:
     """
     Скачивает видео в mp4 для вырезки Shorts.
     Использует bestvideo[height<=720]+bestaudio — оптимально для Shorts.
@@ -111,7 +112,7 @@ def get_shorts_visual_mode(format_name: str, visual_mode: str = "auto") -> str:
 
 _VIDEO_ENCODER: str | None = None  # кэш результата проверки
 
-async def render_short_clip(
+async def _unowned_render_short_clip(
     source_video_path: Path,
     output_path: Path,
     start_seconds: int,
@@ -293,7 +294,7 @@ async def render_short_clip(
         return False
 
 
-async def postprocess_short(
+async def _unowned_postprocess_short(
     input_path: Path,
     output_path: Path,
     *,
@@ -1104,7 +1105,7 @@ def _polish_subtitle_text(text: str) -> str:
     return " ".join(text.split())
 
 
-async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[dict]:
+async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[dict]:
     """
     Транскрибирует аудио клипа через faster-whisper.
     Возвращает сегменты [{"start", "end", "text"}] или [] если нет модели/ошибка.
@@ -1271,7 +1272,7 @@ async def transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[
         return []
 
 
-async def burn_subtitles_into_short(
+async def _unowned_burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
     segments: list[dict],
@@ -1352,7 +1353,7 @@ def _wrap_poster_title(title: str, max_chars: int = 22) -> list[str]:
     return lines[:3]
 
 
-async def create_short_title_poster(
+async def _unowned_create_short_title_poster(
     video_path: Path,
     poster_path: Path,
     title: str,
@@ -1499,7 +1500,7 @@ async def create_short_title_poster(
         return False
 
 
-async def create_short_snapshot(
+async def _unowned_create_short_snapshot(
     video_path: Path,
     snapshot_path: Path,
     clip_duration_seconds: float,
@@ -1628,6 +1629,113 @@ def build_short_caption(
     return "\n\n".join(parts)
 
 
+
+
+# ─── Cancellation ownership boundary for legacy executor work ────────────────
+#
+# The implementations above predate the shared asyncio process owner and still
+# contain a few bounded ``run_in_executor`` calls. Cancelling their asyncio
+# Future cannot stop native thread work. Public callers therefore use a shielded
+# ownership boundary: the inner operation and its semaphore/temp-file cleanup
+# finish first, then caller cancellation is propagated.
+
+async def download_video_for_shorts(
+    url: str,
+    media_id: str,
+    workdir: Optional[Path] = None,
+) -> Optional[Path]:
+    return await await_owned_coroutine(
+        _unowned_download_video_for_shorts(url, media_id, workdir=workdir)
+    )
+
+
+async def render_short_clip(
+    source_video_path: Path,
+    output_path: Path,
+    start_seconds: int,
+    end_seconds: int,
+    *,
+    visual_mode: str = "full_frame_vertical",
+) -> bool:
+    return await await_owned_coroutine(
+        _unowned_render_short_clip(
+            source_video_path,
+            output_path,
+            start_seconds,
+            end_seconds,
+            visual_mode=visual_mode,
+        )
+    )
+
+
+async def postprocess_short(
+    input_path: Path,
+    output_path: Path,
+    *,
+    normalize_audio: bool = True,
+    speed: float = 1.0,
+) -> bool:
+    return await await_owned_coroutine(
+        _unowned_postprocess_short(
+            input_path,
+            output_path,
+            normalize_audio=normalize_audio,
+            speed=speed,
+        )
+    )
+
+
+async def transcribe_short_clip(
+    video_path: Path,
+    ai_data: dict = None,
+) -> list[dict]:
+    return await await_owned_coroutine(
+        _unowned_transcribe_short_clip(video_path, ai_data=ai_data)
+    )
+
+
+async def burn_subtitles_into_short(
+    input_path: Path,
+    output_path: Path,
+    segments: list[dict],
+) -> bool:
+    # Preserve compatibility for old imports while enforcing the single active
+    # transactional ASS/process owner introduced by PR #85/#94.
+    from services.shorts_subtitle_burn import (
+        burn_subtitles_into_short as transactional_burn,
+    )
+
+    return await transactional_burn(input_path, output_path, segments)
+
+
+async def create_short_title_poster(
+    video_path: Path,
+    poster_path: Path,
+    title: str,
+    clip_duration_seconds: float,
+) -> bool:
+    return await await_owned_coroutine(
+        _unowned_create_short_title_poster(
+            video_path,
+            poster_path,
+            title,
+            clip_duration_seconds,
+        )
+    )
+
+
+async def create_short_snapshot(
+    video_path: Path,
+    snapshot_path: Path,
+    clip_duration_seconds: float,
+) -> bool:
+    return await await_owned_coroutine(
+        _unowned_create_short_snapshot(
+            video_path,
+            snapshot_path,
+            clip_duration_seconds,
+        )
+    )
 
 # ─── Clips MVP (длинные фрагменты 5–15 мин) ──────────────────
 
