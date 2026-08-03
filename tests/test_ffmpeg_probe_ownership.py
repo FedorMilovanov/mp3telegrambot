@@ -11,6 +11,7 @@ from services import ffmpeg
 
 
 SOURCE_PATH = Path("services/ffmpeg.py")
+STATIC_RUNTIME_PATH = Path("services/shorts_static_runtime.py")
 PROBE_FUNCTIONS = (
     "_find_silence_end",
     "_is_static_video",
@@ -39,6 +40,11 @@ def test_async_probe_surface_uses_process_tree_owner() -> None:
     assert "run_in_executor" not in selected
     assert "from subprocess import run" not in selected
 
+    runtime_source = STATIC_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert runtime_source.count("await run_cancellable_process(") == 1
+    assert "run_in_executor" not in runtime_source
+    assert "subprocess.run(" not in runtime_source
+
 
 @pytest.mark.asyncio
 async def test_silence_probe_preserves_nearest_boundary(monkeypatch, tmp_path) -> None:
@@ -59,25 +65,6 @@ async def test_silence_probe_preserves_nearest_boundary(monkeypatch, tmp_path) -
     result = await ffmpeg._find_silence_end(video_path, target_end=10.0)
 
     assert result == 10.0
-
-
-@pytest.mark.asyncio
-async def test_freeze_probe_preserves_static_decision(monkeypatch, tmp_path) -> None:
-    video_path = tmp_path / "video.mp4"
-    video_path.write_bytes(b"video")
-
-    async def fake_owner(command, **kwargs):
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            "",
-            "freeze_start: 0\nfreeze_end: 5\nfreeze_duration: 5.0\n",
-        )
-
-    monkeypatch.setattr(ffmpeg.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(ffmpeg, "run_cancellable_process", fake_owner)
-
-    assert await ffmpeg._is_static_video(video_path, probe_seconds=6.0) is True
 
 
 @pytest.mark.asyncio

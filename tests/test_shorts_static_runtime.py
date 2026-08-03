@@ -95,12 +95,13 @@ def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Pat
     source.write_bytes(b"not-a-real-video")
     seen: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
+    async def fake_owner(cmd, **kwargs):
         seen.append(list(cmd))
+        assert kwargs == {"timeout": 45, "text": True}
         return SimpleNamespace(returncode=0, stdout="", stderr=_static_probe_output())
 
     monkeypatch.setattr(runtime.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime, "run_cancellable_process", fake_owner)
     runtime._CACHE.clear()
 
     assert asyncio.run(runtime._is_static_video_confident(source, 12.0)) is True
@@ -109,10 +110,10 @@ def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Pat
     assert seen[1][seen[1].index("-ss") + 1] == "24.750"
     assert "scale=96:96:flags=area" in seen[0][seen[0].index("-vf") + 1]
 
-    def failed_run(cmd, **kwargs):
+    async def failed_owner(cmd, **kwargs):
         return SimpleNamespace(returncode=1, stdout="", stderr="decode failed")
 
-    monkeypatch.setattr(runtime.subprocess, "run", failed_run)
+    monkeypatch.setattr(runtime, "run_cancellable_process", failed_owner)
     runtime._CACHE.clear()
     assert asyncio.run(runtime._is_static_video_confident(source, 15.0)) is False
 
@@ -123,11 +124,11 @@ def test_opening_slide_then_moving_footage_keeps_crop(monkeypatch, tmp_path: Pat
     source.write_bytes(b"not-a-real-video")
     outputs = iter([_static_probe_output(), _moving_probe_output()])
 
-    def fake_run(cmd, **kwargs):
+    async def fake_owner(cmd, **kwargs):
         return SimpleNamespace(returncode=0, stdout="", stderr=next(outputs))
 
     monkeypatch.setattr(runtime.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime, "run_cancellable_process", fake_owner)
     runtime._CACHE.clear()
 
     assert asyncio.run(runtime._is_static_video_confident(source, 30.0)) is False
@@ -144,3 +145,6 @@ def test_installation_precedes_shorts_import_contract() -> None:
     )
     assert "moving=crop_zoom" in runtime_source
     assert "SHORTS_STATIC_SECOND_PROBE_OFFSET" in runtime_source
+    assert "await run_cancellable_process(" in runtime_source
+    assert "run_in_executor" not in runtime_source
+    assert "subprocess.run(" not in runtime_source
