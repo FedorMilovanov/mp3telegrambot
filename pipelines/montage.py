@@ -162,6 +162,8 @@ async def _run_montage_or_highlights_pipeline(
             )
             return False
         current_path = selection.path
+        delivery_selection = selection.selected
+        delivery_reason = selection.reason
         if selection.selected == "fallback":
             logger.warning(
                 "%s: subtitle-артефакт отклонён (%s, %.1fMB); "
@@ -221,6 +223,8 @@ async def _run_montage_or_highlights_pipeline(
                             return False
                         delivery_duration = final_probe.duration
                         delivery_report = fallback_report
+                        delivery_selection = "fallback"
+                        delivery_reason = "fallback_after_primary_final_qa_rejection"
             if not delivery_report.get("accepted"):
                 logger.warning(
                     "%s: final delivery QA rejected: %s",
@@ -238,8 +242,8 @@ async def _run_montage_or_highlights_pipeline(
             "%s: delivery evidence selected=%s reason=%s duration=%.3fs "
             "size=%.1fMB",
             prefix,
-            "fallback" if current_path == pre_subtitle_path and sub_path.exists() else selection.selected,
-            selection.reason,
+            delivery_selection,
+            delivery_reason,
             delivery_duration,
             file_size_mb(current_path),
         )
