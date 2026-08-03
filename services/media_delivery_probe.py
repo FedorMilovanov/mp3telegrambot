@@ -211,6 +211,20 @@ async def probe_media_async(path: Path, *, timeout: int = 20) -> MediaProbe | No
     return await asyncio.to_thread(probe_media, path, timeout=timeout)
 
 
+def media_probe_is_deliverable(probe: MediaProbe | None) -> bool:
+    """Require concrete video/audio evidence before a public upload."""
+    return bool(
+        probe is not None
+        and probe.duration > 0
+        and probe.has_video
+        and probe.has_audio
+        and probe.width > 0
+        and probe.height > 0
+        and probe.audio_sample_rate > 0
+        and probe.audio_codec
+    )
+
+
 def resolve_delivery_timing(
     *,
     source_start: float,
@@ -415,6 +429,7 @@ __all__ = [
     "MediaProbe",
     "evaluate_highlights_delivery",
     "file_size_mb",
+    "media_probe_is_deliverable",
     "parse_silencedetect",
     "probe_media",
     "probe_media_async",
