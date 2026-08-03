@@ -13,6 +13,7 @@ from core.database import GEMINI_MODEL       # FIX render
 from services.ffmpeg import _get_video_encoder
 from services.ffmpeg import _find_silence_end    # FIX render
 from services.ffmpeg import _is_static_video     # AUDIT R28
+from services.async_process import run_cancellable_process
 from core.utils import cleanup_files, format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
@@ -102,10 +103,7 @@ async def render_clip(
         # в 15-мин таймаут, когда три видео жарили h264_nvenc одновременно.
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
-            proc = await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=900),
-            )
+            proc = await run_cancellable_process(cmd, timeout=900, text=True)
         if proc.returncode != 0:
             stderr_tail = (proc.stderr or '')[-800:]
             # ffmpeg на Windows иногда завершается с кодом != 0 после "received signal 2"
@@ -163,10 +161,7 @@ async def create_clip_snapshot(
             "-y",
             str(snapshot_path),
         ]
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=60),
-        )
+        proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
             logger.warning(f"create_clip_snapshot: не удалось извлечь кадр из {video_path.name}")
             return False
@@ -312,9 +307,7 @@ async def render_montage_short(
             # AUDIT R29: сериализуем GPU-рендер фрагмента montage.
             from core.resource_scheduler import scheduler as _sched
             async with _sched.gpu_render:
-                proc = await loop.run_in_executor(
-                    None, lambda c=cmd: subprocess.run(c, capture_output=True, text=True, timeout=120)
-                )
+                proc = await run_cancellable_process(cmd, timeout=120, text=True)
             if proc.returncode != 0 or not part_path.exists():
                 logger.warning(f"Montage: фрагмент {i} не отрендерен")
                 for p in temp_parts: p.unlink(missing_ok=True)
@@ -343,9 +336,7 @@ async def render_montage_short(
         # уже завершённого цикла по фрагментам, так что вложенности семафора нет).
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
-            proc = await loop.run_in_executor(
-                None, lambda: subprocess.run(concat_cmd, capture_output=True, text=True, timeout=300)
-            )
+            proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
         for p in temp_parts: p.unlink(missing_ok=True)
         concat_list_path.unlink(missing_ok=True)
 
