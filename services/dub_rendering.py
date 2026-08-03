@@ -21,6 +21,10 @@ from services.speech_backends import (
 )
 
 DUB_RENDERING_POLICY = "separated-speech-master-validator-orchestration-v2"
+DEFAULT_SPEECH_PROCESS_TIMEOUT_SECONDS = 21600
+DEFAULT_MASTER_PROCESS_TIMEOUT_SECONDS = 7200
+_MIN_PROCESS_TIMEOUT_SECONDS = 60
+_MAX_PROCESS_TIMEOUT_SECONDS = 86400
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -33,8 +37,47 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _run(command: list[str], *, cwd: Path, env: dict[str, str], label: str) -> None:
-    result = subprocess.run(command, cwd=str(cwd), env=env, check=False)
+def _process_timeout_seconds(
+    request: dict[str, Any],
+    *,
+    request_key: str,
+    env_name: str,
+    default: int,
+) -> int:
+    """Resolve a finite child-process deadline without allowing zero/unbounded runs."""
+    raw = request.get(request_key)
+    if raw in (None, ""):
+        raw = os.getenv(env_name, str(default))
+    try:
+        seconds = int(float(raw))
+    except (TypeError, ValueError, OverflowError):
+        seconds = int(default)
+    return min(
+        _MAX_PROCESS_TIMEOUT_SECONDS,
+        max(_MIN_PROCESS_TIMEOUT_SECONDS, seconds),
+    )
+
+
+def _run(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    label: str,
+    timeout_seconds: int,
+) -> None:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"{label} превысил лимит {timeout_seconds} секунд и был остановлен."
+        ) from exc
     if result.returncode != 0:
         raise RuntimeError(f"{label} завершился с кодом {result.returncode}.")
 
@@ -100,6 +143,19 @@ def run_speech_master_validation(
     resolution = selection.resolution
     request = dict(resolution.request)
 
+    speech_timeout_seconds = _process_timeout_seconds(
+        request,
+        request_key="speech_process_timeout_seconds",
+        env_name="DUB_SPEECH_PROCESS_TIMEOUT_SECONDS",
+        default=DEFAULT_SPEECH_PROCESS_TIMEOUT_SECONDS,
+    )
+    master_timeout_seconds = _process_timeout_seconds(
+        request,
+        request_key="master_process_timeout_seconds",
+        env_name="DUB_MASTER_PROCESS_TIMEOUT_SECONDS",
+        default=DEFAULT_MASTER_PROCESS_TIMEOUT_SECONDS,
+    )
+
     reference_dir = root / "references"
     audio_dir = root / "audio"
     segment_work = root / "segment_work"
@@ -155,6 +211,7 @@ def run_speech_master_validation(
             f"Speech backend {backend.backend_id} "
             f"profile {model_profile.profile_id}"
         ),
+        timeout_seconds=speech_timeout_seconds,
     )
     if (
         model_profile.requires_execution_plan_evidence
@@ -188,6 +245,7 @@ def run_speech_master_validation(
         cwd=repo,
         env=env,
         label=f"Media master {master.master_id}",
+        timeout_seconds=master_timeout_seconds,
     )
 
     validator = get_final_validator(
@@ -211,6 +269,10 @@ def run_speech_master_validation(
         "final_validation": validation.as_dict(),
         "speech_command": synth,
         "master_command": master_command,
+        "process_timeouts_seconds": {
+            "speech": speech_timeout_seconds,
+            "master": master_timeout_seconds,
+        },
         "execution_plan_log": (
             str(execution_plan_log) if execution_plan_log.is_file() else ""
         ),
@@ -228,6 +290,8 @@ def selection_required_capabilities() -> tuple[str, ...]:
 
 
 __all__ = [
+    "DEFAULT_MASTER_PROCESS_TIMEOUT_SECONDS",
+    "DEFAULT_SPEECH_PROCESS_TIMEOUT_SECONDS",
     "DUB_RENDERING_POLICY",
     "run_speech_master_validation",
     "selection_required_capabilities",
