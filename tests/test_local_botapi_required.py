@@ -187,3 +187,13 @@ def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapte
     assert source.index("bootstrap_pre_main()") < source.index("import main as _main_module")
     assert "install_cloud_media_fallback" not in source
     assert "sys.exit(2)" in source
+
+
+def test_env_example_matches_mandatory_local_transport_contract():
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "Local Bot API обязателен" in env
+    assert "LOCAL_BOT_API_CLOUD_FALLBACK=0" in env
+    assert "CLOUD_MEDIA_AUTO_COMPRESS=0" in env
+    assert "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300" in env
+    assert "LOCAL_BOT_API_CLOUD_FALLBACK=1" not in env
+    assert "LOCAL_BOT_API_GETME_TIMEOUT_SEC" not in env
