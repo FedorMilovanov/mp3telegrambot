@@ -107,3 +107,15 @@ async def test_normal_quality_result_passes_through_unchanged(
 
     assert candidate is expected_candidate
     assert report is expected_report
+
+
+def test_active_highlights_pipeline_uses_structured_boundary() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "pipelines" / "montage.py").read_text(encoding="utf-8")
+
+    assert (
+        "from services.highlights_candidate_gate import "
+        "verify_highlights_candidate"
+    ) in source
+    assert "await verify_highlights_candidate(" in source
+    assert "from services.highlights_quality import refine_highlights_candidate" not in source
