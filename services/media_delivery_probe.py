@@ -34,6 +34,23 @@ class DeliveryTiming:
     speed_applied: bool
 
 
+@dataclass(frozen=True)
+class DeliveryFileSelection:
+    """Decision evidence for the final upload path.
+
+    ``primary`` is normally the subtitle-burned file. ``fallback`` is the
+    already rendered pre-subtitle file. A valid finished video must never be
+    discarded solely because the optional subtitle pass crossed Telegram's
+    size limit.
+    """
+
+    path: Path | None
+    selected: str
+    reason: str
+    primary_size_mb: float
+    fallback_size_mb: float
+
+
 def _finite_float(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
@@ -55,6 +72,75 @@ def file_size_mb(path: Path) -> float:
         return path.stat().st_size / (1024 * 1024)
     except OSError:
         return 0.0
+
+
+def _usable_delivery_file(path: Path | None, *, size_mb: float, limit_mb: float) -> bool:
+    if path is None or limit_mb <= 0 or size_mb <= 0 or size_mb > limit_mb:
+        return False
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
+def select_delivery_file(
+    primary_path: Path,
+    fallback_path: Path | None = None,
+    *,
+    max_size_mb: float,
+) -> DeliveryFileSelection:
+    """Choose a non-empty upload without hiding an optional-stage overflow.
+
+    The primary artifact is preferred. If it is missing, empty or oversized,
+    a distinct pre-subtitle fallback may be selected. An invalid/non-positive
+    size limit fails closed instead of silently authorising an unbounded upload.
+    """
+    limit = _finite_float(max_size_mb, -1.0)
+    primary_size = file_size_mb(primary_path)
+    fallback_size = (
+        file_size_mb(fallback_path)
+        if fallback_path is not None and fallback_path != primary_path
+        else 0.0
+    )
+
+    if _usable_delivery_file(primary_path, size_mb=primary_size, limit_mb=limit):
+        return DeliveryFileSelection(
+            path=primary_path,
+            selected="primary",
+            reason="primary_accepted",
+            primary_size_mb=primary_size,
+            fallback_size_mb=fallback_size,
+        )
+
+    primary_reason = "primary_invalid_size_limit"
+    if limit > 0:
+        if primary_size <= 0:
+            primary_reason = "primary_missing_or_empty"
+        elif primary_size > limit:
+            primary_reason = "primary_oversize"
+        else:
+            primary_reason = "primary_not_regular_file"
+
+    if (
+        fallback_path is not None
+        and fallback_path != primary_path
+        and _usable_delivery_file(fallback_path, size_mb=fallback_size, limit_mb=limit)
+    ):
+        return DeliveryFileSelection(
+            path=fallback_path,
+            selected="fallback",
+            reason=f"fallback_after_{primary_reason}",
+            primary_size_mb=primary_size,
+            fallback_size_mb=fallback_size,
+        )
+
+    return DeliveryFileSelection(
+        path=None,
+        selected="none",
+        reason=f"no_usable_file_after_{primary_reason}",
+        primary_size_mb=primary_size,
+        fallback_size_mb=fallback_size,
+    )
 
 
 def _probe_from_payload(path: Path, payload: dict[str, Any]) -> MediaProbe:
@@ -158,14 +244,18 @@ def parse_silencedetect(stderr: str, *, duration: float) -> list[tuple[float, fl
     pending: float | None = None
     for line in str(stderr or "").splitlines():
         if "silence_start:" in line:
-            token = line.rsplit("silence_start:", 1)[1].strip().split()[0]
-            value = _finite_float(token, -1.0)
+            tokens = line.rsplit("silence_start:", 1)[1].strip().split()
+            if not tokens:
+                continue
+            value = _finite_float(tokens[0], -1.0)
             pending = value if value >= 0 else pending
             continue
         if "silence_end:" not in line:
             continue
-        token = line.rsplit("silence_end:", 1)[1].strip().split()[0]
-        end = _finite_float(token, -1.0)
+        tokens = line.rsplit("silence_end:", 1)[1].strip().split()
+        if not tokens:
+            continue
+        end = _finite_float(tokens[0], -1.0)
         if pending is not None and end > pending:
             intervals.append((pending, end))
         pending = None
@@ -320,6 +410,7 @@ async def verify_highlights_delivery(
 
 
 __all__ = [
+    "DeliveryFileSelection",
     "DeliveryTiming",
     "MediaProbe",
     "evaluate_highlights_delivery",
@@ -328,5 +419,6 @@ __all__ = [
     "probe_media",
     "probe_media_async",
     "resolve_delivery_timing",
+    "select_delivery_file",
     "verify_highlights_delivery",
 ]
