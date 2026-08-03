@@ -41,6 +41,18 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _unlink_render_paths(*paths: Path | None) -> None:
+    """Remove stale/partial render artifacts without masking the main result."""
+    for path in paths:
+        if path is None:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("render cleanup failed for %s: %s", path, exc)
+
+
 async def render_clip(
     source_video_path: Path,
     output_path: Path,
@@ -53,6 +65,7 @@ async def render_clip(
     Без вертикальной трансформации — clips не для Shorts.
     Возвращает True при успехе.
     """
+    _unlink_render_paths(output_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
@@ -120,9 +133,11 @@ async def render_clip(
                 )
             else:
                 logger.warning(f"render_clip ffmpeg error: {stderr_tail}")
+                _unlink_render_paths(output_path)
                 return False
         if not output_path.exists() or output_path.stat().st_size == 0:
             logger.warning("render_clip: выходной файл не создан или пуст")
+            _unlink_render_paths(output_path)
             return False
 
         size_mb = output_path.stat().st_size / (1024 * 1024)
@@ -132,11 +147,16 @@ async def render_clip(
         )
         return True
 
+    except asyncio.CancelledError:
+        _unlink_render_paths(output_path)
+        raise
     except subprocess.TimeoutExpired:
         logger.warning("render_clip: ffmpeg timeout")
+        _unlink_render_paths(output_path)
         return False
     except Exception as e:
         logger.warning(f"render_clip error: {type(e).__name__}: {e}")
+        _unlink_render_paths(output_path)
         return False
 
 
@@ -150,6 +170,7 @@ async def create_clip_snapshot(
     т.к. clips начинаются с содержательного момента).
     Возвращает True при успехе.
     """
+    _unlink_render_paths(snapshot_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not video_path.exists():
@@ -167,11 +188,16 @@ async def create_clip_snapshot(
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
             logger.warning(f"create_clip_snapshot: не удалось извлечь кадр из {video_path.name}")
+            _unlink_render_paths(snapshot_path)
             return False
         logger.info(f"Clip snapshot: {snapshot_path.name} (t={seek_time:.1f}s)")
         return True
+    except asyncio.CancelledError:
+        _unlink_render_paths(snapshot_path)
+        raise
     except Exception as e:
         logger.warning(f"create_clip_snapshot error: {type(e).__name__}: {e}")
+        _unlink_render_paths(snapshot_path)
         return False
 
 
@@ -255,6 +281,7 @@ async def render_montage_short(
     # их итерирует, и OSError из mkdir превращался в NameError из хендлера.
     temp_parts: list[Path] = []
     concat_list_path: Path | None = None
+    _unlink_render_paths(output_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not source_video_path.exists() or not fragments:
@@ -290,6 +317,7 @@ async def render_montage_short(
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):
             part_path = output_path.parent / f"{output_path.stem}_part{i}.mp4"
+            _unlink_render_paths(part_path)
             temp_parts.append(part_path)
             start_s = frag["start_seconds"]
             end_s   = frag["end_seconds"]
@@ -312,17 +340,22 @@ async def render_montage_short(
             from core.resource_scheduler import scheduler as _sched
             async with _sched.gpu_render:
                 proc = await run_cancellable_process(cmd, timeout=120, text=True)
-            if proc.returncode != 0 or not part_path.exists():
+            if (
+                proc.returncode != 0
+                or not part_path.exists()
+                or part_path.stat().st_size == 0
+            ):
                 logger.warning(f"Montage: фрагмент {i} не отрендерен")
-                for p in temp_parts: p.unlink(missing_ok=True)
+                _unlink_render_paths(*temp_parts, concat_list_path, output_path)
                 return False
 
         existing_parts = [p for p in temp_parts if p.exists() and p.stat().st_size > 0]
         if len(existing_parts) < 2:
-            for p in temp_parts: p.unlink(missing_ok=True)
+            _unlink_render_paths(*temp_parts, concat_list_path, output_path)
             return False
 
         concat_list_path = output_path.parent / f"{output_path.stem}_concat.txt"
+        _unlink_render_paths(concat_list_path)
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for part_path in existing_parts:
                 f.write(f"file '{part_path.resolve()}'\n")
@@ -341,34 +374,31 @@ async def render_montage_short(
         from core.resource_scheduler import scheduler as _sched
         async with _sched.gpu_render:
             proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
-        for p in temp_parts: p.unlink(missing_ok=True)
-        concat_list_path.unlink(missing_ok=True)
+        _unlink_render_paths(*temp_parts, concat_list_path)
 
-        if proc.returncode != 0 or not output_path.exists():
+        if (
+            proc.returncode != 0
+            or not output_path.exists()
+            or output_path.stat().st_size == 0
+        ):
             logger.warning(f"Montage: concat failed: {(proc.stderr or '')[-300:]}")
+            _unlink_render_paths(output_path)
             return False
 
         total_dur = sum(f["end_seconds"] - f["start_seconds"] for f in fragments)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         logger.info(f"Montage rendered: {output_path.name} ({len(existing_parts)} фрагм., {total_dur}s, {size_mb:.1f}MB)")
         return True
+    except asyncio.CancelledError:
+        _unlink_render_paths(*temp_parts, concat_list_path, output_path)
+        raise
     except subprocess.TimeoutExpired:
         logger.warning("render_montage_short: ffmpeg timeout")
-        for p in temp_parts:
-            try: p.unlink(missing_ok=True)
-            except Exception: pass
-        if concat_list_path:
-            try: concat_list_path.unlink(missing_ok=True)
-            except Exception: pass
+        _unlink_render_paths(*temp_parts, concat_list_path, output_path)
         return False
     except Exception as e:
         logger.warning(f"render_montage_short error: {type(e).__name__}: {e}")
-        for p in temp_parts:
-            try: p.unlink(missing_ok=True)
-            except Exception: pass
-        if concat_list_path:
-            try: concat_list_path.unlink(missing_ok=True)
-            except Exception: pass
+        _unlink_render_paths(*temp_parts, concat_list_path, output_path)
         return False
 
 
