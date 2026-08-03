@@ -161,19 +161,41 @@ async def run_bot_async():
     except Exception:
         _yt_js_ok = False
     _vot_helper_ok = bool(_sh.which("node") and (Path("vot_helper") / "vot_live.mjs").exists())
-    _tools = {
-        "ffmpeg": _sh.which("ffmpeg"),
-        "ffprobe": _sh.which("ffprobe"),
-        "yt-dlp (модуль)": True,  # ставится pip-ом вместе с ботом
+    _required_tools = {
+        "ffmpeg": bool(_sh.which("ffmpeg")),
+        "ffprobe": bool(_sh.which("ffprobe")),
+        "yt-dlp (модуль)": True,
         "yt-dlp JS runtime (Deno>=2.3/Node>=22)": _yt_js_ok,
-        "VOT helper (@vot.js/node)": _vot_helper_ok,
-        "vot-cli-live fallback": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
     }
-    for _tname, _tpath in _tools.items():
-        if _tpath:
-            logger.info(f"🔧 {_tname}: ✅")
+    _optional_tools = {
+        "VOT helper (@vot.js/node)": _vot_helper_ok,
+        "vot-cli-live fallback": bool(
+            _sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")
+        ),
+    }
+    for _tname, _available in _required_tools.items():
+        if _available:
+            logger.info("🔧 %s: ✅", _tname)
         else:
-            logger.warning(f"🔧 {_tname}: ❌ ОТСУТСТВУЕТ — часть функций молча деградирует")
+            logger.warning(
+                "🔧 %s: ❌ обязательная возможность недоступна; связанные операции "
+                "будут явно отклонены, а не молча ухудшены",
+                _tname,
+            )
+    for _tname, _available in _optional_tools.items():
+        if _available:
+            logger.info("🔧 %s: ✅", _tname)
+        elif _tname == "vot-cli-live fallback" and _vot_helper_ok:
+            logger.info(
+                "🔧 %s: ⬜ не установлен и не требуется — основной VOT helper доступен",
+                _tname,
+            )
+        else:
+            logger.warning(
+                "🔧 %s: ⬜ опционально недоступен; LiveDub сообщит точную "
+                "недоступную возможность без скрытой деградации",
+                _tname,
+            )
     # ROUND 39: живые голоса Яндекса требуют OAuth-токен (SESSION_REQUIRED
     # с VOT 1.10). Без него live-перевод работает только из серверного кэша.
     _vot_oauth_ok = bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
@@ -199,55 +221,19 @@ async def run_bot_async():
     if _gemini_proxy_log:
         logger.info(_gemini_proxy_log)
 
-    # AUDIT L6: обновлённые списки моделей по официальной странице
-    # https://ai.google.dev/gemini-api/docs/deprecations (на 2026-05-20)
-    _KNOWN_LIVE_MODELS = {
-        # Gemini 3.5 (GA с 19 мая 2026 — AUDIT-FIX BUG 3)
-        "gemini-3.5-flash",
-        # Gemini 3
-        "gemini-3-flash",
-        "gemini-3-flash-preview",
-        "gemini-3.1-pro-preview",
-        "gemini-3.1-flash-lite",
-        "gemini-3.1-flash-lite-preview",
-        # Gemini 2.5 (stable до 16 окт 2026, 2.5-flash/pro до 17 июня 2026)
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-pro",
-        "gemini-2.5-pro-preview",
-    }
-    _DEPRECATED_MODELS = {
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-001",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-001",
-        "gemini-1.0-pro",
-        "gemini-pro",
-        "gemini-pro-vision",
-    }
-    if GEMINI_MODEL in _DEPRECATED_MODELS:
-        logger.warning(
-            "⚠️  GEMINI_MODEL='%s' — устарела и скоро будет отключена. "
-            "Рекомендуется GEMINI_MODEL='gemini-2.5-flash' (стабильная) или "
-            "'gemini-3-flash-preview' (новая, free tier).",
-            GEMINI_MODEL,
-        )
-    elif GEMINI_MODEL == "gemini-2.5-pro":
-        logger.warning(
-            "⚠️  GEMINI_MODEL='gemini-2.5-pro' — с 1 апреля 2026 Pro-модели "
-            "требуют платного биллинга (free tier больше не работает). "
-            "Если ключи free tier — все запросы получат 429/quota error, "
-            "и бот будет выдавать только базовую информацию без анализа. "
-            "Рекомендуется GEMINI_MODEL='gemini-2.5-flash' в .env"
-        )
-    elif GEMINI_MODEL not in _KNOWN_LIVE_MODELS:
-        logger.warning(
-            "⚠️  GEMINI_MODEL='%s' — модель не входит в список проверенных живых моделей. "
-            "Если бот падает при первом запросе — проверьте правильность имени модели.",
-            GEMINI_MODEL,
-        )
+    from services.gemini_model_status import classify_gemini_model
+
+    _model_diagnostic = classify_gemini_model(GEMINI_MODEL)
+    _model_log = logger.info
+    if _model_diagnostic.level == "warning":
+        _model_log = logger.warning
+    elif _model_diagnostic.level == "error":
+        _model_log = logger.error
+    _model_log(
+        "🧠 %s [%s]",
+        _model_diagnostic.message,
+        _model_diagnostic.policy,
+    )
     logger.info(f"🛡  Whitelist: {len(WHITELIST_IDS)} VIP-пользователей")
     logger.info(f"📵 Лимит: {DAILY_LIMIT} видео/день | {COOLDOWN_SECONDS}с между запросами")
     _subtitles_enabled = await asettings_get("shorts_subtitles")

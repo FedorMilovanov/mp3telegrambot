@@ -240,13 +240,16 @@ def refine_fragment_from_transcript(
     if first_index is None:
         return None, {"reason": "start_not_covered"}
 
-    if (
+    context_hops = 0
+    while (
         first_index > 0
+        and context_hops < 3
         and _needs_left_context(items[first_index]["text"])
         and items[first_index]["start"] - items[first_index - 1]["end"] <= 1.8
         and items[first_index - 1]["start"] >= window_start
     ):
         first_index -= 1
+        context_hops += 1
 
     last_index = next(
         (index for index in range(first_index, len(items)) if items[index]["end"] >= original_end),
@@ -606,6 +609,7 @@ def _map_probe_segments_to_source(
     probe_segments: list[dict],
     windows: list[dict],
 ) -> dict[int, list[dict]]:
+    """Map only transcript evidence that is actually inside one probe window."""
     mapped: dict[int, list[dict]] = {int(window["index"]): [] for window in windows}
     items = _normalise_segments(probe_segments)
     for item in items:
@@ -620,21 +624,43 @@ def _map_probe_segments_to_source(
         )
         if window is None:
             continue
-        shift = window["source_start"] - window["probe_start"]
-        source_item = {
-            **item,
-            "start": item["start"] + shift,
-            "end": item["end"] + shift,
-            "words": [
-                {
-                    **word,
-                    "start": word["start"] + shift,
-                    "end": word["end"] + shift,
-                }
-                for word in item.get("words") or []
-            ],
-        }
-        mapped[int(window["index"])].append(source_item)
+        clipped_start = max(float(window["probe_start"]), float(item["start"]))
+        clipped_end = min(float(window["probe_end"]), float(item["end"]))
+        if clipped_end <= clipped_start:
+            continue
+        shift = float(window["source_start"]) - float(window["probe_start"])
+        words = []
+        for word in item.get("words") or []:
+            word_start = max(clipped_start, float(word["start"]))
+            word_end = min(clipped_end, float(word["end"]))
+            if word_end > word_start:
+                words.append(
+                    {
+                        **word,
+                        "start": word_start + shift,
+                        "end": word_end + shift,
+                    }
+                )
+        if words:
+            mapped_text = _clean_text(" ".join(word["word"] for word in words))
+        else:
+            overhang = (clipped_start - float(item["start"])) + (
+                float(item["end"]) - clipped_end
+            )
+            if overhang > 0.25:
+                # A no-word segment crossing a synthetic separator cannot be
+                # split safely; accepting its full text would contaminate a cut.
+                continue
+            mapped_text = item["text"]
+        mapped[int(window["index"])].append(
+            {
+                **item,
+                "start": clipped_start + shift,
+                "end": clipped_end + shift,
+                "text": mapped_text,
+                "words": words,
+            }
+        )
     return mapped
 
 
@@ -734,7 +760,7 @@ async def refine_highlights_candidate(
 ) -> tuple[dict | None, dict]:
     """Return a verified candidate or ``None`` with structured evidence."""
     report: dict[str, Any] = {
-        "policy": "actual-transcript-highlights-quality-v1",
+        "policy": "actual-transcript-highlights-quality-v2",
         "accepted": False,
         "rejections": [],
     }
@@ -785,6 +811,9 @@ async def refine_highlights_candidate(
         except asyncio.TimeoutError:
             report["reason"] = "transcription_timeout"
             return None, report
+        except Exception as exc:
+            report["reason"] = f"transcription_error:{type(exc).__name__}"
+            return None, report
 
     if not probe_segments:
         report["reason"] = "transcription_empty"
@@ -805,7 +834,10 @@ async def refine_highlights_candidate(
             continue
         refined.append(accepted)
 
-    refined = _merge_adjacent_fragments(refined)
+    # Do not merge two complete thoughts merely because their source
+    # timestamps are close. The old 1.6-second rule could create a new fragment
+    # that was never independently verified. Keep the safe pieces separate and
+    # let overlap/repetition/coherence gates reject weak combinations.
     refined, structural_rejections = _drop_overlaps_and_repeats(refined)
     report["rejections"].extend(structural_rejections)
     if len(refined) < 4:

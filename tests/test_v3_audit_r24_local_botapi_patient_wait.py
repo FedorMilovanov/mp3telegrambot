@@ -1,58 +1,62 @@
 #!/usr/bin/env python3
-"""AUDIT R24 (live bug: с TUN+прокси бот всё равно уходил на облако 50 МБ,
-хотя локальный Bot API сервер работал).
+"""Production Local Bot API contract after the R24 patient-wait era.
 
-Root cause: `_fast_cloud_fallback = _fallback_enabled and _cloud_fallback_proxy_url`.
-Так как у пользователя задан TELEGRAM_PROXY_URL (для облачного fallback),
-флаг всегда True, и бот делал РОВНО ОДНУ проверку /getMe (в t=0, сразу после
-открытия TCP-порта) и уходил на облако. telegram-bot-api.exe на холодном
-старте 20-60с поднимает соединение с дата-центрами Telegram, поэтому проверка
-в t=0 всегда не успевает. При включённом TUN локальный сервер РАБОТАЕТ —
-надо лишь дать время.
-
-Fix: LOCAL_BOT_API_WAIT_LOCAL=1 отключает быстрый fallback и ждёт локальный
-/getMe весь интервал LOCAL_BOT_API_GETME_TIMEOUT_SEC (по умолчанию 60с).
-Поведение по умолчанию (без флага) НЕ меняется.
+The old optional transport lived inside ``main.py`` and could fall back to the
+cloud after a short /getMe window. The validated entrypoint now installs a
+required PRE_MAIN bootstrap: an already-warming local server is reused, a cold
+server gets the full bounded readiness interval, and cloud media fallback is
+forbidden. The historical main.py code remains only behind that mandatory gate
+for compatibility and is not the production source of truth.
 """
 from pathlib import Path
 
-SRC = Path("main.py").read_text(encoding="utf-8")
+from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
 
 
-def test_patient_wait_flag_is_honored():
-    assert 'os.getenv("LOCAL_BOT_API_WAIT_LOCAL"' in SRC
-    # быстрый fallback обязан отключаться, когда включён patient-режим
-    assert "and not _patient_local)" in SRC
+REQUIRED = Path("services/local_botapi_required.py").read_text(encoding="utf-8")
+ENTRYPOINT = Path("bot_new.py").read_text(encoding="utf-8")
 
 
-def test_getme_window_is_configurable_and_clamped():
-    assert 'os.getenv("LOCAL_BOT_API_GETME_TIMEOUT_SEC"' in SRC
-    # интервал ограничен разумными рамками (15..300с)
-    assert "max(15, min(_getme_window_sec, 300))" in SRC
-    # цикл ожидания строится из окна, а не из зашитого range(12)
-    assert "_getme_attempts = max(1, _getme_window_sec // 5)" in SRC
-    assert "for _gm_attempt in range(_getme_attempts):" in SRC
+def test_required_pre_main_gate_replaces_optional_patient_flag():
+    feature = next(item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "local-bot-api")
+    assert feature.module == "services.local_botapi_required"
+    assert feature.installer == "require_local_bot_api"
+    assert feature.phase is RuntimePhase.PRE_MAIN
+    assert feature.required is True
+    assert ENTRYPOINT.index("bootstrap_pre_main()") < ENTRYPOINT.index("import main as _main_module")
 
 
-def test_default_behavior_unchanged_when_flag_absent():
-    """Без LOCAL_BOT_API_WAIT_LOCAL патч-режим выключен: _fast_cloud_fallback
-    остаётся прежним (proxy задан -> быстрый откат), окно 60с == прежним 12x5с."""
-    # значение по умолчанию окна = 60 -> 12 попыток == прежнее range(12)
-    assert '"LOCAL_BOT_API_GETME_TIMEOUT_SEC", "60"' in SRC
-    # patient_local вычисляется из env, по умолчанию пусто -> False
-    assert '_patient_local = os.getenv("LOCAL_BOT_API_WAIT_LOCAL", "")' in SRC
+def test_required_readiness_window_is_bounded_and_defaults_to_five_minutes():
+    assert 'os.getenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "300")' in REQUIRED
+    assert "max(60, min(value, 600))" in REQUIRED
+    assert "time.monotonic() + timeout_sec" in REQUIRED
+    assert "сервер оставлен запущенным" in REQUIRED
 
 
-def test_fast_fallback_message_no_longer_claims_no_tun():
-    """Старое сообщение утверждало 'no-TUN fast path' даже когда у юзера TUN
-    включён — теперь оно нейтральное и подсказывает LOCAL_BOT_API_WAIT_LOCAL."""
-    assert "no-TUN fast path" not in SRC
-    idx = SRC.find("Быстрый fallback на облачный Bot API")
-    assert idx != -1
-    assert "LOCAL_BOT_API_WAIT_LOCAL=1" in SRC[idx:idx + 400]
+def test_cloud_media_fallback_is_disabled_before_any_probe():
+    function = REQUIRED[REQUIRED.index("def require_local_bot_api"):]
+    assert function.index("_disable_cloud_transport()") < function.index("probe_runtime._probe_getme")
+    helper = REQUIRED[REQUIRED.index("def _disable_cloud_transport"):REQUIRED.index("def _mark_local_ready")]
+    assert 'os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"' in helper
+    assert 'os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"' in helper
+    assert 'os.environ.pop("MP3BOT_EFFECTIVE_BOT_API", None)' in helper
+    assert 'MP3BOT_EFFECTIVE_BOT_API"] = "cloud"' not in REQUIRED
 
 
-def test_env_knobs_documented():
+def test_warming_server_is_reused_and_cold_start_is_single_attempt():
+    assert "if probe_runtime._tcp_open(host, port, timeout_sec=0.5):" in REQUIRED
+    assert "жду /getMe" in REQUIRED
+    assert "без перезапуска" in REQUIRED
+    assert REQUIRED.count("_cloud_logout(token, _cloud_proxy())") == 1
+    assert REQUIRED.count("process_runtime._terminate_managed_server()") == 1
+    assert REQUIRED.count("process_runtime._start_server(host, port)") == 1
+
+
+def test_env_documents_only_the_current_required_contract():
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "LOCAL_BOT_API_WAIT_LOCAL=1" in env
-    assert "LOCAL_BOT_API_GETME_TIMEOUT_SEC" in env
+    assert "Локальный Telegram Bot API обязателен" in env
+    assert "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300" in env
+    assert "LOCAL_BOT_API_CLOUD_FALLBACK=0" in env
+    assert "CLOUD_MEDIA_AUTO_COMPRESS=0" in env
+    assert "LOCAL_BOT_API_WAIT_LOCAL=1" not in env
+    assert "LOCAL_BOT_API_GETME_TIMEOUT_SEC" not in env

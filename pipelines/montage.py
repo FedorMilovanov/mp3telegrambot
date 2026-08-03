@@ -20,6 +20,11 @@ from services.shorts_video import (
     get_shorts_visual_mode,       # FIX montage
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
+from services.media_delivery_probe import (
+    file_size_mb,
+    probe_media_async,
+    verify_highlights_delivery,
+)
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import json
@@ -70,7 +75,14 @@ async def _run_montage_or_highlights_pipeline(
         if not ok:
             return False
 
-        size_mb = raw_path.stat().st_size / (1024 * 1024) if raw_path.exists() else 0
+        total_dur = float(cand["total_dur"])
+        raw_probe = await probe_media_async(raw_path)
+        raw_duration = (
+            raw_probe.duration
+            if raw_probe is not None and raw_probe.duration > 0
+            else max(0.001, total_dur)
+        )
+        size_mb = file_size_mb(raw_path)
         if size_mb > get_max_file_size_mb():
             logger.warning(
                 "%s: файл %.1fMB > %sMB, пропускаем",
@@ -80,9 +92,9 @@ async def _run_montage_or_highlights_pipeline(
             )
             return False
 
-        total_dur = float(cand["total_dur"])
         need_post = do_normalize or (abs(speed - 1.0) > 0.01)
         current_path = raw_path
+        speed_applied = False
         if need_post:
             post_ok = await postprocess_short(
                 raw_path,
@@ -92,8 +104,18 @@ async def _run_montage_or_highlights_pipeline(
             )
             if post_ok:
                 current_path = post_path
+                speed_applied = abs(speed - 1.0) > 0.01
+            else:
+                logger.warning(
+                    "%s: обработка не удалась; raw будет доставлен без ложного "
+                    "пересчёта speed=%s",
+                    prefix,
+                    speed,
+                )
 
-        delivery_duration = total_dur / speed if speed > 0 else total_dur
+        expected_delivery_duration = (
+            raw_duration / speed if speed_applied and speed > 0 else raw_duration
+        )
 
         if do_subtitles and HAS_FASTER_WHISPER:
             try:
@@ -101,7 +123,7 @@ async def _run_montage_or_highlights_pipeline(
                 if segments:
                     from services.highlights_quality import scale_subtitle_segments
 
-                    segments = scale_subtitle_segments(segments, speed)
+                    segments = scale_subtitle_segments(segments, speed if speed_applied else 1.0)
                     logger.info(
                         "%s: используем проверенную source-context расшифровку (%d сегм.)",
                         prefix,
@@ -119,6 +141,39 @@ async def _run_montage_or_highlights_pipeline(
                         current_path = sub_path
             except Exception as sub_err:
                 logger.warning("%s: subtitle error: %s", prefix, sub_err)
+
+        final_probe = await probe_media_async(current_path)
+        delivery_duration = (
+            final_probe.duration
+            if final_probe is not None and final_probe.duration > 0
+            else expected_delivery_duration
+        )
+        final_size = file_size_mb(current_path)
+        if final_size > get_max_file_size_mb():
+            logger.warning(
+                "%s: финальный файл %.1fMB > %sMB после всех этапов — пропускаю",
+                prefix,
+                final_size,
+                get_max_file_size_mb(),
+            )
+            return False
+        if verified_highlights:
+            delivery_report = await verify_highlights_delivery(
+                current_path,
+                expected_duration=expected_delivery_duration,
+            )
+            if not delivery_report.get("accepted"):
+                logger.warning(
+                    "%s: final delivery QA rejected: %s",
+                    prefix,
+                    json.dumps(delivery_report, ensure_ascii=False)[:5000],
+                )
+                return False
+            logger.info(
+                "%s: final delivery QA accepted: %s",
+                prefix,
+                json.dumps(delivery_report, ensure_ascii=False)[:5000],
+            )
 
         thumb_buf = None
         if do_poster:

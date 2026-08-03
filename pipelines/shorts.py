@@ -12,7 +12,7 @@ from core.globals import (
 from core.database import (
     adb_get, adb_save, asettings_get, settings_get,
     short_trim_save, shorts_speed_get,
-    ashorts_speed_get,                            # AUDIT M4
+    ashorts_speed_get, get_max_file_size_mb,      # AUDIT M4
 )
 from core.utils import cleanup_files
 from services.shorts_video import (
@@ -26,6 +26,11 @@ from services.shorts_video import (
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.shorts_candidates import create_shorts_candidates
+from services.media_delivery_probe import (
+    file_size_mb,
+    probe_media_async,
+    resolve_delivery_timing,
+)
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import json
@@ -228,8 +233,16 @@ async def process_and_send_shorts(
                 )
                 continue
 
+            raw_probe = await probe_media_async(raw_path)
+            raw_duration = (
+                raw_probe.duration
+                if raw_probe is not None and raw_probe.duration > 0
+                else max(0.001, render_end - render_start)
+            )
+
             need_post = do_normalize or (abs(speed - 1.0) > 0.01)
             current_path = raw_path
+            speed_applied = False
             if need_post:
                 post_ok = await postprocess_short(
                     raw_path, post_path,
@@ -238,15 +251,24 @@ async def process_and_send_shorts(
                 )
                 if post_ok:
                     current_path = post_path
-                    _orig_dur = c["duration_seconds"]
-                    _final_dur = round(_orig_dur / speed) if abs(speed - 1.0) > 0.01 else _orig_dur
+                    speed_applied = abs(speed - 1.0) > 0.01
+                    estimated = raw_duration / speed if speed_applied else raw_duration
                     logger.info(
-                        f"Shorts {i}/{total}: postprocess OK — "
-                        f"исходно {_orig_dur}s, после speed={speed} → ~{_final_dur}s"
+                        "Shorts %d/%d: обработка OK — raw=%.3fs speed=%s "
+                        "expected_delivery=%.3fs",
+                        i,
+                        total,
+                        raw_duration,
+                        speed,
+                        estimated,
                     )
                 else:
                     logger.warning(
-                        f"Shorts: постобработка {i}/{total} не удалась, использую raw"
+                        "Shorts: обработка %d/%d не удалась, использую raw без "
+                        "ложного пересчёта speed=%s",
+                        i,
+                        total,
+                        speed,
                     )
 
             subtitles_applied = False
@@ -322,12 +344,64 @@ async def process_and_send_shorts(
                                 pass
                             nosub_path = None
 
+            final_probe = await probe_media_async(current_path)
+            measured_final_duration = (
+                final_probe.duration
+                if final_probe is not None and final_probe.duration > 0
+                else 0.0
+            )
+            timing = resolve_delivery_timing(
+                source_start=render_start,
+                raw_duration=raw_duration,
+                source_duration=float(duration or 0),
+                speed=speed,
+                speed_applied=speed_applied,
+                final_duration=measured_final_duration,
+            )
+            delivery_duration = timing.delivery_duration
+            delivery_candidate = {
+                **c,
+                "_render_start_seconds": timing.source_start,
+                "_render_end_seconds": timing.source_end,
+                "_raw_duration_seconds": timing.raw_duration,
+                "_delivery_duration_seconds": timing.delivery_duration,
+                "_speed_applied": timing.speed_applied,
+            }
+            final_size = file_size_mb(current_path)
+            if final_size > get_max_file_size_mb():
+                logger.warning(
+                    "Shorts %d/%d: финальный файл %.1fMB > %sMB после всех "
+                    "этапов — не отправляю заведомо невалидный upload",
+                    i,
+                    total,
+                    final_size,
+                    get_max_file_size_mb(),
+                )
+                if nosub_path:
+                    try:
+                        nosub_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                continue
+            logger.info(
+                "Shorts %d/%d delivery evidence: source=%.3f-%.3f raw=%.3fs "
+                "final=%.3fs speed_applied=%s size=%.1fMB",
+                i,
+                total,
+                timing.source_start,
+                timing.source_end,
+                timing.raw_duration,
+                timing.delivery_duration,
+                timing.speed_applied,
+                final_size,
+            )
+
             thumb_buf = None
             if do_title_poster:
                 try:
                     poster_ok = await create_short_title_poster(
                         current_path, title_poster_path,
-                        c["title"], c["duration_seconds"],
+                        c["title"], delivery_duration,
                     )
                     if poster_ok and title_poster_path.exists():
                         thumb_buf = InputFile(title_poster_path.read_bytes(), filename=title_poster_path.name)
@@ -338,7 +412,7 @@ async def process_and_send_shorts(
             if thumb_buf is None and do_snapshot:
                 try:
                     snap_ok = await create_short_snapshot(
-                        current_path, snapshot_path, c["duration_seconds"]
+                        current_path, snapshot_path, delivery_duration
                     )
                     if snap_ok and snapshot_path.exists():
                         thumb_buf = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
@@ -370,8 +444,8 @@ async def process_and_send_shorts(
                 short_trim_save(
                     short_id=short_id,
                     video_path=str(video_path),
-                    start_seconds=c.get("start_seconds", 0),
-                    end_seconds=c.get("end_seconds", 0),
+                    start_seconds=timing.source_start,
+                    end_seconds=timing.source_end,
                     visual_mode=visual_mode,
                     yt_url=url,
                     vk_url=vk_url,
@@ -380,7 +454,7 @@ async def process_and_send_shorts(
                     real_author=real_author,
                     real_event=real_event,
                     format_name=format_name,
-                    candidate_json=json.dumps(c, ensure_ascii=False),
+                    candidate_json=json.dumps(delivery_candidate, ensure_ascii=False),
                     video_path_nosub=str(nosub_path) if nosub_path else "",
                     nosub_expiry=int(time.time()) + 86400 if nosub_path else 0,
                     source_duration=int(duration or 0),
@@ -397,7 +471,7 @@ async def process_and_send_shorts(
                 await update.message.reply_video(
                     video=current_path,
                     caption=caption,
-                    duration=int(c["duration_seconds"]),
+                    duration=max(1, int(round(delivery_duration))),
                     width=720,
                     height=1280,
                     thumbnail=thumb_buf,
@@ -409,7 +483,13 @@ async def process_and_send_shorts(
                 )
                 sent += 1
                 logger.info(
-                    f"Shorts: отправлен {i}/{total} ({c['start']}–{c['end']}) '{c['title']}'"
+                    "Shorts: отправлен %d/%d (%s–%s) %r, final=%.3fs",
+                    i,
+                    total,
+                    c["start"],
+                    c["end"],
+                    c["title"],
+                    delivery_duration,
                 )
                 if do_subtitles and not subtitles_applied and HAS_FASTER_WHISPER:
                     try:
@@ -421,6 +501,11 @@ async def process_and_send_shorts(
                         pass
             except Exception as send_err:
                 logger.warning(f"Shorts: ошибка отправки {i}/{total}: {send_err}")
+                if nosub_path:
+                    try:
+                        nosub_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
         if sent == 0:
             logger.warning("Shorts: ни один short не был отправлен")
