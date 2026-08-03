@@ -1,0 +1,178 @@
+name: PR81 model default repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr81-model-default-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.event.pull_request.number == 81 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_REF }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Align current Gemini defaults, docs and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$HEAD_REF" | awk '{print $1}')"
+          if [[ "$remote_head" != "$EXPECTED_HEAD" ]]; then
+            echo "PR head moved: expected $EXPECTED_HEAD, got $remote_head" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> bool:
+              file_path = Path(path)
+              source = file_path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count == 0:
+                  if new in source:
+                      return False
+                  raise SystemExit(f"Missing expected text in {path}: {old!r}")
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, got {count}: {old!r}")
+              file_path.write_text(source.replace(old, new), encoding="utf-8")
+              return True
+
+          changed = False
+          changed |= replace_once(
+              "core/database.py",
+              "# Сейчас: gemini-3.5-flash — GA 19.05.2026, бесплатный tier, thinking_level=high",
+              "# Сейчас: gemini-3.6-flash — GA 21.07.2026, основной production-маршрут",
+          )
+          changed |= replace_once(
+              "core/database.py",
+              'GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")',
+              'GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")',
+          )
+
+          changed |= replace_once(
+              ".env.example",
+              "# LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite",
+              "# LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# Хороший бесплатный/дешёвый кандидат на 2026: gemini-3.1-flash-lite.",
+              "# Актуальная лёгкая production-модель: gemini-3.5-flash-lite.",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite",
+              "# GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# Fallback если 3.1-lite недоступна/квота: основная GEMINI_MODEL (если разрешено).",
+              "# Сильный fallback для лёгких задач; затем основная GEMINI_MODEL (если разрешено).",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# ВНИМАНИЕ (июль 2026): gemini-3.1-flash-lite-preview выключен 09.07.2026,\n# gemini-2.5-flash-lite выключается ~22.07.2026 — НЕ указывайте их здесь.",
+              "# Не используйте preview/2.x Lite. Старый gemini-3.1-flash-lite остаётся GA,\n# но уже имеет план миграции; новая конфигурация должна использовать 3.5 Flash-Lite.",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite",
+              "# GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "GEMINI_MODEL=gemini-3.5-flash",
+              "GEMINI_MODEL=gemini-3.6-flash",
+          )
+
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite" in env',
+              'assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash" in env',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in env',
+              'assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in env',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.1-flash-lite" in env',
+              'assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" in env',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert any("3.1-flash-lite" in m or "3.5-flash" in m for m in fallbacks)',
+              'assert "gemini-3.1-flash-lite" not in fallbacks\n    assert any("3.5-flash" in m for m in fallbacks)',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite" in readme',
+              'assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in readme',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "GEMINI_MODEL=gemini-3.5-flash" in env',
+              'assert "GEMINI_MODEL=gemini-3.6-flash" in env',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "gemini-3.5-flas\\n" not in env',
+              'assert "gemini-3.6-flas\\n" not in env',
+          )
+
+          marker = Path(".github/pr81-model-default-refresh.txt")
+          if marker.exists():
+              marker.unlink()
+              changed = True
+
+          if not changed:
+              Path(".github/pr81-model-default-noop").write_text("already repaired\n", encoding="utf-8")
+          PY
+
+          if [[ -f .github/pr81-model-default-noop ]]; then
+            rm .github/pr81-model-default-noop
+            echo "Model defaults already aligned; no commit required."
+            exit 0
+          fi
+
+          python -m compileall -q core services pipelines tests
+          git diff --check
+          grep -F 'GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")' core/database.py
+          grep -F 'GEMINI_MODEL=gemini-3.6-flash' .env.example
+          grep -F 'LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash' .env.example
+          grep -F 'GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite' .env.example
+          grep -F 'GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash' .env.example
+
+      - name: Commit repaired PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/database.py .env.example tests/test_livedub_qa.py
+          git add -u .github/pr81-model-default-refresh.txt || true
+          git commit -m "Align Gemini production defaults and documentation"
+          git push origin "HEAD:$HEAD_REF"
