@@ -354,34 +354,6 @@ def refine_fragment_from_transcript(
     return refined, evidence
 
 
-def _merge_adjacent_fragments(fragments: list[dict]) -> list[dict]:
-    merged: list[dict] = []
-    for fragment in sorted(fragments, key=lambda item: item["start_seconds"]):
-        if not merged:
-            merged.append(fragment)
-            continue
-        previous = merged[-1]
-        gap = float(fragment["start_seconds"]) - float(previous["end_seconds"])
-        combined_duration = float(fragment["end_seconds"]) - float(previous["start_seconds"])
-        if gap <= 1.6 and combined_duration <= 30.0:
-            source_segments = (
-                (previous.get("_subtitle_source_segments") or [])
-                + (fragment.get("_subtitle_source_segments") or [])
-            )
-            previous["end_seconds"] = fragment["end_seconds"]
-            previous["transcript"] = _clean_text(
-                f"{previous.get('transcript', '')} {fragment.get('transcript', '')}"
-            )
-            previous["_subtitle_source_segments"] = source_segments
-            previous["_quality"] = {
-                **(previous.get("_quality") or {}),
-                "merged_adjacent": True,
-            }
-            continue
-        merged.append(fragment)
-    return merged
-
-
 def _drop_overlaps_and_repeats(fragments: list[dict]) -> tuple[list[dict], list[dict]]:
     accepted: list[dict] = []
     rejected: list[dict] = []
@@ -834,10 +806,8 @@ async def refine_highlights_candidate(
             continue
         refined.append(accepted)
 
-    # Do not merge two complete thoughts merely because their source
-    # timestamps are close. The old 1.6-second rule could create a new fragment
-    # that was never independently verified. Keep the safe pieces separate and
-    # let overlap/repetition/coherence gates reject weak combinations.
+    # Keep every independently verified fragment separate. Clock proximity is
+    # not semantic evidence and must never manufacture a new unverified cut.
     refined, structural_rejections = _drop_overlaps_and_repeats(refined)
     report["rejections"].extend(structural_rejections)
     if len(refined) < 4:
