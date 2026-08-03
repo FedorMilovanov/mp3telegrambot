@@ -19,6 +19,22 @@ def test_latest_alias_warns_about_hot_swap() -> None:
     assert "gemini-3.6-flash" in diagnostic.message
 
 
+def test_preview_models_are_not_reported_as_stable() -> None:
+    flash = classify_gemini_model("gemini-3-flash-preview")
+    pro = classify_gemini_model("gemini-3.1-pro-preview")
+    assert flash.level == "warning"
+    assert "gemini-3.6-flash" in flash.message
+    assert pro.level == "warning"
+    assert "стабильная Pro-версия пока не объявлена" in pro.message
+
+
+def test_scheduled_ga_migration_has_exact_deadline() -> None:
+    diagnostic = classify_gemini_model("gemini-3.1-flash-lite")
+    assert diagnostic.level == "warning"
+    assert "2027-05-07" in diagnostic.message
+    assert "gemini-3.5-flash-lite" in diagnostic.message
+
+
 def test_shutdown_model_is_error() -> None:
     diagnostic = classify_gemini_model("gemini-2.0-flash")
     assert diagnostic.level == "error"
