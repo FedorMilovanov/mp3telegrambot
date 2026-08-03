@@ -105,7 +105,11 @@ async def test_render_wrapper_survives_repeated_outer_cancellation(
             raise
         return True
 
-    monkeypatch.setattr(shorts_video, "_unowned_render_short_clip", fake)
+    monkeypatch.setitem(
+        shorts_video.render_short_clip.__globals__,
+        "_unowned_render_short_clip",
+        fake,
+    )
     task = asyncio.create_task(
         shorts_video.render_short_clip(
             tmp_path / "source.mp4",
@@ -114,7 +118,7 @@ async def test_render_wrapper_survives_repeated_outer_cancellation(
             20,
         )
     )
-    await started.wait()
+    await asyncio.wait_for(started.wait(), timeout=1.0)
     task.cancel()
     await asyncio.sleep(0)
     task.cancel()
@@ -125,5 +129,5 @@ async def test_render_wrapper_survives_repeated_outer_cancellation(
     release.set()
 
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=1.0)
     assert inner_cancelled is False
