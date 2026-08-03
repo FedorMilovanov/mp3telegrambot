@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+
+def _finite_seconds(value: Any, *, name: str) -> float:
+    """Resolve a finite positive wait value before any child is spawned."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
+    if not math.isfinite(seconds):
+        raise ValueError(f"{name} must be a finite number")
+    return max(0.1, seconds)
 
 
 async def _stop_process(
@@ -18,18 +30,18 @@ async def _stop_process(
     """Terminate a child and do not return while it may still be running.
 
     ``ProcessLookupError`` only says that the signal could not be delivered;
-    it does not prove the asyncio child watcher has reaped the process.  We
+    it does not prove the asyncio child watcher has reaped the process. We
     therefore still await ``wait()`` after a failed terminate/kill attempt.
     """
     if process.returncode is not None:
         return
 
+    grace = _finite_seconds(grace_seconds, name="grace_seconds")
     try:
         process.terminate()
     except ProcessLookupError:
         pass
 
-    grace = max(0.1, float(grace_seconds))
     try:
         await asyncio.wait_for(process.wait(), timeout=grace)
         return
@@ -57,17 +69,28 @@ async def _stop_before_returning(
     *,
     grace_seconds: float,
 ) -> None:
-    """Finish child cleanup even if cancellation is requested again."""
+    """Finish child cleanup before propagating one or many cancellations."""
     stop_task = asyncio.create_task(
         _stop_process(process, grace_seconds=grace_seconds)
     )
-    try:
-        await asyncio.shield(stop_task)
-    except asyncio.CancelledError:
-        # ``shield`` keeps the cleanup task alive, but the outer await still
-        # receives cancellation. Wait for the owned child before propagating it.
-        await stop_task
-        raise
+    cancellation: asyncio.CancelledError | None = None
+
+    while True:
+        try:
+            await asyncio.shield(stop_task)
+            break
+        except asyncio.CancelledError as exc:
+            # Shield prevents the outer cancellation from cancelling the owned
+            # cleanup task. Keep waiting through repeated cancel() calls.
+            if stop_task.cancelled():
+                raise RuntimeError("child cleanup task was cancelled") from exc
+            cancellation = exc
+            if stop_task.done():
+                stop_task.result()
+                break
+
+    if cancellation is not None:
+        raise cancellation
 
 
 async def run_cancellable_process(
@@ -85,7 +108,12 @@ async def run_cancellable_process(
     cannot release a semaphore or remove temporary files while the child keeps
     running in a worker thread. The child is stopped and reaped first.
     """
+    deadline = _finite_seconds(timeout, name="timeout")
+    cleanup_grace = _finite_seconds(grace_seconds, name="grace_seconds")
     argv = [os.fspath(value) for value in command]
+    if not argv:
+        raise ValueError("command must not be empty")
+
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=os.fspath(Path(cwd)) if cwd is not None else None,
@@ -97,18 +125,18 @@ async def run_cancellable_process(
     try:
         stdout, stderr = await asyncio.wait_for(
             process.communicate(),
-            timeout=max(0.1, float(timeout)),
+            timeout=deadline,
         )
     except asyncio.TimeoutError as exc:
         await _stop_before_returning(
             process,
-            grace_seconds=grace_seconds,
+            grace_seconds=cleanup_grace,
         )
-        raise subprocess.TimeoutExpired(argv, timeout=timeout) from exc
+        raise subprocess.TimeoutExpired(argv, timeout=deadline) from exc
     except asyncio.CancelledError:
         await _stop_before_returning(
             process,
-            grace_seconds=grace_seconds,
+            grace_seconds=cleanup_grace,
         )
         raise
 
