@@ -14,8 +14,8 @@ def test_shorts_delivery_uses_measured_timeline_and_actual_trim_range() -> None:
     assert 'duration=int(c["duration_seconds"])' not in source
     assert "select_delivery_file" in source
     assert "pre_subtitle_path" in source
-    assert "final_probe.has_video" in source
-    assert "final_probe.has_audio" in source
+    assert "media_probe_is_deliverable(final_probe)" in source
+    assert "fallback_after_primary_media_probe_rejection" in source
 
 
 def test_verified_highlights_have_final_render_and_fallback_gate() -> None:
@@ -26,6 +26,7 @@ def test_verified_highlights_have_final_render_and_fallback_gate() -> None:
     assert "select_delivery_file" in source
     assert "pre_subtitle_path" in source
     assert "fallback_report" in source
+    assert "media_probe_is_deliverable(final_probe)" in source
 
 
 def test_highlights_no_longer_contain_clock_proximity_auto_merge() -> None:
@@ -43,3 +44,4 @@ def test_final_artifact_contract_checks_audio_codec_and_probe_failures() -> None
     assert '"silence_probe_failed"' in source
     assert "class DeliveryFileSelection" in source
     assert "def select_delivery_file" in source
+    assert "def media_probe_is_deliverable" in source
