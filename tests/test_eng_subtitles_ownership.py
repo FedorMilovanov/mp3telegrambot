@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import subprocess
 from pathlib import Path
 
@@ -109,4 +110,27 @@ async def test_hardsub_failure_removes_stale_output(monkeypatch, tmp_path) -> No
     result = await eng_subtitles._burn_subtitles(video_path, srt_path, "ffmpeg")
 
     assert result is None
+    assert output_path.exists() is False
+
+
+@pytest.mark.asyncio
+async def test_mux_cancellation_removes_partial_output(monkeypatch, tmp_path) -> None:
+    video_path = tmp_path / "video.mp4"
+    srt_path = tmp_path / "subs.srt"
+    output_path = video_path.with_suffix(".merged.mp4")
+    video_path.write_bytes(b"video")
+    srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nText\n", encoding="utf-8")
+    output_path.write_bytes(b"stale output")
+
+    async def cancelled_owner(command, **kwargs):
+        output_path.write_bytes(b"partial output")
+        raise asyncio.CancelledError
+
+    monkeypatch.setenv("LIVEDUB_HARDSUB", "0")
+    monkeypatch.setattr(eng_subtitles.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", cancelled_owner)
+
+    with pytest.raises(asyncio.CancelledError):
+        await eng_subtitles.merge_subtitles(video_path, srt_path)
+
     assert output_path.exists() is False
