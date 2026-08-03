@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 
 from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import (
     _generate_ass_from_segments,
@@ -83,7 +84,9 @@ async def burn_subtitles_into_short(
             ass_path.write_text(ass_content, encoding="utf-8")
             ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
 
-            encoder, quality, preset = _get_video_encoder()
+            encoder, quality, preset = await await_owned_coroutine(
+                asyncio.to_thread(_get_video_encoder)
+            )
             command = [
                 ffmpeg,
                 "-i",

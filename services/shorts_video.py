@@ -224,7 +224,9 @@ async def _unowned_render_short_clip(
                 )
                 _use_filter_complex = True
             mode_label = "full_frame_blur"
-        _enc, _quality, _preset = _get_video_encoder()
+        _enc, _quality, _preset = await await_owned_coroutine(
+            asyncio.to_thread(_get_video_encoder)
+        )
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         _vf_args = (
             ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"]
@@ -345,7 +347,9 @@ async def _unowned_short_transform(
             shutil.copy2(input_path, output_path)
             return True
 
-        _enc, _quality, _preset = _get_video_encoder()
+        _enc, _quality, _preset = await await_owned_coroutine(
+            asyncio.to_thread(_get_video_encoder)
+        )
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [ffmpeg, *_hwaccel, "-i", str(input_path)]
         if vf_arg:
@@ -1216,8 +1220,8 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         from core.resource_scheduler import scheduler as _sched
         async with _sched.whisper:
             segments, audio_duration, detected_lang, lang_prob = await await_owned_coroutine(
-            asyncio.to_thread(_run_whisper)
-        )
+                asyncio.to_thread(_run_whisper)
+            )
         wav_path.unlink(missing_ok=True)
         wav_path = None
 
@@ -1285,7 +1289,9 @@ async def _unowned_burn_subtitles_into_short(
             tmp.write(ass_content)
             ass_path = Path(tmp.name)
         ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
-        _enc, _quality, _preset = _get_video_encoder()
+        _enc, _quality, _preset = await await_owned_coroutine(
+            asyncio.to_thread(_get_video_encoder)
+        )
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [
             ffmpeg, *_hwaccel, "-i", str(input_path),

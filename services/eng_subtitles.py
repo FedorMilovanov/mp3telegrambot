@@ -340,7 +340,9 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Opti
     # NVENC если доступен (у пользователя рабочий ASIC) — прожиг быстрее
     # и без нагрузки на CPU; качество формулы p5+hq уже выверено.
     from services.ffmpeg import _get_video_encoder
-    _enc, _q, _pr = _get_video_encoder()
+    _enc, _q, _pr = await await_owned_coroutine(
+        asyncio.to_thread(_get_video_encoder)
+    )
     cmd = [
         ffmpeg, "-i", str(video_path),
         "-vf", f"subtitles='{srt_arg}':force_style='{style}'",

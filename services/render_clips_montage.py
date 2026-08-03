@@ -14,6 +14,7 @@ from services.ffmpeg import _get_video_encoder
 from services.ffmpeg import _find_silence_end    # FIX render
 from services.ffmpeg import _is_static_video     # AUDIT R28
 from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 from core.utils import cleanup_files, format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
@@ -79,7 +80,9 @@ async def render_clip(
             logger.warning("render_clip: clip_duration ≤ 0 после коррекции паузы")
             return False
 
-        _enc, _quality, _preset = _get_video_encoder()
+        _enc, _quality, _preset = await await_owned_coroutine(
+            asyncio.to_thread(_get_video_encoder)
+        )
         # Clips: чуть лучше качество чем у shorts — cq/crf 22 вместо 23
         _quality_clip = ["-rc", "vbr", "-cq", "22"] if _enc == "h264_nvenc" else ["-crf", "22"]
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
@@ -281,7 +284,9 @@ async def render_montage_short(
             )
             _use_fc = True
 
-        _enc, _quality, _preset = _get_video_encoder()
+        _enc, _quality, _preset = await await_owned_coroutine(
+            asyncio.to_thread(_get_video_encoder)
+        )
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):
             part_path = output_path.parent / f"{output_path.stem}_part{i}.mp4"
