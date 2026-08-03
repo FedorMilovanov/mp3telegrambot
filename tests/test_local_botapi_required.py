@@ -191,7 +191,7 @@ def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapte
 
 def test_env_example_matches_mandatory_local_transport_contract():
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "Local Bot API обязателен" in env
+    assert "Локальный Telegram Bot API обязателен" in env
     assert "LOCAL_BOT_API_CLOUD_FALLBACK=0" in env
     assert "CLOUD_MEDIA_AUTO_COMPRESS=0" in env
     assert "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300" in env
