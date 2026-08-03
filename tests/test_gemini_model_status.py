@@ -12,6 +12,13 @@ def test_gemini_36_is_current_not_unknown() -> None:
     assert "production" in diagnostic.message
 
 
+def test_latest_alias_warns_about_hot_swap() -> None:
+    diagnostic = classify_gemini_model("gemini-flash-latest")
+    assert diagnostic.level == "warning"
+    assert "плавающий alias" in diagnostic.message
+    assert "gemini-3.6-flash" in diagnostic.message
+
+
 def test_shutdown_model_is_error() -> None:
     diagnostic = classify_gemini_model("gemini-2.0-flash")
     assert diagnostic.level == "error"
