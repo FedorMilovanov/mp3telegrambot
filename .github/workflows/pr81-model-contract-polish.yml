@@ -1,0 +1,145 @@
+name: PR81 model contract polish
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr81-model-contract-polish
+  cancel-in-progress: false
+
+jobs:
+  polish:
+    if: github.event.pull_request.number == 81 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_REF }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove stale Gemini policy statements
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$HEAD_REF" | awk '{print $1}')"
+          if [[ "$remote_head" != "$EXPECTED_HEAD" ]]; then
+            echo "PR head moved: expected $EXPECTED_HEAD, got $remote_head" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> bool:
+              file_path = Path(path)
+              source = file_path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count == 0:
+                  if new in source:
+                      return False
+                  raise SystemExit(f"Missing expected text in {path}: {old!r}")
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, got {count}: {old!r}")
+              file_path.write_text(source.replace(old, new), encoding="utf-8")
+              return True
+
+          changed = False
+          changed |= replace_once(
+              "core/database.py",
+              "# ─── Gemini модели (v10, 2026-05-21)",
+              "# ─── Gemini модели (актуализировано 2026-08-03)",
+          )
+          changed |= replace_once(
+              "core/database.py",
+              "# Резерв при 429: gemini-3.1-flash-lite (в _gemini_text_request);",
+              "# Сильный fallback: gemini-3.5-flash; механические задачи: gemini-3.5-flash-lite.",
+          )
+          changed |= replace_once(
+              "core/database.py",
+              "# 2.5-flash-lite выключена Google ~22.07.2026",
+              "# gemini-3.1-flash-lite остаётся GA, но имеет план миграции на 3.5 Flash-Lite.",
+          )
+          changed |= replace_once(
+              "core/database.py",
+              "# ВАЖНО: gemini-3.1-pro ПЛАТНАЯ — не использовать как fallback",
+              "# Preview/legacy-модели не используются как production fallback.",
+          )
+
+          changed |= replace_once(
+              ".env.example",
+              "# ENG Quick QA mode (/mode): быстрый DUB + лёгкая проверка коротких роликов.\n# Режим выбирается в боте кнопкой «⚡🔍 ENG Quick QA»; env только задаёт лимиты.",
+              "# ENG Quick QA mode (/mode): быстрый DUB + строгая аудио-заземлённая проверка.\n# Слабые model/thinking overrides startup-policy переводит на gemini-3.6-flash/high.",
+          )
+          changed |= replace_once(
+              ".env.example",
+              "# LIVEDUB_QUICK_QA_THINKING=minimal",
+              "# LIVEDUB_QUICK_QA_THINKING=high",
+          )
+
+          changed |= replace_once(
+              "services/gemini_qa_policy.py",
+              "so the stale value survived and only translation QA kept using the retired Lite model.",
+              "so the stale value survived and translation QA kept using a weak, scheduled-migration Lite model.",
+          )
+
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              'assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env',
+              'assert "LIVEDUB_QUICK_QA_THINKING=high" in env',
+          )
+          changed |= replace_once(
+              "tests/test_livedub_qa.py",
+              '"""MODEL MIGRATION 2026-07: -preview умер 09.07.2026, 2.5-flash-lite —\n    ~22.07.2026. В дефолтной цепочке не должно быть выключенных моделей."""',
+              '"""Дефолт использует только 3.5 Flash-Lite/3.5 Flash; preview,\n    2.x и scheduled-migration 3.1 Lite в цепочке отсутствуют."""',
+          )
+
+          marker = Path(".github/pr81-model-contract-refresh.txt")
+          if marker.exists():
+              marker.unlink()
+              changed = True
+
+          if not changed:
+              Path(".github/pr81-model-contract-noop").write_text("already polished\n", encoding="utf-8")
+          PY
+
+          if [[ -f .github/pr81-model-contract-noop ]]; then
+            rm .github/pr81-model-contract-noop
+            echo "Model contract already polished."
+            exit 0
+          fi
+
+          python -m compileall -q core services tests
+          git diff --check
+          grep -F 'LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash' .env.example
+          grep -F 'LIVEDUB_QUICK_QA_THINKING=high' .env.example
+          grep -F 'Сильный fallback: gemini-3.5-flash' core/database.py
+          if grep -F '2.5-flash-lite выключена Google ~22.07.2026' core/database.py; then
+            exit 1
+          fi
+
+      - name: Commit clean policy alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/database.py .env.example services/gemini_qa_policy.py tests/test_livedub_qa.py
+          git add -u .github/pr81-model-contract-refresh.txt || true
+          git commit -m "Align Gemini QA policy wording and defaults"
+          git push origin "HEAD:$HEAD_REF"
