@@ -8,22 +8,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-POLICY = "official-gemini-model-status-2026-08-03-v2"
+POLICY = "official-gemini-model-status-2026-08-03-v3"
 
 _CURRENT_GA = {
     "gemini-3.6-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
+}
+_SCHEDULED_MIGRATION = {
+    "gemini-3.1-flash-lite": ("2027-05-07", "gemini-3.5-flash-lite"),
 }
 _CURRENT_PREVIEW = {
     "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
 }
 _LEGACY_MIGRATION = {
-    "gemini-2.5-flash": "gemini-3.6-flash",
-    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
-    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-2.5-flash": ("2026-10-16", "gemini-3.6-flash"),
+    "gemini-2.5-flash-lite": ("2026-10-16", "gemini-3.5-flash-lite"),
+    "gemini-2.5-pro": ("2026-10-16", "gemini-3.1-pro-preview"),
 }
 _SHUTDOWN = {
     "gemini-3-pro-preview",
@@ -61,6 +63,13 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
             "info",
             f"GEMINI_MODEL='{model}' — актуальная production-модель Gemini API.",
         )
+    if model in _SCHEDULED_MIGRATION:
+        deadline, replacement = _SCHEDULED_MIGRATION[model]
+        return GeminiModelDiagnostic(
+            "warning",
+            f"GEMINI_MODEL='{model}' остаётся GA, но выключение запланировано не раньше {deadline}; "
+            f"перейдите на {replacement}.",
+        )
     if model == "gemini-flash-latest":
         return GeminiModelDiagnostic(
             "warning",
@@ -68,16 +77,25 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
             "переключён на новую версию; для воспроизводимого production "
             "зафиксируйте gemini-3.6-flash.",
         )
-    if model in _CURRENT_PREVIEW:
-        replacement = "gemini-3.6-flash" if "flash" in model else "gemini-3.1-pro-preview"
-        return GeminiModelDiagnostic(
-            "info",
-            f"GEMINI_MODEL='{model}' — действующая preview-модель; для стабильного Flash используйте {replacement}.",
-        )
-    if model in _LEGACY_MIGRATION:
+    if model == "gemini-3-flash-preview":
         return GeminiModelDiagnostic(
             "warning",
-            f"GEMINI_MODEL='{model}' поддерживается до 2026-10-16; запланируйте переход на {_LEGACY_MIGRATION[model]}.",
+            "GEMINI_MODEL='gemini-3-flash-preview' — действующая preview-модель; "
+            "для стабильного production используйте gemini-3.6-flash.",
+        )
+    if model == "gemini-3.1-pro-preview":
+        return GeminiModelDiagnostic(
+            "warning",
+            "GEMINI_MODEL='gemini-3.1-pro-preview' — действующая preview-модель Pro; "
+            "стабильная Pro-версия пока не объявлена. Для задач, допускающих Flash, "
+            "используйте gemini-3.6-flash.",
+        )
+    if model in _LEGACY_MIGRATION:
+        deadline, replacement = _LEGACY_MIGRATION[model]
+        return GeminiModelDiagnostic(
+            "warning",
+            f"GEMINI_MODEL='{model}' поддерживается до {deadline}; "
+            f"запланируйте переход на {replacement}.",
         )
     if model in _SHUTDOWN:
         return GeminiModelDiagnostic(
