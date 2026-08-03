@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from urllib.parse import urlparse
 
+from services.async_process import run_cancellable_process
+
 
 # FIX #3: определяем здесь — ffmpeg.py не импортирует utils.py (избегаем кругового импорта)
 PYTHON_EXEC  = sys.executable
@@ -418,9 +420,8 @@ async def _find_silence_end(
         "-f", "null", "-",
     ]
     try:
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=30),
+        proc = await run_cancellable_process(
+            cmd, timeout=30, text=True
         )
         silences = []
         for line in proc.stderr.splitlines():
@@ -460,9 +461,8 @@ async def _is_static_video(video_path: Path, sample_start: float = 0.0,
         "-vf", "freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-",
     ]
     try:
-        proc = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=30),
+        proc = await run_cancellable_process(
+            cmd, timeout=30, text=True
         )
     except Exception:
         return False
@@ -515,15 +515,12 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not video_path.exists():
             return ""
-        loop = asyncio.get_running_loop()
-
         # AUDIT L4: ограничиваем точки длительностью видео — для коротких клипов
         # +20 секунд может уйти за EOF, ffmpeg впустую тратит 30 c CPU.
         try:
-            from subprocess import run as _sp_run
-            probe = _sp_run(
+            probe = await run_cancellable_process(
                 [ffmpeg, "-i", str(video_path)],
-                capture_output=True, text=True, timeout=10,
+                timeout=10, text=True,
             )
             m_dur = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
             if m_dur:
@@ -549,9 +546,8 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
                 "-vf", "cropdetect=limit=32:round=2:reset=0",
                 "-an", "-f", "null", "-",
             ]
-            proc = await loop.run_in_executor(
-                None,
-                lambda c=cmd: subprocess.run(c, capture_output=True, text=True, timeout=30),
+            proc = await run_cancellable_process(
+                cmd, timeout=30, text=True
             )
             output = proc.stderr or ""
             crop_str = ""
@@ -582,9 +578,8 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         # Только читаем заголовок файла — ffmpeg выведет метаданные в stderr и сразу выйдет.
         # НЕ используем "-f null -": это читает ВЕСЬ файл и таймаутится на длинных видео.
         probe_cmd = [ffmpeg, "-i", str(video_path)]
-        probe = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5),
+        probe = await run_cancellable_process(
+            probe_cmd, timeout=5, text=True
         )
         dim_m = re.search(r"(\d{3,4})x(\d{3,4})", probe.stderr or "")
         if dim_m:
@@ -609,10 +604,8 @@ async def probe_video_language(video_url: str) -> Optional[str]:
     """Определяет язык видео через yt-dlp metadata."""
     try:
         cmd = YTDLP_BASE_ARGS + ["--dump-json", video_url]
-        loop = asyncio.get_running_loop()
-        proc = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = await run_cancellable_process(
+            cmd, timeout=30, text=True
         )
         if proc.returncode == 0:
             data = json.loads(proc.stdout)

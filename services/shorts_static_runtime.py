@@ -9,17 +9,17 @@ a still image.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from statistics import median
 from typing import Iterable
+
+from services.async_process import run_cancellable_process
 
 logger = logging.getLogger(__name__)
 
@@ -244,16 +244,8 @@ async def _run_motion_probe(
         "-",
     ]
 
-    proc = await asyncio.get_running_loop().run_in_executor(
-        None,
-        lambda: subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=45,
-        ),
+    proc = await run_cancellable_process(
+        cmd, timeout=45, text=True
     )
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.returncode != 0:
