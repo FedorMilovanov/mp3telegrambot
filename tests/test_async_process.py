@@ -13,6 +13,7 @@ class _FakeProcess:
         self.returncode = None
         self.terminated = 0
         self.killed = 0
+        self.wait_calls = 0
         self.communicate_started = asyncio.Event()
         self.release_communicate = asyncio.Event()
 
@@ -31,9 +32,74 @@ class _FakeProcess:
         self.returncode = -9
 
     async def wait(self) -> int:
+        self.wait_calls += 1
         if self.returncode is None:
             await asyncio.sleep(3600)
         return int(self.returncode)
+
+
+class _TerminateLookupRace:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.terminated = 0
+        self.wait_calls = 0
+
+    def terminate(self) -> None:
+        self.terminated += 1
+        raise ProcessLookupError
+
+    def kill(self) -> None:
+        raise AssertionError("kill must not be needed after successful reap")
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        self.returncode = 0
+        return 0
+
+
+class _KillLookupRace:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.terminated = 0
+        self.killed = 0
+        self.wait_calls = 0
+
+    def terminate(self) -> None:
+        self.terminated += 1
+
+    def kill(self) -> None:
+        self.killed += 1
+        raise ProcessLookupError
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise asyncio.TimeoutError
+        self.returncode = 0
+        return 0
+
+
+@pytest.mark.asyncio
+async def test_terminate_lookup_race_is_still_reaped() -> None:
+    process = _TerminateLookupRace()
+
+    await async_process._stop_process(process, grace_seconds=0.1)
+
+    assert process.terminated == 1
+    assert process.wait_calls == 1
+    assert process.returncode == 0
+
+
+@pytest.mark.asyncio
+async def test_kill_lookup_race_is_still_reaped() -> None:
+    process = _KillLookupRace()
+
+    await async_process._stop_process(process, grace_seconds=0.1)
+
+    assert process.terminated == 1
+    assert process.killed == 1
+    assert process.wait_calls == 2
+    assert process.returncode == 0
 
 
 @pytest.mark.asyncio
@@ -53,6 +119,7 @@ async def test_timeout_stops_and_reaps_child(monkeypatch) -> None:
 
     assert process.terminated == 1
     assert process.killed == 0
+    assert process.wait_calls == 1
     assert process.returncode == -15
 
 
@@ -77,15 +144,18 @@ async def test_cancellation_stops_child_before_task_finishes(monkeypatch) -> Non
         await task
 
     assert process.terminated == 1
+    assert process.wait_calls == 1
     assert process.returncode == -15
 
 
 @pytest.mark.asyncio
-async def test_success_returns_completed_process_and_decodes_text(monkeypatch) -> None:
+async def test_success_returns_completed_process_and_closes_stdin(monkeypatch) -> None:
     process = _FakeProcess()
     process.release_communicate.set()
+    captured_kwargs = {}
 
     async def fake_create(*args, **kwargs):
+        captured_kwargs.update(kwargs)
         return process
 
     monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
@@ -99,3 +169,4 @@ async def test_success_returns_completed_process_and_decodes_text(monkeypatch) -
     assert result.stdout == "out"
     assert result.stderr == "err"
     assert process.terminated == 0
+    assert captured_kwargs["stdin"] is asyncio.subprocess.DEVNULL
