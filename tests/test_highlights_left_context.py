@@ -67,3 +67,23 @@ def test_refine_includes_unfinished_previous_segment_without_keyword() -> None:
     assert refined is not None
     assert refined["transcript"].startswith("Христианин должен")
     assert evidence["reason"] == "accepted"
+
+
+def test_refine_does_not_prepend_a_completed_previous_thought() -> None:
+    fragment = {"start_seconds": 12.0, "end_seconds": 16.5}
+    segments = [
+        _segment(8.8, 11.3, "Предыдущая мысль полностью завершена."),
+        _segment(11.65, 17.0, "Человек должен бодрствовать и твёрдо стоять в вере."),
+    ]
+
+    refined, evidence = refine_fragment_from_transcript(
+        fragment,
+        segments,
+        window_start=8.0,
+        window_end=18.0,
+    )
+
+    assert refined is not None
+    assert refined["transcript"].startswith("Человек должен")
+    assert "Предыдущая мысль" not in refined["transcript"]
+    assert evidence["reason"] == "accepted"
