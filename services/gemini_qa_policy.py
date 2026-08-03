@@ -5,10 +5,10 @@ The project already rejects unconfirmed Gemini findings with a focused second
 audio pass.  Older installations can still carry explicit ``.env`` overrides
 such as ``LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite``.  The general model
 policy historically used ``setdefault`` for that variable, so the stale value
-survived and only translation QA kept using the retired Lite model.
+survived and translation QA kept using a weak scheduled-migration Lite model.
 
 This module runs before ``core.globals`` creates Gemini clients.  It upgrades
-known weak/retired QA model overrides, keeps deliberate custom models, forces
+known weak or project-obsolete QA model overrides, keeps deliberate custom models, forces
 high reasoning, and keeps audio grounding plus focused confirmation enabled.
 An explicit emergency escape hatch remains available for operator debugging.
 """
