@@ -8,7 +8,6 @@ from pathlib import Path
 
 
 PATH = Path("services/ffmpeg.py")
-CI_PATH = Path(".github/workflows/ci.yml")
 
 
 def _function_bounds(source: str, name: str) -> tuple[int, int]:
@@ -170,16 +169,8 @@ def main() -> None:
     if selected.count("await run_cancellable_process(") != 6:
         raise SystemExit("expected six process-owner call sites")
 
-    ci = CI_PATH.read_text(encoding="utf-8")
-    anchor = "          tests/test_async_process_tree.py\n"
-    replacement = anchor + "          tests/test_ffmpeg_probe_ownership.py\n"
-    if ci.count(anchor) != 2:
-        raise SystemExit("Windows CI async-process anchor count changed")
-    ci = ci.replace(anchor, replacement)
-
     PATH.write_text(source, encoding="utf-8")
-    CI_PATH.write_text(ci, encoding="utf-8")
-    print("patched six async FFmpeg/yt-dlp probes and Windows CI selection")
+    print("patched six async FFmpeg/yt-dlp probes")
 
 
 if __name__ == "__main__":
