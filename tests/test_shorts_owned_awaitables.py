@@ -9,14 +9,14 @@ import pytest
 from services import shorts_video
 
 
-OWNED_PUBLIC_FUNCTIONS = (
-    "download_video_for_shorts",
-    "render_short_clip",
-    "postprocess_short",
-    "transcribe_short_clip",
-    "create_short_title_poster",
-    "create_short_snapshot",
-)
+OWNED_FUNCTIONS = {
+    "download_video_for_shorts": "_unowned_download_video_for_shorts",
+    "render_short_clip": "_unowned_render_short_clip",
+    "postprocess_short": "_unowned_short_transform",
+    "transcribe_short_clip": "_unowned_transcribe_short_clip",
+    "create_short_title_poster": "_unowned_create_short_title_poster",
+    "create_short_snapshot": "_unowned_create_short_snapshot",
+}
 
 
 def test_active_shorts_functions_have_one_public_wrapper() -> None:
@@ -28,27 +28,29 @@ def test_active_shorts_functions_have_one_public_wrapper() -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     ]
 
-    for name in OWNED_PUBLIC_FUNCTIONS:
-        assert names.count(name) == 1
-        assert names.count(f"_unowned_{name}") == 1
+    for public_name, implementation_name in OWNED_FUNCTIONS.items():
+        assert names.count(public_name) == 1
+        assert names.count(implementation_name) == 1
 
 
 def test_public_wrappers_use_owned_coroutine_contract() -> None:
     source = Path(shorts_video.__file__).read_text(encoding="utf-8")
     assert "from services.async_worker import await_owned_coroutine" in source
+    tree = ast.parse(source)
 
-    for name in OWNED_PUBLIC_FUNCTIONS:
+    for public_name, implementation_name in OWNED_FUNCTIONS.items():
         public_source = ast.get_source_segment(
             source,
             next(
                 node
-                for node in ast.parse(source).body
-                if isinstance(node, ast.AsyncFunctionDef) and node.name == name
+                for node in tree.body
+                if isinstance(node, ast.AsyncFunctionDef)
+                and node.name == public_name
             ),
         )
         assert public_source is not None
         assert "await await_owned_coroutine(" in public_source
-        assert f"_unowned_{name}(" in public_source
+        assert f"{implementation_name}(" in public_source
 
 
 def test_legacy_burn_delegates_to_transactional_owner() -> None:
