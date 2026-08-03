@@ -24,6 +24,7 @@ Project: `dub-ba15009b7a`, ready-SRT direct mode.
 10. **V4 confirmed text-dependent EOS failure.** Block 1 ended naturally at `80/102` frames; block 2 reached exactly `90/90` and expanded to 7.10 seconds for a 4.20-second slot. A frame count equal to the configured maximum is a cap hit and must fail even if post-trim audio exists.
 11. **Short-text repetition and punctuation loss are known Nano ONNX defects.** Merge very short clauses into complete thoughts, end every TTS input with simple punctuation, avoid curly quotes/em dashes in the synthesis text, and keep chunks near 40–60 text tokens. Permit at most one targeted retry for the failed block, not a broad 5–10-candidate search.
 12. **Reference audio needs an explicit A/B policy.** Use a clean, clear, stable reference with minimal processing. Test a short 3–4 second reference against a longer reference before assuming more audio improves similarity. Aggressive denoise and dynamic normalization can alter timbre. A rolling prompt from the previous generated tail is experimental continuity conditioning and must not silently replace the original-speaker identity anchor.
+13. **Frame-cap checks must be per hidden text chunk, never aggregate.** The standard `infer_onnx.py` log reports total frames across every internal voice-clone chunk, while `max_new_frames` applies separately to each chunk. V5 incorrectly rejected totals such as `268/191` and `231/191`; the second candidate had a plausible cleaned duration of 10.095 seconds for a 9.32-second slot. Read `result["chunk_results"]`, compare each chunk independently with the per-chunk limit, and keep duration/repetition checks separate from cap detection.
 
 ## Fast comparison protocol
 
@@ -36,7 +37,7 @@ For quick perceptual comparison before bot integration:
 - use `sample-mode=full` when changing sampling parameters; do not assume `fixed` accepted the CLI overrides;
 - keep synthesis text around 40–60 tokens, use simple terminal punctuation, and keep decorative quotation marks only in subtitles;
 - generate one primary candidate and at most one targeted retry for a failed block;
-- give generation a frame budget larger than the authored slot, but fail closed whenever the frame cap is reached;
+- give generation a frame budget larger than the authored slot, but fail closed only when an individual hidden chunk reaches its own frame cap; never compare aggregate frames with a per-chunk limit;
 - use full decode for diagnostics, trim only edge silence, and validate duration/repetition before muxing;
 - evaluate voice similarity, pronunciation, noise, continuity, duration, and endings before adding any backend to the bot.
 
