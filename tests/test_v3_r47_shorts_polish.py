@@ -86,7 +86,7 @@ def test_r47_leading_punctuation_with_no_prior_word_does_not_crash():
 
 
 def test_r47_merge_wired_into_both_karaoke_and_plain_pipelines():
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert src.count("_merge_orphan_punctuation(all_words)") == 2
     # must run after the existing hyphenated-particle merge in both call sites
     for anchor in src.split("_merge_orphan_punctuation(all_words)")[:-1]:
@@ -97,7 +97,7 @@ def test_r47_merge_wired_into_both_karaoke_and_plain_pipelines():
 def test_r47_static_slide_ignores_black_bars_cropdetect():
     """R47: cropdetect не годится для дизайн-графики — статичная заставка
     показывается ЦЕЛИКОМ, без обрезки по «чёрным полосам»."""
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     idx = src.find('visual_mode = "full_frame_vertical"')
     assert idx != -1
     window = src[idx: idx + 1200]
@@ -107,6 +107,6 @@ def test_r47_static_slide_ignores_black_bars_cropdetect():
 def test_r47_black_bars_still_detected_for_real_video_crop_zoom():
     # the crop_zoom (real video) path must still use black_bars detection —
     # only the static-slide auto-switch clears it.
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert "black_bars = await _detect_black_bars(" in src
     assert 'bc = f"{black_bars}," if black_bars else ""' in src
