@@ -4,6 +4,7 @@ Main Pipeline — process_single_video.
 Извлечено из bot.py строки 12470–13446.
 """
 from services.ffmpeg import YTDLP_BASE_ARGS                   # FIX #23: нужен результат, не функция
+from services.async_worker import await_owned_with_soft_timeout
 from core.globals import (
     DOWNLOAD_DIR, THUMBS_DIR, HAS_GEMINI, HAS_PILLOW, DB_PATH,
     GEMINI_CLIENTS, TELEGRAPH_TOKEN,                  # FIX #11
@@ -382,10 +383,19 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
             return ydl.extract_info(url, download=False)
 
     try:
-        info = await asyncio.wait_for(
-            asyncio.get_running_loop().run_in_executor(None, _run),
+        info, deadline_exceeded = await await_owned_with_soft_timeout(
+            asyncio.to_thread(_run),
             timeout=timeout,
         )
+        if deadline_exceeded:
+            logger.warning(
+                "yt-dlp in-process превысил мягкий лимит %ss, "
+                "но завершился; использую поздний результат без "
+                "параллельного subprocess-fallback",
+                timeout,
+            )
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         logger.info(
             "yt-dlp in-process info не удался (%s) — откат на subprocess",
