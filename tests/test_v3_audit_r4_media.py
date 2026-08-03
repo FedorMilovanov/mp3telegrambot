@@ -90,13 +90,65 @@ def test_eng_subtitles_checks_ytdlp_exit_code():
 
 
 def test_montage_temp_vars_initialized_before_try():
-    """except-хендлер итерирует temp_parts; OSError из mkdir превращался
-    в NameError."""
+    """Cleanup state and every deterministic artifact must exist before try.
+
+    The exception handlers need the complete part list even when cancellation
+    happens during the first fragment; lazy ``append`` used to leave stale
+    future-part files behind.
+    """
     src = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
-    fn = src.split("Склеивает несколько фрагментов", 1)[1]
-    init_pos = fn.find("temp_parts: list[Path] = []")
-    try_pos = fn.find("try:")
-    assert init_pos != -1 and try_pos != -1 and init_pos < try_pos
+    tree = ast.parse(src)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "render_montage_short"
+    )
+    first_try = next(node for node in function.body if isinstance(node, ast.Try))
+
+    temp_parts = next(
+        node
+        for node in function.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "temp_parts"
+            for target in node.targets
+        )
+    )
+    concat_path = next(
+        node
+        for node in function.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "concat_list_path"
+    )
+    stale_parts = next(
+        node
+        for node in function.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "stale_parts"
+            for target in node.targets
+        )
+    )
+    preclean = next(
+        node
+        for node in function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_unlink_render_paths"
+    )
+
+    assert temp_parts.lineno < first_try.lineno
+    assert concat_path.lineno < first_try.lineno
+    assert stale_parts.lineno < first_try.lineno
+    assert preclean.lineno < first_try.lineno
+
+    function_source = ast.get_source_segment(src, function) or ""
+    assert 'glob(f"{output_path.stem}_part*.mp4")' in function_source
+    assert "part_path = temp_parts[i]" in function_source
+    assert "temp_parts.append(" not in function_source
 
 
 def test_vk_group_resolve_handles_v5199_and_token():
