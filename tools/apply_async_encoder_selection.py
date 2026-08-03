@@ -85,7 +85,7 @@ def _patch_file(path: Path, function_names: set[str]) -> None:
             raise SystemExit(f"{path}:{function.name}: assignment target unavailable")
         indent = " " * assignment.col_offset
         replacement = (
-            f"{indent}{target} = await await_owned_coroutine(\n"
+            f"{target} = await await_owned_coroutine(\n"
             f"{indent}    asyncio.to_thread(_get_video_encoder)\n"
             f"{indent})"
         )
