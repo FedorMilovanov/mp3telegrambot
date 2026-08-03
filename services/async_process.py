@@ -111,6 +111,39 @@ async def _taskkill_windows_tree(pid: int, *, timeout: float) -> bool:
     return killer.returncode == 0
 
 
+async def _stop_direct_process_fallback(
+    process: asyncio.subprocess.Process,
+    *,
+    grace_seconds: float,
+) -> None:
+    """Preserve terminate→grace→kill semantics when tree tooling fails."""
+    if process.returncode is not None:
+        return
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        pass
+
+    try:
+        await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+        return
+    except asyncio.TimeoutError:
+        pass
+
+    if process.returncode is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+
+    try:
+        await asyncio.wait_for(process.wait(), timeout=grace_seconds)
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            "direct child did not stop after terminate/kill fallback"
+        ) from exc
+
+
 async def _stop_windows_tree(
     process: asyncio.subprocess.Process,
     *,
@@ -122,18 +155,19 @@ async def _stop_windows_tree(
     if pid is not None:
         tree_stopped = await _taskkill_windows_tree(pid, timeout=grace_seconds)
 
-    if not tree_stopped and process.returncode is None:
-        try:
-            process.kill()
-        except ProcessLookupError:
-            pass
+    if not tree_stopped:
+        await _stop_direct_process_fallback(
+            process,
+            grace_seconds=grace_seconds,
+        )
+        return
 
     if process.returncode is None:
         try:
             await asyncio.wait_for(process.wait(), timeout=grace_seconds)
         except asyncio.TimeoutError as exc:
             raise RuntimeError(
-                "Windows process tree did not stop after taskkill/kill"
+                "Windows process tree did not stop after taskkill"
             ) from exc
 
 
