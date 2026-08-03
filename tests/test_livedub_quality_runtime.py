@@ -65,14 +65,16 @@ def test_dead_local_proxy_falls_back_to_system_tun():
     assert "system TUN (local proxy" in src
 
 
-def test_yandex_tts_fallback_is_enabled_but_explicitly_marked():
+def test_yandex_tts_fallback_remains_explicit_opt_in():
     src = _runtime_source()
-    assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' in src
+    assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' not in src
+    assert "must never silently turn a Live-voice request" in src
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert ".voice_style_tts" in mix
+    assert 'os.getenv("LIVEDUB_TTS_FALLBACK", "0")' in mix
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "LIVEDUB_TTS_FALLBACK=1" in env
-    assert "LIVEDUB_TTS_FALLBACK=0" not in env
+    assert "LIVEDUB_TTS_FALLBACK=0" in env
+    assert "LIVEDUB_TTS_FALLBACK=1" not in env
 
 
 def test_project_obsolete_models_are_filtered():
