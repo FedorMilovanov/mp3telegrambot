@@ -42,7 +42,7 @@ def test_subtitle_text_polish_applies_common_typos_and_spacing():
 
 def test_shorts_pipeline_wires_boundary_padding_and_subtitle_hints():
     shorts = Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    video = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    video = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert 'await asettings_get("shorts_boundary_padding")' in shorts
     assert "SHORTS_PREROLL_SECONDS" in shorts
     assert "SHORTS_POSTROLL_SECONDS" in shorts
