@@ -9,7 +9,7 @@ import pytest
 from services import render_clips_montage
 
 
-SHORTS_PATH = Path("services/shorts_video.py")
+SHORTS_PATH = Path("services/shorts_video_impl.py")
 CLIPS_PATH = Path("services/render_clips_montage.py")
 SHORTS_FUNCTIONS = (
     "_unowned_download_video_for_shorts",

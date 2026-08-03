@@ -60,7 +60,7 @@ def test_parse_mmss_accepts_three_digit_minutes():
 
 
 def test_shorts_workdir_reuse_validates_video_stream():
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     implementation = next(
         node

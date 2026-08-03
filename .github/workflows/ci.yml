@@ -145,6 +145,7 @@ jobs:
           tests/test_render_process_ownership.py
           tests/test_async_encoder_selection.py
           tests/test_clips_transactional_outputs.py
+          tests/test_shorts_transactional_outputs.py
           tests/test_audio_conversion_postcondition.py
           tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py
@@ -200,6 +201,7 @@ jobs:
           tests/test_render_process_ownership.py
           tests/test_async_encoder_selection.py
           tests/test_clips_transactional_outputs.py
+          tests/test_shorts_transactional_outputs.py
           tests/test_audio_conversion_postcondition.py
           tests/test_livedub_quality_runtime.py
           tests/test_livedub_audio_companion.py

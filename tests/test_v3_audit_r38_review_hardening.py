@@ -111,7 +111,7 @@ def test_r30b_prune_removes_stale():
 
 # ── R29b: тяжёлые NVENC-проходы серилизованы семафором ─────────────────────
 def test_r29b_all_nvenc_encodes_under_semaphore():
-    sv = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    sv = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     # render + postprocess + burn = минимум 3 GPU-семафора
     assert sv.count("_sched.gpu_render") >= 3
     mont = Path("services/render_clips_montage.py").read_text(encoding="utf-8")

@@ -1,0 +1,27 @@
+{
+  "policy": "intentional-code-health-baseline-refresh-v1",
+  "reason": "The transactional services.shorts_video compatibility boundary intentionally adds five postprocess name markers while preserving the established implementation in services.shorts_video_impl. The growth is covered by focused stale-output, cancellation, same-path, FFmpeg-unavailable, poster and snapshot regression tests; no regex markers were added.",
+  "previous": {
+    "files_scanned": 157,
+    "total_postprocess_markers": 266,
+    "total_regex_markers": 720
+  },
+  "current": {
+    "files_scanned": 158,
+    "total_postprocess_markers": 271,
+    "total_regex_markers": 720
+  },
+  "evidence": {
+    "focused_tests": [
+      "tests/test_shorts_transactional_outputs.py",
+      "tests/test_render_process_ownership.py",
+      "tests/test_async_encoder_selection.py",
+      "tests/test_v3_audit_r4_media.py"
+    ],
+    "delta": {
+      "files_scanned": 1,
+      "total_postprocess_markers": 5,
+      "total_regex_markers": 0
+    }
+  }
+}

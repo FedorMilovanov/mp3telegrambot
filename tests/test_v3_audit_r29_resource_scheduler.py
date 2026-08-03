@@ -50,12 +50,12 @@ async def test_gpu_semaphore_serializes():
 
 
 def test_gpu_render_wrapped_in_heavy_renderers():
-    for path in ("services/shorts_video.py", "services/render_clips_montage.py"):
+    for path in ("services/shorts_video_impl.py", "services/render_clips_montage.py"):
         src = Path(path).read_text(encoding="utf-8")
         assert "from core.resource_scheduler import scheduler" in src, f"{path} не импортит scheduler"
         assert ".gpu_render" in src, f"{path} не сериализует GPU-рендер"
 
 
 def test_whisper_wrapped():
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert ".whisper" in src

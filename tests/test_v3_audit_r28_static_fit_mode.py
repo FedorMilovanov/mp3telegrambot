@@ -23,7 +23,7 @@ def test_is_static_video_is_async_and_uses_freezedetect():
 
 
 def test_shorts_render_switches_static_to_full_frame():
-    src = Path("services/shorts_video.py").read_text(encoding="utf-8")
+    src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert "_is_static_video(source_video_path" in src
     idx = src.find("_is_static_video(source_video_path")
     window = src[idx - 200:idx + 200]
@@ -40,7 +40,7 @@ def test_montage_render_switches_static_to_full_frame():
 def test_full_frame_blur_filter_still_present_in_both_renderers():
     """Режим вписывания (blur-фон + overlay по центру) должен существовать —
     именно в него мы переключаемся для статичных кадров."""
-    for path in ("services/shorts_video.py", "services/render_clips_montage.py"):
+    for path in ("services/shorts_video_impl.py", "services/render_clips_montage.py"):
         src = Path(path).read_text(encoding="utf-8")
         assert "gblur=sigma=20" in src
         assert "overlay=(W-w)/2:(H-h)/2" in src
