@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import shutil
 import subprocess
@@ -153,6 +154,16 @@ def test_active_pipelines_use_transactional_subtitle_owner() -> None:
 
 def test_child_process_is_stopped_before_temp_cleanup() -> None:
     source = Path(subtitle_burn.__file__).read_text(encoding="utf-8")
-    assert "asyncio.create_subprocess_exec" in source
-    assert source.count("await _terminate_process(process)") == 2
-    assert "run_in_executor" not in source
+    tree = ast.parse(source)
+    called_names: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            called_names.append(node.func.attr)
+        elif isinstance(node.func, ast.Name):
+            called_names.append(node.func.id)
+
+    assert "create_subprocess_exec" in called_names
+    assert called_names.count("_terminate_process") == 2
+    assert "run_in_executor" not in called_names
