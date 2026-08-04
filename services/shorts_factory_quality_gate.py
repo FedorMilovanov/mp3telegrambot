@@ -87,19 +87,18 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
 def validated_factory_plan_language(plan: dict[str, Any]) -> str:
     metadata = plan.get("metadata") if isinstance(plan, dict) else {}
     metadata = metadata if isinstance(metadata, dict) else {}
-    language = str(metadata.get("language") or "").strip().lower()
-    if not language or language in {
-        "unknown",
-        "und",
-        "none",
-        "mixed",
-        "неизвестно",
-        "смешанный",
-    }:
+    raw_language = str(metadata.get("language") or "").strip()
+
+    from services.shorts_factory_execution_guard import (
+        normalize_factory_language,
+    )
+
+    normalized = normalize_factory_language(raw_language)
+    if not normalized:
         raise RuntimeError(
             "Gemini не доказала один доминирующий язык речи по аудио"
         )
-    return language
+    return normalized
 
 
 def install_factory_plan_quality_gate() -> bool:
@@ -138,7 +137,10 @@ def install_factory_plan_quality_gate() -> bool:
     async def strict_create_factory_plan(*args, **kwargs):
         plan = await original_create_factory_plan(*args, **kwargs)
         gated = apply_factory_quality_gate(plan)
-        validated_factory_plan_language(gated)
+        normalized_language = validated_factory_plan_language(gated)
+        metadata = gated.setdefault("metadata", {})
+        if isinstance(metadata, dict):
+            metadata["language"] = normalized_language
         if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
             report = gated.get("quality_gate") or {}
             raise RuntimeError(
