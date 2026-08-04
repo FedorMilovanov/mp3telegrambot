@@ -26,6 +26,16 @@ def test_start_bot_reinstalls_when_locked_dependencies_change():
     assert ">\"%SETUP_MARKER%\" echo !CURRENT_REQ_HASH!" in source
 
 
+def test_start_bot_hash_uses_temp_file_not_nested_for_f_quoting():
+    source = Path("Start Bot.bat").read_text(encoding="utf-8")
+
+    assert "set \"REQ_HASH_FILE=%VENV_DIR%\\.requirements-hash.tmp\"" in source
+    assert ">\"%REQ_HASH_FILE%\"" in source
+    assert "set /p CURRENT_REQ_HASH=<\"%REQ_HASH_FILE%\"" in source
+    assert "del /q \"%REQ_HASH_FILE%\"" in source
+    assert "for /f \"delims=\" %%H" not in source
+
+
 def test_start_bot_verifies_lock_after_install():
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
