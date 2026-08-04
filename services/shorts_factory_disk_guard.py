@@ -129,6 +129,13 @@ def ensure_factory_free_space(
         )
 
 
+def factory_delivery_sort_args(base_args: Iterable[str]) -> list[str]:
+    """Maximize resolution/FPS, then prefer SDR for the final SDR H.264 output."""
+    result = list(base_args)
+    result.extend(["--format-sort", "res,fps,hdr:0"])
+    return result
+
+
 async def estimate_factory_selection(
     url: str,
     format_selector: str,
@@ -190,6 +197,13 @@ def install_factory_disk_guard() -> bool:
 
     original_audio = source.download_factory_audio_source
     original_video = source.download_factory_video_source
+    original_sort_reset = source._factory_quality_sort_reset
+
+    @functools.wraps(original_sort_reset)
+    def output_safe_sort_reset() -> list[str]:
+        return factory_delivery_sort_args(original_sort_reset())
+
+    source._factory_quality_sort_reset = output_safe_sort_reset
 
     @functools.wraps(original_audio)
     async def guarded_audio(url: str, media_id: str) -> Path:
@@ -236,9 +250,10 @@ def install_factory_disk_guard() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory disk guard installed: selected-format filesize/tbr "
-        "estimate, PCM/FLAC bound, separate-stream merge peak and all target "
-        "filesystems"
+        "Shorts Factory disk/fidelity guard installed: selected-format "
+        "filesize/tbr estimate, PCM/FLAC bound, separate-stream merge peak, "
+        "all target filesystems, maximum res/FPS and SDR preference for "
+        "final H.264 delivery"
     )
     return True
 
@@ -247,6 +262,7 @@ __all__ = [
     "ensure_factory_free_space",
     "estimate_factory_selection",
     "estimate_factory_selection_payload",
+    "factory_delivery_sort_args",
     "install_factory_disk_guard",
     "required_factory_free_bytes",
 ]
