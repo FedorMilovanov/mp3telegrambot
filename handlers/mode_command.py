@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified /mode navigation for analysis, LiveDub and VoxCPM2 Dub Studio."""
+"""Unified /mode navigation for analysis, Yandex LiveDub and Shorts Factory."""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +13,7 @@ from core.database import ADMIN_IDS, _db_conn
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa")
+VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa", "shorts_max")
 _DUB_WIZARD_KEY = "dub_universal_wizard"
 
 MODE_LABELS = {
@@ -21,6 +21,7 @@ MODE_LABELS = {
     "eng": "🇬🇧 ENG Full — анализ + перевод + проверка",
     "eng_fast": "⚡ ENG Quick — перевод + два MP3",
     "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + два MP3 + проверка",
+    "shorts_max": "✂️🧠 SHORTS FACTORY MAX — нарезка без конспектов",
 }
 
 MODE_BUTTON_LABELS = {
@@ -28,6 +29,7 @@ MODE_BUTTON_LABELS = {
     "eng": "🇬🇧 ENG Full",
     "eng_fast": "⚡ ENG Quick",
     "eng_fast_qa": "⚡🔍 Quick QA",
+    "shorts_max": "✂️🧠 SHORTS FACTORY MAX",
 }
 
 _AUDIO_SET = "видео с переводом, чистый русский MP3 и финальный объединённый MP3"
@@ -45,6 +47,12 @@ MODE_DESCRIPTIONS = {
     "eng_fast_qa": (
         "Комплект LiveDub и лёгкая проверка коротких роликов. "
         "Подтверждённые major-ошибки приглушаются в финальном миксе."
+    ),
+    "shorts_max": (
+        "Без конспектов и Telegraph. Сильнейшая настроенная Gemini слушает весь материал, "
+        "двумя проходами проверяет смысл и границы, затем делает Shorts до 3 минут с "
+        "субтитрами и законченные фрагменты 5–15 минут. Английская озвучка — только "
+        "Яндекс «Живые голоса», без собственного нейроперевода."
     ),
 }
 
@@ -69,7 +77,7 @@ def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup
     rows: list[list[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton(
-                "📚 Анализ и LiveDub",
+                "📚 Анализ, LiveDub и нарезка",
                 callback_data="mode_menu:analysis",
             )
         ]
@@ -129,6 +137,12 @@ def _analysis_keyboard(current: str) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    _selected_label("shorts_max", current),
+                    callback_data="set_mode:shorts_max",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     "↩️ Все режимы",
                     callback_data="mode_menu:home",
                 )
@@ -160,7 +174,7 @@ def _home_text(current: str, *, is_admin: bool) -> str:
 
 def _analysis_text(current: str, *, saved: bool = False) -> str:
     lines = [
-        "📚 <b>Анализ и LiveDub</b>",
+        "📚 <b>Анализ, LiveDub и нарезка</b>",
         "",
     ]
     if saved:
@@ -182,7 +196,7 @@ def _analysis_text(current: str, *, saved: bool = False) -> str:
     lines.extend(
         [
             "",
-            "Этот выбор действует для обычной ссылки, отправленной прямо в чат.",
+            "Этот выбор действует для обычной ссылки и для элементов плейлиста.",
         ]
     )
     return "\n".join(lines)
@@ -206,6 +220,11 @@ async def _read_user_mode(user_id: int) -> str:
         return await loop.run_in_executor(None, _get_user_mode_raw, user_id)
     except Exception:
         return "rus"
+
+
+async def get_user_mode(user_id: int) -> str:
+    """Public async reader used by the mode-aware link router."""
+    return await _read_user_mode(user_id)
 
 
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -313,6 +332,7 @@ __all__ = [
     "_analysis_keyboard",
     "_clear_dub_wizard_state",
     "_mode_home_keyboard",
+    "get_user_mode",
     "handle_mode_callback",
     "mode_command",
 ]
