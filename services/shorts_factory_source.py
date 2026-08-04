@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _FACTORY_AUDIO_INLINE_LIMIT_BYTES = 18 * 1024 * 1024
 _FACTORY_MEDIA_TIMEOUT_SEC = 7200
+_FACTORY_TAIL_TOLERANCE_SEC = 0.20
 _INSTALLED = False
 
 _AUDIO_MIME_BY_SUFFIX = {
@@ -274,6 +275,96 @@ async def download_factory_video_source(
     )
 
 
+async def prepare_factory_translation_video(
+    url: str,
+    workdir: Path,
+    duration: int,
+    source_language: str,
+) -> Path:
+    """Mix Yandex live audio over the unrestricted maximum-quality original."""
+    import pipelines.shorts_factory as factory_pipeline
+    from services.livedub_mix import get_mix_params, mix_tracks
+    from services.yandex_live_dub import get_live_dub_audio
+
+    backend = factory_pipeline._translation_backend()
+    if backend != "yandex_live":
+        raise RuntimeError(
+            "SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». "
+            f"Backend {backend!r} ещё не реализован."
+        )
+    if not factory_pipeline._env_bool("SHORTS_FACTORY_LIVEDUB", True):
+        raise RuntimeError(
+            "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть "
+            "включён: собственный нейроперевод запрещён."
+        )
+
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    ru_task = asyncio.create_task(
+        get_live_dub_audio(
+            url,
+            workdir,
+            timeout=900,
+            voice_style="live",
+            duration=float(duration),
+            lang=source_language,
+        )
+    )
+    original_task = asyncio.create_task(
+        download_factory_video_source(url, "translated", workdir=workdir)
+    )
+    tasks = (ru_task, original_task)
+    try:
+        ru_audio, original_video = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+    original_probe = await probe_media_async(original_video)
+    if not media_probe_is_deliverable(original_probe):
+        raise RuntimeError(
+            "Maximum-quality original for Factory LiveDub failed media probe"
+        )
+
+    output_path = workdir / "factory_max_livedub.mp4"
+    output_path.unlink(missing_ok=True)
+    mixed = await mix_tracks(original_video, ru_audio, output_path)
+    if not mixed or not Path(mixed).is_file():
+        raise RuntimeError(
+            "Factory could not mix Yandex live audio over the maximum-quality "
+            "original"
+        )
+
+    final_probe = await probe_media_async(Path(mixed))
+    if not media_probe_is_deliverable(final_probe):
+        raise RuntimeError(
+            "Maximum-quality Factory LiveDub result failed media probe"
+        )
+    assert original_probe is not None and final_probe is not None
+    mix_params = get_mix_params()
+    required_tail = float(mix_params.get("tail_pad_ms", 0) or 0) / 1000.0
+    minimum_duration = original_probe.duration + required_tail
+    if final_probe.duration + _FACTORY_TAIL_TOLERANCE_SEC < minimum_duration:
+        raise RuntimeError(
+            "Maximum-quality Factory LiveDub lost the required Russian tail: "
+            f"original={original_probe.duration:.3f}s "
+            f"required={minimum_duration:.3f}s final={final_probe.duration:.3f}s"
+        )
+    logger.info(
+        "Factory maximum-quality LiveDub: source=%sx%s %.3fs final=%.3fs "
+        "required_tail=%.3fs",
+        original_probe.width,
+        original_probe.height,
+        original_probe.duration,
+        final_probe.duration,
+        required_tail,
+    )
+    return Path(mixed)
+
+
 async def create_factory_plan_from_supported_audio(
     audio_path: Path,
     *,
@@ -396,7 +487,7 @@ async def create_factory_plan_from_supported_audio(
 
 
 def install_factory_source_quality_policy() -> bool:
-    """Install native-audio and unlimited-resolution Factory sources."""
+    """Install native-audio and unrestricted-video Factory sources."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -406,6 +497,7 @@ def install_factory_source_quality_policy() -> bool:
 
     factory_pipeline._download_factory_audio = download_factory_audio_source
     factory_pipeline.download_video_for_shorts = download_factory_video_source
+    factory_pipeline._prepare_translation_video = prepare_factory_translation_video
     factory_pipeline.create_factory_plan = create_factory_plan_from_supported_audio
     candidates_module.create_factory_plan = create_factory_plan_from_supported_audio
 
@@ -413,13 +505,15 @@ def install_factory_source_quality_policy() -> bool:
     if eager_factory is not None:
         eager_factory._download_factory_audio = download_factory_audio_source
         eager_factory.download_video_for_shorts = download_factory_video_source
+        eager_factory._prepare_translation_video = prepare_factory_translation_video
         eager_factory.create_factory_plan = create_factory_plan_from_supported_audio
 
     _INSTALLED = True
     logger.info(
         "Shorts Factory source quality installed: native bestaudio, "
-        "Gemini-supported remux/lossless FLAC, bestvideo+bestaudio without "
-        "a resolution ceiling, and mandatory media probes"
+        "Gemini-supported remux/lossless FLAC, unrestricted "
+        "bestvideo+bestaudio for Russian and Yandex LiveDub sources, "
+        "required Russian tail, and mandatory media probes"
     )
     return True
 
@@ -431,4 +525,5 @@ __all__ = [
     "factory_audio_mime_type",
     "factory_audio_probe_is_usable",
     "install_factory_source_quality_policy",
+    "prepare_factory_translation_video",
 ]
