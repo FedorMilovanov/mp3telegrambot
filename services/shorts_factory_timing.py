@@ -8,6 +8,7 @@ import os
 from typing import Any
 
 from services.livedub_mix import get_mix_params
+from services.shorts_factory_media import install_livedub_downstream_media_policy
 from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,9 @@ logger = logging.getLogger(__name__)
 PUBLIC_SHORT_MAX_SEC = 180.0
 PUBLIC_LONG_MAX_SEC = 900.0
 
-# This module is imported by the fail-closed Factory runtime before the lazy
-# extraction pipeline. Install the editorial gate at the same boundary.
+# Imported by the required fail-closed Factory runtime before the lazy pipeline.
+# Installation is explicit here so helper-module imports remain side-effect free.
+install_livedub_downstream_media_policy()
 install_factory_plan_quality_gate()
 
 
