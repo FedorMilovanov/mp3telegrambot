@@ -7,6 +7,7 @@ import logging
 import os
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,47 @@ def factory_subtitle_profile() -> dict[str, Any]:
 def factory_shorts_speed() -> float:
     """Verified Gemini boundaries must not be changed by global speed settings."""
     return 1.0
+
+
+def is_subtitled_factory_delivery(video: Any) -> bool:
+    """Factory accepts only the final `_sub.mp4` artifact for short delivery."""
+    try:
+        name = Path(video).name.casefold()
+    except (TypeError, ValueError, OSError):
+        name = str(getattr(video, "name", "") or "").casefold()
+    return name.endswith("_sub.mp4")
+
+
+class _FactoryMessageProxy:
+    """Delegate Telegram calls while rejecting subtitle-less short videos."""
+
+    def __init__(self, message: Any) -> None:
+        self._message = message
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._message, name)
+
+    async def reply_video(self, *args, **kwargs):
+        video = kwargs.get("video")
+        if video is None and args:
+            video = args[0]
+        if not is_subtitled_factory_delivery(video):
+            raise RuntimeError(
+                "SHORTS FACTORY rejected subtitle-less delivery artifact; "
+                "the candidate was not sent"
+            )
+        return await self._message.reply_video(*args, **kwargs)
+
+
+class _FactoryUpdateProxy:
+    """Expose the original update with a strict message delivery boundary."""
+
+    def __init__(self, update: Any) -> None:
+        self._update = update
+        self.message = _FactoryMessageProxy(update.message)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._update, name)
 
 
 @contextmanager
@@ -90,6 +132,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     from handlers.mode_command import get_user_mode
 
     original_process = commands_module.process_single_video
+    original_process_shorts = shorts_module.process_and_send_shorts
     original_shorts_candidates = shorts_module.create_shorts_candidates
     original_long_candidates = clips_module.create_clips_candidates
     original_shorts_setting = shorts_module.asettings_get
@@ -142,6 +185,21 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             silent_errors=silent_errors,
         )
 
+    async def factory_process_shorts(*args, **kwargs):
+        if _FACTORY_SETTINGS.get() is None:
+            return await original_process_shorts(*args, **kwargs)
+
+        if "update" in kwargs:
+            call_kwargs = dict(kwargs)
+            call_kwargs["update"] = _FactoryUpdateProxy(call_kwargs["update"])
+            return await original_process_shorts(*args, **call_kwargs)
+
+        call_args = list(args)
+        # process_and_send_shorts positional parameter #8 is update.
+        if len(call_args) >= 8:
+            call_args[7] = _FactoryUpdateProxy(call_args[7])
+        return await original_process_shorts(*call_args, **kwargs)
+
     async def factory_shorts_candidates(*args, **kwargs):
         planned = _FACTORY_SHORTS.get()
         if planned is not None:
@@ -178,6 +236,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
 
     commands_module.process_single_video = process_link_by_mode
     playlist_module.process_single_video = process_link_by_mode
+    shorts_module.process_and_send_shorts = factory_process_shorts
     shorts_module.create_shorts_candidates = factory_shorts_candidates
     clips_module.create_clips_candidates = factory_long_candidates
     shorts_module.asettings_get = factory_shorts_setting
@@ -188,7 +247,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     _INSTALLED = True
     logger.info(
         "Shorts Factory MAX runtime installed: Pro plan, speed=1.0, "
-        "Whisper=%s karaoke word-timestamps",
+        "Whisper=%s karaoke word-timestamps, subtitle-only delivery",
         factory_subtitle_profile()["model_name"],
     )
     return True
@@ -200,4 +259,5 @@ __all__ = [
     "factory_shorts_speed",
     "factory_subtitle_profile",
     "install_shorts_factory_mode",
+    "is_subtitled_factory_delivery",
 ]
