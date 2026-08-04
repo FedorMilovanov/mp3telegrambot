@@ -117,9 +117,6 @@ def install_factory_plan_quality_gate() -> bool:
     return True
 
 
-install_factory_plan_quality_gate()
-
-
 __all__ = [
     "DEFAULT_MIN_LONG_SCORE",
     "DEFAULT_MIN_SHORT_SCORE",
