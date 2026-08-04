@@ -164,6 +164,6 @@ def test_runtime_policy_wires_every_requested_cut_mode_without_import_side_effec
     assert "montage_module.process_and_send_highlights = process_highlights" in source
     assert "main_pipeline_module.process_and_send_highlights = process_highlights" in source
     assert "media_probe_is_deliverable(probe)" in source
-    assert source.count("install_livedub_downstream_media_policy()") == 0
-    assert timing_source.count("install_livedub_downstream_media_policy()") == 0
-    assert "install_livedub_downstream_media_policy()" in runtime_source
+    assert "\ninstall_livedub_downstream_media_policy()\n" not in source
+    assert "\ninstall_livedub_downstream_media_policy()\n" not in timing_source
+    assert "if not install_livedub_downstream_media_policy():" in runtime_source
