@@ -121,7 +121,7 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(
         output_path,
         100.0,
         700.0,
-        max_file_size_mb=50,
+        max_file_size_mb=100,
         ffmpeg="ffmpeg",
     )
 
@@ -169,7 +169,7 @@ async def test_two_pass_fit_rejects_truncated_result(
         output_path,
         100.0,
         700.0,
-        max_file_size_mb=50,
+        max_file_size_mb=100,
         ffmpeg="ffmpeg",
     )
 
