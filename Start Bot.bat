@@ -3,8 +3,9 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 cd /d "%~dp0"
 
-set "VENV_PYTHON=.venv\Scripts\python.exe"
-set "SETUP_MARKER=.venv\.setup-complete"
+set "VENV_DIR=.venv"
+set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
+set "SETUP_MARKER=%VENV_DIR%\.setup-complete"
 
 if not exist "bot_new.py" (
     echo ERROR: bot_new.py not found in:
@@ -13,6 +14,22 @@ if not exist "bot_new.py" (
     echo Put this BAT file in the project root folder.
     pause
     exit /b 1
+)
+
+if exist "%VENV_PYTHON%" (
+    "%VENV_PYTHON%" -c "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo [SETUP] Existing .venv uses an unsupported Python version.
+        echo [SETUP] Recreating .venv with Python 3.11, 3.12 or 3.13...
+        rmdir /s /q "%VENV_DIR%"
+        if exist "%VENV_DIR%" (
+            echo.
+            echo ERROR: Failed to remove the incompatible .venv.
+            echo Close Python processes using this folder and run the BAT again.
+            pause
+            exit /b 1
+        )
+    )
 )
 
 if not exist "%VENV_PYTHON%" (
@@ -28,7 +45,7 @@ if not exist "%VENV_PYTHON%" (
         exit /b 1
     )
 
-    !PYTHON_COMMAND! -m venv ".venv"
+    !PYTHON_COMMAND! -m venv "%VENV_DIR%"
     if errorlevel 1 (
         echo.
         echo ERROR: Failed to create .venv.
@@ -37,22 +54,46 @@ if not exist "%VENV_PYTHON%" (
     )
 )
 
-if not exist "%SETUP_MARKER%" (
-    if not exist "requirements.txt" (
-        echo ERROR: requirements.txt not found.
-        pause
-        exit /b 1
-    )
+set "REQUIREMENTS_FILE=requirements-lock.txt"
+if not exist "%REQUIREMENTS_FILE%" set "REQUIREMENTS_FILE=requirements.txt"
+if not exist "%REQUIREMENTS_FILE%" (
+    echo ERROR: requirements-lock.txt and requirements.txt were not found.
+    pause
+    exit /b 1
+)
 
-    echo [SETUP] Installing Python dependencies...
+set "CURRENT_REQ_HASH="
+for /f "delims=" %%H in ('"%VENV_PYTHON%" -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path(r'%REQUIREMENTS_FILE%').read_bytes()).hexdigest())"') do set "CURRENT_REQ_HASH=%%H"
+if not defined CURRENT_REQ_HASH (
+    echo ERROR: Failed to calculate the dependency file hash.
+    pause
+    exit /b 1
+)
+
+set "SAVED_REQ_HASH="
+if exist "%SETUP_MARKER%" set /p SAVED_REQ_HASH=<"%SETUP_MARKER%"
+
+if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
+    echo [SETUP] Dependency set changed or was never installed.
+    echo [SETUP] Installing from %REQUIREMENTS_FILE%...
+
     "%VENV_PYTHON%" -m pip install --upgrade pip
     if errorlevel 1 goto :pip_error
 
-    "%VENV_PYTHON%" -m pip install -r requirements.txt
+    "%VENV_PYTHON%" -m pip install -r "%REQUIREMENTS_FILE%"
     if errorlevel 1 goto :pip_error
 
-    >"%SETUP_MARKER%" echo Setup completed successfully.
-    echo [SETUP] Dependencies installed successfully.
+    if /I "%REQUIREMENTS_FILE%"=="requirements-lock.txt" (
+        if exist "tools\check_requirements_lock.py" (
+            "%VENV_PYTHON%" tools\check_requirements_lock.py
+            if errorlevel 1 goto :pip_error
+        )
+    )
+
+    >"%SETUP_MARKER%" echo !CURRENT_REQ_HASH!
+    echo [SETUP] Dependencies installed and verified successfully.
+) else (
+    echo [SETUP] Dependencies are already current.
 )
 
 echo [START] Starting MP3 Telegram Bot...
@@ -70,7 +111,7 @@ exit /b %BOT_EXIT_CODE%
 
 :pip_error
 echo.
-echo ERROR: Failed to install dependencies from requirements.txt.
+echo ERROR: Failed to install or verify dependencies from %REQUIREMENTS_FILE%.
 echo Check the messages above, your Internet connection and available disk space.
 pause
 exit /b 1
@@ -84,7 +125,7 @@ for %%V in (3.13 3.12 3.11) do (
     )
 )
 
-python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) and sys.version_info < (3, 14) else 1)" >nul 2>&1
+python -c "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
 if not errorlevel 1 (
     set "PYTHON_COMMAND=python"
     exit /b 0
