@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared segment rendering logic for /cut command and inline buttons.
 
-Extracts the common render → subtitle → send pipeline to avoid code
+Extracts the common render → subtitle → verify → send pipeline to avoid code
 duplication between cutseg_command and segcut callback.
 """
 from __future__ import annotations
@@ -10,12 +10,16 @@ import html as html_mod
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
 
-from core.database import get_max_file_size_mb, asettings_get
+from core.database import asettings_get, get_max_file_size_mb
 from core.globals import DOWNLOAD_DIR
-from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
 from core.segment_planner import PlannedSegment, seconds_to_timestamp
+from services.media_delivery_probe import (
+    file_size_mb,
+    media_probe_is_deliverable,
+    probe_media_async,
+    select_delivery_file,
+)
 from services.render_clips_montage import render_clip
 from services.shorts_video import (
     HAS_FASTER_WHISPER,
@@ -38,28 +42,12 @@ async def render_and_send_segment(
     total_segments: int,
     ai_data: dict | None = None,
 ) -> bool:
-    """Render one segment and send it as a Telegram video.
-
-    Args:
-        reply_target: message object to reply_video to
-        status_msg: editable status message for progress updates
-        video_id: media identifier
-        source_url: URL to download video from
-        segment: PlannedSegment with start/end/title
-        title: video title for caption
-        total_segments: total number of segments (for display)
-        ai_data: optional AI analysis data for subtitle context
-
-    Returns:
-        True if segment was sent successfully.
-    """
-    # Sanitize video_id to prevent path traversal (defense in depth)
+    """Render, prove and deliver one selectable Q&A/theme segment."""
     safe_id = video_id.replace("/", "_").replace("\\", "_").replace("..", "_")
     clip_path = DOWNLOAD_DIR / f"{safe_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}.mp4"
     sub_path = DOWNLOAD_DIR / f"{safe_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
 
     try:
-        # Progress update
         try:
             await status_msg.edit_text(
                 f"🎬 Рендерю {segment.index}/{total_segments}: "
@@ -69,7 +57,6 @@ async def render_and_send_segment(
         except Exception:
             pass
 
-        # Download video (cached by media_id in DOWNLOAD_DIR)
         video_path = await download_video_for_shorts(source_url, video_id)
         if not video_path:
             try:
@@ -78,48 +65,111 @@ async def render_and_send_segment(
                 pass
             return False
 
-        # Render clip
         ok = await render_clip(video_path, clip_path, segment.start, segment.end)
         if not ok or not clip_path.exists():
             await reply_target.reply_text(f"❌ Не удалось вырезать сегмент {segment.index}.")
             return False
 
-        # Optional subtitles
+        raw_probe = await probe_media_async(clip_path)
+        if not media_probe_is_deliverable(raw_probe):
+            logger.warning(
+                "Segment %s rejected: base render lacks verified video+audio",
+                segment.index,
+            )
+            await reply_target.reply_text(
+                f"❌ Сегмент {segment.index} не прошёл проверку видео и звука."
+            )
+            return False
+
         final_clip_path = clip_path
-        if await asettings_get("segments_subtitles"):
+        subtitle_requested = bool(await asettings_get("segments_subtitles"))
+        subtitles_applied = False
+        if subtitle_requested:
             if not HAS_FASTER_WHISPER:
                 logger.warning("Segment subtitles: faster-whisper not installed")
             else:
                 try:
                     sub_segments = await transcribe_short_clip(
-                        clip_path, ai_data=ai_data or {}
+                        clip_path,
+                        ai_data=ai_data or {},
                     )
                     if sub_segments:
                         sub_ok = await burn_subtitles_into_short(
-                            clip_path, sub_path, sub_segments
+                            clip_path,
+                            sub_path,
+                            sub_segments,
                         )
                         if sub_ok and sub_path.exists():
                             final_clip_path = sub_path
+                            subtitles_applied = True
                     else:
                         logger.warning(
                             "Segment subtitles: empty transcription for segment %s",
                             segment.index,
                         )
-                except Exception as e:
+                except Exception as exc:
                     logger.warning(
-                        "Segment subtitles failed for %s: %s", segment.index, e
+                        "Segment subtitles failed for %s: %s",
+                        segment.index,
+                        exc,
                     )
 
-        # Size check
-        size_mb = final_clip_path.stat().st_size / (1024 * 1024)
-        if size_mb > get_max_file_size_mb():
+        max_upload_mb = get_max_file_size_mb()
+        selection = select_delivery_file(
+            final_clip_path,
+            clip_path if final_clip_path != clip_path else None,
+            max_size_mb=max_upload_mb,
+        )
+        if selection.path is None:
             await reply_target.reply_text(
-                f"❌ Сегмент {segment.index} слишком большой: {size_mb:.0f} МБ "
-                f"(лимит {get_max_file_size_mb()} МБ)."
+                f"❌ Сегмент {segment.index} слишком большой или повреждён: "
+                f"primary={selection.primary_size_mb:.1f} МБ, "
+                f"fallback={selection.fallback_size_mb:.1f} МБ, "
+                f"лимит {max_upload_mb} МБ."
             )
             return False
 
-        # Build caption
+        final_clip_path = selection.path
+        if selection.selected == "fallback":
+            subtitles_applied = False
+            logger.warning(
+                "Segment %s subtitle artifact rejected (%s); using base render",
+                segment.index,
+                selection.reason,
+            )
+
+        final_probe = await probe_media_async(final_clip_path)
+        if not media_probe_is_deliverable(final_probe):
+            if final_clip_path != clip_path:
+                fallback_probe = await probe_media_async(clip_path)
+                if media_probe_is_deliverable(fallback_probe):
+                    final_clip_path = clip_path
+                    final_probe = fallback_probe
+                    subtitles_applied = False
+            if not media_probe_is_deliverable(final_probe):
+                logger.warning(
+                    "Segment %s rejected: no final file has verified video+audio",
+                    segment.index,
+                )
+                await reply_target.reply_text(
+                    f"❌ Сегмент {segment.index} не прошёл финальную проверку файла."
+                )
+                return False
+
+        assert final_probe is not None
+        delivery_duration = float(final_probe.duration)
+        delivery_size_mb = file_size_mb(final_clip_path)
+        logger.info(
+            "Segment delivery evidence: index=%s selected=%s reason=%s "
+            "duration=%.3fs size=%.1fMB subtitles=%s",
+            segment.index,
+            selection.selected,
+            selection.reason,
+            delivery_duration,
+            delivery_size_mb,
+            subtitles_applied,
+        )
+
         caption = (
             f"🎬 <b>{html_mod.escape(title)}</b>\n"
             f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)} "
@@ -134,17 +184,24 @@ async def render_and_send_segment(
                 f"<b>{html_mod.escape(segment.title[:220])}</b>"
             )
 
-        # Send video
         await reply_target.reply_video(
             video=final_clip_path,
             caption=caption,
-            duration=int(segment.duration),
+            duration=max(1, int(round(delivery_duration))),
             supports_streaming=True,
             parse_mode="HTML",
             write_timeout=300,
             read_timeout=300,
             connect_timeout=60,
         )
+        if subtitle_requested and not subtitles_applied:
+            try:
+                await reply_target.reply_text(
+                    "⚠️ Сегмент отправлен без субтитров: версия с ними не прошла "
+                    "транскрипцию, размер или финальную проверку файла."
+                )
+            except Exception:
+                pass
         return True
 
     finally:
