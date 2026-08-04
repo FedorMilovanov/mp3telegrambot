@@ -105,9 +105,10 @@ def test_env_int_parsing_guarded():
     assert 'int(os.environ.get("PORT", "10000").strip() or "10000")' in m
 
 
-def test_start_bat_does_not_pin_python_313():
-    """py -3.13 падает на машинах с 3.11/3.12, хотя код требует лишь 3.11+
-    (bot_new.py сам проверяет минимальную версию с понятным сообщением)."""
+def test_start_bat_accepts_every_supported_python_without_single_version_pin():
+    """Bootstrap may prefer newer supported Python, but must fall through
+    3.13 -> 3.12 -> 3.11 instead of requiring one exact installation."""
     bat = Path("Start Bot.bat").read_text(encoding="utf-8")
-    assert "py -3.13" not in bat
-    assert "py -3 " in bat or "py -3\n" in bat.replace("\r\n", "\n")
+    assert "for %%V in (3.13 3.12 3.11) do (" in bat
+    assert 'set "PYTHON_COMMAND=py -%%V"' in bat
+    assert "(3, 11) <= sys.version_info[:2] < (3, 14)" in bat

@@ -12,6 +12,7 @@ correctly.
 import core.database as db
 import pytest
 from core.segment_planner import PlannedSegment
+from services.media_delivery_probe import MediaProbe
 from services.segment_render import render_and_send_segment
 
 
@@ -58,6 +59,20 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
     monkeypatch.setattr("services.segment_render.render_clip", _make_fake_render(60))
     monkeypatch.setattr("services.segment_render.asettings_get", _fake_asettings_get)
     monkeypatch.setattr("services.segment_render.DOWNLOAD_DIR", tmp_path)
+
+    async def fake_probe(path):
+        return MediaProbe(
+            duration=10.0,
+            width=1920,
+            height=1080,
+            audio_sample_rate=48000,
+            audio_codec="aac",
+            has_video=True,
+            has_audio=True,
+            size_mb=path.stat().st_size / (1024 * 1024),
+        )
+
+    monkeypatch.setattr("services.segment_render.probe_media_async", fake_probe)
 
     was_explicit = db._MAX_FILE_SIZE_MB_EXPLICIT
     was_value = db.MAX_FILE_SIZE_MB

@@ -48,12 +48,13 @@ def test_regular_user_sees_only_normal_processing_modes() -> None:
 
 def test_analysis_menu_is_compact_and_has_back_button() -> None:
     markup = _analysis_keyboard("eng_fast")
-    assert len(markup.inline_keyboard) == 3
+    assert len(markup.inline_keyboard) == 4
     assert _callbacks(markup) == [
         "set_mode:rus",
         "set_mode:eng",
         "set_mode:eng_fast",
         "set_mode:eng_fast_qa",
+        "set_mode:shorts_max",
         "mode_menu:home",
     ]
     assert markup.inline_keyboard[1][0].text.startswith("✓ ")
@@ -117,4 +118,3 @@ def test_dub_command_has_one_owner_and_start_cancels_wizard() -> None:
 def test_dubcheck_does_not_block_telegram_event_loop() -> None:
     source = Path("handlers/dub_health.py").read_text(encoding="utf-8")
     assert "checks = await asyncio.to_thread(collect_dub_health)" in source
-
