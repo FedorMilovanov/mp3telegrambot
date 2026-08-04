@@ -6,6 +6,11 @@ from pipelines.shorts_factory import (
     _source_needs_translation,
     _translation_backend,
 )
+from services.shorts_factory_runtime import (
+    DEFAULT_FACTORY_WHISPER_MODEL,
+    factory_shorts_speed,
+    factory_subtitle_profile,
+)
 
 
 def test_shorts_factory_is_exposed_as_persistent_mode():
@@ -70,3 +75,28 @@ def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
     assert persisted == tmp_path / "video123_factory_source.mp4"
     assert persisted.exists()
     assert not source.exists()
+
+
+def test_factory_forces_verified_timing_speed():
+    assert factory_shorts_speed() == 1.0
+
+
+def test_factory_subtitles_use_max_quality_profile(monkeypatch):
+    monkeypatch.delenv("SHORTS_FACTORY_WHISPER_MODEL", raising=False)
+
+    profile = factory_subtitle_profile()
+
+    assert DEFAULT_FACTORY_WHISPER_MODEL == "large-v3"
+    assert profile == {
+        "model_name": "large-v3",
+        "karaoke": True,
+        "word_timestamps": True,
+        "light": False,
+        "gemini_hints": True,
+    }
+
+
+def test_factory_whisper_model_has_explicit_override(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_WHISPER_MODEL", "large-v3-turbo")
+
+    assert factory_subtitle_profile()["model_name"] == "large-v3-turbo"
