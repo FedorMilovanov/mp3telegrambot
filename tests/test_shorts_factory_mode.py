@@ -6,7 +6,6 @@ from handlers.mode_command import MODE_DESCRIPTIONS, MODE_LABELS, VALID_MODES
 import pipelines.shorts_factory as factory
 from pipelines.shorts_factory import (
     _persist_factory_source,
-    _shift_candidates_for_livedub,
     _source_needs_translation,
     _translation_backend,
     _validated_source_duration,
@@ -20,6 +19,7 @@ from services.shorts_factory_runtime import (
     factory_subtitle_profile,
     is_subtitled_factory_delivery,
 )
+from services.shorts_factory_timing import align_factory_livedub_candidates
 
 
 def test_shorts_factory_is_exposed_as_persistent_mode():
@@ -52,9 +52,11 @@ def test_translation_backend_defaults_to_yandex_only(monkeypatch):
     assert _translation_backend() == "neural_future"
 
 
-def test_livedub_shift_preserves_clip_duration(monkeypatch):
+def test_livedub_envelope_preserves_semantic_start_and_adds_tail(monkeypatch):
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15")
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "0.25")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TAIL_EXTRA_SEC", "0.15")
     candidates = [
         {
             "start_seconds": 10,
@@ -66,17 +68,21 @@ def test_livedub_shift_preserves_clip_duration(monkeypatch):
         }
     ]
 
-    shifted = _shift_candidates_for_livedub(candidates, source_duration=300)
+    aligned = align_factory_livedub_candidates(candidates, source_duration=300)
 
-    assert shifted[0]["start_seconds"] == 10.75
-    assert shifted[0]["end_seconds"] == 100.75
-    assert shifted[0]["duration_seconds"] == 90
+    assert aligned[0]["start_seconds"] == 9.75
+    assert aligned[0]["end_seconds"] == 101.75
+    assert aligned[0]["duration_seconds"] == 92.0
+    assert aligned[0]["livedub_semantic_start_seconds"] == 10
+    assert aligned[0]["livedub_semantic_end_seconds"] == 100
     assert candidates[0]["start_seconds"] == 10
 
 
-def test_livedub_shift_uses_extended_tail_timeline(monkeypatch):
+def test_livedub_envelope_uses_extended_tail_timeline(monkeypatch):
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15")
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "0.25")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TAIL_EXTRA_SEC", "0.15")
     candidates = [
         {
             "start_seconds": 895,
@@ -88,11 +94,28 @@ def test_livedub_shift_uses_extended_tail_timeline(monkeypatch):
         }
     ]
 
-    shifted = _shift_candidates_for_livedub(candidates, source_duration=903)
+    aligned = align_factory_livedub_candidates(candidates, source_duration=903)
 
-    assert shifted[0]["start_seconds"] == 895.75
-    assert shifted[0]["end_seconds"] == 900.75
-    assert shifted[0]["duration_seconds"] == 5
+    assert aligned[0]["start_seconds"] == 894.75
+    assert aligned[0]["end_seconds"] == 901.75
+    assert aligned[0]["duration_seconds"] == 7.0
+    assert aligned[0]["livedub_tail_seconds"] == 1.75
+
+
+def test_livedub_envelope_rejects_clip_without_room_for_translation_tail(monkeypatch):
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
+    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
+    candidates = [
+        {
+            "start_seconds": 10,
+            "end_seconds": 189,
+            "duration_seconds": 179,
+            "title": "Слишком Длинный Для Хвоста",
+        }
+    ]
+
+    with pytest.raises(RuntimeError, match="точный хвост"):
+        align_factory_livedub_candidates(candidates, source_duration=300)
 
 
 def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
