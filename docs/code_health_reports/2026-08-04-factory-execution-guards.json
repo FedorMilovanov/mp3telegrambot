@@ -1,31 +1,33 @@
 {
   "policy": "intentional-code-health-baseline-refresh-v1",
-  "reason": "The surgical cut-mode recheck adds two isolated, tested runtime policy modules: one resolves Factory translation from spoken-audio evidence and preserves truthful partial delivery, and one forbids untranslated original-video fallback for legacy ENG cuts. Neither module adds regex or editorial postprocess debt.",
+  "reason": "The surgical cut-mode recheck adds three isolated, tested runtime policy modules: spoken-audio Factory execution, fail-closed legacy ENG/cache replay source handling, and Telegram-accepted delivery evidence for cached cut replay. None adds regex or editorial postprocess debt.",
   "previous": {
     "files_scanned": 164,
     "total_regex_markers": 725,
     "total_postprocess_markers": 271
   },
   "current": {
-    "files_scanned": 166,
+    "files_scanned": 167,
     "total_regex_markers": 725,
     "total_postprocess_markers": 271
   },
   "delta": {
-    "files_scanned": 2,
+    "files_scanned": 3,
     "total_regex_markers": 0,
     "total_postprocess_markers": 0
   },
   "evidence": {
     "focused_tests": [
       "tests/test_factory_execution_and_cut_source_policy.py",
+      "tests/test_cut_replay_delivery_policy.py",
       "tests/test_shorts_factory_mode.py",
       "tests/test_livedub_downstream_media.py",
       "tests/test_cut_runtime_installation.py"
     ],
-    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio, unknown language fails closed, every proven non-Russian language requires LiveDub, partial Telegram delivery is reported truthfully and preserves trim sources, and legacy ENG Shorts/Clips/Montage/Highlights cannot silently render the untranslated original.",
+    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio; unknown language fails closed; every proven non-Russian language requires LiveDub; partial Telegram delivery is reported truthfully; legacy ENG cuts cannot silently render the untranslated original; valid analysis cache becomes a no-publication replay; only Telegram-accepted cut videos count as replay success.",
     "new_files": [
       "services/cut_mode_source_policy.py",
+      "services/cut_replay_delivery_policy.py",
       "services/shorts_factory_execution_guard.py"
     ]
   }
