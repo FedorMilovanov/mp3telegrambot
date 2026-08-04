@@ -11,6 +11,7 @@ from services.cut_mode_source_policy import (
 )
 from services.shorts_factory_execution_guard import (
     factory_language_needs_translation,
+    factory_preflight_issues,
     normalize_factory_language,
     resolve_factory_spoken_language,
 )
@@ -108,6 +109,36 @@ async def test_clip_delivery_proxy_uses_actual_probed_duration(
 
     assert await proxy.reply_video(video=video, duration=600) == "sent"
     assert message.kwargs["duration"] == 613
+
+
+def test_factory_preflight_reports_every_missing_runtime_dependency():
+    issues = factory_preflight_issues(
+        gemini_available=False,
+        whisper_available=False,
+        ffmpeg_available=False,
+        ffprobe_available=False,
+        free_gb=0.4,
+        min_free_gb=2.0,
+    )
+
+    assert issues == (
+        "Gemini API clients are unavailable",
+        "faster-whisper is unavailable",
+        "ffmpeg is unavailable",
+        "ffprobe is unavailable",
+        "free disk 0.4 GB is below 2.0 GB",
+    )
+
+
+def test_factory_preflight_accepts_complete_runtime():
+    assert factory_preflight_issues(
+        gemini_available=True,
+        whisper_available=True,
+        ffmpeg_available=True,
+        ffprobe_available=True,
+        free_gb=8.0,
+        min_free_gb=2.0,
+    ) == ()
 
 
 def test_factory_executor_analyzes_audio_before_selecting_source_backend():
