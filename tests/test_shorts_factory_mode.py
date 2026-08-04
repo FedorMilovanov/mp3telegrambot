@@ -13,6 +13,7 @@ from pipelines.shorts_factory import (
 import services.shorts_factory_runtime as factory_runtime
 from services.shorts_factory_runtime import (
     DEFAULT_FACTORY_WHISPER_MODEL,
+    factory_long_delivery_count,
     factory_render_context,
     factory_short_delivery_count,
     factory_shorts_speed,
@@ -209,21 +210,28 @@ def test_factory_delivery_accepts_only_burned_subtitle_artifact(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_factory_delivery_counter_increments_only_after_success(tmp_path):
+async def test_factory_delivery_counters_increment_only_after_success(tmp_path):
     class Message:
         async def reply_video(self, *args, **kwargs):
             return {"args": args, "kwargs": kwargs}
 
     subtitled = tmp_path / "video_short_1_sub.mp4"
     raw = tmp_path / "video_short_1_raw.mp4"
-    proxy = factory_runtime._FactoryMessageProxy(Message())
+    short_proxy = factory_runtime._FactoryMessageProxy(Message())
+    long_proxy = factory_runtime._FactoryLongMessageProxy(Message())
 
     with factory_render_context([], []):
         assert factory_short_delivery_count() == 0
-        await proxy.reply_video(video=subtitled)
+        assert factory_long_delivery_count() == 0
+
+        await short_proxy.reply_video(video=subtitled)
         assert factory_short_delivery_count() == 1
         with pytest.raises(RuntimeError, match="subtitle-less"):
-            await proxy.reply_video(video=raw)
+            await short_proxy.reply_video(video=raw)
         assert factory_short_delivery_count() == 1
 
+        await long_proxy.reply_video(video=raw)
+        assert factory_long_delivery_count() == 1
+
     assert factory_short_delivery_count() == 0
+    assert factory_long_delivery_count() == 0
