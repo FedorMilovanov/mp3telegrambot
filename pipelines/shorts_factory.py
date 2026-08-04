@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
 from services.shorts_factory_runtime import factory_render_context
+from services.shorts_video import download_video_for_shorts
 
 logger = logging.getLogger(__name__)
 
@@ -157,18 +159,33 @@ async def _prepare_translation_video(
     return translated
 
 
-def _pad_candidates_for_livedub(
+def _format_seconds(seconds: float) -> str:
+    value = max(0, int(round(seconds)))
+    hours, remainder = divmod(value, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _shift_candidates_for_livedub(
     candidates: list[dict[str, Any]],
     *,
     source_duration: int,
-    pre_roll: float,
-    post_roll: float,
 ) -> list[dict[str, Any]]:
-    """Protect delayed Yandex phrases from being cut at clip boundaries."""
+    """Align exact original-audio cuts with the configured delayed Yandex track."""
+    delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
+    extra_sec = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
+    shift = max(0.0, delay_ms / 1000.0 + extra_sec)
     out = copy.deepcopy(candidates)
     for item in out:
-        start = max(0.0, float(item.get("start_seconds", 0)) - pre_roll)
-        end = min(float(source_duration), float(item.get("end_seconds", 0)) + post_roll)
+        original_start = float(item.get("start_seconds", 0))
+        original_end = float(item.get("end_seconds", 0))
+        original_length = max(0.0, original_end - original_start)
+        start = min(float(source_duration), original_start + shift)
+        end = min(float(source_duration), original_end + shift)
+        if end - start < original_length:
+            start = max(0.0, end - original_length)
         if end <= start:
             continue
         item["start_seconds"] = start
@@ -179,13 +196,42 @@ def _pad_candidates_for_livedub(
     return out
 
 
-def _format_seconds(seconds: float) -> str:
-    value = max(0, int(round(seconds)))
-    hours, remainder = divmod(value, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
+def _cleanup_expired_factory_sources() -> None:
+    retention_hours = float(
+        os.getenv("SHORTS_FACTORY_SOURCE_RETENTION_HOURS", "24") or "24"
+    )
+    cutoff = time.time() - max(1.0, retention_hours) * 3600.0
+    for path in DOWNLOAD_DIR.glob("*_factory_source.*"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _persist_factory_source(source_path: Path, media_id: str) -> Path:
+    """Keep one source for interactive trim buttons and reuse by long clips."""
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = source_path.suffix.lower() or ".mp4"
+    destination = DOWNLOAD_DIR / f"{media_id}_factory_source{suffix}"
+    try:
+        if source_path.resolve() == destination.resolve():
+            return destination
+    except OSError:
+        pass
+
+    for old in DOWNLOAD_DIR.glob(f"{media_id}_factory_source.*"):
+        try:
+            old.unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        shutil.move(str(source_path), str(destination))
+    except (OSError, shutil.Error):
+        shutil.copy2(source_path, destination)
+    if not destination.exists() or destination.stat().st_size < 1024:
+        raise RuntimeError("Не удалось сохранить общий источник для рендера и trim-кнопок")
+    return destination
 
 
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
@@ -200,7 +246,7 @@ def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
         "🧠 <b>SHORTS FACTORY MAX — финальный план</b>",
         "",
         f"🎬 <b>{title}</b>" + (f" — {author}" if author else ""),
-        f"🤖 {model} · thinking HIGH · двойная редакторская проверка",
+        f"🤖 {model} · thinking HIGH · три независимых прохода",
     ]
     if translation_required:
         lines.append("🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».")
@@ -246,12 +292,17 @@ async def process_shorts_factory(
     del context, progress_prefix
     url = get_youtube_video_url(url)
     mp3_path: Path | None = None
+    persistent_source_path: Path | None = None
+    keep_source_for_trim = False
     workdir = Path(tempfile.mkdtemp(prefix="shorts_factory_"))
-    translation_task: asyncio.Task | None = None
+    source_task: asyncio.Task | None = None
 
     try:
+        _cleanup_expired_factory_sources()
         if status_msg is None:
-            status_msg = await update.message.reply_text("🧠 SHORTS FACTORY MAX: получаю метаданные…")
+            status_msg = await update.message.reply_text(
+                "🧠 SHORTS FACTORY MAX: получаю метаданные…"
+            )
         else:
             await _safe_status(status_msg, "🧠 SHORTS FACTORY MAX: получаю метаданные…")
 
@@ -276,9 +327,14 @@ async def process_shorts_factory(
         translation_required = _source_needs_translation(info)
 
         if translation_required:
-            translation_task = asyncio.create_task(
+            source_task = asyncio.create_task(
                 _prepare_translation_video(url, workdir, duration, source_language),
                 name=f"shorts-factory-yandex-{media_id}",
+            )
+        else:
+            source_task = asyncio.create_task(
+                download_video_for_shorts(url, media_id, workdir=workdir),
+                name=f"shorts-factory-source-{media_id}",
             )
 
         await _safe_status(
@@ -289,7 +345,7 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            "🧠 Gemini MAX слушает весь материал: глубокий поиск фрагментов и проверка границ…",
+            "🧠 Gemini MAX слушает весь материал: отбор, редактура и проверка границ…",
         )
         plan = await create_factory_plan(
             mp3_path,
@@ -298,34 +354,43 @@ async def process_shorts_factory(
             duration=duration,
             source_language=source_language,
         )
-        ai_data = factory_ai_data(plan, title=title or full_title, performer=performer or channel_name)
+        ai_data = factory_ai_data(
+            plan,
+            title=title or full_title,
+            performer=performer or channel_name,
+        )
 
-        translated_video_path: Path | None = None
-        if translation_task is not None:
-            await _safe_status(
-                status_msg,
-                "🎙 План готов. Жду Яндекс LiveDub «Живые голоса»…",
-            )
-            translation_timeout = int(
-                os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "1800") or "1800"
-            )
-            try:
-                translated_video_path = await asyncio.wait_for(
-                    translation_task,
-                    timeout=translation_timeout,
-                )
-            except asyncio.TimeoutError as exc:
-                translation_task.cancel()
+        await _safe_status(
+            status_msg,
+            "🎙 План готов. Подготавливаю единый источник для всех вырезок…",
+        )
+        source_timeout = int(
+            os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "1800") or "1800"
+        )
+        try:
+            source_video_path = await asyncio.wait_for(source_task, timeout=source_timeout)
+        except asyncio.TimeoutError as exc:
+            source_task.cancel()
+            if translation_required:
                 raise RuntimeError(
-                    f"Яндекс LiveDub не завершился за {translation_timeout // 60} мин. "
+                    f"Яндекс LiveDub не завершился за {source_timeout // 60} мин. "
                     "Нейроперевод намеренно не используется."
                 ) from exc
-            except Exception as exc:
+            raise RuntimeError(
+                f"Исходное видео не скачалось за {source_timeout // 60} мин."
+            ) from exc
+        except Exception as exc:
+            if translation_required:
                 raise RuntimeError(
                     "Яндекс LiveDub «Живые голоса» недоступен для этого источника. "
                     "Нарезка иностранного оригинала и собственный нейроперевод намеренно не выполняются. "
                     f"Причина: {str(exc)[:240]}"
                 ) from exc
+            raise
+
+        if not source_video_path or not Path(source_video_path).exists():
+            raise RuntimeError("Не удалось получить общий видеоисточник для Factory")
+        persistent_source_path = _persist_factory_source(Path(source_video_path), media_id)
 
         if not silent_errors:
             await update.message.reply_text(
@@ -343,12 +408,14 @@ async def process_shorts_factory(
         long_candidates = plan.get("long_candidates") or []
         render_shorts = shorts_candidates
         render_longs = long_candidates
-        if translated_video_path is not None:
-            render_longs = _pad_candidates_for_livedub(
+        if translation_required:
+            render_shorts = _shift_candidates_for_livedub(
+                shorts_candidates,
+                source_duration=duration,
+            )
+            render_longs = _shift_candidates_for_livedub(
                 long_candidates,
                 source_duration=duration,
-                pre_roll=float(os.getenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "1.0") or "1.0"),
-                post_roll=float(os.getenv("SHORTS_FACTORY_LIVEDUB_POSTROLL_SEC", "2.5") or "2.5"),
             )
 
         with factory_render_context(render_shorts, render_longs):
@@ -363,8 +430,9 @@ async def process_shorts_factory(
                     ai_data=ai_data,
                     update=update,
                     workdir=workdir,
-                    livedub_video_path=translated_video_path,
+                    livedub_video_path=persistent_source_path,
                 )
+                keep_source_for_trim = True
             if render_longs:
                 await process_and_send_clips(
                     url=url,
@@ -375,7 +443,7 @@ async def process_shorts_factory(
                     duration=duration,
                     ai_data=ai_data,
                     update=update,
-                    livedub_video_path=translated_video_path,
+                    livedub_video_path=persistent_source_path,
                 )
 
         await _safe_status(
@@ -389,7 +457,7 @@ async def process_shorts_factory(
             duration,
             len(shorts_candidates),
             len(long_candidates),
-            bool(translated_video_path),
+            translation_required,
         )
         return bool(shorts_candidates or long_candidates)
 
@@ -405,15 +473,20 @@ async def process_shorts_factory(
                 await update.message.reply_text(message)
         return False
     finally:
-        if translation_task is not None and not translation_task.done():
-            translation_task.cancel()
+        if source_task is not None and not source_task.done():
+            source_task.cancel()
             try:
-                await translation_task
+                await source_task
             except BaseException:
                 pass
         if mp3_path is not None:
             try:
                 mp3_path.unlink(missing_ok=True)
-            except Exception:
+            except OSError:
+                pass
+        if persistent_source_path is not None and not keep_source_for_trim:
+            try:
+                persistent_source_path.unlink(missing_ok=True)
+            except OSError:
                 pass
         shutil.rmtree(workdir, ignore_errors=True)
