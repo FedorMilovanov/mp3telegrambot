@@ -1,5 +1,3 @@
-import pytest
-
 from services import shorts_factory_quality_gate as gate
 
 
