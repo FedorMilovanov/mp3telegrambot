@@ -77,13 +77,17 @@ def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
     assert [item["title"] for item in gated["long_candidates"]] == ["94"]
 
 
-def test_factory_quality_gate_is_explicitly_installed_by_timing_bootstrap():
+def test_factory_quality_gate_is_explicitly_installed_by_required_runtime():
     gate_source = Path("services/shorts_factory_quality_gate.py").read_text(
         encoding="utf-8"
     )
     timing_source = Path("services/shorts_factory_timing.py").read_text(
         encoding="utf-8"
     )
+    runtime_source = Path("services/shorts_factory_runtime.py").read_text(
+        encoding="utf-8"
+    )
 
     assert gate_source.count("install_factory_plan_quality_gate()") == 0
-    assert "install_factory_plan_quality_gate()" in timing_source
+    assert timing_source.count("install_factory_plan_quality_gate()") == 0
+    assert "install_factory_plan_quality_gate()" in runtime_source
