@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 cd /d "%~dp0"
 
@@ -28,7 +28,7 @@ if not exist "%VENV_PYTHON%" (
         exit /b 1
     )
 
-    %PYTHON_COMMAND% -m venv ".venv"
+    !PYTHON_COMMAND! -m venv ".venv"
     if errorlevel 1 (
         echo.
         echo ERROR: Failed to create .venv.
