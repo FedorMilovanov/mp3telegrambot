@@ -12,6 +12,7 @@ on:
       - "services/shorts_factory_no_downgrade.py"
       - "services/shorts_factory_source.py"
       - "services/shorts_factory_disk_guard.py"
+      - "services/shorts_factory_long_fit.py"
       - "services/shorts_factory_media.py"
       - "services/shorts_factory_runtime.py"
       - "services/shorts_factory_timing.py"
@@ -23,7 +24,9 @@ on:
       - "tests/test_cut_replay_delivery_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
+      - "tests/test_shorts_factory_source_failures.py"
       - "tests/test_shorts_factory_disk_guard.py"
+      - "tests/test_shorts_factory_long_fit.py"
       - "tests/test_shorts_factory_mode.py"
       - "tests/test_shorts_factory_quality_gate.py"
       - "tests/test_livedub_downstream_media.py"
@@ -41,6 +44,7 @@ on:
       - "services/shorts_factory_no_downgrade.py"
       - "services/shorts_factory_source.py"
       - "services/shorts_factory_disk_guard.py"
+      - "services/shorts_factory_long_fit.py"
       - "services/shorts_factory_media.py"
       - "services/shorts_factory_runtime.py"
       - "services/shorts_factory_timing.py"
@@ -52,7 +56,9 @@ on:
       - "tests/test_cut_replay_delivery_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
+      - "tests/test_shorts_factory_source_failures.py"
       - "tests/test_shorts_factory_disk_guard.py"
+      - "tests/test_shorts_factory_long_fit.py"
       - "tests/test_shorts_factory_mode.py"
       - "tests/test_shorts_factory_quality_gate.py"
       - "tests/test_livedub_downstream_media.py"
@@ -106,6 +112,7 @@ jobs:
           services/shorts_factory_no_downgrade.py
           services/shorts_factory_source.py
           services/shorts_factory_disk_guard.py
+          services/shorts_factory_long_fit.py
           services/shorts_factory_media.py
           services/shorts_factory_runtime.py
           services/shorts_factory_timing.py
@@ -121,7 +128,9 @@ jobs:
           tests/test_cut_replay_delivery_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
+          tests/test_shorts_factory_source_failures.py
           tests/test_shorts_factory_disk_guard.py
+          tests/test_shorts_factory_long_fit.py
           tests/test_shorts_factory_mode.py
           tests/test_shorts_factory_quality_gate.py
           tests/test_livedub_downstream_media.py
@@ -139,6 +148,7 @@ jobs:
           services/shorts_factory_no_downgrade.py
           services/shorts_factory_source.py
           services/shorts_factory_disk_guard.py
+          services/shorts_factory_long_fit.py
           services/shorts_factory_media.py
           services/shorts_factory_runtime.py
           services/shorts_factory_timing.py
@@ -150,4 +160,6 @@ jobs:
           tests/test_cut_replay_delivery_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
+          tests/test_shorts_factory_source_failures.py
           tests/test_shorts_factory_disk_guard.py
+          tests/test_shorts_factory_long_fit.py
