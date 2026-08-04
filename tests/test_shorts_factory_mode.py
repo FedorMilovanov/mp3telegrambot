@@ -25,6 +25,19 @@ from services.shorts_factory_runtime import (
 from services.shorts_factory_timing import align_factory_livedub_candidates
 
 
+@pytest.fixture(autouse=True)
+def _factory_runtime_delivery_probe(monkeypatch):
+    async def fake_probe(_path):
+        return SimpleNamespace(duration=90.0)
+
+    monkeypatch.setattr(factory_runtime, "probe_media_async", fake_probe)
+    monkeypatch.setattr(
+        factory_runtime,
+        "media_probe_is_deliverable",
+        lambda value: value is not None,
+    )
+
+
 def test_shorts_factory_is_exposed_as_persistent_mode():
     assert "shorts_max" in VALID_MODES
     assert "SHORTS FACTORY MAX" in MODE_LABELS["shorts_max"]
@@ -254,6 +267,53 @@ async def test_factory_delivery_counters_increment_only_after_success(tmp_path):
         assert factory_completed_delivery_counts() == (1, 1)
     finally:
         factory_runtime._FACTORY_COMPLETED_DELIVERIES.reset(completed_token)
+
+
+@pytest.mark.asyncio
+async def test_factory_final_delivery_enforces_caps_and_removes_trim_controls(
+    monkeypatch,
+    tmp_path,
+):
+    durations = {"short": 179.96, "long": 899.96}
+
+    async def fake_probe(path):
+        key = "short" if "short" in path.name else "long"
+        return SimpleNamespace(duration=durations[key])
+
+    monkeypatch.setattr(factory_runtime, "probe_media_async", fake_probe)
+
+    class Message:
+        def __init__(self):
+            self.calls = []
+
+        async def reply_video(self, *args, **kwargs):
+            self.calls.append(dict(kwargs))
+            return "sent"
+
+    message = Message()
+    short_proxy = factory_runtime._FactoryMessageProxy(message)
+    long_proxy = factory_runtime._FactoryLongMessageProxy(message)
+    short_path = tmp_path / "video_short_1_sub.mp4"
+    long_path = tmp_path / "video_long_1.mp4"
+
+    await short_proxy.reply_video(
+        video=short_path,
+        duration=177,
+        reply_markup="unsafe-generic-trim-controls",
+    )
+    await long_proxy.reply_video(video=long_path, duration=897)
+
+    assert message.calls[0]["duration"] == 180
+    assert "reply_markup" not in message.calls[0]
+    assert message.calls[1]["duration"] == 900
+
+    durations["short"] = 180.06
+    with pytest.raises(RuntimeError, match="exceeds 180s"):
+        await short_proxy.reply_video(video=short_path)
+
+    durations["long"] = 900.06
+    with pytest.raises(RuntimeError, match="exceeds 900s"):
+        await long_proxy.reply_video(video=long_path)
 
 
 @pytest.mark.asyncio
