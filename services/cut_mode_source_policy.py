@@ -55,6 +55,10 @@ _CUT_CACHED_RECORD: ContextVar[dict[str, Any] | None] = ContextVar(
     "legacy_cut_cached_record",
     default=None,
 )
+_CUT_MAIN_MP3_PATH: ContextVar[Path | None] = ContextVar(
+    "legacy_cut_main_mp3_path",
+    default=None,
+)
 _INSTALLED = False
 
 
@@ -142,6 +146,15 @@ def cut_source_is_usable(
         return False
 
 
+def _same_file_path(left: Any, right: Path | None) -> bool:
+    if left is None or right is None:
+        return False
+    try:
+        return Path(left).resolve(strict=False) == right.resolve(strict=False)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 @contextmanager
 def cut_source_mode_context(
     mode: str,
@@ -152,9 +165,11 @@ def cut_source_mode_context(
     requested_token = _CUT_PIPELINE_REQUESTED.set(bool(pipeline_requested))
     replay_token = _CUT_CACHE_REPLAY.set(False)
     cached_token = _CUT_CACHED_RECORD.set(None)
+    mp3_token = _CUT_MAIN_MP3_PATH.set(None)
     try:
         yield
     finally:
+        _CUT_MAIN_MP3_PATH.reset(mp3_token)
         _CUT_CACHED_RECORD.reset(cached_token)
         _CUT_CACHE_REPLAY.reset(replay_token)
         _CUT_PIPELINE_REQUESTED.reset(requested_token)
@@ -162,7 +177,7 @@ def cut_source_mode_context(
 
 
 class _CutReplayMessageProxy:
-    """Suppress duplicate MP3 delivery while delegating status and videos."""
+    """Suppress only the duplicate main MP3; preserve LiveDub companions."""
 
     def __init__(self, message: Any) -> None:
         self._message = message
@@ -171,9 +186,15 @@ class _CutReplayMessageProxy:
         return getattr(self._message, name)
 
     async def reply_audio(self, *args, **kwargs):
-        if cut_cache_replay_active():
+        audio = kwargs.get("audio")
+        if audio is None and args:
+            audio = args[0]
+        if (
+            cut_cache_replay_active()
+            and _same_file_path(audio, _CUT_MAIN_MP3_PATH.get())
+        ):
             logger.info(
-                "Cached cut replay: suppressing duplicate MP3 delivery"
+                "Cached cut replay: suppressing duplicate main MP3 delivery"
             )
             return SimpleNamespace(audio=None)
         return await self._message.reply_audio(*args, **kwargs)
@@ -347,6 +368,17 @@ def install_cut_mode_source_policy() -> bool:
         return cut_replay_settings(settings)
 
     async def cut_aware_gemini_analyze(*args, **kwargs):
+        if args:
+            try:
+                _CUT_MAIN_MP3_PATH.set(Path(args[0]))
+            except (OSError, TypeError, ValueError):
+                _CUT_MAIN_MP3_PATH.set(None)
+        elif kwargs.get("mp3_path") is not None:
+            try:
+                _CUT_MAIN_MP3_PATH.set(Path(kwargs["mp3_path"]))
+            except (OSError, TypeError, ValueError):
+                _CUT_MAIN_MP3_PATH.set(None)
+
         if cut_cache_replay_active():
             cached = _CUT_CACHED_RECORD.get() or {}
             ai_data = cached.get("ai_data")
