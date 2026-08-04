@@ -130,9 +130,9 @@ def ensure_factory_free_space(
 
 
 def factory_delivery_sort_args(base_args: Iterable[str]) -> list[str]:
-    """Maximize resolution/FPS, then prefer SDR for the final SDR H.264 output."""
+    """Prefer SDR first, then maximize resolution/FPS for the SDR H.264 output."""
     result = list(base_args)
-    result.extend(["--format-sort", "res,fps,hdr:0"])
+    result.extend(["--format-sort", "hdr:0,res,fps"])
     return result
 
 
@@ -252,8 +252,8 @@ def install_factory_disk_guard() -> bool:
     logger.info(
         "Shorts Factory disk/fidelity guard installed: selected-format "
         "filesize/tbr estimate, PCM/FLAC bound, separate-stream merge peak, "
-        "all target filesystems, maximum res/FPS and SDR preference for "
-        "final H.264 delivery"
+        "all target filesystems, SDR preference and maximum res/FPS inside "
+        "the final SDR H.264 delivery path"
     )
     return True
 
