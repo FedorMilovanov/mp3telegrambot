@@ -1,0 +1,269 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+import services.shorts_factory_candidates as candidates
+import services.shorts_factory_source as source
+
+
+def _audio_probe(codec="opus", duration=120.0):
+    return SimpleNamespace(
+        duration=duration,
+        has_audio=True,
+        audio_sample_rate=48000,
+        audio_codec=codec,
+    )
+
+
+def _video_probe(duration=120.0, width=3840, height=2160):
+    return SimpleNamespace(
+        duration=duration,
+        width=width,
+        height=height,
+        has_video=True,
+        has_audio=True,
+        audio_sample_rate=48000,
+        audio_codec="opus",
+    )
+
+
+@pytest.mark.parametrize(
+    ("suffix", "mime_type"),
+    [
+        (".aac", "audio/aac"),
+        (".aiff", "audio/aiff"),
+        (".flac", "audio/flac"),
+        (".mp3", "audio/mp3"),
+        (".ogg", "audio/ogg"),
+        (".wav", "audio/wav"),
+    ],
+)
+def test_factory_audio_mime_type_uses_supported_formats(suffix, mime_type):
+    assert source.factory_audio_mime_type(Path("audio" + suffix)) == mime_type
+
+
+def test_factory_audio_mime_type_rejects_unsupported_container():
+    with pytest.raises(RuntimeError, match="not supported by Gemini"):
+        source.factory_audio_mime_type(Path("audio.webm"))
+
+
+def test_factory_audio_probe_requires_real_audio_evidence():
+    assert source.factory_audio_probe_is_usable(_audio_probe()) is True
+    assert source.factory_audio_probe_is_usable(None) is False
+    assert source.factory_audio_probe_is_usable(
+        SimpleNamespace(
+            duration=120.0,
+            has_audio=False,
+            audio_sample_rate=48000,
+            audio_codec="opus",
+        )
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_factory_audio_download_uses_native_best_and_lossless_flac(
+    monkeypatch,
+    tmp_path,
+):
+    commands = []
+    raw_path = tmp_path / "video_factory_audio_source.webm"
+
+    async def fake_run(command, **kwargs):
+        commands.append(list(command))
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(b"f" * 4096)
+        else:
+            raw_path.write_bytes(b"o" * 4096)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    async def fake_probe(path):
+        return _audio_probe("flac" if path.suffix == ".flac" else "opus")
+
+    monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(
+        source,
+        "YTDLP_BASE_ARGS",
+        ["python", "-m", "yt_dlp", "--format-sort", "ext:mp4:m4a"],
+    )
+    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(source, "probe_media_async", fake_probe)
+    monkeypatch.setattr(source.shutil, "which", lambda name: "ffmpeg")
+
+    result = await source.download_factory_audio_source(
+        "https://youtu.be/example",
+        "video",
+    )
+
+    yt_command, ffmpeg_command = commands
+    assert result == tmp_path / "video_factory_audio_gemini.flac"
+    assert result.exists()
+    assert not raw_path.exists()
+    assert "--format-sort-reset" in yt_command
+    assert yt_command.index("--format-sort-reset") > yt_command.index(
+        "--format-sort"
+    )
+    assert yt_command[yt_command.index("--format") + 1] == "bestaudio/best"
+    assert "--extract-audio" not in yt_command
+    assert "--audio-format" not in yt_command
+    assert "-c:a" in ffmpeg_command
+    assert ffmpeg_command[ffmpeg_command.index("-c:a") + 1] == "flac"
+    assert "copy" not in ffmpeg_command
+
+
+@pytest.mark.asyncio
+async def test_factory_aac_is_remuxed_without_lossy_reencode(
+    monkeypatch,
+    tmp_path,
+):
+    commands = []
+    raw_path = tmp_path / "native.m4a"
+    raw_path.write_bytes(b"a" * 4096)
+
+    async def fake_run(command, **kwargs):
+        commands.append(list(command))
+        Path(command[-1]).write_bytes(b"a" * 4096)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    async def fake_probe(path):
+        return _audio_probe("aac")
+
+    monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(source, "probe_media_async", fake_probe)
+    monkeypatch.setattr(source.shutil, "which", lambda name: "ffmpeg")
+
+    result = await source._prepare_gemini_audio(
+        raw_path,
+        _audio_probe("aac"),
+        "video",
+    )
+
+    assert result.suffix == ".aac"
+    command = commands[0]
+    assert command[command.index("-c:a") + 1] == "copy"
+    assert command[command.index("-f") + 1] == "adts"
+    assert source.factory_audio_mime_type(result) == "audio/aac"
+
+
+@pytest.mark.asyncio
+async def test_factory_video_download_has_no_resolution_ceiling(
+    monkeypatch,
+    tmp_path,
+):
+    commands = []
+    output_path = tmp_path / "video_factory_max_source.mkv"
+
+    async def fake_run(command, **kwargs):
+        commands.append(list(command))
+        output_path.write_bytes(b"v" * 4096)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    async def fake_probe(path):
+        assert path == output_path
+        return _video_probe()
+
+    monkeypatch.setattr(
+        source,
+        "YTDLP_BASE_ARGS",
+        ["python", "-m", "yt_dlp", "--format-sort", "ext:mp4:m4a"],
+    )
+    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(source, "probe_media_async", fake_probe)
+
+    result = await source.download_factory_video_source(
+        "https://youtu.be/example",
+        "video",
+        workdir=tmp_path,
+    )
+
+    command = commands[0]
+    assert result == output_path
+    assert "--format-sort-reset" in command
+    assert command[command.index("--format") + 1] == (
+        "bestvideo+bestaudio/best"
+    )
+    assert "height<=720" not in " ".join(command)
+    assert command[command.index("--merge-output-format") + 1] == "mkv"
+
+
+@pytest.mark.asyncio
+async def test_factory_plan_passes_real_prepared_audio_mime(
+    monkeypatch,
+    tmp_path,
+):
+    captured_mimes = []
+    audio_path = tmp_path / "source.aac"
+    audio_path.write_bytes(b"a" * 4096)
+
+    class FakePart:
+        @staticmethod
+        def from_bytes(*, data, mime_type):
+            assert data
+            captured_mimes.append(mime_type)
+            return {"mime_type": mime_type}
+
+    fake_types = SimpleNamespace(Part=FakePart)
+
+    async def fake_run_pass(*args, **kwargs):
+        return {"metadata": {"language": "en"}}
+
+    def fake_validate(*args, **kwargs):
+        return {
+            "metadata": {"language": "en"},
+            "shorts_candidates": [
+                {
+                    "title": "Candidate",
+                    "start_seconds": 1.125,
+                    "end_seconds": 40.625,
+                }
+            ],
+            "long_candidates": [],
+        }
+
+    monkeypatch.setattr(candidates, "HAS_GEMINI", True)
+    monkeypatch.setattr(candidates, "GEMINI_CLIENTS", [SimpleNamespace()])
+    monkeypatch.setattr(candidates, "types", fake_types)
+    monkeypatch.setattr(
+        candidates,
+        "shorts_factory_model",
+        lambda: "gemini-3.1-pro-preview",
+    )
+    monkeypatch.setattr(candidates, "_run_pass", fake_run_pass)
+    monkeypatch.setattr(candidates, "_scout_prompt", lambda *args: "scout")
+    monkeypatch.setattr(candidates, "_judge_prompt", lambda *args: "judge")
+    monkeypatch.setattr(candidates, "_boundary_prompt", lambda *args: "audit")
+    monkeypatch.setattr(candidates, "validate_factory_plan", fake_validate)
+
+    plan = await source.create_factory_plan_from_supported_audio(
+        audio_path,
+        title="Title",
+        performer="Author",
+        duration=100,
+    )
+
+    assert captured_mimes == ["audio/aac"]
+    assert plan["audio_mime_type"] == "audio/aac"
+    assert plan["review_passes"] == 3
+
+
+def test_source_policy_installs_before_no_downgrade_and_execution():
+    quality = Path("services/shorts_factory_quality_gate.py").read_text(
+        encoding="utf-8"
+    )
+    source_code = Path("services/shorts_factory_source.py").read_text(
+        encoding="utf-8"
+    )
+
+    source_pos = quality.index("if not install_factory_source_quality_policy():")
+    no_downgrade_pos = quality.index(
+        "if not install_factory_no_downgrade_policy():"
+    )
+    execution_pos = quality.index(
+        "if not install_shorts_factory_execution_guard():"
+    )
+    assert source_pos < no_downgrade_pos < execution_pos
+    assert "height<=720" not in source_code
+    assert "--extract-audio" not in source_code
+    assert "--audio-format" not in source_code
+    assert "\ninstall_factory_source_quality_policy()\n" not in source_code
