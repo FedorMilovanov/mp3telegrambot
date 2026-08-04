@@ -24,6 +24,9 @@ _FACTORY_LONGS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
 _FACTORY_SETTINGS: ContextVar[dict[str, bool] | None] = ContextVar(
     "factory_render_settings", default=None
 )
+_FACTORY_SHORT_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
+    "factory_short_deliveries", default=None
+)
 _INSTALLED = False
 
 
@@ -45,6 +48,11 @@ def factory_subtitle_profile() -> dict[str, Any]:
 def factory_shorts_speed() -> float:
     """Verified Gemini boundaries must not be changed by global speed settings."""
     return 1.0
+
+
+def factory_short_delivery_count() -> int:
+    counter = _FACTORY_SHORT_DELIVERIES.get()
+    return int(counter[0]) if counter is not None else 0
 
 
 def is_subtitled_factory_delivery(video: Any) -> bool:
@@ -74,7 +82,11 @@ class _FactoryMessageProxy:
                 "SHORTS FACTORY rejected subtitle-less delivery artifact; "
                 "the candidate was not sent"
             )
-        return await self._message.reply_video(*args, **kwargs)
+        sent = await self._message.reply_video(*args, **kwargs)
+        counter = _FACTORY_SHORT_DELIVERIES.get()
+        if counter is not None:
+            counter[0] += 1
+        return sent
 
 
 class _FactoryUpdateProxy:
@@ -96,6 +108,7 @@ def factory_render_context(
     """Inject already judged candidates without process-global cross-user state."""
     short_token = _FACTORY_SHORTS.set(copy.deepcopy(shorts_candidates))
     long_token = _FACTORY_LONGS.set(copy.deepcopy(long_candidates))
+    delivery_token = _FACTORY_SHORT_DELIVERIES.set([0])
     settings_token = _FACTORY_SETTINGS.set(
         {
             "shorts_subtitles": True,
@@ -115,6 +128,7 @@ def factory_render_context(
         yield
     finally:
         _FACTORY_SETTINGS.reset(settings_token)
+        _FACTORY_SHORT_DELIVERIES.reset(delivery_token)
         _FACTORY_LONGS.reset(long_token)
         _FACTORY_SHORTS.reset(short_token)
 
@@ -190,16 +204,23 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         if _FACTORY_SETTINGS.get() is None:
             return await original_process_shorts(*args, **kwargs)
 
+        before = factory_short_delivery_count()
         if "update" in kwargs:
             call_kwargs = dict(kwargs)
             call_kwargs["update"] = _FactoryUpdateProxy(call_kwargs["update"])
-            return await original_process_shorts(*args, **call_kwargs)
+            result = await original_process_shorts(*args, **call_kwargs)
+        else:
+            call_args = list(args)
+            # process_and_send_shorts positional parameter #8 is update.
+            if len(call_args) >= 8:
+                call_args[7] = _FactoryUpdateProxy(call_args[7])
+            result = await original_process_shorts(*call_args, **kwargs)
 
-        call_args = list(args)
-        # process_and_send_shorts positional parameter #8 is update.
-        if len(call_args) >= 8:
-            call_args[7] = _FactoryUpdateProxy(call_args[7])
-        return await original_process_shorts(*call_args, **kwargs)
+        if factory_short_delivery_count() <= before:
+            raise RuntimeError(
+                "SHORTS FACTORY не доставил ни одного Short с вшитыми субтитрами"
+            )
+        return result
 
     async def factory_shorts_candidates(*args, **kwargs):
         planned = _FACTORY_SHORTS.get()
@@ -263,6 +284,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
 __all__ = [
     "DEFAULT_FACTORY_WHISPER_MODEL",
     "factory_render_context",
+    "factory_short_delivery_count",
     "factory_shorts_speed",
     "factory_subtitle_profile",
     "install_shorts_factory_mode",
