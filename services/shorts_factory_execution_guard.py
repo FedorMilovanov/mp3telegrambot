@@ -166,6 +166,65 @@ def factory_preflight_issues(
     return tuple(issues)
 
 
+def _env_bool(name: str, default: bool = True) -> bool:
+    raw = os.getenv(name, "1" if default else "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def factory_translation_preflight_issues(
+    *,
+    oauth_present: bool,
+    helper_available: bool,
+    cli_available: bool,
+    require_oauth: bool,
+) -> tuple[str, ...]:
+    issues: list[str] = []
+    if not helper_available and not cli_available:
+        issues.append("Yandex LiveDub client route is unavailable")
+    if require_oauth and not oauth_present:
+        issues.append("VOT_API_TOKEN/YANDEX_OAUTH_TOKEN is missing")
+    return tuple(issues)
+
+
+def enforce_factory_translation_preflight() -> None:
+    root = Path(__file__).resolve().parent.parent
+    helper_dir = root / "vot_helper"
+    helper_script = helper_dir / "vot_live.mjs"
+    helper_dependency = helper_dir / "node_modules" / "@vot.js" / "node"
+    node_available = bool(shutil.which("node") or shutil.which("node.exe"))
+    npm_available = bool(shutil.which("npm") or shutil.which("npm.cmd"))
+    helper_available = bool(
+        node_available
+        and helper_script.is_file()
+        and (helper_dependency.exists() or npm_available)
+    )
+    cli_available = bool(
+        shutil.which("vot-cli-live")
+        or shutil.which("vot-cli-live.cmd")
+        or shutil.which("npx")
+        or shutil.which("npx.cmd")
+    )
+    oauth_present = bool(
+        (
+            os.getenv("VOT_API_TOKEN", "")
+            or os.getenv("YANDEX_OAUTH_TOKEN", "")
+        ).strip()
+    )
+    issues = factory_translation_preflight_issues(
+        oauth_present=oauth_present,
+        helper_available=helper_available,
+        cli_available=cli_available,
+        require_oauth=_env_bool(
+            "SHORTS_FACTORY_REQUIRE_VOT_TOKEN",
+            True,
+        ),
+    )
+    if issues:
+        raise RuntimeError(
+            "Factory LiveDub preflight failed: " + "; ".join(issues)
+        )
+
+
 def _min_free_gb() -> float:
     try:
         value = float(os.getenv("SHORTS_FACTORY_MIN_FREE_GB", "2.0") or "2.0")
@@ -334,6 +393,7 @@ async def process_shorts_factory_guarded(
             "источник для всех вырезок…",
         )
         if translation_required:
+            enforce_factory_translation_preflight()
             source_task = asyncio.create_task(
                 factory_module._prepare_translation_video(
                     url,
@@ -588,8 +648,10 @@ def install_shorts_factory_execution_guard() -> bool:
 
 __all__ = [
     "enforce_factory_preflight",
+    "enforce_factory_translation_preflight",
     "factory_language_needs_translation",
     "factory_preflight_issues",
+    "factory_translation_preflight_issues",
     "install_shorts_factory_execution_guard",
     "normalize_factory_language",
     "process_shorts_factory_guarded",
