@@ -1,18 +1,18 @@
 {
   "policy": "intentional-code-health-baseline-refresh-v1",
-  "reason": "SHORTS FACTORY MAX adds a standalone, tested extraction pipeline and a dedicated Yandex timing-envelope module. Five small regex markers are used only for JSON fence cleanup, hashtag sanitization, media-id sanitization and conservative source-language detection; the timing module adds no regex or editorial postprocess debt.",
+  "reason": "SHORTS FACTORY MAX adds a standalone, tested extraction pipeline plus dedicated Yandex timing-envelope and exact media-probe modules. Five small regex markers are used only for JSON fence cleanup, hashtag sanitization, media-id sanitization and conservative source-language detection; the timing/media modules add no regex or editorial postprocess debt.",
   "previous": {
     "files_scanned": 158,
     "total_regex_markers": 720,
     "total_postprocess_markers": 271
   },
   "current": {
-    "files_scanned": 162,
+    "files_scanned": 163,
     "total_regex_markers": 725,
     "total_postprocess_markers": 271
   },
   "delta": {
-    "files_scanned": 4,
+    "files_scanned": 5,
     "total_regex_markers": 5,
     "total_postprocess_markers": 0
   },
@@ -22,11 +22,12 @@
       "tests/test_shorts_factory_mode.py",
       "tests/test_runtime_manifest.py"
     ],
-    "quality_contract": "Three high-thinking Gemini Pro passes with structured output, verified cut boundaries, mandatory large-v3 burned subtitles, exact speed 1.0, Yandex LiveDub-only foreign-language voice path, media-probed tail-safe cuts and no hidden neural translation fallback.",
+    "quality_contract": "Three high-thinking Gemini Pro passes with structured output, verified cut boundaries, mandatory large-v3 burned subtitles, exact speed 1.0, actual Telegram delivery counts, Yandex LiveDub-only foreign-language voice path, exact media-probed tail-safe cuts and no hidden neural translation fallback.",
     "new_files": [
       "services/shorts_factory_candidates.py",
       "services/shorts_factory_runtime.py",
       "services/shorts_factory_timing.py",
+      "services/shorts_factory_media.py",
       "pipelines/shorts_factory.py"
     ]
   }
