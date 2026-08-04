@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -243,6 +244,12 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     clips_module.settings_get = factory_clips_setting
     shorts_module.ashorts_speed_get = factory_speed_setting
     shorts_video_impl_module.get_subtitles_mode_settings = factory_subtitles_mode_settings
+
+    # Normally Factory is imported lazily after this installer. Keep the strict
+    # wrapper correct even under tests or future eager imports.
+    eager_factory_module = sys.modules.get("pipelines.shorts_factory")
+    if eager_factory_module is not None:
+        eager_factory_module.process_and_send_shorts = factory_process_shorts
 
     _INSTALLED = True
     logger.info(
