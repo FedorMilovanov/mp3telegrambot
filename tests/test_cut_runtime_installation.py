@@ -30,6 +30,9 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     source_quality_source = Path(
         "services/shorts_factory_source.py"
     ).read_text(encoding="utf-8")
+    disk_guard_source = Path(
+        "services/shorts_factory_disk_guard.py"
+    ).read_text(encoding="utf-8")
     timing_source = Path("services/shorts_factory_timing.py").read_text(
         encoding="utf-8"
     )
@@ -47,11 +50,13 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
         "\ninstall_factory_source_quality_policy()\n"
         not in source_quality_source
     )
+    assert "\ninstall_factory_disk_guard()\n" not in disk_guard_source
     assert "\ninstall_livedub_downstream_media_policy()\n" not in timing_source
     assert "\ninstall_factory_plan_quality_gate()\n" not in timing_source
     assert "if not install_livedub_downstream_media_policy():" in runtime_source
     assert "if not install_factory_plan_quality_gate():" in runtime_source
     assert "if not install_factory_source_quality_policy():" in quality_source
+    assert "if not install_factory_disk_guard():" in quality_source
     assert "if not install_factory_no_downgrade_policy():" in quality_source
 
     no_downgrade_pos = quality_source.index(
@@ -60,10 +65,11 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     source_pos = quality_source.index(
         "if not install_factory_source_quality_policy():"
     )
+    disk_pos = quality_source.index("if not install_factory_disk_guard():")
     execution_pos = quality_source.index(
         "if not install_shorts_factory_execution_guard():"
     )
-    assert no_downgrade_pos < source_pos < execution_pos
+    assert no_downgrade_pos < source_pos < disk_pos < execution_pos
 
 
 def test_required_factory_import_failure_cannot_be_silently_ignored():
