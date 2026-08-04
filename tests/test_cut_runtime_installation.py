@@ -54,16 +54,16 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     assert "if not install_factory_source_quality_policy():" in quality_source
     assert "if not install_factory_no_downgrade_policy():" in quality_source
 
-    source_pos = quality_source.index(
-        "if not install_factory_source_quality_policy():"
-    )
     no_downgrade_pos = quality_source.index(
         "if not install_factory_no_downgrade_policy():"
+    )
+    source_pos = quality_source.index(
+        "if not install_factory_source_quality_policy():"
     )
     execution_pos = quality_source.index(
         "if not install_shorts_factory_execution_guard():"
     )
-    assert source_pos < no_downgrade_pos < execution_pos
+    assert no_downgrade_pos < source_pos < execution_pos
 
 
 def test_required_factory_import_failure_cannot_be_silently_ignored():
