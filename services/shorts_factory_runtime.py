@@ -11,9 +11,17 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterator
 
+from services.media_delivery_probe import (
+    media_probe_is_deliverable,
+    probe_media_async,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_FACTORY_WHISPER_MODEL = "large-v3"
+FACTORY_SHORT_PUBLIC_MAX_SEC = 180.0
+FACTORY_LONG_PUBLIC_MAX_SEC = 900.0
+FACTORY_DURATION_EPSILON_SEC = 0.05
 
 _FACTORY_SHORTS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
     "factory_shorts_candidates",
@@ -85,8 +93,34 @@ def is_subtitled_factory_delivery(video: Any) -> bool:
     return name.endswith("_sub.mp4")
 
 
+async def _proved_factory_delivery(
+    video: Any,
+    *,
+    public_max_seconds: float,
+    kind: str,
+):
+    """Prove final streams and public duration on the actual Telegram artifact."""
+    try:
+        path = Path(video)
+    except (TypeError, ValueError, OSError) as exc:
+        raise RuntimeError(f"{kind} Factory delivery path is invalid") from exc
+
+    probe = await probe_media_async(path)
+    if not media_probe_is_deliverable(probe):
+        raise RuntimeError(
+            f"{kind} Factory delivery rejected: final file lacks proved video+audio"
+        )
+    assert probe is not None
+    if probe.duration > public_max_seconds + FACTORY_DURATION_EPSILON_SEC:
+        raise RuntimeError(
+            f"{kind} Factory delivery rejected: final duration "
+            f"{probe.duration:.3f}s exceeds {public_max_seconds:.0f}s"
+        )
+    return probe
+
+
 class _FactoryMessageProxy:
-    """Delegate Telegram calls while rejecting subtitle-less short videos."""
+    """Reject subtitle-less/overlong Shorts and count only accepted delivery."""
 
     def __init__(self, message: Any) -> None:
         self._message = message
@@ -103,7 +137,17 @@ class _FactoryMessageProxy:
                 "SHORTS FACTORY rejected subtitle-less delivery artifact; "
                 "the candidate was not sent"
             )
-        sent = await self._message.reply_video(*args, **kwargs)
+        probe = await _proved_factory_delivery(
+            video,
+            public_max_seconds=FACTORY_SHORT_PUBLIC_MAX_SEC,
+            kind="Short",
+        )
+        call_kwargs = dict(kwargs)
+        call_kwargs["duration"] = max(1, int(round(probe.duration)))
+        # Generic trim callbacks re-render without the mandatory Factory subtitle
+        # pipeline and can exceed three minutes. Do not expose unsafe controls.
+        call_kwargs.pop("reply_markup", None)
+        sent = await self._message.reply_video(*args, **call_kwargs)
         counter = _FACTORY_SHORT_DELIVERIES.get()
         if counter is not None:
             counter[0] += 1
@@ -111,7 +155,7 @@ class _FactoryMessageProxy:
 
 
 class _FactoryLongMessageProxy:
-    """Count a long clip only after Telegram accepts the video."""
+    """Prove the public 15-minute cap and count only accepted long delivery."""
 
     def __init__(self, message: Any) -> None:
         self._message = message
@@ -120,7 +164,17 @@ class _FactoryLongMessageProxy:
         return getattr(self._message, name)
 
     async def reply_video(self, *args, **kwargs):
-        sent = await self._message.reply_video(*args, **kwargs)
+        video = kwargs.get("video")
+        if video is None and args:
+            video = args[0]
+        probe = await _proved_factory_delivery(
+            video,
+            public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
+            kind="Long clip",
+        )
+        call_kwargs = dict(kwargs)
+        call_kwargs["duration"] = max(1, int(round(probe.duration)))
+        sent = await self._message.reply_video(*args, **call_kwargs)
         counter = _FACTORY_LONG_DELIVERIES.get()
         if counter is not None:
             counter[0] += 1
@@ -404,8 +458,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     logger.info(
         "Shorts Factory MAX runtime installed: Pro plan, speed=1.0, "
         "Whisper=%s karaoke word-timestamps, verified Telegram delivery, "
-        "exact media duration, context-safe Yandex tail, distinct command/playlist "
-        "entrypoint chains",
+        "final duration<=180/900, exact media duration, safe Yandex tail, "
+        "no unsafe trim controls, distinct command/playlist chains",
         factory_subtitle_profile()["model_name"],
     )
     return True
@@ -413,6 +467,9 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
 
 __all__ = [
     "DEFAULT_FACTORY_WHISPER_MODEL",
+    "FACTORY_DURATION_EPSILON_SEC",
+    "FACTORY_LONG_PUBLIC_MAX_SEC",
+    "FACTORY_SHORT_PUBLIC_MAX_SEC",
     "factory_completed_delivery_counts",
     "factory_long_delivery_count",
     "factory_render_context",
