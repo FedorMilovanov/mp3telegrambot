@@ -1,0 +1,31 @@
+{
+  "policy": "intentional-code-health-baseline-refresh-v1",
+  "reason": "SHORTS FACTORY MAX adds a standalone, tested extraction pipeline. Five small regex markers are used only for JSON fence cleanup, hashtag sanitization, media-id sanitization and conservative source-language detection; no new editorial postprocess layer was added.",
+  "previous": {
+    "files_scanned": 158,
+    "total_regex_markers": 720,
+    "total_postprocess_markers": 271
+  },
+  "current": {
+    "files_scanned": 161,
+    "total_regex_markers": 725,
+    "total_postprocess_markers": 271
+  },
+  "delta": {
+    "files_scanned": 3,
+    "total_regex_markers": 5,
+    "total_postprocess_markers": 0
+  },
+  "evidence": {
+    "focused_tests": [
+      "tests/test_shorts_factory_candidates.py",
+      "tests/test_shorts_factory_mode.py"
+    ],
+    "quality_contract": "Three high-thinking Gemini passes, verified cut boundaries, Yandex LiveDub-only foreign-language voice path, no hidden neural translation fallback.",
+    "new_files": [
+      "services/shorts_factory_candidates.py",
+      "services/shorts_factory_runtime.py",
+      "pipelines/shorts_factory.py"
+    ]
+  }
+}
