@@ -116,7 +116,7 @@ def factory_render_context(
             "shorts_snapshot": True,
             "shorts_title_poster": True,
             # Gemini's third pass already verifies exact boundaries. For Yandex
-            # the Factory pipeline shifts candidates by the configured dub delay.
+            # the Factory timing policy adds context and the complete live tail.
             "shorts_boundary_padding": False,
             "clips": True,
             # Keep the shared source after Clips so interactive trim buttons can
@@ -145,6 +145,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     import pipelines.shorts as shorts_module
     import services.shorts_video_impl as shorts_video_impl_module
     from handlers.mode_command import get_user_mode
+    from services.shorts_factory_timing import align_factory_livedub_candidates
 
     original_process = commands_module.process_single_video
     original_process_shorts = shorts_module.process_and_send_shorts
@@ -181,9 +182,12 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
                 logger.error("Shorts Factory rejected: faster-whisper is unavailable")
                 return False
 
-            from pipelines.shorts_factory import process_shorts_factory
+            import pipelines.shorts_factory as factory_module
 
-            return await process_shorts_factory(
+            factory_module._shift_candidates_for_livedub = (
+                align_factory_livedub_candidates
+            )
+            return await factory_module.process_shorts_factory(
                 url,
                 update,
                 status_msg=status_msg,
@@ -266,16 +270,20 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     shorts_module.ashorts_speed_get = factory_speed_setting
     shorts_video_impl_module.get_subtitles_mode_settings = factory_subtitles_mode_settings
 
-    # Normally Factory is imported lazily after this installer. Keep the strict
-    # wrapper correct even under tests or future eager imports.
+    # Normally Factory is imported lazily after this installer. Keep strict
+    # wrappers and timing correct even under tests or future eager imports.
     eager_factory_module = sys.modules.get("pipelines.shorts_factory")
     if eager_factory_module is not None:
         eager_factory_module.process_and_send_shorts = factory_process_shorts
+        eager_factory_module._shift_candidates_for_livedub = (
+            align_factory_livedub_candidates
+        )
 
     _INSTALLED = True
     logger.info(
         "Shorts Factory MAX runtime installed: Pro plan, speed=1.0, "
-        "Whisper=%s karaoke word-timestamps, subtitle-only delivery",
+        "Whisper=%s karaoke word-timestamps, subtitle-only delivery, "
+        "context-safe Yandex tail",
         factory_subtitle_profile()["model_name"],
     )
     return True
