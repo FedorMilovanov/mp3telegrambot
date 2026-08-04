@@ -88,6 +88,6 @@ def test_factory_quality_gate_is_explicitly_installed_by_required_runtime():
         encoding="utf-8"
     )
 
-    assert gate_source.count("install_factory_plan_quality_gate()") == 0
-    assert timing_source.count("install_factory_plan_quality_gate()") == 0
-    assert "install_factory_plan_quality_gate()" in runtime_source
+    assert "\ninstall_factory_plan_quality_gate()\n" not in gate_source
+    assert "\ninstall_factory_plan_quality_gate()\n" not in timing_source
+    assert "if not install_factory_plan_quality_gate():" in runtime_source
