@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Standalone high-quality Shorts/Highlights extraction mode."""
+"""Standalone maximum-quality Shorts/Highlights extraction mode."""
 from __future__ import annotations
 
 import asyncio
+import copy
 import html
 import json
 import logging
@@ -104,41 +105,90 @@ def _looks_russian(text: str) -> bool:
     return bool(re.search(r"[А-Яа-яЁё]", str(text or "")))
 
 
-def _should_try_livedub(info: dict[str, Any]) -> bool:
-    if not _env_bool("SHORTS_FACTORY_LIVEDUB", True):
-        return False
+def _source_needs_translation(info: dict[str, Any]) -> bool:
     language = str(info.get("language") or "").strip().lower()
     if language.startswith(("ru", "uk", "be")):
         return False
-    if language.startswith("en"):
+    if language:
         return True
     title = str(info.get("title") or "")
     return bool(title and not _looks_russian(title))
 
 
-async def _prepare_livedub(
+def _translation_backend() -> str:
+    """Reserved provider seam; only Yandex LiveDub is enabled today."""
+    backend = os.getenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live").strip().lower()
+    aliases = {
+        "yandex": "yandex_live",
+        "yandex_live": "yandex_live",
+        "live": "yandex_live",
+    }
+    return aliases.get(backend, backend)
+
+
+async def _prepare_translation_video(
     url: str,
     workdir: Path,
     duration: int,
     source_language: str,
-) -> Path | None:
+) -> Path:
+    backend = _translation_backend()
+    if backend != "yandex_live":
+        raise RuntimeError(
+            "SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». "
+            f"Backend {backend!r} оставлен для будущего расширения, но ещё не реализован."
+        )
+    if not _env_bool("SHORTS_FACTORY_LIVEDUB", True):
+        raise RuntimeError(
+            "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть включён: "
+            "собственный нейроперевод в этом режиме запрещён."
+        )
+
     from services.yandex_live_dub import get_live_dub_video
 
-    try:
-        return await get_live_dub_video(
-            url,
-            workdir,
-            duration=float(duration),
-            lang=source_language,
-        )
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        logger.warning("Shorts Factory LiveDub unavailable: %s", exc)
-        return None
+    translated = await get_live_dub_video(
+        url,
+        workdir,
+        duration=float(duration),
+        lang=source_language,
+    )
+    if not translated or not translated.exists():
+        raise RuntimeError("Яндекс LiveDub не вернул готовое переведённое видео")
+    return translated
 
 
-def _plan_message(plan: dict[str, Any], *, livedub_requested: bool) -> str:
+def _pad_candidates_for_livedub(
+    candidates: list[dict[str, Any]],
+    *,
+    source_duration: int,
+    pre_roll: float,
+    post_roll: float,
+) -> list[dict[str, Any]]:
+    """Protect delayed Yandex phrases from being cut at clip boundaries."""
+    out = copy.deepcopy(candidates)
+    for item in out:
+        start = max(0.0, float(item.get("start_seconds", 0)) - pre_roll)
+        end = min(float(source_duration), float(item.get("end_seconds", 0)) + post_roll)
+        if end <= start:
+            continue
+        item["start_seconds"] = start
+        item["end_seconds"] = end
+        item["duration_seconds"] = end - start
+        item["start"] = _format_seconds(start)
+        item["end"] = _format_seconds(end)
+    return out
+
+
+def _format_seconds(seconds: float) -> str:
+    value = max(0, int(round(seconds)))
+    hours, remainder = divmod(value, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
     longs = plan.get("long_candidates") or []
@@ -152,8 +202,8 @@ def _plan_message(plan: dict[str, Any], *, livedub_requested: bool) -> str:
         f"🎬 <b>{title}</b>" + (f" — {author}" if author else ""),
         f"🤖 {model} · thinking HIGH · двойная редакторская проверка",
     ]
-    if livedub_requested:
-        lines.append("🎙 Для англоязычного источника параллельно готовится Яндекс LiveDub.")
+    if translation_required:
+        lines.append("🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».")
 
     if shorts:
         lines.extend(["", "⚡ <b>SHORTS HIGHLIGHTS · 35 сек — 3 мин</b>"])
@@ -197,7 +247,7 @@ async def process_shorts_factory(
     url = get_youtube_video_url(url)
     mp3_path: Path | None = None
     workdir = Path(tempfile.mkdtemp(prefix="shorts_factory_"))
-    livedub_task: asyncio.Task | None = None
+    translation_task: asyncio.Task | None = None
 
     try:
         if status_msg is None:
@@ -223,12 +273,12 @@ async def process_shorts_factory(
         channel_name = str(info.get("channel") or info.get("uploader") or "").strip()
         performer, title = parse_title(full_title, channel_name)
         source_language = str(info.get("language") or "").strip().lower()
-        livedub_requested = _should_try_livedub(info)
+        translation_required = _source_needs_translation(info)
 
-        if livedub_requested:
-            livedub_task = asyncio.create_task(
-                _prepare_livedub(url, workdir, duration, source_language),
-                name=f"shorts-factory-livedub-{media_id}",
+        if translation_required:
+            translation_task = asyncio.create_task(
+                _prepare_translation_video(url, workdir, duration, source_language),
+                name=f"shorts-factory-yandex-{media_id}",
             )
 
         await _safe_status(
@@ -250,30 +300,39 @@ async def process_shorts_factory(
         )
         ai_data = factory_ai_data(plan, title=title or full_title, performer=performer or channel_name)
 
+        translated_video_path: Path | None = None
+        if translation_task is not None:
+            await _safe_status(
+                status_msg,
+                "🎙 План готов. Жду Яндекс LiveDub «Живые голоса»…",
+            )
+            translation_timeout = int(
+                os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "1800") or "1800"
+            )
+            try:
+                translated_video_path = await asyncio.wait_for(
+                    translation_task,
+                    timeout=translation_timeout,
+                )
+            except asyncio.TimeoutError as exc:
+                translation_task.cancel()
+                raise RuntimeError(
+                    f"Яндекс LiveDub не завершился за {translation_timeout // 60} мин. "
+                    "Нейроперевод намеренно не используется."
+                ) from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    "Яндекс LiveDub «Живые голоса» недоступен для этого источника. "
+                    "Нарезка иностранного оригинала и собственный нейроперевод намеренно не выполняются. "
+                    f"Причина: {str(exc)[:240]}"
+                ) from exc
+
         if not silent_errors:
             await update.message.reply_text(
-                _plan_message(plan, livedub_requested=livedub_requested),
+                _plan_message(plan, translation_required=translation_required),
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
-
-        livedub_video_path = None
-        if livedub_task is not None:
-            await _safe_status(
-                status_msg,
-                "🎙 План готов. Жду Яндекс LiveDub, затем режу русские версии…",
-            )
-            livedub_timeout = int(os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "1800") or "1800")
-            try:
-                livedub_video_path = await asyncio.wait_for(livedub_task, timeout=livedub_timeout)
-            except asyncio.TimeoutError:
-                livedub_task.cancel()
-                logger.warning("Shorts Factory LiveDub exceeded %ss", livedub_timeout)
-                livedub_video_path = None
-            if livedub_video_path is None and not silent_errors:
-                await update.message.reply_text(
-                    "⚠️ Яндекс LiveDub для этого источника недоступен. Нарезка продолжится с оригинальной дорожкой."
-                )
 
         await _safe_status(
             status_msg,
@@ -282,8 +341,18 @@ async def process_shorts_factory(
 
         shorts_candidates = plan.get("shorts_candidates") or []
         long_candidates = plan.get("long_candidates") or []
-        with factory_render_context(shorts_candidates, long_candidates):
-            if shorts_candidates:
+        render_shorts = shorts_candidates
+        render_longs = long_candidates
+        if translated_video_path is not None:
+            render_longs = _pad_candidates_for_livedub(
+                long_candidates,
+                source_duration=duration,
+                pre_roll=float(os.getenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "1.0") or "1.0"),
+                post_roll=float(os.getenv("SHORTS_FACTORY_LIVEDUB_POSTROLL_SEC", "2.5") or "2.5"),
+            )
+
+        with factory_render_context(render_shorts, render_longs):
+            if render_shorts:
                 await process_and_send_shorts(
                     url=url,
                     media_id=media_id,
@@ -294,9 +363,9 @@ async def process_shorts_factory(
                     ai_data=ai_data,
                     update=update,
                     workdir=workdir,
-                    livedub_video_path=livedub_video_path,
+                    livedub_video_path=translated_video_path,
                 )
-            if long_candidates:
+            if render_longs:
                 await process_and_send_clips(
                     url=url,
                     media_id=media_id,
@@ -306,7 +375,7 @@ async def process_shorts_factory(
                     duration=duration,
                     ai_data=ai_data,
                     update=update,
-                    livedub_video_path=livedub_video_path,
+                    livedub_video_path=translated_video_path,
                 )
 
         await _safe_status(
@@ -315,12 +384,12 @@ async def process_shorts_factory(
             f"{len(long_candidates)} длинных фрагмента.",
         )
         logger.info(
-            "Shorts Factory MAX done media_id=%s duration=%ss shorts=%d longs=%d livedub=%s",
+            "Shorts Factory MAX done media_id=%s duration=%ss shorts=%d longs=%d yandex=%s",
             media_id,
             duration,
             len(shorts_candidates),
             len(long_candidates),
-            bool(livedub_video_path),
+            bool(translated_video_path),
         )
         return bool(shorts_candidates or long_candidates)
 
@@ -336,11 +405,11 @@ async def process_shorts_factory(
                 await update.message.reply_text(message)
         return False
     finally:
-        if livedub_task is not None and not livedub_task.done():
-            livedub_task.cancel()
+        if translation_task is not None and not translation_task.done():
+            translation_task.cancel()
             try:
-                await livedub_task
-            except (asyncio.CancelledError, Exception):
+                await translation_task
+            except BaseException:
                 pass
         if mp3_path is not None:
             try:
