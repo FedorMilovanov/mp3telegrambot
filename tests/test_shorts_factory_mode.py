@@ -1,5 +1,8 @@
 from handlers.mode_command import MODE_DESCRIPTIONS, MODE_LABELS, VALID_MODES
+import pipelines.shorts_factory as factory
 from pipelines.shorts_factory import (
+    _persist_factory_source,
+    _shift_candidates_for_livedub,
     _source_needs_translation,
     _translation_backend,
 )
@@ -33,3 +36,37 @@ def test_translation_backend_defaults_to_yandex_only(monkeypatch):
 
     monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "neural_future")
     assert _translation_backend() == "neural_future"
+
+
+def test_livedub_shift_preserves_clip_duration(monkeypatch):
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15")
+    candidates = [
+        {
+            "start_seconds": 10,
+            "end_seconds": 100,
+            "duration_seconds": 90,
+            "start": "0:10",
+            "end": "1:40",
+            "title": "Фрагмент",
+        }
+    ]
+
+    shifted = _shift_candidates_for_livedub(candidates, source_duration=300)
+
+    assert shifted[0]["start_seconds"] == 10.75
+    assert shifted[0]["end_seconds"] == 100.75
+    assert shifted[0]["duration_seconds"] == 90
+    assert candidates[0]["start_seconds"] == 10
+
+
+def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "DOWNLOAD_DIR", tmp_path)
+    source = tmp_path / "temporary-source.mp4"
+    source.write_bytes(b"x" * 2048)
+
+    persisted = _persist_factory_source(source, "video123")
+
+    assert persisted == tmp_path / "video123_factory_source.mp4"
+    assert persisted.exists()
+    assert not source.exists()
