@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -75,6 +76,22 @@ def _remove_paths(paths) -> None:
             Path(path).unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def _factory_livedub_timeout_seconds() -> int:
+    """Return the quality-first Factory LiveDub timeout.
+
+    A shorter timeout can abort a valid long Yandex translation, while an
+    unbounded value can leave a worker occupied indefinitely. Keep the
+    production floor at 30 minutes and cap one provider call at two hours.
+    """
+    try:
+        value = int(
+            os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "") or 1800
+        )
+    except (TypeError, ValueError):
+        value = 1800
+    return max(1800, min(value, 7200))
 
 
 async def _select_audio_source(media_id: str) -> tuple[Path, Any]:
@@ -203,18 +220,29 @@ async def download_factory_audio_source(url: str, media_id: str) -> Path:
         str(output_template),
         url,
     ]
-    process = await run_cancellable_process(
-        command,
-        timeout=_FACTORY_MEDIA_TIMEOUT_SEC,
-        text=True,
-    )
-    if process.returncode != 0:
-        raise RuntimeError(
-            "yt-dlp maximum-quality Factory audio download failed: "
-            + _stderr_tail(process)
+    try:
+        process = await run_cancellable_process(
+            command,
+            timeout=_FACTORY_MEDIA_TIMEOUT_SEC,
+            text=True,
         )
-    source_path, source_probe = await _select_audio_source(media_id)
-    return await _prepare_gemini_audio(source_path, source_probe, media_id)
+        if process.returncode != 0:
+            raise RuntimeError(
+                "yt-dlp maximum-quality Factory audio download failed: "
+                + _stderr_tail(process)
+            )
+        source_path, source_probe = await _select_audio_source(media_id)
+        return await _prepare_gemini_audio(
+            source_path,
+            source_probe,
+            media_id,
+        )
+    except (asyncio.CancelledError, Exception):
+        # A cancelled or failed yt-dlp/ffmpeg job must not leave raw, prepared
+        # or .part artifacts that can be mistaken for a valid source by a later
+        # run with the same media id.
+        _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
+        raise
 
 
 async def download_factory_video_source(
@@ -238,41 +266,47 @@ async def download_factory_video_source(
         str(output_template),
         url,
     ]
-    process = await run_cancellable_process(
-        command,
-        timeout=_FACTORY_MEDIA_TIMEOUT_SEC,
-        text=True,
-    )
-    if process.returncode != 0:
-        raise RuntimeError(
-            "yt-dlp maximum-quality Factory video download failed: "
-            + _stderr_tail(process)
+    try:
+        process = await run_cancellable_process(
+            command,
+            timeout=_FACTORY_MEDIA_TIMEOUT_SEC,
+            text=True,
         )
-
-    candidates = sorted(
-        (
-            path
-            for path in target_dir.glob(f"{prefix}.*")
-            if path.is_file() and not _partial_media(path)
-        ),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    for path in candidates:
-        probe = await probe_media_async(path)
-        if media_probe_is_deliverable(probe):
-            logger.info(
-                "Factory maximum-quality video source: %s %sx%s %.3fs %.1fMB",
-                path.name,
-                getattr(probe, "width", 0),
-                getattr(probe, "height", 0),
-                float(getattr(probe, "duration", 0.0) or 0.0),
-                path.stat().st_size / (1024 * 1024),
+        if process.returncode != 0:
+            raise RuntimeError(
+                "yt-dlp maximum-quality Factory video download failed: "
+                + _stderr_tail(process)
             )
-            return path
-    raise RuntimeError(
-        "yt-dlp completed without a probed maximum-quality video+audio source"
-    )
+
+        candidates = sorted(
+            (
+                path
+                for path in target_dir.glob(f"{prefix}.*")
+                if path.is_file() and not _partial_media(path)
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for path in candidates:
+            probe = await probe_media_async(path)
+            if media_probe_is_deliverable(probe):
+                logger.info(
+                    "Factory maximum-quality video source: %s %sx%s "
+                    "%.3fs %.1fMB",
+                    path.name,
+                    getattr(probe, "width", 0),
+                    getattr(probe, "height", 0),
+                    float(getattr(probe, "duration", 0.0) or 0.0),
+                    path.stat().st_size / (1024 * 1024),
+                )
+                return path
+        raise RuntimeError(
+            "yt-dlp completed without a probed maximum-quality "
+            "video+audio source"
+        )
+    except (asyncio.CancelledError, Exception):
+        _remove_paths(target_dir.glob(f"{prefix}.*"))
+        raise
 
 
 async def prepare_factory_translation_video(
@@ -304,7 +338,7 @@ async def prepare_factory_translation_video(
         get_live_dub_audio(
             url,
             workdir,
-            timeout=900,
+            timeout=_factory_livedub_timeout_seconds(),
             voice_style="live",
             duration=float(duration),
             lang=source_language,
