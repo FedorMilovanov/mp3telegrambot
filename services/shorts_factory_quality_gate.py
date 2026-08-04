@@ -85,12 +85,19 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def install_factory_plan_quality_gate() -> bool:
-    """Wrap the audio planner before the lazy Factory pipeline imports it."""
+    """Install every post-media Factory/cut guard before lazy pipeline imports."""
     global _INSTALLED
     if _INSTALLED:
         return True
 
+    from services.cut_mode_source_policy import install_cut_mode_source_policy
+    from services.shorts_factory_execution_guard import (
+        install_shorts_factory_execution_guard,
+    )
     import services.shorts_factory_candidates as candidates_module
+
+    if not install_cut_mode_source_policy():
+        return False
 
     original_create_factory_plan = candidates_module.create_factory_plan
 
@@ -113,7 +120,14 @@ def install_factory_plan_quality_gate() -> bool:
     if eager_factory is not None:
         eager_factory.create_factory_plan = strict_create_factory_plan
 
+    if not install_shorts_factory_execution_guard():
+        return False
+
     _INSTALLED = True
+    logger.info(
+        "Shorts Factory post-media guards installed: quality threshold, "
+        "spoken-language execution and translated ENG cut source"
+    )
     return True
 
 
