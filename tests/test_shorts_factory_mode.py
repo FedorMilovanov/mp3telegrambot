@@ -13,6 +13,7 @@ from pipelines.shorts_factory import (
 import services.shorts_factory_runtime as factory_runtime
 from services.shorts_factory_runtime import (
     DEFAULT_FACTORY_WHISPER_MODEL,
+    factory_completed_delivery_counts,
     factory_long_delivery_count,
     factory_render_context,
     factory_short_delivery_count,
@@ -220,18 +221,48 @@ async def test_factory_delivery_counters_increment_only_after_success(tmp_path):
     short_proxy = factory_runtime._FactoryMessageProxy(Message())
     long_proxy = factory_runtime._FactoryLongMessageProxy(Message())
 
-    with factory_render_context([], []):
+    completed_token = factory_runtime._FACTORY_COMPLETED_DELIVERIES.set(None)
+    try:
+        with factory_render_context([], []):
+            assert factory_short_delivery_count() == 0
+            assert factory_long_delivery_count() == 0
+
+            await short_proxy.reply_video(video=subtitled)
+            assert factory_short_delivery_count() == 1
+            with pytest.raises(RuntimeError, match="subtitle-less"):
+                await short_proxy.reply_video(video=raw)
+            assert factory_short_delivery_count() == 1
+
+            await long_proxy.reply_video(video=raw)
+            assert factory_long_delivery_count() == 1
+
         assert factory_short_delivery_count() == 0
         assert factory_long_delivery_count() == 0
+        assert factory_completed_delivery_counts() == (1, 1)
+    finally:
+        factory_runtime._FACTORY_COMPLETED_DELIVERIES.reset(completed_token)
 
-        await short_proxy.reply_video(video=subtitled)
-        assert factory_short_delivery_count() == 1
-        with pytest.raises(RuntimeError, match="subtitle-less"):
-            await short_proxy.reply_video(video=raw)
-        assert factory_short_delivery_count() == 1
 
-        await long_proxy.reply_video(video=raw)
-        assert factory_long_delivery_count() == 1
+@pytest.mark.asyncio
+async def test_factory_final_status_uses_actual_delivery_counts():
+    class StatusMessage:
+        def __init__(self):
+            self.text = ""
 
-    assert factory_short_delivery_count() == 0
-    assert factory_long_delivery_count() == 0
+        async def edit_text(self, text, *args, **kwargs):
+            self.text = text
+            return {"args": args, "kwargs": kwargs}
+
+    status = StatusMessage()
+    proxy = factory_runtime._FactoryStatusProxy(status)
+    token = factory_runtime._FACTORY_COMPLETED_DELIVERIES.set((2, 1))
+    try:
+        await proxy.edit_text(
+            "✅ SHORTS FACTORY MAX завершён: 5 Shorts, 3 длинных фрагмента."
+        )
+    finally:
+        factory_runtime._FACTORY_COMPLETED_DELIVERIES.reset(token)
+
+    assert status.text == (
+        "✅ SHORTS FACTORY MAX завершён: 2 Shorts, 1 длинных фрагмента."
+    )
