@@ -111,6 +111,7 @@ def install_factory_plan_quality_gate() -> bool:
     from services.cut_replay_delivery_policy import (
         install_cut_replay_delivery_policy,
     )
+    from services.shorts_factory_disk_guard import install_factory_disk_guard
     from services.shorts_factory_execution_guard import (
         install_shorts_factory_execution_guard,
     )
@@ -129,6 +130,8 @@ def install_factory_plan_quality_gate() -> bool:
     if not install_factory_no_downgrade_policy():
         return False
     if not install_factory_source_quality_policy():
+        return False
+    if not install_factory_disk_guard():
         return False
 
     original_boundary_prompt = candidates_module._boundary_prompt
@@ -173,9 +176,9 @@ def install_factory_plan_quality_gate() -> bool:
     _INSTALLED = True
     logger.info(
         "Shorts Factory post-media guards installed: validated no-downgrade "
-        "configuration, maximum-quality native sources, exact audited "
-        "boundaries, spoken-language execution, translated ENG source and "
-        "truthful cached cut replay delivery"
+        "configuration, maximum-quality native sources, selected-format disk "
+        "proof, exact audited boundaries, spoken-language execution, "
+        "translated ENG source and truthful cached cut replay delivery"
     )
     return True
 
