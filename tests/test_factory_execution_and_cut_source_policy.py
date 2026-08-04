@@ -15,6 +15,20 @@ from services.shorts_factory_execution_guard import (
     normalize_factory_language,
     resolve_factory_spoken_language,
 )
+from services.shorts_factory_quality_gate import (
+    validated_factory_plan_language,
+)
+
+
+def test_factory_quality_gate_requires_proven_dominant_spoken_language():
+    assert validated_factory_plan_language(
+        {"metadata": {"language": "en"}}
+    ) == "en"
+
+    with pytest.raises(RuntimeError, match="доминирующий язык речи"):
+        validated_factory_plan_language(
+            {"metadata": {"language": "mixed"}}
+        )
 
 
 def test_factory_spoken_language_prefers_audio_plan_over_title_metadata():
