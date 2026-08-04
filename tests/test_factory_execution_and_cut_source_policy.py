@@ -7,6 +7,8 @@ import services.cut_mode_source_policy as source_policy
 from services.cut_mode_source_policy import (
     cached_record_for_cut_source,
     cut_cache_validity,
+    cut_replay_setting_value,
+    cut_replay_settings,
     cut_source_is_usable,
     cut_source_mode_context,
     translated_source_required,
@@ -78,12 +80,12 @@ def test_factory_unknown_language_is_fail_closed_without_title_guessing():
         )
 
 
-def test_enabled_legacy_cuts_bypass_early_analysis_cache():
+def test_enabled_legacy_cuts_convert_valid_cache_to_replay():
     assert cut_cache_validity(
         True,
         "ok",
         pipeline_requested=True,
-    ) == (False, "cut_pipeline_requested")
+    ) == (False, "cut_cache_replay")
     assert cut_cache_validity(
         True,
         "ok",
@@ -115,6 +117,53 @@ def test_eng_cut_ignores_cached_file_id_but_keeps_other_cache_fields():
         pipeline_requested=True,
         translated_required=False,
     ) is cached
+
+
+def test_cached_cut_replay_disables_publication_features_only_task_locally():
+    base = {
+        "synopsis": True,
+        "analytics": True,
+        "shorts": True,
+        "clips": True,
+    }
+
+    with cut_source_mode_context("rus", pipeline_requested=True):
+        token = source_policy._CUT_CACHE_REPLAY.set(True)
+        try:
+            replay = cut_replay_settings(base)
+            assert replay["synopsis"] is False
+            assert replay["analytics"] is False
+            assert replay["shorts"] is True
+            assert replay["clips"] is True
+            assert cut_replay_setting_value("generate_pdf", True) is False
+        finally:
+            source_policy._CUT_CACHE_REPLAY.reset(token)
+
+    assert cut_replay_settings(base) == base
+    assert cut_replay_setting_value("synopsis", True) is True
+
+
+@pytest.mark.asyncio
+async def test_cached_cut_replay_suppresses_duplicate_mp3_delivery():
+    class Message:
+        def __init__(self):
+            self.calls = 0
+
+        async def reply_audio(self, *args, **kwargs):
+            self.calls += 1
+            return "sent"
+
+    message = Message()
+    proxy = source_policy._CutReplayMessageProxy(message)
+
+    token = source_policy._CUT_CACHE_REPLAY.set(True)
+    try:
+        sent = await proxy.reply_audio(audio="x.mp3")
+    finally:
+        source_policy._CUT_CACHE_REPLAY.reset(token)
+
+    assert sent.audio is None
+    assert message.calls == 0
 
 
 def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
@@ -257,6 +306,18 @@ def test_cut_mode_context_preserves_each_existing_entrypoint_chain():
     assert "original_playlist_process = playlist_module.process_single_video" in source
     assert "commands_process_with_mode = _wrap_process_entry(" in source
     assert "playlist_process_with_mode = _wrap_process_entry(" in source
+
+
+def test_cached_cut_replay_preserves_cache_and_archive_surfaces():
+    source = Path("services/cut_mode_source_policy.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Cached cut replay: preserving existing video_cache record" in source
+    assert "main_pipeline_module.adb_save = cut_aware_adb_save" in source
+    assert "main_pipeline_module.asave_generated_page_record" in source
+    assert "main_pipeline_module.asave_segment_plan_export" in source
+    assert "main_pipeline_module.gemini_analyze_audio = cut_aware_gemini_analyze" in source
 
 
 def test_required_runtime_installs_new_guards_without_import_side_effects():
