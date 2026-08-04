@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from services import shorts_factory_quality_gate as gate
 
 
@@ -75,8 +77,13 @@ def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
     assert [item["title"] for item in gated["long_candidates"]] == ["94"]
 
 
-def test_factory_quality_gate_is_installed_before_timing_runtime():
-    from services import shorts_factory_timing
+def test_factory_quality_gate_is_explicitly_installed_by_timing_bootstrap():
+    gate_source = Path("services/shorts_factory_quality_gate.py").read_text(
+        encoding="utf-8"
+    )
+    timing_source = Path("services/shorts_factory_timing.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert gate._INSTALLED is True
-    assert callable(shorts_factory_timing.align_factory_livedub_candidates)
+    assert gate_source.count("install_factory_plan_quality_gate()") == 0
+    assert "install_factory_plan_quality_gate()" in timing_source
