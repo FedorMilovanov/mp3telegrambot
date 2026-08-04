@@ -18,6 +18,10 @@ _REPLAY_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
     "cut_replay_telegram_deliveries",
     default=None,
 )
+_FALLBACK_MAIN_AUDIO_SUPPRESSED: ContextVar[bool] = ContextVar(
+    "cut_replay_fallback_main_audio_suppressed",
+    default=False,
+)
 _INSTALLED = False
 
 
@@ -27,14 +31,26 @@ def cut_replay_delivery_count() -> int:
 
 
 def same_replay_audio_path(left: Any, right: Path | None) -> bool:
-    """Compare Path values and Telegram file objects by their concrete name."""
-    if left is None or right is None:
+    """Compare real paths; without one, suppress only replay's first audio."""
+    if left is None:
         return False
+    if right is None:
+        if _FALLBACK_MAIN_AUDIO_SUPPRESSED.get():
+            return False
+        _FALLBACK_MAIN_AUDIO_SUPPRESSED.set(True)
+        return True
+
     candidate = getattr(left, "name", left)
     try:
-        return Path(candidate).resolve(strict=False) == right.resolve(strict=False)
+        matched = (
+            Path(candidate).resolve(strict=False)
+            == right.resolve(strict=False)
+        )
     except (OSError, TypeError, ValueError):
         return False
+    if matched:
+        _FALLBACK_MAIN_AUDIO_SUPPRESSED.set(True)
+    return matched
 
 
 def mark_cut_replay_from_cache_decision(
@@ -115,6 +131,7 @@ def install_cut_replay_delivery_policy() -> bool:
         ):
             replay_token = _REPLAY_OCCURRED.set(False)
             delivery_token = _REPLAY_DELIVERIES.set([0])
+            audio_token = _FALLBACK_MAIN_AUDIO_SUPPRESSED.set(False)
             try:
                 result = await original_process(
                     url,
@@ -149,6 +166,7 @@ def install_cut_replay_delivery_policy() -> bool:
                 )
                 return True
             finally:
+                _FALLBACK_MAIN_AUDIO_SUPPRESSED.reset(audio_token)
                 _REPLAY_DELIVERIES.reset(delivery_token)
                 _REPLAY_OCCURRED.reset(replay_token)
 
