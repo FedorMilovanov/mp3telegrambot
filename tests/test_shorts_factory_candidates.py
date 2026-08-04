@@ -1,4 +1,9 @@
-from services.shorts_factory_candidates import validate_factory_plan
+import pytest
+
+from services.shorts_factory_candidates import (
+    shorts_factory_model,
+    validate_factory_plan,
+)
 
 
 def test_factory_plan_enforces_duration_ranges_and_overlap():
@@ -22,12 +27,14 @@ def test_factory_plan_enforces_duration_ranges_and_overlap():
                 "end_seconds": 105,
                 "title_ru": "Дублирующий Фрагмент",
                 "quality_score": 70,
+                "boundary_verified": True,
             },
             {
                 "start_seconds": 120,
                 "end_seconds": 500,
                 "title_ru": "Слишком Длинный Shorts",
                 "quality_score": 99,
+                "boundary_verified": True,
             },
         ],
         "long_candidates": [
@@ -43,6 +50,7 @@ def test_factory_plan_enforces_duration_ranges_and_overlap():
                 "end_seconds": 1180,
                 "title_ru": "Повтор Того Же Фрагмента",
                 "quality_score": 60,
+                "boundary_verified": True,
             },
         ],
     }
@@ -67,6 +75,7 @@ def test_factory_plan_rejects_out_of_source_bounds():
                 "end_seconds": 1050,
                 "title_ru": "За Пределами Источника",
                 "quality_score": 100,
+                "boundary_verified": True,
             }
         ],
         "long_candidates": [],
@@ -75,3 +84,29 @@ def test_factory_plan_rejects_out_of_source_bounds():
     plan = validate_factory_plan(raw, duration=1000)
 
     assert plan["shorts_candidates"] == []
+
+
+def test_factory_plan_rejects_unverified_boundaries_by_default():
+    raw = {
+        "shorts_candidates": [
+            {
+                "start_seconds": 10,
+                "end_seconds": 90,
+                "title_ru": "Непроверенный Фрагмент",
+                "quality_score": 100,
+                "boundary_verified": False,
+            }
+        ],
+        "long_candidates": [],
+    }
+
+    plan = validate_factory_plan(raw, duration=300)
+
+    assert plan["shorts_candidates"] == []
+
+
+def test_factory_model_refuses_lite_route(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.5-flash-lite")
+
+    with pytest.raises(RuntimeError, match="refuses Lite model"):
+        shorts_factory_model()
