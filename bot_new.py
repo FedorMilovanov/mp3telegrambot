@@ -49,6 +49,7 @@ from services.runtime_manifest import (
     bootstrap_pre_main,
     require_runtime_ready,
 )
+from services.shorts_factory_runtime import install_shorts_factory_mode
 
 try:
     bootstrap_pre_main()
@@ -64,6 +65,7 @@ import main as _main_module
 try:
     install_database_migrations(_main_module)
     bootstrap_post_main(_main_module)
+    install_shorts_factory_mode(_main_module)
     require_runtime_ready()
 except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError) as exc:
     emit_service_bootstrap_diagnostics()
