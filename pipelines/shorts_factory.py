@@ -7,6 +7,7 @@ import copy
 import html
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -22,6 +23,7 @@ from pipelines.clips import process_and_send_clips
 from pipelines.shorts import process_and_send_shorts
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
 from services.shorts_factory_runtime import factory_render_context
 from services.shorts_video import download_video_for_shorts
@@ -234,6 +236,20 @@ def _persist_factory_source(source_path: Path, media_id: str) -> Path:
     return destination
 
 
+async def _validated_source_duration(source_path: Path, expected_duration: int) -> int:
+    """Return the real render timeline and reject truncated video/audio sources."""
+    probe = await probe_media_async(source_path)
+    if not media_probe_is_deliverable(probe):
+        raise RuntimeError("Общий Factory-источник не прошёл media probe (нужны video+audio)")
+    assert probe is not None
+    if probe.duration + 3.0 < float(expected_duration):
+        raise RuntimeError(
+            "Общий Factory-источник обрезан: "
+            f"ожидалось около {expected_duration:.0f}с, получено {probe.duration:.1f}с"
+        )
+    return max(1, int(math.ceil(probe.duration)))
+
+
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
@@ -391,6 +407,10 @@ async def process_shorts_factory(
         if not source_video_path or not Path(source_video_path).exists():
             raise RuntimeError("Не удалось получить общий видеоисточник для Factory")
         persistent_source_path = _persist_factory_source(Path(source_video_path), media_id)
+        render_source_duration = await _validated_source_duration(
+            persistent_source_path,
+            expected_duration=duration,
+        )
 
         if not silent_errors:
             await update.message.reply_text(
@@ -411,11 +431,11 @@ async def process_shorts_factory(
         if translation_required:
             render_shorts = _shift_candidates_for_livedub(
                 shorts_candidates,
-                source_duration=duration,
+                source_duration=render_source_duration,
             )
             render_longs = _shift_candidates_for_livedub(
                 long_candidates,
-                source_duration=duration,
+                source_duration=render_source_duration,
             )
 
         with factory_render_context(render_shorts, render_longs):
@@ -426,7 +446,7 @@ async def process_shorts_factory(
                     mp3_path=mp3_path,
                     title=title or full_title,
                     performer=performer or channel_name,
-                    duration=duration,
+                    duration=render_source_duration,
                     ai_data=ai_data,
                     update=update,
                     workdir=workdir,
@@ -440,7 +460,7 @@ async def process_shorts_factory(
                     mp3_path=mp3_path,
                     title=title or full_title,
                     performer=performer or channel_name,
-                    duration=duration,
+                    duration=render_source_duration,
                     ai_data=ai_data,
                     update=update,
                     livedub_video_path=persistent_source_path,
@@ -452,9 +472,11 @@ async def process_shorts_factory(
             f"{len(long_candidates)} длинных фрагмента.",
         )
         logger.info(
-            "Shorts Factory MAX done media_id=%s duration=%ss shorts=%d longs=%d yandex=%s",
+            "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
+            "shorts=%d longs=%d yandex=%s",
             media_id,
             duration,
+            render_source_duration,
             len(shorts_candidates),
             len(long_candidates),
             translation_required,
