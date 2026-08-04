@@ -5,6 +5,8 @@ import pytest
 
 import services.cut_mode_source_policy as source_policy
 from services.cut_mode_source_policy import (
+    cached_record_for_cut_source,
+    cut_cache_validity,
     cut_source_is_usable,
     cut_source_mode_context,
     translated_source_required,
@@ -76,6 +78,45 @@ def test_factory_unknown_language_is_fail_closed_without_title_guessing():
         )
 
 
+def test_enabled_legacy_cuts_bypass_early_analysis_cache():
+    assert cut_cache_validity(
+        True,
+        "ok",
+        pipeline_requested=True,
+    ) == (False, "cut_pipeline_requested")
+    assert cut_cache_validity(
+        True,
+        "ok",
+        pipeline_requested=False,
+    ) == (True, "ok")
+
+
+def test_eng_cut_ignores_cached_file_id_but_keeps_other_cache_fields():
+    cached = {
+        "ai_data": {"real_title": "T"},
+        "livedub_file_id": "telegram-file-id",
+        "livedub_file_id_version": "v1",
+    }
+
+    adjusted = cached_record_for_cut_source(
+        cached,
+        pipeline_requested=True,
+        translated_required=True,
+    )
+
+    assert adjusted is not cached
+    assert adjusted["ai_data"] == cached["ai_data"]
+    assert adjusted["livedub_file_id"] == ""
+    assert adjusted["livedub_file_id_version"] == ""
+    assert cached["livedub_file_id"] == "telegram-file-id"
+
+    assert cached_record_for_cut_source(
+        cached,
+        pipeline_requested=True,
+        translated_required=False,
+    ) is cached
+
+
 def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
     translated = tmp_path / "translated.mp4"
     translated.write_bytes(b"x")
@@ -83,7 +124,7 @@ def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
     assert translated_source_required("rus") is False
     assert translated_source_required("eng") is True
 
-    with cut_source_mode_context("eng"):
+    with cut_source_mode_context("eng", pipeline_requested=True):
         assert cut_source_is_usable(None) is False
         assert cut_source_is_usable(translated) is True
 
