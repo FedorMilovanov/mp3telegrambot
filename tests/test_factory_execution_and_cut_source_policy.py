@@ -144,26 +144,35 @@ def test_cached_cut_replay_disables_publication_features_only_task_locally():
 
 
 @pytest.mark.asyncio
-async def test_cached_cut_replay_suppresses_duplicate_mp3_delivery():
+async def test_cached_cut_replay_suppresses_only_main_mp3(tmp_path):
+    main_mp3 = tmp_path / "main.mp3"
+    companion = tmp_path / "main_livedub_ru.mp3"
+    main_mp3.write_bytes(b"main")
+    companion.write_bytes(b"ru")
+
     class Message:
         def __init__(self):
-            self.calls = 0
+            self.audios = []
 
         async def reply_audio(self, *args, **kwargs):
-            self.calls += 1
+            self.audios.append(kwargs.get("audio") or args[0])
             return "sent"
 
     message = Message()
     proxy = source_policy._CutReplayMessageProxy(message)
 
-    token = source_policy._CUT_CACHE_REPLAY.set(True)
+    replay_token = source_policy._CUT_CACHE_REPLAY.set(True)
+    mp3_token = source_policy._CUT_MAIN_MP3_PATH.set(main_mp3)
     try:
-        sent = await proxy.reply_audio(audio="x.mp3")
+        suppressed = await proxy.reply_audio(audio=main_mp3)
+        delivered = await proxy.reply_audio(audio=companion)
     finally:
-        source_policy._CUT_CACHE_REPLAY.reset(token)
+        source_policy._CUT_MAIN_MP3_PATH.reset(mp3_token)
+        source_policy._CUT_CACHE_REPLAY.reset(replay_token)
 
-    assert sent.audio is None
-    assert message.calls == 0
+    assert suppressed.audio is None
+    assert delivered == "sent"
+    assert message.audios == [companion]
 
 
 def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
