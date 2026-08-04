@@ -6,8 +6,8 @@ import functools
 import logging
 import math
 import os
+import shutil
 from pathlib import Path
-from typing import Any, Awaitable, Callable
 
 from core.database import get_max_file_size_mb
 from services.async_process import run_cancellable_process
@@ -24,6 +24,8 @@ _FACTORY_LONG_SIZE_RESERVE = 0.965
 _FACTORY_LONG_FIT_TIMEOUT_SEC = 7200
 _FACTORY_LONG_MAX_SEC = 900.0
 _FACTORY_LONG_DURATION_EPSILON_SEC = 0.05
+_FACTORY_LONG_EXPECTED_TOLERANCE_SEC = 0.75
+_FACTORY_LONG_FIT_DISK_RESERVE_BYTES = 512 * 1024**2
 _INSTALLED = False
 
 
@@ -55,6 +57,38 @@ def factory_long_target_video_kbps(
             f"unacceptable video bitrate ({video_kbps} kbps)"
         )
     return video_kbps
+
+
+def factory_long_fit_required_free_bytes(max_file_size_mb: float) -> int:
+    """Reserve one target file plus encoder/passlog overhead before pass one."""
+    try:
+        size_mb = float(max_file_size_mb)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Factory long fit received invalid size limit") from exc
+    if not math.isfinite(size_mb) or size_mb <= 0:
+        raise RuntimeError("Factory long fit requires a positive file-size limit")
+    target_bytes = size_mb * 1024.0 * 1024.0
+    return int(math.ceil(target_bytes * 1.10 + _FACTORY_LONG_FIT_DISK_RESERVE_BYTES))
+
+
+def ensure_factory_long_fit_space(output_dir: Path, max_file_size_mb: float) -> None:
+    """Fail before two-pass encoding when the temporary target cannot fit."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    required = factory_long_fit_required_free_bytes(max_file_size_mb)
+    free = int(shutil.disk_usage(output_dir).free)
+    if free < required:
+        raise RuntimeError(
+            "SHORTS FACTORY: недостаточно места для двухпроходного long-fit: "
+            f"нужно около {required / (1024**3):.1f} ГБ, "
+            f"свободно {free / (1024**3):.1f} ГБ"
+        )
+    logger.info(
+        "Factory long-fit disk guard: path=%s required=%.2fGB free=%.2fGB",
+        output_dir,
+        required / (1024**3),
+        free / (1024**3),
+    )
 
 
 def _fit_artifacts(output_path: Path) -> tuple[Path, Path]:
@@ -150,6 +184,7 @@ async def fit_factory_long_clip_to_limit(
             f"Factory long fit received invalid duration {duration:.3f}s"
         )
 
+    ensure_factory_long_fit_space(output_path.parent, max_file_size_mb)
     limit_bytes = int(float(max_file_size_mb) * 1024 * 1024)
     target_kbps = factory_long_target_video_kbps(
         max_file_size_mb,
@@ -201,6 +236,13 @@ async def fit_factory_long_clip_to_limit(
             if probe.duration > _FACTORY_LONG_MAX_SEC + _FACTORY_LONG_DURATION_EPSILON_SEC:
                 logger.warning(
                     "Factory long fitted duration exceeds public cap: %.3fs",
+                    probe.duration,
+                )
+                return False
+            if abs(probe.duration - duration) > _FACTORY_LONG_EXPECTED_TOLERANCE_SEC:
+                logger.warning(
+                    "Factory long fitted duration mismatch: expected=%.3fs actual=%.3fs",
+                    duration,
                     probe.duration,
                 )
                 return False
@@ -268,7 +310,7 @@ def install_factory_long_fit_policy() -> bool:
         if output_path.is_file() and output_path.stat().st_size <= limit_bytes:
             return True
 
-        ffmpeg = __import__("shutil").which("ffmpeg")
+        ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             logger.error("Factory long fit requires ffmpeg")
             return False
@@ -301,6 +343,8 @@ def install_factory_long_fit_policy() -> bool:
 
 
 __all__ = [
+    "ensure_factory_long_fit_space",
+    "factory_long_fit_required_free_bytes",
     "factory_long_target_video_kbps",
     "fit_factory_long_clip_to_limit",
     "install_factory_long_fit_policy",
