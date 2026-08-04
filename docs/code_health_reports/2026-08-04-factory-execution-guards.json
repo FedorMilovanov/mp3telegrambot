@@ -1,18 +1,18 @@
 {
   "policy": "intentional-code-health-baseline-refresh-v1",
-  "reason": "The surgical cut-mode recheck adds five isolated, tested runtime policy modules: spoken-audio Factory execution, fail-closed legacy ENG/cache replay source handling, Telegram-accepted cached replay delivery evidence, a no-downgrade exact-boundary policy, and maximum-quality Factory source acquisition. The no-downgrade module adds one narrowly scoped canonical Gemini-model regex with dedicated regression tests; the source module adds no regex or editorial postprocess debt.",
+  "reason": "The surgical cut-mode recheck adds six isolated, tested runtime policy modules: spoken-audio Factory execution, fail-closed legacy ENG/cache replay source handling, Telegram-accepted cached replay delivery evidence, a no-downgrade exact-boundary policy, maximum-quality Factory source acquisition, and selected-format peak-disk validation. The no-downgrade module adds one narrowly scoped canonical Gemini-model regex with dedicated regression tests; the source and disk modules add no regex or editorial postprocess debt.",
   "previous": {
     "files_scanned": 164,
     "total_regex_markers": 725,
     "total_postprocess_markers": 271
   },
   "current": {
-    "files_scanned": 169,
+    "files_scanned": 170,
     "total_regex_markers": 726,
     "total_postprocess_markers": 271
   },
   "delta": {
-    "files_scanned": 5,
+    "files_scanned": 6,
     "total_regex_markers": 1,
     "total_postprocess_markers": 0
   },
@@ -22,17 +22,19 @@
       "tests/test_cut_replay_delivery_policy.py",
       "tests/test_shorts_factory_no_downgrade.py",
       "tests/test_shorts_factory_source.py",
+      "tests/test_shorts_factory_disk_guard.py",
       "tests/test_shorts_factory_mode.py",
       "tests/test_livedub_downstream_media.py",
       "tests/test_cut_runtime_installation.py"
     ],
-    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio; unknown language fails closed; every proven non-Russian language requires LiveDub; partial Telegram delivery is reported truthfully; legacy ENG cuts cannot silently render the untranslated original; valid analysis cache becomes a no-publication replay; only Telegram-accepted cut videos count as replay success; Gemini must be canonical Pro >=3.1; Whisper must be exact large-v3; configured quality, timing, disk and timeout floors cannot be lowered; fractional Gemini boundaries survive validation; Factory rendering cannot perform a second silence-snap after the final boundary audit; final files are capped from their real probes; Russian render sources use bestvideo+bestaudio without a 720p/container preference; and Gemini audio uses the best native stream, codec-copy remux for supported codecs or lossless FLAC after decoding unsupported Opus/other codecs rather than an intermediate MP3 generation.",
+    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio; unknown language fails closed; every proven non-Russian language requires LiveDub; partial Telegram delivery is reported truthfully; legacy ENG cuts cannot silently render the untranslated original; valid analysis cache becomes a no-publication replay; only Telegram-accepted cut videos count as replay success; Gemini must be canonical Pro >=3.1; Whisper must be exact large-v3; configured quality, timing, disk and timeout floors cannot be lowered; fractional Gemini boundaries survive validation; Factory rendering cannot perform a second silence-snap after the final boundary audit; final files are capped from their real probes; Russian and Yandex LiveDub render sources use bestvideo+bestaudio without a 720p/1080p or container-preference ceiling; Gemini audio uses the best native stream, codec-copy remux for supported codecs or lossless FLAC after decoding unsupported Opus/other codecs rather than an intermediate MP3 generation; and maximum-source downloads are preceded by selected-format filesize/tbr estimation plus native/FLAC and separate-stream/merge peak-disk proof on every target filesystem.",
     "new_files": [
       "services/cut_mode_source_policy.py",
       "services/cut_replay_delivery_policy.py",
       "services/shorts_factory_execution_guard.py",
       "services/shorts_factory_no_downgrade.py",
-      "services/shorts_factory_source.py"
+      "services/shorts_factory_source.py",
+      "services/shorts_factory_disk_guard.py"
     ],
     "regex_evidence": {
       "file": "services/shorts_factory_no_downgrade.py",
@@ -42,7 +44,12 @@
     "source_quality_evidence": {
       "file": "services/shorts_factory_source.py",
       "test": "tests/test_shorts_factory_source.py",
-      "policy": "Reset prior yt-dlp format sorting, select bestvideo+bestaudio/best with no resolution ceiling, download bestaudio/best without yt-dlp MP3 extraction, probe every source, remux AAC/MP3/Vorbis/FLAC without re-encoding, convert unsupported codecs to lossless FLAC, and pass the prepared file's real supported MIME into all three Gemini passes."
+      "policy": "Reset prior yt-dlp format sorting, select bestvideo+bestaudio/best with no resolution ceiling for Russian and Yandex LiveDub sources, obtain Yandex live audio separately and mix it over the unrestricted original, verify the required Russian tail, download bestaudio/best without yt-dlp MP3 extraction, probe every source, remux AAC/MP3/Vorbis/FLAC without re-encoding, convert unsupported codecs to lossless FLAC, and pass the prepared file's real supported MIME into all three Gemini passes."
+    },
+    "disk_evidence": {
+      "file": "services/shorts_factory_disk_guard.py",
+      "test": "tests/test_shorts_factory_disk_guard.py",
+      "policy": "Simulate the exact Factory format selector, sum requested stream filesize/filesize_approx or tbr-derived estimates, include native-audio plus stereo PCM/FLAC preparation peak, include separate video/audio streams plus merged output peak, apply conservative unknown-size floors, and require the modeled bytes on every downloads/temp target before media transfer."
     }
   }
 }
