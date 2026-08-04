@@ -29,12 +29,19 @@ LONG_MAX_SEC = 900
 
 
 def shorts_factory_model() -> str:
-    """Use the strongest explicitly configured model, never the Lite route."""
-    return (
+    """Use the strongest explicitly configured model, never a Lite route."""
+    model = (
         os.getenv("SHORTS_FACTORY_MODEL", "").strip()
         or os.getenv("GEMINI_MAX_MODEL", "").strip()
         or GEMINI_MODEL
     )
+    if not model:
+        raise RuntimeError("No Gemini model is configured for SHORTS FACTORY MAX")
+    if "lite" in model.casefold():
+        raise RuntimeError(
+            f"SHORTS FACTORY MAX refuses Lite model {model!r}; configure a full high-thinking model"
+        )
+    return model
 
 
 def _parse_json_payload(raw: str) -> dict[str, Any]:
@@ -75,10 +82,13 @@ def _clean_tags(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     out: list[str] = []
+    seen: set[str] = set()
     for item in value:
         tag = re.sub(r"[^0-9A-Za-zА-Яа-яЁё_]", "", str(item or "").lstrip("#"))
-        if tag and tag.casefold() not in {existing.casefold() for existing in out}:
+        folded = tag.casefold()
+        if tag and folded not in seen:
             out.append(tag[:40])
+            seen.add(folded)
     return out[:4]
 
 
@@ -89,9 +99,13 @@ def _normalize_candidate(
     min_sec: int,
     max_sec: int,
     default_kind: str,
+    require_verified: bool,
 ) -> dict[str, Any] | None:
     if not isinstance(item, dict):
         return None
+    if require_verified and item.get("boundary_verified") is not True:
+        return None
+
     start = _seconds(item.get("start_seconds", item.get("start")))
     end = _seconds(item.get("end_seconds", item.get("end")))
     if start < 0 or end <= start:
@@ -128,12 +142,19 @@ def _normalize_candidate(
         "end_seconds": end,
         "duration_seconds": clip_duration,
         "quality_score": score,
-        "boundary_verified": bool(item.get("boundary_verified", False)),
+        "boundary_verified": True,
     }
 
 
-def _remove_heavy_overlap(candidates: list[dict[str, Any]], *, max_overlap: float) -> list[dict[str, Any]]:
-    ranked = sorted(candidates, key=lambda item: (-float(item.get("quality_score", 0)), item["start_seconds"]))
+def _remove_heavy_overlap(
+    candidates: list[dict[str, Any]],
+    *,
+    max_overlap: float,
+) -> list[dict[str, Any]]:
+    ranked = sorted(
+        candidates,
+        key=lambda item: (-float(item.get("quality_score", 0)), item["start_seconds"]),
+    )
     accepted: list[dict[str, Any]] = []
     for candidate in ranked:
         start = candidate["start_seconds"]
@@ -141,39 +162,58 @@ def _remove_heavy_overlap(candidates: list[dict[str, Any]], *, max_overlap: floa
         length = max(1, end - start)
         rejected = False
         for other in accepted:
-            overlap = max(0, min(end, other["end_seconds"]) - max(start, other["start_seconds"]))
+            overlap = max(
+                0,
+                min(end, other["end_seconds"]) - max(start, other["start_seconds"]),
+            )
             if overlap / min(length, max(1, other["duration_seconds"])) > max_overlap:
                 rejected = True
                 break
         if not rejected:
             accepted.append(candidate)
-    return sorted(accepted, key=lambda item: (-float(item.get("quality_score", 0)), item["start_seconds"]))
+    return sorted(
+        accepted,
+        key=lambda item: (-float(item.get("quality_score", 0)), item["start_seconds"]),
+    )
 
 
-def validate_factory_plan(raw: dict[str, Any], duration: int) -> dict[str, Any]:
-    """Deterministically enforce duration, completeness and overlap contracts."""
+def validate_factory_plan(
+    raw: dict[str, Any],
+    duration: int,
+    *,
+    require_verified: bool = True,
+) -> dict[str, Any]:
+    """Enforce duration, verified boundaries and overlap contracts."""
     meta = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
     shorts: list[dict[str, Any]] = []
     longs: list[dict[str, Any]] = []
 
-    for item in raw.get("shorts_candidates", []) if isinstance(raw.get("shorts_candidates"), list) else []:
+    raw_shorts = raw.get("shorts_candidates")
+    if not isinstance(raw_shorts, list):
+        raw_shorts = []
+    for item in raw_shorts:
         normalized = _normalize_candidate(
             item,
             duration=duration,
             min_sec=SHORT_MIN_SEC,
             max_sec=SHORT_MAX_SEC,
             default_kind="short_highlight",
+            require_verified=require_verified,
         )
         if normalized:
             shorts.append(normalized)
 
-    for item in raw.get("long_candidates", []) if isinstance(raw.get("long_candidates"), list) else []:
+    raw_longs = raw.get("long_candidates")
+    if not isinstance(raw_longs, list):
+        raw_longs = []
+    for item in raw_longs:
         normalized = _normalize_candidate(
             item,
             duration=duration,
             min_sec=LONG_MIN_SEC,
             max_sec=LONG_MAX_SEC,
             default_kind="long_highlight",
+            require_verified=require_verified,
         )
         if normalized:
             longs.append(normalized)
@@ -184,9 +224,14 @@ def validate_factory_plan(raw: dict[str, Any], duration: int) -> dict[str, Any]:
     title = title_case_fragment(
         normalize_title_text(str(meta.get("title_ru") or raw.get("title_ru") or ""))
     ).strip()
-    author = normalize_author_name(str(meta.get("author_ru") or raw.get("author_ru") or "")).strip()
+    author = normalize_author_name(
+        str(meta.get("author_ru") or raw.get("author_ru") or "")
+    ).strip()
     language = str(meta.get("language") or raw.get("language") or "").strip().lower()
-    format_name = str(meta.get("format") or raw.get("format") or "other").strip().lower() or "other"
+    format_name = (
+        str(meta.get("format") or raw.get("format") or "other").strip().lower()
+        or "other"
+    )
 
     return {
         "metadata": {
@@ -226,78 +271,69 @@ def _scout_prompt(title: str, performer: str, duration: int, source_language: st
 - фрагменты одной категории не должны существенно дублировать друг друга;
 - русские title_ru/hook_ru/reason_ru должны быть точными, без кликбейта и без выдуманных утверждений;
 - quality_score 0–100 оценивает одновременно смысловую силу, самостоятельность и точность границ;
-- start_seconds/end_seconds должны соответствовать реальному аудио, а не приблизительному таймлайну.
+- start_seconds/end_seconds должны соответствовать реальному аудио, а не приблизительному таймлайну;
+- на первом проходе boundary_verified всегда false: финальное подтверждение выполняет отдельный аудитор.
 
-Верни СТРОГО JSON:
-{{
-  "metadata": {{
-    "language": "ru|en|other",
-    "format": "sermon|lecture|interview|qa|discussion|story|other",
-    "title_ru": "точное русское название",
-    "author_ru": "автор/спикер",
-    "analysis_note": "кратко, по какому принципу выбраны фрагменты"
-  }},
-  "shorts_candidates": [
-    {{
-      "start_seconds": 0,
-      "end_seconds": 0,
-      "title_ru": "",
-      "hook_ru": "",
-      "reason_ru": "",
-      "kind": "thesis|answer|story|warning|application|climax|other",
-      "hashtags": [""],
-      "quality_score": 0,
-      "boundary_verified": false
-    }}
-  ],
-  "long_candidates": [
-    {{
-      "start_seconds": 0,
-      "end_seconds": 0,
-      "title_ru": "",
-      "reason_ru": "",
-      "kind": "complete_argument|qa_answer|story|exposition|other",
-      "hashtags": [""],
-      "quality_score": 0,
-      "boundary_verified": false
-    }}
-  ]
-}}
+Верни СТРОГО JSON с полями metadata, shorts_candidates и long_candidates. Каждый кандидат содержит start_seconds, end_seconds, title_ru, hook_ru, reason_ru, kind, hashtags, quality_score, boundary_verified.
 """.strip()
 
 
 def _judge_prompt(scout_plan: dict[str, Any], duration: int) -> str:
     plan_json = json.dumps(scout_plan, ensure_ascii=False, separators=(",", ":"))
     return f"""
-Ты — второй независимый старший редактор и контролёр точности монтажа. Повторно сверяй каждый кандидат с исходной аудиодорожкой, а не доверяй первому плану.
+Ты — второй независимый старший редактор. Повторно прослушай исходную аудиодорожку и не доверяй первому плану автоматически.
 
 Длительность источника: {duration} секунд.
 ПЕРВИЧНЫЙ ПЛАН:
 {plan_json}
 
-Сделай строгую финальную ревизию:
-- прослушай контекст до и после каждой границы;
-- передвинь start/end, если обрезано начало или завершение мысли;
+Сделай строгий смысловой отбор:
 - удали слабые, повторяющиеся, зависимые от внешнего контекста или фактически неточные фрагменты;
+- передвинь границы, если фрагмент не является самостоятельной законченной единицей;
 - сохрани максимум 5 Shorts длиной 35–180 секунд;
 - сохрани максимум 3 длинных фрагмента длиной 300–900 секунд;
-- quality_score повышай только за реально сильный и законченный материал;
-- boundary_verified=true ставь только после фактической проверки обеих границ по аудио;
+- quality_score повышай только за реально сильный материал;
+- boundary_verified пока оставь false: третья независимая проверка подтвердит точные монтажные границы;
 - не добавляй конспект, вопросы, Telegraph или материалы вне нарезки.
 
-Верни тот же JSON-формат с metadata, shorts_candidates и long_candidates. Только финальный исправленный план.
+Верни тот же строгий JSON-формат с metadata, shorts_candidates и long_candidates.
+""".strip()
+
+
+def _boundary_prompt(judged_plan: dict[str, Any], duration: int) -> str:
+    plan_json = json.dumps(judged_plan, ensure_ascii=False, separators=(",", ":"))
+    return f"""
+Ты — третий независимый аудитор монтажных границ. Это финальный контроль качества SHORTS FACTORY MAX.
+
+Длительность источника: {duration} секунд.
+ОТОБРАННЫЙ ПЛАН:
+{plan_json}
+
+Для КАЖДОГО кандидата заново прослушай минимум 12 секунд до start_seconds и 12 секунд после end_seconds, насколько позволяет источник.
+
+Обязательные действия:
+- начало должно включать подводку, необходимую для понимания, но не пустой переход;
+- конец должен включать завершение фразы, аргумента, примера, молитвы или вывода;
+- исправь start_seconds/end_seconds до точной естественной границы;
+- удали кандидат, если точную самостоятельную границу найти нельзя;
+- удали кандидат, если после исправления он выходит за 35–180 секунд для Shorts или 300–900 секунд для long;
+- boundary_verified=true ставь ТОЛЬКО после фактической проверки обеих границ по аудио;
+- сохрани максимум 5 Shorts и максимум 3 long;
+- не делай новый смысловой пересказ и не добавляй новые кандидаты вне отобранного плана.
+
+Верни тот же строгий JSON. В финальном ответе каждый сохранённый кандидат обязан иметь boundary_verified=true.
 """.strip()
 
 
 async def _wait_uploaded_file(client, uploaded):
     started = asyncio.get_running_loop().time()
     current = uploaded
-    while str(getattr(current, "state", "")) == "PROCESSING":
+    while str(getattr(current, "state", "")).upper().endswith("PROCESSING"):
         if asyncio.get_running_loop().time() - started > 600:
             raise TimeoutError("Gemini audio file processing exceeded 600 seconds")
         await asyncio.sleep(3)
         current = await client.aio.files.get(name=current.name)
-    if str(getattr(current, "state", "")) == "FAILED":
+    if str(getattr(current, "state", "")).upper().endswith("FAILED"):
         raise RuntimeError("Gemini audio file processing failed")
     return current
 
@@ -315,6 +351,24 @@ async def _response_text(response) -> str:
     return "".join(parts)
 
 
+async def _run_pass(client, *, model: str, audio_part, prompt: str, max_tokens: int):
+    config = make_audio_config(
+        max_output_tokens=max_tokens,
+        model_name=model,
+        thinking_level="high",
+        response_mime_type="application/json",
+    )
+    response = await asyncio.wait_for(
+        client.aio.models.generate_content(
+            model=model,
+            contents=[audio_part, prompt],
+            config=config,
+        ),
+        timeout=900,
+    )
+    return _parse_json_payload(await _response_text(response))
+
+
 async def create_factory_plan(
     mp3_path: Path,
     *,
@@ -323,14 +377,13 @@ async def create_factory_plan(
     duration: int,
     source_language: str = "",
 ) -> dict[str, Any]:
-    """Run a two-pass, high-thinking, audio-grounded selection and judge pass."""
+    """Run strict scout, editorial judge and boundary-audit passes."""
     if not HAS_GEMINI or not GEMINI_CLIENTS or types is None:
         raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini")
     if not mp3_path.exists() or mp3_path.stat().st_size < 1024:
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
 
     model = shorts_factory_model()
-    scout_prompt = _scout_prompt(title, performer, duration, source_language)
     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
     last_error: Exception | None = None
 
@@ -338,7 +391,10 @@ async def create_factory_plan(
         uploaded_name = ""
         try:
             if file_size_mb <= 20:
-                audio_part = types.Part.from_bytes(data=mp3_path.read_bytes(), mime_type="audio/mpeg")
+                audio_part = types.Part.from_bytes(
+                    data=mp3_path.read_bytes(),
+                    mime_type="audio/mpeg",
+                )
             else:
                 uploaded = await client.aio.files.upload(
                     file=mp3_path,
@@ -351,57 +407,42 @@ async def create_factory_plan(
                 audio_part = uploaded
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
 
-            scout_config = make_audio_config(
-                max_output_tokens=32000,
-                model_name=model,
-                thinking_level="high",
-                response_mime_type="application/json",
+            scout = await _run_pass(
+                client,
+                model=model,
+                audio_part=audio_part,
+                prompt=_scout_prompt(title, performer, duration, source_language),
+                max_tokens=32000,
             )
-            scout_response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model,
-                    contents=[audio_part, scout_prompt],
-                    config=scout_config,
-                ),
-                timeout=900,
+            judged = await _run_pass(
+                client,
+                model=model,
+                audio_part=audio_part,
+                prompt=_judge_prompt(scout, duration),
+                max_tokens=28000,
             )
-            scout = _parse_json_payload(await _response_text(scout_response))
+            audited = await _run_pass(
+                client,
+                model=model,
+                audio_part=audio_part,
+                prompt=_boundary_prompt(judged, duration),
+                max_tokens=28000,
+            )
 
-            judge_config = make_audio_config(
-                max_output_tokens=26000,
-                model_name=model,
-                thinking_level="high",
-                response_mime_type="application/json",
-            )
-            try:
-                judge_response = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=model,
-                        contents=[audio_part, _judge_prompt(scout, duration)],
-                        config=judge_config,
-                    ),
-                    timeout=900,
-                )
-                reviewed = _parse_json_payload(await _response_text(judge_response))
-            except Exception as judge_error:
-                logger.warning(
-                    "Shorts Factory judge pass failed on client %d; using validated scout plan: %s",
-                    client_index,
-                    judge_error,
-                )
-                reviewed = scout
-
-            plan = validate_factory_plan(reviewed, duration)
+            plan = validate_factory_plan(audited, duration, require_verified=True)
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError("Gemini returned no valid candidates after deterministic validation")
+                raise RuntimeError(
+                    "Three-pass Gemini review produced no candidates with verified boundaries"
+                )
             plan["model"] = model
             plan["thinking_level"] = "high"
-            plan["review_passes"] = 2
+            plan["review_passes"] = 3
+            plan["strict_quality"] = True
             return plan
         except Exception as exc:
             last_error = exc
             logger.warning(
-                "Shorts Factory MAX client %d/%d failed: %s: %s",
+                "Shorts Factory MAX client %d/%d failed strict review: %s: %s",
                 client_index,
                 len(GEMINI_CLIENTS),
                 type(exc).__name__,
@@ -414,7 +455,7 @@ async def create_factory_plan(
                 except Exception:
                     pass
 
-    raise RuntimeError(f"All Gemini clients failed in Shorts Factory MAX: {last_error}")
+    raise RuntimeError(f"All Gemini clients failed strict Shorts Factory review: {last_error}")
 
 
 def factory_ai_data(plan: dict[str, Any], *, title: str, performer: str) -> dict[str, Any]:
