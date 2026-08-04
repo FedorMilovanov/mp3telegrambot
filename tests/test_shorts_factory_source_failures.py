@@ -70,3 +70,51 @@ async def test_cancelled_native_audio_download_also_cleans_partials(
         )
 
     assert not list(tmp_path.glob("video_factory_audio_*"))
+
+
+@pytest.mark.asyncio
+async def test_failed_video_download_cleans_all_factory_artifacts(
+    monkeypatch,
+    tmp_path,
+):
+    raw_path = tmp_path / "video_factory_max_source.mkv"
+    partial_path = tmp_path / "video_factory_max_source.webm.part"
+
+    async def fake_run(command, **kwargs):
+        raw_path.write_bytes(b"raw")
+        partial_path.write_bytes(b"partial")
+        return SimpleNamespace(returncode=1, stderr="download failed")
+
+    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+
+    with pytest.raises(RuntimeError, match="video download failed"):
+        await source.download_factory_video_source(
+            "https://youtu.be/example",
+            "video",
+            workdir=tmp_path,
+        )
+
+    assert not list(tmp_path.glob("video_factory_max_source.*"))
+
+
+@pytest.mark.asyncio
+async def test_cancelled_video_download_also_cleans_partials(
+    monkeypatch,
+    tmp_path,
+):
+    partial_path = tmp_path / "video_factory_max_source.webm.part"
+
+    async def fake_run(command, **kwargs):
+        partial_path.write_bytes(b"partial")
+        raise __import__("asyncio").CancelledError
+
+    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+
+    with pytest.raises(__import__("asyncio").CancelledError):
+        await source.download_factory_video_source(
+            "https://youtu.be/example",
+            "video",
+            workdir=tmp_path,
+        )
+
+    assert not list(tmp_path.glob("video_factory_max_source.*"))
