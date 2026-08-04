@@ -6,6 +6,7 @@ cd /d "%~dp0"
 set "VENV_DIR=.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "SETUP_MARKER=%VENV_DIR%\.setup-complete"
+set "REQ_HASH_FILE=%VENV_DIR%\.requirements-hash.tmp"
 
 if not exist "bot_new.py" (
     echo ERROR: bot_new.py not found in:
@@ -63,9 +64,18 @@ if not exist "%REQUIREMENTS_FILE%" (
 )
 
 set "CURRENT_REQ_HASH="
-for /f "delims=" %%H in ('"%VENV_PYTHON%" -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path(r'%REQUIREMENTS_FILE%').read_bytes()).hexdigest())"') do set "CURRENT_REQ_HASH=%%H"
-if not defined CURRENT_REQ_HASH (
+del /q "%REQ_HASH_FILE%" >nul 2>&1
+"%VENV_PYTHON%" -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path(r'%REQUIREMENTS_FILE%').read_bytes()).hexdigest())" >"%REQ_HASH_FILE%"
+if errorlevel 1 (
+    del /q "%REQ_HASH_FILE%" >nul 2>&1
     echo ERROR: Failed to calculate the dependency file hash.
+    pause
+    exit /b 1
+)
+if exist "%REQ_HASH_FILE%" set /p CURRENT_REQ_HASH=<"%REQ_HASH_FILE%"
+del /q "%REQ_HASH_FILE%" >nul 2>&1
+if not defined CURRENT_REQ_HASH (
+    echo ERROR: Dependency hash output was empty.
     pause
     exit /b 1
 )
