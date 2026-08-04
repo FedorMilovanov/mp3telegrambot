@@ -51,6 +51,40 @@ def cut_pipeline_requested() -> bool:
     return bool(_CUT_PIPELINE_REQUESTED.get())
 
 
+def cut_cache_validity(
+    valid: bool,
+    reason: str,
+    *,
+    pipeline_requested: bool,
+) -> tuple[bool, str]:
+    """Enabled render stages must not disappear behind an early cache return."""
+    if valid and pipeline_requested:
+        return False, "cut_pipeline_requested"
+    return bool(valid), str(reason or "")
+
+
+def cached_record_for_cut_source(
+    cached: dict[str, Any] | None,
+    *,
+    pipeline_requested: bool,
+    translated_required: bool,
+) -> dict[str, Any] | None:
+    """A Telegram file_id cannot be cut; force a local LiveDub rebuild."""
+    if not cached:
+        return cached
+    if (
+        pipeline_requested
+        and translated_required
+        and cached.get("livedub_file_id")
+    ):
+        return {
+            **cached,
+            "livedub_file_id": "",
+            "livedub_file_id_version": "",
+        }
+    return cached
+
+
 def cut_source_is_usable(
     livedub_video_path: Any,
     *,
@@ -199,29 +233,26 @@ def install_cut_mode_source_policy() -> bool:
 
     async def cut_aware_adb_get(video_id):
         cached = await original_adb_get(video_id)
-        if (
-            cached
-            and cut_pipeline_requested()
-            and translated_source_required()
-            and cached.get("livedub_file_id")
-        ):
+        adjusted = cached_record_for_cut_source(
+            cached,
+            pipeline_requested=cut_pipeline_requested(),
+            translated_required=translated_source_required(),
+        )
+        if adjusted is not cached:
             logger.info(
                 "Ignoring cached LiveDub file_id for %s because enabled cut "
                 "modes require a local translated video source",
                 video_id,
             )
-            return {
-                **cached,
-                "livedub_file_id": "",
-                "livedub_file_id_version": "",
-            }
-        return cached
+        return adjusted
 
     def cut_aware_is_cache_valid(cached):
         valid, reason = original_is_cache_valid(cached)
-        if valid and cut_pipeline_requested():
-            return False, "cut_pipeline_requested"
-        return valid, reason
+        return cut_cache_validity(
+            valid,
+            reason,
+            pipeline_requested=cut_pipeline_requested(),
+        )
 
     def _skip_reason(kind: str) -> None:
         logger.warning(
@@ -305,6 +336,8 @@ def install_cut_mode_source_policy() -> bool:
 
 
 __all__ = [
+    "cached_record_for_cut_source",
+    "cut_cache_validity",
     "cut_pipeline_requested",
     "cut_source_is_usable",
     "cut_source_mode_context",
