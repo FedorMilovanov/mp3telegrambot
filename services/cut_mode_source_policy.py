@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed translated-source contract for legacy ENG cut modes."""
+"""Fail-closed translated-source and cache contract for legacy cut modes."""
 from __future__ import annotations
 
 import functools
@@ -9,6 +9,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterator
 
+from core.database import asettings_get_all
 from services.media_delivery_probe import (
     media_probe_is_deliverable,
     probe_media_async,
@@ -17,9 +18,19 @@ from services.media_delivery_probe import (
 logger = logging.getLogger(__name__)
 
 _ENG_CUT_MODES = frozenset({"eng", "eng_fast", "eng_fast_qa"})
+_CUT_SETTING_KEYS = (
+    "shorts",
+    "clips",
+    "shorts_montage",
+    "shorts_highlights",
+)
 _CUT_SOURCE_MODE: ContextVar[str] = ContextVar(
     "legacy_cut_source_mode",
     default="rus",
+)
+_CUT_PIPELINE_REQUESTED: ContextVar[bool] = ContextVar(
+    "legacy_cut_pipeline_requested",
+    default=False,
 )
 _INSTALLED = False
 
@@ -34,6 +45,10 @@ def translated_source_required(mode: str | None = None) -> bool:
         _CUT_SOURCE_MODE.get() if mode is None else mode
     )
     return current in _ENG_CUT_MODES
+
+
+def cut_pipeline_requested() -> bool:
+    return bool(_CUT_PIPELINE_REQUESTED.get())
 
 
 def cut_source_is_usable(
@@ -53,12 +68,18 @@ def cut_source_is_usable(
 
 
 @contextmanager
-def cut_source_mode_context(mode: str) -> Iterator[None]:
-    token = _CUT_SOURCE_MODE.set(normalized_cut_mode(mode))
+def cut_source_mode_context(
+    mode: str,
+    *,
+    pipeline_requested: bool = False,
+) -> Iterator[None]:
+    mode_token = _CUT_SOURCE_MODE.set(normalized_cut_mode(mode))
+    requested_token = _CUT_PIPELINE_REQUESTED.set(bool(pipeline_requested))
     try:
         yield
     finally:
-        _CUT_SOURCE_MODE.reset(token)
+        _CUT_PIPELINE_REQUESTED.reset(requested_token)
+        _CUT_SOURCE_MODE.reset(mode_token)
 
 
 class _ClipMessageProxy:
@@ -104,7 +125,7 @@ class _ClipUpdateProxy:
 
 
 def install_cut_mode_source_policy() -> bool:
-    """Bind one task-local mode and reject untranslated ENG cut fallbacks."""
+    """Bind task-local cut intent and reject misleading cache/source fallbacks."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -120,10 +141,23 @@ def install_cut_mode_source_policy() -> bool:
     original_main_process = main_pipeline_module.process_single_video
     original_commands_process = commands_module.process_single_video
     original_playlist_process = playlist_module.process_single_video
+    original_adb_get = main_pipeline_module.adb_get
+    original_is_cache_valid = main_pipeline_module.is_cache_valid
     original_shorts = shorts_module.process_and_send_shorts
     original_clips = clips_module.process_and_send_clips
     original_montage = montage_module.process_and_send_montage
     original_highlights = montage_module.process_and_send_highlights
+
+    async def _cut_features_requested() -> bool:
+        try:
+            settings = await asettings_get_all()
+        except Exception as exc:
+            logger.warning(
+                "Cut settings read failed; preserving ordinary cache behavior: %s",
+                str(exc)[:160],
+            )
+            return False
+        return any(bool(settings.get(key, False)) for key in _CUT_SETTING_KEYS)
 
     def _wrap_process_entry(original_process):
         @functools.wraps(original_process)
@@ -138,7 +172,16 @@ def install_cut_mode_source_policy() -> bool:
             user = getattr(update, "effective_user", None)
             user_id = int(getattr(user, "id", 0) or 0)
             mode = await get_user_mode(user_id) if user_id else "rus"
-            with cut_source_mode_context(mode):
+            requested = await _cut_features_requested()
+            with cut_source_mode_context(
+                mode,
+                pipeline_requested=requested,
+            ):
+                if requested:
+                    logger.info(
+                        "Legacy cut pipeline requested: bypassing analysis cache "
+                        "so enabled render stages execute"
+                    )
                 return await original_process(
                     url,
                     update,
@@ -153,6 +196,32 @@ def install_cut_mode_source_policy() -> bool:
     main_process_with_mode = _wrap_process_entry(original_main_process)
     commands_process_with_mode = _wrap_process_entry(original_commands_process)
     playlist_process_with_mode = _wrap_process_entry(original_playlist_process)
+
+    async def cut_aware_adb_get(video_id):
+        cached = await original_adb_get(video_id)
+        if (
+            cached
+            and cut_pipeline_requested()
+            and translated_source_required()
+            and cached.get("livedub_file_id")
+        ):
+            logger.info(
+                "Ignoring cached LiveDub file_id for %s because enabled cut "
+                "modes require a local translated video source",
+                video_id,
+            )
+            return {
+                **cached,
+                "livedub_file_id": "",
+                "livedub_file_id_version": "",
+            }
+        return cached
+
+    def cut_aware_is_cache_valid(cached):
+        valid, reason = original_is_cache_valid(cached)
+        if valid and cut_pipeline_requested():
+            return False, "cut_pipeline_requested"
+        return valid, reason
 
     def _skip_reason(kind: str) -> None:
         logger.warning(
@@ -214,6 +283,8 @@ def install_cut_mode_source_policy() -> bool:
     main_pipeline_module.process_single_video = main_process_with_mode
     commands_module.process_single_video = commands_process_with_mode
     playlist_module.process_single_video = playlist_process_with_mode
+    main_pipeline_module.adb_get = cut_aware_adb_get
+    main_pipeline_module.is_cache_valid = cut_aware_is_cache_valid
 
     shorts_module.process_and_send_shorts = guarded_shorts
     clips_module.process_and_send_clips = guarded_clips
@@ -227,13 +298,14 @@ def install_cut_mode_source_policy() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Legacy ENG cut source policy installed: untranslated "
-        "Shorts/Clips/Montage/Highlights are forbidden"
+        "Legacy cut policy installed: enabled cuts bypass analysis/file-id "
+        "cache and untranslated ENG fallbacks are forbidden"
     )
     return True
 
 
 __all__ = [
+    "cut_pipeline_requested",
     "cut_source_is_usable",
     "cut_source_mode_context",
     "install_cut_mode_source_policy",
