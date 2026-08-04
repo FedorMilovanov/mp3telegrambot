@@ -16,22 +16,28 @@ logger = logging.getLogger(__name__)
 DEFAULT_FACTORY_WHISPER_MODEL = "large-v3"
 
 _FACTORY_SHORTS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
-    "factory_shorts_candidates", default=None
+    "factory_shorts_candidates",
+    default=None,
 )
 _FACTORY_LONGS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
-    "factory_long_candidates", default=None
+    "factory_long_candidates",
+    default=None,
 )
 _FACTORY_SETTINGS: ContextVar[dict[str, bool] | None] = ContextVar(
-    "factory_render_settings", default=None
+    "factory_render_settings",
+    default=None,
 )
 _FACTORY_SHORT_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
-    "factory_short_deliveries", default=None
+    "factory_short_deliveries",
+    default=None,
 )
 _FACTORY_LONG_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
-    "factory_long_deliveries", default=None
+    "factory_long_deliveries",
+    default=None,
 )
 _FACTORY_COMPLETED_DELIVERIES: ContextVar[tuple[int, int] | None] = ContextVar(
-    "factory_completed_deliveries", default=None
+    "factory_completed_deliveries",
+    default=None,
 )
 _INSTALLED = False
 
@@ -157,7 +163,7 @@ def factory_render_context(
     shorts_candidates: list[dict[str, Any]],
     long_candidates: list[dict[str, Any]],
 ) -> Iterator[None]:
-    """Inject already judged candidates without process-global cross-user state."""
+    """Inject judged candidates without process-global cross-user state."""
     short_token = _FACTORY_SHORTS.set(copy.deepcopy(shorts_candidates))
     long_token = _FACTORY_LONGS.set(copy.deepcopy(long_candidates))
     short_delivery_token = _FACTORY_SHORT_DELIVERIES.set([0])
@@ -168,12 +174,8 @@ def factory_render_context(
             "shorts_audio_normalize": True,
             "shorts_snapshot": True,
             "shorts_title_poster": True,
-            # Gemini's third pass already verifies exact boundaries. For Yandex
-            # the Factory timing policy adds context and the complete live tail.
             "shorts_boundary_padding": False,
             "clips": True,
-            # Keep the shared source after Clips so interactive trim buttons can
-            # reuse it. The Factory pipeline owns timed cleanup of that cache.
             "shorts_highlights": True,
         }
     )
@@ -191,7 +193,7 @@ def factory_render_context(
 
 
 def install_shorts_factory_mode(_main_module=None) -> bool:
-    """Patch both link entry points and reuse the mature render pipelines."""
+    """Install all cut policies and route persistent Factory mode fail-closed."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -202,8 +204,17 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     import pipelines.shorts as shorts_module
     import services.shorts_video_impl as shorts_video_impl_module
     from handlers.mode_command import get_user_mode
-    from services.shorts_factory_media import validated_factory_source_duration
+    from services.shorts_factory_media import (
+        install_livedub_downstream_media_policy,
+        validated_factory_source_duration,
+    )
+    from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
     from services.shorts_factory_timing import align_factory_livedub_candidates
+
+    if not install_livedub_downstream_media_policy():
+        return False
+    if not install_factory_plan_quality_gate():
+        return False
 
     original_process = commands_module.process_single_video
     original_process_shorts = shorts_module.process_and_send_shorts
@@ -266,6 +277,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
                 return bool(result and (shorts_sent or longs_sent))
             finally:
                 _FACTORY_COMPLETED_DELIVERIES.reset(completion_token)
+
         return await original_process(
             url,
             update,
@@ -286,7 +298,6 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             result = await original_process_shorts(*args, **call_kwargs)
         else:
             call_args = list(args)
-            # process_and_send_shorts positional parameter #8 is update.
             if len(call_args) >= 8:
                 call_args[7] = _FactoryUpdateProxy(call_args[7])
             result = await original_process_shorts(*call_args, **kwargs)
@@ -311,15 +322,12 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             result = await original_process_clips(*args, **call_kwargs)
         else:
             call_args = list(args)
-            # process_and_send_clips positional parameter #8 is update.
             if len(call_args) >= 8:
                 call_args[7] = _FactoryUpdateProxy(call_args[7], long_clip=True)
             result = await original_process_clips(*call_args, **kwargs)
 
         if factory_long_delivery_count() <= before:
-            raise RuntimeError(
-                "SHORTS FACTORY не доставил ни одного длинного клипа"
-            )
+            raise RuntimeError("SHORTS FACTORY не доставил ни одного длинного клипа")
         return result
 
     async def factory_shorts_candidates(*args, **kwargs):
@@ -367,8 +375,6 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     shorts_module.ashorts_speed_get = factory_speed_setting
     shorts_video_impl_module.get_subtitles_mode_settings = factory_subtitles_mode_settings
 
-    # Normally Factory is imported lazily after this installer. Keep strict
-    # wrappers, media postconditions and timing correct under eager imports too.
     eager_factory_module = sys.modules.get("pipelines.shorts_factory")
     if eager_factory_module is not None:
         eager_factory_module.process_and_send_shorts = factory_process_shorts
