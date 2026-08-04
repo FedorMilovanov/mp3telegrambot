@@ -10,7 +10,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.database import GEMINI_MODEL
 from core.globals import GEMINI_CLIENTS, HAS_GEMINI, make_audio_config
 from core.text_utils import normalize_author_name, normalize_title_text, title_case_fragment
 from core.utils import format_timestamp
@@ -26,20 +25,20 @@ SHORT_MIN_SEC = 35
 SHORT_MAX_SEC = 180
 LONG_MIN_SEC = 300
 LONG_MAX_SEC = 900
+DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.1-pro-preview"
 
 
 def shorts_factory_model() -> str:
-    """Use the strongest explicitly configured model, never a Lite route."""
+    """Use the strongest Pro reasoning route and never silently fall back to Lite/Flash."""
     model = (
         os.getenv("SHORTS_FACTORY_MODEL", "").strip()
+        or os.getenv("GEMINI_PRO_MODEL", "").strip()
         or os.getenv("GEMINI_MAX_MODEL", "").strip()
-        or GEMINI_MODEL
+        or DEFAULT_SHORTS_FACTORY_MODEL
     )
-    if not model:
-        raise RuntimeError("No Gemini model is configured for SHORTS FACTORY MAX")
     if "lite" in model.casefold():
         raise RuntimeError(
-            f"SHORTS FACTORY MAX refuses Lite model {model!r}; configure a full high-thinking model"
+            f"SHORTS FACTORY MAX refuses Lite model {model!r}; configure a Pro high-thinking model"
         )
     return model
 
