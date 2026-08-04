@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import logging
 import math
+import re
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -14,42 +15,27 @@ REQUIRED_FACTORY_WHISPER_MODEL = "large-v3"
 MIN_FACTORY_FREE_GB = 2.0
 MIN_FACTORY_LIVEDUB_TIMEOUT_SEC = 1800
 
+_MODEL_RE = re.compile(
+    r"^gemini-(?P<version>\d+(?:\.\d+){0,2})-pro(?:[-_.].*)?$",
+    re.IGNORECASE,
+)
 _INSTALLED = False
 
 
 def require_factory_model_floor(model: Any) -> str:
-    """Accept only official-looking Gemini Pro models at or above 3.1."""
+    """Accept canonical Gemini Pro names at or above the 3.1 floor."""
     value = str(model or "").strip()
-    folded = value.casefold()
-    parts = folded.split("-")
-    if (
-        len(parts) < 3
-        or parts[0] != "gemini"
-        or "pro" not in parts
-        or "flash" in parts
-        or any("lite" in part for part in parts)
-    ):
+    match = _MODEL_RE.fullmatch(value)
+    if not match:
         raise RuntimeError(
-            "SHORTS FACTORY MAX requires a Gemini Pro model at or above 3.1; "
-            f"received {value!r}"
+            "SHORTS FACTORY MAX requires a canonical Gemini Pro model at or "
+            f"above 3.1; received {value!r}"
         )
 
-    version_parts = parts[1].split(".")
-    try:
-        numbers = [int(part) for part in version_parts]
-    except ValueError as exc:
-        raise RuntimeError(
-            "SHORTS FACTORY MAX could not prove the Gemini model version: "
-            f"{value!r}"
-        ) from exc
-    if not numbers or len(numbers) > 3:
-        raise RuntimeError(
-            "SHORTS FACTORY MAX could not prove the Gemini model version: "
-            f"{value!r}"
-        )
-
-    version = (numbers + [0, 0])[:2]
-    if tuple(version) < MIN_FACTORY_GEMINI_VERSION:
+    version_parts = match.group("version").split(".")
+    numbers = [int(part) for part in version_parts]
+    version = tuple((numbers + [0, 0])[:2])
+    if version < MIN_FACTORY_GEMINI_VERSION:
         raise RuntimeError(
             "SHORTS FACTORY MAX refuses an older Pro model: "
             f"{value!r} < Gemini {MIN_FACTORY_GEMINI_VERSION[0]}."
