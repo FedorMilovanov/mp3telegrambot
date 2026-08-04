@@ -126,9 +126,9 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_cut_replay_delivery_policy():
         return False
-    if not install_factory_source_quality_policy():
-        return False
     if not install_factory_no_downgrade_policy():
+        return False
+    if not install_factory_source_quality_policy():
         return False
 
     original_boundary_prompt = candidates_module._boundary_prompt
@@ -172,10 +172,10 @@ def install_factory_plan_quality_gate() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory post-media guards installed: maximum-quality native "
-        "sources, no-downgrade floors, exact audited boundaries, "
-        "spoken-language execution, translated ENG source and truthful "
-        "cached cut replay delivery"
+        "Shorts Factory post-media guards installed: validated no-downgrade "
+        "configuration, maximum-quality native sources, exact audited "
+        "boundaries, spoken-language execution, translated ENG source and "
+        "truthful cached cut replay delivery"
     )
     return True
 
