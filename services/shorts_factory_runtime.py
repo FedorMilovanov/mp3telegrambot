@@ -27,13 +27,14 @@ def factory_render_context(
     shorts_candidates: list[dict[str, Any]],
     long_candidates: list[dict[str, Any]],
 ) -> Iterator[None]:
-    """Inject already judged candidates without global cross-user state."""
+    """Inject already judged candidates without process-global cross-user state."""
     short_token = _FACTORY_SHORTS.set(copy.deepcopy(shorts_candidates))
     long_token = _FACTORY_LONGS.set(copy.deepcopy(long_candidates))
     settings_token = _FACTORY_SETTINGS.set(
         {
             "shorts_subtitles": True,
             "shorts_audio_normalize": True,
+            "shorts_boundary_padding": True,
             "clips": True,
         }
     )
@@ -46,7 +47,7 @@ def factory_render_context(
 
 
 def install_shorts_factory_mode(_main_module=None) -> bool:
-    """Patch the two existing link entry points and reuse mature render pipelines."""
+    """Patch both link entry points and reuse the mature render pipelines."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -119,7 +120,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory MAX runtime installed: ordinary links and playlists are mode-aware"
+        "Shorts Factory MAX runtime installed: links and playlists are mode-aware"
     )
     return True
 
