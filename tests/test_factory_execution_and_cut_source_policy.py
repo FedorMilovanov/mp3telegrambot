@@ -1,0 +1,119 @@
+from pathlib import Path
+
+import pytest
+
+from services.cut_mode_source_policy import (
+    cut_source_is_usable,
+    cut_source_mode_context,
+    translated_source_required,
+)
+from services.shorts_factory_execution_guard import (
+    factory_language_needs_translation,
+    normalize_factory_language,
+    resolve_factory_spoken_language,
+)
+
+
+def test_factory_spoken_language_prefers_audio_plan_over_title_metadata():
+    plan = {"metadata": {"language": "English"}}
+    info = {"language": "ru", "title": "Русский заголовок"}
+
+    assert resolve_factory_spoken_language(plan, info) == "en"
+    assert factory_language_needs_translation("en") is True
+
+
+def test_factory_russian_audio_skips_translation_even_with_english_title():
+    plan = {"metadata": {"language": "русский"}}
+    info = {"language": "", "title": "An English SEO title"}
+
+    assert resolve_factory_spoken_language(plan, info) == "ru"
+    assert factory_language_needs_translation("ru") is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("en-US", "en"),
+        ("English", "en"),
+        ("русский", "ru"),
+        ("ukr", "uk"),
+        ("Belarusian", "be"),
+        ("fr-FR", "fr"),
+    ],
+)
+def test_factory_language_normalization(value, expected):
+    assert normalize_factory_language(value) == expected
+
+
+@pytest.mark.parametrize("language", ["uk", "be", "en", "fr", "de"])
+def test_every_proven_non_russian_language_requires_russian_livedub(language):
+    assert factory_language_needs_translation(language) is True
+
+
+def test_factory_unknown_language_is_fail_closed_without_title_guessing():
+    with pytest.raises(RuntimeError, match="Не удалось доказать язык речи"):
+        resolve_factory_spoken_language(
+            {"metadata": {"language": "unknown"}},
+            {"language": "", "title": "Евангелие"},
+        )
+
+
+def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
+    translated = tmp_path / "translated.mp4"
+    translated.write_bytes(b"x")
+
+    assert translated_source_required("rus") is False
+    assert translated_source_required("eng") is True
+
+    with cut_source_mode_context("eng"):
+        assert cut_source_is_usable(None) is False
+        assert cut_source_is_usable(translated) is True
+
+    with cut_source_mode_context("rus"):
+        assert cut_source_is_usable(None) is True
+
+
+def test_factory_executor_analyzes_audio_before_selecting_source_backend():
+    source = Path("services/shorts_factory_execution_guard.py").read_text(
+        encoding="utf-8"
+    )
+
+    plan_pos = source.index(
+        "plan = await factory_module.create_factory_plan("
+    )
+    source_task_pos = source.index(
+        "source_task = asyncio.create_task(",
+        plan_pos,
+    )
+
+    assert plan_pos < source_task_pos
+    assert "_source_needs_translation" not in source
+    assert "resolve_factory_spoken_language(plan, info)" in source
+
+
+def test_factory_partial_delivery_keeps_trim_source_and_reports_actual_counts():
+    source = Path("services/shorts_factory_execution_guard.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "shorts_sent, longs_sent = factory_completed_delivery_counts()" in source
+    assert "keep_source_for_trim = shorts_sent > 0" in source
+    assert "SHORTS FACTORY MAX частично завершён" in source
+    assert "if total_sent <= 0:" in source
+
+
+def test_required_runtime_installs_new_guards_without_import_side_effects():
+    quality = Path("services/shorts_factory_quality_gate.py").read_text(
+        encoding="utf-8"
+    )
+    execution = Path("services/shorts_factory_execution_guard.py").read_text(
+        encoding="utf-8"
+    )
+    source_policy = Path("services/cut_mode_source_policy.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "if not install_cut_mode_source_policy():" in quality
+    assert "if not install_shorts_factory_execution_guard():" in quality
+    assert "\ninstall_shorts_factory_execution_guard()\n" not in execution
+    assert "\ninstall_cut_mode_source_policy()\n" not in source_policy
