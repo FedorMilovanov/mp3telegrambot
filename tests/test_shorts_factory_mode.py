@@ -8,9 +8,10 @@ from pipelines.shorts_factory import (
     _persist_factory_source,
     _source_needs_translation,
     _translation_backend,
-    _validated_source_duration,
 )
+import services.shorts_factory_media as factory_media
 import services.shorts_factory_runtime as factory_runtime
+from services.shorts_factory_media import validated_factory_source_duration
 from services.shorts_factory_runtime import (
     DEFAULT_FACTORY_WHISPER_MODEL,
     factory_completed_delivery_counts,
@@ -133,7 +134,7 @@ def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_factory_uses_real_probed_source_duration(monkeypatch, tmp_path):
+async def test_factory_uses_exact_probed_source_duration(monkeypatch, tmp_path):
     source = tmp_path / "source.mp4"
     source.write_bytes(b"x" * 2048)
     probe = SimpleNamespace(duration=901.2)
@@ -142,10 +143,14 @@ async def test_factory_uses_real_probed_source_duration(monkeypatch, tmp_path):
         assert path == source
         return probe
 
-    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
-    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda value: value is probe)
+    monkeypatch.setattr(factory_media, "probe_media_async", fake_probe)
+    monkeypatch.setattr(
+        factory_media,
+        "media_probe_is_deliverable",
+        lambda value: value is probe,
+    )
 
-    assert await _validated_source_duration(source, expected_duration=900) == 902
+    assert await validated_factory_source_duration(source, expected_duration=900) == 901.2
 
 
 @pytest.mark.asyncio
@@ -157,11 +162,15 @@ async def test_factory_rejects_truncated_source(monkeypatch, tmp_path):
     async def fake_probe(_path):
         return probe
 
-    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
-    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda value: value is probe)
+    monkeypatch.setattr(factory_media, "probe_media_async", fake_probe)
+    monkeypatch.setattr(
+        factory_media,
+        "media_probe_is_deliverable",
+        lambda value: value is probe,
+    )
 
     with pytest.raises(RuntimeError, match="обрезан"):
-        await _validated_source_duration(source, expected_duration=900)
+        await validated_factory_source_duration(source, expected_duration=900)
 
 
 @pytest.mark.asyncio
@@ -172,11 +181,15 @@ async def test_factory_rejects_source_without_video_and_audio(monkeypatch, tmp_p
     async def fake_probe(_path):
         return None
 
-    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
-    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda _value: False)
+    monkeypatch.setattr(factory_media, "probe_media_async", fake_probe)
+    monkeypatch.setattr(
+        factory_media,
+        "media_probe_is_deliverable",
+        lambda _value: False,
+    )
 
     with pytest.raises(RuntimeError, match="media probe"):
-        await _validated_source_duration(source, expected_duration=900)
+        await validated_factory_source_duration(source, expected_duration=900)
 
 
 def test_factory_forces_verified_timing_speed():
