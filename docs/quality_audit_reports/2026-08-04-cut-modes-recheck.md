@@ -19,7 +19,8 @@ This audit rechecked every operator-requested extraction path:
 - Windows bootstrap and dependency refresh after `git pull`;
 - task-local runtime-wrapper composition and truthful partial delivery;
 - model, ASR, score, timing, disk and timeout downgrade surfaces;
-- boundary precision from Gemini JSON through the final ffmpeg command.
+- boundary precision from Gemini JSON through the final ffmpeg command;
+- final rendered-file limits and interactive post-delivery controls.
 
 ## Result matrix
 
@@ -30,7 +31,7 @@ This audit rechecked every operator-requested extraction path:
 | Montage | Full analysis + `shorts_montage=on` | One vertical reel from separated moments | Text-plan candidate validation; mature renderer, but no per-fragment source-context Whisper audit | Every fragment receives context and complete Russian tail; ENG mode refuses original-language fallback | Shared delivery pipeline probes final video+audio and subtitle fallback | Working; intentionally lighter than Highlights |
 | Highlights | Full analysis + `shorts_highlights=on` | Strict thematic vertical reel | Source-context Whisper, complete-utterance refinement, speech coverage, dangling-context checks, minimum fragment count, independent Gemini thematic review | Strict verifier receives exact translated-source duration; ENG mode refuses original-language fallback | Verified renderer plus final media, duration and silence QA | Strongest legacy reel mode |
 | Segments / `/cut` | Cached full analysis + `segments=on`; render requires `segments_render=on` | User-selected Q&A/topic segment | Deterministic boundaries from cached AI timestamps and render lock | Uses the stored source URL; not the standalone Factory path | Base and final files require video+audio proof; subtitle artifact may safely fall back to valid base render | Wired and hardened |
-| SHORTS FACTORY MAX | `/mode` → `shorts_max` | Up to 5 subtitled Shorts and 3 long clips | Canonical Gemini Pro >=3.1; three high-thinking audio passes; proven spoken language; millisecond verified boundaries; score floors 88/85; no second silence-snap; exact Whisper large-v3 | Source chosen only after audio analysis; every non-Russian language requires Yandex LiveDub; OAuth/route preflight; no neural or untranslated fallback | Exact source probe, mandatory burned subtitles for Shorts, actual Telegram delivery counters and truthful partial status | Standalone no-downgrade mode |
+| SHORTS FACTORY MAX | `/mode` → `shorts_max` | Up to 5 subtitled Shorts and 3 long clips | Canonical Gemini Pro >=3.1; three high-thinking audio passes; proven spoken language; millisecond verified boundaries; score floors 88/85; no second silence-snap; exact Whisper large-v3 | Source chosen only after audio analysis; every non-Russian language requires Yandex LiveDub; OAuth/route preflight; no neural or untranslated fallback | Actual final `_sub.mp4`/long MP4 is re-probed, capped at 180/900 seconds, then counted only after Telegram acceptance; unsafe generic trim controls are removed | Standalone no-downgrade mode |
 
 ## Important behavior distinctions
 
@@ -38,10 +39,11 @@ This audit rechecked every operator-requested extraction path:
 2. `SHORTS FACTORY MAX` is independent of those switches. It is a persistent `/mode` route built specifically for extraction without Synopsis, Telegraph or questions.
 3. Montage is a useful promotional assembly, but it must not be described as equivalent to Highlights. Highlights has the additional source-context Whisper and thematic quality gates.
 4. For foreign-language extraction, Gemini selects and audits content and proves the spoken language from audio; Yandex LiveDub «Живые голоса» supplies the Russian voice. The bot does not synthesize its own translation in these paths.
-5. Factory partial success is not reported as full success. It uses the number of Telegram-accepted files, keeps the trim source only when at least one Short was delivered and fails when the delivery count is zero.
-6. The persisted user mode is task-local during full-analysis execution. Main, ordinary-link and playlist entrypoints each preserve their prior runtime-wrapper chain.
+5. Factory partial success is not reported as full success. It uses the number of Telegram-accepted files and fails when the delivery count is zero.
+6. The persisted user mode is task-local during full-analysis execution. Ordinary-link and playlist entrypoints preserve their own prior runtime-wrapper chains.
 7. Factory quality controls are floors, not preferences. Environment variables may make selection, timing, disk reserve or timeout stricter, but cannot reduce the production minimums.
 8. Ordinary legacy renderers retain silence snapping. Factory alone bypasses the second snap because its third Gemini pass has already audited both boundaries against source audio.
+9. Generic Short trim callbacks remain available for ordinary Shorts. Factory suppresses those buttons because the generic callback does not repeat the mandatory `large-v3` subtitle pipeline and has no Factory 180-second final gate.
 
 ## Defects found and fixed during this recheck
 
@@ -58,14 +60,16 @@ This audit rechecked every operator-requested extraction path:
 11. Clips could render to a silence-refined end but still tell Telegram the old candidate duration. Delivery metadata now uses the final probed MP4 duration.
 12. A missing Gemini client, Whisper, `ffmpeg`, `ffprobe` or disk space was discovered late after unnecessary work. Factory now performs one aggregate preflight before downloads.
 13. A foreign-language Factory run could begin a long LiveDub path without OAuth or any usable helper/CLI route. Translation preflight now checks both; tokenless cache-only operation requires explicit `SHORTS_FACTORY_REQUIRE_VOT_TOKEN=0`.
-14. The new mode-context wrapper initially risked replacing already-installed command/playlist adapters with the raw main pipeline. It now wraps and preserves each existing entrypoint independently.
+14. The new mode-context wrapper initially risked replacing already-installed command/playlist adapters with the raw main pipeline. The source policy and final Factory router now preserve ordinary-link and playlist entrypoints independently.
 15. `Start Bot.bat` treated `.venv/.setup-complete` as a permanent success marker. After a pull, changed dependencies could remain uninstalled. The marker now stores the SHA-256 of `requirements-lock.txt`, the lock is reinstalled and verified when the hash changes, and an unsupported Python virtual environment is recreated.
 16. A valid analysis cache returned before legacy cut stages, so repeated links could deliver cached analysis but never run enabled Shorts/Clips/Montage/Highlights. It now becomes a no-publication replay that reuses cached `ai_data`, suppresses duplicate main MP3/pages/archive writes and requires at least one Telegram-accepted cut video for success.
 17. A cached LiveDub Telegram `file_id` cannot be cut locally. ENG cache replay now clears that transient delivery shortcut and rebuilds a local translated MP4 before any cut renderer is allowed to run.
 18. Factory structured output accepted fractional seconds but deterministic validation rounded both boundaries to whole seconds, losing up to half a second on each side after the final audio audit. Production validation now preserves milliseconds.
 19. The mature Shorts and Clips renderers performed a second silence search after the third Gemini boundary audit. That could extend a 177-second Short by up to 10 seconds, extend a long clip by up to 12 seconds or shrink a five-minute clip below its contract. Factory now uses the audited fractional end literally; non-Factory modes keep their existing behavior.
-20. Configuration could silently lower Factory quality through an old/noncanonical Pro model, `large-v3-turbo` or a smaller Whisper model, score values below 88/85, reduced LiveDub pre-roll/tail, disk reserve below 2 GB or timeout below 1800 seconds. Required startup now rejects model/Whisper downgrades and floors all numeric quality controls.
-21. New runtime policy files changed the code-health inventory. The baseline now records `files_scanned=168`, one dedicated canonical-model regex (`726` total) with its regression test, and unchanged editorial postprocess debt (`271`).
+20. Configuration could silently lower Factory quality through an old/noncanonical Pro model, `large-v3-turbo` or a smaller Whisper model, score values below 88/85, reduced LiveDub pre-roll/tail, disk reserve below 2 GB or timeout below 1800 seconds. Required startup now rejects model/Whisper downgrades and floors all numeric quality controls. Validation occurs before any imported module is patched, so a bad `.env` cannot leave a half-installed runtime.
+21. The final burned Short and long MP4 were probed for streams but not compared with their public duration limits. Encoder/container padding or an unexpected postprocess extension could therefore pass a 180/900-second plan and still deliver an overlong file. Factory now re-probes the exact Telegram artifact and rejects anything above the cap plus a 50 ms timescale tolerance.
+22. Factory exposed the generic `-10/+10/+20` trim keyboard. That callback renders a new raw Short without rerunning mandatory `large-v3` transcription/burn-in and could exceed three minutes. Factory delivery now removes only that unsafe keyboard; ordinary Shorts remain unchanged. Existing managed Factory sources still expire through the bounded TTL policy.
+23. New runtime policy files changed the code-health inventory. The baseline records `files_scanned=168`, one dedicated canonical-model regex (`726` total) with its regression test, and unchanged editorial postprocess debt (`271`).
 
 ## Regression evidence
 
@@ -97,4 +101,4 @@ The repository contracts are wired for all requested modes, but a complete end-t
 - an actual Telegram upload under the operator's local Bot API limit;
 - a real YouTube source whose language metadata disagrees with the spoken audio, to verify the audio-first branch in production logs.
 
-The required smoke run is operational: one Russian-spoken video with an English title through Factory, one English-spoken video with a Russian title through Factory, one boundary candidate containing fractional seconds near the 177/897-second ceiling, one full-analysis ENG video with all legacy cut toggles enabled, and one cached `/segments` cut. The expected evidence is the spoken-language log, Yandex-only source selection for the foreign video, no untranslated legacy cut fallback, unchanged audited fractional endpoints, actual delivered counts and final probed durations.
+The required smoke run is operational: one Russian-spoken video with an English title through Factory, one English-spoken video with a Russian title through Factory, one boundary candidate containing fractional seconds near the 177/897-second ceiling, one full-analysis ENG video with all legacy cut toggles enabled, and one cached `/segments` cut. The expected evidence is the spoken-language log, Yandex-only source selection for the foreign video, no untranslated legacy cut fallback, unchanged audited fractional endpoints, final proved duration at or below 180/900 seconds, no Factory trim keyboard, actual delivered counts and final probed durations.
