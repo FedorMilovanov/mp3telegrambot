@@ -206,6 +206,18 @@ def test_factory_partial_delivery_keeps_trim_source_and_reports_actual_counts():
     assert "if total_sent <= 0:" in source
 
 
+def test_cut_mode_context_preserves_each_existing_entrypoint_chain():
+    source = Path("services/cut_mode_source_policy.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "original_main_process = main_pipeline_module.process_single_video" in source
+    assert "original_commands_process = commands_module.process_single_video" in source
+    assert "original_playlist_process = playlist_module.process_single_video" in source
+    assert "commands_process_with_mode = _wrap_process_entry(" in source
+    assert "playlist_process_with_mode = _wrap_process_entry(" in source
+
+
 def test_required_runtime_installs_new_guards_without_import_side_effects():
     quality = Path("services/shorts_factory_quality_gate.py").read_text(
         encoding="utf-8"
