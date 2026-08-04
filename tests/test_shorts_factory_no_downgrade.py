@@ -33,6 +33,8 @@ def test_factory_model_floor_accepts_only_current_or_newer_pro(model):
         "gemini-3-pro-preview",
         "gemini-3.1-flash",
         "gemini-3.1-flash-lite",
+        "gemini-3.1-preview-pro",
+        "gemini-3.1-proxy-pro",
         "gemini-pro",
         "my-gemini-3.1-proxy",
         "",
@@ -162,3 +164,41 @@ def test_required_installer_orders_no_downgrade_before_factory_execution():
     assert "shorts_video_module._find_silence_end" in no_downgrade
     assert "render_clips_module._find_silence_end" in no_downgrade
     assert "\ninstall_factory_no_downgrade_policy()\n" not in no_downgrade
+
+
+def test_bad_factory_configuration_is_validated_before_any_module_patch():
+    source = Path("services/shorts_factory_no_downgrade.py").read_text(
+        encoding="utf-8"
+    )
+
+    model_validation = source.index(
+        "validated_model = require_factory_model_floor("
+    )
+    profile_validation = source.index(
+        "validated_profile = hardened_factory_subtitle_profile("
+    )
+    first_patch = source.index(
+        "candidates_module.shorts_factory_model = strict_model_selector"
+    )
+
+    assert model_validation < first_patch
+    assert profile_validation < first_patch
+
+
+def test_factory_router_preserves_command_and_playlist_entrypoint_chains():
+    source = Path("services/shorts_factory_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "original_commands_process = commands_module.process_single_video" in source
+    assert "original_playlist_process = playlist_module.process_single_video" in source
+    assert "commands_process_link_by_mode = _wrap_link_by_mode(" in source
+    assert "playlist_process_link_by_mode = _wrap_link_by_mode(" in source
+    assert (
+        "commands_module.process_single_video = commands_process_link_by_mode"
+        in source
+    )
+    assert (
+        "playlist_module.process_single_video = playlist_process_link_by_mode"
+        in source
+    )
