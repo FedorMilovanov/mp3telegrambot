@@ -8,11 +8,16 @@ import os
 from typing import Any
 
 from services.livedub_mix import get_mix_params
+from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_SHORT_MAX_SEC = 180.0
 PUBLIC_LONG_MAX_SEC = 900.0
+
+# This module is imported by the fail-closed Factory runtime before the lazy
+# extraction pipeline. Install the editorial gate at the same boundary.
+install_factory_plan_quality_gate()
 
 
 def _env_float(name: str, default: float) -> float:
@@ -53,16 +58,9 @@ def _public_max_for_candidates(candidates: list[dict[str, Any]]) -> float:
 def align_factory_livedub_candidates(
     candidates: list[dict[str, Any]],
     *,
-    source_duration: int,
+    source_duration: int | float,
 ) -> list[dict[str, Any]]:
-    """Preserve the original semantic start and append the Yandex audio tail.
-
-    The merged LiveDub track delays Russian speech and extends the source by
-    ``delay + tail_margin``. Shifting both boundaries would cut the beginning of
-    the thought. Factory instead adds a small context pre-roll, keeps the exact
-    semantic interval, and appends the full configured Russian tail. A candidate
-    is rejected when that envelope cannot fit within the public 3/15-minute cap.
-    """
+    """Preserve the semantic start and append the complete Yandex audio tail."""
     if not candidates:
         return []
 
@@ -103,8 +101,6 @@ def align_factory_livedub_candidates(
         render_end = min(source_limit, end + tail)
         actual_tail = render_end - end
 
-        # Do not claim a safe Yandex cut when the shared source itself does not
-        # contain the complete configured delayed-audio tail.
         if actual_tail + 1e-6 < required_tail:
             rejected.append(str(item.get("title") or "tail-truncated"))
             continue
