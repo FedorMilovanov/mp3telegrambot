@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from core.globals import DOWNLOAD_DIR
+from core.globals import DOWNLOAD_DIR, GEMINI_CLIENTS
 from core.url_utils import get_youtube_video_url
 from core.utils import parse_title
 from services.shorts_factory_candidates import factory_ai_data
@@ -141,6 +141,72 @@ def factory_language_needs_translation(language: str) -> bool:
     return normalized != "ru"
 
 
+def factory_preflight_issues(
+    *,
+    gemini_available: bool,
+    whisper_available: bool,
+    ffmpeg_available: bool,
+    ffprobe_available: bool,
+    free_gb: float,
+    min_free_gb: float,
+) -> tuple[str, ...]:
+    issues: list[str] = []
+    if not gemini_available:
+        issues.append("Gemini API clients are unavailable")
+    if not whisper_available:
+        issues.append("faster-whisper is unavailable")
+    if not ffmpeg_available:
+        issues.append("ffmpeg is unavailable")
+    if not ffprobe_available:
+        issues.append("ffprobe is unavailable")
+    if free_gb < min_free_gb:
+        issues.append(
+            f"free disk {free_gb:.1f} GB is below {min_free_gb:.1f} GB"
+        )
+    return tuple(issues)
+
+
+def _min_free_gb() -> float:
+    try:
+        value = float(os.getenv("SHORTS_FACTORY_MIN_FREE_GB", "2.0") or "2.0")
+    except (TypeError, ValueError):
+        value = 2.0
+    return max(0.5, min(value, 100.0))
+
+
+def enforce_factory_preflight() -> None:
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    free_values: list[float] = []
+    for location in (DOWNLOAD_DIR, Path(tempfile.gettempdir())):
+        try:
+            free_values.append(
+                shutil.disk_usage(location).free / (1024 ** 3)
+            )
+        except OSError:
+            continue
+    free_gb = min(free_values) if free_values else 0.0
+
+    try:
+        import services.shorts_video_impl as shorts_video_impl
+
+        whisper_available = bool(shorts_video_impl.HAS_FASTER_WHISPER)
+    except Exception:
+        whisper_available = False
+
+    issues = factory_preflight_issues(
+        gemini_available=bool(GEMINI_CLIENTS),
+        whisper_available=whisper_available,
+        ffmpeg_available=bool(shutil.which("ffmpeg")),
+        ffprobe_available=bool(shutil.which("ffprobe")),
+        free_gb=free_gb,
+        min_free_gb=_min_free_gb(),
+    )
+    if issues:
+        raise RuntimeError(
+            "Factory preflight failed: " + "; ".join(issues)
+        )
+
+
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     try:
         value = int(os.getenv(name, "") or default)
@@ -184,6 +250,7 @@ async def process_shorts_factory_guarded(
     source_task: asyncio.Task | None = None
 
     try:
+        enforce_factory_preflight()
         factory_module._cleanup_expired_factory_sources()
         if status_msg is None:
             status_msg = await update.message.reply_text(
@@ -520,7 +587,9 @@ def install_shorts_factory_execution_guard() -> bool:
 
 
 __all__ = [
+    "enforce_factory_preflight",
     "factory_language_needs_translation",
+    "factory_preflight_issues",
     "install_shorts_factory_execution_guard",
     "normalize_factory_language",
     "process_shorts_factory_guarded",
