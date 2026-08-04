@@ -12,6 +12,7 @@ from services.cut_mode_source_policy import (
 from services.shorts_factory_execution_guard import (
     factory_language_needs_translation,
     factory_preflight_issues,
+    factory_translation_preflight_issues,
     normalize_factory_language,
     resolve_factory_spoken_language,
 )
@@ -123,6 +124,27 @@ async def test_clip_delivery_proxy_uses_actual_probed_duration(
 
     assert await proxy.reply_video(video=video, duration=600) == "sent"
     assert message.kwargs["duration"] == 613
+
+
+def test_factory_translation_preflight_requires_route_and_oauth_by_default():
+    assert factory_translation_preflight_issues(
+        oauth_present=False,
+        helper_available=False,
+        cli_available=False,
+        require_oauth=True,
+    ) == (
+        "Yandex LiveDub client route is unavailable",
+        "VOT_API_TOKEN/YANDEX_OAUTH_TOKEN is missing",
+    )
+
+
+def test_factory_translation_preflight_allows_explicit_cached_only_opt_out():
+    assert factory_translation_preflight_issues(
+        oauth_present=False,
+        helper_available=True,
+        cli_available=False,
+        require_oauth=False,
+    ) == ()
 
 
 def test_factory_preflight_reports_every_missing_runtime_dependency():
