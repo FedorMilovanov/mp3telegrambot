@@ -6,6 +6,7 @@ from types import ModuleType
 import pytest
 
 from services.runtime_manifest import (
+    DEFAULT_RUNTIME_FEATURES,
     RUNTIME_MANIFEST_POLICY,
     RuntimeBootstrapError,
     RuntimeFeature,
@@ -175,3 +176,16 @@ def test_explicit_false_is_a_failure_for_boolean_guards():
 
     with pytest.raises(RuntimeBootstrapError, match="returned False"):
         manifest.install_phase(RuntimePhase.PRE_MAIN)
+
+
+def test_shorts_factory_runtime_is_required_and_fail_closed():
+    feature = next(
+        item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "shorts-factory-max"
+    )
+
+    assert feature.module == "services.shorts_factory_runtime"
+    assert feature.installer == "install_shorts_factory_mode"
+    assert feature.phase is RuntimePhase.POST_MAIN
+    assert feature.required is True
+    assert feature.requires_main is True
+    assert feature.false_is_failure is True
