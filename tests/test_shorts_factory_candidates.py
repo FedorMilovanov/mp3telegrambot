@@ -3,6 +3,10 @@ import pytest
 from services.shorts_factory_candidates import (
     DEFAULT_SHORTS_FACTORY_MODEL,
     FACTORY_PLAN_RESPONSE_SCHEMA,
+    LONG_MAX_SEC,
+    PUBLIC_LONG_MAX_SEC,
+    PUBLIC_SHORT_MAX_SEC,
+    SHORT_MAX_SEC,
     shorts_factory_model,
     validate_factory_plan,
 )
@@ -67,6 +71,39 @@ def test_factory_plan_enforces_duration_ranges_and_overlap():
     ]
     assert plan["shorts_candidates"][0]["duration_seconds"] == 90
     assert plan["long_candidates"][0]["duration_seconds"] == 600
+
+
+def test_factory_plan_reserves_three_seconds_for_render_envelope():
+    assert PUBLIC_SHORT_MAX_SEC == 180
+    assert SHORT_MAX_SEC == 177
+    assert PUBLIC_LONG_MAX_SEC == 900
+    assert LONG_MAX_SEC == 897
+
+    raw = {
+        "shorts_candidates": [
+            {
+                "start_seconds": 0,
+                "end_seconds": 178,
+                "title_ru": "Без Места Для Хвоста",
+                "quality_score": 100,
+                "boundary_verified": True,
+            }
+        ],
+        "long_candidates": [
+            {
+                "start_seconds": 0,
+                "end_seconds": 898,
+                "title_ru": "Длинный Без Места Для Хвоста",
+                "quality_score": 100,
+                "boundary_verified": True,
+            }
+        ],
+    }
+
+    plan = validate_factory_plan(raw, duration=1200)
+
+    assert plan["shorts_candidates"] == []
+    assert plan["long_candidates"] == []
 
 
 def test_factory_plan_rejects_out_of_source_bounds():
