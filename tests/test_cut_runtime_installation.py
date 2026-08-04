@@ -29,17 +29,20 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     )
 
     assert (
-        "from services.shorts_factory_media import "
-        "validated_factory_source_duration"
-    ) in runtime_source
+        "from services.shorts_factory_media import ("
+        in runtime_source
+    )
+    assert "validated_factory_source_duration" in runtime_source
     assert (
         "from services.shorts_factory_timing import "
         "align_factory_livedub_candidates"
     ) in runtime_source
     assert media_source.count("install_livedub_downstream_media_policy()") == 0
     assert quality_source.count("install_factory_plan_quality_gate()") == 0
-    assert "install_livedub_downstream_media_policy()" in timing_source
-    assert "install_factory_plan_quality_gate()" in timing_source
+    assert timing_source.count("install_livedub_downstream_media_policy()") == 0
+    assert timing_source.count("install_factory_plan_quality_gate()") == 0
+    assert "install_livedub_downstream_media_policy()" in runtime_source
+    assert "install_factory_plan_quality_gate()" in runtime_source
 
 
 def test_required_factory_import_failure_cannot_be_silently_ignored():
