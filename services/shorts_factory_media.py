@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Strict media and timing policy for Factory and legacy LiveDub cut modes.
-
-The normal Russian pipelines keep their existing timestamps.  When a translated
-Yandex LiveDub source is supplied, this module installs task-local wrappers that:
-
-* use the real ffprobe duration, including the delayed Russian tail;
-* preserve a small amount of left context and append the complete LiveDub tail;
-* validate every rendered Clip has both a real video and audio stream;
-* pass the real translated-source duration into Highlights quality verification;
-* avoid process-global candidate state across concurrent users.
-"""
+"""Strict media and timing policy for Factory and legacy LiveDub cut modes."""
 from __future__ import annotations
 
 import copy
@@ -29,6 +19,11 @@ _LIVEDUB_SOURCE_DURATION: ContextVar[float] = ContextVar(
     default=0.0,
 )
 _LIVEDUB_POLICY_INSTALLED = False
+
+
+def _env_bool(name: str, default: bool = True) -> bool:
+    raw = os.getenv(name, "1" if default else "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def _env_float(name: str, default: float) -> float:
@@ -57,7 +52,7 @@ def align_livedub_interval(
     source_duration: float,
     public_max_seconds: float = 0.0,
 ) -> tuple[float, float] | None:
-    """Build a context-safe render interval without cutting the Russian tail."""
+    """Build a context-safe interval without cutting the delayed Russian tail."""
     try:
         semantic_start = max(0.0, float(start_seconds))
         semantic_end = max(0.0, float(end_seconds))
@@ -69,11 +64,11 @@ def align_livedub_interval(
         return None
 
     pre_roll, desired_tail = livedub_downstream_envelope()
-    semantic_duration = semantic_end - semantic_start
     required_tail = max(
         0.0,
         float(get_mix_params().get("tail_pad_ms", 0)) / 1000.0,
     )
+    semantic_duration = semantic_end - semantic_start
     if public_max > 0 and semantic_duration + required_tail > public_max + 1e-6:
         return None
 
@@ -82,7 +77,11 @@ def align_livedub_interval(
         if public_max > 0
         else pre_roll + desired_tail
     )
-    actual_pre = min(pre_roll, semantic_start, max(0.0, available_extra - required_tail))
+    actual_pre = min(
+        pre_roll,
+        semantic_start,
+        max(0.0, available_extra - required_tail),
+    )
     actual_tail = min(desired_tail, max(0.0, available_extra - actual_pre))
     render_start = max(0.0, semantic_start - actual_pre)
     render_end = min(source_limit, semantic_end + actual_tail)
@@ -113,6 +112,7 @@ def align_livedub_candidate(
     )
     if interval is None:
         return None
+
     render_start, render_end = interval
     item = copy.deepcopy(candidate)
     item["livedub_semantic_start_seconds"] = float(candidate.get("start_seconds", 0))
@@ -156,7 +156,7 @@ def align_livedub_montage_candidates(
     *,
     source_duration: float,
 ) -> list[dict[str, Any]]:
-    """Expand every montage fragment and keep the candidate only if all survive."""
+    """Expand every montage fragment and keep only fully safe candidates."""
     output: list[dict[str, Any]] = []
     for candidate in copy.deepcopy(candidates or []):
         fragments = candidate.get("fragments") or []
@@ -181,14 +181,20 @@ async def probe_livedub_source_duration(
     *,
     fallback_duration: float = 0.0,
 ) -> float:
-    """Prefer exact translated media duration and never round it upward."""
+    """Return exact translated duration; fail closed by default on probe failure."""
     probe = await probe_media_async(Path(source_path))
     if media_probe_is_deliverable(probe):
         assert probe is not None
         return float(probe.duration)
+
+    if _env_bool("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", True):
+        raise RuntimeError(
+            "LiveDub-файл не прошёл обязательный media probe: нужны "
+            "доказанные video+audio и точная длительность"
+        )
+
     logger.warning(
-        "LiveDub downstream source failed media probe: %s; fallback duration=%.3f",
-        source_path,
+        "LiveDub source probe failed; explicit degraded fallback duration=%.3f",
         float(fallback_duration or 0.0),
     )
     return max(0.0, float(fallback_duration or 0.0))
@@ -213,7 +219,7 @@ async def validated_factory_source_duration(
 
 
 def install_livedub_downstream_media_policy() -> bool:
-    """Install task-local wrappers for legacy Shorts, Clips, Montage and Highlights."""
+    """Install task-local wrappers for Shorts, Clips, Montage and Highlights."""
     global _LIVEDUB_POLICY_INSTALLED
     if _LIVEDUB_POLICY_INSTALLED:
         return True
@@ -234,7 +240,6 @@ def install_livedub_downstream_media_policy() -> bool:
 
     async def livedub_shorts_setting(key: str):
         if _LIVEDUB_SOURCE_DURATION.get() > 0 and key == "shorts_boundary_padding":
-            # Numeric candidates already include the exact task-local envelope.
             return False
         return await original_shorts_setting(key)
 
@@ -298,7 +303,14 @@ def install_livedub_downstream_media_policy() -> bool:
     ):
         if not livedub_video_path or not Path(livedub_video_path).exists():
             return await original_process_shorts(
-                url, media_id, mp3_path, title, performer, duration, ai_data, update,
+                url,
+                media_id,
+                mp3_path,
+                title,
+                performer,
+                duration,
+                ai_data,
+                update,
                 existing_audio_part=existing_audio_part,
                 existing_client=existing_client,
                 rutube_url=rutube_url,
@@ -313,7 +325,14 @@ def install_livedub_downstream_media_policy() -> bool:
         token = _LIVEDUB_SOURCE_DURATION.set(actual_duration)
         try:
             return await original_process_shorts(
-                url, media_id, mp3_path, title, performer, actual_duration, ai_data, update,
+                url,
+                media_id,
+                mp3_path,
+                title,
+                performer,
+                actual_duration,
+                ai_data,
+                update,
                 existing_audio_part=existing_audio_part,
                 existing_client=existing_client,
                 rutube_url=rutube_url,
@@ -341,7 +360,14 @@ def install_livedub_downstream_media_policy() -> bool:
     ):
         if not livedub_video_path or not Path(livedub_video_path).exists():
             return await original_process_clips(
-                url, media_id, mp3_path, title, performer, duration, ai_data, update,
+                url,
+                media_id,
+                mp3_path,
+                title,
+                performer,
+                duration,
+                ai_data,
+                update,
                 existing_audio_part=existing_audio_part,
                 existing_client=existing_client,
                 rutube_url=rutube_url,
@@ -355,7 +381,14 @@ def install_livedub_downstream_media_policy() -> bool:
         token = _LIVEDUB_SOURCE_DURATION.set(actual_duration)
         try:
             return await original_process_clips(
-                url, media_id, mp3_path, title, performer, actual_duration, ai_data, update,
+                url,
+                media_id,
+                mp3_path,
+                title,
+                performer,
+                actual_duration,
+                ai_data,
+                update,
                 existing_audio_part=existing_audio_part,
                 existing_client=existing_client,
                 rutube_url=rutube_url,
@@ -393,7 +426,14 @@ def install_livedub_downstream_media_policy() -> bool:
                 source_duration=actual_duration,
             )
         return await original_process_montage(
-            url, media_id, mp3_path, title, performer, actual_duration, ai_data, update,
+            url,
+            media_id,
+            mp3_path,
+            title,
+            performer,
+            actual_duration,
+            ai_data,
+            update,
             existing_audio_part=existing_audio_part,
             existing_client=existing_client,
             rutube_url=rutube_url,
@@ -425,7 +465,14 @@ def install_livedub_downstream_media_policy() -> bool:
                 fallback_duration=duration,
             )
         return await original_process_highlights(
-            url, media_id, mp3_path, title, performer, actual_duration, ai_data, update,
+            url,
+            media_id,
+            mp3_path,
+            title,
+            performer,
+            actual_duration,
+            ai_data,
+            update,
             existing_audio_part=existing_audio_part,
             existing_client=existing_client,
             rutube_url=rutube_url,
@@ -454,10 +501,6 @@ def install_livedub_downstream_media_policy() -> bool:
         "complete Russian tail, verified Clip video+audio"
     )
     return True
-
-
-# Imported by the fail-closed Shorts Factory runtime during post-main bootstrap.
-install_livedub_downstream_media_policy()
 
 
 __all__ = [
