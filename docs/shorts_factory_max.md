@@ -5,35 +5,40 @@
 ## Production contract
 
 1. The default reasoning model is `gemini-3.1-pro-preview`. Factory accepts only canonical `gemini-<version>-pro...` identifiers at or above Gemini 3.1 Pro. Flash/Lite, older Pro models and aliases that merely contain the word `pro` fail the required runtime startup.
-2. Before metadata or media downloads, Factory preflight requires configured Gemini clients, `faster-whisper`, `ffmpeg`, `ffprobe` and sufficient free space in both downloads and the system temp location.
-3. Audio is analyzed with `thinking_level=high`, audio timestamps and a strict structured-output schema.
-4. Candidate selection is strict three-pass: whole-source scout, independent semantic judge, then a separate boundary auditor that rechecks context before and after every cut.
-5. The third audio pass must report one dominant actually heard spoken language in `metadata.language` as ISO 639-1. Empty, unknown or mixed language fails closed. A title, uploader name or Cyrillic script in metadata is never used as the deciding translation signal.
-6. Fractional Gemini boundaries survive deterministic validation with millisecond precision. They are not rounded to whole seconds before rendering.
-7. Only candidates with `boundary_verified=true` survive deterministic validation. Invalid durations, out-of-source ranges and heavy overlap are rejected.
-8. A final no-compromise editorial gate requires at least `quality_score >= 88` for Shorts and `>= 85` for long clips. Shorts also require a non-empty title, hook and reason; long clips require a title and reason. Environment values may raise these floors but cannot lower them.
-9. The result contains up to five Shorts. Their semantic interval is 35–177 seconds, reserving room for context and the Yandex voice tail inside the final public 180-second limit. Up to three long semantic intervals are 5–14:57, reserving the same safety inside the final 15-minute limit.
-10. After the third Gemini boundary audit, Factory disables the mature renderers' second silence-snap. The renderer uses the audited fractional end literally; ordinary non-Factory modes retain their existing silence adjustment.
-11. Factory forces Shorts speed to exactly `1.0`, preserving Gemini-verified boundaries. Global speed settings cannot stretch or compress a Factory cut.
-12. Short subtitles are mandatory. Factory refuses to start without `faster-whisper` and requires exactly `large-v3`, karaoke, word timestamps and Gemini vocabulary hints. Smaller/compressed models, including `large-v3-turbo`, are rejected instead of silently reducing accuracy.
-13. Immediately before Telegram, the actual burned `_sub.mp4` is probed again. It must contain video+audio and be no longer than 180 seconds, with only a 50 ms container-timescale tolerance. Raw/postprocessed fallback files are rejected.
-14. Each long clip is also re-probed at its final delivery boundary. It must contain video+audio and be no longer than 900 seconds. Telegram duration metadata is replaced with the final probed duration rather than the AI plan.
-15. A Short or long clip is counted only after Telegram accepts that proved final artifact. Partial delivery reports actual accepted counts and zero accepted files fail honestly.
-16. Shorts force audio normalization, a title poster and a snapshot fallback. Long highlights intentionally remain without subtitles.
-17. Source selection happens after the three audio passes. Russian speech uses the original source; every proven non-Russian language requires Yandex LiveDub «Живые голоса».
-18. A foreign-language run performs a LiveDub preflight before starting translation. At least one client route must exist (`node` + `vot_helper`, or `vot-cli-live`/`npx`). OAuth via `VOT_API_TOKEN` or `YANDEX_OAUTH_TOKEN` is required by default.
-19. If Yandex LiveDub is unavailable, the foreign-language extraction job fails clearly. It does not silently cut the untranslated original and does not start an in-house neural voice translation.
-20. `SHORTS_FACTORY_TRANSLATION_BACKEND` is the reserved provider seam for future expansion. At present, every value except `yandex_live` is rejected as not implemented.
-21. Yandex timing is handled as a render envelope, not a blind timestamp shift. Factory keeps the semantic start with at least the default context pre-roll where source bounds permit and appends the full configured `LIVEDUB_DELAY_MS + LIVEDUB_TAIL_MARGIN_MS` Russian-audio tail. The Factory pre-roll and extra-tail defaults may be increased but cannot be lowered through `.env`.
-22. Candidates that cannot fit the complete Yandex envelope inside the public 3/15-minute limit are rejected rather than cutting the first or last words.
-23. The shared source passes a real video+audio media probe. Its exact probed duration, including the LiveDub tail, is used by the renderer so the final Russian phrase is not clipped by the original source duration.
-24. Factory's free-disk preflight cannot be configured below 2 GB, and its source/LiveDub wait cannot be configured below 1800 seconds. Operators may increase either floor.
-25. Generic Short trim buttons are deliberately removed from Factory messages. The generic callback re-renders without the mandatory `large-v3` subtitle pipeline and could exceed three minutes; exposing it would violate the mode contract. The managed source may remain in the existing timed Factory cache and is removed by its TTL; long-only jobs remove it immediately.
-26. The existing mature Shorts and Clips render/delivery pipelines are reused through task-local `ContextVar` overrides. No process-global candidate list, user mode or quality setting is shared between users.
-27. Legacy ENG-mode Shorts, Clips, Montage and Highlights are also fail-closed: if the translated LiveDub file is missing, they are skipped instead of downloading and publishing the original-language video. Legacy Russian cuts keep their original source behavior.
-28. A valid cached analysis becomes a no-publication cut replay: cached `ai_data` is reused without duplicate Gemini analysis, Telegraph pages, archive writes or main-MP3 delivery. In ENG mode a cached Telegram `file_id` cannot stand in for the local translated MP4 required by rendering, and only Telegram-accepted cut videos count as replay success.
-29. The mode-context wrapper preserves the already-installed processing chain separately for ordinary links and playlist entries, so later runtime adapters are not bypassed.
-30. Selectable `/segments` and `/cut` output requires final video+audio evidence, uses the actual probed delivery duration and can fall back from a bad subtitle artifact to a valid base render with a truthful warning.
+2. Before media transfer, Factory preflight requires configured Gemini clients, `faster-whisper`, `ffmpeg`, `ffprobe` and a basic free-space floor in both downloads and the system temp location.
+3. Factory then simulates the exact `yt-dlp` format selection. It sums selected stream `filesize`/`filesize_approx` values or derives them from bitrate and duration, models native-audio plus lossless-FLAC preparation and separate video/audio streams plus merge output, and requires that peak on every target filesystem. If the estimate is unavailable, conservative 4 GB audio and 6 GB video floors are used.
+4. Factory resets inherited/local `yt-dlp` format sorting, `format-sort-force` and free-format preference. Authentication, cookies, proxy and JS-runtime settings are retained, but ordinary mp4/m4a compatibility preferences cannot silently lower MAX source quality.
+5. Russian render sources use `bestvideo+bestaudio/best` with no 720p, 1080p or container ceiling. The selected streams are merged into a probed source before any cuts are rendered.
+6. Factory audio analysis downloads `bestaudio/best` without `--extract-audio` or an intermediate MP3 generation. AAC, MP3, Vorbis and FLAC are remuxed with codec copy into a Gemini-supported container; unsupported codecs such as Opus are decoded once to lossless FLAC. Every prepared file is probed, checked for truncation and submitted with its real MIME type.
+7. Audio is analyzed with `thinking_level=high`, audio timestamps and a strict structured-output schema.
+8. Candidate selection is strict three-pass: whole-source scout, independent semantic judge, then a separate boundary auditor that rechecks context before and after every cut.
+9. The third audio pass must report one dominant actually heard spoken language in `metadata.language` as ISO 639-1. Empty, unknown or mixed language fails closed. A title, uploader name or Cyrillic script in metadata is never used as the deciding translation signal.
+10. Fractional Gemini boundaries survive deterministic validation with millisecond precision. They are not rounded to whole seconds before rendering.
+11. Only candidates with `boundary_verified=true` survive deterministic validation. Invalid durations, out-of-source ranges and heavy overlap are rejected.
+12. A final no-compromise editorial gate requires at least `quality_score >= 88` for Shorts and `>= 85` for long clips. Shorts also require a non-empty title, hook and reason; long clips require a title and reason. Environment values may raise these floors but cannot lower them.
+13. The result contains up to five Shorts. Their semantic interval is 35–177 seconds, reserving room for context and the Yandex voice tail inside the final public 180-second limit. Up to three long semantic intervals are 5–14:57, reserving the same safety inside the final 15-minute limit.
+14. After the third Gemini boundary audit, Factory disables the mature renderers' second silence-snap. The renderer uses the audited fractional end literally; ordinary non-Factory modes retain their existing silence adjustment.
+15. Factory forces Shorts speed to exactly `1.0`, preserving Gemini-verified boundaries. Global speed settings cannot stretch or compress a Factory cut.
+16. Short subtitles are mandatory. Factory refuses to start without `faster-whisper` and requires exactly `large-v3`, karaoke, word timestamps and Gemini vocabulary hints. Smaller/compressed models, including `large-v3-turbo`, are rejected instead of silently reducing accuracy.
+17. Immediately before Telegram, the actual burned `_sub.mp4` is probed again. It must contain video+audio and be no longer than 180 seconds, with only a 50 ms container-timescale tolerance. Raw/postprocessed fallback files are rejected.
+18. Each long clip is also re-probed at its final delivery boundary. It must contain video+audio and be no longer than 900 seconds. Telegram duration metadata is replaced with the final probed duration rather than the AI plan.
+19. A Short or long clip is counted only after Telegram accepts that proved final artifact. Partial delivery reports actual accepted counts and zero accepted files fail honestly.
+20. Shorts force audio normalization, a title poster and a snapshot fallback. Long highlights intentionally remain without subtitles.
+21. Source selection happens after the three audio passes. Russian speech uses the unrestricted original; every proven non-Russian language requires Yandex LiveDub «Живые голоса».
+22. For a foreign source, Factory obtains only the live Russian Yandex audio and independently downloads the unrestricted maximum-quality original. It then builds the existing local Pro mix over that original. The legacy 1080p ENG downloader and opaque `get_live_dub_video` merge path are not used by Factory.
+23. The Factory LiveDub result must pass video+audio probing and physically include the configured delayed Russian tail. A mix that falls back without the full `LIVEDUB_DELAY_MS + LIVEDUB_TAIL_MARGIN_MS` duration is rejected.
+24. A foreign-language run performs a LiveDub preflight before starting translation. At least one client route must exist (`node` + `vot_helper`, or `vot-cli-live`/`npx`). OAuth via `VOT_API_TOKEN` or `YANDEX_OAUTH_TOKEN` is required by default.
+25. If Yandex LiveDub is unavailable, the foreign-language extraction job fails clearly. It does not silently cut the untranslated original and does not start an in-house neural voice translation.
+26. `SHORTS_FACTORY_TRANSLATION_BACKEND` is the reserved provider seam for future expansion. At present, every value except `yandex_live` is rejected as not implemented.
+27. Yandex timing is handled as a render envelope, not a blind timestamp shift. Factory keeps the semantic start with at least the default context pre-roll where source bounds permit and appends the full configured Russian-audio tail. The Factory pre-roll and extra-tail defaults may be increased but cannot be lowered through `.env`.
+28. Candidates that cannot fit the complete Yandex envelope inside the public 3/15-minute limit are rejected rather than cutting the first or last words.
+29. Factory's basic free-space preflight cannot be configured below 2 GB, but that number is not treated as sufficient for a maximum source. The selected-format disk guard may require substantially more based on resolution, bitrate, duration, FLAC preparation and merge peak. The source/LiveDub wait cannot be configured below 1800 seconds.
+30. Generic Short trim buttons are deliberately removed from Factory messages. The generic callback re-renders without the mandatory `large-v3` subtitle pipeline and could exceed three minutes; exposing it would violate the mode contract. The managed source may remain in the existing timed Factory cache and is removed by its TTL; long-only jobs remove it immediately.
+31. The existing mature Shorts and Clips render/delivery pipelines are reused through task-local `ContextVar` overrides. No process-global candidate list, user mode or quality setting is shared between users.
+32. Legacy ENG-mode Shorts, Clips, Montage and Highlights are also fail-closed: if the translated LiveDub file is missing, they are skipped instead of downloading and publishing the original-language video. Legacy Russian cuts keep their original source behavior.
+33. A valid cached analysis becomes a no-publication cut replay: cached `ai_data` is reused without duplicate Gemini analysis, Telegraph pages, archive writes or main-MP3 delivery. In ENG mode a cached Telegram `file_id` cannot stand in for the local translated MP4 required by rendering, and only Telegram-accepted cut videos count as replay success.
+34. The mode-context wrapper preserves the already-installed processing chain separately for ordinary links and playlist entries, so later runtime adapters are not bypassed.
+35. Selectable `/segments` and `/cut` output requires final video+audio evidence, uses the actual probed delivery duration and can fall back from a bad subtitle artifact to a valid base render with a truthful warning.
 
 ## Optional environment controls
 
@@ -52,8 +57,9 @@ SHORTS_FACTORY_MIN_LONG_SCORE=85
 # Exact mandatory Whisper model. Other values fail required startup.
 SHORTS_FACTORY_WHISPER_MODEL=large-v3
 
-# Fail before large downloads if either downloads/temp has less free space.
-# Higher values are accepted; values below 2.0 are floored to 2.0 GB.
+# Basic preflight floor only. Higher values are accepted; values below 2.0 are
+# floored to 2.0 GB. The selected-format disk guard can require much more and
+# cannot be bypassed by lowering this variable.
 SHORTS_FACTORY_MIN_FREE_GB=2.0
 
 # Translation provider. Only yandex_live is implemented today.
@@ -92,6 +98,6 @@ SHORTS_FACTORY_SOURCE_RETENTION_HOURS=24
 
 ## Operator decisions — 2026-08-04
 
-This mode is quality-first. It must not be silently downgraded to Flash/Lite or an old/noncanonical Pro model, minimal thinking, a one-pass candidate search, unverified or whole-second boundaries, a second renderer silence-snap, an unproven spoken language, low editorial scores, accelerated playback, compressed Whisper, subtitle-less delivery, an over-180/900-second final artifact, unsafe generic retrim controls, untranslated ENG cuts or approximate timestamp generation to save quota or time.
+This mode is quality-first. It must not be silently downgraded to a compatibility-sorted or resolution-capped source, an extra MP3 generation before Gemini, Flash/Lite or an old/noncanonical Pro model, minimal thinking, a one-pass candidate search, unverified or whole-second boundaries, a second renderer silence-snap, an unproven spoken language, low editorial scores, accelerated playback, compressed Whisper, subtitle-less delivery, an over-180/900-second final artifact, unsafe generic retrim controls, untranslated ENG cuts or approximate timestamp generation to save quota, disk or time.
 
 Gemini is used here as the editor, semantic selector, spoken-language detector and timestamp auditor. It does not create the Russian voice translation. For foreign-language source audio, the production voice path is Yandex LiveDub «Живые голоса» only. A future neural translation backend may be added behind the reserved provider interface, but it is intentionally disabled today.
