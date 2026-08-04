@@ -1,3 +1,7 @@
+from types import SimpleNamespace
+
+import pytest
+
 from handlers.mode_command import MODE_DESCRIPTIONS, MODE_LABELS, VALID_MODES
 import pipelines.shorts_factory as factory
 from pipelines.shorts_factory import (
@@ -5,6 +9,7 @@ from pipelines.shorts_factory import (
     _shift_candidates_for_livedub,
     _source_needs_translation,
     _translation_backend,
+    _validated_source_duration,
 )
 from services.shorts_factory_runtime import (
     DEFAULT_FACTORY_WHISPER_MODEL,
@@ -66,6 +71,27 @@ def test_livedub_shift_preserves_clip_duration(monkeypatch):
     assert candidates[0]["start_seconds"] == 10
 
 
+def test_livedub_shift_uses_extended_tail_timeline(monkeypatch):
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15")
+    candidates = [
+        {
+            "start_seconds": 895,
+            "end_seconds": 900,
+            "duration_seconds": 5,
+            "start": "14:55",
+            "end": "15:00",
+            "title": "Последняя Фраза",
+        }
+    ]
+
+    shifted = _shift_candidates_for_livedub(candidates, source_duration=903)
+
+    assert shifted[0]["start_seconds"] == 895.75
+    assert shifted[0]["end_seconds"] == 900.75
+    assert shifted[0]["duration_seconds"] == 5
+
+
 def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(factory, "DOWNLOAD_DIR", tmp_path)
     source = tmp_path / "temporary-source.mp4"
@@ -76,6 +102,53 @@ def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
     assert persisted == tmp_path / "video123_factory_source.mp4"
     assert persisted.exists()
     assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_factory_uses_real_probed_source_duration(monkeypatch, tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"x" * 2048)
+    probe = SimpleNamespace(duration=901.2)
+
+    async def fake_probe(path):
+        assert path == source
+        return probe
+
+    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
+    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda value: value is probe)
+
+    assert await _validated_source_duration(source, expected_duration=900) == 902
+
+
+@pytest.mark.asyncio
+async def test_factory_rejects_truncated_source(monkeypatch, tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"x" * 2048)
+    probe = SimpleNamespace(duration=890.0)
+
+    async def fake_probe(_path):
+        return probe
+
+    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
+    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda value: value is probe)
+
+    with pytest.raises(RuntimeError, match="обрезан"):
+        await _validated_source_duration(source, expected_duration=900)
+
+
+@pytest.mark.asyncio
+async def test_factory_rejects_source_without_video_and_audio(monkeypatch, tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"x" * 2048)
+
+    async def fake_probe(_path):
+        return None
+
+    monkeypatch.setattr(factory, "probe_media_async", fake_probe)
+    monkeypatch.setattr(factory, "media_probe_is_deliverable", lambda _value: False)
+
+    with pytest.raises(RuntimeError, match="media probe"):
+        await _validated_source_duration(source, expected_duration=900)
 
 
 def test_factory_forces_verified_timing_speed():
