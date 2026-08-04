@@ -10,6 +10,7 @@ from services.shorts_factory_runtime import (
     DEFAULT_FACTORY_WHISPER_MODEL,
     factory_shorts_speed,
     factory_subtitle_profile,
+    is_subtitled_factory_delivery,
 )
 
 
@@ -100,3 +101,9 @@ def test_factory_whisper_model_has_explicit_override(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_WHISPER_MODEL", "large-v3-turbo")
 
     assert factory_subtitle_profile()["model_name"] == "large-v3-turbo"
+
+
+def test_factory_delivery_accepts_only_burned_subtitle_artifact(tmp_path):
+    assert is_subtitled_factory_delivery(tmp_path / "video_short_1_sub.mp4") is True
+    assert is_subtitled_factory_delivery(tmp_path / "video_short_1_post.mp4") is False
+    assert is_subtitled_factory_delivery(tmp_path / "video_short_1_raw.mp4") is False
