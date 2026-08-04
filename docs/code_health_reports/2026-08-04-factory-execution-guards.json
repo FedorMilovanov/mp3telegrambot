@@ -1,34 +1,41 @@
 {
   "policy": "intentional-code-health-baseline-refresh-v1",
-  "reason": "The surgical cut-mode recheck adds three isolated, tested runtime policy modules: spoken-audio Factory execution, fail-closed legacy ENG/cache replay source handling, and Telegram-accepted delivery evidence for cached cut replay. None adds regex or editorial postprocess debt.",
+  "reason": "The surgical cut-mode recheck adds four isolated, tested runtime policy modules: spoken-audio Factory execution, fail-closed legacy ENG/cache replay source handling, Telegram-accepted cached replay delivery evidence, and a no-downgrade exact-boundary policy. The last module adds one narrowly scoped canonical Gemini-model regex with dedicated regression tests and no editorial postprocess debt.",
   "previous": {
     "files_scanned": 164,
     "total_regex_markers": 725,
     "total_postprocess_markers": 271
   },
   "current": {
-    "files_scanned": 167,
-    "total_regex_markers": 725,
+    "files_scanned": 168,
+    "total_regex_markers": 726,
     "total_postprocess_markers": 271
   },
   "delta": {
-    "files_scanned": 3,
-    "total_regex_markers": 0,
+    "files_scanned": 4,
+    "total_regex_markers": 1,
     "total_postprocess_markers": 0
   },
   "evidence": {
     "focused_tests": [
       "tests/test_factory_execution_and_cut_source_policy.py",
       "tests/test_cut_replay_delivery_policy.py",
+      "tests/test_shorts_factory_no_downgrade.py",
       "tests/test_shorts_factory_mode.py",
       "tests/test_livedub_downstream_media.py",
       "tests/test_cut_runtime_installation.py"
     ],
-    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio; unknown language fails closed; every proven non-Russian language requires LiveDub; partial Telegram delivery is reported truthfully; legacy ENG cuts cannot silently render the untranslated original; valid analysis cache becomes a no-publication replay; only Telegram-accepted cut videos count as replay success.",
+    "quality_contract": "Factory selects Russian versus Yandex LiveDub only after Gemini has heard the audio; unknown language fails closed; every proven non-Russian language requires LiveDub; partial Telegram delivery is reported truthfully; legacy ENG cuts cannot silently render the untranslated original; valid analysis cache becomes a no-publication replay; only Telegram-accepted cut videos count as replay success; Gemini must be canonical Pro >=3.1; Whisper must be exact large-v3; configured quality, timing, disk and timeout floors cannot be lowered; fractional Gemini boundaries survive validation; and Factory rendering cannot perform a second silence-snap after the final boundary audit.",
     "new_files": [
       "services/cut_mode_source_policy.py",
       "services/cut_replay_delivery_policy.py",
-      "services/shorts_factory_execution_guard.py"
-    ]
+      "services/shorts_factory_execution_guard.py",
+      "services/shorts_factory_no_downgrade.py"
+    ],
+    "regex_evidence": {
+      "file": "services/shorts_factory_no_downgrade.py",
+      "purpose": "Validate canonical gemini-<version>-pro model identifiers and reject aliases that merely contain the word pro.",
+      "test": "tests/test_shorts_factory_no_downgrade.py"
+    }
   }
 }
