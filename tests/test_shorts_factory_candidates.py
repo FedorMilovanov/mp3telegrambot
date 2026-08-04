@@ -2,6 +2,7 @@ import pytest
 
 from services.shorts_factory_candidates import (
     DEFAULT_SHORTS_FACTORY_MODEL,
+    FACTORY_PLAN_RESPONSE_SCHEMA,
     shorts_factory_model,
     validate_factory_plan,
 )
@@ -114,8 +115,34 @@ def test_factory_model_defaults_to_pro_without_flash_fallback(monkeypatch):
     assert shorts_factory_model() == "gemini-3.1-pro-preview"
 
 
+def test_generic_flash_max_does_not_downgrade_factory(monkeypatch):
+    monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_PRO_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.6-flash")
+
+    assert shorts_factory_model() == DEFAULT_SHORTS_FACTORY_MODEL
+
+
+def test_factory_model_refuses_explicit_flash_route(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.6-flash")
+
+    with pytest.raises(RuntimeError, match="requires a Pro model"):
+        shorts_factory_model()
+
+
 def test_factory_model_refuses_lite_route(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.5-flash-lite")
 
-    with pytest.raises(RuntimeError, match="refuses Lite model"):
+    with pytest.raises(RuntimeError, match="requires a Pro model"):
         shorts_factory_model()
+
+
+def test_factory_response_schema_requires_complete_plan_shape():
+    assert FACTORY_PLAN_RESPONSE_SCHEMA["required"] == [
+        "metadata",
+        "shorts_candidates",
+        "long_candidates",
+    ]
+    candidate = FACTORY_PLAN_RESPONSE_SCHEMA["properties"]["shorts_candidates"]["items"]
+    assert "boundary_verified" in candidate["required"]
+    assert "quality_score" in candidate["required"]
