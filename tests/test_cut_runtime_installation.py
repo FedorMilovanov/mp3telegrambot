@@ -21,6 +21,9 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     media_source = Path("services/shorts_factory_media.py").read_text(
         encoding="utf-8"
     )
+    quality_source = Path("services/shorts_factory_quality_gate.py").read_text(
+        encoding="utf-8"
+    )
     timing_source = Path("services/shorts_factory_timing.py").read_text(
         encoding="utf-8"
     )
@@ -33,7 +36,9 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
         "from services.shorts_factory_timing import "
         "align_factory_livedub_candidates"
     ) in runtime_source
-    assert "install_livedub_downstream_media_policy()" in media_source
+    assert media_source.count("install_livedub_downstream_media_policy()") == 0
+    assert quality_source.count("install_factory_plan_quality_gate()") == 0
+    assert "install_livedub_downstream_media_policy()" in timing_source
     assert "install_factory_plan_quality_gate()" in timing_source
 
 
