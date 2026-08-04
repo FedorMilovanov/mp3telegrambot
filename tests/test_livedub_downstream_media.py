@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -111,13 +112,33 @@ async def test_livedub_source_duration_uses_exact_deliverable_probe(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_livedub_source_duration_has_explicit_metadata_fallback(monkeypatch, tmp_path):
+async def test_livedub_source_probe_is_fail_closed_by_default(monkeypatch, tmp_path):
     source = tmp_path / "broken.mp4"
     source.write_bytes(b"x" * 2048)
 
     async def fake_probe(_path):
         return None
 
+    monkeypatch.delenv("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", raising=False)
+    monkeypatch.setattr(media, "probe_media_async", fake_probe)
+    monkeypatch.setattr(media, "media_probe_is_deliverable", lambda _value: False)
+
+    with pytest.raises(RuntimeError, match="обязательный media probe"):
+        await probe_livedub_source_duration(source, fallback_duration=900)
+
+
+@pytest.mark.asyncio
+async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
+    monkeypatch,
+    tmp_path,
+):
+    source = tmp_path / "broken.mp4"
+    source.write_bytes(b"x" * 2048)
+
+    async def fake_probe(_path):
+        return None
+
+    monkeypatch.setenv("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", "0")
     monkeypatch.setattr(media, "probe_media_async", fake_probe)
     monkeypatch.setattr(media, "media_probe_is_deliverable", lambda _value: False)
 
@@ -127,8 +148,9 @@ async def test_livedub_source_duration_has_explicit_metadata_fallback(monkeypatc
     ) == 900
 
 
-def test_runtime_policy_wires_every_requested_cut_mode():
-    source = __import__("pathlib").Path("services/shorts_factory_media.py").read_text(
+def test_runtime_policy_wires_every_requested_cut_mode_without_import_side_effect():
+    source = Path("services/shorts_factory_media.py").read_text(encoding="utf-8")
+    timing_source = Path("services/shorts_factory_timing.py").read_text(
         encoding="utf-8"
     )
 
@@ -139,4 +161,5 @@ def test_runtime_policy_wires_every_requested_cut_mode():
     assert "montage_module.process_and_send_highlights = process_highlights" in source
     assert "main_pipeline_module.process_and_send_highlights = process_highlights" in source
     assert "media_probe_is_deliverable(probe)" in source
-    assert media._LIVEDUB_POLICY_INSTALLED is True
+    assert source.count("install_livedub_downstream_media_policy()") == 0
+    assert "install_livedub_downstream_media_policy()" in timing_source
