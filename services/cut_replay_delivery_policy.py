@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import logging
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,17 @@ _INSTALLED = False
 def cut_replay_delivery_count() -> int:
     counter = _REPLAY_DELIVERIES.get()
     return int(counter[0]) if counter is not None else 0
+
+
+def same_replay_audio_path(left: Any, right: Path | None) -> bool:
+    """Compare Path values and Telegram file objects by their concrete name."""
+    if left is None or right is None:
+        return False
+    candidate = getattr(left, "name", left)
+    try:
+        return Path(candidate).resolve(strict=False) == right.resolve(strict=False)
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def mark_cut_replay_from_cache_decision(
@@ -167,6 +179,7 @@ def install_cut_replay_delivery_policy() -> bool:
     montage_process = _wrap_cut(original_montage)
     highlights_process = _wrap_cut(original_highlights)
 
+    source_policy._same_file_path = same_replay_audio_path
     source_policy.cut_cache_validity = cache_validity_with_replay_evidence
     main_pipeline_module.process_single_video = main_process
     commands_module.process_single_video = commands_process
@@ -194,4 +207,5 @@ __all__ = [
     "cut_replay_delivery_count",
     "install_cut_replay_delivery_policy",
     "mark_cut_replay_from_cache_decision",
+    "same_replay_audio_path",
 ]
