@@ -210,6 +210,7 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
 
     async def fake_get_live_audio(*args, **kwargs):
         assert kwargs["voice_style"] == "live"
+        assert kwargs["timeout"] == 1800
         return ru_path
 
     async def fake_mix(original, ru_audio, output):
@@ -228,6 +229,7 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
 
     monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live")
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB", "1")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "60")
     monkeypatch.setattr(source, "download_factory_video_source", fake_download_original)
     monkeypatch.setattr(yandex_live_dub, "get_live_dub_audio", fake_get_live_audio)
     monkeypatch.setattr(livedub_mix, "mix_tracks", fake_mix)
