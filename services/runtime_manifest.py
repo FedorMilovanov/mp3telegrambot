@@ -410,6 +410,14 @@ DEFAULT_RUNTIME_FEATURES = (
         requires_main=True,
     ),
     RuntimeFeature(
+        "shorts-factory-max",
+        "services.shorts_factory_runtime",
+        "install_shorts_factory_mode",
+        RuntimePhase.POST_MAIN,
+        requires_main=True,
+        false_is_failure=True,
+    ),
+    RuntimeFeature(
         "dub-studio-runtime",
         "services.dub_studio_runtime",
         "install_dub_studio_runtime",
