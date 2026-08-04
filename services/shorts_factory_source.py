@@ -112,7 +112,7 @@ async def _prepare_gemini_audio(
     if codec == "aac":
         output_path = final_stem.with_suffix(".aac")
         codec_args = ["-c:a", "copy", "-f", "adts"]
-    elif codec in {"mp3", "mp2"}:
+    elif codec == "mp3":
         output_path = final_stem.with_suffix(".mp3")
         codec_args = ["-c:a", "copy", "-f", "mp3"]
     elif codec == "vorbis":
@@ -165,7 +165,10 @@ async def _prepare_gemini_audio(
         )
     factory_audio_mime_type(output_path)
     if output_path != source_path:
-        source_path.unlink(missing_ok=True)
+        try:
+            source_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     logger.info(
         "Factory audio source prepared: source_codec=%s output=%s "
         "duration=%.3fs size=%.1fMB",
@@ -183,6 +186,7 @@ async def download_factory_audio_source(url: str, media_id: str) -> Path:
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
     command = list(YTDLP_BASE_ARGS) + [
+        "--format-sort-reset",
         "--format",
         "bestaudio/best",
         "--no-playlist",
@@ -216,6 +220,7 @@ async def download_factory_video_source(
     _remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
     command = list(YTDLP_BASE_ARGS) + [
+        "--format-sort-reset",
         "--format",
         "bestvideo+bestaudio/best",
         "--merge-output-format",
@@ -305,7 +310,7 @@ async def create_factory_plan_from_supported_audio(
                         mime_type=mime_type,
                         display_name=(
                             f"Shorts Factory MAX — {performer} — {title}"
-                        ),
+                        )[:500],
                     ),
                 )
                 uploaded = await candidates._wait_uploaded_file(
