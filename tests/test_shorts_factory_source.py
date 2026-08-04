@@ -103,6 +103,8 @@ async def test_factory_audio_download_uses_native_best_and_lossless_flac(
     assert yt_command.index("--format-sort-reset") > yt_command.index(
         "--format-sort"
     )
+    assert "--no-format-sort-force" in yt_command
+    assert "--no-prefer-free-formats" in yt_command
     assert yt_command[yt_command.index("--format") + 1] == "bestaudio/best"
     assert "--extract-audio" not in yt_command
     assert "--audio-format" not in yt_command
@@ -180,6 +182,8 @@ async def test_factory_video_download_has_no_resolution_ceiling(
     command = commands[0]
     assert result == output_path
     assert "--format-sort-reset" in command
+    assert "--no-format-sort-force" in command
+    assert "--no-prefer-free-formats" in command
     assert command[command.index("--format") + 1] == (
         "bestvideo+bestaudio/best"
     )
@@ -247,7 +251,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(
     assert plan["review_passes"] == 3
 
 
-def test_source_policy_installs_before_no_downgrade_and_execution():
+def test_source_policy_installs_after_validation_and_before_execution():
     quality = Path("services/shorts_factory_quality_gate.py").read_text(
         encoding="utf-8"
     )
@@ -255,14 +259,14 @@ def test_source_policy_installs_before_no_downgrade_and_execution():
         encoding="utf-8"
     )
 
-    source_pos = quality.index("if not install_factory_source_quality_policy():")
     no_downgrade_pos = quality.index(
         "if not install_factory_no_downgrade_policy():"
     )
+    source_pos = quality.index("if not install_factory_source_quality_policy():")
     execution_pos = quality.index(
         "if not install_shorts_factory_execution_guard():"
     )
-    assert source_pos < no_downgrade_pos < execution_pos
+    assert no_downgrade_pos < source_pos < execution_pos
     assert "height<=720" not in source_code
     assert "--extract-audio" not in source_code
     assert "--audio-format" not in source_code
