@@ -27,20 +27,93 @@ LONG_MIN_SEC = 300
 LONG_MAX_SEC = 900
 DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.1-pro-preview"
 
+_FACTORY_CANDIDATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "start_seconds": {"type": "number"},
+        "end_seconds": {"type": "number"},
+        "title_ru": {"type": "string"},
+        "hook_ru": {"type": "string"},
+        "reason_ru": {"type": "string"},
+        "kind": {"type": "string"},
+        "hashtags": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "quality_score": {"type": "number"},
+        "boundary_verified": {"type": "boolean"},
+    },
+    "required": [
+        "start_seconds",
+        "end_seconds",
+        "title_ru",
+        "reason_ru",
+        "quality_score",
+        "boundary_verified",
+    ],
+}
+
+FACTORY_PLAN_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "language": {"type": "string"},
+                "format": {"type": "string"},
+                "title_ru": {"type": "string"},
+                "author_ru": {"type": "string"},
+                "analysis_note": {"type": "string"},
+            },
+            "required": ["language", "format", "title_ru", "author_ru"],
+        },
+        "shorts_candidates": {
+            "type": "array",
+            "items": _FACTORY_CANDIDATE_SCHEMA,
+        },
+        "long_candidates": {
+            "type": "array",
+            "items": _FACTORY_CANDIDATE_SCHEMA,
+        },
+    },
+    "required": ["metadata", "shorts_candidates", "long_candidates"],
+}
+
+
+def _require_pro_model(model: str, source: str) -> str:
+    value = str(model or "").strip()
+    folded = value.casefold()
+    if not value:
+        raise RuntimeError(f"{source} is empty; SHORTS FACTORY MAX requires Gemini Pro")
+    if "lite" in folded or "pro" not in folded:
+        raise RuntimeError(
+            f"SHORTS FACTORY MAX requires a Pro model; {source}={value!r} is not allowed"
+        )
+    return value
+
 
 def shorts_factory_model() -> str:
-    """Use the strongest Pro reasoning route and never silently fall back to Lite/Flash."""
-    model = (
-        os.getenv("SHORTS_FACTORY_MODEL", "").strip()
-        or os.getenv("GEMINI_PRO_MODEL", "").strip()
-        or os.getenv("GEMINI_MAX_MODEL", "").strip()
-        or DEFAULT_SHORTS_FACTORY_MODEL
-    )
-    if "lite" in model.casefold():
-        raise RuntimeError(
-            f"SHORTS FACTORY MAX refuses Lite model {model!r}; configure a Pro high-thinking model"
+    """Use the Pro reasoning route and never silently inherit a Flash model."""
+    explicit = os.getenv("SHORTS_FACTORY_MODEL", "").strip()
+    if explicit:
+        return _require_pro_model(explicit, "SHORTS_FACTORY_MODEL")
+
+    configured_pro = os.getenv("GEMINI_PRO_MODEL", "").strip()
+    if configured_pro:
+        return _require_pro_model(configured_pro, "GEMINI_PRO_MODEL")
+
+    generic_max = os.getenv("GEMINI_MAX_MODEL", "").strip()
+    if generic_max:
+        folded = generic_max.casefold()
+        if "pro" in folded and "lite" not in folded:
+            return generic_max
+        logger.info(
+            "SHORTS FACTORY ignores non-Pro GEMINI_MAX_MODEL=%r and uses %s",
+            generic_max,
+            DEFAULT_SHORTS_FACTORY_MODEL,
         )
-    return model
+
+    return DEFAULT_SHORTS_FACTORY_MODEL
 
 
 def _parse_json_payload(raw: str) -> dict[str, Any]:
@@ -356,6 +429,7 @@ async def _run_pass(client, *, model: str, audio_part, prompt: str, max_tokens: 
         model_name=model,
         thinking_level="high",
         response_mime_type="application/json",
+        response_schema=FACTORY_PLAN_RESPONSE_SCHEMA,
     )
     response = await asyncio.wait_for(
         client.aio.models.generate_content(
