@@ -30,6 +30,9 @@ _FACTORY_SHORT_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
 _FACTORY_LONG_DELIVERIES: ContextVar[list[int] | None] = ContextVar(
     "factory_long_deliveries", default=None
 )
+_FACTORY_COMPLETED_DELIVERIES: ContextVar[tuple[int, int] | None] = ContextVar(
+    "factory_completed_deliveries", default=None
+)
 _INSTALLED = False
 
 
@@ -61,6 +64,10 @@ def factory_short_delivery_count() -> int:
 def factory_long_delivery_count() -> int:
     counter = _FACTORY_LONG_DELIVERIES.get()
     return int(counter[0]) if counter is not None else 0
+
+
+def factory_completed_delivery_counts() -> tuple[int, int]:
+    return _FACTORY_COMPLETED_DELIVERIES.get() or (0, 0)
 
 
 def is_subtitled_factory_delivery(video: Any) -> bool:
@@ -126,6 +133,25 @@ class _FactoryUpdateProxy:
         return getattr(self._update, name)
 
 
+class _FactoryStatusProxy:
+    """Rewrite the final card with actual Telegram-accepted delivery counts."""
+
+    def __init__(self, status_message: Any) -> None:
+        self._status_message = status_message
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._status_message, name)
+
+    async def edit_text(self, text: str, *args, **kwargs):
+        if str(text).startswith("✅ SHORTS FACTORY MAX завершён:"):
+            shorts_sent, longs_sent = factory_completed_delivery_counts()
+            text = (
+                "✅ SHORTS FACTORY MAX завершён: "
+                f"{shorts_sent} Shorts, {longs_sent} длинных фрагмента."
+            )
+        return await self._status_message.edit_text(text, *args, **kwargs)
+
+
 @contextmanager
 def factory_render_context(
     shorts_candidates: list[dict[str, Any]],
@@ -154,6 +180,9 @@ def factory_render_context(
     try:
         yield
     finally:
+        _FACTORY_COMPLETED_DELIVERIES.set(
+            (factory_short_delivery_count(), factory_long_delivery_count())
+        )
         _FACTORY_SETTINGS.reset(settings_token)
         _FACTORY_LONG_DELIVERIES.reset(long_delivery_token)
         _FACTORY_SHORT_DELIVERIES.reset(short_delivery_token)
@@ -216,14 +245,23 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             factory_module._shift_candidates_for_livedub = (
                 align_factory_livedub_candidates
             )
-            return await factory_module.process_shorts_factory(
-                url,
-                update,
-                status_msg=status_msg,
-                progress_prefix=progress_prefix,
-                context=context,
-                silent_errors=silent_errors,
+            completion_token = _FACTORY_COMPLETED_DELIVERIES.set(None)
+            wrapped_status = (
+                _FactoryStatusProxy(status_msg) if status_msg is not None else None
             )
+            try:
+                result = await factory_module.process_shorts_factory(
+                    url,
+                    update,
+                    status_msg=wrapped_status,
+                    progress_prefix=progress_prefix,
+                    context=context,
+                    silent_errors=silent_errors,
+                )
+                shorts_sent, longs_sent = factory_completed_delivery_counts()
+                return bool(result and (shorts_sent or longs_sent))
+            finally:
+                _FACTORY_COMPLETED_DELIVERIES.reset(completion_token)
         return await original_process(
             url,
             update,
@@ -347,6 +385,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
 
 __all__ = [
     "DEFAULT_FACTORY_WHISPER_MODEL",
+    "factory_completed_delivery_counts",
     "factory_long_delivery_count",
     "factory_render_context",
     "factory_short_delivery_count",
