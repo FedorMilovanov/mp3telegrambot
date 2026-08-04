@@ -9,6 +9,11 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterator
 
+from services.media_delivery_probe import (
+    media_probe_is_deliverable,
+    probe_media_async,
+)
+
 logger = logging.getLogger(__name__)
 
 _ENG_CUT_MODES = frozenset({"eng", "eng_fast", "eng_fast_qa"})
@@ -54,6 +59,48 @@ def cut_source_mode_context(mode: str) -> Iterator[None]:
         yield
     finally:
         _CUT_SOURCE_MODE.reset(token)
+
+
+class _ClipMessageProxy:
+    """Bind Telegram metadata to the proved rendered Clip, not the AI plan."""
+
+    def __init__(self, message: Any) -> None:
+        self._message = message
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._message, name)
+
+    async def reply_video(self, *args, **kwargs):
+        video = kwargs.get("video")
+        if video is None and args:
+            video = args[0]
+        try:
+            path = Path(video)
+        except (TypeError, ValueError, OSError) as exc:
+            raise RuntimeError("Clip delivery path is invalid") from exc
+
+        probe = await probe_media_async(path)
+        if not media_probe_is_deliverable(probe):
+            raise RuntimeError(
+                "Clip delivery rejected: final file lacks proved video+audio"
+            )
+        assert probe is not None
+        kwargs["duration"] = max(1, int(round(probe.duration)))
+        logger.info(
+            "Clip delivery metadata proved: file=%s duration=%.3fs",
+            path.name,
+            probe.duration,
+        )
+        return await self._message.reply_video(*args, **kwargs)
+
+
+class _ClipUpdateProxy:
+    def __init__(self, update: Any) -> None:
+        self._update = update
+        self.message = _ClipMessageProxy(update.message)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._update, name)
 
 
 def install_cut_mode_source_policy() -> bool:
@@ -124,7 +171,16 @@ def install_cut_mode_source_policy() -> bool:
         if not cut_source_is_usable(path):
             _skip_reason("Clips")
             return None
-        return await original_clips(*args, **kwargs)
+
+        if "update" in kwargs:
+            call_kwargs = dict(kwargs)
+            call_kwargs["update"] = _ClipUpdateProxy(call_kwargs["update"])
+            return await original_clips(*args, **call_kwargs)
+
+        call_args = list(args)
+        if len(call_args) >= 8:
+            call_args[7] = _ClipUpdateProxy(call_args[7])
+        return await original_clips(*call_args, **kwargs)
 
     @functools.wraps(original_montage)
     async def guarded_montage(*args, **kwargs):
