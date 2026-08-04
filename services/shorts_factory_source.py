@@ -180,13 +180,21 @@ async def _prepare_gemini_audio(
     return output_path
 
 
+def _factory_quality_sort_reset() -> list[str]:
+    """Discard local container preferences while preserving all auth/network args."""
+    return [
+        "--format-sort-reset",
+        "--no-format-sort-force",
+        "--no-prefer-free-formats",
+    ]
+
+
 async def download_factory_audio_source(url: str, media_id: str) -> Path:
     """Download best native audio, never yt-dlp-transcode it to MP3."""
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + [
-        "--format-sort-reset",
+    command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
         "--format",
         "bestaudio/best",
         "--no-playlist",
@@ -219,8 +227,7 @@ async def download_factory_video_source(
     prefix = f"{media_id}_factory_max_source"
     _remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + [
-        "--format-sort-reset",
+    command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
         "--format",
         "bestvideo+bestaudio/best",
         "--merge-output-format",
