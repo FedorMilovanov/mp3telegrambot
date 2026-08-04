@@ -95,7 +95,7 @@ def test_invalid_disk_estimate_kind_fails_closed():
         disk_guard.required_factory_free_bytes("unknown", 1, 1)
 
 
-def test_factory_delivery_sort_maximizes_resolution_then_prefers_sdr():
+def test_factory_delivery_sort_prefers_sdr_then_maximizes_resolution():
     base = [
         "--format-sort-reset",
         "--no-format-sort-force",
@@ -105,7 +105,7 @@ def test_factory_delivery_sort_maximizes_resolution_then_prefers_sdr():
     result = disk_guard.factory_delivery_sort_args(base)
 
     assert result[:3] == base
-    assert result[-2:] == ["--format-sort", "res,fps,hdr:0"]
+    assert result[-2:] == ["--format-sort", "hdr:0,res,fps"]
 
 
 def test_free_space_guard_checks_every_target_and_rejects_shortage(
@@ -179,7 +179,7 @@ async def test_estimate_uses_same_sdr_factory_sort_and_selected_format(
     assert "--format-sort-reset" in command
     assert "--no-format-sort-force" in command
     assert "--no-prefer-free-formats" in command
-    assert "res,fps,hdr:0" in command
+    assert "hdr:0,res,fps" in command
     assert command[command.index("--format") + 1] == (
         "bestvideo+bestaudio/best"
     )
@@ -219,5 +219,5 @@ def test_disk_guard_installs_after_source_and_before_execution():
     assert "source._factory_quality_sort_reset = output_safe_sort_reset" in guard
     assert "source.download_factory_audio_source = guarded_audio" in guard
     assert "source.download_factory_video_source = guarded_video" in guard
-    assert "res,fps,hdr:0" in guard
+    assert "hdr:0,res,fps" in guard
     assert "\ninstall_factory_disk_guard()\n" not in guard
