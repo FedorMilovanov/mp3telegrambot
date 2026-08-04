@@ -117,11 +117,16 @@ def install_factory_plan_quality_gate() -> bool:
     from services.shorts_factory_no_downgrade import (
         install_factory_no_downgrade_policy,
     )
+    from services.shorts_factory_source import (
+        install_factory_source_quality_policy,
+    )
     import services.shorts_factory_candidates as candidates_module
 
     if not install_cut_mode_source_policy():
         return False
     if not install_cut_replay_delivery_policy():
+        return False
+    if not install_factory_source_quality_policy():
         return False
     if not install_factory_no_downgrade_policy():
         return False
@@ -167,9 +172,10 @@ def install_factory_plan_quality_gate() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory post-media guards installed: no-downgrade quality "
-        "floors, exact audited boundaries, spoken-language execution, "
-        "translated ENG source and truthful cached cut replay delivery"
+        "Shorts Factory post-media guards installed: maximum-quality native "
+        "sources, no-downgrade floors, exact audited boundaries, "
+        "spoken-language execution, translated ENG source and truthful "
+        "cached cut replay delivery"
     )
     return True
 
