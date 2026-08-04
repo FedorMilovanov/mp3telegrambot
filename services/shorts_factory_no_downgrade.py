@@ -227,6 +227,13 @@ def install_factory_no_downgrade_policy() -> bool:
             **kwargs,
         )
 
+    # Validate all fail-closed startup knobs before mutating any imported module.
+    # A bad .env therefore leaves no half-installed wrappers behind.
+    validated_model = require_factory_model_floor(original_model_selector())
+    validated_profile = hardened_factory_subtitle_profile(
+        original_subtitle_profile()
+    )
+
     candidates_module.shorts_factory_model = strict_model_selector
     candidates_module._seconds = precise_factory_seconds
     quality_gate_module._score_threshold = strict_score_threshold
@@ -237,16 +244,13 @@ def install_factory_no_downgrade_policy() -> bool:
     shorts_video_module._find_silence_end = factory_short_silence_end
     render_clips_module._find_silence_end = factory_clip_silence_end
 
-    # Validate startup configuration now, before the required runtime feature
-    # can expose a mode that would fail only after a long download.
-    strict_model_selector()
-    strict_subtitle_profile()
-
     _INSTALLED = True
     logger.info(
-        "Shorts Factory no-downgrade policy installed: Gemini>=3.1 Pro, "
-        "Whisper=large-v3, non-lowerable quality/timing floors, millisecond "
-        "timestamps and exact audited render ends"
+        "Shorts Factory no-downgrade policy installed: model=%s, "
+        "Whisper=%s, non-lowerable quality/timing floors, millisecond "
+        "timestamps and exact audited render ends",
+        validated_model,
+        validated_profile["model_name"],
     )
     return True
 
