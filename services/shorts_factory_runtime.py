@@ -34,8 +34,13 @@ def factory_render_context(
         {
             "shorts_subtitles": True,
             "shorts_audio_normalize": True,
-            "shorts_boundary_padding": True,
+            # Gemini's third pass already verifies exact boundaries. For Yandex
+            # the Factory pipeline shifts candidates by the configured dub delay.
+            "shorts_boundary_padding": False,
             "clips": True,
+            # Keep the shared source after Clips so interactive trim buttons can
+            # reuse it. The Factory pipeline owns timed cleanup of that cache.
+            "shorts_highlights": True,
         }
     )
     try:
@@ -62,6 +67,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     original_shorts_candidates = shorts_module.create_shorts_candidates
     original_long_candidates = clips_module.create_clips_candidates
     original_shorts_setting = shorts_module.asettings_get
+    original_clips_setting = clips_module.settings_get
 
     async def process_link_by_mode(
         url,
@@ -112,11 +118,18 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             return overrides[key]
         return await original_shorts_setting(key)
 
+    def factory_clips_setting(key: str):
+        overrides = _FACTORY_SETTINGS.get()
+        if overrides is not None and key in overrides:
+            return overrides[key]
+        return original_clips_setting(key)
+
     commands_module.process_single_video = process_link_by_mode
     playlist_module.process_single_video = process_link_by_mode
     shorts_module.create_shorts_candidates = factory_shorts_candidates
     clips_module.create_clips_candidates = factory_long_candidates
     shorts_module.asettings_get = factory_shorts_setting
+    clips_module.settings_get = factory_clips_setting
 
     _INSTALLED = True
     logger.info(
