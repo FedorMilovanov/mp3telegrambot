@@ -117,33 +117,42 @@ def install_cut_mode_source_policy() -> bool:
     import pipelines.shorts as shorts_module
     from handlers.mode_command import get_user_mode
 
-    original_process_single_video = main_pipeline_module.process_single_video
+    original_main_process = main_pipeline_module.process_single_video
+    original_commands_process = commands_module.process_single_video
+    original_playlist_process = playlist_module.process_single_video
     original_shorts = shorts_module.process_and_send_shorts
     original_clips = clips_module.process_and_send_clips
     original_montage = montage_module.process_and_send_montage
     original_highlights = montage_module.process_and_send_highlights
 
-    @functools.wraps(original_process_single_video)
-    async def process_single_video_with_mode(
-        url,
-        update,
-        status_msg=None,
-        progress_prefix="",
-        context=None,
-        silent_errors: bool = False,
-    ):
-        user = getattr(update, "effective_user", None)
-        user_id = int(getattr(user, "id", 0) or 0)
-        mode = await get_user_mode(user_id) if user_id else "rus"
-        with cut_source_mode_context(mode):
-            return await original_process_single_video(
-                url,
-                update,
-                status_msg=status_msg,
-                progress_prefix=progress_prefix,
-                context=context,
-                silent_errors=silent_errors,
-            )
+    def _wrap_process_entry(original_process):
+        @functools.wraps(original_process)
+        async def process_single_video_with_mode(
+            url,
+            update,
+            status_msg=None,
+            progress_prefix="",
+            context=None,
+            silent_errors: bool = False,
+        ):
+            user = getattr(update, "effective_user", None)
+            user_id = int(getattr(user, "id", 0) or 0)
+            mode = await get_user_mode(user_id) if user_id else "rus"
+            with cut_source_mode_context(mode):
+                return await original_process(
+                    url,
+                    update,
+                    status_msg=status_msg,
+                    progress_prefix=progress_prefix,
+                    context=context,
+                    silent_errors=silent_errors,
+                )
+
+        return process_single_video_with_mode
+
+    main_process_with_mode = _wrap_process_entry(original_main_process)
+    commands_process_with_mode = _wrap_process_entry(original_commands_process)
+    playlist_process_with_mode = _wrap_process_entry(original_playlist_process)
 
     def _skip_reason(kind: str) -> None:
         logger.warning(
@@ -202,9 +211,9 @@ def install_cut_mode_source_policy() -> bool:
             return None
         return await original_highlights(*args, **kwargs)
 
-    main_pipeline_module.process_single_video = process_single_video_with_mode
-    commands_module.process_single_video = process_single_video_with_mode
-    playlist_module.process_single_video = process_single_video_with_mode
+    main_pipeline_module.process_single_video = main_process_with_mode
+    commands_module.process_single_video = commands_process_with_mode
+    playlist_module.process_single_video = playlist_process_with_mode
 
     shorts_module.process_and_send_shorts = guarded_shorts
     clips_module.process_and_send_clips = guarded_clips
