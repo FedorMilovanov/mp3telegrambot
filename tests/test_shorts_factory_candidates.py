@@ -1,6 +1,7 @@
 import pytest
 
 from services.shorts_factory_candidates import (
+    DEFAULT_SHORTS_FACTORY_MODEL,
     shorts_factory_model,
     validate_factory_plan,
 )
@@ -103,6 +104,14 @@ def test_factory_plan_rejects_unverified_boundaries_by_default():
     plan = validate_factory_plan(raw, duration=300)
 
     assert plan["shorts_candidates"] == []
+
+
+def test_factory_model_defaults_to_pro_without_flash_fallback(monkeypatch):
+    for name in ("SHORTS_FACTORY_MODEL", "GEMINI_PRO_MODEL", "GEMINI_MAX_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.1-pro-preview"
+    assert shorts_factory_model() == "gemini-3.1-pro-preview"
 
 
 def test_factory_model_refuses_lite_route(monkeypatch):
