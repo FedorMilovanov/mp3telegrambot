@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_FACTORY_WHISPER_MODEL = "large-v3"
 
 _FACTORY_SHORTS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
     "factory_shorts_candidates", default=None
@@ -20,6 +23,26 @@ _FACTORY_SETTINGS: ContextVar[dict[str, bool] | None] = ContextVar(
     "factory_render_settings", default=None
 )
 _INSTALLED = False
+
+
+def factory_subtitle_profile() -> dict[str, Any]:
+    """Return the strict subtitle profile used only inside Factory jobs."""
+    model_name = (
+        os.getenv("SHORTS_FACTORY_WHISPER_MODEL", "").strip()
+        or DEFAULT_FACTORY_WHISPER_MODEL
+    )
+    return {
+        "model_name": model_name,
+        "karaoke": True,
+        "word_timestamps": True,
+        "light": False,
+        "gemini_hints": True,
+    }
+
+
+def factory_shorts_speed() -> float:
+    """Verified Gemini boundaries must not be changed by global speed settings."""
+    return 1.0
 
 
 @contextmanager
@@ -34,6 +57,8 @@ def factory_render_context(
         {
             "shorts_subtitles": True,
             "shorts_audio_normalize": True,
+            "shorts_snapshot": True,
+            "shorts_title_poster": True,
             # Gemini's third pass already verifies exact boundaries. For Yandex
             # the Factory pipeline shifts candidates by the configured dub delay.
             "shorts_boundary_padding": False,
@@ -61,6 +86,7 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     import pipelines.clips as clips_module
     import pipelines.playlist as playlist_module
     import pipelines.shorts as shorts_module
+    import services.shorts_video_impl as shorts_video_impl_module
     from handlers.mode_command import get_user_mode
 
     original_process = commands_module.process_single_video
@@ -68,6 +94,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     original_long_candidates = clips_module.create_clips_candidates
     original_shorts_setting = shorts_module.asettings_get
     original_clips_setting = clips_module.settings_get
+    original_shorts_speed = shorts_module.ashorts_speed_get
+    original_subtitle_profile = shorts_video_impl_module.get_subtitles_mode_settings
 
     async def process_link_by_mode(
         url,
@@ -81,6 +109,20 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         user_id = int(getattr(user, "id", 0) or 0)
         mode = await get_user_mode(user_id) if user_id else "rus"
         if mode == "shorts_max":
+            if not shorts_video_impl_module.HAS_FASTER_WHISPER:
+                message = (
+                    "❌ SHORTS FACTORY MAX требует faster-whisper: короткие ролики "
+                    "в этом режиме не отправляются без точных вшитых субтитров."
+                )
+                effective_message = getattr(update, "effective_message", None)
+                if effective_message is not None and not silent_errors:
+                    try:
+                        await effective_message.reply_text(message)
+                    except Exception:
+                        pass
+                logger.error("Shorts Factory rejected: faster-whisper is unavailable")
+                return False
+
             from pipelines.shorts_factory import process_shorts_factory
 
             return await process_shorts_factory(
@@ -124,18 +166,38 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             return overrides[key]
         return original_clips_setting(key)
 
+    async def factory_speed_setting():
+        if _FACTORY_SETTINGS.get() is not None:
+            return factory_shorts_speed()
+        return await original_shorts_speed()
+
+    def factory_subtitles_mode_settings():
+        if _FACTORY_SETTINGS.get() is not None:
+            return factory_subtitle_profile()
+        return original_subtitle_profile()
+
     commands_module.process_single_video = process_link_by_mode
     playlist_module.process_single_video = process_link_by_mode
     shorts_module.create_shorts_candidates = factory_shorts_candidates
     clips_module.create_clips_candidates = factory_long_candidates
     shorts_module.asettings_get = factory_shorts_setting
     clips_module.settings_get = factory_clips_setting
+    shorts_module.ashorts_speed_get = factory_speed_setting
+    shorts_video_impl_module.get_subtitles_mode_settings = factory_subtitles_mode_settings
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory MAX runtime installed: links and playlists are mode-aware"
+        "Shorts Factory MAX runtime installed: Pro plan, speed=1.0, "
+        "Whisper=%s karaoke word-timestamps",
+        factory_subtitle_profile()["model_name"],
     )
     return True
 
 
-__all__ = ["factory_render_context", "install_shorts_factory_mode"]
+__all__ = [
+    "DEFAULT_FACTORY_WHISPER_MODEL",
+    "factory_render_context",
+    "factory_shorts_speed",
+    "factory_subtitle_profile",
+    "install_shorts_factory_mode",
+]
