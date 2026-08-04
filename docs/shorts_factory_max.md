@@ -16,9 +16,9 @@
 10. After the third Gemini boundary audit, Factory disables the mature renderers' second silence-snap. The renderer uses the audited fractional end literally; ordinary non-Factory modes retain their existing silence adjustment.
 11. Factory forces Shorts speed to exactly `1.0`, preserving Gemini-verified boundaries. Global speed settings cannot stretch or compress a Factory cut.
 12. Short subtitles are mandatory. Factory refuses to start without `faster-whisper` and requires exactly `large-v3`, karaoke, word timestamps and Gemini vocabulary hints. Smaller/compressed models, including `large-v3-turbo`, are rejected instead of silently reducing accuracy.
-13. A Short is counted as delivered only after Telegram accepts the burned `_sub.mp4` artifact. Raw/postprocessed fallback files are rejected.
-14. Each long clip is counted only after its final MP4 passes video+audio probing and Telegram accepts it. Telegram duration metadata is derived from the rendered file, not the original AI plan.
-15. Partial delivery is explicit. If some candidates fail after others have already been accepted by Telegram, Factory reports actual delivered counts, returns success only when at least one output was delivered and keeps the shared source when at least one Short needs interactive trim support. Zero deliveries fail honestly.
+13. Immediately before Telegram, the actual burned `_sub.mp4` is probed again. It must contain video+audio and be no longer than 180 seconds, with only a 50 ms container-timescale tolerance. Raw/postprocessed fallback files are rejected.
+14. Each long clip is also re-probed at its final delivery boundary. It must contain video+audio and be no longer than 900 seconds. Telegram duration metadata is replaced with the final probed duration rather than the AI plan.
+15. A Short or long clip is counted only after Telegram accepts that proved final artifact. Partial delivery reports actual accepted counts and zero accepted files fail honestly.
 16. Shorts force audio normalization, a title poster and a snapshot fallback. Long highlights intentionally remain without subtitles.
 17. Source selection happens after the three audio passes. Russian speech uses the original source; every proven non-Russian language requires Yandex LiveDub «Живые голоса».
 18. A foreign-language run performs a LiveDub preflight before starting translation. At least one client route must exist (`node` + `vot_helper`, or `vot-cli-live`/`npx`). OAuth via `VOT_API_TOKEN` or `YANDEX_OAUTH_TOKEN` is required by default.
@@ -28,11 +28,11 @@
 22. Candidates that cannot fit the complete Yandex envelope inside the public 3/15-minute limit are rejected rather than cutting the first or last words.
 23. The shared source passes a real video+audio media probe. Its exact probed duration, including the LiveDub tail, is used by the renderer so the final Russian phrase is not clipped by the original source duration.
 24. Factory's free-disk preflight cannot be configured below 2 GB, and its source/LiveDub wait cannot be configured below 1800 seconds. Operators may increase either floor.
-25. When Shorts are produced, the shared source is retained for interactive trim buttons and removed by a timed Factory cache policy. Long-only jobs remove the source immediately.
+25. Generic Short trim buttons are deliberately removed from Factory messages. The generic callback re-renders without the mandatory `large-v3` subtitle pipeline and could exceed three minutes; exposing it would violate the mode contract. The managed source may remain in the existing timed Factory cache and is removed by its TTL; long-only jobs remove it immediately.
 26. The existing mature Shorts and Clips render/delivery pipelines are reused through task-local `ContextVar` overrides. No process-global candidate list, user mode or quality setting is shared between users.
 27. Legacy ENG-mode Shorts, Clips, Montage and Highlights are also fail-closed: if the translated LiveDub file is missing, they are skipped instead of downloading and publishing the original-language video. Legacy Russian cuts keep their original source behavior.
 28. A valid cached analysis becomes a no-publication cut replay: cached `ai_data` is reused without duplicate Gemini analysis, Telegraph pages, archive writes or main-MP3 delivery. In ENG mode a cached Telegram `file_id` cannot stand in for the local translated MP4 required by rendering, and only Telegram-accepted cut videos count as replay success.
-29. The mode-context wrapper preserves the already-installed processing chain separately for the main pipeline, ordinary links and playlist entries, so later runtime adapters are not bypassed.
+29. The mode-context wrapper preserves the already-installed processing chain separately for ordinary links and playlist entries, so later runtime adapters are not bypassed.
 30. Selectable `/segments` and `/cut` output requires final video+audio evidence, uses the actual probed delivery duration and can fall back from a bad subtitle artifact to a valid base render with a truthful warning.
 
 ## Optional environment controls
@@ -81,7 +81,8 @@ LIVEDUB_DOWNSTREAM_PREROLL_SEC=0.25
 LIVEDUB_DOWNSTREAM_TAIL_EXTRA_SEC=0.15
 LIVEDUB_DOWNSTREAM_REQUIRE_PROBE=1
 
-# Retain shared Factory sources for interactive trim buttons.
+# Managed Factory source TTL. Factory messages do not expose generic trim buttons;
+# this cache is a bounded cleanup safety net, not a public editing feature.
 SHORTS_FACTORY_SOURCE_RETENTION_HOURS=24
 ```
 
@@ -91,6 +92,6 @@ SHORTS_FACTORY_SOURCE_RETENTION_HOURS=24
 
 ## Operator decisions — 2026-08-04
 
-This mode is quality-first. It must not be silently downgraded to Flash/Lite or an old/noncanonical Pro model, minimal thinking, a one-pass candidate search, unverified or whole-second boundaries, a second renderer silence-snap, an unproven spoken language, low editorial scores, accelerated playback, compressed Whisper, subtitle-less delivery, untranslated ENG cuts or approximate timestamp generation to save quota or time.
+This mode is quality-first. It must not be silently downgraded to Flash/Lite or an old/noncanonical Pro model, minimal thinking, a one-pass candidate search, unverified or whole-second boundaries, a second renderer silence-snap, an unproven spoken language, low editorial scores, accelerated playback, compressed Whisper, subtitle-less delivery, an over-180/900-second final artifact, unsafe generic retrim controls, untranslated ENG cuts or approximate timestamp generation to save quota or time.
 
 Gemini is used here as the editor, semantic selector, spoken-language detector and timestamp auditor. It does not create the Russian voice translation. For foreign-language source audio, the production voice path is Yandex LiveDub «Живые голоса» only. A future neural translation backend may be added behind the reserved provider interface, but it is intentionally disabled today.
