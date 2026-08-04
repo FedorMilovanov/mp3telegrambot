@@ -1,0 +1,121 @@
+name: Cut Policy CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "services/cut_mode_source_policy.py"
+      - "services/shorts_factory_execution_guard.py"
+      - "services/shorts_factory_quality_gate.py"
+      - "services/shorts_factory_media.py"
+      - "services/shorts_factory_runtime.py"
+      - "services/shorts_factory_timing.py"
+      - "pipelines/shorts_factory.py"
+      - "pipelines/shorts.py"
+      - "pipelines/clips.py"
+      - "pipelines/montage.py"
+      - "tests/test_factory_execution_and_cut_source_policy.py"
+      - "tests/test_shorts_factory_mode.py"
+      - "tests/test_shorts_factory_quality_gate.py"
+      - "tests/test_livedub_downstream_media.py"
+      - "tests/test_cut_runtime_installation.py"
+      - "tests/test_highlights_candidate_gate.py"
+      - "requirements-lock.txt"
+      - ".github/workflows/cut-policy-ci.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "services/cut_mode_source_policy.py"
+      - "services/shorts_factory_execution_guard.py"
+      - "services/shorts_factory_quality_gate.py"
+      - "services/shorts_factory_media.py"
+      - "services/shorts_factory_runtime.py"
+      - "services/shorts_factory_timing.py"
+      - "pipelines/shorts_factory.py"
+      - "pipelines/shorts.py"
+      - "pipelines/clips.py"
+      - "pipelines/montage.py"
+      - "tests/test_factory_execution_and_cut_source_policy.py"
+      - "tests/test_shorts_factory_mode.py"
+      - "tests/test_shorts_factory_quality_gate.py"
+      - "tests/test_livedub_downstream_media.py"
+      - "tests/test_cut_runtime_installation.py"
+      - "tests/test_highlights_candidate_gate.py"
+      - "requirements-lock.txt"
+      - ".github/workflows/cut-policy-ci.yml"
+
+concurrency:
+  group: cut-policy-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+
+jobs:
+  focused:
+    name: ${{ matrix.os }} Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+
+      - name: Compile cut-mode runtime
+        run: >-
+          python -m py_compile
+          services/cut_mode_source_policy.py
+          services/shorts_factory_execution_guard.py
+          services/shorts_factory_quality_gate.py
+          services/shorts_factory_media.py
+          services/shorts_factory_runtime.py
+          services/shorts_factory_timing.py
+          pipelines/shorts_factory.py
+          pipelines/shorts.py
+          pipelines/clips.py
+          pipelines/montage.py
+
+      - name: Run focused regressions
+        run: >-
+          python -m pytest -q
+          tests/test_factory_execution_and_cut_source_policy.py
+          tests/test_shorts_factory_mode.py
+          tests/test_shorts_factory_quality_gate.py
+          tests/test_livedub_downstream_media.py
+          tests/test_cut_runtime_installation.py
+          tests/test_highlights_candidate_gate.py
+          tests/test_segment_delivery_media.py
+
+      - name: Ruff focused runtime
+        run: >-
+          python -m ruff check
+          services/cut_mode_source_policy.py
+          services/shorts_factory_execution_guard.py
+          services/shorts_factory_quality_gate.py
+          services/shorts_factory_media.py
+          services/shorts_factory_runtime.py
+          services/shorts_factory_timing.py
+          pipelines/shorts_factory.py
+          pipelines/shorts.py
+          pipelines/clips.py
+          pipelines/montage.py
+          tests/test_factory_execution_and_cut_source_policy.py
