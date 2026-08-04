@@ -153,6 +153,9 @@ def test_runtime_policy_wires_every_requested_cut_mode_without_import_side_effec
     timing_source = Path("services/shorts_factory_timing.py").read_text(
         encoding="utf-8"
     )
+    runtime_source = Path("services/shorts_factory_runtime.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "shorts_module.process_and_send_shorts = process_shorts" in source
     assert "clips_module.process_and_send_clips = process_clips" in source
@@ -162,4 +165,5 @@ def test_runtime_policy_wires_every_requested_cut_mode_without_import_side_effec
     assert "main_pipeline_module.process_and_send_highlights = process_highlights" in source
     assert "media_probe_is_deliverable(probe)" in source
     assert source.count("install_livedub_downstream_media_policy()") == 0
-    assert "install_livedub_downstream_media_policy()" in timing_source
+    assert timing_source.count("install_livedub_downstream_media_policy()") == 0
+    assert "install_livedub_downstream_media_policy()" in runtime_source
