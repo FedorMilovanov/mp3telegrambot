@@ -77,18 +77,12 @@ def required_factory_free_bytes(
     estimate = max(0, int(estimated_download_bytes or 0))
     duration = max(0.0, float(duration_seconds or 0.0))
     if kind == "audio":
-        # Worst supported preparation path: keep the native compressed stream
-        # while decoding it to stereo 48kHz/16-bit lossless FLAC. FLAC cannot be
-        # larger than a small overhead over this PCM bound in normal operation.
         pcm_bound = duration * 48000.0 * 2.0 * 2.0
         modeled = estimate + pcm_bound * 1.10 + 512 * 1024**2
         floor = _AUDIO_UNKNOWN_FLOOR_BYTES if not estimate else 2 * _GIB
         return int(math.ceil(max(modeled, floor)))
     if kind == "video":
-        # yt-dlp may hold video-only + audio-only + merged output at once.
         if not estimate:
-            # Conservative unknown-size model: 12 Mbps average source, then
-            # separate-stream/merge peak. Known filesize/tbr normally wins.
             estimate = int(duration * 12_000_000.0 / 8.0)
         modeled = estimate * 2.20 + 1024**3
         return int(math.ceil(max(modeled, _VIDEO_UNKNOWN_FLOOR_BYTES)))
@@ -187,13 +181,14 @@ async def estimate_factory_selection(
 
 
 def install_factory_disk_guard() -> bool:
-    """Wrap maximum-quality source downloads with selected-format disk proof."""
+    """Install selected-format disk/fidelity proof and oversized long fitting."""
     global _INSTALLED
     if _INSTALLED:
         return True
 
     import pipelines.shorts_factory as factory_pipeline
     import services.shorts_factory_source as source
+    from services.shorts_factory_long_fit import install_factory_long_fit_policy
 
     original_audio = source.download_factory_audio_source
     original_video = source.download_factory_video_source
@@ -248,12 +243,15 @@ def install_factory_disk_guard() -> bool:
         eager_factory._download_factory_audio = guarded_audio
         eager_factory.download_video_for_shorts = guarded_video
 
+    if not install_factory_long_fit_policy():
+        return False
+
     _INSTALLED = True
     logger.info(
         "Shorts Factory disk/fidelity guard installed: selected-format "
         "filesize/tbr estimate, PCM/FLAC bound, separate-stream merge peak, "
-        "all target filesystems, SDR preference and maximum res/FPS inside "
-        "the final SDR H.264 delivery path"
+        "all target filesystems, SDR-first maximum res/FPS and exact-interval "
+        "two-pass fitting for oversized long clips"
     )
     return True
 
