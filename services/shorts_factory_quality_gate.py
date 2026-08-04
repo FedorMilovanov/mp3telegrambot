@@ -84,6 +84,24 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def validated_factory_plan_language(plan: dict[str, Any]) -> str:
+    metadata = plan.get("metadata") if isinstance(plan, dict) else {}
+    metadata = metadata if isinstance(metadata, dict) else {}
+    language = str(metadata.get("language") or "").strip().lower()
+    if not language or language in {
+        "unknown",
+        "und",
+        "none",
+        "mixed",
+        "неизвестно",
+        "смешанный",
+    }:
+        raise RuntimeError(
+            "Gemini не доказала один доминирующий язык речи по аудио"
+        )
+    return language
+
+
 def install_factory_plan_quality_gate() -> bool:
     """Install every post-media Factory/cut guard before lazy pipeline imports."""
     global _INSTALLED
@@ -99,11 +117,23 @@ def install_factory_plan_quality_gate() -> bool:
     if not install_cut_mode_source_policy():
         return False
 
+    original_boundary_prompt = candidates_module._boundary_prompt
     original_create_factory_plan = candidates_module.create_factory_plan
+
+    def strict_boundary_prompt(judged_plan, duration):
+        return original_boundary_prompt(judged_plan, duration) + (
+            "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
+            "доминирующий фактически услышанный язык речи как ISO 639-1 "
+            "(например ru, en, de). Не определяй язык по заголовку. "
+            "Если доминирующий язык доказать нельзя, верни mixed."
+        )
+
+    candidates_module._boundary_prompt = strict_boundary_prompt
 
     async def strict_create_factory_plan(*args, **kwargs):
         plan = await original_create_factory_plan(*args, **kwargs)
         gated = apply_factory_quality_gate(plan)
+        validated_factory_plan_language(gated)
         if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
             report = gated.get("quality_gate") or {}
             raise RuntimeError(
@@ -136,4 +166,5 @@ __all__ = [
     "DEFAULT_MIN_SHORT_SCORE",
     "apply_factory_quality_gate",
     "install_factory_plan_quality_gate",
+    "validated_factory_plan_language",
 ]
