@@ -216,7 +216,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     if not install_factory_plan_quality_gate():
         return False
 
-    original_process = commands_module.process_single_video
+    original_commands_process = commands_module.process_single_video
+    original_playlist_process = playlist_module.process_single_video
     original_process_shorts = shorts_module.process_and_send_shorts
     original_process_clips = clips_module.process_and_send_clips
     original_shorts_candidates = shorts_module.create_shorts_candidates
@@ -226,66 +227,77 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     original_shorts_speed = shorts_module.ashorts_speed_get
     original_subtitle_profile = shorts_video_impl_module.get_subtitles_mode_settings
 
-    async def process_link_by_mode(
-        url,
-        update,
-        status_msg=None,
-        progress_prefix="",
-        context=None,
-        silent_errors: bool = False,
-    ):
-        user = getattr(update, "effective_user", None)
-        user_id = int(getattr(user, "id", 0) or 0)
-        mode = await get_user_mode(user_id) if user_id else "rus"
-        if mode == "shorts_max":
-            if not shorts_video_impl_module.HAS_FASTER_WHISPER:
-                message = (
-                    "❌ SHORTS FACTORY MAX требует faster-whisper: короткие ролики "
-                    "в этом режиме не отправляются без точных вшитых субтитров."
-                )
-                effective_message = getattr(update, "effective_message", None)
-                if effective_message is not None and not silent_errors:
-                    try:
-                        await effective_message.reply_text(message)
-                    except Exception:
-                        pass
-                logger.error("Shorts Factory rejected: faster-whisper is unavailable")
-                return False
-
-            import pipelines.shorts_factory as factory_module
-
-            factory_module._shift_candidates_for_livedub = (
-                align_factory_livedub_candidates
-            )
-            factory_module._validated_source_duration = (
-                validated_factory_source_duration
-            )
-            completion_token = _FACTORY_COMPLETED_DELIVERIES.set(None)
-            wrapped_status = (
-                _FactoryStatusProxy(status_msg) if status_msg is not None else None
-            )
-            try:
-                result = await factory_module.process_shorts_factory(
-                    url,
-                    update,
-                    status_msg=wrapped_status,
-                    progress_prefix=progress_prefix,
-                    context=context,
-                    silent_errors=silent_errors,
-                )
-                shorts_sent, longs_sent = factory_completed_delivery_counts()
-                return bool(result and (shorts_sent or longs_sent))
-            finally:
-                _FACTORY_COMPLETED_DELIVERIES.reset(completion_token)
-
-        return await original_process(
+    def _wrap_link_by_mode(original_process):
+        async def process_link_by_mode(
             url,
             update,
-            status_msg=status_msg,
-            progress_prefix=progress_prefix,
-            context=context,
-            silent_errors=silent_errors,
-        )
+            status_msg=None,
+            progress_prefix="",
+            context=None,
+            silent_errors: bool = False,
+        ):
+            user = getattr(update, "effective_user", None)
+            user_id = int(getattr(user, "id", 0) or 0)
+            mode = await get_user_mode(user_id) if user_id else "rus"
+            if mode == "shorts_max":
+                if not shorts_video_impl_module.HAS_FASTER_WHISPER:
+                    message = (
+                        "❌ SHORTS FACTORY MAX требует faster-whisper: короткие "
+                        "ролики в этом режиме не отправляются без точных "
+                        "вшитых субтитров."
+                    )
+                    effective_message = getattr(update, "effective_message", None)
+                    if effective_message is not None and not silent_errors:
+                        try:
+                            await effective_message.reply_text(message)
+                        except Exception:
+                            pass
+                    logger.error(
+                        "Shorts Factory rejected: faster-whisper is unavailable"
+                    )
+                    return False
+
+                import pipelines.shorts_factory as factory_module
+
+                factory_module._shift_candidates_for_livedub = (
+                    align_factory_livedub_candidates
+                )
+                factory_module._validated_source_duration = (
+                    validated_factory_source_duration
+                )
+                completion_token = _FACTORY_COMPLETED_DELIVERIES.set(None)
+                wrapped_status = (
+                    _FactoryStatusProxy(status_msg)
+                    if status_msg is not None
+                    else None
+                )
+                try:
+                    result = await factory_module.process_shorts_factory(
+                        url,
+                        update,
+                        status_msg=wrapped_status,
+                        progress_prefix=progress_prefix,
+                        context=context,
+                        silent_errors=silent_errors,
+                    )
+                    shorts_sent, longs_sent = factory_completed_delivery_counts()
+                    return bool(result and (shorts_sent or longs_sent))
+                finally:
+                    _FACTORY_COMPLETED_DELIVERIES.reset(completion_token)
+
+            return await original_process(
+                url,
+                update,
+                status_msg=status_msg,
+                progress_prefix=progress_prefix,
+                context=context,
+                silent_errors=silent_errors,
+            )
+
+        return process_link_by_mode
+
+    commands_process_link_by_mode = _wrap_link_by_mode(original_commands_process)
+    playlist_process_link_by_mode = _wrap_link_by_mode(original_playlist_process)
 
     async def factory_process_shorts(*args, **kwargs):
         if _FACTORY_SETTINGS.get() is None:
@@ -364,8 +376,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
             return factory_subtitle_profile()
         return original_subtitle_profile()
 
-    commands_module.process_single_video = process_link_by_mode
-    playlist_module.process_single_video = process_link_by_mode
+    commands_module.process_single_video = commands_process_link_by_mode
+    playlist_module.process_single_video = playlist_process_link_by_mode
     shorts_module.process_and_send_shorts = factory_process_shorts
     clips_module.process_and_send_clips = factory_process_clips
     shorts_module.create_shorts_candidates = factory_shorts_candidates
@@ -373,7 +385,9 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     shorts_module.asettings_get = factory_shorts_setting
     clips_module.settings_get = factory_clips_setting
     shorts_module.ashorts_speed_get = factory_speed_setting
-    shorts_video_impl_module.get_subtitles_mode_settings = factory_subtitles_mode_settings
+    shorts_video_impl_module.get_subtitles_mode_settings = (
+        factory_subtitles_mode_settings
+    )
 
     eager_factory_module = sys.modules.get("pipelines.shorts_factory")
     if eager_factory_module is not None:
@@ -390,7 +404,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     logger.info(
         "Shorts Factory MAX runtime installed: Pro plan, speed=1.0, "
         "Whisper=%s karaoke word-timestamps, verified Telegram delivery, "
-        "exact media duration, context-safe Yandex tail",
+        "exact media duration, context-safe Yandex tail, distinct command/playlist "
+        "entrypoint chains",
         factory_subtitle_profile()["model_name"],
     )
     return True
