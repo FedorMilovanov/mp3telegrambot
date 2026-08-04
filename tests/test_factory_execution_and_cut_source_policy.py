@@ -1,7 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import services.cut_mode_source_policy as source_policy
 from services.cut_mode_source_policy import (
     cut_source_is_usable,
     cut_source_mode_context,
@@ -71,6 +73,41 @@ def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
 
     with cut_source_mode_context("rus"):
         assert cut_source_is_usable(None) is True
+
+
+@pytest.mark.asyncio
+async def test_clip_delivery_proxy_uses_actual_probed_duration(
+    monkeypatch,
+    tmp_path,
+):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"x" * 2048)
+    probe = SimpleNamespace(duration=612.6)
+
+    async def fake_probe(path):
+        assert path == video
+        return probe
+
+    monkeypatch.setattr(source_policy, "probe_media_async", fake_probe)
+    monkeypatch.setattr(
+        source_policy,
+        "media_probe_is_deliverable",
+        lambda value: value is probe,
+    )
+
+    class Message:
+        def __init__(self):
+            self.kwargs = None
+
+        async def reply_video(self, *args, **kwargs):
+            self.kwargs = kwargs
+            return "sent"
+
+    message = Message()
+    proxy = source_policy._ClipMessageProxy(message)
+
+    assert await proxy.reply_video(video=video, duration=600) == "sent"
+    assert message.kwargs["duration"] == 613
 
 
 def test_factory_executor_analyzes_audio_before_selecting_source_backend():
