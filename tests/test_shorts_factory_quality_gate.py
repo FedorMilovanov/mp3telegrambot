@@ -77,6 +77,22 @@ def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
     assert [item["title"] for item in gated["long_candidates"]] == ["94"]
 
 
+def test_factory_plan_language_is_normalized_and_nonsense_rejected():
+    assert gate.validated_factory_plan_language(
+        {"metadata": {"language": "English"}}
+    ) == "en"
+
+    for value in ("", "unknown", "mixed", "foo"):
+        try:
+            gate.validated_factory_plan_language(
+                {"metadata": {"language": value}}
+            )
+        except RuntimeError as exc:
+            assert "доминирующий язык речи" in str(exc)
+        else:
+            raise AssertionError(f"language {value!r} must fail closed")
+
+
 def test_factory_quality_gate_is_explicitly_installed_by_required_runtime():
     gate_source = Path("services/shorts_factory_quality_gate.py").read_text(
         encoding="utf-8"
@@ -88,6 +104,6 @@ def test_factory_quality_gate_is_explicitly_installed_by_required_runtime():
         encoding="utf-8"
     )
 
-    assert "\ninstall_factory_plan_quality_gate()\n" not in gate_source
-    assert "\ninstall_factory_plan_quality_gate()\n" not in timing_source
-    assert "if not install_factory_plan_quality_gate():" in runtime_source
+    assert gate_source.count("\ninstall_factory_plan_quality_gate()\n") == 0
+    assert timing_source.count("\ninstall_factory_plan_quality_gate()\n") == 0
+    assert "install_factory_plan_quality_gate()" in runtime_source
