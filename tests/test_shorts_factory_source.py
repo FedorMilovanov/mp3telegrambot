@@ -3,8 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
+import services.livedub_mix as livedub_mix
 import services.shorts_factory_candidates as candidates
 import services.shorts_factory_source as source
+import services.yandex_live_dub as yandex_live_dub
 
 
 def _audio_probe(codec="opus", duration=120.0):
@@ -192,6 +194,110 @@ async def test_factory_video_download_has_no_resolution_ceiling(
 
 
 @pytest.mark.asyncio
+async def test_factory_livedub_uses_maximum_original_and_full_tail(
+    monkeypatch,
+    tmp_path,
+):
+    original_path = tmp_path / "translated_factory_max_source.mkv"
+    ru_path = tmp_path / "yandex_live.mp3"
+    final_path = tmp_path / "factory_max_livedub.mp4"
+    original_path.write_bytes(b"v" * 4096)
+    ru_path.write_bytes(b"r" * 4096)
+
+    async def fake_download_original(url, media_id, workdir=None):
+        assert media_id == "translated"
+        return original_path
+
+    async def fake_get_live_audio(*args, **kwargs):
+        assert kwargs["voice_style"] == "live"
+        return ru_path
+
+    async def fake_mix(original, ru_audio, output):
+        assert original == original_path
+        assert ru_audio == ru_path
+        assert output == final_path
+        output.write_bytes(b"m" * 4096)
+        return output
+
+    async def fake_probe(path):
+        if path == original_path:
+            return _video_probe(duration=100.0)
+        if path == final_path:
+            return _video_probe(duration=101.6)
+        raise AssertionError(path)
+
+    monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB", "1")
+    monkeypatch.setattr(source, "download_factory_video_source", fake_download_original)
+    monkeypatch.setattr(yandex_live_dub, "get_live_dub_audio", fake_get_live_audio)
+    monkeypatch.setattr(livedub_mix, "mix_tracks", fake_mix)
+    monkeypatch.setattr(
+        livedub_mix,
+        "get_mix_params",
+        lambda: {"tail_pad_ms": 1600},
+    )
+    monkeypatch.setattr(source, "probe_media_async", fake_probe)
+
+    result = await source.prepare_factory_translation_video(
+        "https://youtu.be/example",
+        tmp_path,
+        100,
+        "en",
+    )
+
+    assert result == final_path
+
+
+@pytest.mark.asyncio
+async def test_factory_livedub_rejects_missing_required_tail(
+    monkeypatch,
+    tmp_path,
+):
+    original_path = tmp_path / "translated_factory_max_source.mkv"
+    ru_path = tmp_path / "yandex_live.mp3"
+    final_path = tmp_path / "factory_max_livedub.mp4"
+    original_path.write_bytes(b"v" * 4096)
+    ru_path.write_bytes(b"r" * 4096)
+
+    async def fake_download_original(*args, **kwargs):
+        return original_path
+
+    async def fake_get_live_audio(*args, **kwargs):
+        return ru_path
+
+    async def fake_mix(original, ru_audio, output):
+        output.write_bytes(b"m" * 4096)
+        return output
+
+    async def fake_probe(path):
+        if path == original_path:
+            return _video_probe(duration=100.0)
+        if path == final_path:
+            return _video_probe(duration=101.2)
+        raise AssertionError(path)
+
+    monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB", "1")
+    monkeypatch.setattr(source, "download_factory_video_source", fake_download_original)
+    monkeypatch.setattr(yandex_live_dub, "get_live_dub_audio", fake_get_live_audio)
+    monkeypatch.setattr(livedub_mix, "mix_tracks", fake_mix)
+    monkeypatch.setattr(
+        livedub_mix,
+        "get_mix_params",
+        lambda: {"tail_pad_ms": 1600},
+    )
+    monkeypatch.setattr(source, "probe_media_async", fake_probe)
+
+    with pytest.raises(RuntimeError, match="lost the required Russian tail"):
+        await source.prepare_factory_translation_video(
+            "https://youtu.be/example",
+            tmp_path,
+            100,
+            "en",
+        )
+
+
+@pytest.mark.asyncio
 async def test_factory_plan_passes_real_prepared_audio_mime(
     monkeypatch,
     tmp_path,
@@ -268,6 +374,9 @@ def test_source_policy_installs_after_validation_and_before_execution():
     )
     assert no_downgrade_pos < source_pos < execution_pos
     assert "height<=720" not in source_code
+    assert "height<=1080" not in source_code
+    assert "get_live_dub_video" not in source_code
     assert "--extract-audio" not in source_code
     assert "--audio-format" not in source_code
+    assert "_prepare_translation_video = prepare_factory_translation_video" in source_code
     assert "\ninstall_factory_source_quality_policy()\n" not in source_code
