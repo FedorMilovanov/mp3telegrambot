@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Estimate selected yt-dlp formats and fail before unsafe Factory downloads."""
+"""Guard Factory disk usage without multiplying authenticated yt-dlp sessions."""
 from __future__ import annotations
 
+import asyncio
 import functools
-import json
 import logging
 import math
 import shutil
 import sys
+from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -16,8 +18,20 @@ logger = logging.getLogger(__name__)
 _GIB = 1024**3
 _AUDIO_UNKNOWN_FLOOR_BYTES = 4 * _GIB
 _VIDEO_UNKNOWN_FLOOR_BYTES = 6 * _GIB
-_ESTIMATE_TIMEOUT_SEC = 300
+_MAX_DURATION_HINTS = 256
+_MAX_ACTIVE_REQUESTS = 64
 _INSTALLED = False
+
+
+@dataclass
+class _FactoryRequestState:
+    duration: float
+    audio_done: asyncio.Event
+    audio_error: BaseException | None = None
+
+
+_DURATION_HINTS: OrderedDict[str, float] = OrderedDict()
+_ACTIVE_REQUESTS: OrderedDict[str, _FactoryRequestState] = OrderedDict()
 
 
 def _finite_positive(value: Any) -> float:
@@ -26,6 +40,50 @@ def _finite_positive(value: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return number if math.isfinite(number) and number > 0 else 0.0
+
+
+def _request_key(url: str) -> str:
+    return str(url or "").strip()
+
+
+def _remember_duration(url: str, duration: Any) -> float:
+    key = _request_key(url)
+    value = _finite_positive(duration)
+    if not key or not value:
+        return 0.0
+    _DURATION_HINTS[key] = value
+    _DURATION_HINTS.move_to_end(key)
+    while len(_DURATION_HINTS) > _MAX_DURATION_HINTS:
+        _DURATION_HINTS.popitem(last=False)
+    return value
+
+
+def _duration_hint(url: str) -> float:
+    key = _request_key(url)
+    value = _DURATION_HINTS.get(key, 0.0)
+    if value:
+        _DURATION_HINTS.move_to_end(key)
+    return value
+
+
+def register_factory_source_info(
+    url: str,
+    info: dict[str, Any],
+) -> float:
+    """Record already-fetched metadata for local disk proof and request ordering."""
+    duration = _remember_duration(url, info.get("duration"))
+    key = _request_key(url)
+    if not key:
+        return duration
+
+    _ACTIVE_REQUESTS[key] = _FactoryRequestState(
+        duration=duration,
+        audio_done=asyncio.Event(),
+    )
+    _ACTIVE_REQUESTS.move_to_end(key)
+    while len(_ACTIVE_REQUESTS) > _MAX_ACTIVE_REQUESTS:
+        _ACTIVE_REQUESTS.popitem(last=False)
+    return duration
 
 
 def _selected_format_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -50,7 +108,7 @@ def _selected_format_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def estimate_factory_selection_payload(
     payload: dict[str, Any],
 ) -> tuple[int, float]:
-    """Return selected download bytes and duration from yt-dlp JSON."""
+    """Return selected download bytes and duration from an existing yt-dlp JSON."""
     duration = _finite_positive(payload.get("duration"))
     total = 0.0
     for row in _selected_format_rows(payload):
@@ -134,54 +192,37 @@ async def estimate_factory_selection(
     url: str,
     format_selector: str,
 ) -> tuple[int, float]:
-    """Ask yt-dlp which exact formats it would download, without media bytes."""
-    import services.shorts_factory_source as source
+    """Return a conservative local estimate from metadata already fetched by Factory.
 
-    command = (
-        list(source.YTDLP_BASE_ARGS)
-        + source._factory_quality_sort_reset()
-        + [
-            "--format",
-            format_selector,
-            "--no-playlist",
-            "--simulate",
-            "--dump-single-json",
-            url,
-        ]
-    )
-    process = await source.run_cancellable_process(
-        command,
-        timeout=_ESTIMATE_TIMEOUT_SEC,
-        text=True,
-    )
-    if process.returncode != 0:
-        logger.warning(
-            "Factory disk estimate failed for %s: %s",
-            format_selector,
-            source._stderr_tail(process),
-        )
-        return 0, 0.0
+    The former implementation launched ``yt-dlp --simulate`` here. Audio and
+    video guards ran concurrently, so one Factory request could open several
+    authenticated YouTube extractor sessions before the real downloads even
+    started. That multiplied proxy timeouts and Firefox-cookie access. Unknown
+    selected bytes are intentionally represented as zero; the duration-aware
+    conservative floors below remain the source of truth.
+    """
+    del format_selector
+    return 0, _duration_hint(url)
 
-    stdout = str(getattr(process, "stdout", "") or "")
-    for line in reversed(stdout.splitlines()):
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            return estimate_factory_selection_payload(payload)
-    logger.warning(
-        "Factory disk estimate returned no JSON for %s; using conservative floor",
-        format_selector,
-    )
-    return 0, 0.0
+
+def _state_for(url: str) -> _FactoryRequestState | None:
+    key = _request_key(url)
+    state = _ACTIVE_REQUESTS.get(key)
+    if state is not None:
+        _ACTIVE_REQUESTS.move_to_end(key)
+    return state
+
+
+def _finish_request(url: str, state: _FactoryRequestState | None) -> None:
+    if state is None:
+        return
+    key = _request_key(url)
+    if _ACTIVE_REQUESTS.get(key) is state:
+        _ACTIVE_REQUESTS.pop(key, None)
 
 
 def install_factory_disk_guard() -> bool:
-    """Install selected-format disk/fidelity proof and oversized long fitting."""
+    """Install local disk proof and one-at-a-time Factory source acquisition."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -190,29 +231,47 @@ def install_factory_disk_guard() -> bool:
     import services.shorts_factory_source as source
     from services.shorts_factory_long_fit import install_factory_long_fit_policy
 
+    original_load_info = factory_pipeline._load_video_info
     original_audio = source.download_factory_audio_source
     original_video = source.download_factory_video_source
     original_sort_reset = source._factory_quality_sort_reset
+
+    @functools.wraps(original_load_info)
+    async def load_info_with_disk_hint(url: str) -> dict[str, Any]:
+        info = await original_load_info(url)
+        if isinstance(info, dict):
+            register_factory_source_info(url, info)
+        return info
 
     @functools.wraps(original_sort_reset)
     def output_safe_sort_reset() -> list[str]:
         return factory_delivery_sort_args(original_sort_reset())
 
     source._factory_quality_sort_reset = output_safe_sort_reset
+    factory_pipeline._load_video_info = load_info_with_disk_hint
 
     @functools.wraps(original_audio)
     async def guarded_audio(url: str, media_id: str) -> Path:
-        estimated, duration = await estimate_factory_selection(
+        state = _state_for(url)
+        _estimated, duration = await estimate_factory_selection(
             url,
             "bestaudio/best",
         )
-        required = required_factory_free_bytes("audio", estimated, duration)
+        required = required_factory_free_bytes("audio", 0, duration)
         ensure_factory_free_space(
             [source.DOWNLOAD_DIR],
             required_bytes=required,
             label="максимального аудио и lossless FLAC",
         )
-        return await original_audio(url, media_id)
+        try:
+            return await original_audio(url, media_id)
+        except BaseException as exc:
+            if state is not None:
+                state.audio_error = exc
+            raise
+        finally:
+            if state is not None:
+                state.audio_done.set()
 
     @functools.wraps(original_video)
     async def guarded_video(
@@ -220,18 +279,34 @@ def install_factory_disk_guard() -> bool:
         media_id: str,
         workdir: Path | None = None,
     ) -> Path:
-        estimated, duration = await estimate_factory_selection(
+        state = _state_for(url)
+        _estimated, duration = await estimate_factory_selection(
             url,
             "bestvideo+bestaudio/best",
         )
-        required = required_factory_free_bytes("video", estimated, duration)
+        required = required_factory_free_bytes("video", 0, duration)
         target_dir = Path(workdir) if workdir is not None else source.DOWNLOAD_DIR
         ensure_factory_free_space(
             [target_dir, source.DOWNLOAD_DIR],
             required_bytes=required,
             label="максимального видео, отдельных потоков и merge",
         )
-        return await original_video(url, media_id, workdir=workdir)
+
+        # Factory creates the video task first, then awaits its analysis audio.
+        # Wait locally so two yt-dlp processes do not read browser cookies and
+        # hammer the same proxy/YouTube session at once. As soon as audio is
+        # ready, video download overlaps with Gemini analysis exactly as intended.
+        if state is not None:
+            await state.audio_done.wait()
+            if state.audio_error is not None:
+                raise RuntimeError(
+                    "Factory video download skipped because the audio source failed"
+                ) from state.audio_error
+
+        try:
+            return await original_video(url, media_id, workdir=workdir)
+        finally:
+            _finish_request(url, state)
 
     source.download_factory_audio_source = guarded_audio
     source.download_factory_video_source = guarded_video
@@ -240,6 +315,7 @@ def install_factory_disk_guard() -> bool:
 
     eager_factory = sys.modules.get("pipelines.shorts_factory")
     if eager_factory is not None:
+        eager_factory._load_video_info = load_info_with_disk_hint
         eager_factory._download_factory_audio = guarded_audio
         eager_factory.download_video_for_shorts = guarded_video
 
@@ -248,9 +324,9 @@ def install_factory_disk_guard() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory disk/fidelity guard installed: selected-format "
-        "filesize/tbr estimate, PCM/FLAC bound, separate-stream merge peak, "
-        "all target filesystems, SDR-first maximum res/FPS and exact-interval "
+        "Shorts Factory disk/fidelity guard installed: metadata-only local "
+        "disk proof, no yt-dlp simulate preflight, audio-first authenticated "
+        "download ordering, SDR-first maximum res/FPS and exact-interval "
         "two-pass fitting for oversized long clips"
     )
     return True
@@ -262,5 +338,6 @@ __all__ = [
     "estimate_factory_selection_payload",
     "factory_delivery_sort_args",
     "install_factory_disk_guard",
+    "register_factory_source_info",
     "required_factory_free_bytes",
 ]
