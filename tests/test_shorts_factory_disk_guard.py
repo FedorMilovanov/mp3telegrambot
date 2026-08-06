@@ -1,10 +1,11 @@
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+import asyncio
+import sys
 
 import pytest
 
 import services.shorts_factory_disk_guard as disk_guard
-import services.shorts_factory_source as source
 
 
 _GIB = 1024**3
@@ -135,70 +136,102 @@ def test_free_space_guard_checks_every_target_and_rejects_shortage(
 
 
 @pytest.mark.asyncio
-async def test_estimate_uses_same_sdr_factory_sort_and_selected_format(
-    monkeypatch,
-):
-    captured = []
-    payload = {
-        "duration": 300,
-        "requested_formats": [
-            {"filesize": 700_000_000, "duration": 300},
-            {"filesize": 40_000_000, "duration": 300},
-        ],
-    }
+async def test_estimate_reuses_metadata_without_launching_ytdlp(monkeypatch):
+    url = "https://youtu.be/example"
+    disk_guard._DURATION_HINTS.clear()
+    disk_guard._ACTIVE_REQUESTS.clear()
 
-    async def fake_run(command, **kwargs):
-        captured.append((list(command), dict(kwargs)))
-        return SimpleNamespace(
-            returncode=0,
-            stdout="diagnostic\n" + __import__("json").dumps(payload),
-            stderr="",
-        )
+    async def forbidden_process(*args, **kwargs):
+        raise AssertionError("disk estimate must not launch a child process")
 
-    monkeypatch.setattr(
-        source,
-        "YTDLP_BASE_ARGS",
-        ["python", "-m", "yt_dlp", "--format-sort", "ext:mp4:m4a"],
-    )
-    original_reset = source._factory_quality_sort_reset
-    monkeypatch.setattr(
-        source,
-        "_factory_quality_sort_reset",
-        lambda: disk_guard.factory_delivery_sort_args(original_reset()),
-    )
-    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden_process)
+    disk_guard.register_factory_source_info(url, {"duration": 1234})
 
-    estimated, duration = await disk_guard.estimate_factory_selection(
-        "https://youtu.be/example",
+    assert await disk_guard.estimate_factory_selection(
+        url,
         "bestvideo+bestaudio/best",
-    )
-
-    command, kwargs = captured[0]
-    assert estimated == 740_000_000
-    assert duration == 300
-    assert "--format-sort-reset" in command
-    assert "--no-format-sort-force" in command
-    assert "--no-prefer-free-formats" in command
-    assert "hdr:0,res,fps" in command
-    assert command[command.index("--format") + 1] == (
-        "bestvideo+bestaudio/best"
-    )
-    assert "--simulate" in command
-    assert "--dump-single-json" in command
-    assert kwargs["text"] is True
+    ) == (0, 1234)
 
 
 @pytest.mark.asyncio
-async def test_failed_estimate_returns_unknown_for_conservative_floor(monkeypatch):
-    async def fake_run(command, **kwargs):
-        return SimpleNamespace(returncode=1, stdout="", stderr="network error")
+async def test_factory_orders_audio_before_video_and_uses_local_metadata(
+    monkeypatch,
+    tmp_path,
+):
+    events = []
+    url = "https://youtu.be/example"
 
-    monkeypatch.setattr(source, "run_cancellable_process", fake_run)
+    pipeline = ModuleType("pipelines.shorts_factory")
+    source = ModuleType("services.shorts_factory_source")
+    long_fit = ModuleType("services.shorts_factory_long_fit")
 
-    assert await disk_guard.estimate_factory_selection(
-        "https://youtu.be/example",
-        "bestaudio/best",
-    ) == (0, 0.0)
+    async def load_info(request_url):
+        assert request_url == url
+        return {"duration": 600}
+
+    async def audio_download(request_url, media_id):
+        events.append("audio-start")
+        await asyncio.sleep(0.01)
+        events.append("audio-end")
+        return tmp_path / f"{media_id}.flac"
+
+    async def video_download(request_url, media_id, workdir=None):
+        events.append("video-start")
+        assert events.index("audio-end") < events.index("video-start")
+        return tmp_path / f"{media_id}.mkv"
+
+    pipeline._load_video_info = load_info
+    pipeline._download_factory_audio = audio_download
+    pipeline.download_video_for_shorts = video_download
+    source.DOWNLOAD_DIR = tmp_path
+    source.download_factory_audio_source = audio_download
+    source.download_factory_video_source = video_download
+    source._factory_quality_sort_reset = lambda: [
+        "--format-sort-reset",
+        "--no-format-sort-force",
+        "--no-prefer-free-formats",
+    ]
+    long_fit.install_factory_long_fit_policy = lambda: True
+
+    pipelines_package = ModuleType("pipelines")
+    pipelines_package.shorts_factory = pipeline
+    monkeypatch.setitem(sys.modules, "pipelines", pipelines_package)
+    monkeypatch.setitem(sys.modules, "pipelines.shorts_factory", pipeline)
+    monkeypatch.setitem(sys.modules, "services.shorts_factory_source", source)
+    monkeypatch.setitem(sys.modules, "services.shorts_factory_long_fit", long_fit)
+    monkeypatch.setattr(disk_guard, "_INSTALLED", False)
+    disk_guard._DURATION_HINTS.clear()
+    disk_guard._ACTIVE_REQUESTS.clear()
+
+    assert disk_guard.install_factory_disk_guard()
+    assert await pipeline._load_video_info(url) == {"duration": 600}
+
+    video_task = asyncio.create_task(
+        pipeline.download_video_for_shorts(url, "video", workdir=tmp_path)
+    )
+    await asyncio.sleep(0)
+    assert "video-start" not in events
+
+    audio_path = await pipeline._download_factory_audio(url, "audio")
+    video_path = await video_task
+
+    assert audio_path.name == "audio.flac"
+    assert video_path.name == "video.mkv"
+    assert events == ["audio-start", "audio-end", "video-start"]
+
+
+def test_duration_hint_cache_is_bounded():
+    disk_guard._DURATION_HINTS.clear()
+    disk_guard._ACTIVE_REQUESTS.clear()
+
+    for index in range(disk_guard._MAX_DURATION_HINTS + 20):
+        disk_guard.register_factory_source_info(
+            f"https://youtu.be/{index}",
+            {"duration": index + 1},
+        )
+
+    assert len(disk_guard._DURATION_HINTS) == disk_guard._MAX_DURATION_HINTS
+    assert len(disk_guard._ACTIVE_REQUESTS) <= disk_guard._MAX_ACTIVE_REQUESTS
 
 
 def test_disk_guard_installs_after_source_and_before_execution():
@@ -217,7 +250,12 @@ def test_disk_guard_installs_after_source_and_before_execution():
 
     assert source_pos < disk_pos < execution_pos
     assert "source._factory_quality_sort_reset = output_safe_sort_reset" in guard
+    assert "factory_pipeline._load_video_info = load_info_with_disk_hint" in guard
     assert "source.download_factory_audio_source = guarded_audio" in guard
     assert "source.download_factory_video_source = guarded_video" in guard
+    assert "await state.audio_done.wait()" in guard
+    assert "state.audio_done.set()" in guard
+    assert '"--simulate"' not in guard
+    assert "run_cancellable_process(" not in guard
     assert "hdr:0,res,fps" in guard
     assert "\ninstall_factory_disk_guard()\n" not in guard
