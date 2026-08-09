@@ -39,15 +39,15 @@ def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tag
         candidate={
             "hashtags": ["евангелие", "бытие", "искупление", "спроул"],
             "publication_description": (
-                "Спроул показывает, почему первая попытка человека скрыть свой "
-                "стыд не решает проблему греха и почему покрытие даёт Сам Бог."
+                "Первая попытка человека скрыть свой стыд не решает проблему "
+                "греха: необходимое покрытие даёт Сам Бог."
             ),
         }
     )
 
     parts = caption.split("\n\n")
     assert parts[0] == "Заголовок - Автор"
-    assert parts[1].startswith("Спроул показывает")
+    assert parts[1].startswith("Первая попытка человека")
     assert parts[2].startswith("Полное видео")
     assert parts[3] == "#Евангелие #Бытие #Искупление #Спроул"
     assert "#евангелие" not in caption
@@ -84,16 +84,18 @@ def test_enrichment_fails_open_when_light_description_is_unavailable(monkeypatch
     assert source[0]["hashtags"] == ["евангелие", "бытие"]
 
 
-def test_description_generation_uses_only_lite_then_flash(monkeypatch):
+def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(monkeypatch):
     import core.globals as globals_module
 
     calls: list[str] = []
     configs: list[dict] = []
+    prompts: list[str] = []
 
     class FakeModels:
         async def generate_content(self, *, model, contents, config):
-            del contents, config
+            del config
             calls.append(model)
+            prompts.append(str(contents))
             if model == "gemini-3.5-flash-lite":
                 raise RuntimeError("simulated light quota")
             return SimpleNamespace(
@@ -142,6 +144,10 @@ def test_description_generation_uses_only_lite_then_flash(monkeypatch):
     assert [cfg["model_name"] for cfg in configs] == calls
     assert all(cfg["thinking_level"] == "minimal" for cfg in configs)
     assert not any("3.6" in model or "3.1" in model or "2.5" in model for model in calls)
+    assert all("В этом видео" not in prompt for prompt in prompts)
+    assert all("В этом ролике" not in prompt for prompt in prompts)
+    assert all("Автор рассматривает" not in prompt for prompt in prompts)
+    assert all("Проповедник объясняет" not in prompt for prompt in prompts)
     assert result[0].startswith("Искупление начинается")
 
 
