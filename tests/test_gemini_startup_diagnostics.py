@@ -28,17 +28,17 @@ def test_filter_suppresses_only_stale_main_model_warnings():
     )
 
 
-def test_policy_diagnostic_accepts_current_primary_without_model_fallback():
+def test_policy_diagnostic_reports_heavy_36_and_light_35_split():
     level, message = diagnostics.model_diagnostic("gemini-3.6-flash")
     assert level == logging.INFO
     assert "✅" in message
-    assert "thinking=high" in message
-    assert "model_fallbacks=disabled" in message
+    assert "heavy=gemini-3.6-flash/high" in message
+    assert "light=gemini-3.5-flash-lite->gemini-3.5-flash" in message
+    assert "heavy_model_fallbacks=disabled" in message
     assert "API-key rotation enabled" in message
-    assert "gemini-3.5" not in message
 
 
-def test_policy_diagnostic_rejects_every_non_36_model():
+def test_policy_diagnostic_rejects_non_36_as_heavy_main():
     for model in (
         "gemini-3.1-flash-lite",
         "gemini-3.5-flash",
@@ -49,7 +49,7 @@ def test_policy_diagnostic_rejects_every_non_36_model():
         level, message = diagnostics.model_diagnostic(model)
         assert level == logging.ERROR
         assert "gemini-3.6-flash" in message
-        assert "forbids model downgrade" in message
+        assert "3.5 is reserved for light work" in message
 
 
 def test_installer_wraps_run_once_and_preserves_result(monkeypatch, caplog):
