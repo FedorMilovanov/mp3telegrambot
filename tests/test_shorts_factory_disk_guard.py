@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+import services
 import services.shorts_factory_disk_guard as disk_guard
 
 
@@ -199,6 +200,11 @@ async def test_factory_orders_audio_before_video_and_uses_local_metadata(
     monkeypatch.setitem(sys.modules, "pipelines.shorts_factory", pipeline)
     monkeypatch.setitem(sys.modules, "services.shorts_factory_source", source)
     monkeypatch.setitem(sys.modules, "services.shorts_factory_long_fit", long_fit)
+    # ``import services.shorts_factory_source as source`` can resolve the cached
+    # package attribute even when sys.modules is replaced. Patch both surfaces so
+    # this unit test never escapes to the network.
+    monkeypatch.setattr(services, "shorts_factory_source", source, raising=False)
+    monkeypatch.setattr(services, "shorts_factory_long_fit", long_fit, raising=False)
     monkeypatch.setattr(disk_guard, "_INSTALLED", False)
     disk_guard._DURATION_HINTS.clear()
     disk_guard._ACTIVE_REQUESTS.clear()

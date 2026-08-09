@@ -45,19 +45,37 @@ function Set-EnvValue {
     }
 }
 
-# Maximum-quality policy: 3.6 for analysis/QA/publication, 3.5 as strong backup,
-# 3.5 Flash-Lite only as a lighter model — but still with thinking_level=high.
+# Heavy semantic work: Gemini 3.6 Flash + high thinking. Do not silently
+# downgrade Factory/analysis/translation-QA to 3.5 when a key is exhausted.
 Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.6-flash"
+Set-EnvValue -Name "GEMINI_MAX_MODEL" -Value "gemini-3.6-flash"
 Set-EnvValue -Name "GEMINI_FORCE_THINKING_LEVEL" -Value "high"
-Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
-Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
-Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "1"
+Set-EnvValue -Name "GEMINI_SCHEMA_THINKING" -Value "1"
+
 Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash"
-Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value "gemini-3.5-flash,gemini-3.5-flash-lite"
+Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value ""
 Set-EnvValue -Name "LIVEDUB_INFO_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash"
+Set-EnvValue -Name "LIVEDUB_LONG_QA_MODEL" -Value "gemini-3.6-flash"
+Set-EnvValue -Name "LIVEDUB_QA_VERIFY_MODEL" -Value "gemini-3.6-flash"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_LONG_QA_THINKING" -Value "high"
+Set-EnvValue -Name "LIVEDUB_QA_VERIFY_THINKING" -Value "high"
+Set-EnvValue -Name "SHORTS_FACTORY_MODEL" -Value "gemini-3.6-flash"
+
+# Light work: spend the separate 3.5 quota for titles, compact descriptions,
+# small rewrites/formatting. 3.5 Flash is the fallback for 3.5 Flash-Lite;
+# never burn the 3.6 quota just because a light-model quota is exhausted.
+Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
+Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
+Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value "gemini-3.5-flash"
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "1"
+
+# Maximum ASR accuracy in production.
+Set-EnvValue -Name "WHISPER_MODEL" -Value "large-v3"
+Set-EnvValue -Name "WHISPER_ENG_SUBTITLES_MODEL" -Value "large-v3"
+Set-EnvValue -Name "SHORTS_FACTORY_WHISPER_MODEL" -Value "large-v3"
 
 if (-not $NoTtsFallback) {
     # Ordinary Yandex voices are tried only when Live voices are unavailable;
@@ -68,11 +86,10 @@ if (-not $NoTtsFallback) {
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllLines($EnvPath, $lines, $utf8NoBom)
 
-Write-Host "✅ .env обновлён для Gemini 3.6 Flash" -ForegroundColor Green
-Write-Host "   GEMINI_MODEL=gemini-3.6-flash"
-Write-Host "   GEMINI_FORCE_THINKING_LEVEL=high"
-Write-Host "   LIVEDUB_INFO_MODEL=gemini-3.6-flash / high"
-Write-Host "   LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash / high"
-Write-Host "   GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite / high"
-Write-Host "   Сильный fallback: gemini-3.5-flash / high"
+Write-Host "✅ .env обновлён: heavy 3.6 / light 3.5" -ForegroundColor Green
+Write-Host "   Heavy: gemini-3.6-flash / thinking=high / no model downgrade"
+Write-Host "   Light: gemini-3.5-flash-lite -> gemini-3.5-flash"
+Write-Host "   Light -> 3.6 fallback: disabled"
+Write-Host "   Shorts Factory: gemini-3.6-flash / high"
+Write-Host "   Whisper: large-v3"
 Write-Host "💾 Резервная копия: $backup" -ForegroundColor Cyan

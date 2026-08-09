@@ -27,7 +27,7 @@ SHORT_MAX_SEC = 177
 LONG_MIN_SEC = 300
 PUBLIC_LONG_MAX_SEC = 900
 LONG_MAX_SEC = 897
-DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.6-flash"
 
 _FACTORY_CANDIDATE_SCHEMA = {
     "type": "object",
@@ -82,39 +82,22 @@ FACTORY_PLAN_RESPONSE_SCHEMA = {
 }
 
 
-def _require_pro_model(model: str, source: str) -> str:
+def _require_factory_model(model: str, source: str) -> str:
+    """Keep Factory on the supported free-tier Gemini 3.6 Flash route."""
     value = str(model or "").strip()
-    folded = value.casefold()
-    if not value:
-        raise RuntimeError(f"{source} is empty; SHORTS FACTORY MAX requires Gemini Pro")
-    if "lite" in folded or "pro" not in folded:
+    if value.casefold() != DEFAULT_SHORTS_FACTORY_MODEL:
         raise RuntimeError(
-            f"SHORTS FACTORY MAX requires a Pro model; {source}={value!r} is not allowed"
+            "SHORTS FACTORY MAX requires gemini-3.6-flash; "
+            f"{source}={value!r} is not allowed"
         )
-    return value
+    return DEFAULT_SHORTS_FACTORY_MODEL
 
 
 def shorts_factory_model() -> str:
-    """Use the Pro reasoning route and never silently inherit a Flash model."""
+    """Use Gemini 3.6 Flash with the Factory's explicit high-thinking config."""
     explicit = os.getenv("SHORTS_FACTORY_MODEL", "").strip()
     if explicit:
-        return _require_pro_model(explicit, "SHORTS_FACTORY_MODEL")
-
-    configured_pro = os.getenv("GEMINI_PRO_MODEL", "").strip()
-    if configured_pro:
-        return _require_pro_model(configured_pro, "GEMINI_PRO_MODEL")
-
-    generic_max = os.getenv("GEMINI_MAX_MODEL", "").strip()
-    if generic_max:
-        folded = generic_max.casefold()
-        if "pro" in folded and "lite" not in folded:
-            return generic_max
-        logger.info(
-            "SHORTS FACTORY ignores non-Pro GEMINI_MAX_MODEL=%r and uses %s",
-            generic_max,
-            DEFAULT_SHORTS_FACTORY_MODEL,
-        )
-
+        return _require_factory_model(explicit, "SHORTS_FACTORY_MODEL")
     return DEFAULT_SHORTS_FACTORY_MODEL
 
 

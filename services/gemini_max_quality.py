@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Enforce maximum reasoning for quality-sensitive Gemini work.
+"""Enforce the production quality/cost split for Gemini and ASR.
 
-Deep audio analysis, QA, synopsis and editorial tasks intentionally prefer answer
-quality over latency. Mechanical LiveDub publication metadata is the sole explicit
-exception: ``livedub_publication_core`` builds a direct minimal-thinking config for
-one cheap title/description request, as requested by the project owner.
+Heavy semantic work stays on Gemini 3.6 Flash with high thinking. Small,
+mechanical and high-volume text work uses the current Gemini 3.5 Flash-Lite
+quota, with Gemini 3.5 Flash as its same-generation fallback. Production never
+falls back to 3.1/2.x and never spends the 3.6 quota on explicitly light work.
 """
 from __future__ import annotations
 
@@ -15,30 +15,95 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
+_HEAVY_MODEL = "gemini-3.6-flash"
+_LIGHT_MODEL = "gemini-3.5-flash-lite"
+_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"
+_REQUIRED_WHISPER_MODEL = "large-v3"
 
 
 def configure_max_quality_env() -> str:
-    """Set quality knobs before ``core.globals`` creates Gemini clients."""
+    """Apply the quality/cost policy before ``core.globals`` creates clients."""
+    # Heavy user-facing semantic work: never downgrade the model family. Client
+    # reliability comes from rotating GEMINI_API_KEY[_2.._4], not from 3.5/3.1.
+    for name in (
+        "GEMINI_MODEL",
+        "GEMINI_MAX_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+        "SHORTS_FACTORY_MODEL",
+    ):
+        os.environ[name] = _HEAVY_MODEL
+    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
+
+    # Cheap/light work: titles, compact descriptions, small rewrites and other
+    # mechanical formatting should consume the 3.5 quota, not the 3.6 quota.
+    os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
+    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL
+    os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
+    os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL
+    os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "1"
+
+    # Heavy Gemini 3.x reasoning. Schema output must not disable thinking.
     os.environ["GEMINI_FORCE_THINKING_LEVEL"] = "high"
-    os.environ["LIVEDUB_QUICK_QA_THINKING"] = "high"
-    os.environ["LIVEDUB_LONG_QA_THINKING"] = "high"
-    os.environ["LIVEDUB_INFO_THINKING"] = "high"
-    return "thinking=high for quality tasks; publication metadata=minimal"
+    os.environ["GEMINI_SCHEMA_THINKING"] = "1"
+    for name in (
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QA_VERIFY_THINKING",
+        "LIVEDUB_INFO_THINKING",
+    ):
+        os.environ[name] = "high"
+
+    # ASR quality follows the user's maximum-quality requirement. Smaller
+    # Whisper models remain an explicit non-production/experimental choice.
+    for name in (
+        "WHISPER_MODEL",
+        "WHISPER_ENG_SUBTITLES_MODEL",
+        "SHORTS_FACTORY_WHISPER_MODEL",
+    ):
+        os.environ[name] = _REQUIRED_WHISPER_MODEL
+
+    return (
+        f"heavy={_HEAVY_MODEL}/high; "
+        f"light={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "
+        "heavy_model_fallbacks=none; "
+        f"whisper={_REQUIRED_WHISPER_MODEL}"
+    )
 
 
-def _force_high_argument(
+def _model_argument(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    """Resolve make_*_config's model_name argument without changing the call."""
+    if len(args) > 2 and args[2]:
+        return str(args[2]).strip()
+    configured = kwargs.get("model_name")
+    if configured:
+        return str(configured).strip()
+    return os.getenv("GEMINI_MODEL", _HEAVY_MODEL).strip() or _HEAVY_MODEL
+
+
+def _apply_thinking_policy(
     function: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> Any:
-    """Replace the fourth argument (thinking_level) without duplicate kwargs."""
+    """Use high on heavy 3.6 and minimal on explicitly light 3.5 work."""
     positional = list(args)
     options = dict(kwargs)
+    model = _model_argument(args, kwargs)
+    if model == _HEAVY_MODEL:
+        level = "high"
+    elif model in {_LIGHT_MODEL, _LIGHT_FALLBACK_MODEL}:
+        level = "minimal"
+    else:
+        return function(*args, **kwargs)
+
     if len(positional) > 3:
-        positional[3] = "high"
+        positional[3] = level
         options.pop("thinking_level", None)
     else:
-        options["thinking_level"] = "high"
+        options["thinking_level"] = level
     return function(*positional, **options)
 
 
@@ -60,7 +125,7 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
 
 
 def install_max_quality_runtime() -> None:
-    """Force high reasoning when callers use the shared quality helpers."""
+    """Apply model-aware thinking to shared Gemini configuration helpers."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -72,21 +137,21 @@ def install_max_quality_runtime() -> None:
     original_text_legacy = globals_module.make_text_config
 
     def max_text_smart(*args, **kwargs):
-        return _force_high_argument(original_text_smart, args, kwargs)
+        return _apply_thinking_policy(original_text_smart, args, kwargs)
 
     def max_audio(*args, **kwargs):
-        return _force_high_argument(original_audio, args, kwargs)
+        return _apply_thinking_policy(original_audio, args, kwargs)
 
     def max_text_legacy(
         temperature: float = 0.2,
         max_output_tokens: int = 14000,
     ):
-        # Legacy helper had no thinking_config at all. Route it through the
-        # model-aware Gemini 3.x helper with maximum reasoning.
+        # Legacy semantic helper is not a light-work selector; keep it on the
+        # production heavy model and high reasoning.
         return max_text_smart(
             temperature=temperature,
             max_output_tokens=max_output_tokens,
-            model_name=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            model_name=_HEAVY_MODEL,
             thinking_level="high",
         )
 
@@ -104,6 +169,6 @@ def install_max_quality_runtime() -> None:
 
     _INSTALLED = True
     logger.info(
-        "🧠 Gemini maximum quality: ✅ high for quality tasks; "
-        "mechanical publication metadata keeps its explicit minimal config"
+        "🧠 Gemini quality split: ✅ heavy=3.6/high; "
+        "light=3.5-Lite→3.5/minimal; no 3.1/2.x; Whisper large-v3"
     )

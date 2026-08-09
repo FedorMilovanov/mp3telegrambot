@@ -144,33 +144,53 @@ def test_factory_plan_rejects_unverified_boundaries_by_default():
     assert plan["shorts_candidates"] == []
 
 
-def test_factory_model_defaults_to_pro_without_flash_fallback(monkeypatch):
-    for name in ("SHORTS_FACTORY_MODEL", "GEMINI_PRO_MODEL", "GEMINI_MAX_MODEL"):
+def test_factory_model_defaults_to_gemini_36_flash(monkeypatch):
+    for name in (
+        "SHORTS_FACTORY_MODEL",
+        "GEMINI_PRO_MODEL",
+        "GEMINI_MAX_MODEL",
+    ):
         monkeypatch.delenv(name, raising=False)
 
-    assert DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.1-pro-preview"
-    assert shorts_factory_model() == "gemini-3.1-pro-preview"
+    assert DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.6-flash"
+    assert shorts_factory_model() == "gemini-3.6-flash"
 
 
-def test_generic_flash_max_does_not_downgrade_factory(monkeypatch):
+def test_global_gemini_max_does_not_control_factory(monkeypatch):
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
-    monkeypatch.delenv("GEMINI_PRO_MODEL", raising=False)
-    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.6-flash")
+    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.1-pro-preview")
 
-    assert shorts_factory_model() == DEFAULT_SHORTS_FACTORY_MODEL
+    assert shorts_factory_model() == "gemini-3.6-flash"
 
 
-def test_factory_model_refuses_explicit_flash_route(monkeypatch):
+def test_legacy_pro_env_does_not_override_factory(monkeypatch):
+    monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_MAX_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
+
+    assert shorts_factory_model() == "gemini-3.6-flash"
+
+
+def test_factory_model_accepts_explicit_36_flash_route(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.6-flash")
 
-    with pytest.raises(RuntimeError, match="requires a Pro model"):
-        shorts_factory_model()
+    assert shorts_factory_model() == "gemini-3.6-flash"
 
 
-def test_factory_model_refuses_lite_route(monkeypatch):
-    monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.5-flash-lite")
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-pro",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.6-pro",
+    ],
+)
+def test_factory_model_rejects_non_36_routes(monkeypatch, model):
+    monkeypatch.setenv("SHORTS_FACTORY_MODEL", model)
 
-    with pytest.raises(RuntimeError, match="requires a Pro model"):
+    with pytest.raises(RuntimeError, match="requires gemini-3.6-flash"):
         shorts_factory_model()
 
 
