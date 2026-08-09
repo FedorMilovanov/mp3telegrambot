@@ -5,43 +5,26 @@ from __future__ import annotations
 import functools
 import logging
 import math
-import re
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
-MIN_FACTORY_GEMINI_VERSION = (3, 1)
+REQUIRED_FACTORY_GEMINI_MODEL = "gemini-3.6-flash"
 REQUIRED_FACTORY_WHISPER_MODEL = "large-v3"
 MIN_FACTORY_FREE_GB = 2.0
 MIN_FACTORY_LIVEDUB_TIMEOUT_SEC = 1800
-
-_MODEL_RE = re.compile(
-    r"^gemini-(?P<version>\d+(?:\.\d+){0,2})-pro(?:[-_.].*)?$",
-    re.IGNORECASE,
-)
 _INSTALLED = False
 
 
 def require_factory_model_floor(model: Any) -> str:
-    """Accept canonical Gemini Pro names at or above the 3.1 floor."""
+    """Require the production free-tier Gemini 3.6 Flash route exactly."""
     value = str(model or "").strip()
-    match = _MODEL_RE.fullmatch(value)
-    if not match:
+    if value.casefold() != REQUIRED_FACTORY_GEMINI_MODEL:
         raise RuntimeError(
-            "SHORTS FACTORY MAX requires a canonical Gemini Pro model at or "
-            f"above 3.1; received {value!r}"
+            "SHORTS FACTORY MAX requires gemini-3.6-flash; "
+            f"received {value!r}"
         )
-
-    version_parts = match.group("version").split(".")
-    numbers = [int(part) for part in version_parts]
-    version = tuple((numbers + [0, 0])[:2])
-    if version < MIN_FACTORY_GEMINI_VERSION:
-        raise RuntimeError(
-            "SHORTS FACTORY MAX refuses an older Pro model: "
-            f"{value!r} < Gemini {MIN_FACTORY_GEMINI_VERSION[0]}."
-            f"{MIN_FACTORY_GEMINI_VERSION[1]} Pro"
-        )
-    return value
+    return REQUIRED_FACTORY_GEMINI_MODEL
 
 
 def precise_factory_seconds(value: Any) -> float:
@@ -257,8 +240,8 @@ def install_factory_no_downgrade_policy() -> bool:
 
 __all__ = [
     "MIN_FACTORY_FREE_GB",
-    "MIN_FACTORY_GEMINI_VERSION",
     "MIN_FACTORY_LIVEDUB_TIMEOUT_SEC",
+    "REQUIRED_FACTORY_GEMINI_MODEL",
     "REQUIRED_FACTORY_WHISPER_MODEL",
     "enforce_quality_floor",
     "hardened_factory_subtitle_profile",
