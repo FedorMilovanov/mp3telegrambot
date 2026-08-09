@@ -288,6 +288,29 @@ def _stage_detail(errors: list[str]) -> str:
     return "; ".join(errors)[:700]
 
 
+def _translation_source_error(exc: Exception) -> str:
+    """Describe provider failures separately from local post-LiveDub failures."""
+    reason = str(exc).strip() or type(exc).__name__
+    if "LIVEDUB_AUTH_REQUIRED" in reason or "LIVEDUB_NOT_AVAILABLE" in reason:
+        return (
+            "Яндекс LiveDub «Живые голоса» недоступен для этого источника. "
+            "Нарезка иностранного оригинала и собственный нейроперевод "
+            f"намеренно не выполняются. Причина: {reason[:240]}"
+        )
+    if "Factory LiveDub" in reason or "Yandex live audio" in reason:
+        return (
+            "Яндекс LiveDub «Живые голоса» получен, но локальная сборка "
+            "Factory не прошла обязательную проверку качества. Ничего не "
+            "отправлено, чтобы не выдать обрезанный или битый перевод. "
+            f"Причина: {reason[:240]}"
+        )
+    return (
+        "Не удалось подготовить проверенный русский LiveDub-источник для "
+        "Factory. Это не означает автоматически, что перевод Яндекса "
+        f"отсутствует. Причина: {reason[:240]}"
+    )
+
+
 async def process_shorts_factory_guarded(
     url,
     update,
@@ -438,12 +461,7 @@ async def process_shorts_factory_guarded(
             ) from exc
         except Exception as exc:
             if translation_required:
-                raise RuntimeError(
-                    "Яндекс LiveDub «Живые голоса» недоступен для этого "
-                    "источника. Нарезка иностранного оригинала и собственный "
-                    "нейроперевод намеренно не выполняются. "
-                    f"Причина: {str(exc)[:240]}"
-                ) from exc
+                raise RuntimeError(_translation_source_error(exc)) from exc
             raise
 
         if not source_video_path or not Path(source_video_path).is_file():

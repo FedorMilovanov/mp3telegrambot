@@ -393,14 +393,21 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     _limit = "alimiter=limit=0.92:attack=7:release=100:level=disabled"
 
     if duck:
+        # The sidechain detector must not end before the padded EN branch.
+        # `apad` is applied ONLY to the detector copy: the audible RU branch
+        # remains untouched, while sidechaincompress follows EN through the
+        # full tail instead of truncating it at RU EOF on long sources.
+        sidechain_pad = "[ru1]apad[ru_sc];" if tail_pad_ms > 0 else ""
+        sidechain_input = "[ru_sc]" if tail_pad_ms > 0 else "[ru1]"
         # level_sc=1 — сигнал-детектор без ослабления; release длинный,
         # чтобы оригинал «всплывал» плавно, как у живого звукорежиссёра.
         # Ratio=8 и attack=100 делают дакинг более уверенным.
         return (
             f"{ru_chain}[ru0];"
             f"[ru0]asplit=2[ru1][ru2];"
+            f"{sidechain_pad}"
             f"{en_chain}[en0];"
-            f"[en0][ru1]sidechaincompress="
+            f"[en0]{sidechain_input}sidechaincompress="
             f"threshold=0.04:ratio=8:attack=100:release=800:level_sc=1[enduck];"
             f"[enduck][ru2]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
             f"{_limit}[aout]"
