@@ -13,8 +13,18 @@ from typing import Any, Callable
 from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
-_DESCRIPTION_FIELD = "publication_description"
+_DESCRIPTION_FIELD = "_factory_publication_description"
 _INSTALLED = False
+
+# Publication prose is deliberately isolated from both the Factory's heavy
+# gemini-3.6-flash analysis route and the generic LiveDub model-fallback chain.
+# These are the only two stable light text models accepted by this cosmetic pass,
+# in cheapest-first order. Do not broaden this to a family-prefix match: a new
+# 3.5 model ID must be reviewed explicitly before it can consume publication quota.
+FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, str] = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+)
 
 
 def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:
@@ -31,22 +41,9 @@ def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:
     return out
 
 
-def _light_only_models(models: Any) -> list[str]:
-    out: list[str] = []
-    for raw in models or []:
-        model = str(raw or "").strip()
-        if model.startswith("gemini-3.5-") and model not in out:
-            out.append(model)
-    return out
-
-
 def _light_models() -> list[str]:
-    try:
-        from services.livedub_info import get_light_model, get_light_model_fallbacks
-        models = _light_only_models([get_light_model(), *get_light_model_fallbacks()])
-        return models or ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
-    except Exception:
-        return ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
+    """Return the fixed cheapest-first model route for optional caption prose."""
+    return list(FACTORY_PUBLICATION_LIGHT_MODELS)
 
 
 def _enabled() -> bool:
@@ -134,11 +131,12 @@ async def _generate_descriptions(
     prompt = (
         "Для каждого фрагмента напиши один небольшой естественный абзац для Telegram: "
         "1–2 предложения, примерно 90–240 знаков. Пиши спокойно и по-человечески, "
-        "без канцелярита, рекламы и ощущения текста от ИИ. Не начинай «В этом видео», "
-        "«В этом ролике», «Автор рассматривает» или «Проповедник объясняет». Не повторяй "
-        "заголовок дословно. Не называй фрагмент сильным, важным, вирусным или цепляющим. "
-        "Используй только факты из title/hook/reason; не придумывай цитаты, места Писания "
-        "или события. Без эмодзи, ссылок и хэштегов. Верни JSON по схеме.\n"
+        "без канцелярита, рекламы и ощущения текста от ИИ. Начинай сразу со смысла, "
+        "проблемы или контраста фрагмента; не открывай абзац мета-фразой о ролике и "
+        "не описывай действия автора или спикера. Не повторяй заголовок дословно. "
+        "Не называй фрагмент сильным, важным, вирусным или цепляющим. Используй только "
+        "факты из title/hook/reason; не придумывай цитаты, места Писания или события. "
+        "Без эмодзи, ссылок и хэштегов. Верни JSON по схеме.\n"
         f"Тип: {kind}; материал: {source_title[:220]}; автор: {author}; событие: {event}.\n"
         f"Фрагменты: {json.dumps(fragments, ensure_ascii=False)}"
     )
@@ -154,8 +152,10 @@ async def _generate_descriptions(
     for number, (model, client) in enumerate(attempts, 1):
         try:
             cfg = make_text_config_smart(
-                temperature=0.25, max_output_tokens=1600, model_name=model,
-                thinking_level="minimal", response_mime_type="application/json",
+                max_output_tokens=1600,
+                model_name=model,
+                thinking_level="minimal",
+                response_mime_type="application/json",
                 response_schema=_schema(),
             )
             response = await asyncio.wait_for(
@@ -206,23 +206,19 @@ def _insert_description(caption: str, description: Any) -> str:
     return "\n\n".join([parts[0], escaped, *parts[1:]]) if parts else escaped
 
 
+def _candidate_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    candidate = kwargs.get("candidate") if "candidate" in kwargs else (args[0] if args else None)
+    return candidate if isinstance(candidate, dict) else {}
+
+
 def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., str]:
+    """Insert only explicitly Factory-enriched prose; otherwise be a true no-op."""
     if getattr(builder, "_factory_publication_polish", False):
         return builder
 
     def wrapped(*args, **kwargs):
-        call_args, call_kwargs = list(args), dict(kwargs)
-        if "candidate" in call_kwargs:
-            candidate = copy.deepcopy(call_kwargs.get("candidate") or {})
-            call_kwargs["candidate"] = candidate
-        else:
-            candidate = copy.deepcopy(call_args[0] if call_args else {})
-            if call_args:
-                call_args[0] = candidate
-            else:
-                call_kwargs["candidate"] = candidate
-        candidate["hashtags"] = canonical_public_hashtags(candidate.get("hashtags"))
-        caption = builder(*call_args, **call_kwargs)
+        candidate = _candidate_from_call(args, kwargs)
+        caption = builder(*args, **kwargs)
         return _insert_description(caption, candidate.get(_DESCRIPTION_FIELD))
 
     wrapped._factory_publication_polish = True  # type: ignore[attr-defined]
@@ -240,4 +236,10 @@ def install_factory_publication_formatters(shorts_module, clips_module) -> bool:
     return True
 
 
-__all__ = ["canonical_public_hashtags", "enrich_factory_candidates", "install_factory_publication_formatters", "wrap_factory_caption_builder"]
+__all__ = [
+    "FACTORY_PUBLICATION_LIGHT_MODELS",
+    "canonical_public_hashtags",
+    "enrich_factory_candidates",
+    "install_factory_publication_formatters",
+    "wrap_factory_caption_builder",
+]

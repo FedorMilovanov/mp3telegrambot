@@ -1004,3 +1004,13 @@ Fixes:
   marker semantics and environment-dependent renderer fixtures). These are not
   used by the new Dub v6.8 smoke, but are tracked and must not be reported as a
   green full-repository CI run.
+
+## 2026-08-10 — Shorts Factory publication-caption re-audit
+
+- Re-audited merged PR #111 end-to-end: Factory publishes through the Shorts and long-Clip pipelines only; both retain HTML-safe Telegram caption limiting after publication text is inserted, and heavy selection remains exact `gemini-3.6-flash` with `thinking_level=high`.
+- Hardened optional publication prose to the exact cheapest-first stable route `gemini-3.5-flash-lite` → `gemini-3.5-flash`; generic `GEMINI_LIGHT_*` routing, 3.6/3.1/2.x and arbitrary `gemini-3.5-*` IDs cannot enter this cosmetic pass.
+- Found that the Factory runtime is installed globally at startup: the caption wrapper now uses a private `_factory_publication_description` field and is a true no-op for non-Factory candidates, so ordinary Shorts/Clips are not mutated by the Factory publication layer.
+- Replaced literal negative examples in the publication prompt with pattern-level direct-prose guidance, matching the repository prompt-health contract.
+- Removed explicit sampling parameters from the 3.5 publication call; the config is now `thinking_level=minimal` + structured JSON/token budget only.
+- Added regressions for exact model order, no heavy/legacy fallback, non-Factory no-op behavior, fail-open behavior, hashtag normalization, paragraph placement, HTML escaping, sampling-free config and prompt leak literals.
+- Full repository CI is required on the final PR #112 head before merge; no render/timing/Whisper/LiveDub/Factory-score quality gates were weakened.
