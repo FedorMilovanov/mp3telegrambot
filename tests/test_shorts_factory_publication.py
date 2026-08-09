@@ -35,15 +35,16 @@ def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tag
         return f"Заголовок - Автор\n\nПолное видео:\nYouTube\n\n{tags}"
 
     wrapped = publication.wrap_factory_caption_builder(original)
-    caption = wrapped(
-        candidate={
-            "hashtags": ["евангелие", "бытие", "искупление", "спроул"],
-            "publication_description": (
-                "Первая попытка человека скрыть свой стыд не решает проблему "
-                "греха: необходимое покрытие даёт Сам Бог."
-            ),
-        }
-    )
+    candidate = {
+        "hashtags": publication.canonical_public_hashtags(
+            ["евангелие", "бытие", "искупление", "спроул"]
+        ),
+        publication._DESCRIPTION_FIELD: (
+            "Первая попытка человека скрыть свой стыд не решает проблему "
+            "греха: необходимое покрытие даёт Сам Бог."
+        ),
+    }
+    caption = wrapped(candidate=candidate)
 
     parts = caption.split("\n\n")
     assert parts[0] == "Заголовок - Автор"
@@ -51,6 +52,17 @@ def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tag
     assert parts[2].startswith("Полное видео")
     assert parts[3] == "#Евангелие #Бытие #Искупление #Спроул"
     assert "#евангелие" not in caption
+
+
+def test_caption_wrapper_is_true_noop_for_non_factory_candidate():
+    source = {"hashtags": ["обычный_тег"], "publication_description": "чужое поле"}
+
+    def original(*, candidate, **_kwargs):
+        return "|".join(candidate["hashtags"])
+
+    wrapped = publication.wrap_factory_caption_builder(original)
+    assert wrapped(candidate=source) == "обычный_тег"
+    assert source == {"hashtags": ["обычный_тег"], "publication_description": "чужое поле"}
 
 
 def test_caption_wrapper_html_escapes_generated_description():
@@ -61,7 +73,7 @@ def test_caption_wrapper_html_escapes_generated_description():
     caption = wrapped(
         candidate={
             "hashtags": [],
-            "publication_description": (
+            publication._DESCRIPTION_FIELD: (
                 "Бог и человек не находятся в отношении 1 & 1: искупление "
                 "исходит от Бога и не сводится к человеческой попытке скрыть вину."
             ),
@@ -80,8 +92,28 @@ def test_enrichment_fails_open_when_light_description_is_unavailable(monkeypatch
     result = asyncio.run(publication.enrich_factory_candidates(source))
 
     assert result[0]["hashtags"] == ["#Евангелие", "#Бытие"]
-    assert "publication_description" not in result[0]
+    assert publication._DESCRIPTION_FIELD not in result[0]
     assert source[0]["hashtags"] == ["евангелие", "бытие"]
+
+
+def test_enrichment_sets_only_private_factory_description_field(monkeypatch):
+    async def one_description(*_args, **_kwargs):
+        return {
+            0: (
+                "Искупление начинается с Божьего действия, а человеческая "
+                "попытка скрыть вину не устраняет саму проблему греха."
+            )
+        }
+
+    monkeypatch.setattr(publication, "_generate_descriptions", one_description)
+    result = asyncio.run(
+        publication.enrich_factory_candidates(
+            [{"title": "Тема", "hashtags": ["евангелие"]}]
+        )
+    )
+
+    assert publication._DESCRIPTION_FIELD in result[0]
+    assert "publication_description" not in result[0]
 
 
 def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(monkeypatch):
