@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Replace stale model warnings in ``main.py`` with runtime-policy diagnostics.
 
-The validated entry point configures Gemini 3.6 before importing ``main``.  The
-legacy lifecycle file still owns an older hard-coded allow-list and can therefore
-warn that the *correct* production model is unknown while recommending retired
-models.  This adapter leaves lifecycle code untouched, filters only those exact
-legacy records and logs one diagnostic derived from the policy actually installed
-by :mod:`services.livedub_quality_runtime`.
+The validated entry point configures Gemini 3.6 before importing ``main``. The
+legacy lifecycle file still owns older model warnings, so this adapter filters
+those records and reports the effective no-downgrade production contract.
 """
 from __future__ import annotations
 
@@ -16,19 +13,14 @@ import threading
 from types import ModuleType
 from typing import Any
 
-from services.livedub_quality_runtime import (
-    _LIGHT_MODEL,
-    _PRIMARY_MODEL,
-    _RETIRED_MODELS,
-    _STRONG_FALLBACK_MODEL,
-)
+_PRIMARY_MODEL = "gemini-3.6-flash"
 
 _LOCK = threading.Lock()
 _INSTALLED = False
 
 
 class _LegacyGeminiModelFilter(logging.Filter):
-    """Suppress only the obsolete model-policy records emitted by ``main``."""
+    """Suppress only obsolete model-policy records emitted by ``main``."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.name != "main":
@@ -45,36 +37,18 @@ class _LegacyGeminiModelFilter(logging.Filter):
 
 
 def model_diagnostic(model: str) -> tuple[int, str]:
-    """Return logging level and a truthful message for the effective main model."""
+    """Return a truthful diagnostic for the one approved production model."""
     effective = str(model or "").strip()
     if effective == _PRIMARY_MODEL:
         return (
             logging.INFO,
-            f"🧠 Gemini startup policy: ✅ main={effective}; "
-            f"fallback={_STRONG_FALLBACK_MODEL}; light={_LIGHT_MODEL}",
-        )
-    if effective in _RETIRED_MODELS:
-        return (
-            logging.ERROR,
-            f"🧠 Gemini startup policy: ❌ main={effective} retired by project policy; "
-            f"use {_PRIMARY_MODEL}",
-        )
-    if effective == _LIGHT_MODEL:
-        return (
-            logging.WARNING,
-            f"🧠 Gemini startup policy: ⚠️ main={effective} is reserved for mechanical "
-            f"tasks; quality analysis should use {_PRIMARY_MODEL}",
-        )
-    if effective == _STRONG_FALLBACK_MODEL:
-        return (
-            logging.WARNING,
-            f"🧠 Gemini startup policy: ⚠️ main={effective} is the strong fallback; "
-            f"the production primary is {_PRIMARY_MODEL}",
+            f"🧠 Gemini startup policy: ✅ main={effective}; thinking=high; "
+            "model_fallbacks=disabled; API-key rotation enabled",
         )
     return (
-        logging.WARNING,
-        f"🧠 Gemini startup policy: ⚠️ main={effective or '<empty>'} is a custom or "
-        f"unverified override; project primary={_PRIMARY_MODEL}",
+        logging.ERROR,
+        f"🧠 Gemini startup policy: ❌ main={effective or '<empty>'}; "
+        f"production requires {_PRIMARY_MODEL} and forbids model downgrade",
     )
 
 
@@ -114,4 +88,6 @@ def install_gemini_startup_diagnostics(main_module: ModuleType) -> None:
             main_module.run_bot_async = diagnosed
 
         _INSTALLED = True
-        logger.info("🧠 Gemini startup diagnostics: runtime policy is the source of truth")
+        logger.info(
+            "🧠 Gemini startup diagnostics: 3.6/high no-downgrade policy is source of truth"
+        )
