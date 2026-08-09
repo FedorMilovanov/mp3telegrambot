@@ -8,10 +8,9 @@ import html
 import json
 import logging
 import os
-import re
 from typing import Any, Callable
 
-from core.text_utils import normalize_common_typos, normalize_hashtag
+from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
 _DESCRIPTION_FIELD = "publication_description"
@@ -65,14 +64,15 @@ def _timeout() -> float:
 
 
 def _clean_description(value: Any) -> str:
-    text = html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))
-    text = normalize_common_typos(text)
-    text = re.sub(r"\s+", " ", text).strip(" •·—–-*\t\r\n")
+    text = html.unescape(str(value or ""))
+    text = " ".join(text.split()).strip(" •·—–-*\t\r\n")
     low = text.casefold()
     if not text or any(x in low for x in (
         "gemini", "искусственный интеллект", "нейросет", "сгенерирован",
         "перевод яндекса", "живые голоса яндекса", "в этом видео", "в этом ролике",
     )):
+        return ""
+    if "<" in text or ">" in text:
         return ""
     text = text[:320].rstrip(" ,;:-—–")
     if len(text) < 55:
@@ -97,6 +97,16 @@ def _metadata(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[dict, str,
     title = kwargs.get("title", args[2] if len(args) > 2 else "")
     performer = kwargs.get("performer", args[3] if len(args) > 3 else "")
     return ai_data if isinstance(ai_data, dict) else {}, str(title or ""), str(performer or "")
+
+
+def _strip_json_fence(value: Any) -> str:
+    raw = str(value or "").strip()
+    if raw.startswith("```"):
+        _first, sep, rest = raw.partition("\n")
+        raw = rest if sep else raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3].rstrip()
+    return raw.strip()
 
 
 async def _generate_descriptions(
@@ -152,8 +162,7 @@ async def _generate_descriptions(
                 client.aio.models.generate_content(model=model, contents=prompt, config=cfg),
                 timeout=_timeout(),
             )
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", str(response.text or "").strip()).strip()
-            data = json.loads(raw)
+            data = json.loads(_strip_json_fence(getattr(response, "text", "")))
             out: dict[int, str] = {}
             for item in data.get("items", []) if isinstance(data, dict) else []:
                 if not isinstance(item, dict):
