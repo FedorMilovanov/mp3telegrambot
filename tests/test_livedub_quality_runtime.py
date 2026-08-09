@@ -37,35 +37,42 @@ def test_services_package_configures_policy_and_proxy_before_clients():
     assert "install_livedub_quality_runtime" in package
 
 
-def test_production_policy_is_36_only_without_weaker_model_fallback():
+def test_production_policy_keeps_heavy_work_on_36_high():
     src = _max_policy_source()
-    assert '_PRIMARY_MODEL = "gemini-3.6-flash"' in src
-    assert 'os.environ[name] = _PRIMARY_MODEL' in src
-    assert 'os.environ[name] = ""' in src
-    assert "gemini-3.5-flash" not in src
-    assert "gemini-3.5-flash-lite" not in src
+    assert '_HEAVY_MODEL = "gemini-3.6-flash"' in src
+    assert 'os.environ[name] = _HEAVY_MODEL' in src
+    assert 'os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""' in src
+    assert 'os.environ["GEMINI_FORCE_THINKING_LEVEL"] = "high"' in src
+
+
+def test_light_work_uses_35_family_and_never_31_or_2x():
+    src = _max_policy_source()
+    assert '_LIGHT_MODEL = "gemini-3.5-flash-lite"' in src
+    assert '_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"' in src
+    assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in src
     assert "gemini-3.1" not in src
     assert "gemini-2.5" not in src
 
 
-def test_legacy_runtime_fallbacks_are_neutralized_before_client_creation():
+def test_legacy_heavy_fallback_is_neutralized_before_client_creation():
     package = Path("services/__init__.py").read_text(encoding="utf-8")
     policy = _max_policy_source()
     assert package.index("configure_max_quality_env()") < package.index(
         "configure_gemini_policy()"
     )
-    assert '"LIVEDUB_INFO_FALLBACK_MODELS"' in policy
-    assert '"GEMINI_LIGHT_FALLBACK_MODELS"' in policy
-    assert 'os.environ[name] = ""' in policy
+    assert 'os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""' in policy
 
 
-def test_light_and_publication_work_are_promoted_to_36_high():
-    src = _max_policy_source()
-    assert '"GEMINI_LIGHT_MODEL"' in src
-    assert '"LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"' in src
-    assert "publication.publication_models = publication_models" in src
-    assert "publication._economy_config = publication_config" in src
-    assert 'globals_module._build_thinking_config("high")' in src
+def test_light_publication_uses_35_quota_not_36():
+    policy = _max_policy_source()
+    publication = Path("services/livedub_publication_core.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL' in policy
+    assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL' in policy
+    assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in policy
+    assert 'os.getenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")' in publication
+    assert '_build_thinking_config("minimal")' in publication
 
 
 def test_gemini_31_is_not_an_active_project_fallback():
@@ -251,16 +258,16 @@ def test_windows_ffprobe_is_utf8_safe():
     assert "mix.probe_video_meta = utf8_probe" in src
 
 
-def test_env_migration_script_sets_36_only_max_quality_models():
+def test_env_migration_script_sets_heavy_36_light_35_models():
     script = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
     assert 'GEMINI_MODEL" -Value "gemini-3.6-flash' in script
     assert 'LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash' in script
     assert 'LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash' in script
-    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.6-flash' in script
+    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite' in script
+    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash' in script
+    assert 'GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"' in script
     assert 'LIVEDUB_INFO_FALLBACK_MODELS" -Value ""' in script
-    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value ""' in script
     assert 'WHISPER_MODEL" -Value "large-v3"' in script
-    assert "gemini-3.5" not in script
     assert "gemini-3.1" not in script
     assert "gemini-2.5" not in script
     assert ".bak-gemini36-" in script
