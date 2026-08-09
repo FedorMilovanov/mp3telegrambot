@@ -67,25 +67,43 @@ def configure_max_quality_env() -> str:
 
     return (
         f"heavy={_HEAVY_MODEL}/high; "
-        f"light={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}; "
+        f"light={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "
         "heavy_model_fallbacks=none; "
         f"whisper={_REQUIRED_WHISPER_MODEL}"
     )
 
 
-def _force_high_argument(
+def _model_argument(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    """Resolve make_*_config's model_name argument without changing the call."""
+    if len(args) > 2 and args[2]:
+        return str(args[2]).strip()
+    configured = kwargs.get("model_name")
+    if configured:
+        return str(configured).strip()
+    return os.getenv("GEMINI_MODEL", _HEAVY_MODEL).strip() or _HEAVY_MODEL
+
+
+def _apply_thinking_policy(
     function: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> Any:
-    """Replace the fourth argument (thinking_level) without duplicate kwargs."""
+    """Use high on heavy 3.6 and minimal on explicitly light 3.5 work."""
     positional = list(args)
     options = dict(kwargs)
+    model = _model_argument(args, kwargs)
+    if model == _HEAVY_MODEL:
+        level = "high"
+    elif model in {_LIGHT_MODEL, _LIGHT_FALLBACK_MODEL}:
+        level = "minimal"
+    else:
+        return function(*args, **kwargs)
+
     if len(positional) > 3:
-        positional[3] = "high"
+        positional[3] = level
         options.pop("thinking_level", None)
     else:
-        options["thinking_level"] = "high"
+        options["thinking_level"] = level
     return function(*positional, **options)
 
 
@@ -107,7 +125,7 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
 
 
 def install_max_quality_runtime() -> None:
-    """Force high reasoning on shared helpers used by heavy semantic work."""
+    """Apply model-aware thinking to shared Gemini configuration helpers."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -119,10 +137,10 @@ def install_max_quality_runtime() -> None:
     original_text_legacy = globals_module.make_text_config
 
     def max_text_smart(*args, **kwargs):
-        return _force_high_argument(original_text_smart, args, kwargs)
+        return _apply_thinking_policy(original_text_smart, args, kwargs)
 
     def max_audio(*args, **kwargs):
-        return _force_high_argument(original_audio, args, kwargs)
+        return _apply_thinking_policy(original_audio, args, kwargs)
 
     def max_text_legacy(
         temperature: float = 0.2,
@@ -151,6 +169,6 @@ def install_max_quality_runtime() -> None:
 
     _INSTALLED = True
     logger.info(
-        "🧠 Gemini quality split: ✅ heavy=3.6/high; light=3.5-Lite→3.5; "
-        "no 3.1/2.x; Whisper large-v3"
+        "🧠 Gemini quality split: ✅ heavy=3.6/high; "
+        "light=3.5-Lite→3.5/minimal; no 3.1/2.x; Whisper large-v3"
     )
