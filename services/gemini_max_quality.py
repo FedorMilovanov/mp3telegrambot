@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Enforce maximum reasoning for quality-sensitive Gemini work.
+"""Enforce one maximum-quality Gemini/ASR policy for production.
 
-Deep audio analysis, QA, synopsis and editorial tasks intentionally prefer answer
-quality over latency. Mechanical LiveDub publication metadata is the sole explicit
-exception: ``livedub_publication_core`` builds a direct minimal-thinking config for
-one cheap title/description request, as requested by the project owner.
+User-facing AI work must not silently downgrade to an older/lighter model. The
+project therefore uses Gemini 3.6 Flash with high thinking everywhere, rotates
+API keys rather than model families, and keeps faster-whisper large-v3 for ASR.
 """
 from __future__ import annotations
 
@@ -15,15 +14,62 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
+_PRIMARY_MODEL = "gemini-3.6-flash"
+_REQUIRED_WHISPER_MODEL = "large-v3"
 
 
 def configure_max_quality_env() -> str:
-    """Set quality knobs before ``core.globals`` creates Gemini clients."""
+    """Apply fail-closed quality knobs before ``core.globals`` creates clients."""
+    # One model family everywhere: availability comes from key rotation, not
+    # from silently dropping user-visible work onto an older/Lite model.
+    for name in (
+        "GEMINI_MODEL",
+        "GEMINI_LIGHT_MODEL",
+        "GEMINI_MAX_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+        "SHORTS_FACTORY_MODEL",
+    ):
+        os.environ[name] = _PRIMARY_MODEL
+
+    # Empty fallback lists are intentional. Existing selectors then rotate the
+    # configured GEMINI_CLIENTS but have no weaker model to fall through to.
+    for name in (
+        "GEMINI_LIGHT_FALLBACK_MODELS",
+        "LIVEDUB_INFO_FALLBACK_MODELS",
+        "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
+    ):
+        os.environ[name] = ""
+    os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "1"
+    os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "1"
+
+    # Gemini 3.x native reasoning contract. No legacy thinking-budget route and
+    # no schema-specific opt-out are allowed in the production quality profile.
     os.environ["GEMINI_FORCE_THINKING_LEVEL"] = "high"
-    os.environ["LIVEDUB_QUICK_QA_THINKING"] = "high"
-    os.environ["LIVEDUB_LONG_QA_THINKING"] = "high"
-    os.environ["LIVEDUB_INFO_THINKING"] = "high"
-    return "thinking=high for quality tasks; publication metadata=minimal"
+    os.environ["GEMINI_SCHEMA_THINKING"] = "1"
+    for name in (
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QA_VERIFY_THINKING",
+        "LIVEDUB_INFO_THINKING",
+    ):
+        os.environ[name] = "high"
+
+    # ASR quality follows the same rule. Smaller Whisper models remain possible
+    # only in non-production experiments that bypass bot_new.py intentionally.
+    for name in (
+        "WHISPER_MODEL",
+        "WHISPER_ENG_SUBTITLES_MODEL",
+        "SHORTS_FACTORY_WHISPER_MODEL",
+    ):
+        os.environ[name] = _REQUIRED_WHISPER_MODEL
+
+    return (
+        f"model={_PRIMARY_MODEL}; thinking=high; fallbacks=none; "
+        f"whisper={_REQUIRED_WHISPER_MODEL}"
+    )
 
 
 def _force_high_argument(
@@ -59,8 +105,45 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
                     pass
 
 
+def _install_publication_quality(globals_module) -> None:
+    """Remove the historical Lite/minimal exception from publication cards."""
+    try:
+        import services.livedub_publication_core as publication
+    except Exception as exc:
+        logger.warning("Publication max-quality hook unavailable: %s", exc)
+        return
+
+    def publication_models() -> list[str]:
+        return [_PRIMARY_MODEL]
+
+    def publication_config(_model_name: str):
+        types = globals_module.types
+        if types is None:
+            return None
+        thinking = globals_module._build_thinking_config("high")
+        kwargs: dict[str, Any] = {
+            "max_output_tokens": 1400,
+            "response_mime_type": "application/json",
+            "response_schema": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "author": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["title", "author", "description"],
+            },
+        }
+        if thinking is not None:
+            kwargs["thinking_config"] = thinking
+        return types.GenerateContentConfig(**kwargs)
+
+    publication.publication_models = publication_models
+    publication._economy_config = publication_config
+
+
 def install_max_quality_runtime() -> None:
-    """Force high reasoning when callers use the shared quality helpers."""
+    """Force high reasoning and remove the last user-facing Lite exception."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -81,12 +164,12 @@ def install_max_quality_runtime() -> None:
         temperature: float = 0.2,
         max_output_tokens: int = 14000,
     ):
-        # Legacy helper had no thinking_config at all. Route it through the
-        # model-aware Gemini 3.x helper with maximum reasoning.
+        # Route the legacy helper through the model-aware 3.x path. For 3.6 the
+        # legacy temperature argument is intentionally ignored.
         return max_text_smart(
             temperature=temperature,
             max_output_tokens=max_output_tokens,
-            model_name=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            model_name=_PRIMARY_MODEL,
             thinking_level="high",
         )
 
@@ -101,9 +184,10 @@ def install_max_quality_runtime() -> None:
     _replace_loaded_references(original_text_smart, max_text_smart)
     _replace_loaded_references(original_audio, max_audio)
     _replace_loaded_references(original_text_legacy, max_text_legacy)
+    _install_publication_quality(globals_module)
 
     _INSTALLED = True
     logger.info(
-        "🧠 Gemini maximum quality: ✅ high for quality tasks; "
-        "mechanical publication metadata keeps its explicit minimal config"
+        "🧠 Gemini maximum quality: ✅ 3.6 Flash + high thinking everywhere; "
+        "no weaker-model fallback; Whisper large-v3"
     )
