@@ -28,23 +28,28 @@ def test_filter_suppresses_only_stale_main_model_warnings():
     )
 
 
-def test_policy_diagnostic_accepts_current_primary():
+def test_policy_diagnostic_accepts_current_primary_without_model_fallback():
     level, message = diagnostics.model_diagnostic("gemini-3.6-flash")
     assert level == logging.INFO
     assert "✅" in message
-    assert "fallback=gemini-3.5-flash" in message
-    assert "light=gemini-3.5-flash-lite" in message
+    assert "thinking=high" in message
+    assert "model_fallbacks=disabled" in message
+    assert "API-key rotation enabled" in message
+    assert "gemini-3.5" not in message
 
 
-def test_policy_diagnostic_rejects_retired_and_warns_for_custom():
-    level, message = diagnostics.model_diagnostic("gemini-3.1-flash-lite")
-    assert level == logging.ERROR
-    assert "retired" in message
-    assert "gemini-3.6-flash" in message
-
-    level, message = diagnostics.model_diagnostic("vendor-custom-model")
-    assert level == logging.WARNING
-    assert "custom or unverified" in message
+def test_policy_diagnostic_rejects_every_non_36_model():
+    for model in (
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "vendor-custom-model",
+        "",
+    ):
+        level, message = diagnostics.model_diagnostic(model)
+        assert level == logging.ERROR
+        assert "gemini-3.6-flash" in message
+        assert "forbids model downgrade" in message
 
 
 def test_installer_wraps_run_once_and_preserves_result(monkeypatch, caplog):
