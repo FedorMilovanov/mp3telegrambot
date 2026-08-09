@@ -156,9 +156,9 @@ def test_factory_model_defaults_to_gemini_36_flash(monkeypatch):
     assert shorts_factory_model() == "gemini-3.6-flash"
 
 
-def test_generic_gemini_max_uses_same_36_flash_route(monkeypatch):
+def test_global_gemini_max_does_not_control_factory(monkeypatch):
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
-    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.6-flash")
+    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.1-pro-preview")
 
     assert shorts_factory_model() == "gemini-3.6-flash"
 
@@ -192,13 +192,6 @@ def test_factory_model_rejects_non_36_routes(monkeypatch, model):
 
     with pytest.raises(RuntimeError, match="requires gemini-3.6-flash"):
         shorts_factory_model()
-
-
-def test_incompatible_generic_max_cannot_downgrade_factory(monkeypatch):
-    monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
-    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.1-pro-preview")
-
-    assert shorts_factory_model() == DEFAULT_SHORTS_FACTORY_MODEL
 
 
 def test_factory_response_schema_requires_complete_plan_shape():
