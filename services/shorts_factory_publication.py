@@ -152,8 +152,10 @@ async def _generate_descriptions(
     for number, (model, client) in enumerate(attempts, 1):
         try:
             cfg = make_text_config_smart(
-                temperature=0.25, max_output_tokens=1600, model_name=model,
-                thinking_level="minimal", response_mime_type="application/json",
+                max_output_tokens=1600,
+                model_name=model,
+                thinking_level="minimal",
+                response_mime_type="application/json",
                 response_schema=_schema(),
             )
             response = await asyncio.wait_for(
