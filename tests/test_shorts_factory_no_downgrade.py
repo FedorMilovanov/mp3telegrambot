@@ -5,6 +5,7 @@ import pytest
 from services.shorts_factory_no_downgrade import (
     MIN_FACTORY_FREE_GB,
     MIN_FACTORY_LIVEDUB_TIMEOUT_SEC,
+    REQUIRED_FACTORY_GEMINI_MODEL,
     REQUIRED_FACTORY_WHISPER_MODEL,
     enforce_quality_floor,
     hardened_factory_subtitle_profile,
@@ -14,33 +15,27 @@ from services.shorts_factory_no_downgrade import (
 )
 
 
+def test_factory_model_floor_accepts_only_gemini_36_flash():
+    assert REQUIRED_FACTORY_GEMINI_MODEL == "gemini-3.6-flash"
+    assert require_factory_model_floor("gemini-3.6-flash") == "gemini-3.6-flash"
+
+
 @pytest.mark.parametrize(
     "model",
     [
         "gemini-3.1-pro-preview",
         "gemini-3.2-pro",
         "gemini-4-pro-preview",
-    ],
-)
-def test_factory_model_floor_accepts_only_current_or_newer_pro(model):
-    assert require_factory_model_floor(model) == model
-
-
-@pytest.mark.parametrize(
-    "model",
-    [
         "gemini-2.5-pro",
-        "gemini-3-pro-preview",
-        "gemini-3.1-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-3.1-preview-pro",
-        "gemini-3.1-proxy-pro",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash-lite",
+        "gemini-3.6-pro",
         "gemini-pro",
-        "my-gemini-3.1-proxy",
+        "my-gemini-3.6-flash",
         "",
     ],
 )
-def test_factory_model_floor_rejects_old_or_non_pro_routes(model):
+def test_factory_model_floor_rejects_non_36_routes(model):
     with pytest.raises(RuntimeError, match="SHORTS FACTORY MAX"):
         require_factory_model_floor(model)
 
