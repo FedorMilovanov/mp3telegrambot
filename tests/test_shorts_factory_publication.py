@@ -175,6 +175,8 @@ def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(mon
     assert calls == ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
     assert [cfg["model_name"] for cfg in configs] == calls
     assert all(cfg["thinking_level"] == "minimal" for cfg in configs)
+    assert all("temperature" not in cfg for cfg in configs)
+    assert all("top_p" not in cfg and "top_k" not in cfg for cfg in configs)
     assert not any("3.6" in model or "3.1" in model or "2.5" in model for model in calls)
     assert all("В этом видео" not in prompt for prompt in prompts)
     assert all("В этом ролике" not in prompt for prompt in prompts)
