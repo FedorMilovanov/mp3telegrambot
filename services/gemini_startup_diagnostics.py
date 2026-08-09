@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Replace stale model warnings in ``main.py`` with runtime-policy diagnostics.
 
-The validated entry point configures Gemini 3.6 before importing ``main``. The
-legacy lifecycle file still owns older model warnings, so this adapter filters
-those records and reports the effective no-downgrade production contract.
+The validated entry point configures Gemini before importing ``main``. Heavy
+semantic work uses Gemini 3.6 Flash/high; explicitly light work uses the 3.5
+quota. This adapter filters obsolete lifecycle warnings and reports that split.
 """
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from types import ModuleType
 from typing import Any
 
 _PRIMARY_MODEL = "gemini-3.6-flash"
+_LIGHT_MODEL = "gemini-3.5-flash-lite"
+_LIGHT_FALLBACK = "gemini-3.5-flash"
 
 _LOCK = threading.Lock()
 _INSTALLED = False
@@ -37,18 +39,19 @@ class _LegacyGeminiModelFilter(logging.Filter):
 
 
 def model_diagnostic(model: str) -> tuple[int, str]:
-    """Return a truthful diagnostic for the one approved production model."""
+    """Return a truthful diagnostic for the heavy production model."""
     effective = str(model or "").strip()
     if effective == _PRIMARY_MODEL:
         return (
             logging.INFO,
-            f"🧠 Gemini startup policy: ✅ main={effective}; thinking=high; "
-            "model_fallbacks=disabled; API-key rotation enabled",
+            f"🧠 Gemini startup policy: ✅ heavy={effective}/high; "
+            f"light={_LIGHT_MODEL}->{_LIGHT_FALLBACK}; "
+            "heavy_model_fallbacks=disabled; API-key rotation enabled",
         )
     return (
         logging.ERROR,
-        f"🧠 Gemini startup policy: ❌ main={effective or '<empty>'}; "
-        f"production requires {_PRIMARY_MODEL} and forbids model downgrade",
+        f"🧠 Gemini startup policy: ❌ heavy main={effective or '<empty>'}; "
+        f"production heavy work requires {_PRIMARY_MODEL}; 3.5 is reserved for light work",
     )
 
 
@@ -89,5 +92,5 @@ def install_gemini_startup_diagnostics(main_module: ModuleType) -> None:
 
         _INSTALLED = True
         logger.info(
-            "🧠 Gemini startup diagnostics: 3.6/high no-downgrade policy is source of truth"
+            "🧠 Gemini startup diagnostics: heavy 3.6/high; light 3.5 quota; no 3.1/2.x"
         )
