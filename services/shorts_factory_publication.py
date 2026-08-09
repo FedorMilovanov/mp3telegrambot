@@ -133,14 +133,13 @@ async def _generate_descriptions(
         f"Фрагменты: {json.dumps(fragments, ensure_ascii=False)}"
     )
 
-    attempts: list[tuple[str, Any]] = []
-    for model in _light_models():
-        for client in GEMINI_CLIENTS:
-            attempts.append((model, client))
-            if len(attempts) == 2:
-                break
-        if len(attempts) == 2:
-            break
+    models = _light_models()
+    clients = list(GEMINI_CLIENTS)
+    attempts: list[tuple[str, Any]] = [(models[0], clients[0])]
+    if len(models) > 1:
+        attempts.append((models[1], clients[1] if len(clients) > 1 else clients[0]))
+    elif len(clients) > 1:
+        attempts.append((models[0], clients[1]))
 
     for number, (model, client) in enumerate(attempts, 1):
         try:
