@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 _DESCRIPTION_FIELD = "publication_description"
 _INSTALLED = False
 
+# Publication prose is deliberately isolated from both the Factory's heavy
+# gemini-3.6-flash analysis route and the generic LiveDub model-fallback chain.
+# These are the only two stable light text models accepted by this cosmetic pass,
+# in cheapest-first order. Do not broaden this to a family-prefix match: a new
+# 3.5 model ID must be reviewed explicitly before it can consume publication quota.
+FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, str] = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+)
+
 
 def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:
     """Apply the repository hashtag rule and keep one leading #."""
@@ -31,22 +41,9 @@ def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:
     return out
 
 
-def _light_only_models(models: Any) -> list[str]:
-    out: list[str] = []
-    for raw in models or []:
-        model = str(raw or "").strip()
-        if model.startswith("gemini-3.5-") and model not in out:
-            out.append(model)
-    return out
-
-
 def _light_models() -> list[str]:
-    try:
-        from services.livedub_info import get_light_model, get_light_model_fallbacks
-        models = _light_only_models([get_light_model(), *get_light_model_fallbacks()])
-        return models or ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
-    except Exception:
-        return ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
+    """Return the fixed cheapest-first model route for optional caption prose."""
+    return list(FACTORY_PUBLICATION_LIGHT_MODELS)
 
 
 def _enabled() -> bool:
@@ -240,4 +237,10 @@ def install_factory_publication_formatters(shorts_module, clips_module) -> bool:
     return True
 
 
-__all__ = ["canonical_public_hashtags", "enrich_factory_candidates", "install_factory_publication_formatters", "wrap_factory_caption_builder"]
+__all__ = [
+    "FACTORY_PUBLICATION_LIGHT_MODELS",
+    "canonical_public_hashtags",
+    "enrich_factory_candidates",
+    "install_factory_publication_formatters",
+    "wrap_factory_caption_builder",
+]
