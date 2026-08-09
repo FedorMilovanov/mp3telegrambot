@@ -13,7 +13,7 @@ from typing import Any, Callable
 from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
-_DESCRIPTION_FIELD = "publication_description"
+_DESCRIPTION_FIELD = "_factory_publication_description"
 _INSTALLED = False
 
 # Publication prose is deliberately isolated from both the Factory's heavy
@@ -204,23 +204,19 @@ def _insert_description(caption: str, description: Any) -> str:
     return "\n\n".join([parts[0], escaped, *parts[1:]]) if parts else escaped
 
 
+def _candidate_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    candidate = kwargs.get("candidate") if "candidate" in kwargs else (args[0] if args else None)
+    return candidate if isinstance(candidate, dict) else {}
+
+
 def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., str]:
+    """Insert only explicitly Factory-enriched prose; otherwise be a true no-op."""
     if getattr(builder, "_factory_publication_polish", False):
         return builder
 
     def wrapped(*args, **kwargs):
-        call_args, call_kwargs = list(args), dict(kwargs)
-        if "candidate" in call_kwargs:
-            candidate = copy.deepcopy(call_kwargs.get("candidate") or {})
-            call_kwargs["candidate"] = candidate
-        else:
-            candidate = copy.deepcopy(call_args[0] if call_args else {})
-            if call_args:
-                call_args[0] = candidate
-            else:
-                call_kwargs["candidate"] = candidate
-        candidate["hashtags"] = canonical_public_hashtags(candidate.get("hashtags"))
-        caption = builder(*call_args, **call_kwargs)
+        candidate = _candidate_from_call(args, kwargs)
+        caption = builder(*args, **kwargs)
         return _insert_description(caption, candidate.get(_DESCRIPTION_FIELD))
 
     wrapped._factory_publication_polish = True  # type: ignore[attr-defined]
