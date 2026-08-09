@@ -1,6 +1,8 @@
 """Regression contracts for the project-wide quality/cost policy."""
 from pathlib import Path
 
+from services import gemini_max_quality as quality
+
 
 def test_heavy_quality_runtime_forces_36_high_on_shared_helpers():
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
@@ -9,11 +11,35 @@ def test_heavy_quality_runtime_forces_36_high_on_shared_helpers():
     assert 'os.environ[name] = _HEAVY_MODEL' in src
     assert 'os.environ[name] = "high"' in src
     assert 'os.environ[name] = _REQUIRED_WHISPER_MODEL' in src
-    assert 'positional[3] = "high"' in src
-    assert 'options["thinking_level"] = "high"' in src
+    assert "_apply_thinking_policy" in src
     assert "make_text_config_smart = max_text_smart" in src
     assert "make_audio_config = max_audio" in src
     assert "make_text_config = max_text_legacy" in src
+
+
+def test_model_aware_thinking_is_high_for_36_minimal_for_light_35():
+    def capture(*args, **kwargs):
+        return args, kwargs
+
+    _, heavy = quality._apply_thinking_policy(
+        capture,
+        (),
+        {"model_name": "gemini-3.6-flash", "thinking_level": "minimal"},
+    )
+    _, light = quality._apply_thinking_policy(
+        capture,
+        (),
+        {"model_name": "gemini-3.5-flash-lite", "thinking_level": "high"},
+    )
+    _, light_fallback = quality._apply_thinking_policy(
+        capture,
+        (),
+        {"model_name": "gemini-3.5-flash", "thinking_level": "high"},
+    )
+
+    assert heavy["thinking_level"] == "high"
+    assert light["thinking_level"] == "minimal"
+    assert light_fallback["thinking_level"] == "minimal"
 
 
 def test_light_work_uses_35_quota_without_spending_36_fallback():
