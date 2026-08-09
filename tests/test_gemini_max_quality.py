@@ -1,12 +1,12 @@
-"""Regression contracts for the project-wide maximum-quality policy."""
+"""Regression contracts for the project-wide quality/cost policy."""
 from pathlib import Path
 
 
-def test_max_quality_runtime_forces_36_high_on_shared_quality_helpers():
+def test_heavy_quality_runtime_forces_36_high_on_shared_helpers():
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
-    assert '_PRIMARY_MODEL = "gemini-3.6-flash"' in src
+    assert '_HEAVY_MODEL = "gemini-3.6-flash"' in src
     assert '_REQUIRED_WHISPER_MODEL = "large-v3"' in src
-    assert 'os.environ[name] = _PRIMARY_MODEL' in src
+    assert 'os.environ[name] = _HEAVY_MODEL' in src
     assert 'os.environ[name] = "high"' in src
     assert 'os.environ[name] = _REQUIRED_WHISPER_MODEL' in src
     assert 'positional[3] = "high"' in src
@@ -16,36 +16,27 @@ def test_max_quality_runtime_forces_36_high_on_shared_quality_helpers():
     assert "make_text_config = max_text_legacy" in src
 
 
-def test_max_quality_policy_disables_weaker_model_fallbacks():
+def test_light_work_uses_35_quota_without_spending_36_fallback():
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
-    assert '"GEMINI_LIGHT_FALLBACK_MODELS"' in src
-    assert '"LIVEDUB_INFO_FALLBACK_MODELS"' in src
-    assert '"LIVEDUB_PUBLICATION_FALLBACK_MODELS"' in src
-    assert 'os.environ[name] = ""' in src
-    assert "gemini-3.5-flash" not in src
-    assert "gemini-3.5-flash-lite" not in src
+    assert '_LIGHT_MODEL = "gemini-3.5-flash-lite"' in src
+    assert '_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"' in src
+    assert 'os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL' in src
+    assert 'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL' in src
+    assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in src
+    assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL' in src
     assert "gemini-3.1" not in src
     assert "gemini-2.5" not in src
 
 
-def test_publication_metadata_is_36_high_not_lite_minimal():
-    policy = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
-    publication = Path("services/livedub_publication_core.py").read_text(
-        encoding="utf-8"
-    )
-    assert "publication.publication_models = publication_models" in policy
-    assert "publication._economy_config = publication_config" in policy
-    assert 'globals_module._build_thinking_config("high")' in policy
-    assert '"max_output_tokens": 1400' in policy
-    # The historical implementation may remain import-safe on disk, but the
-    # production runtime must supersede it before requests are sent.
-    assert "install_max_quality_runtime" in Path("services/__init__.py").read_text(
-        encoding="utf-8"
-    )
-    assert "async def _generate_light" in publication
+def test_publication_metadata_keeps_explicit_light_model_path():
+    src = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
+    assert 'os.getenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")' in src
+    assert '_build_thinking_config("minimal")' in src
+    assert 'LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK' in src
+    assert "make_text_config_smart" not in src
 
 
-def test_services_installs_max_quality_before_and_after_imports():
+def test_services_installs_max_quality_before_general_policy():
     src = Path("services/__init__.py").read_text(encoding="utf-8")
     assert "configure_max_quality_env" in src
     assert "install_max_quality_runtime" in src
@@ -53,20 +44,18 @@ def test_services_installs_max_quality_before_and_after_imports():
     assert src.index("install_max_quality_runtime()") < src.index("install_livedub_quality_runtime()")
 
 
-def test_env_migration_is_36_high_large_v3_without_model_downgrade():
+def test_env_migration_preserves_heavy_36_light_35_split():
     src = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
     assert 'GEMINI_MODEL" -Value "gemini-3.6-flash"' in src
-    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.6-flash"' in src
     assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.6-flash"' in src
     assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
     assert 'LIVEDUB_QUICK_QA_THINKING" -Value "high"' in src
     assert 'LIVEDUB_LONG_QA_THINKING" -Value "high"' in src
     assert 'LIVEDUB_INFO_THINKING" -Value "high"' in src
+    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"' in src
+    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"' in src
+    assert 'GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"' in src
     assert 'WHISPER_MODEL" -Value "large-v3"' in src
     assert 'WHISPER_ENG_SUBTITLES_MODEL" -Value "large-v3"' in src
-    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value ""' in src
-    assert 'LIVEDUB_INFO_FALLBACK_MODELS" -Value ""' in src
-    assert 'THINKING" -Value "minimal"' not in src
-    assert "gemini-3.5" not in src
     assert "gemini-3.1" not in src
     assert "gemini-2.5" not in src
