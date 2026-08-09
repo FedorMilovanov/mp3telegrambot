@@ -98,17 +98,6 @@ def shorts_factory_model() -> str:
     explicit = os.getenv("SHORTS_FACTORY_MODEL", "").strip()
     if explicit:
         return _require_factory_model(explicit, "SHORTS_FACTORY_MODEL")
-
-    generic_max = os.getenv("GEMINI_MAX_MODEL", "").strip()
-    if generic_max:
-        if generic_max.casefold() == DEFAULT_SHORTS_FACTORY_MODEL:
-            return DEFAULT_SHORTS_FACTORY_MODEL
-        logger.info(
-            "SHORTS FACTORY ignores incompatible GEMINI_MAX_MODEL=%r and uses %s",
-            generic_max,
-            DEFAULT_SHORTS_FACTORY_MODEL,
-        )
-
     return DEFAULT_SHORTS_FACTORY_MODEL
 
 
