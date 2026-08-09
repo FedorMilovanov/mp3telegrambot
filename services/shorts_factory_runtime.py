@@ -262,12 +262,18 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         install_livedub_downstream_media_policy,
         validated_factory_source_duration,
     )
+    from services.shorts_factory_publication import (
+        enrich_factory_candidates,
+        install_factory_publication_formatters,
+    )
     from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
     from services.shorts_factory_timing import align_factory_livedub_candidates
 
     if not install_livedub_downstream_media_policy():
         return False
     if not install_factory_plan_quality_gate():
+        return False
+    if not install_factory_publication_formatters(shorts_module, clips_module):
         return False
 
     original_commands_process = commands_module.process_single_video
@@ -399,13 +405,23 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     async def factory_shorts_candidates(*args, **kwargs):
         planned = _FACTORY_SHORTS.get()
         if planned is not None:
-            return copy.deepcopy(planned)
+            return await enrich_factory_candidates(
+                copy.deepcopy(planned),
+                call_args=args,
+                call_kwargs=kwargs,
+                kind="short",
+            )
         return await original_shorts_candidates(*args, **kwargs)
 
     async def factory_long_candidates(*args, **kwargs):
         planned = _FACTORY_LONGS.get()
         if planned is not None:
-            return copy.deepcopy(planned)
+            return await enrich_factory_candidates(
+                copy.deepcopy(planned),
+                call_args=args,
+                call_kwargs=kwargs,
+                kind="long",
+            )
         return await original_long_candidates(*args, **kwargs)
 
     async def factory_shorts_setting(key: str):
@@ -459,7 +475,8 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         "Shorts Factory MAX runtime installed: Gemini 3.6 Flash, thinking=high, "
         "speed=1.0, Whisper=%s karaoke word-timestamps, verified Telegram "
         "delivery, final duration<=180/900, exact media duration, safe Yandex "
-        "tail, no unsafe trim controls, distinct command/playlist chains",
+        "tail, canonical publication hashtags, optional 3.5/minimal descriptions, "
+        "no unsafe trim controls, distinct command/playlist chains",
         factory_subtitle_profile()["model_name"],
     )
     return True
