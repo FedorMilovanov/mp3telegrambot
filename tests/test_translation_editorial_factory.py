@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import services.translation_editorial_factory as factory
-from services.translation_editorial import build_review_pack
+from services.translation_editorial import build_review_pack, load_pack_manifest
 
 
 def _write_srt(path: Path, text: str) -> Path:
@@ -19,11 +19,12 @@ def _write_srt(path: Path, text: str) -> Path:
     return path
 
 
-def _pack(tmp_path: Path) -> Path:
+def _pack(tmp_path: Path, *, with_candidates: bool = False) -> Path:
     video = tmp_path / "translated.mp4"
     video.write_bytes(b"translated-source")
     original = _write_srt(tmp_path / "original.srt", "Faith apart from works.")
     russian = _write_srt(tmp_path / "russian.srt", "Вера отдельно от дел.")
+    shorts = [{"title": "Works", "start_seconds": 0.0, "end_seconds": 4.0}] if with_candidates else []
     return build_review_pack(
         output_dir=tmp_path,
         media_id="video123",
@@ -34,16 +35,28 @@ def _pack(tmp_path: Path) -> Path:
         source_video_path=video,
         original_srt_path=original,
         russian_whisper_srt_path=russian,
+        shorts_candidates=shorts,
     )
 
 
-def test_factory_editorial_defaults_pack_on_and_gemini_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_factory_editorial_defaults_pack_on_gemini_off_and_one_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_EDITORIAL_REVIEW_PACK", raising=False)
     monkeypatch.delenv("SHORTS_FACTORY_EDITORIAL_GEMINI", raising=False)
+    monkeypatch.delenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", raising=False)
 
     assert factory.factory_editorial_pack_enabled() is True
     assert factory.factory_editorial_gemini_enabled() is False
     assert factory.FACTORY_EDITORIAL_GEMINI_MODEL == "gemini-3.6-flash"
+    assert factory._gemini_max_attempts() == 1
+
+
+def test_gemini_attempt_override_is_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", "99")
+    assert factory._gemini_max_attempts() == 2
+    monkeypatch.setenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", "bad")
+    assert factory._gemini_max_attempts() == 1
 
 
 def test_render_review_markdown_is_readable() -> None:
@@ -72,6 +85,19 @@ def test_render_review_markdown_is_readable() -> None:
     assert "Full sermon: **REPAIR**" in text
     assert "12.400–12.800s" in text
     assert "`short:1` — **KEEP**" in text
+
+
+def test_automatic_gemini_review_requires_every_factory_candidate(tmp_path: Path) -> None:
+    pack = _pack(tmp_path, with_candidates=True)
+    manifest = load_pack_manifest(pack)
+    review = {
+        "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
+        "candidate_reviews": [],
+    }
+
+    assert factory._candidate_coverage_errors(review, manifest) == [
+        "missing candidate reviews: short:1"
+    ]
 
 
 @pytest.mark.asyncio
@@ -105,7 +131,8 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling(
 
     import core.globals as globals_module
 
-    monkeypatch.setattr(globals_module, "GEMINI_CLIENTS", [fake_client])
+    monkeypatch.delenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", raising=False)
+    monkeypatch.setattr(globals_module, "GEMINI_CLIENTS", [fake_client, fake_client, fake_client])
     monkeypatch.setattr(globals_module, "make_text_config_smart", fake_config)
 
     review = await factory.generate_gemini_editorial_review(pack)
@@ -128,6 +155,35 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling(
     assert "temperature" not in configs[0]
     assert "top_p" not in configs[0]
     assert "top_k" not in configs[0]
+
+
+@pytest.mark.asyncio
+async def test_gemini_review_missing_candidate_is_rejected_without_hidden_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = _pack(tmp_path, with_candidates=True)
+    calls: list[dict] = []
+    payload = {
+        "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
+        "candidate_reviews": [],
+    }
+
+    class FakeModels:
+        async def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
+
+    fake_client = SimpleNamespace(aio=SimpleNamespace(models=FakeModels()))
+
+    import core.globals as globals_module
+
+    monkeypatch.delenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", raising=False)
+    monkeypatch.setattr(globals_module, "GEMINI_CLIENTS", [fake_client, fake_client])
+    monkeypatch.setattr(globals_module, "make_text_config_smart", lambda **_kwargs: {})
+
+    assert await factory.generate_gemini_editorial_review(pack) is None
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
