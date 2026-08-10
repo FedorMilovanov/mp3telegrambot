@@ -17,6 +17,7 @@ from core.globals import DOWNLOAD_DIR
 from services.shorts_factory_overload_runtime import (
     STATUS_MESSAGE,
     await_with_heartbeat,
+    cache_max_items,
     cache_ttl_seconds,
     copy_or_link,
     safe_status,
@@ -31,41 +32,33 @@ JOB_STATE: ContextVar[dict[str, Any] | None] = ContextVar(
 )
 
 
-def deferred_factory_ai_data(plan: dict[str, Any], *, title: str, performer: str) -> dict[str, Any]:
-    state = JOB_STATE.get()
-    if state is None:
-        from services.shorts_factory_candidates import factory_ai_data
-
-        return factory_ai_data(plan, title=title, performer=performer)
-    holder: dict[str, Any] = {}
-    state.update(
-        plan=copy.deepcopy(plan),
-        title=title,
-        performer=performer,
-        ai_data_holder=holder,
-        aligned={},
-    )
-    return holder
-
-
 def _candidate_duration(item: dict[str, Any]) -> float:
     try:
-        return float(item.get("end_seconds") or 0.0) - float(item.get("start_seconds") or 0.0)
+        return float(item.get("end_seconds") or 0.0) - float(
+            item.get("start_seconds") or 0.0
+        )
     except (TypeError, ValueError, OverflowError):
         return -1.0
 
 
 def _role_for_alignment(items: list[dict[str, Any]], state: dict[str, Any]) -> str:
     if items:
-        durations = [_candidate_duration(item) for item in items if isinstance(item, dict)]
+        durations = [
+            _candidate_duration(item) for item in items if isinstance(item, dict)
+        ]
         if len(durations) != len(items) or any(value <= 0 for value in durations):
-            raise RuntimeError("Factory alignment received malformed candidate durations")
+            raise RuntimeError(
+                "Factory alignment received malformed candidate durations"
+            )
         if all(35.0 <= value <= 180.0 for value in durations):
             role = "short"
         elif all(300.0 <= value <= 900.0 for value in durations):
             role = "long"
         else:
-            raise RuntimeError("Factory alignment candidate role is ambiguous; refusing implicit policy")
+            raise RuntimeError(
+                "Factory alignment candidate role is ambiguous; "
+                "refusing implicit policy"
+            )
     else:
         role = "short" if "short" not in state.get("aligned", {}) else "long"
     if role in state.setdefault("aligned", {}):
@@ -105,7 +98,9 @@ async def _wait_for_boundary_evidence(
     started = loop.time()
     while read_ru_audio_provenance(workdir) is None:
         if loop.time() - started > 7200:
-            raise TimeoutError("Exact VOT RU provenance did not appear within two hours")
+            raise TimeoutError(
+                "Exact VOT RU provenance did not appear within two hours"
+            )
         await asyncio.sleep(1.0)
     return await prepare_factory_ru_boundary_evidence(
         url=url,
@@ -134,7 +129,10 @@ async def translation_video_with_boundary_evidence(
         translated = await original_prepare(url, workdir, duration, source_language)
         evidence = await await_with_heartbeat(
             evidence_task,
-            label="🛡 Yandex master готов. Завершаю доказательство VOT RU-границ…",
+            label=(
+                "🛡 Yandex master готов. "
+                "Завершаю доказательство VOT RU-границ…"
+            ),
         )
     except BaseException:
         if not evidence_task.done():
@@ -169,14 +167,20 @@ def role_aware_factory_alignment(
     role = candidate_kind or _role_for_alignment(candidates, state)
     evidence = state.get("ru_boundary_evidence")
     if not isinstance(evidence, dict):
-        raise RuntimeError("Exact VOT RU boundary evidence was not prepared by the active executor")
+        raise RuntimeError(
+            "Exact VOT RU boundary evidence was not prepared by the active executor"
+        )
     aligned = align_candidates_to_ru_speech(
         candidates,
         source_duration=source_duration,
         speech_intervals=list(evidence.get("intervals") or []),
         delay_seconds=float(evidence.get("delay_seconds") or 0.0),
-        source_speech_intervals=list(evidence.get("source_speech_intervals") or []),
-        source_speech_proof=str(evidence.get("source_speech_proof") or "unavailable"),
+        source_speech_intervals=list(
+            evidence.get("source_speech_intervals") or []
+        ),
+        source_speech_proof=str(
+            evidence.get("source_speech_proof") or "unavailable"
+        ),
         proof=str(evidence.get("proof") or ""),
         candidate_kind=role,
     )
@@ -186,12 +190,25 @@ def role_aware_factory_alignment(
 
 
 def cleanup_pending_sources() -> None:
+    """Bound failed editorial handoff masters by the same retry lifecycle."""
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
     cutoff = time.time() - cache_ttl_seconds()
+    valid: list[tuple[float, Path]] = []
     for path in PENDING_DIR.iterdir():
         try:
-            if path.is_file() and path.stat().st_mtime < cutoff:
+            if not path.is_file():
+                continue
+            modified = path.stat().st_mtime
+            if modified < cutoff:
                 path.unlink(missing_ok=True)
+                continue
+            valid.append((modified, path))
+        except OSError:
+            pass
+    valid.sort(key=lambda item: item[0], reverse=True)
+    for _modified, path in valid[cache_max_items() :]:
+        try:
+            path.unlink(missing_ok=True)
         except OSError:
             pass
 
@@ -207,23 +224,30 @@ def persist_source_for_editorial(
     if state is None:
         return persisted
     metadata = (state.get("plan") or {}).get("metadata") or {}
-    language = str(metadata.get("language") or state.get("source_language") or "").lower()
+    language = str(
+        metadata.get("language") or state.get("source_language") or ""
+    ).lower()
     if language.startswith("ru"):
         return persisted
     cleanup_pending_sources()
     pending = PENDING_DIR / (
-        f"{str(media_id)[:80]}_{uuid.uuid4().hex[:12]}{persisted.suffix.lower() or '.mp4'}"
+        f"{str(media_id)[:80]}_{uuid.uuid4().hex[:12]}"
+        f"{persisted.suffix.lower() or '.mp4'}"
     )
     copy_or_link(persisted, pending)
     state["media_id"] = str(media_id)
     state["editorial_source"] = pending
+    cleanup_pending_sources()
     return persisted
 
 
 async def _send_editorial_after_factory(
     *, url: str, update: Any, silent_errors: bool, state: dict[str, Any]
 ) -> None:
-    from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+    from services.media_delivery_probe import (
+        media_probe_is_deliverable,
+        probe_media_async,
+    )
     from services.translation_editorial_factory import (
         factory_editorial_pack_enabled,
         prepare_factory_editorial_review,
@@ -234,7 +258,11 @@ async def _send_editorial_after_factory(
         return
     plan = state.get("render_plan") or state.get("plan") or {}
     metadata = plan.get("metadata") if isinstance(plan, dict) else {}
-    language = str((metadata or {}).get("language") or state.get("source_language") or "").lower()
+    language = str(
+        (metadata or {}).get("language")
+        or state.get("source_language")
+        or ""
+    ).lower()
     if language.startswith("ru"):
         return
     source = Path(state.get("editorial_source") or "")
@@ -259,7 +287,10 @@ async def _send_editorial_after_factory(
             long_candidates=list(aligned.get("long") or []),
             ai_data=state.get("ai_data_holder"),
         ),
-        label="🔎 Translation Editorial: original SRT + Russian Whisper large-v3…",
+        label=(
+            "🔎 Translation Editorial: original SRT + "
+            "Russian Whisper large-v3…"
+        ),
         heartbeat=60.0,
     )
     if not silent_errors:
@@ -270,7 +301,10 @@ async def _send_editorial_after_factory(
             markdown_path=markdown,
         )
     source.unlink(missing_ok=True)
-    await safe_status("✅ SHORTS FACTORY MAX + Translation Editorial завершены: ZIP готов для ChatGPT.")
+    await safe_status(
+        "✅ SHORTS FACTORY MAX + Translation Editorial завершены: "
+        "ZIP готов для ChatGPT."
+    )
 
 
 async def process_factory_with_editorial(
@@ -305,9 +339,12 @@ async def process_factory_with_editorial(
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.exception("Factory editorial post-delivery pack failed: %s", exc)
+                logger.exception(
+                    "Factory editorial post-delivery pack failed: %s", exc
+                )
                 await safe_status(
-                    "⚠️ Нарезки доставлены, но editorial ZIP не собрался; сохранённый master можно повторно использовать."
+                    "⚠️ Нарезки доставлены, но editorial ZIP не собрался; "
+                    "master временно сохранён для диагностики."
                 )
                 if not silent_errors:
                     try:
@@ -336,7 +373,10 @@ async def process_translation_editorial_only(
     import pipelines.shorts_factory as factory_module
     import services.shorts_video_impl as shorts_video_impl
     from core.utils import parse_title
-    from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+    from services.media_delivery_probe import (
+        media_probe_is_deliverable,
+        probe_media_async,
+    )
     from services.shorts_factory_execution_guard import (
         enforce_factory_translation_preflight,
         factory_preflight_issues,
@@ -349,7 +389,9 @@ async def process_translation_editorial_only(
 
     workdir = Path(tempfile.mkdtemp(prefix="translation_editorial_only_"))
     if status_msg is None:
-        status_msg = await update.message.reply_text("🔎 РЕДАКТОР ПЕРЕВОДА: получаю метаданные…")
+        status_msg = await update.message.reply_text(
+            "🔎 РЕДАКТОР ПЕРЕВОДА: получаю метаданные…"
+        )
     token = STATUS_MESSAGE.set(status_msg)
     try:
         info = await factory_module._load_video_info(url)
@@ -362,7 +404,7 @@ async def process_translation_editorial_only(
                 "Режим «ENG Редактор перевода» принимает английский источник; "
                 f"metadata language={language!r}."
             )
-        free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
+        free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024**3)
         issues = factory_preflight_issues(
             gemini_available=True,
             whisper_available=bool(shorts_video_impl.HAS_FASTER_WHISPER),
@@ -372,16 +414,23 @@ async def process_translation_editorial_only(
             min_free_gb=2.0,
         )
         if issues:
-            raise RuntimeError("Editorial preflight failed: " + "; ".join(issues))
+            raise RuntimeError(
+                "Editorial preflight failed: " + "; ".join(issues)
+            )
         enforce_factory_translation_preflight()
         media_id = factory_module._media_id(info, url)
         full_title = str(info.get("title") or "Видео").strip()
-        channel = str(info.get("channel") or info.get("uploader") or "").strip()
+        channel = str(
+            info.get("channel") or info.get("uploader") or ""
+        ).strip()
         performer, title = parse_title(full_title, channel)
 
         translated = await await_with_heartbeat(
             prepare_factory_translation_video(url, workdir, duration, "en"),
-            label="🎙 ENG Редактор: Яндекс переводит и собирает полный master…",
+            label=(
+                "🎙 ENG Редактор: Яндекс переводит и собирает "
+                "полный master…"
+            ),
             heartbeat=60.0,
         )
         probe = await probe_media_async(translated)
@@ -401,7 +450,10 @@ async def process_translation_editorial_only(
                 long_candidates=[],
                 ai_data=None,
             ),
-            label="🔎 ENG Редактор: original SRT + Russian Whisper large-v3…",
+            label=(
+                "🔎 ENG Редактор: original SRT + "
+                "Russian Whisper large-v3…"
+            ),
             heartbeat=60.0,
         )
         if not silent_errors:
@@ -411,7 +463,9 @@ async def process_translation_editorial_only(
                 review_path=review,
                 markdown_path=markdown,
             )
-        await safe_status("✅ РЕДАКТОР ПЕРЕВОДА: ZIP готов. Пришлите его в ChatGPT.")
+        await safe_status(
+            "✅ РЕДАКТОР ПЕРЕВОДА: ZIP готов. Пришлите его в ChatGPT."
+        )
         return True
     except asyncio.CancelledError:
         raise
@@ -431,13 +485,24 @@ async def process_translation_editorial_only(
 
 def install_mode_ui(mode_module: Any) -> None:
     if EDITORIAL_MODE not in mode_module.VALID_MODES:
-        mode_module.VALID_MODES = tuple(mode_module.VALID_MODES) + (EDITORIAL_MODE,)
-    mode_module.MODE_LABELS[EDITORIAL_MODE] = "🔎 ENG Редактор перевода — Yandex + Whisper → ZIP"
-    mode_module.MODE_BUTTON_LABELS[EDITORIAL_MODE] = "🔎 ENG Редактор перевода"
-    mode_module.MODE_DESCRIPTIONS[EDITORIAL_MODE] = (
-        "Без Gemini-нарезки: Yandex LiveDub → original SRT → Russian Whisper large-v3 → ZIP для ChatGPT."
+        mode_module.VALID_MODES = tuple(mode_module.VALID_MODES) + (
+            EDITORIAL_MODE,
+        )
+    mode_module.MODE_LABELS[EDITORIAL_MODE] = (
+        "🔎 ENG Редактор перевода — Yandex + Whisper → ZIP"
     )
-    if getattr(mode_module._analysis_keyboard, "_translation_editorial_polished", False):
+    mode_module.MODE_BUTTON_LABELS[EDITORIAL_MODE] = (
+        "🔎 ENG Редактор перевода"
+    )
+    mode_module.MODE_DESCRIPTIONS[EDITORIAL_MODE] = (
+        "Без Gemini-нарезки: Yandex LiveDub → original SRT → "
+        "Russian Whisper large-v3 → ZIP для ChatGPT."
+    )
+    if getattr(
+        mode_module._analysis_keyboard,
+        "_translation_editorial_polished",
+        False,
+    ):
         return
     original = mode_module._analysis_keyboard
 
@@ -463,7 +528,6 @@ __all__ = [
     "EDITORIAL_MODE",
     "JOB_STATE",
     "cleanup_pending_sources",
-    "deferred_factory_ai_data",
     "install_mode_ui",
     "persist_source_for_editorial",
     "process_factory_with_editorial",
