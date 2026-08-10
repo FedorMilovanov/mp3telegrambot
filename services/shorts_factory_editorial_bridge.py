@@ -240,9 +240,11 @@ def persist_source_for_editorial(
     *,
     original_persist: Callable[[Path, str], Path],
 ) -> Path:
+    from services.translation_editorial_factory import factory_editorial_pack_enabled
+
     persisted = Path(original_persist(source_path, media_id))
     state = JOB_STATE.get()
-    if state is None:
+    if state is None or not factory_editorial_pack_enabled():
         return persisted
     metadata = (state.get("plan") or {}).get("metadata") or {}
     language = str(
