@@ -174,8 +174,12 @@ def find_donor_cues(
     """Return grounded same-voice donor cue candidates; never edits media."""
     if not _word_key(phrase):
         return []
+    try:
+        parsed_limit = int(limit)
+    except (TypeError, ValueError):
+        parsed_limit = 12
+    safe_limit = max(1, min(parsed_limit, 100))
     out: list[dict[str, Any]] = []
-    safe_limit = max(1, min(int(limit), 100))
     for cue in parse_srt(srt_path):
         if not _contains_normalized_phrase(cue.text, phrase):
             continue
@@ -210,6 +214,20 @@ def _candidate_payload(kind: str, candidates: Iterable[dict[str, Any]]) -> list[
         item["candidate_id"] = candidate_id
         out.append(item)
     return out
+
+
+def _validate_candidate_ranges(
+    candidates: dict[str, list[dict[str, Any]]],
+    duration: float,
+) -> None:
+    for group_name, group in candidates.items():
+        for index, item in enumerate(group, 1):
+            start = _finite_float(item.get("start_seconds"))
+            end = _finite_float(item.get("end_seconds"))
+            if start is None or end is None:
+                raise ValueError(f"{group_name}[{index}] candidate start/end must be finite")
+            if start < 0 or end <= start or end > duration + 0.05:
+                raise ValueError(f"{group_name}[{index}] candidate span outside source duration")
 
 
 def _file_entry(path: Path, *, role: str) -> dict[str, Any]:
@@ -276,6 +294,7 @@ def build_review_pack(
             "shorts": _candidate_payload("short", shorts_candidates),
             "long_clips": _candidate_payload("long", long_candidates),
         }
+        _validate_candidate_ranges(candidates, source_duration)
         candidates_path = root / "candidates.json"
         candidates_path.write_text(
             json.dumps(candidates, ensure_ascii=False, indent=2, allow_nan=False),
@@ -361,12 +380,31 @@ def build_review_pack(
                 for path in sorted(root.iterdir()):
                     if path.is_file():
                         archive.write(path, arcname=path.name)
-            with temp_zip.open("rb") as source, zip_path.open("xb") as target:
-                shutil.copyfileobj(source, target, length=1024 * 1024)
+            try:
+                with temp_zip.open("rb") as source, zip_path.open("xb") as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+            except Exception:
+                zip_path.unlink(missing_ok=True)
+                raise
         finally:
             temp_zip.unlink(missing_ok=True)
         load_pack_manifest(zip_path)
         return zip_path
+
+
+def _verified_pack_identity(data: dict[str, Any]) -> dict[str, Any]:
+    identity = {
+        "schema_name": data.get("schema_name"),
+        "schema_version": data.get("schema_version"),
+        "source": data.get("source"),
+        "transcripts": data.get("transcripts"),
+        "candidates": data.get("candidates"),
+    }
+    # PR #113 v1 packs predate timeline metadata. Preserve their exact identity
+    # instead of retroactively adding an empty field and invalidating honest packs.
+    if "timeline" in data:
+        identity["timeline"] = data.get("timeline") or {}
+    return identity
 
 
 def load_pack_manifest(pack_path: Path) -> dict[str, Any]:
@@ -389,6 +427,23 @@ def load_pack_manifest(pack_path: Path) -> dict[str, Any]:
             raise ValueError("unsupported translation editorial pack schema")
         if data.get("candidates") != candidates:
             raise ValueError("candidates.json does not match manifest candidates")
+
+        source = data.get("source")
+        if not isinstance(source, dict):
+            raise ValueError("manifest source must be an object")
+        duration = _finite_float(source.get("duration_seconds"))
+        translated = source.get("translated_video")
+        if duration is None or duration <= 0 or not isinstance(translated, dict):
+            raise ValueError("manifest source identity is invalid")
+        if not _is_canonical_sha256(translated.get("sha256")):
+            raise ValueError("manifest translated-video SHA-256 is invalid")
+        try:
+            translated_bytes = int(translated.get("bytes"))
+        except (TypeError, ValueError):
+            translated_bytes = 0
+        if translated_bytes <= 0 or not str(translated.get("local_path") or "").strip():
+            raise ValueError("manifest translated-video path/size is invalid")
+
         transcripts = data.get("transcripts")
         if not isinstance(transcripts, dict):
             raise ValueError("manifest transcripts must be an object")
@@ -398,21 +453,16 @@ def load_pack_manifest(pack_path: Path) -> dict[str, Any]:
             filename = str(entry.get("file") or "")
             if not filename or Path(filename).name != filename or filename not in names:
                 raise ValueError(f"invalid/missing transcript member: {filename}")
+            if not _is_canonical_sha256(entry.get("sha256")):
+                raise ValueError(f"invalid transcript SHA-256: {filename}")
             payload = archive.read(filename)
             if int(entry.get("bytes") or -1) != len(payload):
                 raise ValueError(f"transcript byte count changed: {filename}")
             if entry.get("sha256") != _sha256_bytes(payload):
                 raise ValueError(f"transcript SHA-256 changed: {filename}")
 
-    identity_payload = {
-        "schema_name": data.get("schema_name"),
-        "schema_version": data.get("schema_version"),
-        "source": data.get("source"),
-        "transcripts": data.get("transcripts"),
-        "candidates": data.get("candidates"),
-        "timeline": data.get("timeline") or {},
-    }
-    expected_id = _canonical_sha256(identity_payload)
+    _validate_candidate_ranges(candidates, duration)
+    expected_id = _canonical_sha256(_verified_pack_identity(data))
     if data.get("review_pack_id") != expected_id:
         raise ValueError("review_pack_id does not match verified pack contents")
     return data
@@ -508,7 +558,13 @@ def validate_review_document(review: dict[str, Any], manifest: dict[str, Any]) -
         full_issues: list[Any] = []
     else:
         full_issues = full.get("issues") if isinstance(full.get("issues"), list) else []
-        errors.extend(_validate_verdict_issue_shape("full_sermon", full.get("verdict"), full.get("issues")))
+        errors.extend(
+            _validate_verdict_issue_shape(
+                "full_sermon",
+                full.get("verdict"),
+                full.get("issues"),
+            )
+        )
         seen_full: set[tuple[float, float, str]] = set()
         for index, issue in enumerate(full_issues, 1):
             errors.extend(
