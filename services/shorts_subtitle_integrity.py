@@ -17,6 +17,7 @@ MIN_WORD_DURATION = 0.08
 MAX_WORD_DURATION = 2.50
 MAX_KARAOKE_HOLD = 3.00
 MAX_PAUSE_IN_CHUNK = 0.35
+MAX_TOKEN_MERGE_GAP = 0.20
 MAX_CHARS = 38
 
 _PARTICLES = {"-то", "-либо", "-нибудь", "-ка", "-таки", "-де", "-с", "-ж", "-же"}
@@ -128,8 +129,15 @@ def _normalize_words(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _token_gap(left: dict[str, Any], right: dict[str, Any]) -> float:
+    return max(
+        0.0,
+        _finite(right.get("start"), 0.0) - _finite(left.get("end"), 0.0),
+    )
+
+
 def _merge_tokens(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Merge Russian hyphen particles and punctuation-only Whisper tokens."""
+    """Merge adjacent particles/punctuation without crossing real silence."""
     result: list[dict[str, Any]] = []
     index = 0
     while index < len(words):
@@ -138,23 +146,26 @@ def _merge_tokens(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         if text.lower() in _PARTICLES and result:
             previous = result[-1]
-            previous["word"] = str(previous.get("word") or "").strip() + text
-            previous["end"] = max(float(previous["end"]), float(current["end"]))
-            index += 1
-            continue
+            if _token_gap(previous, current) <= MAX_TOKEN_MERGE_GAP:
+                previous["word"] = str(previous.get("word") or "").strip() + text
+                previous["end"] = max(float(previous["end"]), float(current["end"]))
+                index += 1
+                continue
 
         if text.endswith("-") and index + 1 < len(words):
             following = words[index + 1]
-            current["word"] = text + str(following.get("word") or "").strip()
-            current["end"] = max(float(current["end"]), float(following["end"]))
-            result.append(current)
-            index += 2
-            continue
+            if _token_gap(current, following) <= MAX_TOKEN_MERGE_GAP:
+                current["word"] = text + str(following.get("word") or "").strip()
+                current["end"] = max(float(current["end"]), float(following["end"]))
+                result.append(current)
+                index += 2
+                continue
 
         if result and _is_punctuation_token(text):
             previous = result[-1]
             previous["word"] = str(previous.get("word") or "").strip() + text
-            previous["end"] = max(float(previous["end"]), float(current["end"]))
+            if _token_gap(previous, current) <= MAX_TOKEN_MERGE_GAP:
+                previous["end"] = max(float(previous["end"]), float(current["end"]))
             index += 1
             continue
 
@@ -306,7 +317,12 @@ def generate_ass_from_segments(
     """Build a validated ASS document from Whisper segments."""
     from services.shorts_video_impl import _pick_subtitle_font
 
-    words = _merge_tokens(_normalize_words(_collect_words(segments)))
+    # Token ownership can extend a preceding word's end. Normalize once before
+    # merging to sanitize raw Whisper data and once after merging so the final
+    # render timeline is still monotonic and duration-bounded.
+    words = _normalize_words(
+        _merge_tokens(_normalize_words(_collect_words(segments)))
+    )
     if not words:
         raise ValueError("subtitle transcript contains no timed words")
     chunks = _chunk_words(words)
@@ -376,6 +392,7 @@ def generate_ass_from_segments(
 __all__ = [
     "MAX_KARAOKE_HOLD",
     "MAX_PAUSE_IN_CHUNK",
+    "MAX_TOKEN_MERGE_GAP",
     "generate_ass_from_segments",
     "validate_ass_document",
 ]
