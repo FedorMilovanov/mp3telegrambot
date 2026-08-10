@@ -73,6 +73,52 @@ def test_zero_duration_whisper_word_is_given_safe_minimum_interval():
     assert ",0:00:00.50,0:00:00.58," in _dialogues(document)[0]
 
 
+def test_remote_hyphen_particle_does_not_merge_across_silence():
+    segments = [
+        {
+            "start": 0.0,
+            "end": 4.0,
+            "text": "кто то сказал",
+            "words": [
+                {"word": "кто", "start": 0.00, "end": 0.30},
+                {"word": "-то", "start": 2.00, "end": 2.20},
+                {"word": "сказал", "start": 2.30, "end": 2.80},
+            ],
+        }
+    ]
+
+    document = generate_ass_from_segments(segments, karaoke=True)
+
+    assert validate_ass_document(document, karaoke=True) == ()
+    lines = _dialogues(document)
+    assert len(lines) == 3
+    assert ",0:00:00.00,0:00:00.30," in lines[0]
+    assert ",0:00:02.00," in lines[1]
+
+
+def test_remote_punctuation_does_not_extend_previous_word_hold():
+    segments = [
+        {
+            "start": 0.0,
+            "end": 3.0,
+            "text": "Истина. Далее",
+            "words": [
+                {"word": "Истина", "start": 0.00, "end": 0.40},
+                {"word": ".", "start": 1.80, "end": 1.90},
+                {"word": "Далее", "start": 2.10, "end": 2.50},
+            ],
+        }
+    ]
+
+    document = generate_ass_from_segments(segments, karaoke=True)
+
+    assert validate_ass_document(document, karaoke=True) == ()
+    lines = _dialogues(document)
+    assert ",0:00:00.00,0:00:00.40," in lines[0]
+    assert "Истина." in lines[0]
+    assert ",0:00:02.10," in lines[1]
+
+
 def test_validator_rejects_abnormally_long_karaoke_hold():
     document = """[Script Info]
 ScriptType: v4.00+
