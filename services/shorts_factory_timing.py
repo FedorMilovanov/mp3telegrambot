@@ -297,9 +297,8 @@ def install_factory_ru_boundary_capture() -> bool:
     import pipelines.shorts_factory as factory_pipeline
 
     # Production Factory source quality replaces _prepare_translation_video
-    # with a direct get_live_dub_audio + maximum-quality mix. Wrap that exact
-    # seam rather than global Yandex LiveDub APIs, so normal LiveDub pays zero
-    # extra probe cost and Factory cannot miss the active route.
+    # with a direct get_live_dub_audio + maximum-quality mix. The runtime calls
+    # this installer only after that source policy is installed.
     current_prepare = factory_pipeline._prepare_translation_video
     if not getattr(current_prepare, "_mp3bot_factory_ru_boundary_capture", False):
 
@@ -597,13 +596,6 @@ def align_factory_livedub_candidates(
         delay_seconds=0.0,
         proof=str(timeline.get("proof") or "exact-vot-ru-silencedetect-v2"),
     )
-
-
-# The runtime imports this module only for Shorts Factory policy. Installing at
-# import time ensures the active source function is wrapped before the Factory
-# job creates its translation task, while the wrapper itself touches only the
-# Factory source seam and never global LiveDub routes.
-install_factory_ru_boundary_capture()
 
 
 __all__ = [
