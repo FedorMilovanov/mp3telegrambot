@@ -256,6 +256,7 @@ async def _validated_source_duration(source_path: Path, expected_duration: int) 
 
 
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
+    """Render only the publication-ready candidate plan shown to the operator."""
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
     longs = plan.get("long_candidates") or []
@@ -270,7 +271,12 @@ def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
         f"🤖 {model} · thinking HIGH · три независимых прохода",
     ]
     if translation_required:
-        lines.append("🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».")
+        lines.extend(
+            [
+                "🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».",
+                "🛡 Таймкоды ниже уже прошли проверку границ по фактической русской речи.",
+            ]
+        )
 
     if shorts:
         lines.extend(["", "⚡ <b>SHORTS HIGHLIGHTS · 35 сек — 3 мин</b>"])
@@ -417,18 +423,6 @@ async def process_shorts_factory(
             expected_duration=duration,
         )
 
-        if not silent_errors:
-            await update.message.reply_text(
-                _plan_message(plan, translation_required=translation_required),
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-
-        await _safe_status(
-            status_msg,
-            "✂️ Рендерю SHORTS HIGHLIGHTS и длинные фрагменты…",
-        )
-
         shorts_candidates = plan.get("shorts_candidates") or []
         long_candidates = plan.get("long_candidates") or []
         render_shorts = shorts_candidates
@@ -442,6 +436,26 @@ async def process_shorts_factory(
                 long_candidates,
                 source_duration=render_source_duration,
             )
+            if not render_shorts and not render_longs:
+                raise RuntimeError(
+                    "Ни один выбранный фрагмент не прошёл доказанную проверку "
+                    "границ русской LiveDub-речи; публикация оригинальных таймкодов запрещена"
+                )
+
+        render_plan = dict(plan)
+        render_plan["shorts_candidates"] = render_shorts
+        render_plan["long_candidates"] = render_longs
+        if not silent_errors:
+            await update.message.reply_text(
+                _plan_message(render_plan, translation_required=translation_required),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+
+        await _safe_status(
+            status_msg,
+            "✂️ Рендерю SHORTS HIGHLIGHTS и длинные фрагменты…",
+        )
 
         with factory_render_context(render_shorts, render_longs):
             if render_shorts:
@@ -513,20 +527,22 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            f"✅ SHORTS FACTORY MAX завершён: {len(shorts_candidates)} Shorts, "
-            f"{len(long_candidates)} длинных фрагмента.",
+            f"✅ SHORTS FACTORY MAX завершён: {len(render_shorts)} Shorts, "
+            f"{len(render_longs)} длинных фрагмента.",
         )
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
-            "shorts=%d longs=%d yandex=%s",
+            "shorts=%d/%d longs=%d/%d yandex=%s",
             media_id,
             duration,
             render_source_duration,
+            len(render_shorts),
             len(shorts_candidates),
+            len(render_longs),
             len(long_candidates),
             translation_required,
         )
-        return bool(shorts_candidates or long_candidates)
+        return bool(render_shorts or render_longs)
 
     except asyncio.CancelledError:
         raise
