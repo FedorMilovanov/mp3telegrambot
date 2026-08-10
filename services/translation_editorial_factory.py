@@ -178,8 +178,43 @@ def _strip_json_fence(value: Any) -> str:
     return raw.strip()
 
 
+def _expected_candidate_ids(manifest: dict[str, Any]) -> set[str]:
+    return {
+        str(item.get("candidate_id"))
+        for group in (manifest.get("candidates") or {}).values()
+        if isinstance(group, list)
+        for item in group
+        if isinstance(item, dict) and item.get("candidate_id")
+    }
+
+
+def _candidate_coverage_errors(review: dict[str, Any], manifest: dict[str, Any]) -> list[str]:
+    expected = _expected_candidate_ids(manifest)
+    reviewed = {
+        str(item.get("candidate_id"))
+        for item in review.get("candidate_reviews") or []
+        if isinstance(item, dict) and item.get("candidate_id")
+    }
+    errors: list[str] = []
+    missing = sorted(expected - reviewed)
+    extra = sorted(reviewed - expected)
+    if missing:
+        errors.append("missing candidate reviews: " + ", ".join(missing))
+    if extra:
+        errors.append("unexpected candidate reviews: " + ", ".join(extra))
+    return errors
+
+
+def _gemini_max_attempts() -> int:
+    try:
+        value = int(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", "1") or "1")
+    except (TypeError, ValueError):
+        value = 1
+    return max(1, min(value, 2))
+
+
 async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | None:
-    """Run at most one semantic review request per client, exact 3.6/high only."""
+    """Run a quota-bounded full-sermon review on exact Gemini 3.6/high only."""
     try:
         from core.globals import GEMINI_CLIENTS, make_text_config_smart
     except Exception:
@@ -200,8 +235,8 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         "в русской Whisper-стенограмме. Таймкоды issue всегда бери из русского SRT. "
         "drop_span выбирай только когда удаление короткого дефекта оставляет исходную мысль "
         "целой; mute_span только для чисто звукового дефекта; иначе reject_region. "
-        "Для каждого candidate_id оцени пригодность с учётом найденных дефектов. "
-        "Верни только JSON по схеме.\n\n"
+        "Для каждого candidate_id обязательно верни ровно одну оценку пригодности с учётом "
+        "найденных дефектов. Верни только JSON по схеме.\n\n"
         f"MANIFEST:\n{json.dumps(manifest, ensure_ascii=False)}\n\n"
         f"CANDIDATES:\n{candidates}\n\n"
         f"ORIGINAL SRT:\n{original}\n\n"
@@ -217,7 +252,8 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
     timeout = float(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC", "300") or "300")
     timeout = max(60.0, min(timeout, 600.0))
 
-    for client_index, client in enumerate(list(GEMINI_CLIENTS), 1):
+    clients = list(GEMINI_CLIENTS)[: _gemini_max_attempts()]
+    for client_index, client in enumerate(clients, 1):
         try:
             response = await asyncio.wait_for(
                 client.aio.models.generate_content(
@@ -239,6 +275,7 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
                 "candidate_reviews": data.get("candidate_reviews") or [],
             }
             errors = validate_review_document(review, manifest)
+            errors.extend(_candidate_coverage_errors(review, manifest))
             if errors:
                 logger.warning(
                     "Factory editorial Gemini review rejected client=%d: %s",
