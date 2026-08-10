@@ -972,8 +972,8 @@ Fixes:
   covering the four-frame adversarial bracket.
 - The focused upstream 4-file smoke and the full 11-file Dub v6.7 smoke pass
   locally after these corrections. Full repository pytest still has three
-  collection failures caused by parametrized tests using the reserved fixture
-  name `request`.
+  collection failures caused by parametrized tests using the reserved pytest
+  fixture name `request`.
 - The upstream changes are otherwise directionally sound: transactional
   dataclass-facade import coverage, diagnostic-only cross-language source
   prosody, explicit tail-bracketing policy, and release invalidation to v6.7.
