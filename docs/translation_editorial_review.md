@@ -13,7 +13,21 @@ One review pack binds:
 - Factory Shorts and 5–15 minute candidate metadata;
 - one deterministic `review_pack_id`.
 
-The ZIP intentionally does **not** contain the video bytes. It is small enough to upload to an external editor such as ChatGPT or Gemini while later FFmpeg execution remains bound to the local source SHA-256.
+The ZIP intentionally does **not** contain the video bytes. It is small enough to upload to an editor such as ChatGPT while later FFmpeg execution remains bound to the local source SHA-256.
+
+For Yandex Factory jobs the review pack is enabled by default. It is generated after the normal Shorts/long-clip render so a review-pack failure never cancels already produced videos:
+
+```env
+SHORTS_FACTORY_EDITORIAL_REVIEW_PACK=1
+```
+
+The optional automatic semantic auditor is off by default:
+
+```env
+SHORTS_FACTORY_EDITORIAL_GEMINI=0
+```
+
+When enabled it performs one full-sermon review using the exact model `gemini-3.6-flash` with `thinking_level=high`. It has no light-model fallback and does not apply its own edit decisions automatically. Factory sends both the immutable ZIP and the validated review output to Telegram.
 
 ## Editorial verdicts
 
@@ -96,8 +110,8 @@ python .\tools\translation_editorial.py donors `
   --exclude-end 121.0
 ```
 
-The result is only a list of grounded cue candidates with timestamps and heard text. It is not permission to splice speech automatically.
+The result is only a list of grounded cue candidates with timestamps and heard text. Exact phrase boundaries are used, so a requested word is not accepted merely because its letters occur inside another word. It is not permission to splice speech automatically.
 
-## Intended next integration
+## Release boundary
 
-Factory can call this same service after it has a durable Yandex source and candidate plan, then send the small review ZIP to Telegram. A later release bridge may convert reviewed final media and editorial metadata into the guarded `video-channel-manager` exchange/release path. AI remains an editor, not a provider executor.
+This repository owns translation QA and local deterministic media repair. A later release bridge may convert reviewed final media and editorial metadata into the guarded `video-channel-manager` exchange/release path. AI remains an editor: it does not receive YouTube OAuth and it does not publish provider mutations directly.
