@@ -7,6 +7,7 @@ import copy
 import logging
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from contextvars import ContextVar
@@ -30,6 +31,8 @@ PENDING_DIR = DOWNLOAD_DIR / "translation_editorial_pending"
 JOB_STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "factory_editorial_bridge_job", default=None
 )
+_PENDING_LOCK = threading.RLock()
+_ACTIVE_PENDING: set[str] = set()
 
 
 def _candidate_duration(item: dict[str, Any]) -> float:
@@ -189,14 +192,32 @@ def role_aware_factory_alignment(
     return aligned
 
 
+def _pending_key(path: Path) -> str:
+    try:
+        return str(Path(path).resolve())
+    except OSError:
+        return str(Path(path).absolute())
+
+
+def _set_pending_active(path: Path, active: bool) -> None:
+    key = _pending_key(path)
+    with _PENDING_LOCK:
+        if active:
+            _ACTIVE_PENDING.add(key)
+        else:
+            _ACTIVE_PENDING.discard(key)
+
+
 def cleanup_pending_sources() -> None:
-    """Bound failed editorial handoff masters by the same retry lifecycle."""
+    """Bound inactive handoff masters without deleting another active job."""
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
     cutoff = time.time() - cache_ttl_seconds()
+    with _PENDING_LOCK:
+        protected = set(_ACTIVE_PENDING)
     valid: list[tuple[float, Path]] = []
     for path in PENDING_DIR.iterdir():
         try:
-            if not path.is_file():
+            if not path.is_file() or _pending_key(path) in protected:
                 continue
             modified = path.stat().st_mtime
             if modified < cutoff:
@@ -235,6 +256,7 @@ def persist_source_for_editorial(
         f"{persisted.suffix.lower() or '.mp4'}"
     )
     copy_or_link(persisted, pending)
+    _set_pending_active(pending, True)
     state["media_id"] = str(media_id)
     state["editorial_source"] = pending
     cleanup_pending_sources()
@@ -319,14 +341,17 @@ async def process_factory_with_editorial(
     state: dict[str, Any] = {}
     state_token = JOB_STATE.set(state)
     status_token = STATUS_MESSAGE.set(status_msg)
+    result = False
     try:
-        result = await original_process(
-            url,
-            update,
-            status_msg=status_msg,
-            progress_prefix=progress_prefix,
-            context=context,
-            silent_errors=silent_errors,
+        result = bool(
+            await original_process(
+                url,
+                update,
+                status_msg=status_msg,
+                progress_prefix=progress_prefix,
+                context=context,
+                silent_errors=silent_errors,
+            )
         )
         if result:
             try:
@@ -354,8 +379,15 @@ async def process_factory_with_editorial(
                         )
                     except Exception:
                         pass
-        return bool(result)
+        return result
     finally:
+        pending_value = state.get("editorial_source")
+        if pending_value:
+            pending = Path(pending_value)
+            _set_pending_active(pending, False)
+            if not result:
+                pending.unlink(missing_ok=True)
+        cleanup_pending_sources()
         STATUS_MESSAGE.reset(status_token)
         JOB_STATE.reset(state_token)
 
@@ -398,9 +430,9 @@ async def process_translation_editorial_only(
     token = STATUS_MESSAGE.set(status_msg)
     try:
         info = await factory_module._load_video_info(url)
-        # Factory's disk guard normally serializes maximum video behind the
-        # analysis-audio download. This mode intentionally has no analysis-audio
-        # phase, so release only that ordering dependency; video disk proof stays.
+        # The disk guard normally serializes maximum video behind analysis audio.
+        # This mode intentionally has no analysis-audio phase. Release only that
+        # ordering dependency; duration hints and the full video disk proof stay.
         mark_factory_analysis_audio_skipped(url)
         duration = int(float(info.get("duration") or 0))
         if duration <= 0:
