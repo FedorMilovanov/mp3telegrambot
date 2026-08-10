@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from types import SimpleNamespace
 
 import pytest
 
-import services.shorts_factory_overload_editorial_polish as polish
+import services.shorts_factory_editorial_bridge as bridge
+import services.shorts_factory_overload_runtime as overload
 
 
 class _HttpError(RuntimeError):
@@ -43,7 +46,7 @@ def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
     monkeypatch.setattr(core_globals, "GEMINI_API_KEY_3", "")
     monkeypatch.setattr(core_globals, "GEMINI_API_KEY_4", "")
 
-    clients = polish._factory_gemini_clients()
+    clients = overload.factory_gemini_clients()
 
     assert len(clients) == 2
     assert [item["api_key"] for item in created] == ["k1", "k2"]
@@ -56,10 +59,10 @@ def test_factory_overload_classifier_matches_real_503_shape():
         503,
         "503 UNAVAILABLE: This model is currently experiencing high demand",
     )
-    assert polish.factory_retryable_service_error(error) is True
-    assert polish.factory_overload_error(error) is True
-    assert polish.factory_retryable_service_error(ValueError("bad json")) is False
-    assert polish.factory_overload_error(ValueError("bad json")) is False
+    assert overload.factory_retryable_service_error(error) is True
+    assert overload.factory_overload_error(error) is True
+    assert overload.factory_retryable_service_error(ValueError("bad json")) is False
+    assert overload.factory_overload_error(ValueError("bad json")) is False
 
 
 @pytest.mark.asyncio
@@ -73,7 +76,7 @@ async def test_factory_three_pass_resume_keeps_quality_and_does_not_repeat_scout
     audio.write_bytes(b"audio" * 1000)
     client1 = object()
     client2 = object()
-    monkeypatch.setattr(polish, "_factory_gemini_clients", lambda: [client1, client2])
+    monkeypatch.setattr(overload, "factory_gemini_clients", lambda: [client1, client2])
 
     fake_types = SimpleNamespace(
         Part=SimpleNamespace(from_bytes=lambda **kwargs: ("audio", kwargs["mime_type"])),
@@ -120,7 +123,7 @@ async def test_factory_three_pass_resume_keeps_quality_and_does_not_repeat_scout
     monkeypatch.setattr(gate, "apply_factory_quality_gate", lambda plan: plan)
     monkeypatch.setattr(gate, "validated_factory_plan_language", lambda plan: "en")
 
-    result = await polish.create_factory_plan_resumable(
+    result = await overload.create_factory_plan_resumable(
         audio,
         title="Title",
         performer="Speaker",
@@ -148,10 +151,10 @@ async def test_lossless_retry_cache_reuses_exact_bytes(monkeypatch, tmp_path):
     cache = tmp_path / "cache"
     downloads = tmp_path / "downloads"
     downloads.mkdir()
-    monkeypatch.setattr(polish, "_FACTORY_CACHE_DIR", cache)
-    monkeypatch.setattr(polish, "DOWNLOAD_DIR", downloads)
-    monkeypatch.setattr(polish, "_cache_ttl_seconds", lambda: 3600.0)
-    monkeypatch.setattr(polish, "_cache_max_items", lambda: 2)
+    monkeypatch.setattr(overload, "FACTORY_CACHE_DIR", cache)
+    monkeypatch.setattr(overload, "DOWNLOAD_DIR", downloads)
+    monkeypatch.setattr(overload, "cache_ttl_seconds", lambda: 3600.0)
+    monkeypatch.setattr(overload, "cache_max_items", lambda: 2)
 
     probe = SimpleNamespace(
         duration=123.0,
@@ -169,12 +172,30 @@ async def test_lossless_retry_cache_reuses_exact_bytes(monkeypatch, tmp_path):
     source = downloads / "first.flac"
     payload = b"lossless-bytes" * 1000
     source.write_bytes(payload)
-    await polish._store_analysis_audio("https://example/video", "media", source)
-    reused = await polish._cached_analysis_audio("https://example/video", "media")
+    await overload._store_analysis_audio("https://example/video", "media", source)
+    reused = await overload._cached_analysis_audio("https://example/video", "media")
 
     assert reused is not None
     assert reused.read_bytes() == payload
     assert reused != source
+
+
+def test_copy_fallback_removes_partial_destination(monkeypatch, tmp_path):
+    source = tmp_path / "source.flac"
+    destination = tmp_path / "destination.flac"
+    source.write_bytes(b"abcdef")
+
+    monkeypatch.setattr(os, "link", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("cross-device")))
+
+    def fail_copy(src, dst, *, length):
+        dst.write(b"partial")
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(overload.shutil, "copyfileobj", fail_copy)
+
+    with pytest.raises(OSError, match="disk failure"):
+        overload.copy_or_link(source, destination)
+    assert not destination.exists()
 
 
 def test_role_policy_is_explicit_for_short_and_long(monkeypatch):
@@ -203,18 +224,18 @@ def test_role_policy_is_explicit_for_short_and_long(monkeypatch):
 
     monkeypatch.setattr(timing, "align_candidates_to_ru_speech", align)
     monkeypatch.setattr(candidates, "factory_ai_data", lambda plan, **kwargs: {"plan": plan})
-    token = polish._JOB_STATE.set(state)
+    token = bridge.JOB_STATE.set(state)
     try:
-        polish.role_aware_factory_alignment(
+        bridge.role_aware_factory_alignment(
             [{"start_seconds": 10.0, "end_seconds": 70.0}],
             source_duration=1000,
         )
-        polish.role_aware_factory_alignment(
+        bridge.role_aware_factory_alignment(
             [{"start_seconds": 100.0, "end_seconds": 700.0}],
             source_duration=1000,
         )
     finally:
-        polish._JOB_STATE.reset(token)
+        bridge.JOB_STATE.reset(token)
 
     assert calls == ["short", "long"]
     assert state["ai_data_holder"]["plan"]["shorts_candidates"][0]["start_seconds"] == 10.0
@@ -223,15 +244,89 @@ def test_role_policy_is_explicit_for_short_and_long(monkeypatch):
 
 def test_ambiguous_alignment_role_fails_closed():
     state = {"aligned": {}, "ru_boundary_evidence": {}}
-    token = polish._JOB_STATE.set(state)
+    token = bridge.JOB_STATE.set(state)
     try:
         with pytest.raises(RuntimeError, match="ambiguous"):
-            polish.role_aware_factory_alignment(
+            bridge.role_aware_factory_alignment(
                 [{"start_seconds": 0.0, "end_seconds": 250.0}],
                 source_duration=1000,
             )
     finally:
-        polish._JOB_STATE.reset(token)
+        bridge.JOB_STATE.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_boundary_evidence_starts_before_master_prepare_finishes(monkeypatch, tmp_path):
+    import services.livedub_ru_provenance as provenance
+    import services.shorts_factory_timing as timing
+
+    evidence_started = asyncio.Event()
+    allow_master_finish = asyncio.Event()
+    exact_ru = tmp_path / "ru.mp3"
+    exact_ru.write_bytes(b"ru")
+    translated = tmp_path / "translated.mp4"
+    translated.write_bytes(b"video")
+
+    monkeypatch.setattr(provenance, "read_ru_audio_provenance", lambda workdir: exact_ru)
+
+    async def prepare_evidence(**kwargs):
+        evidence_started.set()
+        await allow_master_finish.wait()
+        return {
+            "intervals": [(0.0, 100.0)],
+            "delay_seconds": 0.6,
+            "source_speech_intervals": [],
+            "source_speech_proof": "none",
+            "proof": "proof",
+        }
+
+    monkeypatch.setattr(timing, "prepare_factory_ru_boundary_evidence", prepare_evidence)
+
+    async def original_prepare(*args, **kwargs):
+        await asyncio.wait_for(evidence_started.wait(), timeout=1.0)
+        allow_master_finish.set()
+        return translated
+
+    state = {}
+    token = bridge.JOB_STATE.set(state)
+    try:
+        result = await bridge.translation_video_with_boundary_evidence(
+            "https://example/video",
+            tmp_path,
+            100,
+            "en",
+            original_prepare=original_prepare,
+        )
+    finally:
+        bridge.JOB_STATE.reset(token)
+
+    assert result == translated
+    assert state["ru_boundary_evidence"]["proof"] == "proof"
+
+
+def test_russian_source_does_not_create_pending_editorial_copy(monkeypatch, tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    pending = tmp_path / "pending"
+    monkeypatch.setattr(bridge, "PENDING_DIR", pending)
+
+    state = {
+        "plan": {"metadata": {"language": "ru"}},
+        "source_language": "ru",
+    }
+    token = bridge.JOB_STATE.set(state)
+    try:
+        result = bridge.persist_source_for_editorial(
+            source,
+            "media",
+            original_persist=lambda path, media_id: path,
+        )
+    finally:
+        bridge.JOB_STATE.reset(token)
+
+    assert result == source
+    assert not pending.exists() or not list(pending.iterdir())
+    assert "editorial_source" not in state
 
 
 @pytest.mark.asyncio
@@ -244,9 +339,9 @@ async def test_successful_factory_runs_editorial_after_delivery(monkeypatch):
     async def editorial(**kwargs):
         seen.append(kwargs["url"])
 
-    monkeypatch.setattr(polish, "_send_editorial_after_factory", editorial)
+    monkeypatch.setattr(bridge, "_send_editorial_after_factory", editorial)
     update = SimpleNamespace(message=SimpleNamespace())
-    result = await polish.process_factory_with_editorial(
+    result = await bridge.process_factory_with_editorial(
         original,
         "https://example/video",
         update,
@@ -258,14 +353,16 @@ async def test_successful_factory_runs_editorial_after_delivery(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_editorial_only_mode_never_calls_gemini_planner(monkeypatch, tmp_path):
+async def test_editorial_only_uses_actual_yandex_master_duration_and_no_planner(
+    monkeypatch, tmp_path
+):
     import pipelines.shorts_factory as factory
+    import services.media_delivery_probe as media_probe
     import services.shorts_factory_execution_guard as guard
     import services.shorts_factory_source as source
-    import services.translation_editorial_factory as editorial
     import services.shorts_video_impl as shorts_video
-
-    monkeypatch.setattr(factory, "_load_video_info", lambda *args: None)
+    import services.translation_editorial_factory as editorial
+    from services.media_delivery_probe import MediaProbe
 
     async def info(_url):
         return {
@@ -281,8 +378,8 @@ async def test_editorial_only_mode_never_calls_gemini_planner(monkeypatch, tmp_p
     monkeypatch.setattr(shorts_video, "HAS_FASTER_WHISPER", True)
     monkeypatch.setattr(guard, "factory_preflight_issues", lambda **kwargs: [])
     monkeypatch.setattr(guard, "enforce_factory_translation_preflight", lambda: None)
-    monkeypatch.setattr(polish.shutil, "disk_usage", lambda path: SimpleNamespace(free=20 * 1024**3))
-    monkeypatch.setattr(polish.shutil, "which", lambda name: f"/{name}")
+    monkeypatch.setattr(bridge.shutil, "disk_usage", lambda path: SimpleNamespace(free=20 * 1024**3))
+    monkeypatch.setattr(bridge.shutil, "which", lambda name: f"/{name}")
 
     translated = tmp_path / "translated.mp4"
     translated.write_bytes(b"video")
@@ -290,13 +387,31 @@ async def test_editorial_only_mode_never_calls_gemini_planner(monkeypatch, tmp_p
     async def prepare_video(*args, **kwargs):
         return translated
 
+    actual_probe = MediaProbe(
+        duration=121.6,
+        width=1920,
+        height=1080,
+        audio_sample_rate=48000,
+        audio_codec="aac",
+        has_video=True,
+        has_audio=True,
+    )
+
+    async def probe_async(path):
+        assert Path(path) == translated
+        return actual_probe
+
+    captured = {}
+
     async def prepare_review(**kwargs):
+        captured.update(kwargs)
         return tmp_path / "pack.zip", None, None
 
     async def send_review(*args, **kwargs):
         return None
 
     monkeypatch.setattr(source, "prepare_factory_translation_video", prepare_video)
+    monkeypatch.setattr(media_probe, "probe_media_async", probe_async)
     monkeypatch.setattr(editorial, "prepare_factory_editorial_review", prepare_review)
     monkeypatch.setattr(editorial, "send_factory_editorial_files", send_review)
 
@@ -313,9 +428,12 @@ async def test_editorial_only_mode_never_calls_gemini_planner(monkeypatch, tmp_p
             return None
 
     update = SimpleNamespace(message=Message())
-    assert await polish.process_translation_editorial_only(
+    assert await bridge.process_translation_editorial_only(
         "https://example/video", update, silent_errors=True
     ) is True
+    assert captured["duration"] == pytest.approx(121.6)
+    assert captured["shorts_candidates"] == []
+    assert captured["long_candidates"] == []
 
 
 def test_runtime_manifest_requires_polish_after_factory():
