@@ -24,7 +24,11 @@ from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
-from services.shorts_factory_runtime import factory_render_context
+from services.shorts_factory_runtime import (
+    factory_completed_delivery_counts,
+    factory_render_context,
+)
+from services.shorts_factory_source import _factory_livedub_timeout_seconds
 from services.shorts_video import download_video_for_shorts
 from services.translation_editorial_factory import (
     factory_editorial_pack_enabled,
@@ -38,6 +42,11 @@ logger = logging.getLogger(__name__)
 def _env_bool(name: str, default: bool = True) -> bool:
     raw = os.getenv(name, "1" if default else "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _factory_source_timeout_seconds() -> int:
+    """Use the same bounded timeout owner as the production LiveDub source."""
+    return _factory_livedub_timeout_seconds()
 
 
 async def _safe_status(status_msg, text: str) -> None:
@@ -169,9 +178,10 @@ def _shift_candidates_for_livedub(
     candidates: list[dict[str, Any]],
     *,
     source_duration: int,
+    candidate_kind: str,
 ) -> list[dict[str, Any]]:
     """Fail closed unless the required runtime installs speech-proven alignment."""
-    del candidates, source_duration
+    del candidates, source_duration, candidate_kind
     raise RuntimeError(
         "SHORTS FACTORY translated boundary aligner is not installed; "
         "refusing heuristic original-timeline cuts"
@@ -356,19 +366,12 @@ async def process_shorts_factory(
             duration=duration,
             source_language=source_language,
         )
-        ai_data = factory_ai_data(
-            plan,
-            title=title or full_title,
-            performer=performer or channel_name,
-        )
 
         await _safe_status(
             status_msg,
             "🎙 План готов. Подготавливаю единый источник для всех вырезок…",
         )
-        source_timeout = int(
-            os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "1800") or "1800"
-        )
+        source_timeout = _factory_source_timeout_seconds()
         try:
             source_video_path = await asyncio.wait_for(source_task, timeout=source_timeout)
         except asyncio.TimeoutError as exc:
@@ -421,10 +424,12 @@ async def process_shorts_factory(
                 render_shorts = _shift_candidates_for_livedub(
                     shorts_candidates,
                     source_duration=render_source_duration,
+                    candidate_kind="short",
                 )
                 render_longs = _shift_candidates_for_livedub(
                     long_candidates,
                     source_duration=render_source_duration,
+                    candidate_kind="long",
                 )
             if not render_shorts and not render_longs:
                 raise RuntimeError(
@@ -435,6 +440,11 @@ async def process_shorts_factory(
         render_plan = dict(plan)
         render_plan["shorts_candidates"] = render_shorts
         render_plan["long_candidates"] = render_longs
+        ai_data = factory_ai_data(
+            render_plan,
+            title=title or full_title,
+            performer=performer or channel_name,
+        )
         if not silent_errors:
             await update.message.reply_text(
                 _plan_message(render_plan, translation_required=translation_required),
@@ -474,6 +484,8 @@ async def process_shorts_factory(
                     update=update,
                     livedub_video_path=persistent_source_path,
                 )
+
+        shorts_sent, longs_sent = factory_completed_delivery_counts()
 
         if translation_required and factory_editorial_pack_enabled():
             await _safe_status(
@@ -517,22 +529,25 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            f"✅ SHORTS FACTORY MAX завершён: {len(render_shorts)} Shorts, "
-            f"{len(render_longs)} длинных фрагмента.",
+            f"✅ SHORTS FACTORY MAX завершён: {shorts_sent} Shorts, "
+            f"{longs_sent} длинных фрагмента.",
         )
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
-            "shorts=%d/%d longs=%d/%d yandex=%s",
+            "delivered_shorts=%d aligned_shorts=%d/%d "
+            "delivered_longs=%d aligned_longs=%d/%d yandex=%s",
             media_id,
             duration,
             render_source_duration,
+            shorts_sent,
             len(render_shorts),
             len(shorts_candidates),
+            longs_sent,
             len(render_longs),
             len(long_candidates),
             translation_required,
         )
-        return bool(render_shorts or render_longs)
+        return bool(shorts_sent or longs_sent)
 
     except asyncio.CancelledError:
         raise
