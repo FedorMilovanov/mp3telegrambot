@@ -10,7 +10,7 @@ A single exact cleaned source may produce:
 - `excerpt` — a continuous or editorial 2–20 minute extract;
 - `short` — a 10–180 second Short.
 
-Every output is assembled from explicit source-time segments. The plan binds the exact source path, byte count, SHA-256, probed duration, optional review IDs, and optional future YouTube target identity.
+Every output is assembled from explicit source-time segments. The plan carries the exact source path, byte count, SHA-256, probed duration, review/repair provenance and optional future release metadata. The self-binding `composition_id`, however, is deliberately the **media assembly identity**: it binds source bytes, review/repair evidence and media-producing segment decisions, not machine-local paths or publication copy.
 
 Two assembly modes exist:
 
@@ -64,12 +64,14 @@ The editor fills `pieces`. Example:
 
 `piece_id` is deliberately restricted to an already filesystem-safe value. This prevents two visually different IDs from collapsing onto one output filename after normalization.
 
-After any editorial change recompute the self-binding ID:
+After an edit that changes the actual media assembly — source identity, repair evidence, segment boundaries/order, kind or assembly rationale — recompute the media ID:
 
 ```powershell
 python .\tools\translation_editorial_composition.py refresh-id `
   --plan ".\composition.json"
 ```
+
+Changing only title, description, hashtags, playlist, schedule or release target does **not** change `composition_id` and therefore does not require re-encoding an identical MP4. Those release decisions are bound later by `handoff_id`.
 
 Then validate and render:
 
@@ -84,17 +86,17 @@ python .\tools\translation_editorial_composition.py render `
 
 ## Render and resume guarantees
 
-Before FFmpeg starts, the renderer verifies the exact source byte count, SHA-256 and measured video+audio duration. Each new output is rendered to a same-directory temporary file with FFmpeg no-overwrite mode, probed again, and only then published under its final name.
+Before FFmpeg starts, the renderer verifies the exact source byte count, SHA-256 and measured video+audio duration. If the source is a repaired master, the service itself also reloads and verifies the repair-provenance sidecar, its SHA-256, `repair_result_id`, review pack ID and review SHA; this cannot be bypassed by calling the Python renderer directly instead of the CLI.
 
-Each accepted piece receives an immutable `.provenance.json` sidecar containing:
+Each new output is rendered to a same-directory temporary file with FFmpeg no-overwrite mode, probed again, and only then published under its final name. Each accepted piece receives an immutable `.provenance.json` sidecar containing:
 
 - exact composition ID;
 - exact source SHA-256;
-- all source segment timestamps and piece metadata;
+- all source segment timestamps and media-producing piece metadata;
 - final output path, SHA-256, byte count and measured duration;
 - deterministic `result_id`.
 
-A rerun may reuse an existing piece **only** when both the MP4 and sidecar exist and all of these identities re-verify. A partial pair, changed composition, changed piece metadata, changed source, changed output bytes, stale `result_id`, or path mismatch blocks resume. This preserves completed pieces without accepting unknown leftovers.
+A rerun may reuse an existing piece **only** when both the MP4 and sidecar exist and all media identities re-verify. A partial pair, changed media composition, changed source, changed output bytes, stale `result_id`, or path mismatch blocks resume. Publication-only changes may reuse the verified MP4 because they do not alter the media assembly.
 
 The rendered video is H.264/AAC with `yuv420p` for broad player compatibility. Existing outputs are never silently overwritten.
 
@@ -112,8 +114,12 @@ Before handoff creation the code reloads every provenance sidecar and rehashes t
 - provenance path and provenance SHA-256;
 - `result_id`;
 - source segments and assembly mode;
-- publication metadata;
-- exact composition/source identity.
+- current publication metadata;
+- current release target;
+- exact review/repair source provenance;
+- exact media `composition_id`.
+
+`handoff_id` binds this complete release state. Therefore changing title/description/playlist/schedule/channel changes the handoff identity even when the underlying `composition_id` and rendered MP4 correctly remain unchanged.
 
 Missing, extra, duplicate or tampered rendered results fail closed. An already existing handoff may be reused only when it is byte-for-byte the same logical handoff; a different state is never overwritten silently.
 
