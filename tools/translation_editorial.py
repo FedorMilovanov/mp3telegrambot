@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.translation_editorial import (
     EXECUTABLE_ACTIONS,
     REVIEW_SCHEMA_NAME,
@@ -53,6 +55,26 @@ def _candidate_groups(path: Path | None) -> tuple[list[dict[str, Any]], list[dic
     )
 
 
+async def _source_duration(path: Path, expected: float | None) -> float:
+    probe = await probe_media_async(Path(path))
+    if not media_probe_is_deliverable(probe):
+        raise RuntimeError("editorial source must pass a video+audio media probe")
+    assert probe is not None
+    actual = float(probe.duration)
+    if not math.isfinite(actual) or actual <= 0:
+        raise RuntimeError("editorial source returned an invalid media duration")
+    if expected is not None:
+        declared = float(expected)
+        if not math.isfinite(declared) or declared <= 0:
+            raise ValueError("--duration must be finite and positive when supplied")
+        if abs(declared - actual) > 1.25:
+            raise ValueError(
+                f"declared --duration does not match media probe: "
+                f"declared={declared:.3f}s probe={actual:.3f}s"
+            )
+    return actual
+
+
 async def _download_original_srt(
     video_url: str,
     output_dir: Path,
@@ -68,7 +90,7 @@ async def _download_original_srt(
     language_order = [f"{lang_root}.*", lang_root]
     if lang_root != "en":
         language_order.extend(["en.*", "en"])
-    languages = ",".join(language_order)
+    languages = ",".join(dict.fromkeys(language_order))
     template = output_dir / "editorial_original_%(id)s.%(ext)s"
 
     async def attempt(auto: bool) -> Path | None:
@@ -128,10 +150,31 @@ def _review_template(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, Any]) -> Path:
+    template_path = Path(output_dir) / (
+        f"{media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
+    )
+    expected = _review_template(manifest)
+    if template_path.exists():
+        if _json(template_path) != expected:
+            raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
+        return template_path
+    payload = json.dumps(expected, ensure_ascii=False, indent=2, allow_nan=False)
+    try:
+        with template_path.open("x", encoding="utf-8") as stream:
+            stream.write(payload)
+    except Exception:
+        template_path.unlink(missing_ok=True)
+        raise
+    return template_path
+
+
 async def _cmd_prepare(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir).resolve()
     input_dir = output_dir / f"{args.media_id}_translation_editorial_inputs"
     input_dir.mkdir(parents=True, exist_ok=True)
+    source_video = Path(args.source_video)
+    actual_duration = await _source_duration(source_video, args.duration)
 
     original_srt = await _download_original_srt(
         args.url,
@@ -141,20 +184,21 @@ async def _cmd_prepare(args: argparse.Namespace) -> int:
     russian_srt = input_dir / "russian_whisper.srt"
     russian_words = input_dir / "russian_whisper_words.json"
     await transcribe_russian_whisper(
-        Path(args.source_video),
+        source_video,
         srt_output=russian_srt,
         words_output=russian_words,
         model_name=args.whisper_model,
     )
     shorts, longs = _candidate_groups(Path(args.candidates) if args.candidates else None)
-    pack = build_review_pack(
+    pack = await asyncio.to_thread(
+        build_review_pack,
         output_dir=output_dir,
         media_id=args.media_id,
         source_url=args.url,
         title=args.title,
         performer=args.performer,
-        duration=args.duration,
-        source_video_path=Path(args.source_video),
+        duration=actual_duration,
+        source_video_path=source_video,
         original_srt_path=original_srt,
         russian_whisper_srt_path=russian_srt,
         russian_words_path=russian_words,
@@ -167,17 +211,7 @@ async def _cmd_prepare(args: argparse.Namespace) -> int:
         },
     )
     manifest = load_pack_manifest(pack)
-    template_path = output_dir / f"{args.media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
-    if template_path.exists():
-        existing = _json(template_path)
-        expected = _review_template(manifest)
-        if existing != expected:
-            raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
-    else:
-        template_path.write_text(
-            json.dumps(_review_template(manifest), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    template_path = _write_review_template(output_dir, args.media_id, manifest)
     print(pack)
     print(template_path)
     return 0
@@ -195,16 +229,19 @@ async def _cmd_transcribe(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_pack(args: argparse.Namespace) -> int:
+async def _cmd_pack(args: argparse.Namespace) -> int:
+    source_video = Path(args.source_video)
+    actual_duration = await _source_duration(source_video, args.duration)
     shorts, longs = _candidate_groups(Path(args.candidates) if args.candidates else None)
-    pack = build_review_pack(
+    pack = await asyncio.to_thread(
+        build_review_pack,
         output_dir=Path(args.output_dir),
         media_id=args.media_id,
         source_url=args.url,
         title=args.title,
         performer=args.performer,
-        duration=args.duration,
-        source_video_path=Path(args.source_video),
+        duration=actual_duration,
+        source_video_path=source_video,
         original_srt_path=Path(args.original_srt),
         russian_whisper_srt_path=Path(args.russian_srt),
         russian_words_path=Path(args.russian_words) if args.russian_words else None,
@@ -217,17 +254,7 @@ def _cmd_pack(args: argparse.Namespace) -> int:
         },
     )
     manifest = load_pack_manifest(pack)
-    template_path = Path(args.output_dir) / (
-        f"{args.media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
-    )
-    expected = _review_template(manifest)
-    if template_path.exists() and _json(template_path) != expected:
-        raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
-    if not template_path.exists():
-        template_path.write_text(
-            json.dumps(expected, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    template_path = _write_review_template(Path(args.output_dir), args.media_id, manifest)
     print(pack)
     print(template_path)
     return 0
@@ -297,7 +324,7 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
             "translated source path from the review pack no longer exists: " + str(source_path)
         )
     expected_sha = str(source.get("sha256") or "")
-    actual_sha = sha256_file(source_path)
+    actual_sha = await asyncio.to_thread(sha256_file, source_path)
     if actual_sha != expected_sha:
         raise RuntimeError(
             "translated source bytes changed since review pack creation; repair refused"
@@ -328,7 +355,11 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--media-id", required=True)
     prepare.add_argument("--title", default="")
     prepare.add_argument("--performer", default="")
-    prepare.add_argument("--duration", type=float, required=True)
+    prepare.add_argument(
+        "--duration",
+        type=float,
+        help="optional expected duration; exact pack duration always comes from media probe",
+    )
     prepare.add_argument("--candidates")
     prepare.add_argument("--output-dir", required=True)
     prepare.add_argument("--original-language", default="en")
@@ -349,7 +380,11 @@ def _build_parser() -> argparse.ArgumentParser:
     pack.add_argument("--url", default="")
     pack.add_argument("--title", default="")
     pack.add_argument("--performer", default="")
-    pack.add_argument("--duration", type=float, required=True)
+    pack.add_argument(
+        "--duration",
+        type=float,
+        help="optional expected duration; exact pack duration always comes from media probe",
+    )
     pack.add_argument("--candidates")
     pack.add_argument("--output-dir", required=True)
 
@@ -379,7 +414,7 @@ async def _amain(args: argparse.Namespace) -> int:
     if args.command == "repair":
         return await _cmd_repair(args)
     if args.command == "pack":
-        return _cmd_pack(args)
+        return await _cmd_pack(args)
     if args.command == "donors":
         return _cmd_donors(args)
     if args.command == "validate":
