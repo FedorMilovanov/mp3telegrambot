@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import json
 import zipfile
 from pathlib import Path
 
+import services.translation_editorial as editorial
 from services.translation_editorial import (
     PACK_SCHEMA_NAME,
     REVIEW_SCHEMA_NAME,
@@ -26,7 +28,7 @@ def _write_srt(path: Path, rows: list[tuple[str, str, str]]) -> Path:
     return path
 
 
-def _pack(tmp_path: Path) -> Path:
+def _pack(tmp_path: Path, *, russian_text: str = "Вера отдельно от работы.") -> Path:
     video = tmp_path / "translated.mp4"
     video.write_bytes(b"video-bytes-for-hash")
     original = _write_srt(
@@ -39,7 +41,7 @@ def _pack(tmp_path: Path) -> Path:
     russian = _write_srt(
         tmp_path / "ru.srt",
         [
-            ("00:00:01,100", "00:00:03,100", "Вера отдельно от работы."),
+            ("00:00:01,100", "00:00:03,100", russian_text),
             ("00:00:10,100", "00:00:12,100", "Их нагота была открыта."),
             ("00:00:20,000", "00:00:21,000", "Дела не спасают."),
         ],
@@ -72,7 +74,19 @@ def _pack(tmp_path: Path) -> Path:
         long_candidates=[
             {"title": "Long", "start_seconds": 0.0, "end_seconds": 60.0}
         ],
+        timeline_metadata={
+            "original_srt": "source_timeline",
+            "russian_whisper": "translated_video_timeline",
+            "russian_delay_seconds": 0.6,
+        },
     )
+
+
+def _keep_candidates() -> list[dict]:
+    return [
+        {"candidate_id": "short:1", "verdict": "keep", "issues": []},
+        {"candidate_id": "long:1", "verdict": "keep", "issues": []},
+    ]
 
 
 def test_parse_srt_supports_long_hours_and_multiline_text() -> None:
@@ -85,7 +99,7 @@ def test_parse_srt_supports_long_hours_and_multiline_text() -> None:
     assert cues[0].text == "First line Second line"
 
 
-def test_review_pack_is_small_immutable_exchange_without_video_bytes(tmp_path: Path) -> None:
+def test_review_pack_is_small_verified_exchange_without_video_bytes(tmp_path: Path) -> None:
     pack = _pack(tmp_path)
     manifest = load_pack_manifest(pack)
 
@@ -94,6 +108,7 @@ def test_review_pack_is_small_immutable_exchange_without_video_bytes(tmp_path: P
     assert manifest["review_pack_id"].startswith("sha256:")
     assert manifest["candidates"]["shorts"][0]["candidate_id"] == "short:1"
     assert manifest["candidates"]["long_clips"][0]["candidate_id"] == "long:1"
+    assert manifest["timeline"]["russian_delay_seconds"] == 0.6
     assert manifest["review_contract"]["automatically_executable_actions"] == [
         "drop_span",
         "mute_span",
@@ -107,6 +122,36 @@ def test_review_pack_is_small_immutable_exchange_without_video_bytes(tmp_path: P
     assert "russian_whisper_words.json" in names
     assert "candidates.json" in names
     assert "translated.mp4" not in names
+    assert manifest["review_pack_id"][7:19] in pack.name
+
+
+def test_review_pack_rerun_preserves_distinct_immutable_versions(tmp_path: Path) -> None:
+    first = _pack(tmp_path, russian_text="Вера отдельно от работы.")
+    first_bytes = first.read_bytes()
+    second = _pack(tmp_path, russian_text="Вера отдельно от дел.")
+
+    assert first != second
+    assert first.exists() and second.exists()
+    assert first.read_bytes() == first_bytes
+    assert load_pack_manifest(first)["review_pack_id"] != load_pack_manifest(second)["review_pack_id"]
+
+
+def test_pack_loader_rejects_tampered_transcript_under_old_manifest(tmp_path: Path) -> None:
+    pack = _pack(tmp_path)
+    tampered = tmp_path / "tampered.zip"
+    with zipfile.ZipFile(pack, "r") as source, zipfile.ZipFile(tampered, "w") as target:
+        for info in source.infolist():
+            payload = source.read(info.filename)
+            if info.filename == "russian_whisper.srt":
+                payload += b"\nTAMPERED\n"
+            target.writestr(info, payload)
+
+    try:
+        load_pack_manifest(tampered)
+    except ValueError as exc:
+        assert "transcript" in str(exc)
+    else:
+        raise AssertionError("tampered review evidence must fail closed")
 
 
 def test_same_voice_donor_search_is_grounded_and_uses_phrase_boundaries(tmp_path: Path) -> None:
@@ -130,9 +175,17 @@ def test_same_voice_donor_search_is_grounded_and_uses_phrase_boundaries(tmp_path
     ]
 
 
-def test_review_validation_binds_exact_pack_and_candidate_ids(tmp_path: Path) -> None:
+def test_review_validation_binds_exact_pack_candidate_ids_and_candidate_spans(tmp_path: Path) -> None:
     pack = _pack(tmp_path)
     manifest = load_pack_manifest(pack)
+    candidate_issue = {
+        "start_seconds": 1.3,
+        "end_seconds": 1.65,
+        "severity": "major",
+        "observed_ru": "работы",
+        "source_meaning": "дел",
+        "action": {"type": "drop_span"},
+    }
     review = {
         "schema_name": REVIEW_SCHEMA_NAME,
         "schema_version": 1,
@@ -140,19 +193,10 @@ def test_review_validation_binds_exact_pack_and_candidate_ids(tmp_path: Path) ->
         "reviewer": "chatgpt",
         "full_sermon": {
             "verdict": "repair",
-            "issues": [
-                {
-                    "start_seconds": 1.3,
-                    "end_seconds": 1.65,
-                    "severity": "major",
-                    "observed_ru": "работы",
-                    "source_meaning": "дел",
-                    "action": {"type": "drop_span"},
-                }
-            ],
+            "issues": [dict(candidate_issue)],
         },
         "candidate_reviews": [
-            {"candidate_id": "short:1", "verdict": "repair", "issues": []},
+            {"candidate_id": "short:1", "verdict": "repair", "issues": [dict(candidate_issue)]},
             {"candidate_id": "long:1", "verdict": "keep", "issues": []},
         ],
     }
@@ -165,9 +209,68 @@ def test_review_validation_binds_exact_pack_and_candidate_ids(tmp_path: Path) ->
     assert "unknown candidate_id: short:999" in errors
 
 
+def test_review_requires_all_candidates_and_verdict_issue_consistency(tmp_path: Path) -> None:
+    manifest = load_pack_manifest(_pack(tmp_path))
+    review = {
+        "schema_name": REVIEW_SCHEMA_NAME,
+        "schema_version": 1,
+        "review_pack_id": manifest["review_pack_id"],
+        "full_sermon": {
+            "verdict": "keep",
+            "issues": [
+                {
+                    "start_seconds": 1.0,
+                    "end_seconds": 1.2,
+                    "severity": "major",
+                    "action": {"type": "drop_span"},
+                }
+            ],
+        },
+        "candidate_reviews": [],
+    }
+    errors = validate_review_document(review, manifest)
+
+    assert any("keep verdict cannot carry" in item for item in errors)
+    assert any("missing candidate reviews" in item for item in errors)
+
+    review["full_sermon"] = {"verdict": "repair", "issues": []}
+    review["candidate_reviews"] = _keep_candidates()
+    errors = validate_review_document(review, manifest)
+    assert any("repair verdict requires at least one issue" in item for item in errors)
+
+
+def test_candidate_issue_cannot_point_elsewhere_in_sermon(tmp_path: Path) -> None:
+    manifest = load_pack_manifest(_pack(tmp_path))
+    review = {
+        "schema_name": REVIEW_SCHEMA_NAME,
+        "schema_version": 1,
+        "review_pack_id": manifest["review_pack_id"],
+        "full_sermon": {"verdict": "keep", "issues": []},
+        "candidate_reviews": [
+            {
+                "candidate_id": "short:1",
+                "verdict": "repair",
+                "issues": [
+                    {
+                        "start_seconds": 40.0,
+                        "end_seconds": 41.0,
+                        "severity": "major",
+                        "action": {"type": "drop_span"},
+                    }
+                ],
+            },
+            {"candidate_id": "long:1", "verdict": "keep", "issues": []},
+        ],
+    }
+
+    assert any(
+        "issue span lies outside reviewed candidate" in item
+        for item in validate_review_document(review, manifest)
+    )
+
+
 def test_borrow_span_is_valid_review_intent_but_not_auto_executable(tmp_path: Path) -> None:
-    pack = _pack(tmp_path)
-    manifest = load_pack_manifest(pack)
+    manifest = load_pack_manifest(_pack(tmp_path))
     review = {
         "schema_name": REVIEW_SCHEMA_NAME,
         "schema_version": 1,
@@ -188,15 +291,14 @@ def test_borrow_span_is_valid_review_intent_but_not_auto_executable(tmp_path: Pa
                 }
             ],
         },
-        "candidate_reviews": [],
+        "candidate_reviews": _keep_candidates(),
     }
     assert validate_review_document(review, manifest) == []
     assert collect_executable_repairs(review) == []
 
 
 def test_borrow_span_overlap_is_rejected(tmp_path: Path) -> None:
-    pack = _pack(tmp_path)
-    manifest = load_pack_manifest(pack)
+    manifest = load_pack_manifest(_pack(tmp_path))
     review = {
         "schema_name": REVIEW_SCHEMA_NAME,
         "schema_version": 1,
@@ -216,7 +318,7 @@ def test_borrow_span_overlap_is_rejected(tmp_path: Path) -> None:
                 }
             ],
         },
-        "candidate_reviews": [],
+        "candidate_reviews": _keep_candidates(),
     }
     assert any(
         "donor span overlaps replacement target" in item
@@ -224,18 +326,19 @@ def test_borrow_span_overlap_is_rejected(tmp_path: Path) -> None:
     )
 
 
-def test_drop_filter_keeps_only_non_removed_ranges_and_remaps_following_time() -> None:
-    drops = [(2.0, 3.0), (5.0, 5.5)]
+def test_drop_filter_merges_overlaps_and_remaps_following_time() -> None:
+    drops = [(2.0, 3.0), (2.5, 3.5), (5.0, 5.5)]
     filter_complex, keep_count = build_drop_filter(8.0, drops)
 
     assert keep_count == 3
     assert "trim=start=0.000:end=2.000" in filter_complex
-    assert "trim=start=3.000:end=5.000" in filter_complex
+    assert "trim=start=3.500:end=5.000" in filter_complex
     assert "trim=start=5.500:end=8.000" in filter_complex
     assert "concat=n=3:v=1:a=1[outv][outa]" in filter_complex
-    assert remap_after_drops(1.0, drops) == 1.0
-    assert remap_after_drops(4.0, drops) == 3.0
-    assert remap_after_drops(6.0, drops) == 4.5
+    merged = [(2.0, 3.5), (5.0, 5.5)]
+    assert remap_after_drops(1.0, merged) == 1.0
+    assert remap_after_drops(4.0, merged) == 2.5
+    assert remap_after_drops(6.0, merged) == 4.0
 
 
 def test_collect_executable_repairs_uses_full_sermon_only() -> None:
@@ -286,3 +389,20 @@ def test_collect_executable_repairs_uses_full_sermon_only() -> None:
         {"start_seconds": 4.0, "end_seconds": 4.2, "type": "drop_span"},
         {"start_seconds": 8.0, "end_seconds": 8.4, "type": "mute_span"},
     ]
+
+
+def test_safe_repair_guards_source_and_existing_output_before_ffmpeg() -> None:
+    source = inspect.getsource(editorial.apply_safe_repairs)
+    same_path_guard = source.index("refusing to overwrite source video")
+    existing_output_guard = source.index("refusing to overwrite existing repair output")
+    ffmpeg_lookup = source.index('shutil.which("ffmpeg")')
+
+    assert same_path_guard < ffmpeg_lookup
+    assert existing_output_guard < ffmpeg_lookup
+    assert '"-n"' in source
+    assert '"-y"' not in source
+    assert "media_probe_is_deliverable" in source
+
+
+def test_whisper_evidence_polisher_only_normalizes_whitespace() -> None:
+    assert editorial._heard_text("  раБОТа   дела  ") == "раБОТа дела"
