@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -66,7 +65,10 @@ async def _download_original_srt(
         old.unlink(missing_ok=True)
 
     lang_root = (language or "en").split("-", 1)[0].lower()
-    languages = f"{lang_root}.*,{lang_root},en.*,en"
+    language_order = [f"{lang_root}.*", lang_root]
+    if lang_root != "en":
+        language_order.extend(["en.*", "en"])
+    languages = ",".join(language_order)
     template = output_dir / "editorial_original_%(id)s.%(ext)s"
 
     async def attempt(auto: bool) -> Path | None:
@@ -158,13 +160,24 @@ async def _cmd_prepare(args: argparse.Namespace) -> int:
         russian_words_path=russian_words,
         shorts_candidates=shorts,
         long_candidates=longs,
+        timeline_metadata={
+            "original_srt": "source_timeline",
+            "russian_whisper": "source_video_timeline",
+            "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
+        },
     )
     manifest = load_pack_manifest(pack)
-    template_path = output_dir / f"{args.media_id}_review_template.json"
-    template_path.write_text(
-        json.dumps(_review_template(manifest), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    template_path = output_dir / f"{args.media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
+    if template_path.exists():
+        existing = _json(template_path)
+        expected = _review_template(manifest)
+        if existing != expected:
+            raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
+    else:
+        template_path.write_text(
+            json.dumps(_review_template(manifest), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     print(pack)
     print(template_path)
     return 0
@@ -197,13 +210,24 @@ def _cmd_pack(args: argparse.Namespace) -> int:
         russian_words_path=Path(args.russian_words) if args.russian_words else None,
         shorts_candidates=shorts,
         long_candidates=longs,
+        timeline_metadata={
+            "original_srt": "source_timeline",
+            "russian_whisper": "source_video_timeline",
+            "note": "Manual pack does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
+        },
     )
     manifest = load_pack_manifest(pack)
-    template_path = Path(args.output_dir) / f"{args.media_id}_review_template.json"
-    template_path.write_text(
-        json.dumps(_review_template(manifest), ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    template_path = Path(args.output_dir) / (
+        f"{args.media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
     )
+    expected = _review_template(manifest)
+    if template_path.exists() and _json(template_path) != expected:
+        raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
+    if not template_path.exists():
+        template_path.write_text(
+            json.dumps(expected, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     print(pack)
     print(template_path)
     return 0
@@ -279,19 +303,11 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
             "translated source bytes changed since review pack creation; repair refused"
         )
 
-    repairs = collect_executable_repairs(review)
-    if not repairs:
-        if Path(args.output).resolve(strict=False) == source_path.resolve(strict=False):
-            raise RuntimeError("refusing to overwrite source video")
-        shutil.copy2(source_path, Path(args.output))
-        print(Path(args.output))
-        return 0
-
     output = await apply_safe_repairs(
         source_video_path=source_path,
         output_path=Path(args.output),
         duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
-        repairs=repairs,
+        repairs=collect_executable_repairs(review),
     )
     print(output)
     return 0
