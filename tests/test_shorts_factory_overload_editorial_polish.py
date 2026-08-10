@@ -377,6 +377,33 @@ def test_russian_source_does_not_create_pending_editorial_copy(monkeypatch, tmp_
     assert "editorial_source" not in state
 
 
+def test_pending_editorial_sources_are_ttl_and_count_bounded(monkeypatch, tmp_path):
+    pending = tmp_path / "pending"
+    pending.mkdir()
+    monkeypatch.setattr(bridge, "PENDING_DIR", pending)
+    monkeypatch.setattr(bridge, "cache_ttl_seconds", lambda: 100.0)
+    monkeypatch.setattr(bridge, "cache_max_items", lambda: 2)
+    monkeypatch.setattr(bridge.time, "time", lambda: 1000.0)
+
+    stamps = {
+        "expired.mp4": 850.0,
+        "oldest_valid.mp4": 920.0,
+        "middle.mp4": 950.0,
+        "newest.mp4": 990.0,
+    }
+    for name, modified in stamps.items():
+        path = pending / name
+        path.write_bytes(b"video")
+        os.utime(path, (modified, modified))
+
+    bridge.cleanup_pending_sources()
+
+    assert sorted(path.name for path in pending.iterdir()) == [
+        "middle.mp4",
+        "newest.mp4",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_successful_factory_runs_editorial_after_delivery(monkeypatch):
     seen = []
