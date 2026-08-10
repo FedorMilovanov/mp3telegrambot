@@ -21,6 +21,7 @@ from typing import Any, Iterable
 from services.async_process import run_cancellable_process
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.translation_editorial import sha256_file
+from services.translation_editorial_repair_provenance import verify_repair_provenance
 
 COMPOSITION_SCHEMA_NAME = "mp3telegrambot.translation-editorial-composition"
 COMPOSITION_SCHEMA_VERSION = 1
@@ -211,6 +212,25 @@ def _validate_publication(piece_id: str, metadata: Any) -> list[str]:
     return errors
 
 
+def _validate_repair_binding(source: dict[str, Any]) -> list[str]:
+    binding = source.get("repair_provenance")
+    if binding is None:
+        return []
+    if not isinstance(binding, dict):
+        return ["source.repair_provenance must be an object"]
+    errors: list[str] = []
+    if not str(binding.get("local_path") or "").strip():
+        errors.append("source.repair_provenance.local_path is required")
+    if not _is_canonical_sha256(binding.get("sha256")):
+        errors.append("source.repair_provenance.sha256 must be canonical")
+    if not _is_canonical_sha256(binding.get("repair_result_id")):
+        errors.append("source.repair_provenance.repair_result_id must be canonical")
+    unexpected = sorted(set(binding) - {"local_path", "sha256", "repair_result_id"})
+    if unexpected:
+        errors.append("unsupported source.repair_provenance fields: " + ", ".join(unexpected))
+    return errors
+
+
 def validate_composition_document(document: dict[str, Any]) -> list[str]:
     """Validate source identity and editorial assembly semantics offline."""
     errors: list[str] = []
@@ -248,6 +268,7 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
         value = str(source.get(key) or "")
         if value and not _is_canonical_sha256(value):
             errors.append(f"source.{key} must be canonical sha256:<64 lowercase hex>")
+    errors.extend(_validate_repair_binding(source))
 
     target = document.get("release_target")
     if target is not None and not isinstance(target, dict):
@@ -382,6 +403,29 @@ def _piece_filter(piece: dict[str, Any]) -> tuple[str, float]:
     return ";".join(parts), total
 
 
+async def _verify_repair_binding(source: dict[str, Any], source_path: Path) -> None:
+    binding = source.get("repair_provenance")
+    if binding is None:
+        return
+    assert isinstance(binding, dict)
+    sidecar_path = Path(str(binding["local_path"]))
+    provenance = await verify_repair_provenance(
+        sidecar_path,
+        expected_output_path=source_path,
+    )
+    sidecar_sha = await asyncio.to_thread(sha256_file, sidecar_path)
+    if sidecar_sha != binding.get("sha256"):
+        raise RuntimeError("composition repair provenance bytes changed")
+    if provenance.get("repair_result_id") != binding.get("repair_result_id"):
+        raise RuntimeError("composition repair provenance result ID changed")
+    review_pack_id = str(source.get("review_pack_id") or "")
+    review_sha256 = str(source.get("review_sha256") or "")
+    if review_pack_id and provenance.get("review_pack_id") != review_pack_id:
+        raise RuntimeError("composition repair provenance review_pack_id mismatch")
+    if review_sha256 and provenance.get("review_sha256") != review_sha256:
+        raise RuntimeError("composition repair provenance review SHA mismatch")
+
+
 async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
     source = document["source"]
     path = Path(str(source["local_path"]))
@@ -402,6 +446,7 @@ async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
         raise RuntimeError(
             f"composition source duration drift: plan={declared:.3f}s probe={probe.duration:.3f}s"
         )
+    await _verify_repair_binding(source, path)
     return path, float(probe.duration)
 
 
@@ -699,11 +744,17 @@ def build_release_handoff(
                 "editorial_rationale": piece.get("editorial_rationale") or "",
             }
         )
+    source = document.get("source") or {}
     handoff = {
         "schema_name": HANDOFF_SCHEMA_NAME,
         "schema_version": HANDOFF_SCHEMA_VERSION,
         "composition_id": document.get("composition_id"),
-        "source_sha256": (document.get("source") or {}).get("sha256"),
+        "source_sha256": source.get("sha256"),
+        "source_provenance": {
+            "review_pack_id": source.get("review_pack_id") or "",
+            "review_sha256": source.get("review_sha256") or "",
+            "repair_provenance": source.get("repair_provenance") or {},
+        },
         "release_target": document.get("release_target") or {},
         "provider_write_authorized": False,
         "target_system": "video-channel-manager",
