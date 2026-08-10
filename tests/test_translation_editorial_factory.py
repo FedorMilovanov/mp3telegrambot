@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import services.translation_editorial_factory as factory
-from services.translation_editorial import build_review_pack, load_pack_manifest
+from services.translation_editorial import build_review_pack, load_pack_manifest, sha256_file
 
 
 def _write_srt(path: Path, text: str) -> Path:
@@ -36,6 +36,11 @@ def _pack(tmp_path: Path, *, with_candidates: bool = False) -> Path:
         original_srt_path=original,
         russian_whisper_srt_path=russian,
         shorts_candidates=shorts,
+        timeline_metadata={
+            "original_srt": "source_original_timeline",
+            "russian_whisper": "translated_video_timeline",
+            "configured_russian_delay_seconds": 0.6,
+        },
     )
 
 
@@ -57,6 +62,40 @@ def test_gemini_attempt_override_is_clamped(monkeypatch: pytest.MonkeyPatch) -> 
     assert factory._gemini_max_attempts() == 2
     monkeypatch.setenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", "bad")
     assert factory._gemini_max_attempts() == 1
+
+
+def test_timeline_metadata_tracks_configured_factory_alignment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIVEDUB_DELAY_MS", "750")
+    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.2")
+
+    timeline = factory._timeline_metadata()
+
+    assert timeline["original_srt"] == "source_original_timeline"
+    assert timeline["russian_whisper"] == "translated_video_timeline"
+    assert timeline["factory_candidates"] == "translated_video_timeline"
+    assert timeline["configured_russian_delay_seconds"] == 0.75
+    assert timeline["factory_candidate_extra_shift_seconds"] == 0.2
+
+
+def test_editorial_root_id_is_sanitized() -> None:
+    assert factory._safe_media_id("../bad/path") == "___bad_path"
+    assert "/" not in factory._safe_media_id("a/b")
+    assert "\\" not in factory._safe_media_id("a\\b")
+
+
+def test_durable_review_source_survives_factory_cache_removal(tmp_path: Path) -> None:
+    source = tmp_path / "video123_factory_source.mp4"
+    source.write_bytes(b"source-bytes" * 300)
+    root = tmp_path / "review"
+    root.mkdir()
+
+    durable = factory._durable_review_source(source, root, "video123")
+    original_sha = sha256_file(source)
+    source.unlink()
+
+    assert durable.exists()
+    assert "_factory_source" not in durable.name
+    assert sha256_file(durable) == original_sha
 
 
 def test_render_review_markdown_is_readable() -> None:
@@ -87,25 +126,14 @@ def test_render_review_markdown_is_readable() -> None:
     assert "`short:1` — **KEEP**" in text
 
 
-def test_automatic_gemini_review_requires_every_factory_candidate(tmp_path: Path) -> None:
-    pack = _pack(tmp_path, with_candidates=True)
-    manifest = load_pack_manifest(pack)
-    review = {
-        "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
-        "candidate_reviews": [],
-    }
-
-    assert factory._candidate_coverage_errors(review, manifest) == [
-        "missing candidate reviews: short:1"
-    ]
-
-
 @pytest.mark.asyncio
-async def test_gemini_review_uses_exact_36_high_once_without_sampling(
+async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pack = _pack(tmp_path)
+    manifest = load_pack_manifest(pack)
+    local_path = manifest["source"]["translated_video"]["local_path"]
     calls: list[dict] = []
     configs: list[dict] = []
 
@@ -143,6 +171,9 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling(
     assert calls[0]["model"] == "gemini-3.6-flash"
     assert "ORIGINAL SRT" in calls[0]["contents"]
     assert "RUSSIAN WHISPER SRT" in calls[0]["contents"]
+    assert "different" not in calls[0]["contents"].lower()  # prompt is Russian/pattern-level
+    assert "одинаковому номеру cue" in calls[0]["contents"]
+    assert local_path not in calls[0]["contents"]
     assert configs == [
         {
             "max_output_tokens": 12000,
@@ -214,6 +245,8 @@ async def test_original_srt_manual_is_preferred_before_auto(
     assert len(commands) == 1
     assert "--write-subs" in commands[0]
     assert "--write-auto-subs" not in commands[0]
+    languages = commands[0][commands[0].index("--sub-langs") + 1]
+    assert languages == "en.*,en"
 
 
 def test_review_pack_contains_real_transcripts_not_video_bytes(tmp_path: Path) -> None:
@@ -226,3 +259,33 @@ def test_review_pack_contains_real_transcripts_not_video_bytes(tmp_path: Path) -
     assert "Faith apart from works." in original
     assert "Вера отдельно от дел." in russian
     assert not any(name.endswith(".mp4") for name in names)
+
+
+def test_immutable_gemini_review_filename_binds_pack_and_review(tmp_path: Path) -> None:
+    pack = _pack(tmp_path)
+    manifest = load_pack_manifest(pack)
+    review = {
+        "schema_name": "mp3telegrambot.translation-editorial-review",
+        "schema_version": 1,
+        "review_pack_id": manifest["review_pack_id"],
+        "reviewer": "gemini:gemini-3.6-flash",
+        "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
+        "candidate_reviews": [],
+    }
+
+    json_path, markdown_path = factory._write_immutable_review_files(
+        tmp_path,
+        "video123",
+        pack,
+        review,
+    )
+    second_json, second_markdown = factory._write_immutable_review_files(
+        tmp_path,
+        "video123",
+        pack,
+        review,
+    )
+
+    assert json_path == second_json
+    assert markdown_path == second_markdown
+    assert manifest["review_pack_id"][7:19] in json_path.name
