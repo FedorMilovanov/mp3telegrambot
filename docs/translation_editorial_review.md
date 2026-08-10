@@ -16,7 +16,7 @@ One review pack binds:
 
 The ZIP intentionally does **not** contain the video bytes. It is small enough to upload to an editor such as ChatGPT while later FFmpeg execution remains bound to the exact local source bytes.
 
-For Factory, the reviewed source is preserved under `downloads/translation_editorial/<media_id>/` instead of relying on the short-lived `*_factory_source.*` trim cache. The code prefers a hard link and falls back to an exact copy. This keeps an approved review usable after normal Factory-cache cleanup.
+For Factory, each distinct translated source is preserved under `downloads/translation_editorial/<media_id>/` with a SHA-derived filename instead of relying on the short-lived `*_factory_source.*` trim cache. The code prefers a hard link and falls back to an exact copy. A later Yandex result for the same video ID but different bytes therefore receives a different durable source rather than overwriting or conflicting with the evidence used by an older review.
 
 Each ZIP filename contains a prefix of its own `review_pack_id`, for example:
 
@@ -24,7 +24,7 @@ Each ZIP filename contains a prefix of its own `review_pack_id`, for example:
 VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip
 ```
 
-A later run with different evidence creates another file instead of replacing the first. Loading a pack rechecks transcript byte counts and SHA-256 values, exact `candidates.json`, ZIP-member uniqueness, the canonical editor-facing review contract/instructions and the deterministic `review_pack_id`. Unexpected ZIP members or modified instructions are rejected. Legacy PR #113 v1 packs without timeline metadata remain verifiable against their original identity and original known instruction text.
+A later run with different evidence creates another file instead of replacing the first. Before a verified ZIP is deeply read, the loader bounds physical/member/uncompressed sizes, rejects duplicate/nested/encrypted members, and validates canonical manifest/candidate shapes. It then rechecks transcript byte counts and SHA-256 values, exact `candidates.json`, globally unique candidate IDs, canonical transcript files/roles, ZIP-member set, editor-facing review contract/instructions and deterministic `review_pack_id`. Legacy PR #113 v1 packs without timeline metadata remain verifiable against their original identity and original known instruction text.
 
 For Yandex Factory jobs the review pack is enabled by default. It is generated after the normal Shorts/long-clip render so a review-pack failure never cancels already produced videos:
 
@@ -82,7 +82,7 @@ python .\tools\translation_editorial.py prepare `
   --output-dir ".\downloads\editorial"
 ```
 
-The exact pack duration is measured from the real video+audio source. `--duration` is optional and is now only an expected-value check; when supplied, a meaningful mismatch from the media probe fails instead of freezing a guessed duration into provenance.
+The exact pack duration is measured from the real video+audio source. `--duration` is optional and is now only an expected-value check; when supplied, a meaningful mismatch from the media probe fails instead of freezing a guessed duration into provenance. Manual `media_id` values are normalized before becoming local filenames, malformed candidate JSON fails closed instead of silently dropping entries, and each prepare run uses its own staging directory.
 
 The command downloads the original SRT, transcribes the complete translated source with Russian Whisper `large-v3`, and emits hash-qualified files such as:
 
@@ -130,7 +130,7 @@ The repair command refuses to run when:
 - a repair timestamp is non-finite or outside the source;
 - FFmpeg output does not pass the final video+audio probe and duration check.
 
-An exact previously verified output+sidecar pair for the same review is reused without a second FFmpeg run. New repairs are rendered to temporary files and become valid only as an output+provenance pair. If provenance finalization fails, the newly created clean output is removed rather than leaving an untraceable file behind.
+An exact previously verified output+sidecar pair for the same review is reused without a second FFmpeg run. New media is rendered through temporary/no-overwrite paths. Final-path ownership is deliberately conservative: if a late provenance-finalization race or failure leaves only one half of the final output/provenance pair, the CLI does **not** blindly unlink that final path because it may belong to another concurrent process. The next run detects the partial pair and fails closed for explicit operator resolution instead of risking data loss.
 
 ## Same-voice donor discovery
 
