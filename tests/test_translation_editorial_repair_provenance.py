@@ -92,6 +92,34 @@ def test_repair_result_identity_is_path_stable(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_verify_repair_provenance_accepts_explicit_relocated_identical_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output, document = _document(tmp_path)
+    sidecar = tmp_path / "clean.editorial-repair.json"
+    write_repair_provenance(sidecar, document)
+    relocated = tmp_path / "archive" / "clean.mp4"
+    relocated.parent.mkdir()
+    relocated.write_bytes(output.read_bytes())
+    output.unlink()
+
+    async def fake_probe(path: Path):
+        assert Path(path) == relocated.resolve(strict=False)
+        return SimpleNamespace(duration=97.0)
+
+    monkeypatch.setattr(provenance, "probe_media_async", fake_probe)
+    monkeypatch.setattr(provenance, "media_probe_is_deliverable", lambda probe: probe is not None)
+
+    verified = await verify_repair_provenance(
+        sidecar,
+        expected_output_path=relocated,
+    )
+    assert verified["repair_result_id"] == document["repair_result_id"]
+    assert verified["output"]["local_path"] != str(relocated.resolve(strict=False))
+
+
+@pytest.mark.asyncio
 async def test_verify_repair_provenance_rehashes_and_rejects_tampered_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -101,7 +129,7 @@ async def test_verify_repair_provenance_rehashes_and_rejects_tampered_output(
     write_repair_provenance(sidecar, document)
 
     async def fake_probe(path: Path):
-        assert Path(path) == output
+        assert Path(path) == output.resolve(strict=False)
         return SimpleNamespace(duration=97.0)
 
     monkeypatch.setattr(provenance, "probe_media_async", fake_probe)
