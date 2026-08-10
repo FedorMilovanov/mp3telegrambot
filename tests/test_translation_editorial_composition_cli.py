@@ -76,3 +76,80 @@ def test_review_pack_without_review_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="requires --review"):
         cli._review_binding(args)
+
+
+def test_review_execution_gate_blocks_rejected_full_sermon() -> None:
+    review = {
+        "full_sermon": {"verdict": "reject", "issues": []},
+    }
+
+    with pytest.raises(ValueError, match="rejected by review"):
+        cli._enforce_review_execution_gate(review, None)
+
+
+def test_review_execution_gate_requires_exact_full_sermon_repairs() -> None:
+    review = {
+        "full_sermon": {
+            "verdict": "repair",
+            "issues": [
+                {
+                    "start_seconds": 10.0,
+                    "end_seconds": 11.0,
+                    "action": {"type": "drop_span"},
+                }
+            ],
+        }
+    }
+
+    with pytest.raises(ValueError, match="supply the exact --repair-provenance"):
+        cli._enforce_review_execution_gate(review, None)
+
+    wrong = {
+        "repairs": [
+            {"type": "drop_span", "start_seconds": 20.0, "end_seconds": 21.0}
+        ]
+    }
+    with pytest.raises(ValueError, match="do not exactly match"):
+        cli._enforce_review_execution_gate(review, wrong)
+
+    exact = {
+        "repairs": [
+            {"type": "drop_span", "start_seconds": 10.0, "end_seconds": 11.0}
+        ]
+    }
+    cli._enforce_review_execution_gate(review, exact)
+
+
+def test_review_execution_gate_blocks_unresolved_full_sermon_action() -> None:
+    review = {
+        "full_sermon": {
+            "verdict": "repair",
+            "issues": [
+                {
+                    "start_seconds": 10.0,
+                    "end_seconds": 11.0,
+                    "action": {"type": "reject_region"},
+                }
+            ],
+        }
+    }
+
+    with pytest.raises(ValueError, match="unresolved non-executable"):
+        cli._enforce_review_execution_gate(review, None)
+
+
+def test_atomic_writer_never_deletes_concurrent_winner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "plan.json"
+
+    def concurrent_winner(_source, destination) -> None:
+        Path(destination).write_text("winner", encoding="utf-8")
+        raise FileExistsError(destination)
+
+    monkeypatch.setattr(cli.os, "link", concurrent_winner)
+
+    with pytest.raises(FileExistsError):
+        cli._write_atomic(target, {"value": 1}, overwrite=False)
+    assert target.read_text(encoding="utf-8") == "winner"
