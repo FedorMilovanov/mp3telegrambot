@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Transactional ASS subtitle burn for public Shorts-family video outputs.
+"""Transactional, validated ASS subtitle burn for public Shorts outputs.
 
-The active burn path owns no independent child-process policy. FFmpeg lifetime,
-timeout, stdin, cancellation and reap semantics are delegated to the shared
-``run_cancellable_process`` contract so every public video renderer follows the
-same process-ownership rules.
+FFmpeg only receives an ASS document after deterministic timing validation.
+Malformed/overlapping/abnormally long karaoke events fail closed and the stale
+or partial output is removed, so a visually broken subtitle artifact cannot be
+mistaken for a successful burn.
 """
 from __future__ import annotations
 
@@ -18,10 +18,11 @@ from pathlib import Path
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from services.ffmpeg import _get_video_encoder
-from services.shorts_video import (
-    _generate_ass_from_segments,
-    get_subtitles_mode_settings,
+from services.shorts_subtitle_integrity import (
+    generate_ass_from_segments,
+    validate_ass_document,
 )
+from services.shorts_video import get_subtitles_mode_settings
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,7 @@ async def burn_subtitles_into_short(
     output_path: Path,
     segments: list[dict],
 ) -> bool:
-    """Burn ASS subtitles and commit only a non-empty finished output.
-
-    The source file is never modified. The output is removed before each run
-    and again on every failure, so callers cannot accidentally deliver a stale
-    or partially encoded artifact from an earlier attempt.
-    """
+    """Validate, burn and commit only a non-empty finished subtitle output."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg or not input_path.is_file() or not segments:
         return False
@@ -71,12 +67,28 @@ async def burn_subtitles_into_short(
 
     try:
         subtitle_config = get_subtitles_mode_settings()
-        ass_content = _generate_ass_from_segments(
-            segments,
-            karaoke=bool(subtitle_config["karaoke"]),
-        )
+        karaoke = bool(subtitle_config["karaoke"])
+        try:
+            ass_content = generate_ass_from_segments(
+                segments,
+                karaoke=karaoke,
+            )
+        except (TypeError, ValueError) as exc:
+            logger.warning("Subtitle burn rejected transcript timing: %s", exc)
+            return False
+
         if not ass_content.strip():
             logger.warning("Subtitle burn rejected an empty ASS document")
+            return False
+        validation_issues = validate_ass_document(
+            ass_content,
+            karaoke=karaoke,
+        )
+        if validation_issues:
+            logger.warning(
+                "Subtitle burn rejected invalid ASS: %s",
+                "; ".join(validation_issues[:8]),
+            )
             return False
 
         with tempfile.TemporaryDirectory(prefix="short-subtitles-") as temp_dir:
@@ -119,7 +131,7 @@ async def burn_subtitles_into_short(
             return False
 
         logger.info(
-            "Subtitles burned transactionally: %s (%.1fMB)",
+            "Subtitles burned transactionally after ASS validation: %s (%.1fMB)",
             output_path.name,
             output_path.stat().st_size / 1024 / 1024,
         )
