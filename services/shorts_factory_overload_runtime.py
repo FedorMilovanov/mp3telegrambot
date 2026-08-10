@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import shutil
+import threading
 import time
 import uuid
 from contextvars import ContextVar
@@ -23,6 +24,8 @@ FACTORY_HTTP_TIMEOUT_MS = 900_000
 FACTORY_CACHE_DIR = DOWNLOAD_DIR / "factory_retry_cache"
 FACTORY_CACHE_POLICY = "lossless-analysis-retry-cache-v1"
 STATUS_MESSAGE: ContextVar[Any | None] = ContextVar("factory_overload_status", default=None)
+_CACHE_LOCK = threading.RLock()
+_ACTIVE_CACHE_PATHS: set[str] = set()
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -94,7 +97,11 @@ def factory_gemini_clients() -> list[Any]:
     """Keep 900s HIGH-pass time while disabling hidden SDK HTTP retries."""
     from core import globals as core_globals
 
-    if not core_globals.HAS_GEMINI or core_globals.genai is None or core_globals.types is None:
+    if (
+        not core_globals.HAS_GEMINI
+        or core_globals.genai is None
+        or core_globals.types is None
+    ):
         return []
     options = core_globals.types.HttpOptions(
         timeout=FACTORY_HTTP_TIMEOUT_MS,
@@ -127,7 +134,12 @@ def factory_retryable_service_error(exc: BaseException) -> bool:
     text = str(exc or "").casefold()
     return any(
         marker in text
-        for marker in ("unavailable", "high demand", "resource exhausted", "temporarily unavailable")
+        for marker in (
+            "unavailable",
+            "high demand",
+            "resource exhausted",
+            "temporarily unavailable",
+        )
     )
 
 
@@ -145,7 +157,9 @@ def _sha256_file(path: Path) -> str:
 
 
 def _cache_key(url: str, media_id: str) -> str:
-    data = f"{str(media_id).strip()}\0{str(url).strip()}".encode("utf-8", errors="replace")
+    data = f"{str(media_id).strip()}\0{str(url).strip()}".encode(
+        "utf-8", errors="replace"
+    )
     return hashlib.sha256(data).hexdigest()[:24]
 
 
@@ -174,18 +188,47 @@ def _cache_meta(key: str) -> Path:
     return FACTORY_CACHE_DIR / f"{key}.json"
 
 
+def _cache_path_key(path: Path) -> str:
+    try:
+        return str(Path(path).resolve())
+    except OSError:
+        return str(Path(path).absolute())
+
+
+def _set_cache_path_active(path: Path, active: bool) -> None:
+    key = _cache_path_key(path)
+    with _CACHE_LOCK:
+        if active:
+            _ACTIVE_CACHE_PATHS.add(key)
+        else:
+            _ACTIVE_CACHE_PATHS.discard(key)
+
+
 def cleanup_retry_cache() -> None:
     FACTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     now = time.time()
+    with _CACHE_LOCK:
+        protected = set(_ACTIVE_CACHE_PATHS)
     valid: list[tuple[float, Path, dict[str, Any]]] = []
     referenced: set[str] = set()
+    active_valid: set[str] = set()
     for meta in FACTORY_CACHE_DIR.glob("*.json"):
         try:
             payload = json.loads(meta.read_text(encoding="utf-8"))
             created = float(payload.get("created_at") or 0.0)
             filename = Path(str(payload.get("filename") or "")).name
             media = FACTORY_CACHE_DIR / filename
-            if created <= 0 or now - created > cache_ttl_seconds() or not media.is_file():
+            media_key = _cache_path_key(media)
+            if media_key in protected:
+                referenced.add(filename)
+                active_valid.add(filename)
+                valid.append((created, meta, payload))
+                continue
+            if (
+                created <= 0
+                or now - created > cache_ttl_seconds()
+                or not media.is_file()
+            ):
                 media.unlink(missing_ok=True)
                 meta.unlink(missing_ok=True)
                 continue
@@ -194,13 +237,24 @@ def cleanup_retry_cache() -> None:
         except Exception:
             meta.unlink(missing_ok=True)
     valid.sort(key=lambda item: item[0], reverse=True)
-    for _created, meta, payload in valid[cache_max_items() :]:
+    inactive_kept = 0
+    for _created, meta, payload in valid:
         filename = Path(str(payload.get("filename") or "")).name
+        if filename in active_valid:
+            continue
+        inactive_kept += 1
+        if inactive_kept <= cache_max_items():
+            continue
         (FACTORY_CACHE_DIR / filename).unlink(missing_ok=True)
         referenced.discard(filename)
         meta.unlink(missing_ok=True)
     for path in FACTORY_CACHE_DIR.iterdir():
-        if path.is_file() and path.suffix != ".json" and path.name not in referenced:
+        if (
+            path.is_file()
+            and path.suffix != ".json"
+            and path.name not in referenced
+            and _cache_path_key(path) not in protected
+        ):
             path.unlink(missing_ok=True)
 
 
@@ -212,28 +266,52 @@ async def _cached_analysis_audio(url: str, media_id: str) -> Path | None:
     meta = _cache_meta(_cache_key(url, media_id))
     if not meta.is_file():
         return None
+    cached: Path | None = None
     try:
         payload = json.loads(meta.read_text(encoding="utf-8"))
         if payload.get("policy") != FACTORY_CACHE_POLICY:
             return None
-        if time.time() - float(payload.get("created_at") or 0.0) > cache_ttl_seconds():
+        if (
+            time.time() - float(payload.get("created_at") or 0.0)
+            > cache_ttl_seconds()
+        ):
             return None
-        cached = FACTORY_CACHE_DIR / Path(str(payload.get("filename") or "")).name
-        if not cached.is_file() or cached.stat().st_size != int(payload.get("size_bytes") or 0):
+        cached = FACTORY_CACHE_DIR / Path(
+            str(payload.get("filename") or "")
+        ).name
+        _set_cache_path_active(cached, True)
+        if not cached.is_file() or cached.stat().st_size != int(
+            payload.get("size_bytes") or 0
+        ):
             return None
-        if await asyncio.to_thread(_sha256_file, cached) != str(payload.get("sha256") or ""):
+        if await asyncio.to_thread(_sha256_file, cached) != str(
+            payload.get("sha256") or ""
+        ):
             return None
         if not factory_audio_probe_is_usable(await probe_media_async(cached)):
             return None
         ephemeral = DOWNLOAD_DIR / (
-            f"{media_id}_factory_retry_{uuid.uuid4().hex[:10]}{cached.suffix.lower()}"
+            f"{media_id}_factory_retry_{uuid.uuid4().hex[:10]}"
+            f"{cached.suffix.lower()}"
         )
         await asyncio.to_thread(copy_or_link, cached, ephemeral)
-        logger.info("Shorts Factory retry cache hit media_id=%s file=%s", media_id, cached.name)
+        logger.info(
+            "Shorts Factory retry cache hit media_id=%s file=%s",
+            media_id,
+            cached.name,
+        )
         return ephemeral
     except Exception as exc:
-        logger.warning("Shorts Factory retry cache rejected media_id=%s: %s", media_id, exc)
+        logger.warning(
+            "Shorts Factory retry cache rejected media_id=%s: %s",
+            media_id,
+            exc,
+        )
         return None
+    finally:
+        if cached is not None:
+            _set_cache_path_active(cached, False)
+            cleanup_retry_cache()
 
 
 async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
@@ -250,25 +328,35 @@ async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
     sha = await asyncio.to_thread(_sha256_file, source)
     FACTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     final = FACTORY_CACHE_DIR / f"{key}_{sha[:12]}{source.suffix.lower()}"
-    if not final.exists():
+    _set_cache_path_active(final, True)
+    try:
+        if not final.exists():
+            try:
+                await asyncio.to_thread(copy_or_link, source, final)
+            except FileExistsError:
+                pass
+        payload = {
+            "policy": FACTORY_CACHE_POLICY,
+            "created_at": time.time(),
+            "url": str(url),
+            "media_id": str(media_id),
+            "filename": final.name,
+            "size_bytes": final.stat().st_size,
+            "duration_seconds": float(getattr(probe, "duration", 0.0) or 0.0),
+            "sha256": sha,
+        }
+        temp = _cache_meta(key).with_suffix(f".{uuid.uuid4().hex}.tmp")
         try:
-            await asyncio.to_thread(copy_or_link, source, final)
-        except FileExistsError:
-            pass
-    payload = {
-        "policy": FACTORY_CACHE_POLICY,
-        "created_at": time.time(),
-        "url": str(url),
-        "media_id": str(media_id),
-        "filename": final.name,
-        "size_bytes": final.stat().st_size,
-        "duration_seconds": float(getattr(probe, "duration", 0.0) or 0.0),
-        "sha256": sha,
-    }
-    temp = _cache_meta(key).with_suffix(f".{uuid.uuid4().hex}.tmp")
-    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp, _cache_meta(key))
-    cleanup_retry_cache()
+            temp.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(temp, _cache_meta(key))
+        finally:
+            temp.unlink(missing_ok=True)
+    finally:
+        _set_cache_path_active(final, False)
+        cleanup_retry_cache()
 
 
 async def download_factory_audio_with_retry_cache(
@@ -280,7 +368,8 @@ async def download_factory_audio_with_retry_cache(
     cached = await _cached_analysis_audio(url, media_id)
     if cached is not None:
         await safe_status(
-            "♻️ SHORTS FACTORY MAX: использую уже проверенное lossless-аудио прошлого запуска; повторная загрузка не нужна."
+            "♻️ SHORTS FACTORY MAX: использую уже проверенное lossless-аудио "
+            "прошлого запуска; повторная загрузка не нужна."
         )
         return cached
     prepared = Path(await original_downloader(url, media_id))
@@ -309,7 +398,9 @@ async def create_factory_plan_resumable(
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
     clients = factory_gemini_clients()
     if not clients or candidates.types is None:
-        raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.6")
+        raise RuntimeError(
+            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.6"
+        )
     model = candidates.shorts_factory_model()
     mime_type = factory_audio_mime_type(audio_path)
     file_size = audio_path.stat().st_size
@@ -320,7 +411,9 @@ async def create_factory_plan_resumable(
     for index, client in enumerate(clients, 1):
         uploaded_name = ""
         try:
-            await safe_status(f"🧠 Gemini 3.6 MAX · ключ {index}/{len(clients)}: готовлю аудио…")
+            await safe_status(
+                f"🧠 Gemini 3.6 MAX · ключ {index}/{len(clients)}: готовлю аудио…"
+            )
             if file_size <= 18 * 1024 * 1024:
                 audio_part = candidates.types.Part.from_bytes(
                     data=audio_path.read_bytes(), mime_type=mime_type
@@ -331,14 +424,22 @@ async def create_factory_plan_resumable(
                         file=audio_path,
                         config=candidates.types.UploadFileConfig(
                             mime_type=mime_type,
-                            display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
+                            display_name=(
+                                f"Shorts Factory MAX — {performer} — {title}"
+                            )[:500],
                         ),
                     ),
-                    label=f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: загружаю lossless-аудио…",
+                    label=(
+                        f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: "
+                        "загружаю lossless-аудио…"
+                    ),
                 )
                 uploaded = await await_with_heartbeat(
                     candidates._wait_uploaded_file(client, uploaded),
-                    label=f"⏳ Gemini 3.6 · ключ {index}/{len(clients)}: сервер обрабатывает аудио…",
+                    label=(
+                        f"⏳ Gemini 3.6 · ключ {index}/{len(clients)}: "
+                        "сервер обрабатывает аудио…"
+                    ),
                 )
                 audio_part = uploaded
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
@@ -349,10 +450,18 @@ async def create_factory_plan_resumable(
                         client,
                         model=model,
                         audio_part=audio_part,
-                        prompt=candidates._scout_prompt(title, performer, duration, source_language),
+                        prompt=candidates._scout_prompt(
+                            title,
+                            performer,
+                            duration,
+                            source_language,
+                        ),
                         max_tokens=32000,
                     ),
-                    label=f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} · проход 1/3…",
+                    label=(
+                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                        "· проход 1/3…"
+                    ),
                 )
             if judged is None:
                 judged = await await_with_heartbeat(
@@ -363,7 +472,10 @@ async def create_factory_plan_resumable(
                         prompt=candidates._judge_prompt(scout, duration),
                         max_tokens=28000,
                     ),
-                    label=f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} · проход 2/3…",
+                    label=(
+                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                        "· проход 2/3…"
+                    ),
                 )
             audited = await await_with_heartbeat(
                 candidates._run_pass(
@@ -373,11 +485,20 @@ async def create_factory_plan_resumable(
                     prompt=candidates._boundary_prompt(judged, duration),
                     max_tokens=28000,
                 ),
-                label=f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} · проход 3/3…",
+                label=(
+                    f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                    "· проход 3/3…"
+                ),
             )
-            plan = candidates.validate_factory_plan(audited, duration, require_verified=True)
+            plan = candidates.validate_factory_plan(
+                audited,
+                duration,
+                require_verified=True,
+            )
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError("Three-pass Gemini review produced no verified candidates")
+                raise RuntimeError(
+                    "Three-pass Gemini review produced no verified candidates"
+                )
             plan.update(
                 model=model,
                 thinking_level="high",
@@ -386,9 +507,15 @@ async def create_factory_plan_resumable(
                 audio_mime_type=mime_type,
             )
             gated = apply_factory_quality_gate(plan)
-            gated.setdefault("metadata", {})["language"] = validated_factory_plan_language(gated)
-            if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
-                raise RuntimeError("No candidates passed the final Factory MAX quality gate")
+            gated.setdefault("metadata", {})["language"] = (
+                validated_factory_plan_language(gated)
+            )
+            if not gated.get("shorts_candidates") and not gated.get(
+                "long_candidates"
+            ):
+                raise RuntimeError(
+                    "No candidates passed the final Factory MAX quality gate"
+                )
             return gated
         except asyncio.CancelledError:
             raise
@@ -406,8 +533,9 @@ async def create_factory_plan_resumable(
             )
             if transient:
                 await safe_status(
-                    f"⚠️ Gemini 3.6 временно недоступна на ключе {index}/{len(clients)}. "
-                    "Переключаю ключ без повторения уже завершённых проходов…"
+                    f"⚠️ Gemini 3.6 временно недоступна на ключе "
+                    f"{index}/{len(clients)}. Переключаю ключ без повторения "
+                    "уже завершённых проходов…"
                 )
                 continue
             scout = judged = None
@@ -420,11 +548,14 @@ async def create_factory_plan_resumable(
 
     if len(overloaded) == len(clients):
         raise RuntimeError(
-            "Gemini 3.6 сейчас перегружена (503/high demand) на всех доступных ключах. "
-            "Качество не понижено: 3.5/2.x не использовались. Lossless-аудио сохранено "
-            f"в retry-кэше примерно на {cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
+            "Gemini 3.6 сейчас перегружена (503/high demand) на всех доступных "
+            "ключах. Качество не понижено: 3.5/2.x не использовались. "
+            "Lossless-аудио сохранено в retry-кэше примерно на "
+            f"{cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         )
-    raise RuntimeError(f"All Gemini clients failed strict Shorts Factory review: {last_error}")
+    raise RuntimeError(
+        f"All Gemini clients failed strict Shorts Factory review: {last_error}"
+    )
 
 
 __all__ = [
