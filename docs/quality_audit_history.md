@@ -425,7 +425,7 @@ Extended prompt-health leaky literal guard and removed additional prompt phrases
 - `Чередуй полное имя`
 - invented-source examples such as `Спасение младенцев`, `Младенцы во славе`, `Странный огонь`
 
-The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaky literals across main prompts and the deep audio prompt sample.
+The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaks across main prompts and the deep audio prompt sample.
 
 ## 2026-06-16 — Channel-position literal cleanup completed
 
@@ -848,7 +848,8 @@ Fixes:
 Размышлении (преувеличение→исповедание) на TYPE 1/3 — R45-правка работает, дампы
 чистые; LRM (U+200E) после иврита в «(חָפֵץ‎, евр.)» — он там нужен для
 правильного направления запятой, снятие было бы багом; orphan `**` на таймкоде —
-уже снимает `_final_telegraph_polish` на публикации (проверено end-to-end).
+уже снимает `_final_telegraph_polish` на публикации (проверено end-to-end на
+реальном контенте дампов).
 
 Тесты: tests/test_v3_r49_synopsis_quality.py. verify_repo — зелёный,
 регрессий нет (легитимные таймкоды по-прежнему линкуются, проверено end-to-end на
@@ -997,7 +998,7 @@ Fixes:
   advanced to `dub-worker-quality-v6.8` so phrase-level checkpoints cannot be
   mistaken for compatible block-level work.
 - Full repository test collection was repaired for pytest 8.4 by renaming three
-  parametrized arguments that used the reserved fixture name `request`.
+  parametrized arguments that used the reserved pytest fixture name `request`.
 
 - Current focused quality suite is green; the complete historical repository suite
   still contains 42 legacy expectation failures (old v4.8/v5 markers, obsolete
@@ -1014,3 +1015,14 @@ Fixes:
 - Removed explicit sampling parameters from the 3.5 publication call; the config is now `thinking_level=minimal` + structured JSON/token budget only.
 - Added regressions for exact model order, no heavy/legacy fallback, non-Factory no-op behavior, fail-open behavior, hashtag normalization, paragraph placement, HTML escaping, sampling-free config and prompt leak literals.
 - Full repository CI is required on the final PR #112 head before merge; no render/timing/Whisper/LiveDub/Factory-score quality gates were weakened.
+
+## 2026-08-10 — Translation Editorial Review v1
+
+- Yandex LiveDub is now treated as an editorial source that may be preserved when only localized semantic defects exist; the review layer distinguishes rough-but-correct speech from repairable and rejectable material.
+- Added an immutable review pack bound to the exact translated-video SHA-256 with original SRT, full Russian Whisper `large-v3` SRT/word timestamps, and the actual shifted Factory Shorts/long-clip candidates.
+- Added strict `keep|repair|reject` review contracts and issue severities. Exact pack ID and source-media SHA make stale or foreign review plans fail closed.
+- Only `drop_span` and `mute_span` are auto-executable in v1. Same-voice donor discovery uses exact phrase boundaries, while `borrow_span` and `reject_region` remain review-only/blocking so the system cannot invent new speech automatically.
+- Yandex Factory jobs generate/send the small review ZIP after normal media rendering; editorial-package failure is fail-open for already-rendered Shorts and long clips.
+- Optional automatic semantic audit is exact `gemini-3.6-flash` with `thinking_level=high`, disabled by default, one attempt by default and at most two only by explicit override; there is no light/legacy fallback and every Factory candidate must be reviewed.
+- The first CI exposed two unnecessary regex health markers in the new deterministic layer; they were removed instead of increasing the repository baseline, and exact donor phrase-boundary regressions were added.
+- Full exact-head CI is required before squash merge; no existing LiveDub/Whisper/Factory selection or publication quality gate is weakened.
