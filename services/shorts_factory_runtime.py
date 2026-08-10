@@ -267,11 +267,19 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         install_factory_publication_formatters,
     )
     from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
-    from services.shorts_factory_timing import align_factory_livedub_candidates
+    from services.shorts_factory_timing import (
+        align_factory_livedub_candidates,
+        install_factory_ru_boundary_capture,
+    )
 
     if not install_livedub_downstream_media_policy():
         return False
     if not install_factory_plan_quality_gate():
+        return False
+    # Quality-gate installation owns the production source policy. Boundary
+    # capture must wrap that final source seam, never the legacy function that
+    # the source installer is about to replace.
+    if not install_factory_ru_boundary_capture():
         return False
     if not install_factory_publication_formatters(shorts_module, clips_module):
         return False
