@@ -405,6 +405,63 @@ def test_pending_editorial_sources_are_ttl_and_count_bounded(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_factory_editorial_success_sends_even_when_errors_are_silent(
+    monkeypatch, tmp_path
+):
+    import services.media_delivery_probe as media_probe
+    import services.translation_editorial_factory as editorial
+    from services.media_delivery_probe import MediaProbe
+
+    source = tmp_path / "master.mp4"
+    source.write_bytes(b"video")
+    probe = MediaProbe(
+        duration=121.6,
+        width=1920,
+        height=1080,
+        audio_sample_rate=48000,
+        audio_codec="aac",
+        has_video=True,
+        has_audio=True,
+    )
+
+    async def probe_async(path):
+        assert Path(path) == source
+        return probe
+
+    async def prepare_review(**kwargs):
+        return tmp_path / "pack.zip", None, None
+
+    sent = []
+
+    async def send_review(*args, **kwargs):
+        sent.append(kwargs["pack_path"])
+
+    monkeypatch.setattr(editorial, "factory_editorial_pack_enabled", lambda: True)
+    monkeypatch.setattr(editorial, "prepare_factory_editorial_review", prepare_review)
+    monkeypatch.setattr(editorial, "send_factory_editorial_files", send_review)
+    monkeypatch.setattr(media_probe, "probe_media_async", probe_async)
+
+    await bridge._send_editorial_after_factory(
+        url="https://example/video",
+        update=SimpleNamespace(),
+        silent_errors=True,
+        state={
+            "plan": {"metadata": {"language": "en"}},
+            "source_language": "en",
+            "editorial_source": source,
+            "media_id": "media",
+            "title": "Title",
+            "performer": "Speaker",
+            "aligned": {"short": [], "long": []},
+            "ai_data_holder": {"real_title": "Title"},
+        },
+    )
+
+    assert sent == [tmp_path / "pack.zip"]
+    assert not source.exists()
+
+
+@pytest.mark.asyncio
 async def test_successful_factory_runs_editorial_after_delivery(monkeypatch):
     seen = []
 
@@ -486,8 +543,10 @@ async def test_editorial_only_uses_actual_yandex_master_duration_and_no_planner(
         captured.update(kwargs)
         return tmp_path / "pack.zip", None, None
 
+    sent = []
+
     async def send_review(*args, **kwargs):
-        return None
+        sent.append(kwargs["pack_path"])
 
     monkeypatch.setattr(source, "prepare_factory_translation_video", prepare_video)
     monkeypatch.setattr(media_probe, "probe_media_async", probe_async)
@@ -513,6 +572,7 @@ async def test_editorial_only_uses_actual_yandex_master_duration_and_no_planner(
     assert captured["duration"] == pytest.approx(121.6)
     assert captured["shorts_candidates"] == []
     assert captured["long_candidates"] == []
+    assert sent == [tmp_path / "pack.zip"]
 
 
 def test_runtime_manifest_requires_polish_after_factory():
