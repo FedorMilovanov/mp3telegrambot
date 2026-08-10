@@ -104,6 +104,66 @@ def test_zip_preflight_rejects_unsafe_member_name_before_content_read(tmp_path: 
         load_verified_review_pack(tampered)
 
 
+def test_zip_preflight_rejects_non_object_candidate_before_base_loader(tmp_path: Path) -> None:
+    pack = _current_pack(tmp_path)
+    tampered = tmp_path / "bad-candidate.zip"
+    bad_candidates = {"shorts": ["not-an-object"], "long_clips": []}
+
+    def mutate(name: str, payload: bytes) -> bytes:
+        if name == "candidates.json":
+            return json.dumps(bad_candidates).encode("utf-8")
+        if name == "manifest.json":
+            manifest = json.loads(payload.decode("utf-8"))
+            manifest["candidates"] = bad_candidates
+            return json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+        return payload
+
+    _rewrite_zip(pack, tampered, mutate=mutate)
+
+    with pytest.raises(ValueError, match="candidate must be an object"):
+        load_verified_review_pack(tampered)
+
+
+def test_zip_preflight_rejects_duplicate_candidate_ids_across_groups(tmp_path: Path) -> None:
+    pack = _current_pack(tmp_path)
+    tampered = tmp_path / "duplicate-candidate.zip"
+    duplicate = {
+        "shorts": [{"candidate_id": "same", "start_seconds": 0.0, "end_seconds": 1.0}],
+        "long_clips": [{"candidate_id": "same", "start_seconds": 1.0, "end_seconds": 2.0}],
+    }
+
+    def mutate(name: str, payload: bytes) -> bytes:
+        if name == "candidates.json":
+            return json.dumps(duplicate).encode("utf-8")
+        if name == "manifest.json":
+            manifest = json.loads(payload.decode("utf-8"))
+            manifest["candidates"] = duplicate
+            return json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+        return payload
+
+    _rewrite_zip(pack, tampered, mutate=mutate)
+
+    with pytest.raises(ValueError, match="duplicate translation editorial candidate_id: same"):
+        load_verified_review_pack(tampered)
+
+
+def test_zip_preflight_rejects_changed_transcript_role(tmp_path: Path) -> None:
+    pack = _current_pack(tmp_path)
+    tampered = tmp_path / "changed-role.zip"
+
+    def mutate(name: str, payload: bytes) -> bytes:
+        if name != "manifest.json":
+            return payload
+        manifest = json.loads(payload.decode("utf-8"))
+        manifest["transcripts"]["original"]["role"] = "different_role"
+        return json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+
+    _rewrite_zip(pack, tampered, mutate=mutate)
+
+    with pytest.raises(ValueError, match="transcript contract changed: original"):
+        load_verified_review_pack(tampered)
+
+
 def test_legacy_pr113_pack_contract_remains_supported(tmp_path: Path) -> None:
     source_video = tmp_path / "legacy-source.mp4"
     source_video.write_bytes(b"legacy-source")
