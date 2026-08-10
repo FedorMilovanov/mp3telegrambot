@@ -24,7 +24,7 @@ Each ZIP filename contains a prefix of its own `review_pack_id`, for example:
 VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip
 ```
 
-A later run with different evidence creates another file instead of replacing the first. Loading a pack rechecks the transcript byte counts, SHA-256 values, `candidates.json`, ZIP member uniqueness and the deterministic `review_pack_id`; modified evidence under an old manifest is rejected.
+A later run with different evidence creates another file instead of replacing the first. Loading a pack rechecks transcript byte counts and SHA-256 values, exact `candidates.json`, ZIP-member uniqueness, the canonical editor-facing review contract/instructions and the deterministic `review_pack_id`. Unexpected ZIP members or modified instructions are rejected. Legacy PR #113 v1 packs without timeline metadata remain verifiable against their original identity and original known instruction text.
 
 For Yandex Factory jobs the review pack is enabled by default. It is generated after the normal Shorts/long-clip render so a review-pack failure never cancels already produced videos:
 
@@ -78,10 +78,11 @@ python .\tools\translation_editorial.py prepare `
   --media-id "VIDEO_ID" `
   --title "Title" `
   --performer "Speaker" `
-  --duration 3600 `
   --candidates ".\factory-plan.json" `
   --output-dir ".\downloads\editorial"
 ```
+
+The exact pack duration is measured from the real video+audio source. `--duration` is optional and is now only an expected-value check; when supplied, a meaningful mismatch from the media probe fails instead of freezing a guessed duration into provenance.
 
 The command downloads the original SRT, transcribes the complete translated source with Russian Whisper `large-v3`, and emits hash-qualified files such as:
 
@@ -109,17 +110,27 @@ python .\tools\translation_editorial.py repair `
   --output ".\downloads\VIDEO_ID_editorial_clean.mp4"
 ```
 
+A successful repair emits both:
+
+```text
+VIDEO_ID_editorial_clean.mp4
+VIDEO_ID_editorial_clean.editorial-repair.json
+```
+
+The sidecar binds the exact `review_pack_id`, exact `review.json` SHA-256, reviewed source SHA-256, exact executable repair spans, merged `drop_span` ranges, final clean-master SHA-256/size/duration and a deterministic `repair_result_id`. It also records how pre-repair review timestamps map onto the cleaned timeline after dropped spans.
+
 The repair command refuses to run when:
 
-- the review targets another pack or the pack evidence was modified;
+- the review targets another pack, the pack instructions/contract changed, or pack evidence was modified;
 - the source-video SHA, size or measured duration no longer matches;
-- the requested output path is the source path or already exists;
+- the requested output path is the source path;
+- an existing output/provenance pair belongs to different evidence or only one half of the pair exists;
 - the full sermon is rejected;
 - the review contains unresolved `borrow_span` or `reject_region` actions;
 - a repair timestamp is non-finite or outside the source;
 - FFmpeg output does not pass the final video+audio probe and duration check.
 
-Repairs are rendered to temporary files and published without overwrite only after validation. This prevents a failed render from destroying the reviewed source or a previous accepted result.
+An exact previously verified output+sidecar pair for the same review is reused without a second FFmpeg run. New repairs are rendered to temporary files and become valid only as an output+provenance pair. If provenance finalization fails, the newly created clean output is removed rather than leaving an untraceable file behind.
 
 ## Same-voice donor discovery
 
