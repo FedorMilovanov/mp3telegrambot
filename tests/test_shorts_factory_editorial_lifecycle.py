@@ -61,6 +61,31 @@ def test_pending_cleanup_never_evicts_an_active_master(monkeypatch, tmp_path):
     assert new.is_file()
 
 
+def test_disabled_factory_editorial_pack_does_not_create_handoff(monkeypatch, tmp_path):
+    import services.translation_editorial_factory as editorial
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    pending = tmp_path / "pending"
+    monkeypatch.setattr(bridge, "PENDING_DIR", pending)
+    monkeypatch.setattr(editorial, "factory_editorial_pack_enabled", lambda: False)
+
+    state = {"plan": {"metadata": {"language": "en"}}}
+    token = bridge.JOB_STATE.set(state)
+    try:
+        result = bridge.persist_source_for_editorial(
+            source,
+            "media",
+            original_persist=lambda path, media_id: path,
+        )
+    finally:
+        bridge.JOB_STATE.reset(token)
+
+    assert result == source
+    assert "editorial_source" not in state
+    assert pending.exists() is False
+
+
 @pytest.mark.asyncio
 async def test_failed_factory_deletes_its_unused_editorial_handoff(monkeypatch, tmp_path):
     pending = tmp_path / "handoff.mp4"
