@@ -180,7 +180,7 @@ def _shift_candidates_for_livedub(
     *,
     source_duration: int,
 ) -> list[dict[str, Any]]:
-    """Align exact original-audio cuts with the configured delayed Yandex track."""
+    """Legacy default; Factory runtime replaces this with speech-proven alignment."""
     delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
     extra_sec = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
     shift = max(0.0, delay_ms / 1000.0 + extra_sec)
@@ -196,7 +196,7 @@ def _shift_candidates_for_livedub(
         if end <= start:
             continue
         item["start_seconds"] = start
-        item["end_seconds"] = end
+        item["end_seconds"] = end - 0.0
         item["duration_seconds"] = end - start
         item["start"] = _format_seconds(start)
         item["end"] = _format_seconds(end)
@@ -428,14 +428,29 @@ async def process_shorts_factory(
         render_shorts = shorts_candidates
         render_longs = long_candidates
         if translation_required:
-            render_shorts = _shift_candidates_for_livedub(
-                shorts_candidates,
-                source_duration=render_source_duration,
+            from services.shorts_factory_timing import (
+                factory_ru_boundary_context,
+                prepare_factory_ru_boundary_evidence,
             )
-            render_longs = _shift_candidates_for_livedub(
-                long_candidates,
-                source_duration=render_source_duration,
+
+            await _safe_status(
+                status_msg,
+                "🛡 Проверяю границы по фактической русской LiveDub-речи…",
             )
+            ru_boundary_evidence = await prepare_factory_ru_boundary_evidence(
+                url=url,
+                workdir=workdir,
+                source_language=source_language,
+            )
+            with factory_ru_boundary_context(ru_boundary_evidence):
+                render_shorts = _shift_candidates_for_livedub(
+                    shorts_candidates,
+                    source_duration=render_source_duration,
+                )
+                render_longs = _shift_candidates_for_livedub(
+                    long_candidates,
+                    source_duration=render_source_duration,
+                )
             if not render_shorts and not render_longs:
                 raise RuntimeError(
                     "Ни один выбранный фрагмент не прошёл доказанную проверку "
