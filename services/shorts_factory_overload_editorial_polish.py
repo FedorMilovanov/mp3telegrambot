@@ -2,13 +2,15 @@
 """Install focused Factory overload and editorial hardening after MAX runtime."""
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
+from typing import Any, Callable
 
 from services.shorts_factory_editorial_bridge import (
     EDITORIAL_MODE,
+    JOB_STATE,
     cleanup_pending_sources,
-    deferred_factory_ai_data,
     install_mode_ui,
     persist_source_for_editorial,
     process_factory_with_editorial,
@@ -26,6 +28,31 @@ from services.shorts_factory_overload_runtime import (
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
+
+
+def capture_factory_ai_data(
+    original_factory_ai_data: Callable[..., dict[str, Any]],
+    plan: dict[str, Any],
+    *,
+    title: str,
+    performer: str,
+) -> dict[str, Any]:
+    """Keep render metadata complete while retaining request-local editorial state."""
+    actual = original_factory_ai_data(
+        plan,
+        title=title,
+        performer=performer,
+    )
+    state = JOB_STATE.get()
+    if state is not None:
+        state.update(
+            plan=copy.deepcopy(plan),
+            title=title,
+            performer=performer,
+            ai_data_holder=copy.deepcopy(actual),
+            aligned={},
+        )
+    return actual
 
 
 def install_shorts_factory_overload_editorial_polish() -> bool:
@@ -92,7 +119,18 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
         )
 
     factory_module._persist_factory_source = persisted_for_editorial
-    guard_module.factory_ai_data = deferred_factory_ai_data
+
+    original_guard_factory_ai_data = guard_module.factory_ai_data
+
+    def captured_factory_ai_data(plan, *, title, performer):
+        return capture_factory_ai_data(
+            original_guard_factory_ai_data,
+            plan,
+            title=title,
+            performer=performer,
+        )
+
+    guard_module.factory_ai_data = captured_factory_ai_data
 
     active_factory_process = factory_module.process_shorts_factory
 
@@ -192,13 +230,14 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     logger.info(
         "Shorts Factory overload/editorial polish installed: Gemini 3.6/HIGH 3-pass preserved, "
         "Factory-only HTTP retry ownership, resumable pass rotation, bounded lossless retry cache, "
-        "canonical LiveDub timeout, active VOT RU proof, post-alignment ai_data, editorial ZIP "
+        "canonical LiveDub timeout, active VOT RU proof, complete render ai_data, editorial ZIP "
         "and standalone ENG editor"
     )
     return True
 
 
 __all__ = [
+    "capture_factory_ai_data",
     "create_factory_plan_resumable",
     "factory_overload_error",
     "factory_retryable_service_error",
