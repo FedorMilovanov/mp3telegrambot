@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import html
 import json
 import logging
@@ -166,41 +165,17 @@ async def _prepare_translation_video(
     return translated
 
 
-def _format_seconds(seconds: float) -> str:
-    value = max(0, int(round(seconds)))
-    hours, remainder = divmod(value, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
-
-
 def _shift_candidates_for_livedub(
     candidates: list[dict[str, Any]],
     *,
     source_duration: int,
 ) -> list[dict[str, Any]]:
-    """Legacy default; Factory runtime replaces this with speech-proven alignment."""
-    delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
-    extra_sec = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
-    shift = max(0.0, delay_ms / 1000.0 + extra_sec)
-    out = copy.deepcopy(candidates)
-    for item in out:
-        original_start = float(item.get("start_seconds", 0))
-        original_end = float(item.get("end_seconds", 0))
-        original_length = max(0.0, original_end - original_start)
-        start = min(float(source_duration), original_start + shift)
-        end = min(float(source_duration), original_end + shift)
-        if end - start < original_length:
-            start = max(0.0, end - original_length)
-        if end <= start:
-            continue
-        item["start_seconds"] = start
-        item["end_seconds"] = end - 0.0
-        item["duration_seconds"] = end - start
-        item["start"] = _format_seconds(start)
-        item["end"] = _format_seconds(end)
-    return out
+    """Fail closed unless the required runtime installs speech-proven alignment."""
+    del candidates, source_duration
+    raise RuntimeError(
+        "SHORTS FACTORY translated boundary aligner is not installed; "
+        "refusing heuristic original-timeline cuts"
+    )
 
 
 def _cleanup_expired_factory_sources() -> None:
