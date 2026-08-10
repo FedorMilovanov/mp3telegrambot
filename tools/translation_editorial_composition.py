@@ -16,11 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.translation_editorial import (
-    load_pack_manifest,
-    sha256_file,
-    validate_review_document,
-)
+from services.translation_editorial import sha256_file, validate_review_document
 from services.translation_editorial_composition import (
     build_composition_template,
     build_release_handoff,
@@ -28,6 +24,8 @@ from services.translation_editorial_composition import (
     render_composition,
     validate_composition_document,
 )
+from services.translation_editorial_pack_contract import load_verified_review_pack
+from services.translation_editorial_repair_provenance import verify_repair_provenance
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -93,13 +91,61 @@ def _review_binding(args: argparse.Namespace) -> tuple[str, str]:
         raise ValueError("--review-pack-id does not match review.json")
 
     if pack_path is not None:
-        manifest = load_pack_manifest(pack_path)
+        manifest = load_verified_review_pack(pack_path)
         errors = validate_review_document(review, manifest)
         if errors:
             raise ValueError("review validation failed before composition:\n- " + "\n- ".join(errors))
         if review_id != manifest.get("review_pack_id"):
             raise ValueError("review.json does not belong to --review-pack")
     return review_id, sha256_file(review_path)
+
+
+async def _repair_binding(
+    args: argparse.Namespace,
+    *,
+    source_path: Path,
+    review_pack_id: str,
+    review_sha256: str,
+) -> dict[str, Any] | None:
+    if not args.repair_provenance:
+        return None
+    sidecar_path = Path(args.repair_provenance)
+    provenance = await verify_repair_provenance(
+        sidecar_path,
+        expected_output_path=source_path,
+    )
+    if review_pack_id and provenance.get("review_pack_id") != review_pack_id:
+        raise ValueError("repair provenance does not belong to the supplied review pack")
+    if review_sha256 and provenance.get("review_sha256") != review_sha256:
+        raise ValueError("repair provenance does not belong to the supplied review.json")
+    return {
+        "local_path": str(sidecar_path.resolve(strict=False)),
+        "sha256": await asyncio.to_thread(sha256_file, sidecar_path),
+        "repair_result_id": provenance.get("repair_result_id"),
+    }
+
+
+async def _verify_embedded_repair_binding(document: dict[str, Any]) -> None:
+    source = document.get("source") or {}
+    binding = source.get("repair_provenance")
+    if binding is None:
+        return
+    if not isinstance(binding, dict):
+        raise ValueError("source.repair_provenance must be an object")
+    path = Path(str(binding.get("local_path") or ""))
+    expected_output = Path(str(source.get("local_path") or ""))
+    provenance = await verify_repair_provenance(path, expected_output_path=expected_output)
+    sidecar_sha = await asyncio.to_thread(sha256_file, path)
+    if binding.get("sha256") != sidecar_sha:
+        raise ValueError("embedded repair provenance SHA-256 changed")
+    if binding.get("repair_result_id") != provenance.get("repair_result_id"):
+        raise ValueError("embedded repair provenance result ID changed")
+    review_pack_id = str(source.get("review_pack_id") or "")
+    review_sha256 = str(source.get("review_sha256") or "")
+    if review_pack_id and provenance.get("review_pack_id") != review_pack_id:
+        raise ValueError("embedded repair provenance review_pack_id mismatch")
+    if review_sha256 and provenance.get("review_sha256") != review_sha256:
+        raise ValueError("embedded repair provenance review SHA mismatch")
 
 
 async def _cmd_init(args: argparse.Namespace) -> int:
@@ -115,6 +161,12 @@ async def _cmd_init(args: argparse.Namespace) -> int:
             f"declared={float(args.duration):.3f}s probe={probed_duration:.3f}s"
         )
     review_pack_id, review_sha256 = _review_binding(args)
+    repair_binding = await _repair_binding(
+        args,
+        source_path=source_path,
+        review_pack_id=review_pack_id,
+        review_sha256=review_sha256,
+    )
     document = build_composition_template(
         source_video_path=source_path,
         source_duration=probed_duration,
@@ -126,6 +178,9 @@ async def _cmd_init(args: argparse.Namespace) -> int:
         youtube_account_alias=args.youtube_account_alias,
         youtube_channel_id=args.youtube_channel_id,
     )
+    if repair_binding is not None:
+        document["source"]["repair_provenance"] = repair_binding
+        document = refresh_composition_id(document)
     _write_atomic(Path(args.output), document, overwrite=False)
     print(Path(args.output))
     return 0
@@ -140,11 +195,12 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_validate(args: argparse.Namespace) -> int:
+async def _cmd_validate(args: argparse.Namespace) -> int:
     document = _load(Path(args.plan))
     errors = validate_composition_document(document)
     if errors:
         raise ValueError("composition validation failed:\n- " + "\n- ".join(errors))
+    await _verify_embedded_repair_binding(document)
     print(
         json.dumps(
             {
@@ -161,6 +217,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 async def _cmd_render(args: argparse.Namespace) -> int:
     document = _load(Path(args.plan))
+    await _verify_embedded_repair_binding(document)
     results = await render_composition(document, output_dir=Path(args.output_dir))
     handoff = build_release_handoff(document, results)
     handoff_path = Path(args.output_dir) / "editorial-release-handoff.json"
@@ -191,6 +248,10 @@ def _parser() -> argparse.ArgumentParser:
         default="",
         help="compatibility/manual ID when the exact review ZIP is not supplied",
     )
+    init.add_argument(
+        "--repair-provenance",
+        help="exact .editorial-repair.json sidecar for a surgically repaired clean source",
+    )
     init.add_argument("--project-key", default="")
     init.add_argument("--youtube-account-alias", default="")
     init.add_argument("--youtube-channel-id", default="")
@@ -215,7 +276,7 @@ async def _amain(args: argparse.Namespace) -> int:
     if args.command == "refresh-id":
         return _cmd_refresh(args)
     if args.command == "validate":
-        return _cmd_validate(args)
+        return await _cmd_validate(args)
     if args.command == "render":
         return await _cmd_render(args)
     raise RuntimeError(f"unknown command: {args.command}")
