@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import shutil
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -40,6 +41,9 @@ _CURRENT_TIMELINE: ContextVar[dict[str, Any] | None] = ContextVar(
     "factory_ru_boundary_timeline",
     default=None,
 )
+_TIMELINE_BY_VIDEO: dict[str, dict[str, Any]] = {}
+_TIMELINE_LOCK = threading.Lock()
+_CAPTURE_INSTALLED = False
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -70,6 +74,32 @@ def _format_seconds(seconds: float) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def _path_key(path: Path | str) -> str:
+    try:
+        return str(Path(path).resolve(strict=False)).casefold()
+    except (OSError, TypeError, ValueError):
+        return str(path).casefold()
+
+
+def _remember_video_timeline(
+    video_path: Path | str,
+    timeline: dict[str, Any],
+) -> None:
+    key = _path_key(video_path)
+    with _TIMELINE_LOCK:
+        if len(_TIMELINE_BY_VIDEO) >= 64 and key not in _TIMELINE_BY_VIDEO:
+            oldest_key = next(iter(_TIMELINE_BY_VIDEO), None)
+            if oldest_key is not None:
+                _TIMELINE_BY_VIDEO.pop(oldest_key, None)
+        _TIMELINE_BY_VIDEO[key] = dict(timeline)
+
+
+def _take_video_timeline(video_path: Path | str) -> dict[str, Any] | None:
+    key = _path_key(video_path)
+    with _TIMELINE_LOCK:
+        return _TIMELINE_BY_VIDEO.pop(key, None)
 
 
 def _silence_event_value(line: str, marker: str) -> float | None:
@@ -284,7 +314,7 @@ async def prepare_factory_ru_boundary_evidence(
     workdir: Path,
     source_language: str,
 ) -> dict[str, Any]:
-    """Build request-local RU/source speech evidence before translated rendering."""
+    """Build RU/source speech evidence before translated rendering."""
     exact_ru = read_ru_audio_provenance(workdir)
     if exact_ru is None:
         raise RuntimeError(
@@ -347,6 +377,84 @@ def factory_ru_boundary_context(
         yield
     finally:
         _CURRENT_TIMELINE.reset(token)
+
+
+def _prepare_arg(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    name: str,
+    position: int,
+) -> Any:
+    value = kwargs.get(name)
+    if value is None and len(args) > position:
+        value = args[position]
+    return value
+
+
+def install_factory_ru_boundary_capture() -> bool:
+    """Bridge source-task evidence into the parent Factory request task."""
+    global _CAPTURE_INSTALLED
+    if _CAPTURE_INSTALLED:
+        return True
+
+    import pipelines.shorts_factory as factory_pipeline
+
+    current_prepare = factory_pipeline._prepare_translation_video
+    if not getattr(current_prepare, "_mp3bot_factory_ru_boundary_capture", False):
+
+        async def captured_prepare(*args: Any, **kwargs: Any):
+            result = await current_prepare(*args, **kwargs)
+            workdir_value = _prepare_arg(args, kwargs, "workdir", 1)
+            url_value = _prepare_arg(args, kwargs, "url", 0)
+            language_value = _prepare_arg(args, kwargs, "source_language", 3)
+            try:
+                if workdir_value is None or not url_value:
+                    logger.warning(
+                        "Shorts Factory RU boundary evidence missing workdir/url"
+                    )
+                    return result
+                evidence = await prepare_factory_ru_boundary_evidence(
+                    url=str(url_value),
+                    workdir=Path(workdir_value),
+                    source_language=str(language_value or ""),
+                )
+                _remember_video_timeline(Path(result), evidence)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Alignment remains fail-closed. The source can survive for
+                # diagnostics, but unproved translated candidates cannot render.
+                logger.warning(
+                    "Shorts Factory RU boundary evidence failed closed later: %s",
+                    str(exc)[:240],
+                )
+            return result
+
+        captured_prepare._mp3bot_factory_ru_boundary_capture = True  # type: ignore[attr-defined]
+        factory_pipeline._prepare_translation_video = captured_prepare
+
+    current_persist = factory_pipeline._persist_factory_source
+    if not getattr(current_persist, "_mp3bot_factory_ru_boundary_capture", False):
+
+        def captured_persist(source_path: Path, media_id: str) -> Path:
+            evidence = _take_video_timeline(source_path)
+            destination = current_persist(source_path, media_id)
+            _CURRENT_TIMELINE.set(dict(evidence) if evidence is not None else None)
+            if evidence is not None:
+                logger.info(
+                    "Shorts Factory RU boundary evidence bound to %s "
+                    "(ru_intervals=%d source_intervals=%d)",
+                    destination.name,
+                    len(evidence.get("intervals") or []),
+                    len(evidence.get("source_speech_intervals") or []),
+                )
+            return destination
+
+        captured_persist._mp3bot_factory_ru_boundary_capture = True  # type: ignore[attr-defined]
+        factory_pipeline._persist_factory_source = captured_persist
+
+    _CAPTURE_INSTALLED = True
+    return True
 
 
 def _candidate_limits(duration: float) -> tuple[float, float, bool]:
@@ -721,6 +829,7 @@ __all__ = [
     "align_candidates_to_ru_speech",
     "align_factory_livedub_candidates",
     "factory_ru_boundary_context",
+    "install_factory_ru_boundary_capture",
     "prepare_factory_ru_boundary_evidence",
     "speech_intervals_from_silence_log",
 ]
