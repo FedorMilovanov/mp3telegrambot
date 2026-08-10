@@ -15,6 +15,7 @@ import math
 import os
 import shutil
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -33,6 +34,14 @@ PIECE_KINDS = {"full", "excerpt", "short"}
 ASSEMBLY_MODES = {"continuous", "editorial_sequence"}
 PUBLICATION_FIELDS = {"title", "description", "hashtags", "playlist", "schedule_at"}
 RELEASE_TARGET_FIELDS = {"project_key", "youtube_account_alias", "youtube_channel_id"}
+_WINDOWS_RESERVED_STEMS = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{index}" for index in range(1, 10)),
+    *(f"lpt{index}" for index in range(1, 10)),
+}
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -68,6 +77,17 @@ def _safe_name(value: str, fallback: str = "piece") -> str:
         for char in str(value or fallback)
     ).strip("._")
     return safe[:120] or fallback
+
+
+def _portable_output_key(value: str) -> str:
+    """Return a conservative filename key stable across case-insensitive filesystems."""
+    return unicodedata.normalize("NFC", _safe_name(value)).casefold()
+
+
+def _is_windows_reserved_output_name(value: str) -> bool:
+    normalized = unicodedata.normalize("NFC", _safe_name(value))
+    stem = normalized.split(".", 1)[0].casefold()
+    return stem in _WINDOWS_RESERVED_STEMS
 
 
 def _piece_media_payload(piece: Any) -> dict[str, Any]:
@@ -374,9 +394,12 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
         safe_name = _safe_name(piece_id)
         if safe_name != piece_id:
             errors.append(f"piece {piece_id}: piece_id must already be filesystem-safe")
-        if safe_name in seen_names:
-            errors.append(f"piece {piece_id}: output filename collides after normalization")
-        seen_names.add(safe_name)
+        if _is_windows_reserved_output_name(safe_name):
+            errors.append(f"piece {piece_id}: piece_id is a reserved Windows filename")
+        portable_name = _portable_output_key(safe_name)
+        if portable_name in seen_names:
+            errors.append(f"piece {piece_id}: output filename collides on a case-insensitive filesystem")
+        seen_names.add(portable_name)
 
         kind = str(piece.get("kind") or "")
         mode = str(piece.get("assembly_mode") or "")
