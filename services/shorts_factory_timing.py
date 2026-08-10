@@ -7,9 +7,9 @@ boundaries. This module derives exact Russian speech evidence from the
 provenance-bound VOT audio, optionally adds source-speech timing from provider
 captions, and refines every translated candidate on the final mixed timeline.
 
-Translated candidates fail closed individually when their Russian boundaries
-cannot be proved. The caller decides whether other valid candidates may still
-be rendered.
+Evidence is request-local: the parent Factory coroutine creates it from its own
+workdir, binds it only while candidates are aligned, then releases it. There is
+no process-global handoff or timestamp fallback for translated publication.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ import logging
 import math
 import os
 import shutil
-import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -41,9 +40,6 @@ _CURRENT_TIMELINE: ContextVar[dict[str, Any] | None] = ContextVar(
     "factory_ru_boundary_timeline",
     default=None,
 )
-_TIMELINE_BY_VIDEO: dict[str, dict[str, Any]] = {}
-_TIMELINE_LOCK = threading.Lock()
-_CAPTURE_INSTALLED = False
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -74,32 +70,6 @@ def _format_seconds(seconds: float) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
-
-
-def _path_key(path: Path | str) -> str:
-    try:
-        return str(Path(path).resolve(strict=False)).casefold()
-    except (OSError, TypeError, ValueError):
-        return str(path).casefold()
-
-
-def _remember_video_timeline(
-    video_path: Path | str,
-    timeline: dict[str, Any],
-) -> None:
-    key = _path_key(video_path)
-    with _TIMELINE_LOCK:
-        if len(_TIMELINE_BY_VIDEO) >= 64 and key not in _TIMELINE_BY_VIDEO:
-            oldest_key = next(iter(_TIMELINE_BY_VIDEO), None)
-            if oldest_key is not None:
-                _TIMELINE_BY_VIDEO.pop(oldest_key, None)
-        _TIMELINE_BY_VIDEO[key] = dict(timeline)
-
-
-def _take_video_timeline(video_path: Path | str) -> dict[str, Any] | None:
-    key = _path_key(video_path)
-    with _TIMELINE_LOCK:
-        return _TIMELINE_BY_VIDEO.pop(key, None)
 
 
 def _silence_event_value(line: str, marker: str) -> float | None:
@@ -213,9 +183,7 @@ async def _probe_audio_duration(path: Path) -> float:
     return duration if math.isfinite(duration) and duration > 0 else 0.0
 
 
-async def _detect_exact_ru_speech(
-    ru_audio_path: Path,
-) -> dict[str, Any]:
+async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
     """Build a deterministic speech timeline from the exact VOT RU track."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -319,7 +287,7 @@ async def prepare_factory_ru_boundary_evidence(
     workdir: Path,
     source_language: str,
 ) -> dict[str, Any]:
-    """Build RU/source speech evidence before translated rendering."""
+    """Build request-local RU/source speech evidence before translated rendering."""
     exact_ru = read_ru_audio_provenance(workdir)
     if exact_ru is None:
         raise RuntimeError(
@@ -355,7 +323,7 @@ async def prepare_factory_ru_boundary_evidence(
     except Exception as exc:
         logger.warning(
             "Shorts Factory source-speech captions unavailable; "
-            "using stricter RU-only gap gate: %s",
+            "using RU-only gap evidence: %s",
             str(exc)[:220],
         )
 
@@ -386,93 +354,13 @@ async def prepare_factory_ru_boundary_evidence(
 
 
 @contextmanager
-def factory_ru_boundary_context(
-    evidence: dict[str, Any],
-) -> Iterator[None]:
-    """Bind one Factory request's translation evidence only for alignment."""
+def factory_ru_boundary_context(evidence: dict[str, Any]) -> Iterator[None]:
+    """Bind one Factory request's translation evidence only during alignment."""
     token = _CURRENT_TIMELINE.set(dict(evidence))
     try:
         yield
     finally:
         _CURRENT_TIMELINE.reset(token)
-
-
-def _prepare_arg(
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    name: str,
-    position: int,
-) -> Any:
-    value = kwargs.get(name)
-    if value is None and len(args) > position:
-        value = args[position]
-    return value
-
-
-def install_factory_ru_boundary_capture() -> bool:
-    """Bridge source-task evidence into the parent Factory request task."""
-    global _CAPTURE_INSTALLED
-    if _CAPTURE_INSTALLED:
-        return True
-
-    import pipelines.shorts_factory as factory_pipeline
-
-    current_prepare = factory_pipeline._prepare_translation_video
-    if not getattr(current_prepare, "_mp3bot_factory_ru_boundary_capture", False):
-
-        async def captured_prepare(*args: Any, **kwargs: Any):
-            result = await current_prepare(*args, **kwargs)
-            workdir_value = _prepare_arg(args, kwargs, "workdir", 1)
-            url_value = _prepare_arg(args, kwargs, "url", 0)
-            language_value = _prepare_arg(args, kwargs, "source_language", 3)
-            try:
-                if workdir_value is None or not url_value:
-                    logger.warning(
-                        "Shorts Factory RU boundary evidence missing workdir/url"
-                    )
-                    return result
-                evidence = await prepare_factory_ru_boundary_evidence(
-                    url=str(url_value),
-                    workdir=Path(workdir_value),
-                    source_language=str(language_value or ""),
-                )
-                _remember_video_timeline(Path(result), evidence)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                # Alignment remains fail-closed. The source can survive for
-                # diagnostics, but unproved translated candidates cannot render.
-                logger.warning(
-                    "Shorts Factory RU boundary evidence failed closed later: %s",
-                    str(exc)[:240],
-                )
-            return result
-
-        captured_prepare._mp3bot_factory_ru_boundary_capture = True  # type: ignore[attr-defined]
-        factory_pipeline._prepare_translation_video = captured_prepare
-
-    current_persist = factory_pipeline._persist_factory_source
-    if not getattr(current_persist, "_mp3bot_factory_ru_boundary_capture", False):
-
-        def captured_persist(source_path: Path, media_id: str) -> Path:
-            evidence = _take_video_timeline(source_path)
-            destination = current_persist(source_path, media_id)
-            _CURRENT_TIMELINE.set(dict(evidence) if evidence is not None else None)
-            if evidence is not None:
-                logger.info(
-                    "Shorts Factory RU boundary evidence bound to %s "
-                    "(ru_intervals=%d source_intervals=%d)",
-                    destination.name,
-                    len(evidence.get("intervals") or []),
-                    len(evidence.get("source_speech_intervals") or []),
-                )
-            return destination
-
-        captured_persist._mp3bot_factory_ru_boundary_capture = True  # type: ignore[attr-defined]
-        factory_pipeline._persist_factory_source = captured_persist
-
-    _CAPTURE_INSTALLED = True
-    return True
 
 
 def _candidate_limits(duration: float) -> tuple[float, float, bool]:
@@ -520,7 +408,7 @@ def _clip_speech_stats(
     start: float,
     end: float,
 ) -> tuple[float, float]:
-    """Return speech coverage ratio and largest gap inside a clip."""
+    """Return RU signal density and the largest no-RU interval inside a clip."""
     if end <= start:
         return 0.0, float("inf")
     overlaps: list[tuple[float, float]] = []
@@ -671,37 +559,29 @@ def align_candidates_to_ru_speech(
             continue
 
         minimum, public_max, is_long = _candidate_limits(semantic_duration)
-        max_internal_gap = _env_float(
-            "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_LONG_SEC"
-            if is_long
-            else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_SEC",
-            12.0 if is_long else 4.0,
-            1.0,
-            30.0,
-        )
         no_source_max_gap = _env_float(
             "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC"
             if is_long
             else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC",
-            6.0 if is_long else 2.0,
-            0.75,
-            20.0,
+            12.0 if is_long else 4.5,
+            1.0,
+            30.0,
         )
         minimum_coverage = _env_float(
             "SHORTS_FACTORY_RU_MIN_COVERAGE_LONG"
             if is_long
             else "SHORTS_FACTORY_RU_MIN_COVERAGE",
-            0.55 if is_long else 0.65,
-            0.20,
+            0.30 if is_long else 0.45,
+            0.15,
             0.98,
         )
         max_source_without_ru = _env_float(
             "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC"
             if is_long
             else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
-            2.50 if is_long else 1.75,
-            0.50,
-            8.0,
+            8.0 if is_long else 4.0,
+            1.0,
+            20.0,
         )
 
         # VOT speech is delayed in the actual mix. The semantic anchors belong
@@ -765,13 +645,6 @@ def align_candidates_to_ru_speech(
             rejected.append(str(item.get("title") or "low-ru-speech-coverage"))
             continue
 
-        effective_gap_limit = (
-            max_internal_gap if source_intervals else no_source_max_gap
-        )
-        if largest_gap > effective_gap_limit + 1e-6:
-            rejected.append(str(item.get("title") or "untranslated-ru-gap"))
-            continue
-
         source_uncovered_total = 0.0
         source_uncovered_largest = 0.0
         if source_intervals:
@@ -785,11 +658,20 @@ def align_candidates_to_ru_speech(
                 end=render_end,
                 cover_grace=source_cover_grace,
             )
+            # Provider captions distinguish actual source speech from natural
+            # silence. Only a substantial source-speaking span with no VOT RU
+            # counterpart is a translation-purity veto; shorter compression/
+            # cadence differences are expected in dubbing.
             if source_uncovered_largest > max_source_without_ru + 1e-6:
                 rejected.append(
                     str(item.get("title") or "source-speech-without-ru")
                 )
                 continue
+        elif largest_gap > no_source_max_gap + 1e-6:
+            # Without source captions we cannot tell source silence from missing
+            # translation, so use a deliberately conservative RU-only guard.
+            rejected.append(str(item.get("title") or "untranslated-ru-gap"))
+            continue
 
         item["start_seconds"] = render_start
         item["end_seconds"] = render_end
@@ -858,7 +740,6 @@ __all__ = [
     "align_candidates_to_ru_speech",
     "align_factory_livedub_candidates",
     "factory_ru_boundary_context",
-    "install_factory_ru_boundary_capture",
     "prepare_factory_ru_boundary_evidence",
     "speech_intervals_from_silence_log",
 ]
