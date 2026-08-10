@@ -110,6 +110,28 @@ def _composition_identity_payload(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _result_identity_payload(provenance: dict[str, Any]) -> dict[str, Any]:
+    """Bind rendered media/evidence, excluding machine paths and release copy."""
+    source = provenance.get("source") if isinstance(provenance.get("source"), dict) else {}
+    output = provenance.get("output") if isinstance(provenance.get("output"), dict) else {}
+    return {
+        "schema_name": provenance.get("schema_name"),
+        "schema_version": provenance.get("schema_version"),
+        "composition_id": provenance.get("composition_id"),
+        "piece": _piece_media_payload(provenance.get("piece")),
+        "source": {
+            "sha256": source.get("sha256"),
+            "bytes": source.get("bytes"),
+            "duration_seconds": source.get("duration_seconds"),
+        },
+        "output": {
+            "sha256": output.get("sha256"),
+            "bytes": output.get("bytes"),
+            "duration_seconds": output.get("duration_seconds"),
+        },
+    }
+
+
 def build_composition_template(
     *,
     source_video_path: Path,
@@ -527,8 +549,15 @@ def _load_verified_existing_result(
     if _piece_media_payload(provenance.get("piece")) != _piece_media_payload(piece):
         raise RuntimeError("existing composition output media piece changed")
     source = provenance.get("source") or {}
-    if source.get("sha256") != (document.get("source") or {}).get("sha256"):
+    document_source = document.get("source") or {}
+    if source.get("sha256") != document_source.get("sha256"):
         raise RuntimeError("existing composition output source SHA does not match")
+    if int(source.get("bytes") or 0) != int(document_source.get("bytes") or 0):
+        raise RuntimeError("existing composition output source byte count does not match")
+    source_duration = _finite_float(source.get("duration_seconds"))
+    document_duration = _finite_float(document_source.get("duration_seconds"))
+    if source_duration is None or document_duration is None or abs(source_duration - document_duration) > 0.01:
+        raise RuntimeError("existing composition output source duration does not match")
     output = provenance.get("output") or {}
     expected_path = str(output_path.resolve(strict=False))
     if str(output.get("local_path") or "") != expected_path:
@@ -539,9 +568,7 @@ def _load_verified_existing_result(
         raise RuntimeError("existing composition output size changed")
     if sha256_file(output_path) != output.get("sha256"):
         raise RuntimeError("existing composition output bytes changed")
-    expected_result_id = _canonical_sha256(
-        {key: value for key, value in provenance.items() if key != "result_id"}
-    )
+    expected_result_id = _canonical_sha256(_result_identity_payload(provenance))
     if provenance.get("result_id") != expected_result_id:
         raise RuntimeError("existing composition result_id is stale or corrupted")
     return _result_summary(provenance, sidecar_path)
@@ -651,10 +678,11 @@ async def _render_piece(
             "schema_name": RESULT_SCHEMA_NAME,
             "schema_version": RESULT_SCHEMA_VERSION,
             "composition_id": document["composition_id"],
-            "piece": piece,
+            "piece": _piece_media_payload(piece),
             "source": {
                 "local_path": str(source_path.resolve(strict=False)),
                 "sha256": document["source"]["sha256"],
+                "bytes": document["source"]["bytes"],
                 "duration_seconds": round(source_duration, 3),
             },
             "output": {
@@ -664,7 +692,7 @@ async def _render_piece(
                 "duration_seconds": round(float(probe.duration), 3),
             },
         }
-        provenance["result_id"] = _canonical_sha256(provenance)
+        provenance["result_id"] = _canonical_sha256(_result_identity_payload(provenance))
         temp_sidecar.write_text(
             json.dumps(provenance, ensure_ascii=False, indent=2, allow_nan=False),
             encoding="utf-8",
