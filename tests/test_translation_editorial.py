@@ -109,11 +109,12 @@ def test_review_pack_is_small_immutable_exchange_without_video_bytes(tmp_path: P
     assert "translated.mp4" not in names
 
 
-def test_same_voice_donor_search_is_grounded_and_can_exclude_bad_region(tmp_path: Path) -> None:
+def test_same_voice_donor_search_is_grounded_and_uses_phrase_boundaries(tmp_path: Path) -> None:
     russian = _write_srt(
         tmp_path / "ru.srt",
         [
             ("00:00:01,000", "00:00:02,000", "Эти дела бесполезны."),
+            ("00:00:05,000", "00:00:06,000", "Нам нужно сделать вывод."),
             ("00:00:10,000", "00:00:11,000", "Но добрые дела следуют за верой."),
             ("00:00:20,000", "00:00:21,000", "Ещё одна мысль."),
         ],
