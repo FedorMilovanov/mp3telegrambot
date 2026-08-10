@@ -7,6 +7,7 @@ import pytest
 import services.shorts_factory_timing as timing
 from services.shorts_factory_timing import (
     RU_BOUNDARY_PROOF,
+    RU_ONLY_BOUNDARY_PROOF,
     align_candidates_to_ru_speech,
     align_factory_livedub_candidates,
     speech_intervals_from_silence_log,
@@ -39,6 +40,19 @@ def test_silencedetect_log_is_inverted_into_exact_speech_spans():
     ]
 
 
+def test_stage_direction_caption_is_not_source_speech_evidence():
+    assert timing._caption_cue_is_lexical_speech("[Music]") is False
+    assert timing._caption_cue_is_lexical_speech("<i>[Applause]</i>") is False
+    assert timing._caption_cue_is_lexical_speech("{Laughter}") is False
+    assert timing._caption_cue_is_lexical_speech("♪ ♪") is False
+
+
+def test_real_caption_text_remains_source_speech_evidence():
+    assert timing._caption_cue_is_lexical_speech("Christ is risen.") is True
+    assert timing._caption_cue_is_lexical_speech(">> Speaker: Grace matters") is True
+    assert timing._caption_cue_is_lexical_speech("♪ Amazing grace ♪") is True
+
+
 def test_candidate_start_in_translation_gap_moves_to_first_proved_ru_speech():
     aligned = align_candidates_to_ru_speech(
         [_short()],
@@ -51,7 +65,7 @@ def test_candidate_start_in_translation_gap_moves_to_first_proved_ru_speech():
     item = aligned[0]
     assert item["start_seconds"] == pytest.approx(101.2)
     assert item["end_seconds"] == pytest.approx(146.08)
-    assert item["livedub_ru_boundary_proof"] == RU_BOUNDARY_PROOF
+    assert item["livedub_ru_boundary_proof"] == RU_ONLY_BOUNDARY_PROOF
     assert item["livedub_ru_start_shift_seconds"] == pytest.approx(1.2)
     assert item["livedub_ru_speech_coverage"] > 0.99
 
@@ -147,6 +161,7 @@ def test_source_silence_does_not_turn_natural_ru_pause_into_translation_failure(
     )
 
     assert len(aligned) == 1
+    assert aligned[0]["livedub_ru_boundary_proof"] == RU_BOUNDARY_PROOF
     assert aligned[0]["livedub_source_without_ru_max_burst_seconds"] == 0.0
     assert aligned[0]["livedub_ru_max_internal_gap_seconds"] == pytest.approx(6.0)
 
