@@ -20,6 +20,16 @@ class _ObservedTemporaryDirectory:
         shutil.rmtree(self.path)
 
 
+def _valid_ass_document() -> str:
+    return (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+        "Dialogue: 0,0:00:00.00,0:00:00.50,Default,,0,0,0,,test\n"
+    )
+
+
 def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subtitle_burn.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(
@@ -30,7 +40,7 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         subtitle_burn,
         "_generate_ass_from_segments",
-        lambda segments, karaoke: "[Script Info]\nTitle: test\n",
+        lambda segments, karaoke: _valid_ass_document(),
     )
     monkeypatch.setattr(
         subtitle_burn,
