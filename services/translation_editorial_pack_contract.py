@@ -14,6 +14,18 @@ from services.translation_editorial import (
     load_pack_manifest,
 )
 
+_MAX_ZIP_FILE_BYTES = 128 * 1024 * 1024
+_MAX_ZIP_MEMBERS = 8
+_MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
+_MEMBER_LIMITS = {
+    "manifest.json": 4 * 1024 * 1024,
+    "candidates.json": 16 * 1024 * 1024,
+    "original.srt": 64 * 1024 * 1024,
+    "russian_whisper.srt": 64 * 1024 * 1024,
+    "russian_whisper_words.json": 128 * 1024 * 1024,
+    "REVIEW_INSTRUCTIONS.md": 256 * 1024,
+}
+
 
 def _review_contract() -> dict[str, Any]:
     return {
@@ -52,9 +64,44 @@ def _timeline_instructions() -> str:
     )
 
 
-def load_verified_review_pack(pack_path: Path) -> dict[str, Any]:
-    """Verify identity-bearing evidence plus human/model-facing ZIP instructions."""
+def _preflight_zip(pack_path: Path) -> None:
+    """Bound memory/disk-abuse properties before any ZIP member is read."""
     pack_path = Path(pack_path)
+    if not pack_path.is_file():
+        raise FileNotFoundError(pack_path)
+    physical_size = pack_path.stat().st_size
+    if physical_size <= 0 or physical_size > _MAX_ZIP_FILE_BYTES:
+        raise ValueError("translation editorial ZIP physical size is outside the safe limit")
+
+    with zipfile.ZipFile(pack_path, "r") as archive:
+        infos = archive.infolist()
+        if not infos or len(infos) > _MAX_ZIP_MEMBERS:
+            raise ValueError("translation editorial ZIP member count is outside the safe limit")
+        names = [item.filename for item in infos]
+        if len(names) != len(set(names)):
+            raise ValueError("translation editorial ZIP contains duplicate members")
+
+        total = 0
+        for info in infos:
+            name = str(info.filename)
+            if not name or Path(name).name != name or info.is_dir():
+                raise ValueError(f"unsafe translation editorial ZIP member name: {name}")
+            if info.flag_bits & 0x1:
+                raise ValueError(f"encrypted translation editorial ZIP member is not allowed: {name}")
+            if info.file_size < 0 or info.compress_size < 0:
+                raise ValueError(f"invalid translation editorial ZIP member sizes: {name}")
+            limit = _MEMBER_LIMITS.get(name, 16 * 1024 * 1024)
+            if info.file_size > limit:
+                raise ValueError(f"translation editorial ZIP member exceeds safe limit: {name}")
+            total += info.file_size
+            if total > _MAX_TOTAL_UNCOMPRESSED_BYTES:
+                raise ValueError("translation editorial ZIP expands beyond the safe total limit")
+
+
+def load_verified_review_pack(pack_path: Path) -> dict[str, Any]:
+    """Verify bounded evidence plus human/model-facing ZIP instructions."""
+    pack_path = Path(pack_path)
+    _preflight_zip(pack_path)
     manifest = load_pack_manifest(pack_path)
     transcripts = manifest.get("transcripts") or {}
     expected_files = {
