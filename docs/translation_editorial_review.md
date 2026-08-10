@@ -67,6 +67,8 @@ Version 1 recognizes four editorial actions:
 
 Only `drop_span` and `mute_span` are executable automatically in v1. `borrow_span` is deliberately review-only: donor discovery is deterministic, but inserting borrowed speech can create false phrasing or mismatched prosody/background audio and therefore requires a later explicitly approved repair pass.
 
+`drop_span` is intentionally bounded as a **surgical** operation rather than a general-purpose edit decision. One automatic drop may remove at most 8 seconds. Across the full sermon, merged automatic drops may remove at most `min(60 seconds, max(5 seconds, 2% of the probed source duration))`. Overlapping drops count only once after merging. `mute_span` does not shorten the argument timeline and is not charged to this deletion budget. The review validator applies the limit before a plan can be approved, and `apply_safe_repairs()` independently recomputes it from the real probed media duration before FFmpeg, so a hand-edited review or direct service call cannot bypass the destructive-removal limit.
+
 ## PowerShell workflow
 
 From the repository root:
@@ -128,6 +130,7 @@ The repair command refuses to run when:
 - the full sermon is rejected;
 - the review contains unresolved `borrow_span` or `reject_region` actions;
 - a repair timestamp is non-finite or outside the source;
+- one `drop_span` exceeds 8 seconds or merged automatic drops exceed the source-specific surgical deletion budget;
 - FFmpeg output does not pass the final video+audio probe and duration check.
 
 An exact previously verified output+sidecar pair for the same review is reused without a second FFmpeg run. New media is rendered through temporary/no-overwrite paths. Final-path ownership is deliberately conservative: if a late provenance-finalization race or failure leaves only one half of the final output/provenance pair, the CLI does **not** blindly unlink that final path because it may belong to another concurrent process. The next run detects the partial pair and fails closed for explicit operator resolution instead of risking data loss.
