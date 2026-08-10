@@ -20,6 +20,8 @@ from services.translation_editorial import sha256_file
 
 COMPOSITION_SCHEMA_NAME = "mp3telegrambot.translation-editorial-composition"
 COMPOSITION_SCHEMA_VERSION = 1
+HANDOFF_SCHEMA_NAME = "mp3telegrambot.editorial-release-handoff"
+HANDOFF_SCHEMA_VERSION = 1
 PIECE_KINDS = {"full", "excerpt", "short"}
 ASSEMBLY_MODES = {"continuous", "editorial_sequence"}
 
@@ -50,6 +52,9 @@ def build_composition_template(
     performer: str = "",
     source_review_pack_id: str = "",
     source_review_sha256: str = "",
+    project_key: str = "",
+    youtube_account_alias: str = "",
+    youtube_channel_id: str = "",
 ) -> dict[str, Any]:
     """Create an empty exact-source composition document for external editing."""
     source_video_path = Path(source_video_path)
@@ -68,6 +73,11 @@ def build_composition_template(
             "review_pack_id": str(source_review_pack_id or ""),
             "review_sha256": str(source_review_sha256 or ""),
         },
+        "release_target": {
+            "project_key": str(project_key or ""),
+            "youtube_account_alias": str(youtube_account_alias or ""),
+            "youtube_channel_id": str(youtube_channel_id or ""),
+        },
         "pieces": [],
     }
     document["composition_id"] = composition_id(document)
@@ -75,11 +85,7 @@ def build_composition_template(
 
 
 def composition_id(document: dict[str, Any]) -> str:
-    payload = {
-        key: value
-        for key, value in document.items()
-        if key != "composition_id"
-    }
+    payload = {key: value for key, value in document.items() if key != "composition_id"}
     return _canonical_sha256(payload)
 
 
@@ -150,6 +156,10 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
         errors.append("source.sha256 must be canonical sha256:<64 hex>")
     if not str(source.get("local_path") or "").strip():
         errors.append("source.local_path is required")
+
+    target = document.get("release_target")
+    if target is not None and not isinstance(target, dict):
+        errors.append("release_target must be an object")
 
     pieces = document.get("pieces")
     if not isinstance(pieces, list) or not pieces:
@@ -238,9 +248,7 @@ def _piece_filter(piece: dict[str, Any]) -> tuple[str, float]:
             f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{index}]"
         )
         inputs.append(f"[v{index}][a{index}]")
-    parts.append(
-        "".join(inputs) + f"concat=n={len(segments)}:v=1:a=1[outv][outa]"
-    )
+    parts.append("".join(inputs) + f"concat=n={len(segments)}:v=1:a=1[outv][outa]")
     return ";".join(parts), total
 
 
@@ -362,6 +370,48 @@ async def render_composition(
     return results
 
 
+def build_release_handoff(
+    document: dict[str, Any],
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Create an immutable provider-inert package for a later release manager."""
+    by_id = {str(item.get("piece_id")): item for item in results if isinstance(item, dict)}
+    outputs: list[dict[str, Any]] = []
+    for piece in document.get("pieces") or []:
+        piece_id = str(piece.get("piece_id") or "")
+        result = by_id.get(piece_id)
+        if result is None:
+            raise ValueError(f"missing rendered result for {piece_id}")
+        outputs.append(
+            {
+                "piece_id": piece_id,
+                "kind": piece.get("kind"),
+                "media": {
+                    "local_path": result.get("output_path"),
+                    "sha256": result.get("output_sha256"),
+                    "duration_seconds": result.get("duration_seconds"),
+                    "provenance_path": result.get("provenance_path"),
+                },
+                "publication": piece.get("publication") or {},
+                "source_segments": piece.get("segments") or [],
+                "assembly_mode": piece.get("assembly_mode"),
+                "editorial_rationale": piece.get("editorial_rationale") or "",
+            }
+        )
+    handoff = {
+        "schema_name": HANDOFF_SCHEMA_NAME,
+        "schema_version": HANDOFF_SCHEMA_VERSION,
+        "composition_id": document.get("composition_id"),
+        "source_sha256": (document.get("source") or {}).get("sha256"),
+        "release_target": document.get("release_target") or {},
+        "provider_write_authorized": False,
+        "target_system": "video-channel-manager",
+        "outputs": outputs,
+    }
+    handoff["handoff_id"] = _canonical_sha256(handoff)
+    return handoff
+
+
 def candidate_overlap_with_spans(
     candidate: dict[str, Any],
     spans: Iterable[tuple[float, float]],
@@ -378,8 +428,11 @@ __all__ = [
     "ASSEMBLY_MODES",
     "COMPOSITION_SCHEMA_NAME",
     "COMPOSITION_SCHEMA_VERSION",
+    "HANDOFF_SCHEMA_NAME",
+    "HANDOFF_SCHEMA_VERSION",
     "PIECE_KINDS",
     "build_composition_template",
+    "build_release_handoff",
     "candidate_overlap_with_spans",
     "composition_id",
     "piece_duration",
