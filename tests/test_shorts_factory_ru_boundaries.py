@@ -1,7 +1,10 @@
 """Regression coverage for RU-speech-proven Factory cut boundaries."""
 
+from pathlib import Path
+
 import pytest
 
+import services.shorts_factory_timing as timing
 from services.shorts_factory_timing import (
     RU_BOUNDARY_PROOF,
     align_candidates_to_ru_speech,
@@ -145,6 +148,47 @@ def test_source_silence_does_not_turn_natural_ru_pause_into_translation_failure(
 
     assert len(aligned) == 1
     assert aligned[0]["livedub_source_without_ru_max_burst_seconds"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_source_caption_speech_is_shifted_into_ru_mix_timeline(
+    monkeypatch,
+    tmp_path,
+):
+    ru_path = tmp_path / "vot.mp3"
+    ru_path.write_bytes(b"x" * 2048)
+    monkeypatch.setattr(timing, "read_ru_audio_provenance", lambda _root: ru_path)
+
+    async def fake_ru(_path: Path):
+        return {
+            "audio_name": "vot.mp3",
+            "audio_duration_seconds": 60.0,
+            "delay_seconds": 0.6,
+            "intervals": [(10.6, 20.6)],
+        }
+
+    async def fake_source(**_kwargs):
+        return [(10.0, 20.0)], "provider-source-srt"
+
+    monkeypatch.setattr(timing, "_detect_exact_ru_speech", fake_ru)
+    monkeypatch.setattr(timing, "_download_source_speech_intervals", fake_source)
+
+    evidence = await timing.prepare_factory_ru_boundary_evidence(
+        url="https://example.test/video",
+        workdir=tmp_path,
+        source_language="en",
+    )
+
+    assert evidence["source_speech_intervals"] == pytest.approx([(10.6, 20.6)])
+    assert evidence["source_speech_proof"] == "provider-source-srt+mix-delay"
+    assert evidence["proof"] == RU_BOUNDARY_PROOF
+
+
+@pytest.mark.asyncio
+async def test_exact_ru_audio_duration_has_no_metadata_fallback(monkeypatch, tmp_path):
+    monkeypatch.setattr(timing.shutil, "which", lambda _name: None)
+
+    assert await timing._probe_audio_duration(tmp_path / "missing.mp3") == 0.0
 
 
 def test_unproved_runtime_timeline_has_no_original_timestamp_fallback():
