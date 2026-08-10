@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Speech-proven render boundaries for translated SHORTS FACTORY cuts.
 
-Gemini still chooses semantic candidates from the original source. For a
-foreign-language source those timestamps are semantic anchors, not publication
-boundaries. This module derives exact Russian speech evidence from the
-provenance-bound VOT audio, optionally adds source-speech timing from provider
-captions, and refines every translated candidate on the final mixed timeline.
+Gemini chooses semantic candidates from the original source. For a foreign-
+language source those timestamps are discovery anchors, not publication
+boundaries. This module derives exact Russian-speech evidence from the
+provenance-bound Yandex VOT audio, optionally adds provider-caption evidence for
+source-language speech, and refines every translated candidate on the real
+final-mix timeline.
 
-Evidence is request-local: the parent Factory coroutine creates it from its own
-workdir, binds it only while candidates are aligned, then releases it. There is
-no process-global handoff or timestamp fallback for translated publication.
+Evidence is request-local through ``ContextVar``. There is no process-global
+timeline handoff and no fallback to unverified original-language timestamps.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import shutil
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 from services.async_process import run_cancellable_process
 from services.livedub_mix import get_mix_params
@@ -34,12 +34,29 @@ PUBLIC_SHORT_MAX_SEC = 180.0
 PUBLIC_LONG_MAX_SEC = 900.0
 SHORT_MIN_SEC = 35.0
 LONG_MIN_SEC = 300.0
-RU_BOUNDARY_PROOF = "exact-vot-ru-plus-source-speech-v3"
+RU_BOUNDARY_PROOF = "exact-vot-ru-plus-source-speech-v4"
+RU_ONLY_BOUNDARY_PROOF = "exact-vot-ru-silencedetect-v4"
+CandidateKind = Literal["short", "long"]
 
 _CURRENT_TIMELINE: ContextVar[dict[str, Any] | None] = ContextVar(
     "factory_ru_boundary_timeline",
     default=None,
 )
+
+_STAGE_ONLY_WORDS = {
+    "applause",
+    "applauding",
+    "cheering",
+    "cheers",
+    "crowd",
+    "laugh",
+    "laughing",
+    "laughter",
+    "music",
+    "музыка",
+    "аплодисменты",
+    "смех",
+}
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -72,12 +89,52 @@ def _format_seconds(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def _strip_simple_html(text: str) -> str:
+    """Remove caption formatting tags without regex or semantic rewriting."""
+    out: list[str] = []
+    in_tag = False
+    for char in str(text or ""):
+        if char == "<":
+            in_tag = True
+            continue
+        if char == ">" and in_tag:
+            in_tag = False
+            continue
+        if not in_tag:
+            out.append(char)
+    return "".join(out)
+
+
+def _caption_cue_is_lexical_speech(text: str) -> bool:
+    """Reject stage-direction-only cues while retaining real words and lyrics."""
+    cleaned = " ".join(_strip_simple_html(text).replace("\x00", " ").split()).strip()
+    if not cleaned:
+        return False
+    without_notes = cleaned.replace("♪", " ").replace("♫", " ").strip()
+    if not any(char.isalnum() for char in without_notes):
+        return False
+
+    candidate = without_notes.casefold().strip()
+    wrappers = (("[", "]"), ("{", "}"), ("(", ")"))
+    for left, right in wrappers:
+        if candidate.startswith(left) and candidate.endswith(right):
+            inner = candidate[1:-1].strip(" .!?:;-—–_\t")
+            words = [
+                "".join(char for char in token if char.isalpha())
+                for token in inner.split()
+            ]
+            words = [word for word in words if word]
+            if words and all(word in _STAGE_ONLY_WORDS for word in words):
+                return False
+    return True
+
+
 def _silence_event_value(line: str, marker: str) -> float | None:
     """Parse one FFmpeg silencedetect numeric value without regex."""
     position = str(line or "").find(marker)
     if position < 0:
         return None
-    tail = str(line)[position + len(marker):].lstrip()
+    tail = str(line)[position + len(marker) :].lstrip()
     token = tail.split(maxsplit=1)[0] if tail else ""
     token = token.rstrip("|,;")
     try:
@@ -261,7 +318,7 @@ async def _download_source_speech_intervals(
     workdir: Path,
     source_language: str,
 ) -> tuple[list[tuple[float, float]], str]:
-    """Use provider/manual captions as source-speech timing when available."""
+    """Use lexical provider/manual captions as source-speech timing evidence."""
     from services.translation_editorial import parse_srt
     from services.translation_editorial_factory import download_original_srt
 
@@ -273,11 +330,15 @@ async def _download_source_speech_intervals(
     )
     cues = parse_srt(srt_path)
     intervals = _merge_intervals(
-        [(float(cue.start), float(cue.end)) for cue in cues],
+        [
+            (float(cue.start), float(cue.end))
+            for cue in cues
+            if _caption_cue_is_lexical_speech(getattr(cue, "text", ""))
+        ],
         max_gap=0.35,
     )
     if not intervals:
-        raise RuntimeError("provider source captions contain no usable speech intervals")
+        raise RuntimeError("provider source captions contain no usable lexical speech intervals")
     return intervals, "provider-source-srt"
 
 
@@ -327,24 +388,7 @@ async def prepare_factory_ru_boundary_evidence(
             str(exc)[:220],
         )
 
-    # Provider captions are on the original timeline. VOT speech is delayed in
-    # the actual mix, so compare translation coverage against the source phrase
-    # shifted by that exact same mix delay. Otherwise the intentional language
-    # lead-in would be falsely classified as an untranslated source burst.
-    delay_sec = max(0.0, float(ru_evidence.get("delay_seconds") or 0.0))
-    if source_intervals:
-        source_intervals = [
-            (start + delay_sec, end + delay_sec)
-            for start, end in source_intervals
-            if end > start
-        ]
-        source_proof += "+mix-delay"
-
-    proof = (
-        RU_BOUNDARY_PROOF
-        if source_intervals
-        else "exact-vot-ru-silencedetect-v3"
-    )
+    proof = RU_BOUNDARY_PROOF if source_intervals else RU_ONLY_BOUNDARY_PROOF
     return {
         **ru_evidence,
         "proof": proof,
@@ -355,7 +399,6 @@ async def prepare_factory_ru_boundary_evidence(
 
 @contextmanager
 def factory_ru_boundary_context(evidence: dict[str, Any]) -> Iterator[None]:
-    """Bind one Factory request's translation evidence only during alignment."""
     token = _CURRENT_TIMELINE.set(dict(evidence))
     try:
         yield
@@ -363,37 +406,29 @@ def factory_ru_boundary_context(evidence: dict[str, Any]) -> Iterator[None]:
         _CURRENT_TIMELINE.reset(token)
 
 
-def _candidate_limits(duration: float) -> tuple[float, float, bool]:
-    is_long = duration >= LONG_MIN_SEC
-    if is_long:
+def _candidate_limits(candidate_kind: CandidateKind) -> tuple[float, float, bool]:
+    if candidate_kind == "long":
         return LONG_MIN_SEC, PUBLIC_LONG_MAX_SEC, True
-    return SHORT_MIN_SEC, PUBLIC_SHORT_MAX_SEC, False
+    if candidate_kind == "short":
+        return SHORT_MIN_SEC, PUBLIC_SHORT_MAX_SEC, False
+    raise ValueError(f"unsupported Factory candidate kind: {candidate_kind!r}")
 
 
-def _find_interval_containing(
-    intervals: list[tuple[float, float]],
-    point: float,
-) -> tuple[float, float] | None:
+def _find_interval_containing(intervals: list[tuple[float, float]], point: float) -> tuple[float, float] | None:
     for start, end in intervals:
         if start <= point <= end:
             return start, end
     return None
 
 
-def _next_interval(
-    intervals: list[tuple[float, float]],
-    point: float,
-) -> tuple[float, float] | None:
+def _next_interval(intervals: list[tuple[float, float]], point: float) -> tuple[float, float] | None:
     for start, end in intervals:
         if start >= point:
             return start, end
     return None
 
 
-def _previous_interval(
-    intervals: list[tuple[float, float]],
-    point: float,
-) -> tuple[float, float] | None:
+def _previous_interval(intervals: list[tuple[float, float]], point: float) -> tuple[float, float] | None:
     previous = None
     for start, end in intervals:
         if end <= point:
@@ -403,12 +438,7 @@ def _previous_interval(
     return previous
 
 
-def _clip_speech_stats(
-    intervals: list[tuple[float, float]],
-    start: float,
-    end: float,
-) -> tuple[float, float]:
-    """Return RU signal density and the largest no-RU interval inside a clip."""
+def _clip_speech_stats(intervals: list[tuple[float, float]], start: float, end: float) -> tuple[float, float]:
     if end <= start:
         return 0.0, float("inf")
     overlaps: list[tuple[float, float]] = []
@@ -419,7 +449,6 @@ def _clip_speech_stats(
             overlaps.append((left, right))
     if not overlaps:
         return 0.0, end - start
-
     speech_seconds = sum(right - left for left, right in overlaps)
     largest_gap = max(0.0, overlaps[0][0] - start, end - overlaps[-1][1])
     for previous, following in zip(overlaps, overlaps[1:]):
@@ -427,15 +456,7 @@ def _clip_speech_stats(
     return speech_seconds / (end - start), largest_gap
 
 
-def _subtract_intervals(
-    base: list[tuple[float, float]],
-    cover: list[tuple[float, float]],
-    *,
-    start: float,
-    end: float,
-    cover_grace: float,
-) -> list[tuple[float, float]]:
-    """Return source-speech spans not covered by corresponding RU speech."""
+def _subtract_intervals(base, cover, *, start: float, end: float, cover_grace: float):
     uncovered: list[tuple[float, float]] = []
     for raw_start, raw_end in base:
         left = max(start, raw_start)
@@ -446,9 +467,7 @@ def _subtract_intervals(
         for cover_start, cover_end in cover:
             expanded_start = max(start, cover_start - cover_grace)
             expanded_end = min(end, cover_end + cover_grace)
-            if expanded_end <= left or expanded_start >= right:
-                continue
-            next_fragments: list[tuple[float, float]] = []
+            next_fragments = []
             for frag_start, frag_end in fragments:
                 if expanded_end <= frag_start or expanded_start >= frag_end:
                     next_fragments.append((frag_start, frag_end))
@@ -460,286 +479,160 @@ def _subtract_intervals(
             fragments = next_fragments
             if not fragments:
                 break
-        uncovered.extend(
-            (frag_start, frag_end)
-            for frag_start, frag_end in fragments
-            if frag_end - frag_start >= 0.05
-        )
+        uncovered.extend((a, b) for a, b in fragments if b - a >= 0.05)
     return _merge_intervals(uncovered, max_gap=0.10)
 
 
-def _source_without_ru_stats(
-    source_intervals: list[tuple[float, float]],
-    ru_intervals: list[tuple[float, float]],
-    *,
-    start: float,
-    end: float,
-    cover_grace: float,
-) -> tuple[float, float]:
-    uncovered = _subtract_intervals(
-        source_intervals,
-        ru_intervals,
-        start=start,
-        end=end,
-        cover_grace=cover_grace,
-    )
+def _source_without_ru_stats(source_intervals, ru_intervals, *, start, end, cover_grace):
+    uncovered = _subtract_intervals(source_intervals, ru_intervals, start=start, end=end, cover_grace=cover_grace)
     if not uncovered:
-        return 0.0, 0.0
-    total = sum(span_end - span_start for span_start, span_end in uncovered)
-    largest = max(span_end - span_start for span_start, span_end in uncovered)
-    return total, largest
+        return 0.0, 0.0, []
+    total = sum(b - a for a, b in uncovered)
+    largest = max(b - a for a, b in uncovered)
+    return total, largest, uncovered
+
+
+def _edge_uncovered_max(spans, *, start, end, edge_window):
+    windows = [(start, min(end, start + edge_window)), (max(start, end - edge_window), end)]
+    largest = 0.0
+    for a, b in spans:
+        for c, d in windows:
+            largest = max(largest, min(b, d) - max(a, c))
+    return max(0.0, largest)
+
+
+def _reclaim_public_limit(*, render_start, render_end, target_start, target_end, public_max):
+    overflow = (render_end - render_start) - public_max
+    if overflow <= 1e-6:
+        return render_start, render_end
+    reclaimable_right = max(0.0, render_end - max(render_start, target_end))
+    take = min(overflow, reclaimable_right)
+    render_end -= take
+    overflow -= take
+    reclaimable_left = max(0.0, min(target_start, render_end) - render_start)
+    take = min(overflow, reclaimable_left)
+    render_start += take
+    overflow -= take
+    if overflow > 1e-6 or render_end <= render_start:
+        return None
+    return render_start, render_end
 
 
 def align_candidates_to_ru_speech(
-    candidates: list[dict[str, Any]],
-    *,
-    source_duration: int | float,
-    speech_intervals: list[tuple[float, float]],
-    delay_seconds: float,
+    candidates: list[dict[str, Any]], *, source_duration: int | float,
+    speech_intervals: list[tuple[float, float]], delay_seconds: float,
     source_speech_intervals: list[tuple[float, float]] | None = None,
-    source_speech_proof: str = "",
-    proof: str = RU_BOUNDARY_PROOF,
+    source_speech_proof: str = "", proof: str | None = None,
+    candidate_kind: CandidateKind = "short",
 ) -> list[dict[str, Any]]:
-    """Convert original semantic anchors into publication-safe RU ranges."""
     if not candidates:
         return []
+    minimum, public_max, is_long = _candidate_limits(candidate_kind)
     intervals = _merge_intervals(speech_intervals, max_gap=0.10)
     if not intervals:
-        raise RuntimeError(
-            "Factory translated cuts have no proved Russian speech timeline"
-        )
-
-    source_intervals = _merge_intervals(
-        list(source_speech_intervals or []),
-        max_gap=0.35,
-    )
-    try:
-        source_limit = max(0.0, float(source_duration))
-    except (TypeError, ValueError):
-        source_limit = 0.0
+        raise RuntimeError("Factory translated cuts have no proved Russian speech timeline")
+    source_intervals = _merge_intervals(list(source_speech_intervals or []), max_gap=0.35)
+    effective_proof = proof or (RU_BOUNDARY_PROOF if source_intervals else RU_ONLY_BOUNDARY_PROOF)
+    source_limit = float(source_duration)
     if not math.isfinite(source_limit) or source_limit <= 0:
         raise RuntimeError("Factory translated source duration is not finite/positive")
-    try:
-        delay = max(0.0, float(delay_seconds))
-    except (TypeError, ValueError):
-        delay = 0.0
-    if not math.isfinite(delay):
-        delay = 0.0
-
-    max_start_back = _env_float(
-        "SHORTS_FACTORY_RU_START_BACK_SEC", 3.0, 0.25, 8.0
-    )
-    max_start_forward = _env_float(
-        "SHORTS_FACTORY_RU_START_FORWARD_SEC", 4.0, 0.25, 10.0
-    )
-    max_end_forward = _env_float(
-        "SHORTS_FACTORY_RU_END_FORWARD_SEC", 4.0, 0.25, 10.0
-    )
-    max_end_back = _env_float(
-        "SHORTS_FACTORY_RU_END_BACK_SEC", 4.0, 0.25, 10.0
-    )
-    end_pad = _env_float(
-        "SHORTS_FACTORY_RU_END_PAD_SEC", 0.08, 0.0, 0.30
-    )
-    source_cover_grace = _env_float(
-        "SHORTS_FACTORY_SOURCE_RU_COVERAGE_GRACE_SEC",
-        0.20,
-        0.0,
-        0.75,
-    )
-
-    aligned: list[dict[str, Any]] = []
-    rejected: list[str] = []
-
+    delay = max(0.0, float(delay_seconds)) if math.isfinite(float(delay_seconds)) else 0.0
+    max_start_back = _env_float("SHORTS_FACTORY_RU_START_BACK_SEC", 3.0, 0.25, 8.0)
+    max_start_forward = _env_float("SHORTS_FACTORY_RU_START_FORWARD_SEC", 4.0, 0.25, 10.0)
+    max_end_forward = _env_float("SHORTS_FACTORY_RU_END_FORWARD_SEC", 4.0, 0.25, 10.0)
+    max_end_back = _env_float("SHORTS_FACTORY_RU_END_BACK_SEC", 4.0, 0.25, 10.0)
+    end_pad = _env_float("SHORTS_FACTORY_RU_END_PAD_SEC", 0.08, 0.0, 0.30)
+    source_cover_grace = _env_float("SHORTS_FACTORY_SOURCE_RU_COVERAGE_GRACE_SEC", 0.20, 0.0, 0.75)
+    edge_window = _env_float("SHORTS_FACTORY_SOURCE_EDGE_WINDOW_SEC", 2.0, 0.5, 5.0)
+    no_source_max_gap = _env_float("SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC" if is_long else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC", 12.0 if is_long else 4.5, 1.0, 30.0)
+    minimum_coverage = _env_float("SHORTS_FACTORY_RU_MIN_COVERAGE_LONG" if is_long else "SHORTS_FACTORY_RU_MIN_COVERAGE", 0.30 if is_long else 0.45, 0.15, 0.98)
+    max_source_without_ru = _env_float("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", 8.0 if is_long else 4.0, 1.0, 20.0)
+    configured_edge_limit = _env_float("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC", 1.50 if is_long else 1.25, 0.50, 4.0)
+    edge_source_without_ru = max(configured_edge_limit, delay + source_cover_grace + 0.15)
+    aligned, rejected = [], []
     for item in copy.deepcopy(candidates):
         semantic_start, semantic_end = _candidate_seconds(item)
         semantic_duration = semantic_end - semantic_start
-        if semantic_duration <= 0:
-            rejected.append(str(item.get("title") or "invalid"))
-            continue
-
-        minimum, public_max, is_long = _candidate_limits(semantic_duration)
-        no_source_max_gap = _env_float(
-            "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC"
-            if is_long
-            else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC",
-            12.0 if is_long else 4.5,
-            1.0,
-            30.0,
-        )
-        minimum_coverage = _env_float(
-            "SHORTS_FACTORY_RU_MIN_COVERAGE_LONG"
-            if is_long
-            else "SHORTS_FACTORY_RU_MIN_COVERAGE",
-            0.30 if is_long else 0.45,
-            0.15,
-            0.98,
-        )
-        max_source_without_ru = _env_float(
-            "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC"
-            if is_long
-            else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
-            8.0 if is_long else 4.0,
-            1.0,
-            20.0,
-        )
-
-        # VOT speech is delayed in the actual mix. The semantic anchors belong
-        # to the original timeline, so both anchors must move by that exact
-        # configured delay before phrase-boundary refinement.
-        target_start = semantic_start + delay
-        target_end = semantic_end + delay
-
+        if semantic_duration <= 0 or semantic_duration > public_max + 1e-6:
+            rejected.append(str(item.get("title") or "invalid-or-overlong")); continue
+        target_start, target_end = semantic_start + delay, semantic_end + delay
         start_interval = _find_interval_containing(intervals, target_start)
-        if start_interval is not None:
-            distance = target_start - start_interval[0]
-            render_start = (
-                start_interval[0]
-                if distance <= max_start_back
-                else target_start
-            )
+        if start_interval:
+            render_start = start_interval[0] if target_start - start_interval[0] <= max_start_back else target_start
         else:
             next_interval = _next_interval(intervals, target_start)
-            if (
-                next_interval is None
-                or next_interval[0] - target_start > max_start_forward
-            ):
-                rejected.append(str(item.get("title") or "start-no-ru-speech"))
-                continue
+            if next_interval is None or next_interval[0] - target_start > max_start_forward:
+                rejected.append(str(item.get("title") or "start-no-ru-speech")); continue
             render_start = next_interval[0]
-
         end_interval = _find_interval_containing(intervals, target_end)
-        if end_interval is not None:
-            distance = end_interval[1] - target_end
-            render_end = (
-                end_interval[1] + end_pad
-                if distance <= max_end_forward
-                else target_end
-            )
+        if end_interval:
+            render_end = end_interval[1] + end_pad if end_interval[1] - target_end <= max_end_forward else target_end
         else:
             previous_interval = _previous_interval(intervals, target_end)
-            if (
-                previous_interval is None
-                or target_end - previous_interval[1] > max_end_back
-            ):
-                rejected.append(str(item.get("title") or "end-no-ru-speech"))
-                continue
+            if previous_interval is None or target_end - previous_interval[1] > max_end_back:
+                rejected.append(str(item.get("title") or "end-no-ru-speech")); continue
             render_end = previous_interval[1] + end_pad
-
-        render_start = max(0.0, min(source_limit, render_start))
-        render_end = max(0.0, min(source_limit, render_end))
+        render_start, render_end = max(0.0, min(source_limit, render_start)), max(0.0, min(source_limit, render_end))
+        reclaimed = _reclaim_public_limit(render_start=render_start, render_end=render_end, target_start=target_start, target_end=target_end, public_max=public_max)
+        if reclaimed is None:
+            rejected.append(str(item.get("title") or "too-long-after-ru-align")); continue
+        render_start, render_end = reclaimed
         rendered_duration = render_end - render_start
         if rendered_duration < minimum - 1e-6:
-            rejected.append(str(item.get("title") or "too-short-after-ru-align"))
-            continue
-        if rendered_duration > public_max + 1e-6:
-            rejected.append(str(item.get("title") or "too-long-after-ru-align"))
-            continue
-
-        coverage, largest_gap = _clip_speech_stats(
-            intervals,
-            render_start,
-            render_end,
-        )
+            rejected.append(str(item.get("title") or "too-short-after-ru-align")); continue
+        coverage, largest_gap = _clip_speech_stats(intervals, render_start, render_end)
         if coverage + 1e-6 < minimum_coverage:
-            rejected.append(str(item.get("title") or "low-ru-speech-coverage"))
-            continue
-
-        source_uncovered_total = 0.0
-        source_uncovered_largest = 0.0
+            rejected.append(str(item.get("title") or "low-ru-speech-coverage")); continue
+        source_uncovered_total = source_uncovered_largest = source_uncovered_edge = 0.0
         if source_intervals:
-            (
-                source_uncovered_total,
-                source_uncovered_largest,
-            ) = _source_without_ru_stats(
-                source_intervals,
-                intervals,
-                start=render_start,
-                end=render_end,
-                cover_grace=source_cover_grace,
-            )
-            # Provider captions distinguish actual source speech from natural
-            # silence. Only a substantial source-speaking span with no VOT RU
-            # counterpart is a translation-purity veto; shorter compression/
-            # cadence differences are expected in dubbing.
+            source_uncovered_total, source_uncovered_largest, uncovered_spans = _source_without_ru_stats(source_intervals, intervals, start=render_start, end=render_end, cover_grace=source_cover_grace)
+            source_uncovered_edge = _edge_uncovered_max(uncovered_spans, start=render_start, end=render_end, edge_window=edge_window)
+            if source_uncovered_edge > edge_source_without_ru + 1e-6:
+                rejected.append(str(item.get("title") or "source-edge-without-ru")); continue
             if source_uncovered_largest > max_source_without_ru + 1e-6:
-                rejected.append(
-                    str(item.get("title") or "source-speech-without-ru")
-                )
-                continue
+                rejected.append(str(item.get("title") or "source-speech-without-ru")); continue
         elif largest_gap > no_source_max_gap + 1e-6:
-            # Without source captions we cannot tell source silence from missing
-            # translation, so use a deliberately conservative RU-only guard.
-            rejected.append(str(item.get("title") or "untranslated-ru-gap"))
-            continue
-
-        item["start_seconds"] = render_start
-        item["end_seconds"] = render_end
-        item["duration_seconds"] = rendered_duration
-        item["start"] = _format_seconds(render_start)
-        item["end"] = _format_seconds(render_end)
-        item["livedub_semantic_start_seconds"] = semantic_start
-        item["livedub_semantic_end_seconds"] = semantic_end
-        item["livedub_ru_target_start_seconds"] = target_start
-        item["livedub_ru_target_end_seconds"] = target_end
-        item["livedub_ru_boundary_proof"] = proof
-        item["livedub_ru_start_shift_seconds"] = render_start - semantic_start
-        item["livedub_ru_end_shift_seconds"] = render_end - semantic_end
-        item["livedub_ru_speech_coverage"] = coverage
-        item["livedub_ru_max_internal_gap_seconds"] = largest_gap
-        item["livedub_source_speech_proof"] = source_speech_proof or "unavailable"
-        item["livedub_source_without_ru_seconds"] = source_uncovered_total
-        item["livedub_source_without_ru_max_burst_seconds"] = (
-            source_uncovered_largest
-        )
+            rejected.append(str(item.get("title") or "untranslated-ru-gap")); continue
+        item.update({
+            "start_seconds": render_start, "end_seconds": render_end,
+            "duration_seconds": rendered_duration, "start": _format_seconds(render_start),
+            "end": _format_seconds(render_end), "livedub_semantic_start_seconds": semantic_start,
+            "livedub_semantic_end_seconds": semantic_end, "livedub_ru_target_start_seconds": target_start,
+            "livedub_ru_target_end_seconds": target_end, "livedub_ru_boundary_proof": effective_proof,
+            "livedub_ru_start_shift_seconds": render_start - semantic_start,
+            "livedub_ru_end_shift_seconds": render_end - semantic_end,
+            "livedub_ru_speech_coverage": coverage, "livedub_ru_max_internal_gap_seconds": largest_gap,
+            "livedub_source_speech_proof": source_speech_proof or "unavailable",
+            "livedub_source_without_ru_seconds": source_uncovered_total,
+            "livedub_source_without_ru_max_burst_seconds": source_uncovered_largest,
+            "livedub_source_without_ru_edge_seconds": source_uncovered_edge,
+            "livedub_candidate_kind": candidate_kind,
+        })
         aligned.append(item)
-
     if rejected:
-        logger.warning(
-            "Shorts Factory RU boundary alignment rejected %d/%d candidates: %s",
-            len(rejected),
-            len(candidates),
-            ", ".join(rejected[:8]),
-        )
+        logger.warning("Shorts Factory RU boundary alignment rejected %d/%d %s candidates: %s", len(rejected), len(candidates), candidate_kind, ", ".join(rejected[:8]))
     return aligned
 
 
-def align_factory_livedub_candidates(
-    candidates: list[dict[str, Any]],
-    *,
-    source_duration: int | float,
-) -> list[dict[str, Any]]:
-    """Align one candidate group to request-local VOT/source speech evidence."""
+def align_factory_livedub_candidates(candidates: list[dict[str, Any]], *, source_duration: int | float, candidate_kind: CandidateKind = "short") -> list[dict[str, Any]]:
     if not candidates:
         return []
     timeline = _CURRENT_TIMELINE.get()
     if not timeline:
-        raise RuntimeError(
-            "Exact VOT RU boundary proof is unavailable; refusing unverified "
-            "original-timeline cuts"
-        )
+        raise RuntimeError("Exact VOT RU boundary proof is unavailable; refusing unverified original-timeline cuts")
     return align_candidates_to_ru_speech(
-        candidates,
-        source_duration=source_duration,
+        candidates, source_duration=source_duration,
         speech_intervals=list(timeline.get("intervals") or []),
         delay_seconds=float(timeline.get("delay_seconds") or 0.0),
-        source_speech_intervals=list(
-            timeline.get("source_speech_intervals") or []
-        ),
-        source_speech_proof=str(
-            timeline.get("source_speech_proof") or "unavailable"
-        ),
-        proof=str(timeline.get("proof") or RU_BOUNDARY_PROOF),
+        source_speech_intervals=list(timeline.get("source_speech_intervals") or []),
+        source_speech_proof=str(timeline.get("source_speech_proof") or "unavailable"),
+        proof=str(timeline.get("proof") or RU_ONLY_BOUNDARY_PROOF), candidate_kind=candidate_kind,
     )
 
 
 __all__ = [
-    "PUBLIC_LONG_MAX_SEC",
-    "PUBLIC_SHORT_MAX_SEC",
-    "RU_BOUNDARY_PROOF",
-    "align_candidates_to_ru_speech",
-    "align_factory_livedub_candidates",
-    "factory_ru_boundary_context",
-    "prepare_factory_ru_boundary_evidence",
-    "speech_intervals_from_silence_log",
+    "PUBLIC_LONG_MAX_SEC", "PUBLIC_SHORT_MAX_SEC", "RU_BOUNDARY_PROOF",
+    "RU_ONLY_BOUNDARY_PROOF", "align_candidates_to_ru_speech",
+    "align_factory_livedub_candidates", "factory_ru_boundary_context",
+    "prepare_factory_ru_boundary_evidence", "speech_intervals_from_silence_log",
 ]
