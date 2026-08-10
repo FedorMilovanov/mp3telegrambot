@@ -460,7 +460,7 @@ def bootstrap_post_main(main_module: ModuleType) -> tuple[RuntimeFeatureResult, 
     )
 
 
-def require_ready() -> None:
+def require_runtime_ready() -> None:
     _DEFAULT_MANIFEST.require_ready()
 
 
@@ -483,7 +483,7 @@ __all__ = [
     "RuntimePhase",
     "bootstrap_post_main",
     "bootstrap_pre_main",
-    "require_ready",
+    "require_runtime_ready",
     "runtime_manifest_payload",
     "runtime_manifest_status_lines",
 ]
