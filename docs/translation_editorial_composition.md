@@ -6,18 +6,18 @@ This stage begins **after** translation review and, when needed, after the full 
 
 A single exact cleaned source may produce:
 
-- `full` — a reviewed long-form master;
+- `full` — a reviewed long-form master that still retains at least 85% of the source and reaches the beginning/end of the sermon within a small edge allowance;
 - `excerpt` — a continuous or editorial 2–20 minute extract;
 - `short` — a 10–180 second Short.
 
-Every output is assembled from explicit source-time segments. The plan binds the exact source path, SHA-256, duration, optional review IDs, and optional future YouTube target identity.
+Every output is assembled from explicit source-time segments. The plan binds the exact source path, byte count, SHA-256, probed duration, optional review IDs, and optional future YouTube target identity.
 
 Two assembly modes exist:
 
 - `continuous` — exactly one source interval;
-- `editorial_sequence` — two or more source intervals, always kept in original chronological order and requiring an explicit editorial rationale.
+- `editorial_sequence` — two or more source intervals, always kept in original chronological order and requiring a meaningful editorial rationale.
 
-The chronological rule is intentional: an editor may combine a problem, example and conclusion from different parts of one sermon, but the renderer must not silently reorder the speaker's argument.
+The chronological rule is intentional: an editor may combine a problem, example and conclusion from different parts of one sermon, but the renderer must not silently reorder the speaker's argument. Non-finite timestamps, overlaps, out-of-source spans, unsafe/colliding output IDs and implausible durations fail validation before FFmpeg.
 
 ## PowerShell workflow
 
@@ -26,7 +26,6 @@ Bind an empty plan to the exact cleaned source:
 ```powershell
 python .\tools\translation_editorial_composition.py init `
   --source-video ".\downloads\VIDEO_ID_editorial_clean.mp4" `
-  --duration 3594.2 `
   --title "Sermon title" `
   --performer "Speaker" `
   --review ".\review.json" `
@@ -36,6 +35,8 @@ python .\tools\translation_editorial_composition.py init `
   --youtube-channel-id "UC_EXACT" `
   --output ".\composition.json"
 ```
+
+The source duration is always taken from the actual media probe. `--duration` remains available only as an optional expected value; if supplied and it disagrees with the probe, `init` fails instead of freezing a guessed duration into provenance.
 
 The editor fills `pieces`. Example:
 
@@ -59,6 +60,8 @@ The editor fills `pieces`. Example:
 }
 ```
 
+`piece_id` is deliberately restricted to an already filesystem-safe value. This prevents two visually different IDs from collapsing onto one output filename after normalization.
+
 After any editorial change recompute the self-binding ID:
 
 ```powershell
@@ -77,17 +80,21 @@ python .\tools\translation_editorial_composition.py render `
   --output-dir ".\downloads\editorial_outputs"
 ```
 
-## Render guarantees
+## Render and resume guarantees
 
-Before FFmpeg starts, the renderer verifies the exact source SHA-256 and media probe duration. Each output is encoded from the approved source segments, probed again, and receives an immutable `.provenance.json` sidecar containing:
+Before FFmpeg starts, the renderer verifies the exact source byte count, SHA-256 and measured video+audio duration. Each new output is rendered to a same-directory temporary file with FFmpeg no-overwrite mode, probed again, and only then published under its final name.
+
+Each accepted piece receives an immutable `.provenance.json` sidecar containing:
 
 - exact composition ID;
 - exact source SHA-256;
-- all source segment timestamps;
-- piece metadata;
-- output path, SHA-256, size and measured duration.
+- all source segment timestamps and piece metadata;
+- final output path, SHA-256, byte count and measured duration;
+- deterministic `result_id`.
 
-Existing outputs are never overwritten silently.
+A rerun may reuse an existing piece **only** when both the MP4 and sidecar exist and all of these identities re-verify. A partial pair, changed composition, changed piece metadata, changed source, changed output bytes, stale `result_id`, or path mismatch blocks resume. This preserves completed pieces without accepting unknown leftovers.
+
+The rendered video is H.264/AAC with `yuv420p` for broad player compatibility. Existing outputs are never silently overwritten.
 
 ## Release handoff
 
@@ -97,7 +104,16 @@ A successful render also creates:
 editorial-release-handoff.json
 ```
 
-It carries the rendered media identities plus publication metadata and source-segment provenance for later import into `video-channel-manager`.
+Before handoff creation the code reloads every provenance sidecar and rehashes the real output bytes rather than trusting the in-memory result list. The handoff carries:
+
+- output path, SHA-256, byte count and measured duration;
+- provenance path and provenance SHA-256;
+- `result_id`;
+- source segments and assembly mode;
+- publication metadata;
+- exact composition/source identity.
+
+Missing, extra, duplicate or tampered rendered results fail closed. An already existing handoff may be reused only when it is byte-for-byte the same logical handoff; a different state is never overwritten silently.
 
 The handoff is explicitly:
 
@@ -105,7 +121,7 @@ The handoff is explicitly:
 "provider_write_authorized": false
 ```
 
-It is an editorial/release input, not permission to upload. The current `video-channel-manager` guarded YouTube executor remains a separate implementation and authorization boundary.
+It is an editorial/release input, not permission to upload. The current `video-channel-manager` guarded YouTube executor remains a separate implementation and authorization boundary. If only part of a release target is supplied, validation requires at least the canonical `project_key` and exact YouTube channel ID rather than carrying an ambiguous target forward.
 
 ## Advanced donor speech
 
