@@ -474,9 +474,10 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     logger.info(
         "Shorts Factory MAX runtime installed: Gemini 3.6 Flash, thinking=high, "
         "speed=1.0, Whisper=%s karaoke word-timestamps, verified Telegram "
-        "delivery, final duration<=180/900, exact media duration, safe Yandex "
-        "tail, canonical publication hashtags, optional 3.5/minimal descriptions, "
-        "no unsafe trim controls, distinct command/playlist chains",
+        "delivery, final duration<=180/900, exact media duration, request-scoped "
+        "RU speech boundary proof, safe Yandex tail, canonical publication hashtags, "
+        "optional 3.5/minimal descriptions, no unsafe trim controls, distinct "
+        "command/playlist chains",
         factory_subtitle_profile()["model_name"],
     )
     return True

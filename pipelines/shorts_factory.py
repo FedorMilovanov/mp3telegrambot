@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import html
 import json
 import logging
@@ -166,41 +165,17 @@ async def _prepare_translation_video(
     return translated
 
 
-def _format_seconds(seconds: float) -> str:
-    value = max(0, int(round(seconds)))
-    hours, remainder = divmod(value, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
-
-
 def _shift_candidates_for_livedub(
     candidates: list[dict[str, Any]],
     *,
     source_duration: int,
 ) -> list[dict[str, Any]]:
-    """Align exact original-audio cuts with the configured delayed Yandex track."""
-    delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
-    extra_sec = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
-    shift = max(0.0, delay_ms / 1000.0 + extra_sec)
-    out = copy.deepcopy(candidates)
-    for item in out:
-        original_start = float(item.get("start_seconds", 0))
-        original_end = float(item.get("end_seconds", 0))
-        original_length = max(0.0, original_end - original_start)
-        start = min(float(source_duration), original_start + shift)
-        end = min(float(source_duration), original_end + shift)
-        if end - start < original_length:
-            start = max(0.0, end - original_length)
-        if end <= start:
-            continue
-        item["start_seconds"] = start
-        item["end_seconds"] = end
-        item["duration_seconds"] = end - start
-        item["start"] = _format_seconds(start)
-        item["end"] = _format_seconds(end)
-    return out
+    """Fail closed unless the required runtime installs speech-proven alignment."""
+    del candidates, source_duration
+    raise RuntimeError(
+        "SHORTS FACTORY translated boundary aligner is not installed; "
+        "refusing heuristic original-timeline cuts"
+    )
 
 
 def _cleanup_expired_factory_sources() -> None:
@@ -256,6 +231,7 @@ async def _validated_source_duration(source_path: Path, expected_duration: int) 
 
 
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
+    """Render only the publication-ready candidate plan shown to the operator."""
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
     longs = plan.get("long_candidates") or []
@@ -270,7 +246,12 @@ def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
         f"🤖 {model} · thinking HIGH · три независимых прохода",
     ]
     if translation_required:
-        lines.append("🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».")
+        lines.extend(
+            [
+                "🎙 Озвучка фрагментов: только Яндекс LiveDub «Живые голоса».",
+                "🛡 Таймкоды ниже уже прошли проверку границ по фактической русской речи.",
+            ]
+        )
 
     if shorts:
         lines.extend(["", "⚡ <b>SHORTS HIGHLIGHTS · 35 сек — 3 мин</b>"])
@@ -417,9 +398,46 @@ async def process_shorts_factory(
             expected_duration=duration,
         )
 
+        shorts_candidates = plan.get("shorts_candidates") or []
+        long_candidates = plan.get("long_candidates") or []
+        render_shorts = shorts_candidates
+        render_longs = long_candidates
+        if translation_required:
+            from services.shorts_factory_timing import (
+                factory_ru_boundary_context,
+                prepare_factory_ru_boundary_evidence,
+            )
+
+            await _safe_status(
+                status_msg,
+                "🛡 Проверяю границы по фактической русской LiveDub-речи…",
+            )
+            ru_boundary_evidence = await prepare_factory_ru_boundary_evidence(
+                url=url,
+                workdir=workdir,
+                source_language=source_language,
+            )
+            with factory_ru_boundary_context(ru_boundary_evidence):
+                render_shorts = _shift_candidates_for_livedub(
+                    shorts_candidates,
+                    source_duration=render_source_duration,
+                )
+                render_longs = _shift_candidates_for_livedub(
+                    long_candidates,
+                    source_duration=render_source_duration,
+                )
+            if not render_shorts and not render_longs:
+                raise RuntimeError(
+                    "Ни один выбранный фрагмент не прошёл доказанную проверку "
+                    "границ русской LiveDub-речи; публикация оригинальных таймкодов запрещена"
+                )
+
+        render_plan = dict(plan)
+        render_plan["shorts_candidates"] = render_shorts
+        render_plan["long_candidates"] = render_longs
         if not silent_errors:
             await update.message.reply_text(
-                _plan_message(plan, translation_required=translation_required),
+                _plan_message(render_plan, translation_required=translation_required),
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
@@ -428,20 +446,6 @@ async def process_shorts_factory(
             status_msg,
             "✂️ Рендерю SHORTS HIGHLIGHTS и длинные фрагменты…",
         )
-
-        shorts_candidates = plan.get("shorts_candidates") or []
-        long_candidates = plan.get("long_candidates") or []
-        render_shorts = shorts_candidates
-        render_longs = long_candidates
-        if translation_required:
-            render_shorts = _shift_candidates_for_livedub(
-                shorts_candidates,
-                source_duration=render_source_duration,
-            )
-            render_longs = _shift_candidates_for_livedub(
-                long_candidates,
-                source_duration=render_source_duration,
-            )
 
         with factory_render_context(render_shorts, render_longs):
             if render_shorts:
@@ -513,20 +517,22 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            f"✅ SHORTS FACTORY MAX завершён: {len(shorts_candidates)} Shorts, "
-            f"{len(long_candidates)} длинных фрагмента.",
+            f"✅ SHORTS FACTORY MAX завершён: {len(render_shorts)} Shorts, "
+            f"{len(render_longs)} длинных фрагмента.",
         )
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
-            "shorts=%d longs=%d yandex=%s",
+            "shorts=%d/%d longs=%d/%d yandex=%s",
             media_id,
             duration,
             render_source_duration,
+            len(render_shorts),
             len(shorts_candidates),
+            len(render_longs),
             len(long_candidates),
             translation_required,
         )
-        return bool(shorts_candidates or long_candidates)
+        return bool(render_shorts or render_longs)
 
     except asyncio.CancelledError:
         raise
