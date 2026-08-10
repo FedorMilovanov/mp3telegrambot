@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -13,11 +15,13 @@ from typing import Any
 from core.globals import DOWNLOAD_DIR
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.translation_editorial import (
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
     build_review_pack,
     load_pack_manifest,
+    sha256_file,
     transcribe_russian_whisper,
     validate_review_document,
 )
@@ -40,10 +44,90 @@ def factory_editorial_gemini_enabled() -> bool:
     return _enabled("SHORTS_FACTORY_EDITORIAL_GEMINI", False)
 
 
+def _safe_media_id(media_id: str) -> str:
+    safe = "".join(
+        char if (char.isalnum() or char in "_-") else "_"
+        for char in str(media_id or "media")
+    )
+    return safe[:100] or "media"
+
+
 def _editorial_root(media_id: str) -> Path:
-    root = DOWNLOAD_DIR / "translation_editorial" / str(media_id)
+    root = DOWNLOAD_DIR / "translation_editorial" / _safe_media_id(media_id)
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _configured_livedub_delay_seconds() -> float:
+    try:
+        delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
+    except (TypeError, ValueError):
+        delay_ms = 600.0
+    return max(0.0, min(delay_ms, 5000.0)) / 1000.0
+
+
+def _configured_factory_shift_extra_seconds() -> float:
+    try:
+        value = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
+    except (TypeError, ValueError):
+        value = 0.15
+    return max(0.0, min(value, 5.0))
+
+
+def _timeline_metadata() -> dict[str, Any]:
+    delay = _configured_livedub_delay_seconds()
+    extra = _configured_factory_shift_extra_seconds()
+    return {
+        "original_srt": "source_original_timeline",
+        "russian_whisper": "translated_video_timeline",
+        "factory_candidates": "translated_video_timeline",
+        "configured_russian_delay_seconds": round(delay, 3),
+        "factory_candidate_extra_shift_seconds": round(extra, 3),
+        "comparison_rule": (
+            "Original and Russian cues are not assumed to have equal timestamps. "
+            "Use semantic sequence plus this configured delay as alignment evidence; "
+            "all review issue timestamps must target the translated-video/Russian timeline."
+        ),
+    }
+
+
+def _copy_without_overwrite(source: Path, destination: Path) -> None:
+    try:
+        os.link(source, destination)
+        return
+    except FileExistsError:
+        raise
+    except OSError:
+        pass
+    try:
+        with source.open("rb") as input_stream, destination.open("xb") as output_stream:
+            shutil.copyfileobj(input_stream, output_stream, length=4 * 1024 * 1024)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+
+def _durable_review_source(source_path: Path, root: Path, media_id: str) -> Path:
+    """Keep review source outside Factory's short-lived *_factory_source cleanup glob."""
+    source_path = Path(source_path)
+    if not source_path.exists() or source_path.stat().st_size <= 1024:
+        raise FileNotFoundError(f"Factory editorial source missing/empty: {source_path}")
+    suffix = source_path.suffix.lower() or ".mp4"
+    destination = root / f"{_safe_media_id(media_id)}_editorial_source{suffix}"
+    if destination.exists():
+        if destination.stat().st_size != source_path.stat().st_size:
+            raise RuntimeError("durable editorial source size conflicts with current Factory source")
+        if sha256_file(destination) != sha256_file(source_path):
+            raise RuntimeError("durable editorial source bytes conflict with current Factory source")
+        return destination
+    _copy_without_overwrite(source_path, destination)
+    if destination.stat().st_size != source_path.stat().st_size:
+        destination.unlink(missing_ok=True)
+        raise RuntimeError("durable editorial source copy has wrong size")
+    if sha256_file(destination) != sha256_file(source_path):
+        destination.unlink(missing_ok=True)
+        raise RuntimeError("durable editorial source copy has wrong SHA-256")
+    return destination
 
 
 async def download_original_srt(
@@ -62,7 +146,7 @@ async def download_original_srt(
     language_order = [f"{lang_root}.*", lang_root]
     if lang_root != "en":
         language_order.extend(["en.*", "en"])
-    languages = ",".join(language_order)
+    languages = ",".join(dict.fromkeys(language_order))
     template = output_dir / "editorial_original_%(id)s.%(ext)s"
 
     async def attempt(auto: bool) -> Path | None:
@@ -178,39 +262,21 @@ def _strip_json_fence(value: Any) -> str:
     return raw.strip()
 
 
-def _expected_candidate_ids(manifest: dict[str, Any]) -> set[str]:
-    return {
-        str(item.get("candidate_id"))
-        for group in (manifest.get("candidates") or {}).values()
-        if isinstance(group, list)
-        for item in group
-        if isinstance(item, dict) and item.get("candidate_id")
-    }
-
-
-def _candidate_coverage_errors(review: dict[str, Any], manifest: dict[str, Any]) -> list[str]:
-    expected = _expected_candidate_ids(manifest)
-    reviewed = {
-        str(item.get("candidate_id"))
-        for item in review.get("candidate_reviews") or []
-        if isinstance(item, dict) and item.get("candidate_id")
-    }
-    errors: list[str] = []
-    missing = sorted(expected - reviewed)
-    extra = sorted(reviewed - expected)
-    if missing:
-        errors.append("missing candidate reviews: " + ", ".join(missing))
-    if extra:
-        errors.append("unexpected candidate reviews: " + ", ".join(extra))
-    return errors
-
-
 def _gemini_max_attempts() -> int:
     try:
         value = int(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS", "1") or "1")
     except (TypeError, ValueError):
         value = 1
     return max(1, min(value, 2))
+
+
+def _manifest_for_model(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Remove machine-local paths before sending semantic evidence to Gemini."""
+    copied = json.loads(json.dumps(manifest, ensure_ascii=False))
+    translated = ((copied.get("source") or {}).get("translated_video") or {})
+    if isinstance(translated, dict):
+        translated.pop("local_path", None)
+    return copied
 
 
 async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | None:
@@ -223,6 +289,7 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         return None
 
     manifest = load_pack_manifest(pack_path)
+    model_manifest = _manifest_for_model(manifest)
     original = _read_pack_text(pack_path, "original.srt")
     russian = _read_pack_text(pack_path, "russian_whisper.srt")
     candidates = _read_pack_text(pack_path, "candidates.json")
@@ -232,12 +299,14 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         "Небольшая неестественность русского допустима, если смысл сохранён. Особое внимание "
         "к отрицаниям, субъекту и объекту действия, причинно-следственным связям, именам, "
         "числам, местам Писания и богословским терминам. Не придумывай ошибок, которых нет "
-        "в русской Whisper-стенограмме. Таймкоды issue всегда бери из русского SRT. "
-        "drop_span выбирай только когда удаление короткого дефекта оставляет исходную мысль "
-        "целой; mute_span только для чисто звукового дефекта; иначе reject_region. "
-        "Для каждого candidate_id обязательно верни ровно одну оценку пригодности с учётом "
-        "найденных дефектов. Верни только JSON по схеме.\n\n"
-        f"MANIFEST:\n{json.dumps(manifest, ensure_ascii=False)}\n\n"
+        "в русской Whisper-стенограмме. В manifest.timeline явно описаны разные временные "
+        "шкалы: не сопоставляй реплики по одинаковому номеру cue или одинаковой секунде; "
+        "сопоставляй по смысловой последовательности и указанной задержке. Таймкоды issue "
+        "всегда бери из Russian Whisper / translated-video timeline. drop_span выбирай только "
+        "когда удаление короткого дефекта оставляет исходную мысль целой; mute_span только "
+        "для чисто звукового дефекта; иначе reject_region. Для каждого candidate_id обязательно "
+        "верни ровно одну оценку пригодности. Верни только JSON по схеме.\n\n"
+        f"MANIFEST:\n{json.dumps(model_manifest, ensure_ascii=False)}\n\n"
         f"CANDIDATES:\n{candidates}\n\n"
         f"ORIGINAL SRT:\n{original}\n\n"
         f"RUSSIAN WHISPER SRT:\n{russian}"
@@ -249,7 +318,10 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         response_mime_type="application/json",
         response_schema=_gemini_schema(),
     )
-    timeout = float(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC", "300") or "300")
+    try:
+        timeout = float(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC", "300") or "300")
+    except (TypeError, ValueError):
+        timeout = 300.0
     timeout = max(60.0, min(timeout, 600.0))
 
     clients = list(GEMINI_CLIENTS)[: _gemini_max_attempts()]
@@ -275,7 +347,6 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
                 "candidate_reviews": data.get("candidate_reviews") or [],
             }
             errors = validate_review_document(review, manifest)
-            errors.extend(_candidate_coverage_errors(review, manifest))
             if errors:
                 logger.warning(
                     "Factory editorial Gemini review rejected client=%d: %s",
@@ -331,6 +402,29 @@ def render_review_markdown(review: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _write_immutable_review_files(
+    root: Path,
+    media_id: str,
+    pack_path: Path,
+    review: dict[str, Any],
+) -> tuple[Path, Path]:
+    review_json = json.dumps(review, ensure_ascii=False, indent=2, allow_nan=False)
+    digest = hashlib.sha256(review_json.encode("utf-8")).hexdigest()[:12]
+    pack_digest = load_pack_manifest(pack_path)["review_pack_id"][7:19]
+    safe_id = _safe_media_id(media_id)
+    review_path = root / f"{safe_id}_{pack_digest}_{digest}_gemini_review.json"
+    markdown_path = root / f"{safe_id}_{pack_digest}_{digest}_gemini_review.md"
+    markdown = render_review_markdown(review)
+    for path, content in ((review_path, review_json), (markdown_path, markdown)):
+        if path.exists():
+            if path.read_text(encoding="utf-8") != content:
+                raise FileExistsError(f"immutable editorial review path collision: {path}")
+        else:
+            with path.open("x", encoding="utf-8") as stream:
+                stream.write(content)
+    return review_path, markdown_path
+
+
 async def prepare_factory_editorial_review(
     *,
     url: str,
@@ -346,6 +440,19 @@ async def prepare_factory_editorial_review(
 ) -> tuple[Path, Path | None, Path | None]:
     """Create the real transcript review pack and optional one-call Gemini review."""
     root = _editorial_root(media_id)
+    source_path = Path(translated_video_path)
+    probe = await probe_media_async(source_path)
+    if not media_probe_is_deliverable(probe):
+        raise RuntimeError("Factory editorial source failed video+audio media probe")
+    assert probe is not None
+    actual_duration = float(probe.duration)
+    if duration and abs(actual_duration - float(duration)) > 1.25:
+        raise RuntimeError(
+            f"Factory editorial source duration drift: caller={float(duration):.3f}s "
+            f"probe={actual_duration:.3f}s"
+        )
+    durable_source = _durable_review_source(source_path, root, media_id)
+
     original_srt = await download_original_srt(
         url,
         root,
@@ -354,7 +461,7 @@ async def prepare_factory_editorial_review(
     russian_srt = root / "russian_whisper.srt"
     russian_words = root / "russian_whisper_words.json"
     await transcribe_russian_whisper(
-        Path(translated_video_path),
+        durable_source,
         srt_output=russian_srt,
         words_output=russian_words,
         ai_data=ai_data,
@@ -366,13 +473,14 @@ async def prepare_factory_editorial_review(
         source_url=url,
         title=title,
         performer=performer,
-        duration=duration,
-        source_video_path=Path(translated_video_path),
+        duration=actual_duration,
+        source_video_path=durable_source,
         original_srt_path=original_srt,
         russian_whisper_srt_path=russian_srt,
         russian_words_path=russian_words,
         shorts_candidates=shorts_candidates,
         long_candidates=long_candidates,
+        timeline_metadata=_timeline_metadata(),
     )
 
     review_path: Path | None = None
@@ -380,13 +488,12 @@ async def prepare_factory_editorial_review(
     if factory_editorial_gemini_enabled():
         review = await generate_gemini_editorial_review(pack)
         if review is not None:
-            review_path = root / f"{media_id}_gemini_review.json"
-            markdown_path = root / f"{media_id}_gemini_review.md"
-            review_path.write_text(
-                json.dumps(review, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+            review_path, markdown_path = _write_immutable_review_files(
+                root,
+                media_id,
+                pack,
+                review,
             )
-            markdown_path.write_text(render_review_markdown(review), encoding="utf-8")
     return pack, review_path, markdown_path
 
 
@@ -406,7 +513,8 @@ async def send_factory_editorial_files(
             filename=Path(pack_path).name,
             caption=(
                 "🔎 Translation Editorial Review: оригинальный SRT + Russian Whisper "
-                "large-v3 + кандидаты. Этот ZIP можно прислать ChatGPT для полной редакционной проверки."
+                "large-v3 + кандидаты. ZIP привязан к точным исходным байтам и может быть "
+                "передан ChatGPT для полной редакционной проверки."
             ),
         )
     if review_path is not None and Path(review_path).exists():
