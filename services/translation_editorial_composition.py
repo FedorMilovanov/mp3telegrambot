@@ -8,6 +8,7 @@ speech, or treats an unverified previous output as resumable work.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -29,6 +30,8 @@ HANDOFF_SCHEMA_NAME = "mp3telegrambot.editorial-release-handoff"
 HANDOFF_SCHEMA_VERSION = 1
 PIECE_KINDS = {"full", "excerpt", "short"}
 ASSEMBLY_MODES = {"continuous", "editorial_sequence"}
+PUBLICATION_FIELDS = {"title", "description", "hashtags", "playlist", "schedule_at"}
+RELEASE_TARGET_FIELDS = {"project_key", "youtube_account_alias", "youtube_channel_id"}
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -175,6 +178,11 @@ def _validate_publication(piece_id: str, metadata: Any) -> list[str]:
     if not isinstance(metadata, dict):
         return [f"piece {piece_id}: publication must be an object"]
     errors: list[str] = []
+    unexpected = sorted(set(metadata) - PUBLICATION_FIELDS)
+    if unexpected:
+        errors.append(
+            f"piece {piece_id}: unsupported publication fields: " + ", ".join(unexpected)
+        )
     limits = {
         "title": 300,
         "description": 12000,
@@ -245,6 +253,9 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
     if target is not None and not isinstance(target, dict):
         errors.append("release_target must be an object")
     elif isinstance(target, dict):
+        unexpected_target = sorted(set(target) - RELEASE_TARGET_FIELDS)
+        if unexpected_target:
+            errors.append("unsupported release_target fields: " + ", ".join(unexpected_target))
         target_values = {
             key: str(target.get(key) or "").strip()
             for key in ("project_key", "youtube_account_alias", "youtube_channel_id")
@@ -378,7 +389,8 @@ async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
         raise FileNotFoundError(f"composition source missing/empty: {path}")
     if path.stat().st_size != int(source["bytes"]):
         raise RuntimeError("composition source size changed after plan approval")
-    if sha256_file(path) != source["sha256"]:
+    actual_sha = await asyncio.to_thread(sha256_file, path)
+    if actual_sha != source["sha256"]:
         raise RuntimeError("composition source bytes changed after plan approval")
     probe = await probe_media_async(path)
     if not media_probe_is_deliverable(probe):
@@ -458,8 +470,12 @@ def _publish_new_file(temp_path: Path, final_path: Path) -> None:
     except FileExistsError:
         raise
     except OSError:
-        with temp_path.open("rb") as source, final_path.open("xb") as target:
-            shutil.copyfileobj(source, target, length=1024 * 1024)
+        try:
+            with temp_path.open("rb") as source, final_path.open("xb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+        except Exception:
+            final_path.unlink(missing_ok=True)
+            raise
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -478,15 +494,26 @@ async def _render_piece(
     output_path = output_dir / f"{safe_name}.mp4"
     sidecar_path = output_dir / f"{safe_name}.provenance.json"
     if output_path.exists() or sidecar_path.exists():
-        return _load_verified_existing_result(document, piece, output_path, sidecar_path)
+        return await asyncio.to_thread(
+            _load_verified_existing_result,
+            document,
+            piece,
+            output_path,
+            sidecar_path,
+        )
 
     filter_complex, expected_duration = _piece_filter(piece)
     fd, temp_name = tempfile.mkstemp(prefix=f".{safe_name}_", suffix=".mp4", dir=output_dir)
     os.close(fd)
     temp_output = Path(temp_name)
     temp_output.unlink(missing_ok=True)
-    temp_sidecar = output_dir / f".{safe_name}_{os.getpid()}.provenance.tmp"
-    temp_sidecar.unlink(missing_ok=True)
+    fd, temp_sidecar_name = tempfile.mkstemp(
+        prefix=f".{safe_name}_",
+        suffix=".provenance.tmp",
+        dir=output_dir,
+    )
+    os.close(fd)
+    temp_sidecar = Path(temp_sidecar_name)
     try:
         command = [
             ffmpeg,
@@ -530,6 +557,7 @@ async def _render_piece(
                 f"composition duration mismatch {piece_id}: expected={expected_duration:.3f}s "
                 f"actual={probe.duration:.3f}s"
             )
+        output_sha = await asyncio.to_thread(sha256_file, temp_output)
         provenance = {
             "schema_name": RESULT_SCHEMA_NAME,
             "schema_version": RESULT_SCHEMA_VERSION,
@@ -542,7 +570,7 @@ async def _render_piece(
             },
             "output": {
                 "local_path": str(output_path.resolve(strict=False)),
-                "sha256": sha256_file(temp_output),
+                "sha256": output_sha,
                 "bytes": temp_output.stat().st_size,
                 "duration_seconds": round(float(probe.duration), 3),
             },
@@ -562,7 +590,13 @@ async def _render_piece(
                 raise
         finally:
             temp_sidecar.unlink(missing_ok=True)
-        return _load_verified_existing_result(document, piece, output_path, sidecar_path)
+        return await asyncio.to_thread(
+            _load_verified_existing_result,
+            document,
+            piece,
+            output_path,
+            sidecar_path,
+        )
     finally:
         temp_output.unlink(missing_ok=True)
         temp_sidecar.unlink(missing_ok=True)
@@ -697,6 +731,8 @@ __all__ = [
     "HANDOFF_SCHEMA_NAME",
     "HANDOFF_SCHEMA_VERSION",
     "PIECE_KINDS",
+    "PUBLICATION_FIELDS",
+    "RELEASE_TARGET_FIELDS",
     "RESULT_SCHEMA_NAME",
     "RESULT_SCHEMA_VERSION",
     "build_composition_template",
