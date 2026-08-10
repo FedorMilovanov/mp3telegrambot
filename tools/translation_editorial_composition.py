@@ -16,7 +16,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.translation_editorial import sha256_file, validate_review_document
+from services.translation_editorial import (
+    EXECUTABLE_ACTIONS,
+    REVIEW_SCHEMA_NAME,
+    REVIEW_SCHEMA_VERSION,
+    collect_executable_repairs,
+    sha256_file,
+    validate_review_document,
+)
 from services.translation_editorial_composition import (
     build_composition_template,
     build_release_handoff,
@@ -48,16 +55,25 @@ def _write_atomic(path: Path, data: dict[str, Any], *, overwrite: bool) -> None:
         temp.write_text(payload, encoding="utf-8")
         if overwrite:
             os.replace(temp, path)
-        else:
-            try:
-                os.link(temp, path)
-            except OSError:
-                try:
-                    with path.open("x", encoding="utf-8") as stream:
-                        stream.write(payload)
-                except Exception:
-                    path.unlink(missing_ok=True)
-                    raise
+            return
+        try:
+            os.link(temp, path)
+            return
+        except FileExistsError:
+            raise
+        except OSError:
+            pass
+        created = False
+        try:
+            with path.open("x", encoding="utf-8") as stream:
+                created = True
+                stream.write(payload)
+        except FileExistsError:
+            raise
+        except Exception:
+            if created:
+                path.unlink(missing_ok=True)
+            raise
     finally:
         temp.unlink(missing_ok=True)
 
@@ -71,7 +87,13 @@ def _write_handoff(path: Path, data: dict[str, Any]) -> None:
         raise FileExistsError(
             f"existing handoff belongs to different rendered state; refusing overwrite: {path}"
         )
-    _write_atomic(path, data, overwrite=False)
+    try:
+        _write_atomic(path, data, overwrite=False)
+    except FileExistsError:
+        existing = _load(path)
+        if existing.get("handoff_id") == data.get("handoff_id") and existing == data:
+            return
+        raise
 
 
 def _review_binding(args: argparse.Namespace) -> tuple[str, str]:
@@ -84,6 +106,10 @@ def _review_binding(args: argparse.Namespace) -> tuple[str, str]:
         return manual_pack_id, ""
 
     review = _load(review_path)
+    if review.get("schema_name") != REVIEW_SCHEMA_NAME:
+        raise ValueError("review.json has the wrong schema_name")
+    if review.get("schema_version") != REVIEW_SCHEMA_VERSION:
+        raise ValueError("review.json has the wrong schema_version")
     review_id = str(review.get("review_pack_id") or "").strip()
     if not review_id:
         raise ValueError("review.json does not contain review_pack_id")
@@ -106,9 +132,9 @@ async def _repair_binding(
     source_path: Path,
     review_pack_id: str,
     review_sha256: str,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if not args.repair_provenance:
-        return None
+        return None, None
     sidecar_path = Path(args.repair_provenance)
     provenance = await verify_repair_provenance(
         sidecar_path,
@@ -118,11 +144,68 @@ async def _repair_binding(
         raise ValueError("repair provenance does not belong to the supplied review pack")
     if review_sha256 and provenance.get("review_sha256") != review_sha256:
         raise ValueError("repair provenance does not belong to the supplied review.json")
-    return {
-        "local_path": str(sidecar_path.resolve(strict=False)),
-        "sha256": await asyncio.to_thread(sha256_file, sidecar_path),
-        "repair_result_id": provenance.get("repair_result_id"),
-    }
+    return (
+        {
+            "local_path": str(sidecar_path.resolve(strict=False)),
+            "sha256": await asyncio.to_thread(sha256_file, sidecar_path),
+            "repair_result_id": provenance.get("repair_result_id"),
+        },
+        provenance,
+    )
+
+
+def _normalized_review_repairs(review: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": str(item["type"]),
+            "start_seconds": round(float(item["start_seconds"]), 3),
+            "end_seconds": round(float(item["end_seconds"]), 3),
+        }
+        for item in collect_executable_repairs(review)
+    ]
+
+
+def _enforce_review_execution_gate(
+    review: dict[str, Any] | None,
+    repair_provenance: dict[str, Any] | None,
+) -> None:
+    """Do not compose a full source that its own review rejects or leaves unrepaired."""
+    if review is None:
+        return
+    full = review.get("full_sermon")
+    if not isinstance(full, dict):
+        raise ValueError("review.json full_sermon must be an object")
+    verdict = str(full.get("verdict") or "")
+    if verdict == "reject":
+        raise ValueError("full sermon is rejected by review; composition is blocked")
+    if verdict not in {"keep", "repair"}:
+        raise ValueError("review.json full_sermon verdict must be keep|repair|reject")
+
+    unresolved: list[str] = []
+    for issue in full.get("issues") or []:
+        if not isinstance(issue, dict):
+            continue
+        action = issue.get("action") or {}
+        action_type = str(action.get("type") or "")
+        if action_type not in EXECUTABLE_ACTIONS:
+            unresolved.append(action_type or "missing")
+    if unresolved:
+        raise ValueError(
+            "full-sermon review contains unresolved non-executable actions: "
+            + ", ".join(sorted(set(unresolved)))
+        )
+
+    expected_repairs = _normalized_review_repairs(review)
+    if verdict == "repair" and repair_provenance is None:
+        raise ValueError(
+            "full sermon requires repair; supply the exact --repair-provenance for the cleaned source"
+        )
+    if repair_provenance is not None:
+        actual_repairs = repair_provenance.get("repairs") or []
+        if actual_repairs != expected_repairs:
+            raise ValueError(
+                "repair provenance actions do not exactly match the full-sermon review"
+            )
 
 
 async def _verify_embedded_repair_binding(document: dict[str, Any]) -> None:
@@ -161,12 +244,21 @@ async def _cmd_init(args: argparse.Namespace) -> int:
             f"declared={float(args.duration):.3f}s probe={probed_duration:.3f}s"
         )
     review_pack_id, review_sha256 = _review_binding(args)
-    repair_binding = await _repair_binding(
+    review = _load(Path(args.review)) if args.review else None
+    repair_binding, repair_document = await _repair_binding(
         args,
         source_path=source_path,
         review_pack_id=review_pack_id,
         review_sha256=review_sha256,
     )
+    _enforce_review_execution_gate(review, repair_document)
+
+    if repair_document is not None:
+        if not review_pack_id:
+            review_pack_id = str(repair_document.get("review_pack_id") or "")
+        if not review_sha256:
+            review_sha256 = str(repair_document.get("review_sha256") or "")
+
     document = build_composition_template(
         source_video_path=source_path,
         source_duration=probed_duration,
@@ -257,7 +349,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--youtube-channel-id", default="")
     init.add_argument("--output", required=True)
 
-    refresh = sub.add_parser("refresh-id", help="recompute composition_id after editorial edits")
+    refresh = sub.add_parser("refresh-id", help="recompute media composition_id after assembly edits")
     refresh.add_argument("--plan", required=True)
     refresh.add_argument("--output")
 
