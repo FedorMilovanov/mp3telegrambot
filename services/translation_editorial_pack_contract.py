@@ -2,6 +2,7 @@
 """Canonical non-media contract for Translation Editorial Review ZIPs."""
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,15 @@ _MEMBER_LIMITS = {
     "russian_whisper_words.json": 128 * 1024 * 1024,
     "REVIEW_INSTRUCTIONS.md": 256 * 1024,
 }
+_TRANSCRIPT_CONTRACT = {
+    "original": ("original.srt", "source_original_srt"),
+    "russian_whisper": ("russian_whisper.srt", "heard_russian_asr"),
+    "russian_whisper_words": (
+        "russian_whisper_words.json",
+        "heard_russian_word_timestamps",
+    ),
+}
+_CANDIDATE_GROUPS = {"shorts", "long_clips"}
 
 
 def _review_contract() -> dict[str, Any]:
@@ -64,8 +74,58 @@ def _timeline_instructions() -> str:
     )
 
 
+def _decode_json_member(archive: zipfile.ZipFile, name: str) -> dict[str, Any]:
+    try:
+        data = json.loads(archive.read(name).decode("utf-8"))
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid translation editorial JSON member: {name}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"translation editorial JSON root must be an object: {name}")
+    return data
+
+
+def _verify_preview_shape(manifest: dict[str, Any], candidates: dict[str, Any]) -> None:
+    transcripts = manifest.get("transcripts")
+    if not isinstance(transcripts, dict):
+        raise ValueError("translation editorial manifest transcripts must be an object")
+    transcript_keys = set(transcripts)
+    required = {"original", "russian_whisper"}
+    if not required.issubset(transcript_keys) or not transcript_keys.issubset(_TRANSCRIPT_CONTRACT):
+        raise ValueError("translation editorial transcript keys are non-canonical")
+    for key in transcript_keys:
+        entry = transcripts.get(key)
+        if not isinstance(entry, dict):
+            raise ValueError(f"translation editorial transcript entry must be an object: {key}")
+        expected_file, expected_role = _TRANSCRIPT_CONTRACT[key]
+        if entry.get("file") != expected_file or entry.get("role") != expected_role:
+            raise ValueError(f"translation editorial transcript contract changed: {key}")
+
+    if set(candidates) != _CANDIDATE_GROUPS:
+        raise ValueError("translation editorial candidate groups are non-canonical")
+    seen_ids: set[str] = set()
+    for group_name in ("shorts", "long_clips"):
+        group = candidates.get(group_name)
+        if not isinstance(group, list):
+            raise ValueError(f"translation editorial candidate group must be a list: {group_name}")
+        for index, item in enumerate(group, 1):
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"translation editorial candidate must be an object: {group_name}[{index}]"
+                )
+            candidate_id = str(item.get("candidate_id") or "").strip()
+            if not candidate_id:
+                raise ValueError(
+                    f"translation editorial candidate_id is required: {group_name}[{index}]"
+                )
+            if candidate_id in seen_ids:
+                raise ValueError(f"duplicate translation editorial candidate_id: {candidate_id}")
+            seen_ids.add(candidate_id)
+    if manifest.get("candidates") != candidates:
+        raise ValueError("translation editorial manifest candidates differ from candidates.json")
+
+
 def _preflight_zip(pack_path: Path) -> None:
-    """Bound memory/disk-abuse properties before any ZIP member is read."""
+    """Bound memory/disk-abuse and verify basic shape before any large member read."""
     pack_path = Path(pack_path)
     if not pack_path.is_file():
         raise FileNotFoundError(pack_path)
@@ -96,6 +156,10 @@ def _preflight_zip(pack_path: Path) -> None:
             total += info.file_size
             if total > _MAX_TOTAL_UNCOMPRESSED_BYTES:
                 raise ValueError("translation editorial ZIP expands beyond the safe total limit")
+
+        manifest = _decode_json_member(archive, "manifest.json")
+        candidates = _decode_json_member(archive, "candidates.json")
+        _verify_preview_shape(manifest, candidates)
 
 
 def load_verified_review_pack(pack_path: Path) -> dict[str, Any]:
