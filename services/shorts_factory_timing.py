@@ -124,7 +124,10 @@ def speech_intervals_from_silence_log(
     minimum_speech: float = 0.08,
 ) -> list[tuple[float, float]]:
     """Invert FFmpeg silencedetect events into non-silent spans."""
-    limit = max(0.0, float(duration))
+    try:
+        limit = max(0.0, float(duration))
+    except (TypeError, ValueError):
+        return []
     if not math.isfinite(limit) or limit <= 0:
         return []
 
@@ -161,16 +164,18 @@ def _merge_intervals(
     *,
     max_gap: float,
 ) -> list[tuple[float, float]]:
-    clean = sorted(
-        (
-            (max(0.0, float(start)), max(0.0, float(end)))
-            for start, end in intervals
-            if math.isfinite(float(start))
-            and math.isfinite(float(end))
-            and float(end) > float(start)
-        ),
-        key=lambda pair: pair[0],
-    )
+    clean: list[tuple[float, float]] = []
+    for raw_start, raw_end in intervals:
+        try:
+            start = max(0.0, float(raw_start))
+            end = max(0.0, float(raw_end))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        clean.append((start, end))
+    clean.sort(key=lambda pair: pair[0])
+
     merged: list[tuple[float, float]] = []
     for start, end in clean:
         if merged and start - merged[-1][1] <= max_gap:
@@ -354,6 +359,19 @@ async def prepare_factory_ru_boundary_evidence(
             str(exc)[:220],
         )
 
+    # Provider captions are on the original timeline. VOT speech is delayed in
+    # the actual mix, so compare translation coverage against the source phrase
+    # shifted by that exact same mix delay. Otherwise the intentional language
+    # lead-in would be falsely classified as an untranslated source burst.
+    delay_sec = max(0.0, float(ru_evidence.get("delay_seconds") or 0.0))
+    if source_intervals:
+        source_intervals = [
+            (start + delay_sec, end + delay_sec)
+            for start, end in source_intervals
+            if end > start
+        ]
+        source_proof += "+mix-delay"
+
     proof = (
         RU_BOUNDARY_PROOF
         if source_intervals
@@ -529,7 +547,7 @@ def _subtract_intervals(
     end: float,
     cover_grace: float,
 ) -> list[tuple[float, float]]:
-    """Return source-speech spans not covered by contemporaneous RU speech."""
+    """Return source-speech spans not covered by corresponding RU speech."""
     uncovered: list[tuple[float, float]] = []
     for raw_start, raw_end in base:
         left = max(start, raw_start)
@@ -607,8 +625,19 @@ def align_candidates_to_ru_speech(
         list(source_speech_intervals or []),
         max_gap=0.35,
     )
-    source_limit = max(0.0, float(source_duration))
-    delay = max(0.0, float(delay_seconds))
+    try:
+        source_limit = max(0.0, float(source_duration))
+    except (TypeError, ValueError):
+        source_limit = 0.0
+    if not math.isfinite(source_limit) or source_limit <= 0:
+        raise RuntimeError("Factory translated source duration is not finite/positive")
+    try:
+        delay = max(0.0, float(delay_seconds))
+    except (TypeError, ValueError):
+        delay = 0.0
+    if not math.isfinite(delay):
+        delay = 0.0
+
     max_start_back = _env_float(
         "SHORTS_FACTORY_RU_START_BACK_SEC", 3.0, 0.25, 8.0
     )
