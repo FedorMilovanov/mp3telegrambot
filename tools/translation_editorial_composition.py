@@ -50,8 +50,12 @@ def _write_atomic(path: Path, data: dict[str, Any], *, overwrite: bool) -> None:
             try:
                 os.link(temp, path)
             except OSError:
-                with path.open("x", encoding="utf-8") as stream:
-                    stream.write(payload)
+                try:
+                    with path.open("x", encoding="utf-8") as stream:
+                        stream.write(payload)
+                except Exception:
+                    path.unlink(missing_ok=True)
+                    raise
     finally:
         temp.unlink(missing_ok=True)
 
