@@ -735,7 +735,7 @@ The callback now reuses the safe `_html_pre_message()` helper from command handl
 
 ## 2026-06-18 — Archive quality admin HTML escaping fixed
 
-Continued Telegram/admin-output audit found that archive quality readouts could interpolate archive-derived strings directly into HTML:
+Continued Telegram HTML audit found that archive quality readouts could interpolate archive-derived strings directly into HTML:
 
 - prompt variant names;
 - author/title/status values;
@@ -1025,3 +1025,35 @@ Fixes:
 - Optional automatic semantic audit is exact `gemini-3.6-flash` with `thinking_level=high`, disabled by default, one attempt by default and at most two only by explicit override; there is no light/legacy fallback and every Factory candidate must be reviewed.
 - The first CI exposed two unnecessary regex health markers in the new deterministic layer; they were removed instead of increasing the repository baseline, and exact donor phrase-boundary regressions were added.
 - Full exact-head CI is required before squash merge; no existing LiveDub/Whisper/Factory selection or publication quality gate is weakened.
+
+## 2026-08-10 — Shorts Factory RU-boundary and karaoke timing integrity
+
+Operator report: some translated Shorts were cut on the original English speech, leaving untranslated fragments, and at least one Shorts karaoke subtitle render was visually glitchy even though FFmpeg reported success.
+
+### Root causes confirmed
+
+- Gemini semantic discovery ran on the original source audio, while publication cuts reused those timestamps on the delayed Yandex LiveDub mix. The old fixed timing envelope could not prove where Russian speech actually began or ended.
+- LiveDub intentionally restores the original track when the RU track is quiet. Therefore an RU-silence region can expose English speech and must not be treated as a harmless translated boundary by default.
+- The subtitle path could stretch/merge Whisper word timing across real silence before chunking. A technically valid ASS/FFmpeg output could therefore contain abnormal karaoke holds or timing overlap without failing the burn step.
+
+### Production corrections
+
+- Original-audio Gemini timestamps are now semantic anchors only. Translated publication boundaries require the exact provenance-bound Yandex VOT RU artifact, an actual `ffprobe` duration, the configured LiveDub mix delay, and request-local RU speech evidence.
+- Provider/manual source-caption speech timing is used when available and is shifted into the same delayed RU timeline before comparison. This distinguishes actual source speech with no RU counterpart from natural silence; absence of source captions falls back only to a conservative RU-gap evidence gate, never to original timestamps.
+- Alignment is per candidate: bad Shorts can be rejected while valid long candidates continue. Factory fails only when no translated publication candidate survives. The Telegram “final plan” is emitted only after this gate and contains the actual publication-ready RU-adjusted ranges.
+- The old fixed `+delay/+extra` LiveDub boundary fallback was removed. If the required speech-proven aligner is not installed, translated publication fails closed rather than cutting heuristically on the original timeline.
+- Boundary evidence is owned by the parent Factory coroutine and bound with a request-local `ContextVar` only during alignment. The earlier child-task/global-store/persist handoff was removed to eliminate stale/cross-request proof risk.
+- Subtitle ASS generation no longer fills real speech gaps. Hard pauses split chunks even after short function words, token/particle merges cannot jump across real silence, and final word timings are normalized again after token ownership changes.
+- Generated ASS is structurally/timing validated before FFmpeg: positive intervals, monotonic event order, no overlaps, bounded karaoke holds, non-empty events. Transactional cleanup/cancellation behavior remains intact.
+
+### Regression coverage
+
+- delayed RU anchors inside a long phrase;
+- RU start/end snapping and source-tail behavior;
+- no exact-duration metadata fallback and no original-timeline publication fallback;
+- per-candidate rejection, RU-only missing-translation gaps, source-speaking-without-RU veto, and long natural silence where source captions are also silent;
+- source-caption intervals shifted by the exact mix delay;
+- long pause after a preposition, overlapping/zero-duration Whisper words, remote hyphen particles/punctuation, abnormal karaoke holds and ASS overlaps;
+- Factory runtime ownership and request-local boundary-proof installation contract.
+
+Full exact-head CI is required on PR #115 after this audit-polish pass. The prior green CI #2439 predates the final request-local/source-speech hardening and is not sufficient evidence for this head.
