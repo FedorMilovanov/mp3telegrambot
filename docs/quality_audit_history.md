@@ -425,7 +425,7 @@ Extended prompt-health leaky literal guard and removed additional prompt phrases
 - `Чередуй полное имя`
 - invented-source examples such as `Спасение младенцев`, `Младенцы во славе`, `Странный огонь`
 
-The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaks across main prompts and the deep audio prompt sample.
+The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaky literals across main prompts and the deep audio prompt sample.
 
 ## 2026-06-16 — Channel-position literal cleanup completed
 
@@ -848,8 +848,7 @@ Fixes:
 Размышлении (преувеличение→исповедание) на TYPE 1/3 — R45-правка работает, дампы
 чистые; LRM (U+200E) после иврита в «(חָפֵץ‎, евр.)» — он там нужен для
 правильного направления запятой, снятие было бы багом; orphan `**` на таймкоде —
-уже снимает `_final_telegraph_polish` на публикации (проверено end-to-end на
-реальном контенте дампов).
+уже снимает `_final_telegraph_polish` на публикации (проверено end-to-end).
 
 Тесты: tests/test_v3_r49_synopsis_quality.py. verify_repo — зелёный,
 регрессий нет (легитимные таймкоды по-прежнему линкуются, проверено end-to-end на
@@ -973,8 +972,8 @@ Fixes:
   covering the four-frame adversarial bracket.
 - The focused upstream 4-file smoke and the full 11-file Dub v6.7 smoke pass
   locally after these corrections. Full repository pytest still has three
-  collection failures caused by parametrized tests using the reserved pytest
-  fixture name `request`.
+  collection failures caused by parametrized tests using the reserved fixture
+  name `request`.
 - The upstream changes are otherwise directionally sound: transactional
   dataclass-facade import coverage, diagnostic-only cross-language source
   prosody, explicit tail-bracketing policy, and release invalidation to v6.7.
@@ -998,7 +997,7 @@ Fixes:
   advanced to `dub-worker-quality-v6.8` so phrase-level checkpoints cannot be
   mistaken for compatible block-level work.
 - Full repository test collection was repaired for pytest 8.4 by renaming three
-  parametrized arguments that used the reserved pytest fixture name `request`.
+  parametrized arguments that used the reserved fixture name `request`.
 
 - Current focused quality suite is green; the complete historical repository suite
   still contains 42 legacy expectation failures (old v4.8/v5 markers, obsolete
