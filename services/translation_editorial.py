@@ -34,6 +34,7 @@ VERDICTS = {"keep", "repair", "reject"}
 ISSUE_SEVERITIES = {"roughness", "minor", "major", "critical"}
 ACTION_TYPES = {"drop_span", "mute_span", "borrow_span", "reject_region"}
 EXECUTABLE_ACTIONS = {"drop_span", "mute_span"}
+MAX_DROP_SPAN_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,59 @@ def _finite_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def drop_span_budget_seconds(duration: float) -> float:
+    """Return the total automatic timeline-removal budget for one source."""
+    source_duration = _finite_float(duration)
+    if source_duration is None or source_duration <= 0:
+        raise ValueError("drop-span budget duration must be finite and positive")
+    return min(60.0, max(5.0, source_duration * 0.02))
+
+
+def validate_drop_span_budget(
+    repairs: Iterable[dict[str, Any]],
+    duration: float,
+) -> list[str]:
+    """Bound destructive automatic deletion independently of model/editor intent."""
+    source_duration = _finite_float(duration)
+    if source_duration is None or source_duration <= 0:
+        return ["drop-span budget duration must be finite and positive"]
+    errors: list[str] = []
+    spans: list[tuple[float, float]] = []
+    for index, item in enumerate(repairs, 1):
+        if not isinstance(item, dict) or item.get("type") != "drop_span":
+            continue
+        start = _finite_float(item.get("start_seconds"))
+        end = _finite_float(item.get("end_seconds"))
+        if start is None or end is None or start < 0 or end <= start:
+            errors.append(f"drop_span[{index}] has invalid span")
+            continue
+        if end > source_duration + 0.05:
+            errors.append(f"drop_span[{index}] exceeds source duration")
+            continue
+        span_seconds = end - start
+        if span_seconds > MAX_DROP_SPAN_SECONDS + 0.001:
+            errors.append(
+                f"drop_span[{index}] is {span_seconds:.3f}s; "
+                f"maximum automatic drop is {MAX_DROP_SPAN_SECONDS:.3f}s"
+            )
+        spans.append((start, end))
+
+    merged: list[tuple[float, float]] = []
+    for start, end in sorted(spans):
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+        else:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+    total_removed = sum(end - start for start, end in merged)
+    total_budget = drop_span_budget_seconds(source_duration)
+    if total_removed > total_budget + 0.001:
+        errors.append(
+            f"merged automatic drop removal is {total_removed:.3f}s; "
+            f"source budget is {total_budget:.3f}s"
+        )
+    return errors
 
 
 def _srt_seconds(value: str) -> float:
@@ -535,6 +589,10 @@ def _validate_issue(
     if not isinstance(action, dict) or action.get("type") not in ACTION_TYPES:
         errors.append(f"{prefix}: invalid action")
         return errors
+    if action.get("type") == "drop_span" and end - start > MAX_DROP_SPAN_SECONDS + 0.001:
+        errors.append(
+            f"{prefix}: drop_span exceeds {MAX_DROP_SPAN_SECONDS:.3f}s automatic surgical limit"
+        )
     if action.get("type") == "borrow_span":
         donor_start = _finite_float(action.get("donor_start_seconds"))
         donor_end = _finite_float(action.get("donor_end_seconds"))
@@ -577,6 +635,7 @@ def validate_review_document(review: dict[str, Any], manifest: dict[str, Any]) -
     candidate_map = _candidate_map(manifest)
 
     full = review.get("full_sermon")
+    full_drop_repairs: list[dict[str, Any]] = []
     if not isinstance(full, dict):
         errors.append("full_sermon must be an object")
         full_issues: list[Any] = []
@@ -604,10 +663,23 @@ def validate_review_document(review: dict[str, Any], manifest: dict[str, Any]) -
                 end = _finite_float(issue.get("end_seconds"))
                 action = issue.get("action") or {}
                 if start is not None and end is not None and isinstance(action, dict):
-                    key = (start, end, str(action.get("type") or ""))
+                    action_type = str(action.get("type") or "")
+                    key = (start, end, action_type)
                     if key in seen_full:
                         errors.append(f"full_sermon.issue[{index}]: duplicate issue/action span")
                     seen_full.add(key)
+                    if action_type == "drop_span":
+                        full_drop_repairs.append(
+                            {
+                                "type": "drop_span",
+                                "start_seconds": start,
+                                "end_seconds": end,
+                            }
+                        )
+        errors.extend(
+            f"full_sermon: {message}"
+            for message in validate_drop_span_budget(full_drop_repairs, duration)
+        )
 
     candidate_reviews = review.get("candidate_reviews")
     if not isinstance(candidate_reviews, list):
@@ -809,6 +881,9 @@ async def apply_safe_repairs(
         end = _finite_float(item.get("end_seconds"))
         if start is None or end is None or start < 0 or end <= start or end > actual_duration + 0.05:
             raise ValueError(f"repair[{index}] has invalid/out-of-range span")
+    drop_budget_errors = validate_drop_span_budget(repair_list, actual_duration)
+    if drop_budget_errors:
+        raise ValueError("unsafe automatic drop_span repair: " + "; ".join(drop_budget_errors))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     drops = _merge_drop_spans(repair_list)
@@ -1074,6 +1149,7 @@ __all__ = [
     "ACTION_TYPES",
     "EXECUTABLE_ACTIONS",
     "ISSUE_SEVERITIES",
+    "MAX_DROP_SPAN_SECONDS",
     "PACK_SCHEMA_NAME",
     "PACK_SCHEMA_VERSION",
     "REVIEW_SCHEMA_NAME",
@@ -1084,6 +1160,7 @@ __all__ = [
     "build_drop_filter",
     "build_review_pack",
     "collect_executable_repairs",
+    "drop_span_budget_seconds",
     "find_donor_cues",
     "load_pack_manifest",
     "parse_srt",
@@ -1091,5 +1168,6 @@ __all__ = [
     "remap_after_drops",
     "sha256_file",
     "transcribe_russian_whisper",
+    "validate_drop_span_budget",
     "validate_review_document",
 ]
