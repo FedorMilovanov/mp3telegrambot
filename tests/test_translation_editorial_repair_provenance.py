@@ -79,7 +79,8 @@ def test_repair_provenance_is_self_binding_and_immutable(tmp_path: Path) -> None
         write_repair_provenance(tmp_path / "bad.json", changed)
 
 
-def test_verify_repair_provenance_rehashes_output_bytes(
+@pytest.mark.asyncio
+async def test_verify_repair_provenance_rehashes_and_rejects_tampered_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -89,27 +90,6 @@ def test_verify_repair_provenance_rehashes_output_bytes(
 
     async def fake_probe(path: Path):
         assert Path(path) == output
-        return SimpleNamespace(duration=97.0)
-
-    monkeypatch.setattr(provenance, "probe_media_async", fake_probe)
-    monkeypatch.setattr(provenance, "media_probe_is_deliverable", lambda probe: probe is not None)
-
-    loaded = pytest.run(asyncio_run=verify_repair_provenance) if False else None
-    # Keep the actual assertion in an async test below; this branch only prevents
-    # static linters from mistaking the imported coroutine for unused API.
-    assert loaded is None
-
-
-@pytest.mark.asyncio
-async def test_verify_repair_provenance_rejects_tampered_output(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    output, document = _document(tmp_path)
-    sidecar = tmp_path / "clean.editorial-repair.json"
-    write_repair_provenance(sidecar, document)
-
-    async def fake_probe(_path: Path):
         return SimpleNamespace(duration=97.0)
 
     monkeypatch.setattr(provenance, "probe_media_async", fake_probe)
