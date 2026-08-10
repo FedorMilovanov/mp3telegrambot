@@ -98,7 +98,7 @@ def test_anchor_inside_long_ru_phrase_stays_ru_instead_of_false_rejection():
     assert aligned[0]["end_seconds"] == pytest.approx(150.0)
 
 
-def test_mix_delay_is_applied_even_inside_one_long_ru_phrase():
+def test_mix_delay_is_applied_once_to_ru_target_inside_long_phrase():
     aligned = align_candidates_to_ru_speech(
         [_short(start=110.0, end=150.0)],
         source_duration=200.0,
@@ -121,7 +121,6 @@ def test_no_nearby_ru_boundary_rejects_only_that_candidate():
         speech_intervals=[(120.0, 170.0)],
         delay_seconds=0.0,
     )
-
     assert aligned == []
 
 
@@ -132,7 +131,6 @@ def test_long_internal_ru_gap_rejects_untranslated_short_region():
         speech_intervals=[(99.5, 120.0), (125.1, 146.0)],
         delay_seconds=0.0,
     )
-
     assert aligned == []
 
 
@@ -144,9 +142,8 @@ def test_source_speech_without_corresponding_ru_rejects_candidate(monkeypatch):
         speech_intervals=[(100.0, 120.0), (123.0, 146.0)],
         delay_seconds=0.0,
         source_speech_intervals=[(100.0, 146.0)],
-        source_speech_proof="provider-source-srt+mix-delay",
+        source_speech_proof="provider-source-srt",
     )
-
     assert aligned == []
 
 
@@ -157,7 +154,7 @@ def test_source_silence_does_not_turn_natural_ru_pause_into_translation_failure(
         speech_intervals=[(100.0, 119.0), (125.0, 146.0)],
         delay_seconds=0.0,
         source_speech_intervals=[(100.0, 119.0), (125.0, 146.0)],
-        source_speech_proof="provider-source-srt+mix-delay",
+        source_speech_proof="provider-source-srt",
     )
 
     assert len(aligned) == 1
@@ -167,10 +164,7 @@ def test_source_silence_does_not_turn_natural_ru_pause_into_translation_failure(
 
 
 @pytest.mark.asyncio
-async def test_source_caption_speech_is_shifted_into_ru_mix_timeline(
-    monkeypatch,
-    tmp_path,
-):
+async def test_source_caption_speech_stays_on_original_final_mix_clock(monkeypatch, tmp_path):
     ru_path = tmp_path / "vot.mp3"
     ru_path.write_bytes(b"x" * 2048)
     monkeypatch.setattr(timing, "read_ru_audio_provenance", lambda _root: ru_path)
@@ -195,18 +189,83 @@ async def test_source_caption_speech_is_shifted_into_ru_mix_timeline(
         source_language="en",
     )
 
-    assert len(evidence["source_speech_intervals"]) == 1
-    shifted_start, shifted_end = evidence["source_speech_intervals"][0]
-    assert shifted_start == pytest.approx(10.6)
-    assert shifted_end == pytest.approx(20.6)
-    assert evidence["source_speech_proof"] == "provider-source-srt+mix-delay"
+    assert evidence["source_speech_intervals"] == [(10.0, 20.0)]
+    assert evidence["source_speech_proof"] == "provider-source-srt"
+    assert evidence["intervals"] == [(10.6, 20.6)]
     assert evidence["proof"] == RU_BOUNDARY_PROOF
+
+
+def test_candidate_role_is_explicit_not_inferred_from_duration():
+    candidate = _short(start=100.0, end=400.0)
+    speech = [(100.0, 400.0)]
+
+    assert align_candidates_to_ru_speech(
+        [candidate],
+        source_duration=500.0,
+        speech_intervals=speech,
+        delay_seconds=0.0,
+        candidate_kind="short",
+    ) == []
+
+    aligned_long = align_candidates_to_ru_speech(
+        [candidate],
+        source_duration=500.0,
+        speech_intervals=speech,
+        delay_seconds=0.0,
+        candidate_kind="long",
+    )
+    assert len(aligned_long) == 1
+    assert aligned_long[0]["livedub_candidate_kind"] == "long"
+
+
+def test_near_cap_short_reclaims_only_boundary_expansion():
+    candidate = _short(start=10.0, end=189.0)
+    aligned = align_candidates_to_ru_speech(
+        [candidate],
+        source_duration=220.0,
+        speech_intervals=[(9.5, 190.2)],
+        delay_seconds=0.0,
+        candidate_kind="short",
+    )
+
+    assert len(aligned) == 1
+    assert aligned[0]["duration_seconds"] <= 180.0
+    assert aligned[0]["start_seconds"] <= 10.0
+    assert aligned[0]["end_seconds"] >= 189.0
+
+
+def test_source_only_edge_burst_has_stricter_purity_veto(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", "4.0")
+    monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC", "1.25")
+
+    aligned = align_candidates_to_ru_speech(
+        [_short(start=10.0, end=55.0)],
+        source_duration=80.0,
+        speech_intervals=[(10.6, 11.0), (12.8, 55.6)],
+        delay_seconds=0.6,
+        source_speech_intervals=[(10.0, 55.0)],
+        source_speech_proof="provider-source-srt",
+        candidate_kind="short",
+    )
+    assert aligned == []
+
+
+def test_intentional_mix_delay_alone_does_not_fail_edge_purity():
+    aligned = align_candidates_to_ru_speech(
+        [_short(start=10.0, end=55.0)],
+        source_duration=80.0,
+        speech_intervals=[(10.6, 55.6)],
+        delay_seconds=0.6,
+        source_speech_intervals=[(10.0, 55.0)],
+        source_speech_proof="provider-source-srt",
+        candidate_kind="short",
+    )
+    assert len(aligned) == 1
 
 
 @pytest.mark.asyncio
 async def test_exact_ru_audio_duration_has_no_metadata_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(timing.shutil, "which", lambda _name: None)
-
     assert await timing._probe_audio_duration(tmp_path / "missing.mp3") == 0.0
 
 
@@ -215,4 +274,5 @@ def test_unproved_runtime_timeline_has_no_original_timestamp_fallback():
         align_factory_livedub_candidates(
             [_short()],
             source_duration=200.0,
+            candidate_kind="short",
         )
