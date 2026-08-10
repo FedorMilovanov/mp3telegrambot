@@ -40,8 +40,21 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     import pipelines.shorts_factory as factory_module
     import services.shorts_factory_execution_guard as guard_module
     import services.shorts_factory_runtime as runtime_module
+    from services.shorts_factory_source import _factory_livedub_timeout_seconds
 
     install_mode_ui(mode_module)
+
+    # The guarded executor historically re-parsed this one setting with a lower
+    # 60-second floor. Keep the production LiveDub timeout owner singular so a
+    # local env override cannot cancel a valid long Yandex translation early.
+    original_guard_env_int = guard_module._env_int
+
+    def canonical_guard_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+        if name == "SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC":
+            return _factory_livedub_timeout_seconds()
+        return original_guard_env_int(name, default, minimum, maximum)
+
+    guard_module._env_int = canonical_guard_env_int
 
     original_downloader = factory_module._download_factory_audio
 
@@ -179,7 +192,8 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     logger.info(
         "Shorts Factory overload/editorial polish installed: Gemini 3.6/HIGH 3-pass preserved, "
         "Factory-only HTTP retry ownership, resumable pass rotation, bounded lossless retry cache, "
-        "active VOT RU proof, post-alignment ai_data, editorial ZIP and standalone ENG editor"
+        "canonical LiveDub timeout, active VOT RU proof, post-alignment ai_data, editorial ZIP "
+        "and standalone ENG editor"
     )
     return True
 
