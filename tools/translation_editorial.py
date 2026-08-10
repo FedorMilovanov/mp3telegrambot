@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,27 @@ def _json(path: Path) -> dict[str, Any]:
     return data
 
 
+def _safe_media_id(media_id: str) -> str:
+    safe = "".join(
+        char if (char.isalnum() or char in "_-") else "_"
+        for char in str(media_id or "media")
+    )
+    return safe[:100] or "media"
+
+
+def _candidate_list(value: Any, *, field: str) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field} candidates must be a list")
+    out: list[dict[str, Any]] = []
+    for index, item in enumerate(value, 1):
+        if not isinstance(item, dict):
+            raise ValueError(f"{field}[{index}] candidate must be an object")
+        out.append(dict(item))
+    return out
+
+
 def _candidate_groups(path: Path | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if path is None:
         return [], []
@@ -55,8 +77,8 @@ def _candidate_groups(path: Path | None) -> tuple[list[dict[str, Any]], list[dic
     if longs is None:
         longs = data.get("long_candidates")
     return (
-        [dict(item) for item in (shorts or []) if isinstance(item, dict)],
-        [dict(item) for item in (longs or []) if isinstance(item, dict)],
+        _candidate_list(shorts, field="shorts"),
+        _candidate_list(longs, field="long_clips"),
     )
 
 
@@ -156,8 +178,9 @@ def _review_template(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, Any]) -> Path:
+    safe_id = _safe_media_id(media_id)
     template_path = Path(output_dir) / (
-        f"{media_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
+        f"{safe_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
     )
     expected = _review_template(manifest)
     if template_path.exists():
@@ -165,56 +188,65 @@ def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, 
             raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
         return template_path
     payload = json.dumps(expected, ensure_ascii=False, indent=2, allow_nan=False)
+    created = False
     try:
         with template_path.open("x", encoding="utf-8") as stream:
+            created = True
             stream.write(payload)
+    except FileExistsError:
+        if _json(template_path) == expected:
+            return template_path
+        raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
     except Exception:
-        template_path.unlink(missing_ok=True)
+        if created:
+            template_path.unlink(missing_ok=True)
         raise
     return template_path
 
 
 async def _cmd_prepare(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir).resolve()
-    input_dir = output_dir / f"{args.media_id}_translation_editorial_inputs"
-    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     source_video = Path(args.source_video)
     actual_duration = await _source_duration(source_video, args.duration)
+    safe_id = _safe_media_id(args.media_id)
 
-    original_srt = await _download_original_srt(
-        args.url,
-        input_dir,
-        language=args.original_language,
-    )
-    russian_srt = input_dir / "russian_whisper.srt"
-    russian_words = input_dir / "russian_whisper_words.json"
-    await transcribe_russian_whisper(
-        source_video,
-        srt_output=russian_srt,
-        words_output=russian_words,
-        model_name=args.whisper_model,
-    )
-    shorts, longs = _candidate_groups(Path(args.candidates) if args.candidates else None)
-    pack = await asyncio.to_thread(
-        build_review_pack,
-        output_dir=output_dir,
-        media_id=args.media_id,
-        source_url=args.url,
-        title=args.title,
-        performer=args.performer,
-        duration=actual_duration,
-        source_video_path=source_video,
-        original_srt_path=original_srt,
-        russian_whisper_srt_path=russian_srt,
-        russian_words_path=russian_words,
-        shorts_candidates=shorts,
-        long_candidates=longs,
-        timeline_metadata={
-            "original_srt": "source_timeline",
-            "russian_whisper": "source_video_timeline",
-            "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
-        },
-    )
+    with tempfile.TemporaryDirectory(prefix=f".{safe_id}_editorial_inputs_", dir=output_dir) as name:
+        input_dir = Path(name)
+        original_srt = await _download_original_srt(
+            args.url,
+            input_dir,
+            language=args.original_language,
+        )
+        russian_srt = input_dir / "russian_whisper.srt"
+        russian_words = input_dir / "russian_whisper_words.json"
+        await transcribe_russian_whisper(
+            source_video,
+            srt_output=russian_srt,
+            words_output=russian_words,
+            model_name=args.whisper_model,
+        )
+        shorts, longs = _candidate_groups(Path(args.candidates) if args.candidates else None)
+        pack = await asyncio.to_thread(
+            build_review_pack,
+            output_dir=output_dir,
+            media_id=args.media_id,
+            source_url=args.url,
+            title=args.title,
+            performer=args.performer,
+            duration=actual_duration,
+            source_video_path=source_video,
+            original_srt_path=original_srt,
+            russian_whisper_srt_path=russian_srt,
+            russian_words_path=russian_words,
+            shorts_candidates=shorts,
+            long_candidates=longs,
+            timeline_metadata={
+                "original_srt": "source_timeline",
+                "russian_whisper": "source_video_timeline",
+                "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
+            },
+        )
     manifest = load_verified_review_pack(pack)
     template_path = _write_review_template(output_dir, args.media_id, manifest)
     print(pack)
@@ -303,9 +335,21 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _normalized_repairs(review: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": str(item["type"]),
+            "start_seconds": round(float(item["start_seconds"]), 3),
+            "end_seconds": round(float(item["end_seconds"]), 3),
+        }
+        for item in collect_executable_repairs(review)
+    ]
+
+
 async def _existing_repair_pair(
     *,
     manifest: dict[str, Any],
+    review: dict[str, Any],
     review_path: Path,
     output_path: Path,
     provenance_path: Path,
@@ -324,6 +368,7 @@ async def _existing_repair_pair(
         provenance.get("review_pack_id") != manifest.get("review_pack_id")
         or provenance.get("review_sha256") != review_sha
         or (provenance.get("source") or {}).get("sha256") != source.get("sha256")
+        or (provenance.get("repairs") or []) != _normalized_repairs(review)
     ):
         raise FileExistsError("existing editorial repair pair belongs to different evidence")
     return True
@@ -367,6 +412,7 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
     provenance_path = output_path.with_suffix(".editorial-repair.json")
     if await _existing_repair_pair(
         manifest=manifest,
+        review=review,
         review_path=review_path,
         output_path=output_path,
         provenance_path=provenance_path,
@@ -376,24 +422,22 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
         return 0
 
     repairs = collect_executable_repairs(review)
-    try:
-        output = await apply_safe_repairs(
-            source_video_path=source_path,
-            output_path=output_path,
-            duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
-            repairs=repairs,
-        )
-        provenance = await build_repair_provenance(
-            manifest=manifest,
-            review_path=review_path,
-            output_path=output,
-            repairs=repairs,
-        )
-        write_repair_provenance(provenance_path, provenance)
-    except Exception:
-        output_path.unlink(missing_ok=True)
-        provenance_path.unlink(missing_ok=True)
-        raise
+    output = await apply_safe_repairs(
+        source_video_path=source_path,
+        output_path=output_path,
+        duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
+        repairs=repairs,
+    )
+    provenance = await build_repair_provenance(
+        manifest=manifest,
+        review_path=review_path,
+        output_path=output,
+        repairs=repairs,
+    )
+    # Final paths are never unlinked here on a late failure. All media writers are
+    # no-overwrite; an incomplete output/provenance pair is intentionally blocked
+    # by the next run instead of risking deletion of a concurrent winner.
+    write_repair_provenance(provenance_path, provenance)
     print(output_path)
     print(provenance_path)
     return 0
