@@ -425,7 +425,7 @@ Extended prompt-health leaky literal guard and removed additional prompt phrases
 - `Чередуй полное имя`
 - invented-source examples such as `Спасение младенцев`, `Младенцы во славе`, `Странный огонь`
 
-The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaks across main prompts and the deep audio prompt sample.
+The prompts now describe these as patterns rather than repeating exact bad output strings. Current prompt-health check reports zero known leaky literals across main prompts and the deep audio prompt sample.
 
 ## 2026-06-16 — Channel-position literal cleanup completed
 
@@ -735,7 +735,7 @@ The callback now reuses the safe `_html_pre_message()` helper from command handl
 
 ## 2026-06-18 — Archive quality admin HTML escaping fixed
 
-Continued Telegram HTML audit found that archive quality readouts could interpolate archive-derived strings directly into HTML:
+Continued Telegram/admin-output audit found that archive quality readouts could interpolate archive-derived strings directly into HTML:
 
 - prompt variant names;
 - author/title/status values;
@@ -827,7 +827,7 @@ Fixes:
   вхождений в дампах.
 - **Артефакт `.*.`**: строка Писания в ITALIC, кончавшаяся закрывающим одиночным
   `*`, получала QA-точку СНАРУЖИ курсива. Новая ветка `elif s.endswith('*')` в
-  `_ensure_trailing_period` кладёт точку ВНУТРЬ. Покрыто 4/4 вхождений.
+  `_ensure_trailing_period` кладёт точку ВНУТРЬ. Покрыто 4/4 вхождения.
 - **Дубликат имени автора в заголовке** («…Джон МакАртур — Джон МакАртур»):
   видео-тайтл уже кончается именем проповедника. `join_title_author`
   (core/text_utils.py) не дублирует хвост; применён в заголовках 3 страниц
