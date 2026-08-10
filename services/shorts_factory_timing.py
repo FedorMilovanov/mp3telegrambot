@@ -17,7 +17,6 @@ import asyncio
 import copy
 import logging
 import os
-import re
 import shutil
 import threading
 from contextvars import ContextVar
@@ -42,9 +41,6 @@ _CURRENT_TIMELINE: ContextVar[dict[str, Any] | None] = ContextVar(
     default=None,
 )
 _CAPTURE_INSTALLED = False
-
-_SILENCE_START_RE = re.compile(r"silence_start:\s*([0-9]+(?:\.[0-9]+)?)")
-_SILENCE_END_RE = re.compile(r"silence_end:\s*([0-9]+(?:\.[0-9]+)?)")
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -96,6 +92,21 @@ def _take_video_timeline(video_path: Path | str) -> dict[str, Any] | None:
         return _TIMELINE_BY_VIDEO.pop(key, None)
 
 
+def _silence_event_value(line: str, marker: str) -> float | None:
+    """Parse one FFmpeg silencedetect numeric value without adding regex debt."""
+    position = str(line or "").find(marker)
+    if position < 0:
+        return None
+    tail = str(line)[position + len(marker):].lstrip()
+    token = tail.split(maxsplit=1)[0] if tail else ""
+    token = token.rstrip("|,;")
+    try:
+        value = float(token)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
 def speech_intervals_from_silence_log(
     stderr: str,
     *,
@@ -109,12 +120,12 @@ def speech_intervals_from_silence_log(
 
     events: list[tuple[float, str]] = []
     for line in str(stderr or "").splitlines():
-        start_match = _SILENCE_START_RE.search(line)
-        if start_match:
-            events.append((float(start_match.group(1)), "start"))
-        end_match = _SILENCE_END_RE.search(line)
-        if end_match:
-            events.append((float(end_match.group(1)), "end"))
+        silence_start = _silence_event_value(line, "silence_start:")
+        if silence_start is not None:
+            events.append((silence_start, "start"))
+        silence_end = _silence_event_value(line, "silence_end:")
+        if silence_end is not None:
+            events.append((silence_end, "end"))
     events.sort(key=lambda item: (item[0], 0 if item[1] == "start" else 1))
 
     speech: list[tuple[float, float]] = []
