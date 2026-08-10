@@ -52,7 +52,9 @@ def _document(tmp_path: Path) -> tuple[Path, dict]:
             "duration_seconds": 97.0,
         },
     }
-    document["repair_result_id"] = provenance._canonical_sha256(document)
+    document["repair_result_id"] = provenance._canonical_sha256(
+        provenance._identity_payload(document)
+    )
     return output, document
 
 
@@ -77,6 +79,16 @@ def test_repair_provenance_is_self_binding_and_immutable(tmp_path: Path) -> None
     changed["repairs"][0]["end_seconds"] = 13.0
     with pytest.raises(ValueError, match="repair_result_id"):
         write_repair_provenance(tmp_path / "bad.json", changed)
+
+
+def test_repair_result_identity_is_path_stable(tmp_path: Path) -> None:
+    _output, document = _document(tmp_path)
+    original = document["repair_result_id"]
+    moved = json.loads(json.dumps(document))
+    moved["source"]["local_path"] = str(tmp_path / "moved-source.mp4")
+    moved["output"]["local_path"] = str(tmp_path / "moved-clean.mp4")
+
+    assert provenance._canonical_sha256(provenance._identity_payload(moved)) == original
 
 
 @pytest.mark.asyncio
