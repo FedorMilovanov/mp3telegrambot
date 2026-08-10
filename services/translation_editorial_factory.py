@@ -6,8 +6,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import shutil
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -63,6 +65,8 @@ def _configured_livedub_delay_seconds() -> float:
         delay_ms = float(os.getenv("LIVEDUB_DELAY_MS", "600") or "600")
     except (TypeError, ValueError):
         delay_ms = 600.0
+    if not math.isfinite(delay_ms):
+        delay_ms = 600.0
     return max(0.0, min(delay_ms, 5000.0)) / 1000.0
 
 
@@ -70,6 +74,8 @@ def _configured_factory_shift_extra_seconds() -> float:
     try:
         value = float(os.getenv("SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC", "0.15") or "0.15")
     except (TypeError, ValueError):
+        value = 0.15
+    if not math.isfinite(value):
         value = 0.15
     return max(0.0, min(value, 5.0))
 
@@ -322,6 +328,8 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         timeout = float(os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC", "300") or "300")
     except (TypeError, ValueError):
         timeout = 300.0
+    if not math.isfinite(timeout):
+        timeout = 300.0
     timeout = max(60.0, min(timeout, 600.0))
 
     clients = list(GEMINI_CLIENTS)[: _gemini_max_attempts()]
@@ -446,42 +454,53 @@ async def prepare_factory_editorial_review(
         raise RuntimeError("Factory editorial source failed video+audio media probe")
     assert probe is not None
     actual_duration = float(probe.duration)
-    if duration and abs(actual_duration - float(duration)) > 1.25:
-        raise RuntimeError(
-            f"Factory editorial source duration drift: caller={float(duration):.3f}s "
-            f"probe={actual_duration:.3f}s"
-        )
-    durable_source = _durable_review_source(source_path, root, media_id)
+    if not math.isfinite(actual_duration) or actual_duration <= 0:
+        raise RuntimeError("Factory editorial source returned an invalid media duration")
+    try:
+        caller_duration = float(duration)
+    except (TypeError, ValueError):
+        caller_duration = 0.0
+    if math.isfinite(caller_duration) and caller_duration > 0:
+        if abs(actual_duration - caller_duration) > 1.25:
+            raise RuntimeError(
+                f"Factory editorial source duration drift: caller={caller_duration:.3f}s "
+                f"probe={actual_duration:.3f}s"
+            )
 
-    original_srt = await download_original_srt(
-        url,
-        root,
-        language=source_language or "en",
-    )
-    russian_srt = root / "russian_whisper.srt"
-    russian_words = root / "russian_whisper_words.json"
-    await transcribe_russian_whisper(
-        durable_source,
-        srt_output=russian_srt,
-        words_output=russian_words,
-        ai_data=ai_data,
-        model_name="large-v3",
-    )
-    pack = build_review_pack(
-        output_dir=root,
-        media_id=media_id,
-        source_url=url,
-        title=title,
-        performer=performer,
-        duration=actual_duration,
-        source_video_path=durable_source,
-        original_srt_path=original_srt,
-        russian_whisper_srt_path=russian_srt,
-        russian_words_path=russian_words,
-        shorts_candidates=shorts_candidates,
-        long_candidates=long_candidates,
-        timeline_metadata=_timeline_metadata(),
-    )
+    durable_source = await asyncio.to_thread(_durable_review_source, source_path, root, media_id)
+    safe_id = _safe_media_id(media_id)
+    with tempfile.TemporaryDirectory(prefix=f".{safe_id}_editorial_run_", dir=root) as staging_name:
+        staging = Path(staging_name)
+        original_srt = await download_original_srt(
+            url,
+            staging,
+            language=source_language or "en",
+        )
+        russian_srt = staging / "russian_whisper.srt"
+        russian_words = staging / "russian_whisper_words.json"
+        await transcribe_russian_whisper(
+            durable_source,
+            srt_output=russian_srt,
+            words_output=russian_words,
+            ai_data=ai_data,
+            model_name="large-v3",
+        )
+        pack = await asyncio.to_thread(
+            build_review_pack,
+            output_dir=root,
+            media_id=media_id,
+            source_url=url,
+            title=title,
+            performer=performer,
+            duration=actual_duration,
+            source_video_path=durable_source,
+            original_srt_path=original_srt,
+            russian_whisper_srt_path=russian_srt,
+            russian_words_path=russian_words,
+            shorts_candidates=shorts_candidates,
+            long_candidates=long_candidates,
+            timeline_metadata=_timeline_metadata(),
+        )
 
     review_path: Path | None = None
     markdown_path: Path | None = None
