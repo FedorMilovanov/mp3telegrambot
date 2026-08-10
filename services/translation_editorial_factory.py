@@ -107,32 +107,39 @@ def _copy_without_overwrite(source: Path, destination: Path) -> None:
         raise
     except OSError:
         pass
+    created = False
     try:
-        with source.open("rb") as input_stream, destination.open("xb") as output_stream:
+        with destination.open("xb") as output_stream, source.open("rb") as input_stream:
+            created = True
             shutil.copyfileobj(input_stream, output_stream, length=4 * 1024 * 1024)
+    except FileExistsError:
+        raise
     except Exception:
-        destination.unlink(missing_ok=True)
+        if created:
+            destination.unlink(missing_ok=True)
         raise
 
 
 def _durable_review_source(source_path: Path, root: Path, media_id: str) -> Path:
-    """Keep review source outside Factory's short-lived *_factory_source cleanup glob."""
+    """Keep exact review source versions outside Factory's short-lived trim cache."""
     source_path = Path(source_path)
     if not source_path.exists() or source_path.stat().st_size <= 1024:
         raise FileNotFoundError(f"Factory editorial source missing/empty: {source_path}")
     suffix = source_path.suffix.lower() or ".mp4"
-    destination = root / f"{_safe_media_id(media_id)}_editorial_source{suffix}"
+    source_sha = sha256_file(source_path)
+    digest = source_sha[7:19]
+    destination = root / f"{_safe_media_id(media_id)}_editorial_source_{digest}{suffix}"
     if destination.exists():
         if destination.stat().st_size != source_path.stat().st_size:
-            raise RuntimeError("durable editorial source size conflicts with current Factory source")
-        if sha256_file(destination) != sha256_file(source_path):
-            raise RuntimeError("durable editorial source bytes conflict with current Factory source")
+            raise RuntimeError("durable editorial source size conflicts with exact source version")
+        if sha256_file(destination) != source_sha:
+            raise RuntimeError("durable editorial source bytes conflict with exact source version")
         return destination
     _copy_without_overwrite(source_path, destination)
     if destination.stat().st_size != source_path.stat().st_size:
         destination.unlink(missing_ok=True)
         raise RuntimeError("durable editorial source copy has wrong size")
-    if sha256_file(destination) != sha256_file(source_path):
+    if sha256_file(destination) != source_sha:
         destination.unlink(missing_ok=True)
         raise RuntimeError("durable editorial source copy has wrong SHA-256")
     return destination
@@ -430,8 +437,18 @@ def _write_immutable_review_files(
             if path.read_text(encoding="utf-8") != content:
                 raise FileExistsError(f"immutable editorial review path collision: {path}")
         else:
-            with path.open("x", encoding="utf-8") as stream:
-                stream.write(content)
+            created = False
+            try:
+                with path.open("x", encoding="utf-8") as stream:
+                    created = True
+                    stream.write(content)
+            except FileExistsError:
+                if path.read_text(encoding="utf-8") != content:
+                    raise FileExistsError(f"immutable editorial review path collision: {path}")
+            except Exception:
+                if created:
+                    path.unlink(missing_ok=True)
+                raise
     return review_path, markdown_path
 
 
