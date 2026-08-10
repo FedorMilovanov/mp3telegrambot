@@ -25,7 +25,7 @@ FACTORY_CACHE_DIR = DOWNLOAD_DIR / "factory_retry_cache"
 FACTORY_CACHE_POLICY = "lossless-analysis-retry-cache-v1"
 STATUS_MESSAGE: ContextVar[Any | None] = ContextVar("factory_overload_status", default=None)
 _CACHE_LOCK = threading.RLock()
-_ACTIVE_CACHE_PATHS: set[str] = set()
+_ACTIVE_CACHE_PATHS: dict[str, int] = {}
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -199,9 +199,13 @@ def _set_cache_path_active(path: Path, active: bool) -> None:
     key = _cache_path_key(path)
     with _CACHE_LOCK:
         if active:
-            _ACTIVE_CACHE_PATHS.add(key)
+            _ACTIVE_CACHE_PATHS[key] = _ACTIVE_CACHE_PATHS.get(key, 0) + 1
+            return
+        remaining = _ACTIVE_CACHE_PATHS.get(key, 0) - 1
+        if remaining > 0:
+            _ACTIVE_CACHE_PATHS[key] = remaining
         else:
-            _ACTIVE_CACHE_PATHS.discard(key)
+            _ACTIVE_CACHE_PATHS.pop(key, None)
 
 
 def cleanup_retry_cache() -> None:
@@ -346,6 +350,7 @@ async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
             "sha256": sha,
         }
         temp = _cache_meta(key).with_suffix(f".{uuid.uuid4().hex}.tmp")
+        _set_cache_path_active(temp, True)
         try:
             temp.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2),
@@ -353,6 +358,7 @@ async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
             )
             os.replace(temp, _cache_meta(key))
         finally:
+            _set_cache_path_active(temp, False)
             temp.unlink(missing_ok=True)
     finally:
         _set_cache_path_active(final, False)
