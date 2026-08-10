@@ -140,14 +140,15 @@ def test_source_silence_does_not_turn_natural_ru_pause_into_translation_failure(
     aligned = align_candidates_to_ru_speech(
         [_short(start=100.0, end=145.0)],
         source_duration=200.0,
-        speech_intervals=[(100.0, 121.0), (124.0, 146.0)],
+        speech_intervals=[(100.0, 119.0), (125.0, 146.0)],
         delay_seconds=0.0,
-        source_speech_intervals=[(100.0, 121.0), (124.0, 146.0)],
+        source_speech_intervals=[(100.0, 119.0), (125.0, 146.0)],
         source_speech_proof="provider-source-srt+mix-delay",
     )
 
     assert len(aligned) == 1
     assert aligned[0]["livedub_source_without_ru_max_burst_seconds"] == 0.0
+    assert aligned[0]["livedub_ru_max_internal_gap_seconds"] == pytest.approx(6.0)
 
 
 @pytest.mark.asyncio
@@ -179,7 +180,10 @@ async def test_source_caption_speech_is_shifted_into_ru_mix_timeline(
         source_language="en",
     )
 
-    assert evidence["source_speech_intervals"] == pytest.approx([(10.6, 20.6)])
+    assert len(evidence["source_speech_intervals"]) == 1
+    shifted_start, shifted_end = evidence["source_speech_intervals"][0]
+    assert shifted_start == pytest.approx(10.6)
+    assert shifted_end == pytest.approx(20.6)
     assert evidence["source_speech_proof"] == "provider-source-srt+mix-delay"
     assert evidence["proof"] == RU_BOUNDARY_PROOF
 
