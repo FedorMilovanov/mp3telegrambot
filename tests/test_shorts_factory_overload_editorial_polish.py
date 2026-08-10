@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import services.shorts_factory_editorial_bridge as bridge
+import services.shorts_factory_overload_editorial_polish as polish
 import services.shorts_factory_overload_runtime as overload
 
 
@@ -167,7 +169,11 @@ async def test_lossless_retry_cache_reuses_exact_bytes(monkeypatch, tmp_path):
         return probe
 
     monkeypatch.setattr(media_probe, "probe_media_async", probe_async)
-    monkeypatch.setattr(source_module, "factory_audio_probe_is_usable", lambda value: value is probe)
+    monkeypatch.setattr(
+        source_module,
+        "factory_audio_probe_is_usable",
+        lambda value: value is probe,
+    )
 
     source = downloads / "first.flac"
     payload = b"lossless-bytes" * 1000
@@ -185,7 +191,11 @@ def test_copy_fallback_removes_partial_destination(monkeypatch, tmp_path):
     destination = tmp_path / "destination.flac"
     source.write_bytes(b"abcdef")
 
-    monkeypatch.setattr(os, "link", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("cross-device")))
+    monkeypatch.setattr(
+        os,
+        "link",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("cross-device")),
+    )
 
     def fail_copy(src, dst, *, length):
         dst.write(b"partial")
@@ -196,6 +206,38 @@ def test_copy_fallback_removes_partial_destination(monkeypatch, tmp_path):
     with pytest.raises(OSError, match="disk failure"):
         overload.copy_or_link(source, destination)
     assert not destination.exists()
+
+
+def test_capture_factory_ai_data_never_blanks_render_metadata():
+    state = {}
+    expected = {
+        "format": "sermon",
+        "real_title": "Title",
+        "real_author": "Speaker",
+        "analysis_summary": "summary",
+    }
+
+    def original(plan, *, title, performer):
+        assert plan["metadata"]["language"] == "ru"
+        assert title == "Title"
+        assert performer == "Speaker"
+        return expected
+
+    token = bridge.JOB_STATE.set(state)
+    try:
+        result = polish.capture_factory_ai_data(
+            original,
+            {"metadata": {"language": "ru"}},
+            title="Title",
+            performer="Speaker",
+        )
+    finally:
+        bridge.JOB_STATE.reset(token)
+
+    assert result is expected
+    assert state["ai_data_holder"] == expected
+    assert state["ai_data_holder"] is not expected
+    assert state["aligned"] == {}
 
 
 def test_role_policy_is_explicit_for_short_and_long(monkeypatch):
@@ -213,7 +255,7 @@ def test_role_policy_is_explicit_for_short_and_long(monkeypatch):
         "plan": {"metadata": {}, "shorts_candidates": [], "long_candidates": []},
         "title": "T",
         "performer": "P",
-        "ai_data_holder": {},
+        "ai_data_holder": {"real_title": "T", "real_author": "P"},
         "aligned": {},
     }
     calls = []
@@ -256,7 +298,9 @@ def test_ambiguous_alignment_role_fails_closed():
 
 
 @pytest.mark.asyncio
-async def test_boundary_evidence_starts_before_master_prepare_finishes(monkeypatch, tmp_path):
+async def test_boundary_evidence_starts_before_master_prepare_finishes(
+    monkeypatch, tmp_path
+):
     import services.livedub_ru_provenance as provenance
     import services.shorts_factory_timing as timing
 
@@ -267,7 +311,11 @@ async def test_boundary_evidence_starts_before_master_prepare_finishes(monkeypat
     translated = tmp_path / "translated.mp4"
     translated.write_bytes(b"video")
 
-    monkeypatch.setattr(provenance, "read_ru_audio_provenance", lambda workdir: exact_ru)
+    monkeypatch.setattr(
+        provenance,
+        "read_ru_audio_provenance",
+        lambda workdir: exact_ru,
+    )
 
     async def prepare_evidence(**kwargs):
         evidence_started.set()
@@ -378,7 +426,11 @@ async def test_editorial_only_uses_actual_yandex_master_duration_and_no_planner(
     monkeypatch.setattr(shorts_video, "HAS_FASTER_WHISPER", True)
     monkeypatch.setattr(guard, "factory_preflight_issues", lambda **kwargs: [])
     monkeypatch.setattr(guard, "enforce_factory_translation_preflight", lambda: None)
-    monkeypatch.setattr(bridge.shutil, "disk_usage", lambda path: SimpleNamespace(free=20 * 1024**3))
+    monkeypatch.setattr(
+        bridge.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=20 * 1024**3),
+    )
     monkeypatch.setattr(bridge.shutil, "which", lambda name: f"/{name}")
 
     translated = tmp_path / "translated.mp4"
