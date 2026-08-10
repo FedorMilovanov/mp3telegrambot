@@ -23,7 +23,7 @@ from services.shorts_factory_runtime import (
     is_subtitled_factory_delivery,
 )
 from services.shorts_factory_timing import (
-    RU_BOUNDARY_PROOF,
+    RU_ONLY_BOUNDARY_PROOF,
     align_candidates_to_ru_speech,
     align_factory_livedub_candidates,
 )
@@ -95,7 +95,7 @@ def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
     assert aligned[0]["end_seconds"] == pytest.approx(101.28)
     assert aligned[0]["livedub_semantic_start_seconds"] == 10
     assert aligned[0]["livedub_semantic_end_seconds"] == 100
-    assert aligned[0]["livedub_ru_boundary_proof"] == RU_BOUNDARY_PROOF
+    assert aligned[0]["livedub_ru_boundary_proof"] == RU_ONLY_BOUNDARY_PROOF
     assert aligned[0]["livedub_ru_speech_coverage"] > 0.99
     assert candidates[0]["start_seconds"] == 10
 
@@ -122,7 +122,7 @@ def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
     assert aligned[0]["start_seconds"] == pytest.approx(860.6)
     assert aligned[0]["end_seconds"] == pytest.approx(901.18)
     assert aligned[0]["end_seconds"] <= 903
-    assert aligned[0]["livedub_ru_boundary_proof"] == RU_BOUNDARY_PROOF
+    assert aligned[0]["livedub_ru_boundary_proof"] == RU_ONLY_BOUNDARY_PROOF
 
 
 def test_livedub_alignment_rejects_unproved_original_timeline_fallback():
