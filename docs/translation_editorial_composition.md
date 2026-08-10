@@ -21,7 +21,7 @@ The chronological rule is intentional: an editor may combine a problem, example 
 
 ## PowerShell workflow
 
-Bind an empty plan to the exact cleaned source:
+Bind an empty plan to the exact cleaned source and the exact review evidence that approved it:
 
 ```powershell
 python .\tools\translation_editorial_composition.py init `
@@ -29,12 +29,14 @@ python .\tools\translation_editorial_composition.py init `
   --title "Sermon title" `
   --performer "Speaker" `
   --review ".\review.json" `
-  --review-pack-id "sha256:EXACT_REVIEW_PACK_ID" `
+  --review-pack ".\VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip" `
   --project-key "sermon-project" `
   --youtube-account-alias "legendary-poet" `
   --youtube-channel-id "UC_EXACT" `
   --output ".\composition.json"
 ```
+
+When both `--review` and `--review-pack` are supplied, the CLI re-verifies the ZIP evidence, validates the review against that exact pack, takes `review_pack_id` automatically and hashes the exact `review.json`. There is no reason to retype the ID. `--review-pack-id` remains only as a compatibility/manual option for cases where the exact ZIP is intentionally unavailable; if it disagrees with `review.json`, `init` fails.
 
 The source duration is always taken from the actual media probe. `--duration` remains available only as an optional expected value; if supplied and it disagrees with the probe, `init` fails instead of freezing a guessed duration into provenance.
 
