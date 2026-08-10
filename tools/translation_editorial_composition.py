@@ -16,7 +16,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.translation_editorial import sha256_file
+from services.translation_editorial import (
+    load_pack_manifest,
+    sha256_file,
+    validate_review_document,
+)
 from services.translation_editorial_composition import (
     build_composition_template,
     build_release_handoff,
@@ -72,6 +76,32 @@ def _write_handoff(path: Path, data: dict[str, Any]) -> None:
     _write_atomic(path, data, overwrite=False)
 
 
+def _review_binding(args: argparse.Namespace) -> tuple[str, str]:
+    review_path = Path(args.review) if args.review else None
+    pack_path = Path(args.review_pack) if args.review_pack else None
+    manual_pack_id = str(args.review_pack_id or "").strip()
+    if pack_path is not None and review_path is None:
+        raise ValueError("--review-pack requires --review")
+    if review_path is None:
+        return manual_pack_id, ""
+
+    review = _load(review_path)
+    review_id = str(review.get("review_pack_id") or "").strip()
+    if not review_id:
+        raise ValueError("review.json does not contain review_pack_id")
+    if manual_pack_id and manual_pack_id != review_id:
+        raise ValueError("--review-pack-id does not match review.json")
+
+    if pack_path is not None:
+        manifest = load_pack_manifest(pack_path)
+        errors = validate_review_document(review, manifest)
+        if errors:
+            raise ValueError("review validation failed before composition:\n- " + "\n- ".join(errors))
+        if review_id != manifest.get("review_pack_id"):
+            raise ValueError("review.json does not belong to --review-pack")
+    return review_id, sha256_file(review_path)
+
+
 async def _cmd_init(args: argparse.Namespace) -> int:
     source_path = Path(args.source_video)
     probe = await probe_media_async(source_path)
@@ -84,13 +114,14 @@ async def _cmd_init(args: argparse.Namespace) -> int:
             f"declared --duration does not match media probe: "
             f"declared={float(args.duration):.3f}s probe={probed_duration:.3f}s"
         )
+    review_pack_id, review_sha256 = _review_binding(args)
     document = build_composition_template(
         source_video_path=source_path,
         source_duration=probed_duration,
         title=args.title,
         performer=args.performer,
-        source_review_pack_id=args.review_pack_id,
-        source_review_sha256=(sha256_file(Path(args.review)) if args.review else ""),
+        source_review_pack_id=review_pack_id,
+        source_review_sha256=review_sha256,
         project_key=args.project_key,
         youtube_account_alias=args.youtube_account_alias,
         youtube_channel_id=args.youtube_channel_id,
@@ -153,8 +184,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     init.add_argument("--title", default="")
     init.add_argument("--performer", default="")
-    init.add_argument("--review")
-    init.add_argument("--review-pack-id", default="")
+    init.add_argument("--review", help="validated review.json used to approve the cleaned source")
+    init.add_argument("--review-pack", help="exact review ZIP; with --review this is fully revalidated")
+    init.add_argument(
+        "--review-pack-id",
+        default="",
+        help="compatibility/manual ID when the exact review ZIP is not supplied",
+    )
     init.add_argument("--project-key", default="")
     init.add_argument("--youtube-account-alias", default="")
     init.add_argument("--youtube-channel-id", default="")
