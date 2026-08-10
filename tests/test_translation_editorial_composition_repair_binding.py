@@ -51,7 +51,9 @@ def _bound_plan(tmp_path: Path) -> tuple[dict, Path]:
             "duration_seconds": 97.0,
         },
     }
-    provenance["repair_result_id"] = repair_provenance._canonical_sha256(provenance)
+    provenance["repair_result_id"] = repair_provenance._canonical_sha256(
+        repair_provenance._identity_payload(provenance)
+    )
     sidecar = tmp_path / "clean.editorial-repair.json"
     write_repair_provenance(sidecar, provenance)
 
