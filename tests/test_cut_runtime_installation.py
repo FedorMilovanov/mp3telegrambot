@@ -18,6 +18,7 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     runtime_source = Path("services/shorts_factory_runtime.py").read_text(
         encoding="utf-8"
     )
+    factory_source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     media_source = Path("services/shorts_factory_media.py").read_text(
         encoding="utf-8"
     )
@@ -39,9 +40,12 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
 
     assert "from services.shorts_factory_media import (" in runtime_source
     assert "validated_factory_source_duration" in runtime_source
-    assert "from services.shorts_factory_timing import (" in runtime_source
-    assert "align_factory_livedub_candidates" in runtime_source
-    assert "install_factory_ru_boundary_capture" in runtime_source
+    assert "from services.shorts_factory_timing import align_factory_livedub_candidates" in runtime_source
+    assert "install_factory_ru_boundary_capture" not in runtime_source
+    assert "prepare_factory_ru_boundary_evidence" in factory_source
+    assert "with factory_ru_boundary_context(ru_boundary_evidence):" in factory_source
+    assert "_TIMELINE_BY_VIDEO" not in timing_source
+    assert "install_factory_ru_boundary_capture" not in timing_source
     assert "\ninstall_livedub_downstream_media_policy()\n" not in media_source
     assert "\ninstall_factory_plan_quality_gate()\n" not in quality_source
     assert "\ninstall_factory_no_downgrade_policy()\n" not in no_downgrade_source
@@ -54,7 +58,6 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     assert "\ninstall_factory_plan_quality_gate()\n" not in timing_source
     assert "if not install_livedub_downstream_media_policy():" in runtime_source
     assert "if not install_factory_plan_quality_gate():" in runtime_source
-    assert "if not install_factory_ru_boundary_capture():" in runtime_source
     assert "if not install_factory_source_quality_policy():" in quality_source
     assert "if not install_factory_disk_guard():" in quality_source
     assert "if not install_factory_no_downgrade_policy():" in quality_source
@@ -72,13 +75,10 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
     assert no_downgrade_pos < source_pos < disk_pos < execution_pos
 
     quality_pos = runtime_source.index("if not install_factory_plan_quality_gate():")
-    ru_boundary_pos = runtime_source.index(
-        "if not install_factory_ru_boundary_capture():"
-    )
     publication_pos = runtime_source.index(
         "if not install_factory_publication_formatters("
     )
-    assert quality_pos < ru_boundary_pos < publication_pos
+    assert quality_pos < publication_pos
 
 
 def test_required_factory_import_failure_cannot_be_silently_ignored():
