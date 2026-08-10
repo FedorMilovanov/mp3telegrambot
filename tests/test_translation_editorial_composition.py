@@ -287,23 +287,31 @@ def test_publication_metadata_shape_is_guarded(tmp_path: Path) -> None:
     assert any("publication.hashtags must be a list" in item for item in errors)
 
 
-def test_composition_id_binds_publication_copy_too(tmp_path: Path) -> None:
+def test_release_copy_changes_handoff_not_media_composition_id(tmp_path: Path) -> None:
     document = _template(tmp_path)
-    document["pieces"] = [
-        {
-            "piece_id": "short-1",
-            "kind": "short",
-            "assembly_mode": "continuous",
-            "segments": [{"start_seconds": 10.0, "end_seconds": 40.0}],
-            "publication": {"title": "Первый заголовок"},
-        }
-    ]
-    first = _refresh(document)
-    old_id = first["composition_id"]
-    first["pieces"][0]["publication"]["title"] = "Другой заголовок"
+    piece = {
+        "piece_id": "short-1",
+        "kind": "short",
+        "assembly_mode": "continuous",
+        "segments": [{"start_seconds": 10.0, "end_seconds": 40.0}],
+        "publication": {"title": "Первый заголовок"},
+    }
+    document["pieces"] = [piece]
+    document = _refresh(document)
+    media_id = document["composition_id"]
+    result = _rendered_result(tmp_path, document, piece)
+    first_handoff = build_release_handoff(document, [result])
 
-    assert composition_id(first) != old_id
-    assert any("composition_id does not match" in item for item in validate_composition_document(first))
+    document["pieces"][0]["publication"] = {
+        "title": "Другой заголовок",
+        "description": "Изменена только публикационная карточка.",
+    }
+
+    assert composition_id(document) == media_id
+    assert validate_composition_document(document) == []
+    second_handoff = build_release_handoff(document, [result])
+    assert second_handoff["handoff_id"] != first_handoff["handoff_id"]
+    assert second_handoff["outputs"][0]["publication"]["title"] == "Другой заголовок"
 
 
 def test_release_handoff_rehashes_real_output_and_sidecar(tmp_path: Path) -> None:
