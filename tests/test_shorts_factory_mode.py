@@ -22,7 +22,10 @@ from services.shorts_factory_runtime import (
     factory_subtitle_profile,
     is_subtitled_factory_delivery,
 )
-from services.shorts_factory_timing import align_factory_livedub_candidates
+from services.shorts_factory_timing import (
+    align_candidates_to_ru_speech,
+    align_factory_livedub_candidates,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -68,11 +71,7 @@ def test_translation_backend_defaults_to_yandex_only(monkeypatch):
     assert _translation_backend() == "neural_future"
 
 
-def test_livedub_envelope_preserves_semantic_start_and_adds_tail(monkeypatch):
-    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
-    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "0.25")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TAIL_EXTRA_SEC", "0.15")
+def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
     candidates = [
         {
             "start_seconds": 10,
@@ -84,53 +83,58 @@ def test_livedub_envelope_preserves_semantic_start_and_adds_tail(monkeypatch):
         }
     ]
 
-    aligned = align_factory_livedub_candidates(candidates, source_duration=300)
+    aligned = align_candidates_to_ru_speech(
+        candidates,
+        source_duration=300,
+        speech_intervals=[(10.8, 101.2)],
+        delay_seconds=0.0,
+    )
 
-    assert aligned[0]["start_seconds"] == 9.75
-    assert aligned[0]["end_seconds"] == 101.75
-    assert aligned[0]["duration_seconds"] == 92.0
+    assert aligned[0]["start_seconds"] == pytest.approx(10.8)
+    assert aligned[0]["end_seconds"] == pytest.approx(101.28)
     assert aligned[0]["livedub_semantic_start_seconds"] == 10
     assert aligned[0]["livedub_semantic_end_seconds"] == 100
+    assert aligned[0]["livedub_ru_boundary_proof"] == "exact-vot-ru-silencedetect-v2"
+    assert aligned[0]["livedub_ru_speech_coverage"] > 0.99
     assert candidates[0]["start_seconds"] == 10
 
 
-def test_livedub_envelope_uses_extended_tail_timeline(monkeypatch):
-    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
-    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_PREROLL_SEC", "0.25")
-    monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TAIL_EXTRA_SEC", "0.15")
+def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
     candidates = [
         {
-            "start_seconds": 895,
+            "start_seconds": 860,
             "end_seconds": 900,
-            "duration_seconds": 5,
-            "start": "14:55",
+            "duration_seconds": 40,
+            "start": "14:20",
             "end": "15:00",
             "title": "Последняя Фраза",
         }
     ]
 
-    aligned = align_factory_livedub_candidates(candidates, source_duration=903)
+    aligned = align_candidates_to_ru_speech(
+        candidates,
+        source_duration=903,
+        speech_intervals=[(860.6, 901.1)],
+        delay_seconds=0.0,
+    )
 
-    assert aligned[0]["start_seconds"] == 894.75
-    assert aligned[0]["end_seconds"] == 901.75
-    assert aligned[0]["duration_seconds"] == 7.0
-    assert aligned[0]["livedub_tail_seconds"] == 1.75
+    assert aligned[0]["start_seconds"] == pytest.approx(860.6)
+    assert aligned[0]["end_seconds"] == pytest.approx(901.18)
+    assert aligned[0]["end_seconds"] <= 903
+    assert aligned[0]["livedub_ru_boundary_proof"] == "exact-vot-ru-silencedetect-v2"
 
 
-def test_livedub_envelope_rejects_clip_without_room_for_translation_tail(monkeypatch):
-    monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
-    monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
+def test_livedub_alignment_rejects_unproved_english_timeline_fallback():
     candidates = [
         {
             "start_seconds": 10,
-            "end_seconds": 189,
-            "duration_seconds": 179,
-            "title": "Слишком Длинный Для Хвоста",
+            "end_seconds": 100,
+            "duration_seconds": 90,
+            "title": "Без Русского Доказательства",
         }
     ]
 
-    with pytest.raises(RuntimeError, match="точный хвост"):
+    with pytest.raises(RuntimeError, match="refusing unverified English-timeline cuts"):
         align_factory_livedub_candidates(candidates, source_duration=300)
 
 
