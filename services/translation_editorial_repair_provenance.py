@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -25,6 +24,15 @@ def _canonical_sha256(value: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _is_sha256(value: Any) -> bool:
+    token = str(value or "")
+    return (
+        len(token) == 71
+        and token.startswith("sha256:")
+        and all(char in "0123456789abcdef" for char in token[7:])
+    )
 
 
 def _merge_drop_spans(repairs: Iterable[dict[str, Any]]) -> list[list[float]]:
@@ -127,14 +135,19 @@ def validate_repair_provenance_document(document: dict[str, Any]) -> list[str]:
         errors.append("repair provenance contains non-serializable values")
     if document.get("repair_result_id") != expected:
         errors.append("repair_result_id does not match document content")
-    if not str(document.get("review_pack_id") or "").startswith("sha256:"):
-        errors.append("repair provenance review_pack_id is missing")
-    if not str(document.get("review_sha256") or "").startswith("sha256:"):
-        errors.append("repair provenance review_sha256 is missing")
+    if not _is_sha256(document.get("review_pack_id")):
+        errors.append("repair provenance review_pack_id is invalid")
+    if not _is_sha256(document.get("review_sha256")):
+        errors.append("repair provenance review_sha256 is invalid")
     source = document.get("source")
     output = document.get("output")
     if not isinstance(source, dict) or not isinstance(output, dict):
         errors.append("repair provenance source/output must be objects")
+    else:
+        if not _is_sha256(source.get("sha256")):
+            errors.append("repair provenance source SHA-256 is invalid")
+        if not _is_sha256(output.get("sha256")):
+            errors.append("repair provenance output SHA-256 is invalid")
     repairs = document.get("repairs")
     if not isinstance(repairs, list):
         errors.append("repair provenance repairs must be a list")
