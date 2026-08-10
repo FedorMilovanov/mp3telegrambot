@@ -6,14 +6,25 @@ This workflow treats Yandex LiveDub as an editorial source that may be repaired 
 
 One review pack binds:
 
-- the exact translated source-video SHA-256 and local path;
+- the exact translated source-video SHA-256, size and durable local path;
 - the original source SRT;
 - a full Russian `faster-whisper` `large-v3` SRT of what is actually heard;
 - optional Russian word-level Whisper timestamps;
-- Factory Shorts and 5–15 minute candidate metadata;
+- Factory Shorts and long-clip candidate metadata;
+- explicit original-vs-translated timeline metadata;
 - one deterministic `review_pack_id`.
 
-The ZIP intentionally does **not** contain the video bytes. It is small enough to upload to an editor such as ChatGPT while later FFmpeg execution remains bound to the local source SHA-256.
+The ZIP intentionally does **not** contain the video bytes. It is small enough to upload to an editor such as ChatGPT while later FFmpeg execution remains bound to the exact local source bytes.
+
+For Factory, the reviewed source is preserved under `downloads/translation_editorial/<media_id>/` instead of relying on the short-lived `*_factory_source.*` trim cache. The code prefers a hard link and falls back to an exact copy. This keeps an approved review usable after normal Factory-cache cleanup.
+
+Each ZIP filename contains a prefix of its own `review_pack_id`, for example:
+
+```text
+VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip
+```
+
+A later run with different evidence creates another file instead of replacing the first. Loading a pack rechecks the transcript byte counts, SHA-256 values, `candidates.json`, ZIP member uniqueness and the deterministic `review_pack_id`; modified evidence under an old manifest is rejected.
 
 For Yandex Factory jobs the review pack is enabled by default. It is generated after the normal Shorts/long-clip render so a review-pack failure never cancels already produced videos:
 
@@ -27,17 +38,23 @@ The optional automatic semantic auditor is off by default:
 SHORTS_FACTORY_EDITORIAL_GEMINI=0
 ```
 
-When enabled it performs one full-sermon review using the exact model `gemini-3.6-flash` with `thinking_level=high`. It has no light-model fallback and does not apply its own edit decisions automatically. Factory sends both the immutable ZIP and the validated review output to Telegram.
+When enabled it performs a full-sermon review using the exact model `gemini-3.6-flash` with `thinking_level=high`. The default budget is one attempt; an explicit override is clamped to two. It has no light-model fallback and does not apply its own edit decisions automatically. Machine-local source paths are removed from the model prompt.
+
+## Timeline rule
+
+The original SRT and heard Russian SRT do not necessarily share the same clock. In the normal LiveDub path the Russian speech is deliberately delayed, and Factory candidates receive the configured translation shift as well. `manifest.json.timeline` records that relationship.
+
+The editor must align by semantic sequence plus the timeline evidence, not by assuming that cue 100 in the source corresponds to cue 100 in Russian or that the same clock second means the same spoken phrase. All executable issue timestamps target the Russian/translated-video timeline.
 
 ## Editorial verdicts
 
-`keep` means the translation may be slightly rough but preserves the intended meaning. Do not repair style merely because another Russian wording would be prettier.
+`keep` means the translation may be slightly rough but preserves the intended meaning. A `keep` verdict cannot carry repair actions.
 
-`repair` means a localized defect can be corrected without changing the speaker's argument.
+`repair` means at least one localized defect has been identified and can be corrected without changing the speaker's argument.
 
 `reject` means the full sermon or candidate must not be released from this translation.
 
-Issue severity is `roughness`, `minor`, `major`, or `critical`.
+Issue severity is `roughness`, `minor`, `major`, or `critical`. Every Factory candidate must receive exactly one review. Candidate-level issue timestamps must point inside that candidate rather than somewhere else in the sermon.
 
 ## Repair actions
 
@@ -66,18 +83,20 @@ python .\tools\translation_editorial.py prepare `
   --output-dir ".\downloads\editorial"
 ```
 
-The command downloads the original SRT, transcribes the complete translated source with Russian Whisper `large-v3`, and emits:
+The command downloads the original SRT, transcribes the complete translated source with Russian Whisper `large-v3`, and emits hash-qualified files such as:
 
-- `VIDEO_ID_translation_editorial_v1.zip`;
-- `VIDEO_ID_review_template.json`.
+```text
+VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip
+VIDEO_ID_a1b2c3d4e5f6_review_template.json
+```
 
-Upload the ZIP to the editor. The returned `review.json` must retain the exact `review_pack_id`.
+Upload the exact ZIP to the editor. The returned `review.json` must retain the exact `review_pack_id` from that ZIP.
 
 Validate it before any media operation:
 
 ```powershell
 python .\tools\translation_editorial.py validate `
-  --pack ".\downloads\editorial\VIDEO_ID_translation_editorial_v1.zip" `
+  --pack ".\downloads\editorial\VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip" `
   --review ".\review.json"
 ```
 
@@ -85,18 +104,22 @@ Apply only the safe v1 repairs:
 
 ```powershell
 python .\tools\translation_editorial.py repair `
-  --pack ".\downloads\editorial\VIDEO_ID_translation_editorial_v1.zip" `
+  --pack ".\downloads\editorial\VIDEO_ID_translation_editorial_v1_a1b2c3d4e5f6.zip" `
   --review ".\review.json" `
   --output ".\downloads\VIDEO_ID_editorial_clean.mp4"
 ```
 
 The repair command refuses to run when:
 
-- the review targets another pack;
-- the source-video bytes have changed;
+- the review targets another pack or the pack evidence was modified;
+- the source-video SHA, size or measured duration no longer matches;
+- the requested output path is the source path or already exists;
 - the full sermon is rejected;
 - the review contains unresolved `borrow_span` or `reject_region` actions;
-- FFmpeg cannot prove a usable output.
+- a repair timestamp is non-finite or outside the source;
+- FFmpeg output does not pass the final video+audio probe and duration check.
+
+Repairs are rendered to temporary files and published without overwrite only after validation. This prevents a failed render from destroying the reviewed source or a previous accepted result.
 
 ## Same-voice donor discovery
 
@@ -112,6 +135,8 @@ python .\tools\translation_editorial.py donors `
 
 The result is only a list of grounded cue candidates with timestamps and heard text. Exact phrase boundaries are used, so a requested word is not accepted merely because its letters occur inside another word. It is not permission to splice speech automatically.
 
+The Russian review transcript is evidence: only whitespace is normalized after Whisper. It is not passed through the normal subtitle typo/style postprocessor, because that could conceal the exact word the reviewer is supposed to inspect.
+
 ## Release boundary
 
-This repository owns translation QA and local deterministic media repair. A later release bridge may convert reviewed final media and editorial metadata into the guarded `video-channel-manager` exchange/release path. AI remains an editor: it does not receive YouTube OAuth and it does not publish provider mutations directly.
+This repository owns translation QA and local deterministic media repair. Composition may later turn a reviewed source into full/excerpt/Short artifacts, and a provider-inert handoff may carry those exact hashes to `video-channel-manager`. AI remains an editor: it does not receive YouTube OAuth and it does not publish provider mutations directly.
