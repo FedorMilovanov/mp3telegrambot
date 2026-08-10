@@ -248,6 +248,14 @@ def _safe_media_id(media_id: str) -> str:
     return safe[:100] or "media"
 
 
+def _path_stable_source_identity(source_entry: dict[str, Any]) -> dict[str, Any]:
+    copied = json.loads(json.dumps(source_entry, ensure_ascii=False, allow_nan=False))
+    translated = copied.get("translated_video")
+    if isinstance(translated, dict):
+        translated.pop("local_path", None)
+    return copied
+
+
 def build_review_pack(
     *,
     output_dir: Path,
@@ -326,14 +334,19 @@ def build_review_pack(
         identity_payload = {
             "schema_name": PACK_SCHEMA_NAME,
             "schema_version": PACK_SCHEMA_VERSION,
-            "source": source_entry,
+            "source": _path_stable_source_identity(source_entry),
             "transcripts": transcripts,
             "candidates": candidates,
             "timeline": timeline,
         }
         review_pack_id = _canonical_sha256(identity_payload)
         manifest = {
-            **identity_payload,
+            "schema_name": PACK_SCHEMA_NAME,
+            "schema_version": PACK_SCHEMA_VERSION,
+            "source": source_entry,
+            "transcripts": transcripts,
+            "candidates": candidates,
+            "timeline": timeline,
             "review_pack_id": review_pack_id,
             "review_contract": {
                 "verdicts": sorted(VERDICTS),
@@ -380,11 +393,19 @@ def build_review_pack(
                 for path in sorted(root.iterdir()):
                     if path.is_file():
                         archive.write(path, arcname=path.name)
+            created = False
             try:
-                with temp_zip.open("rb") as source, zip_path.open("xb") as target:
+                with zip_path.open("xb") as target, temp_zip.open("rb") as source:
+                    created = True
                     shutil.copyfileobj(source, target, length=1024 * 1024)
+            except FileExistsError:
+                existing = load_pack_manifest(zip_path)
+                if existing.get("review_pack_id") == review_pack_id:
+                    return zip_path
+                raise FileExistsError(f"review pack filename collision: {zip_path}")
             except Exception:
-                zip_path.unlink(missing_ok=True)
+                if created:
+                    zip_path.unlink(missing_ok=True)
                 raise
         finally:
             temp_zip.unlink(missing_ok=True)
@@ -393,15 +414,18 @@ def build_review_pack(
 
 
 def _verified_pack_identity(data: dict[str, Any]) -> dict[str, Any]:
+    source = data.get("source")
+    if "timeline" in data and isinstance(source, dict):
+        source = _path_stable_source_identity(source)
     identity = {
         "schema_name": data.get("schema_name"),
         "schema_version": data.get("schema_version"),
-        "source": data.get("source"),
+        "source": source,
         "transcripts": data.get("transcripts"),
         "candidates": data.get("candidates"),
     }
     # PR #113 v1 packs predate timeline metadata. Preserve their exact identity
-    # instead of retroactively adding an empty field and invalidating honest packs.
+    # instead of retroactively changing their source-path-sensitive formula.
     if "timeline" in data:
         identity["timeline"] = data.get("timeline") or {}
     return identity
@@ -730,11 +754,16 @@ def _publish_new_file(temp_path: Path, final_path: Path) -> None:
     except FileExistsError:
         raise
     except OSError:
+        created = False
         try:
-            with temp_path.open("rb") as source, final_path.open("xb") as target:
+            with final_path.open("xb") as target, temp_path.open("rb") as source:
+                created = True
                 shutil.copyfileobj(source, target, length=1024 * 1024)
+        except FileExistsError:
+            raise
         except Exception:
-            final_path.unlink(missing_ok=True)
+            if created:
+                final_path.unlink(missing_ok=True)
             raise
     finally:
         temp_path.unlink(missing_ok=True)
