@@ -19,6 +19,7 @@ MAX_KARAOKE_HOLD = 3.00
 MAX_PAUSE_IN_CHUNK = 0.35
 MAX_TOKEN_MERGE_GAP = 0.20
 MAX_CHARS = 38
+_ASS_FLOAT_TOLERANCE = 0.0005
 
 _PARTICLES = {"-то", "-либо", "-нибудь", "-ка", "-таки", "-де", "-с", "-ж", "-же"}
 _SENTENCE_END = (".", "!", "?")
@@ -54,15 +55,16 @@ def _parse_ass_time(value: str) -> float:
 
 
 def _escape_ass_text(text: str, *, preserve_line_breaks: bool = False) -> str:
-    """Escape user/ASR text without destroying an intentional ASS ``\\N``."""
+    """Escape ASR text while allowing only renderer-owned ``\\N`` line breaks."""
     raw = str(text or "")
-    marker = "\x00ASS_LINE_BREAK\x00"
+    marker = "\ue000ASS_LINE_BREAK\ue001"
     if preserve_line_breaks:
         raw = raw.replace(r"\N", marker)
+    raw = raw.replace("\r", " ").replace("\n", " ").replace("\x00", " ")
     raw = raw.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
     if preserve_line_breaks:
         raw = raw.replace(marker, r"\N")
-    return raw.strip()
+    return " ".join(raw.split()).strip()
 
 
 def _is_punctuation_token(text: str) -> bool:
@@ -175,12 +177,7 @@ def _merge_tokens(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """Split on real pauses first, then punctuation and visual width.
-
-    Hard pause boundaries are never suppressed by a preceding preposition. The
-    old implementation could cancel a pause cut after words such as ``в`` or
-    ``на`` and keep one karaoke event alive through several seconds of silence.
-    """
+    """Split on real pauses first, then punctuation and visual width."""
     chunks: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
     current_len = 0
@@ -199,9 +196,7 @@ def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
             previous_text = str(previous.get("word") or "").strip()
             hard_pause = pause > MAX_PAUSE_IN_CHUNK
             sentence_break = previous_text.endswith(_SENTENCE_END)
-            clause_break = (
-                previous_text.endswith(",") and current_len >= MAX_CHARS // 2
-            )
+            clause_break = previous_text.endswith(",") and current_len >= MAX_CHARS // 2
 
         if current and (
             hard_pause
@@ -295,9 +290,9 @@ def validate_ass_document(
             issues.append(
                 f"line {line_no}: non-positive interval {start:.2f}-{end:.2f}"
             )
-        if previous_end >= 0 and start < previous_end - 0.011:
+        if previous_end >= 0 and start < previous_end - _ASS_FLOAT_TOLERANCE:
             issues.append(f"line {line_no}: overlaps previous event")
-        if karaoke and end - start > max_karaoke_hold + 0.011:
+        if karaoke and end - start > max_karaoke_hold + _ASS_FLOAT_TOLERANCE:
             issues.append(
                 f"line {line_no}: karaoke hold {end - start:.2f}s is too long"
             )
@@ -317,9 +312,6 @@ def generate_ass_from_segments(
     """Build a validated ASS document from Whisper segments."""
     from services.shorts_video_impl import _pick_subtitle_font
 
-    # Token ownership can extend a preceding word's end. Normalize once before
-    # merging to sanitize raw Whisper data and once after merging so the final
-    # render timeline is still monotonic and duration-bounded.
     words = _normalize_words(
         _merge_tokens(_normalize_words(_collect_words(segments)))
     )
@@ -355,11 +347,7 @@ def generate_ass_from_segments(
                 if index + 1 < len(chunk):
                     next_start = float(chunk[index + 1]["start"])
                     gap = max(0.0, next_start - natural_end)
-                    end = (
-                        next_start
-                        if gap <= MAX_PAUSE_IN_CHUNK
-                        else natural_end
-                    )
+                    end = next_start if gap <= MAX_PAUSE_IN_CHUNK else natural_end
                 else:
                     end = natural_end
                 end = min(
