@@ -25,13 +25,14 @@ from services.translation_editorial import (
     build_review_pack,
     collect_executable_repairs,
     find_donor_cues,
-    load_pack_manifest,
     sha256_file,
     transcribe_russian_whisper,
     validate_review_document,
 )
+from services.translation_editorial_pack_contract import load_verified_review_pack
 from services.translation_editorial_repair_provenance import (
     build_repair_provenance,
+    verify_repair_provenance,
     write_repair_provenance,
 )
 
@@ -214,7 +215,7 @@ async def _cmd_prepare(args: argparse.Namespace) -> int:
             "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
         },
     )
-    manifest = load_pack_manifest(pack)
+    manifest = load_verified_review_pack(pack)
     template_path = _write_review_template(output_dir, args.media_id, manifest)
     print(pack)
     print(template_path)
@@ -257,7 +258,7 @@ async def _cmd_pack(args: argparse.Namespace) -> int:
             "note": "Manual pack does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
         },
     )
-    manifest = load_pack_manifest(pack)
+    manifest = load_verified_review_pack(pack)
     template_path = _write_review_template(Path(args.output_dir), args.media_id, manifest)
     print(pack)
     print(template_path)
@@ -277,7 +278,7 @@ def _cmd_donors(args: argparse.Namespace) -> int:
 
 
 def _load_and_validate(pack_path: Path, review_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    manifest = load_pack_manifest(pack_path)
+    manifest = load_verified_review_pack(pack_path)
     review = _json(review_path)
     errors = validate_review_document(review, manifest)
     if errors:
@@ -300,6 +301,32 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+async def _existing_repair_pair(
+    *,
+    manifest: dict[str, Any],
+    review_path: Path,
+    output_path: Path,
+    provenance_path: Path,
+) -> bool:
+    if not output_path.exists() and not provenance_path.exists():
+        return False
+    if not output_path.exists() or not provenance_path.exists():
+        raise FileExistsError("partial editorial repair output/provenance pair exists")
+    provenance = await verify_repair_provenance(
+        provenance_path,
+        expected_output_path=output_path,
+    )
+    review_sha = await asyncio.to_thread(sha256_file, review_path)
+    source = (manifest.get("source") or {}).get("translated_video") or {}
+    if (
+        provenance.get("review_pack_id") != manifest.get("review_pack_id")
+        or provenance.get("review_sha256") != review_sha
+        or (provenance.get("source") or {}).get("sha256") != source.get("sha256")
+    ):
+        raise FileExistsError("existing editorial repair pair belongs to different evidence")
+    return True
 
 
 async def _cmd_repair(args: argparse.Namespace) -> int:
@@ -336,23 +363,38 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
             "translated source bytes changed since review pack creation; repair refused"
         )
 
-    repairs = collect_executable_repairs(review)
     output_path = Path(args.output)
-    output = await apply_safe_repairs(
-        source_video_path=source_path,
-        output_path=output_path,
-        duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
-        repairs=repairs,
-    )
-    provenance = await build_repair_provenance(
+    provenance_path = output_path.with_suffix(".editorial-repair.json")
+    if await _existing_repair_pair(
         manifest=manifest,
         review_path=review_path,
-        output_path=output,
-        repairs=repairs,
-    )
-    provenance_path = output.with_suffix(".editorial-repair.json")
-    write_repair_provenance(provenance_path, provenance)
-    print(output)
+        output_path=output_path,
+        provenance_path=provenance_path,
+    ):
+        print(output_path)
+        print(provenance_path)
+        return 0
+
+    repairs = collect_executable_repairs(review)
+    try:
+        output = await apply_safe_repairs(
+            source_video_path=source_path,
+            output_path=output_path,
+            duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
+            repairs=repairs,
+        )
+        provenance = await build_repair_provenance(
+            manifest=manifest,
+            review_path=review_path,
+            output_path=output,
+            repairs=repairs,
+        )
+        write_repair_provenance(provenance_path, provenance)
+    except Exception:
+        output_path.unlink(missing_ok=True)
+        provenance_path.unlink(missing_ok=True)
+        raise
+    print(output_path)
     print(provenance_path)
     return 0
 
