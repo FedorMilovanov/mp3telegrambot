@@ -1025,3 +1025,15 @@ Fixes:
 - Optional automatic semantic audit is exact `gemini-3.6-flash` with `thinking_level=high`, disabled by default, one attempt by default and at most two only by explicit override; there is no light/legacy fallback and every Factory candidate must be reviewed.
 - The first CI exposed two unnecessary regex health markers in the new deterministic layer; they were removed instead of increasing the repository baseline, and exact donor phrase-boundary regressions were added.
 - Full exact-head CI is required before squash merge; no existing LiveDub/Whisper/Factory selection or publication quality gate is weakened.
+
+## 2026-08-10 — Translation Editorial Review/Composition adversarial re-audit
+
+- Re-audited the exact Review → Repair → Composition → release-handoff chain adversarially rather than treating the initial green path as sufficient.
+- Review packs are immutable/hash-qualified and re-verify canonical transcripts, candidates, contract/instructions and path-stable identity; PR #113 legacy v1 packs remain readable.
+- Factory review sources are SHA-versioned and durable beyond trim-cache cleanup; per-run staging avoids cross-run transcript collisions and all large source/pack work stays off the event loop.
+- Atomic no-overwrite writers now track ownership and never delete a concurrent FileExists winner; manual repair leaves an incomplete final pair blocked rather than risking deletion of unknown final data.
+- Repair provenance is path-stable and binds exact review pack/review SHA, source SHA/size/duration, exact drop/mute actions, drop-time remap and clean output SHA/size/duration. Unsupported actions and stale/mismatched repair plans fail closed.
+- Composition separates media identity from release identity: `composition_id`/`result_id` bind reviewed media evidence, segments and output bytes while publication copy, target and machine paths are bound by `handoff_id`, avoiding unnecessary re-encoding for title/description/playlist/schedule-only edits.
+- `composition init` blocks a rejected full sermon, unresolved review actions, or a `repair` verdict without the exact matching repair-provenance sidecar; service rendering re-verifies embedded repair provenance so the CLI guard cannot be bypassed when provenance is claimed.
+- Release metadata/target fields remain strict allow-lists and the handoff remains provider-inert with `provider_write_authorized=false`; no YouTube/VK/Telegram provider mutation or borrowed-speech insertion is added.
+- Final exact-head CI (Python 3.11, Python 3.13, Windows, full pytest, Ruff and code-health) is required before squash merge; no quality baseline is weakened.
