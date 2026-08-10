@@ -76,7 +76,7 @@ class RuntimeFeatureResult:
             "phase": self.phase.value,
             "required": self.required,
             "state": self.state.value,
-            "detail": self.detail,
+            "detail": str(self.detail),
         }
 
 
@@ -415,6 +415,14 @@ DEFAULT_RUNTIME_FEATURES = (
         "install_shorts_factory_mode",
         RuntimePhase.POST_MAIN,
         requires_main=True,
+        false_is_failure=True,
+    ),
+    RuntimeFeature(
+        "shorts-factory-overload-editorial-polish",
+        "services.shorts_factory_overload_editorial_polish",
+        "install_shorts_factory_overload_editorial_polish",
+        RuntimePhase.POST_MAIN,
+        dependencies=("shorts-factory-max",),
         false_is_failure=True,
     ),
     RuntimeFeature(
