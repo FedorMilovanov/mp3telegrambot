@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from services.livedub_mix import build_mix_filter
 import services.shorts_subtitle_integrity as subtitle_integrity
 
 
@@ -59,6 +60,20 @@ def test_exact_karaoke_limit_is_valid():
     )
 
     assert subtitle_integrity.validate_ass_document(ass, karaoke=True) == ()
+
+
+def test_livedub_mix_delays_ru_branch_but_not_original_branch():
+    filter_complex = build_mix_filter(
+        orig_volume=0.45,
+        trans_volume=1.3,
+        delay_ms=600,
+        duck=False,
+    )
+
+    ru_chain = filter_complex.split("[ru0]", 1)[0]
+    en_chain = filter_complex.split("[0:a]", 1)[1].split("[en0]", 1)[0]
+    assert "adelay=600:all=1" in ru_chain
+    assert "adelay=" not in en_chain
 
 
 def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeout_owner():
