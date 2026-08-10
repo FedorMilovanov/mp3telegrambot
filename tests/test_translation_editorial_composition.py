@@ -46,10 +46,11 @@ def _rendered_result(tmp_path: Path, document: dict, piece: dict) -> dict:
         "schema_name": RESULT_SCHEMA_NAME,
         "schema_version": 1,
         "composition_id": document["composition_id"],
-        "piece": piece,
+        "piece": composition._piece_media_payload(piece),
         "source": {
             "local_path": document["source"]["local_path"],
             "sha256": document["source"]["sha256"],
+            "bytes": document["source"]["bytes"],
             "duration_seconds": document["source"]["duration_seconds"],
         },
         "output": {
@@ -59,7 +60,9 @@ def _rendered_result(tmp_path: Path, document: dict, piece: dict) -> dict:
             "duration_seconds": piece_duration(piece),
         },
     }
-    provenance["result_id"] = composition._canonical_sha256(provenance)
+    provenance["result_id"] = composition._canonical_sha256(
+        composition._result_identity_payload(provenance)
+    )
     sidecar.write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "piece_id": piece["piece_id"],
@@ -312,6 +315,29 @@ def test_release_copy_changes_handoff_not_media_composition_id(tmp_path: Path) -
     second_handoff = build_release_handoff(document, [result])
     assert second_handoff["handoff_id"] != first_handoff["handoff_id"]
     assert second_handoff["outputs"][0]["publication"]["title"] == "Другой заголовок"
+
+
+def test_result_id_is_path_and_release_copy_stable(tmp_path: Path) -> None:
+    document = _template(tmp_path)
+    piece = {
+        "piece_id": "short-1",
+        "kind": "short",
+        "assembly_mode": "continuous",
+        "segments": [{"start_seconds": 10.0, "end_seconds": 40.0}],
+        "publication": {"title": "Title"},
+    }
+    document["pieces"] = [piece]
+    document = _refresh(document)
+    result = _rendered_result(tmp_path, document, piece)
+    sidecar = Path(result["provenance_path"])
+    provenance = json.loads(sidecar.read_text(encoding="utf-8"))
+    original_id = provenance["result_id"]
+
+    provenance["source"]["local_path"] = str(tmp_path / "moved-source.mp4")
+    provenance["output"]["local_path"] = str(tmp_path / "moved-output.mp4")
+    provenance["piece"]["publication"] = {"title": "Ignored release copy"}
+
+    assert composition._canonical_sha256(composition._result_identity_payload(provenance)) == original_id
 
 
 def test_release_handoff_rehashes_real_output_and_sidecar(tmp_path: Path) -> None:
