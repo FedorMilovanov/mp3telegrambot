@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -13,6 +14,13 @@ from services.translation_editorial import remap_after_drops, sha256_file
 
 REPAIR_PROVENANCE_SCHEMA_NAME = "mp3telegrambot.translation-editorial-repair-result"
 REPAIR_PROVENANCE_SCHEMA_VERSION = 1
+REPAIR_ACTIONS = {"drop_span", "mute_span"}
+_TIMELINE_CONTRACT = {
+    "input": "review/translated-video timeline",
+    "output": "cleaned-master timeline",
+    "mapping": "output_t = input_t - removed_drop_duration_before_input_t",
+    "mute_span_changes_duration": False,
+}
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -35,6 +43,14 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
+def _finite_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _merge_drop_spans(repairs: Iterable[dict[str, Any]]) -> list[list[float]]:
     spans = sorted(
         [float(item["start_seconds"]), float(item["end_seconds"])]
@@ -48,6 +64,31 @@ def _merge_drop_spans(repairs: Iterable[dict[str, Any]]) -> list[list[float]]:
         else:
             merged[-1][1] = max(merged[-1][1], end)
     return [[round(start, 3), round(end, 3)] for start, end in merged]
+
+
+def _identity_payload(document: dict[str, Any]) -> dict[str, Any]:
+    """Return path-stable evidence identity for one deterministic repair result."""
+    source = document.get("source") if isinstance(document.get("source"), dict) else {}
+    output = document.get("output") if isinstance(document.get("output"), dict) else {}
+    return {
+        "schema_name": document.get("schema_name"),
+        "schema_version": document.get("schema_version"),
+        "review_pack_id": document.get("review_pack_id"),
+        "review_sha256": document.get("review_sha256"),
+        "source": {
+            "sha256": source.get("sha256"),
+            "bytes": source.get("bytes"),
+            "duration_seconds": source.get("duration_seconds"),
+        },
+        "repairs": document.get("repairs"),
+        "drop_spans": document.get("drop_spans"),
+        "timeline": document.get("timeline"),
+        "output": {
+            "sha256": output.get("sha256"),
+            "bytes": output.get("bytes"),
+            "duration_seconds": output.get("duration_seconds"),
+        },
+    }
 
 
 def remap_timestamp_from_review_timeline(
@@ -103,12 +144,7 @@ async def build_repair_provenance(
         },
         "repairs": repair_list,
         "drop_spans": _merge_drop_spans(repair_list),
-        "timeline": {
-            "input": "review/translated-video timeline",
-            "output": "cleaned-master timeline",
-            "mapping": "output_t = input_t - removed_drop_duration_before_input_t",
-            "mute_span_changes_duration": False,
-        },
+        "timeline": dict(_TIMELINE_CONTRACT),
         "output": {
             "local_path": str(output_path.resolve(strict=False)),
             "sha256": output_sha,
@@ -116,7 +152,10 @@ async def build_repair_provenance(
             "duration_seconds": round(float(probe.duration), 3),
         },
     }
-    document["repair_result_id"] = _canonical_sha256(document)
+    document["repair_result_id"] = _canonical_sha256(_identity_payload(document))
+    errors = validate_repair_provenance_document(document)
+    if errors:
+        raise ValueError("repair provenance validation failed: " + "; ".join(errors))
     return document
 
 
@@ -127,9 +166,7 @@ def validate_repair_provenance_document(document: dict[str, Any]) -> list[str]:
     if document.get("schema_version") != REPAIR_PROVENANCE_SCHEMA_VERSION:
         errors.append("wrong repair provenance schema_version")
     try:
-        expected = _canonical_sha256(
-            {key: value for key, value in document.items() if key != "repair_result_id"}
-        )
+        expected = _canonical_sha256(_identity_payload(document))
     except (TypeError, ValueError):
         expected = ""
         errors.append("repair provenance contains non-serializable values")
@@ -139,21 +176,65 @@ def validate_repair_provenance_document(document: dict[str, Any]) -> list[str]:
         errors.append("repair provenance review_pack_id is invalid")
     if not _is_sha256(document.get("review_sha256")):
         errors.append("repair provenance review_sha256 is invalid")
+
     source = document.get("source")
     output = document.get("output")
     if not isinstance(source, dict) or not isinstance(output, dict):
         errors.append("repair provenance source/output must be objects")
+        source = {}
+        output = {}
     else:
         if not _is_sha256(source.get("sha256")):
             errors.append("repair provenance source SHA-256 is invalid")
         if not _is_sha256(output.get("sha256")):
             errors.append("repair provenance output SHA-256 is invalid")
+        for prefix, item in (("source", source), ("output", output)):
+            try:
+                byte_count = int(item.get("bytes"))
+            except (TypeError, ValueError):
+                byte_count = 0
+            duration = _finite_float(item.get("duration_seconds"))
+            if byte_count <= 1024:
+                errors.append(f"repair provenance {prefix} byte count is invalid")
+            if duration is None or duration <= 0:
+                errors.append(f"repair provenance {prefix} duration is invalid")
+
     repairs = document.get("repairs")
     if not isinstance(repairs, list):
         errors.append("repair provenance repairs must be a list")
+        repairs = []
+    normalized_repairs: list[dict[str, Any]] = []
+    source_duration = _finite_float(source.get("duration_seconds")) or 0.0
+    for index, item in enumerate(repairs, 1):
+        if not isinstance(item, dict):
+            errors.append(f"repair provenance repair[{index}] must be an object")
+            continue
+        action = str(item.get("type") or "")
+        if action not in REPAIR_ACTIONS:
+            errors.append(f"repair provenance repair[{index}] has unsupported action: {action}")
+        start = _finite_float(item.get("start_seconds"))
+        end = _finite_float(item.get("end_seconds"))
+        if start is None or end is None or start < 0 or end <= start:
+            errors.append(f"repair provenance repair[{index}] has invalid span")
+            continue
+        if source_duration > 0 and end > source_duration + 0.05:
+            errors.append(f"repair provenance repair[{index}] exceeds source duration")
+        normalized_repairs.append(
+            {
+                "type": action,
+                "start_seconds": round(start, 3),
+                "end_seconds": round(end, 3),
+            }
+        )
+
     drops = document.get("drop_spans")
     if not isinstance(drops, list):
         errors.append("repair provenance drop_spans must be a list")
+    elif drops != _merge_drop_spans(normalized_repairs):
+        errors.append("repair provenance drop_spans do not match drop_span repairs")
+
+    if document.get("timeline") != _TIMELINE_CONTRACT:
+        errors.append("repair provenance timeline contract is invalid")
     return errors
 
 
@@ -204,16 +285,22 @@ def write_repair_provenance(path: Path, document: dict[str, Any]) -> Path:
             return path
         raise FileExistsError(f"refusing to overwrite different repair provenance: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
+    created = False
     try:
         with path.open("x", encoding="utf-8") as stream:
+            created = True
             stream.write(payload)
+    except FileExistsError:
+        raise
     except Exception:
-        path.unlink(missing_ok=True)
+        if created:
+            path.unlink(missing_ok=True)
         raise
     return path
 
 
 __all__ = [
+    "REPAIR_ACTIONS",
     "REPAIR_PROVENANCE_SCHEMA_NAME",
     "REPAIR_PROVENANCE_SCHEMA_VERSION",
     "build_repair_provenance",
