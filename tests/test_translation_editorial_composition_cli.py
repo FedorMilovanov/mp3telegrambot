@@ -153,3 +153,24 @@ def test_atomic_writer_never_deletes_concurrent_winner(
     with pytest.raises(FileExistsError):
         cli._write_atomic(target, {"value": 1}, overwrite=False)
     assert target.read_text(encoding="utf-8") == "winner"
+
+
+def test_handoff_path_is_content_addressed_and_revision_safe(tmp_path: Path) -> None:
+    first = {"handoff_id": "sha256:" + "a" * 64, "revision": 1}
+    second = {"handoff_id": "sha256:" + "b" * 64, "revision": 2}
+
+    first_path = cli._handoff_path(tmp_path, first)
+    second_path = cli._handoff_path(tmp_path, second)
+
+    assert first_path.name == "editorial-release-handoff_" + "a" * 64 + ".json"
+    assert second_path.name == "editorial-release-handoff_" + "b" * 64 + ".json"
+    assert first_path != second_path
+    cli._write_handoff(first_path, first)
+    cli._write_handoff(second_path, second)
+    assert json.loads(first_path.read_text(encoding="utf-8")) == first
+    assert json.loads(second_path.read_text(encoding="utf-8")) == second
+
+
+def test_handoff_path_rejects_noncanonical_identity(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="canonical sha256"):
+        cli._handoff_path(tmp_path, {"handoff_id": "sha256:ABC"})

@@ -243,7 +243,7 @@ async def verify_repair_provenance(
     *,
     expected_output_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Reload and rehash the exact clean output named by a repair sidecar."""
+    """Reload provenance and verify exact clean bytes, allowing an explicit relocation."""
     sidecar_path = Path(sidecar_path)
     data = json.loads(sidecar_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -252,11 +252,12 @@ async def verify_repair_provenance(
     if errors:
         raise ValueError("repair provenance validation failed: " + "; ".join(errors))
     output = data["output"]
-    output_path = Path(str(output.get("local_path") or ""))
-    if expected_output_path is not None:
-        expected = Path(expected_output_path).resolve(strict=False)
-        if output_path.resolve(strict=False) != expected:
-            raise ValueError("repair provenance output path does not match expected clean master")
+    stored_output_path = Path(str(output.get("local_path") or ""))
+    output_path = (
+        Path(expected_output_path).resolve(strict=False)
+        if expected_output_path is not None
+        else stored_output_path
+    )
     if not output_path.is_file() or output_path.stat().st_size <= 1024:
         raise FileNotFoundError(output_path)
     if output_path.stat().st_size != int(output.get("bytes") or 0):

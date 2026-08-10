@@ -40,6 +40,8 @@ When both `--review` and `--review-pack` are supplied, the CLI re-verifies the Z
 
 The source duration is always taken from the actual media probe. `--duration` remains available only as an optional expected value; if supplied and it disagrees with the probe, `init` fails instead of freezing a guessed duration into provenance.
 
+If an already verified repaired clean master is moved to a different local directory, its historical repair sidecar does not need to be rewritten merely because the path changed. When that relocated path is supplied explicitly, the verifier treats the stored path as history and accepts the relocated file only after the exact stored byte count, SHA-256 and media duration all re-verify. Changed bytes still fail closed.
+
 The editor fills `pieces`. Example:
 
 ```json
@@ -62,7 +64,7 @@ The editor fills `pieces`. Example:
 }
 ```
 
-`piece_id` is deliberately restricted to an already filesystem-safe value. This prevents two visually different IDs from collapsing onto one output filename after normalization.
+`piece_id` is deliberately restricted to an already filesystem-safe **portable** value. Validation is conservative across platforms rather than depending on the machine doing the render: Windows device stems such as `CON`, `PRN`, `AUX`, `NUL`, `COM1`…`COM9` and `LPT1`…`LPT9` are rejected on every OS, and output names are compared after Unicode NFC normalization plus case folding. Thus IDs such as `Short` and `short` cannot become two apparently distinct plans that collide on a case-insensitive filesystem.
 
 After an edit that changes the actual media assembly — source identity, repair evidence, segment boundaries/order, kind or assembly rationale — recompute the media ID:
 
@@ -102,13 +104,13 @@ The rendered video is H.264/AAC with `yuv420p` for broad player compatibility. E
 
 ## Release handoff
 
-A successful render also creates:
+A successful render creates a content-addressed release handoff such as:
 
 ```text
-editorial-release-handoff.json
+editorial-release-handoff_0123456789abcdef...<64 hex total>.json
 ```
 
-Before handoff creation the code reloads every provenance sidecar and rehashes the real output bytes rather than trusting the in-memory result list. The handoff carries:
+The 64-hex suffix is the complete digest portion of `handoff_id`. Before handoff creation the code reloads every provenance sidecar and rehashes the real output bytes rather than trusting the in-memory result list. The handoff carries:
 
 - output path, SHA-256, byte count and measured duration;
 - provenance path and provenance SHA-256;
@@ -119,9 +121,9 @@ Before handoff creation the code reloads every provenance sidecar and rehashes t
 - exact review/repair source provenance;
 - exact media `composition_id`.
 
-`handoff_id` binds this complete release state. Therefore changing title/description/playlist/schedule/channel changes the handoff identity even when the underlying `composition_id` and rendered MP4 correctly remain unchanged.
+`handoff_id` binds this complete release state. Therefore changing title/description/playlist/schedule/channel changes the handoff identity even when the underlying `composition_id` and rendered MP4 correctly remain unchanged. Because the filename is derived from that identity, multiple publication-only revisions can coexist safely in one output directory; a later card no longer collides with or overwrites an earlier handoff for the same MP4.
 
-Missing, extra, duplicate or tampered rendered results fail closed. An already existing handoff may be reused only when it is byte-for-byte the same logical handoff; a different state is never overwritten silently.
+Missing, extra, duplicate or tampered rendered results fail closed. An already existing handoff may be reused only when it is byte-for-byte the same logical handoff; a different state receives a different content-addressed filename rather than overwriting the old state.
 
 The handoff is explicitly:
 

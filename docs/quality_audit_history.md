@@ -1037,3 +1037,13 @@ Fixes:
 - `composition init` blocks a rejected full sermon, unresolved review actions, or a `repair` verdict without the exact matching repair-provenance sidecar; service rendering re-verifies embedded repair provenance so the CLI guard cannot be bypassed when provenance is claimed.
 - Release metadata/target fields remain strict allow-lists and the handoff remains provider-inert with `provider_write_authorized=false`; no YouTube/VK/Telegram provider mutation or borrowed-speech insertion is added.
 - Final exact-head CI (Python 3.11, Python 3.13, Windows, full pytest, Ruff and code-health) is required before squash merge; no quality baseline is weakened.
+
+## 2026-08-10 — Translation Editorial post-merge portability/lifecycle re-audit
+
+- Re-audited the merged Review → Repair → Composition path after PR #114 instead of treating green CI as the end of the review.
+- Repair provenance is genuinely movable: an explicitly relocated clean master is accepted only after exact SHA-256, byte-count and probed-duration verification; historical local paths are not evidence identity.
+- Release handoffs are content-addressed by the full handoff digest, so publication-only revisions can coexist and reuse an unchanged verified MP4.
+- Composition output IDs use conservative cross-platform semantics: Windows reserved device stems and Unicode-NFC/case-folded filename collisions fail before rendering.
+- Automatic `drop_span` is mechanically surgical: one drop is capped at 8 seconds and merged deletion is capped at `min(60s, max(5s, 2% of real source duration))`; review validation and service execution independently enforce the budget before FFmpeg.
+- Focused regressions cover relocation, revision-safe handoffs, Windows collisions, individual/total drop limits and direct-service bypass attempts.
+- Final exact-head Python 3.11 + Python 3.13 + Windows CI is required before squash merge; no product routing/provider boundary or quality baseline is weakened.

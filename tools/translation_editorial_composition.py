@@ -96,6 +96,17 @@ def _write_handoff(path: Path, data: dict[str, Any]) -> None:
         raise
 
 
+def _handoff_path(output_dir: Path, handoff: dict[str, Any]) -> Path:
+    handoff_id = str(handoff.get("handoff_id") or "")
+    if (
+        len(handoff_id) != 71
+        or not handoff_id.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in handoff_id[7:])
+    ):
+        raise ValueError("handoff_id must be canonical sha256:<64 lowercase hex>")
+    return Path(output_dir) / f"editorial-release-handoff_{handoff_id[7:]}.json"
+
+
 def _review_binding(args: argparse.Namespace) -> tuple[str, str]:
     review_path = Path(args.review) if args.review else None
     pack_path = Path(args.review_pack) if args.review_pack else None
@@ -312,7 +323,7 @@ async def _cmd_render(args: argparse.Namespace) -> int:
     await _verify_embedded_repair_binding(document)
     results = await render_composition(document, output_dir=Path(args.output_dir))
     handoff = build_release_handoff(document, results)
-    handoff_path = Path(args.output_dir) / "editorial-release-handoff.json"
+    handoff_path = _handoff_path(Path(args.output_dir), handoff)
     _write_handoff(handoff_path, handoff)
     print(json.dumps({"results": results, "handoff": str(handoff_path)}, ensure_ascii=False, indent=2))
     return 0
