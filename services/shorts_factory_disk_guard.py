@@ -86,6 +86,24 @@ def register_factory_source_info(
     return duration
 
 
+def mark_factory_analysis_audio_skipped(url: str) -> bool:
+    """Release video-only Factory subflows without weakening their disk proof.
+
+    Normal Factory processing downloads analysis audio first and the guarded
+    video waits for that phase to finish.  Purpose-built video-only flows (for
+    example Translation Editorial) have no analysis-audio phase; they must mark
+    that fact explicitly so the video guard does not wait on an event that can
+    never be set.  Duration hints and the full video free-space guard remain in
+    force.
+    """
+    state = _state_for(url)
+    if state is None:
+        return False
+    state.audio_error = None
+    state.audio_done.set()
+    return True
+
+
 def _selected_format_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raw_rows = payload.get("requested_downloads")
     if not isinstance(raw_rows, list) or not raw_rows:
@@ -338,6 +356,7 @@ __all__ = [
     "estimate_factory_selection_payload",
     "factory_delivery_sort_args",
     "install_factory_disk_guard",
+    "mark_factory_analysis_audio_skipped",
     "register_factory_source_info",
     "required_factory_free_bytes",
 ]
