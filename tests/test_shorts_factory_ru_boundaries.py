@@ -47,8 +47,9 @@ def test_candidate_start_in_translation_gap_moves_to_first_proved_ru_speech():
     item = aligned[0]
     assert item["start_seconds"] == pytest.approx(101.2)
     assert item["end_seconds"] == pytest.approx(146.08)
-    assert item["livedub_ru_boundary_proof"] == "exact-vot-ru-silencedetect-v1"
+    assert item["livedub_ru_boundary_proof"] == "exact-vot-ru-silencedetect-v2"
     assert item["livedub_ru_start_shift_seconds"] == pytest.approx(1.2)
+    assert item["livedub_ru_speech_coverage"] > 0.99
 
 
 def test_candidate_end_in_translation_gap_stops_at_last_proved_ru_speech():
@@ -66,12 +67,35 @@ def test_candidate_end_in_translation_gap_stops_at_last_proved_ru_speech():
     assert item["end_seconds"] < 149.0
 
 
+def test_anchor_inside_long_ru_phrase_stays_ru_instead_of_false_rejection():
+    aligned = align_candidates_to_ru_speech(
+        [_short(start=110.0, end=150.0)],
+        source_duration=200.0,
+        speech_intervals=[(100.0, 160.0)],
+        delay_seconds=0.0,
+    )
+
+    assert len(aligned) == 1
+    assert aligned[0]["start_seconds"] == pytest.approx(110.0)
+    assert aligned[0]["end_seconds"] == pytest.approx(150.0)
+
+
 def test_no_nearby_ru_boundary_rejects_candidate_instead_of_cutting_english():
     with pytest.raises(RuntimeError, match="доказанные русские границы"):
         align_candidates_to_ru_speech(
             [_short()],
             source_duration=200.0,
             speech_intervals=[(120.0, 170.0)],
+            delay_seconds=0.0,
+        )
+
+
+def test_long_internal_ru_gap_rejects_untranslated_short_region():
+    with pytest.raises(RuntimeError, match="доказанные русские границы"):
+        align_candidates_to_ru_speech(
+            [_short()],
+            source_duration=200.0,
+            speech_intervals=[(99.5, 120.0), (125.1, 146.0)],
             delay_seconds=0.0,
         )
 
