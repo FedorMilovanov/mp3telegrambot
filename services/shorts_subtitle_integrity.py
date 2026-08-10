@@ -9,7 +9,6 @@ or abnormally long karaoke events fail closed instead of being published.
 from __future__ import annotations
 
 import math
-import re
 from typing import Any
 
 COLOUR_ACTIVE = "&H0000E5FF"
@@ -20,7 +19,6 @@ MAX_KARAOKE_HOLD = 3.00
 MAX_PAUSE_IN_CHUNK = 0.35
 MAX_CHARS = 38
 
-_PURE_PUNCT_RE = re.compile(r"^[^\w]+$", re.UNICODE)
 _PARTICLES = {"-то", "-либо", "-нибудь", "-ка", "-таки", "-де", "-с", "-ж", "-же"}
 _SENTENCE_END = (".", "!", "?")
 
@@ -64,6 +62,11 @@ def _escape_ass_text(text: str, *, preserve_line_breaks: bool = False) -> str:
     if preserve_line_breaks:
         raw = raw.replace(marker, r"\N")
     return raw.strip()
+
+
+def _is_punctuation_token(text: str) -> bool:
+    value = str(text or "").strip()
+    return bool(value) and not any(char.isalnum() or char == "_" for char in value)
 
 
 def _collect_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -148,7 +151,7 @@ def _merge_tokens(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
             index += 2
             continue
 
-        if text and result and _PURE_PUNCT_RE.match(text):
+        if result and _is_punctuation_token(text):
             previous = result[-1]
             previous["word"] = str(previous.get("word") or "").strip() + text
             previous["end"] = max(float(previous["end"]), float(current["end"]))
@@ -214,7 +217,7 @@ def _wrap_chunk(
     text_words = [str(word.get("word") or "").strip() for word in words]
     text_words = [word for word in text_words if word]
     text = " ".join(text_words)
-    if len(text) <= max_line_chars:
+    if len(text) <= max_line_chars or len(text_words) <= 1:
         return text
 
     midpoint = len(text) / 2.0
