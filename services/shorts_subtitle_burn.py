@@ -19,7 +19,7 @@ from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from services.ffmpeg import _get_video_encoder
 from services.shorts_subtitle_integrity import (
-    generate_ass_from_segments,
+    generate_ass_from_segments as _validated_generate_ass_from_segments,
     validate_ass_document,
 )
 from services.shorts_video import get_subtitles_mode_settings
@@ -27,6 +27,10 @@ from services.shorts_video import get_subtitles_mode_settings
 logger = logging.getLogger(__name__)
 
 _BURN_TIMEOUT_SECONDS = 600.0
+# Preserve the long-standing module seam used by process-ownership tests and
+# downstream monkeypatches, while production points it at the validated
+# generator.  This is compatibility, not a second subtitle implementation.
+_generate_ass_from_segments = _validated_generate_ass_from_segments
 
 
 async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -69,7 +73,7 @@ async def burn_subtitles_into_short(
         subtitle_config = get_subtitles_mode_settings()
         karaoke = bool(subtitle_config["karaoke"])
         try:
-            ass_content = generate_ass_from_segments(
+            ass_content = _generate_ass_from_segments(
                 segments,
                 karaoke=karaoke,
             )
