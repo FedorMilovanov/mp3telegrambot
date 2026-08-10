@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import services.translation_editorial as editorial
+import services.translation_editorial_pack_contract as pack_contract
 from services.translation_editorial import build_review_pack, sha256_file
 from services.translation_editorial_pack_contract import load_verified_review_pack
 
@@ -70,6 +71,36 @@ def test_pack_contract_rejects_unexpected_zip_member(tmp_path: Path) -> None:
     _rewrite_zip(pack, tampered, mutate=lambda _name, payload: payload, extra=("extra.txt", b"x"))
 
     with pytest.raises(ValueError, match="non-canonical"):
+        load_verified_review_pack(tampered)
+
+
+def test_zip_preflight_bounds_member_before_manifest_reader_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = _current_pack(tmp_path)
+    monkeypatch.setitem(pack_contract._MEMBER_LIMITS, "original.srt", 1)
+
+    def forbidden_reader(_path: Path):
+        raise AssertionError("manifest reader must not run before ZIP size preflight")
+
+    monkeypatch.setattr(pack_contract, "load_pack_manifest", forbidden_reader)
+
+    with pytest.raises(ValueError, match="member exceeds safe limit: original.srt"):
+        load_verified_review_pack(pack)
+
+
+def test_zip_preflight_rejects_unsafe_member_name_before_content_read(tmp_path: Path) -> None:
+    pack = _current_pack(tmp_path)
+    tampered = tmp_path / "unsafe-name.zip"
+    _rewrite_zip(
+        pack,
+        tampered,
+        mutate=lambda _name, payload: payload,
+        extra=("nested/extra.txt", b"x"),
+    )
+
+    with pytest.raises(ValueError, match="unsafe translation editorial ZIP member name"):
         load_verified_review_pack(tampered)
 
 
