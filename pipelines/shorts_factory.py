@@ -27,6 +27,11 @@ from services.media_delivery_probe import media_probe_is_deliverable, probe_medi
 from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
 from services.shorts_factory_runtime import factory_render_context
 from services.shorts_video import download_video_for_shorts
+from services.translation_editorial_factory import (
+    factory_editorial_pack_enabled,
+    prepare_factory_editorial_review,
+    send_factory_editorial_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -465,6 +470,46 @@ async def process_shorts_factory(
                     update=update,
                     livedub_video_path=persistent_source_path,
                 )
+
+        if translation_required and factory_editorial_pack_enabled():
+            await _safe_status(
+                status_msg,
+                "🔎 Ролики готовы. Собираю полный редакционный пакет: original SRT ↔ Russian Whisper…",
+            )
+            try:
+                pack_path, review_path, markdown_path = await prepare_factory_editorial_review(
+                    url=url,
+                    media_id=media_id,
+                    title=title or full_title,
+                    performer=performer or channel_name,
+                    duration=render_source_duration,
+                    source_language=source_language,
+                    translated_video_path=persistent_source_path,
+                    shorts_candidates=render_shorts,
+                    long_candidates=render_longs,
+                    ai_data=ai_data,
+                )
+                keep_source_for_trim = True
+                if not silent_errors:
+                    await send_factory_editorial_files(
+                        update,
+                        pack_path=pack_path,
+                        review_path=review_path,
+                        markdown_path=markdown_path,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as editorial_exc:
+                logger.exception(
+                    "Factory editorial review pack failed media_id=%s: %s",
+                    media_id,
+                    editorial_exc,
+                )
+                if not silent_errors:
+                    await update.message.reply_text(
+                        "⚠️ Ролики готовы, но редакционный ZIP не собрался. "
+                        f"Публикационные файлы не потеряны. Причина: {str(editorial_exc)[:300]}"
+                    )
 
         await _safe_status(
             status_msg,
