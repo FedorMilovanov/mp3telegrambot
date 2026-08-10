@@ -40,10 +40,15 @@ def test_factory_required_feature_owns_all_cut_safety_policies():
 
     assert "from services.shorts_factory_media import (" in runtime_source
     assert "validated_factory_source_duration" in runtime_source
-    assert "from services.shorts_factory_timing import align_factory_livedub_candidates" in runtime_source
+    assert (
+        "from services.shorts_factory_timing import "
+        "align_factory_livedub_candidates"
+    ) in runtime_source
     assert "install_factory_ru_boundary_capture" not in runtime_source
     assert "prepare_factory_ru_boundary_evidence" in factory_source
     assert "with factory_ru_boundary_context(ru_boundary_evidence):" in factory_source
+    assert "SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC" not in factory_source
+    assert "refusing heuristic original-timeline cuts" in factory_source
     assert "_TIMELINE_BY_VIDEO" not in timing_source
     assert "install_factory_ru_boundary_capture" not in timing_source
     assert "\ninstall_livedub_downstream_media_policy()\n" not in media_source
