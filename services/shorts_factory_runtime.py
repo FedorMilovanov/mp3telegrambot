@@ -267,19 +267,11 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
         install_factory_publication_formatters,
     )
     from services.shorts_factory_quality_gate import install_factory_plan_quality_gate
-    from services.shorts_factory_timing import (
-        align_factory_livedub_candidates,
-        install_factory_ru_boundary_capture,
-    )
+    from services.shorts_factory_timing import align_factory_livedub_candidates
 
     if not install_livedub_downstream_media_policy():
         return False
     if not install_factory_plan_quality_gate():
-        return False
-    # Quality-gate installation owns the production source policy. Boundary
-    # capture must wrap that final source seam, never the legacy function that
-    # the source installer is about to replace.
-    if not install_factory_ru_boundary_capture():
         return False
     if not install_factory_publication_formatters(shorts_module, clips_module):
         return False
@@ -482,9 +474,10 @@ def install_shorts_factory_mode(_main_module=None) -> bool:
     logger.info(
         "Shorts Factory MAX runtime installed: Gemini 3.6 Flash, thinking=high, "
         "speed=1.0, Whisper=%s karaoke word-timestamps, verified Telegram "
-        "delivery, final duration<=180/900, exact media duration, safe Yandex "
-        "tail, canonical publication hashtags, optional 3.5/minimal descriptions, "
-        "no unsafe trim controls, distinct command/playlist chains",
+        "delivery, final duration<=180/900, exact media duration, request-scoped "
+        "RU speech boundary proof, safe Yandex tail, canonical publication hashtags, "
+        "optional 3.5/minimal descriptions, no unsafe trim controls, distinct "
+        "command/playlist chains",
         factory_subtitle_profile()["model_name"],
     )
     return True
