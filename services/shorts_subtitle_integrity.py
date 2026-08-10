@@ -2,7 +2,7 @@
 """Deterministic ASS generation and validation for Shorts subtitles.
 
 This module intentionally does not stretch Whisper word timings across real
-silence.  A pause is a semantic/render boundary, not missing data to be filled.
+silence. A pause is a semantic/render boundary, not missing data to be filled.
 The generated ASS is validated before FFmpeg sees it so malformed, overlapping
 or abnormally long karaoke events fail closed instead of being published.
 """
@@ -54,21 +54,26 @@ def _parse_ass_time(value: str) -> float:
     return hours * 3600.0 + minutes * 60.0 + seconds
 
 
-def _escape_ass_text(text: str) -> str:
-    return (
-        str(text or "")
-        .replace("\\", r"\\")
-        .replace("{", r"\{")
-        .replace("}", r"\}")
-        .strip()
-    )
+def _escape_ass_text(text: str, *, preserve_line_breaks: bool = False) -> str:
+    """Escape user/ASR text without destroying an intentional ASS ``\\N``."""
+    raw = str(text or "")
+    marker = "\x00ASS_LINE_BREAK\x00"
+    if preserve_line_breaks:
+        raw = raw.replace(r"\N", marker)
+    raw = raw.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+    if preserve_line_breaks:
+        raw = raw.replace(marker, r"\N")
+    return raw.strip()
 
 
 def _collect_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     words: list[dict[str, Any]] = []
     for segment in segments or []:
         seg_start = max(0.0, _finite(segment.get("start"), 0.0))
-        seg_end = max(seg_start + MIN_WORD_DURATION, _finite(segment.get("end"), seg_start + 1.0))
+        seg_end = max(
+            seg_start + MIN_WORD_DURATION,
+            _finite(segment.get("end"), seg_start + 1.0),
+        )
         raw_words = segment.get("words") or []
         if raw_words:
             for item in raw_words:
@@ -94,7 +99,10 @@ def _collect_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 {
                     "word": text,
                     "start": start,
-                    "end": min(seg_end, start + max(MIN_WORD_DURATION, width * 0.9)),
+                    "end": min(
+                        seg_end,
+                        start + max(MIN_WORD_DURATION, width * 0.9),
+                    ),
                 }
             )
     return words
@@ -155,7 +163,7 @@ def _merge_tokens(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Split on real pauses first, then punctuation and visual width.
 
-    Hard pause boundaries are never suppressed by a preceding preposition.  The
+    Hard pause boundaries are never suppressed by a preceding preposition. The
     old implementation could cancel a pause cut after words such as ``в`` or
     ``на`` and keep one karaoke event alive through several seconds of silence.
     """
@@ -177,9 +185,16 @@ def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
             previous_text = str(previous.get("word") or "").strip()
             hard_pause = pause > MAX_PAUSE_IN_CHUNK
             sentence_break = previous_text.endswith(_SENTENCE_END)
-            clause_break = previous_text.endswith(",") and current_len >= MAX_CHARS // 2
+            clause_break = (
+                previous_text.endswith(",") and current_len >= MAX_CHARS // 2
+            )
 
-        if current and (hard_pause or sentence_break or clause_break or projected > MAX_CHARS):
+        if current and (
+            hard_pause
+            or sentence_break
+            or clause_break
+            or projected > MAX_CHARS
+        ):
             chunks.append(current)
             current = []
             current_len = 0
@@ -192,7 +207,10 @@ def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     return chunks
 
 
-def _wrap_chunk(words: list[dict[str, Any]], max_line_chars: int = MAX_CHARS) -> str:
+def _wrap_chunk(
+    words: list[dict[str, Any]],
+    max_line_chars: int = MAX_CHARS,
+) -> str:
     text_words = [str(word.get("word") or "").strip() for word in words]
     text_words = [word for word in text_words if word]
     text = " ".join(text_words)
@@ -209,7 +227,11 @@ def _wrap_chunk(words: list[dict[str, Any]], max_line_chars: int = MAX_CHARS) ->
         if distance < best_distance:
             best_index = index
             best_distance = distance
-    return " ".join(text_words[:best_index]) + r"\N" + " ".join(text_words[best_index:])
+    return (
+        " ".join(text_words[:best_index])
+        + r"\N"
+        + " ".join(text_words[best_index:])
+    )
 
 
 def _header(font_name: str) -> str:
@@ -256,11 +278,15 @@ def validate_ass_document(
             issues.append(f"line {line_no}: {exc}")
             continue
         if end <= start:
-            issues.append(f"line {line_no}: non-positive interval {start:.2f}-{end:.2f}")
+            issues.append(
+                f"line {line_no}: non-positive interval {start:.2f}-{end:.2f}"
+            )
         if previous_end >= 0 and start < previous_end - 0.011:
             issues.append(f"line {line_no}: overlaps previous event")
         if karaoke and end - start > max_karaoke_hold + 0.011:
-            issues.append(f"line {line_no}: karaoke hold {end - start:.2f}s is too long")
+            issues.append(
+                f"line {line_no}: karaoke hold {end - start:.2f}s is too long"
+            )
         if not fields[9].strip():
             issues.append(f"line {line_no}: empty subtitle text")
         previous_end = max(previous_end, end)
@@ -287,29 +313,51 @@ def generate_ass_from_segments(
         for chunk in chunks:
             start = float(chunk[0]["start"])
             end = max(float(chunk[-1]["end"]), start + MIN_WORD_DURATION)
-            text = _escape_ass_text(_wrap_chunk(chunk))
+            text = _escape_ass_text(
+                _wrap_chunk(chunk),
+                preserve_line_breaks=True,
+            )
             lines.append(
                 f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,"
                 rf"{{\fad(80,60)}}{text}"
             )
     else:
         for chunk in chunks:
-            clean = [_escape_ass_text(str(word.get("word") or "")) for word in chunk]
+            clean = [
+                _escape_ass_text(str(word.get("word") or ""))
+                for word in chunk
+            ]
             for index, word in enumerate(chunk):
                 start = float(word["start"])
-                natural_end = max(float(word["end"]), start + MIN_WORD_DURATION)
+                natural_end = max(
+                    float(word["end"]),
+                    start + MIN_WORD_DURATION,
+                )
                 if index + 1 < len(chunk):
                     next_start = float(chunk[index + 1]["start"])
                     gap = max(0.0, next_start - natural_end)
-                    end = next_start if gap <= MAX_PAUSE_IN_CHUNK else natural_end
+                    end = (
+                        next_start
+                        if gap <= MAX_PAUSE_IN_CHUNK
+                        else natural_end
+                    )
                 else:
                     end = natural_end
-                end = min(max(end, start + MIN_WORD_DURATION), start + MAX_KARAOKE_HOLD)
+                end = min(
+                    max(end, start + MIN_WORD_DURATION),
+                    start + MAX_KARAOKE_HOLD,
+                )
 
                 rendered: list[str] = []
                 for word_index, text in enumerate(clean):
-                    colour = COLOUR_ACTIVE if word_index == index else COLOUR_INACTIVE
-                    rendered.append(f"{{\\c{colour}}}{text}{{\\c{COLOUR_INACTIVE}}}")
+                    colour = (
+                        COLOUR_ACTIVE
+                        if word_index == index
+                        else COLOUR_INACTIVE
+                    )
+                    rendered.append(
+                        f"{{\\c{colour}}}{text}{{\\c{COLOUR_INACTIVE}}}"
+                    )
                 lines.append(
                     f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,"
                     + " ".join(rendered)
