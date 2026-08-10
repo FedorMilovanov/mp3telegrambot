@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic editorial QA exchange for Yandex LiveDub material.
 
-The module deliberately keeps AI outside the execution boundary.  It builds a
+The module deliberately keeps AI outside the execution boundary. It builds a
 small immutable review pack from the real source transcript, the Russian
-Whisper transcript and Factory candidate metadata.  ChatGPT, Gemini or a human
+Whisper transcript and Factory candidate metadata. ChatGPT, Gemini or a human
 editor may return a versioned review document, but only deterministic actions
 validated against the exact pack may reach FFmpeg.
 """
@@ -13,7 +13,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import shutil
 import tempfile
 import zipfile
@@ -33,11 +32,6 @@ VERDICTS = {"keep", "repair", "reject"}
 ISSUE_SEVERITIES = {"roughness", "minor", "major", "critical"}
 ACTION_TYPES = {"drop_span", "mute_span", "borrow_span", "reject_region"}
 EXECUTABLE_ACTIONS = {"drop_span", "mute_span"}
-
-_SRT_TS_RE = re.compile(
-    r"(?P<h>\d{1,3}):(?P<m>\d{2}):(?P<s>\d{2})[,.](?P<ms>\d{3})"
-)
-_WORD_KEY_RE = re.compile(r"[^\wёЁ]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -67,15 +61,18 @@ def _canonical_sha256(value: Any) -> str:
 
 
 def _srt_seconds(value: str) -> float:
-    match = _SRT_TS_RE.fullmatch(str(value or "").strip())
-    if not match:
+    token = str(value or "").strip().split()[0].replace(",", ".")
+    clock, dot, millis = token.partition(".")
+    parts = clock.split(":")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
         raise ValueError(f"invalid SRT timestamp: {value!r}")
-    return (
-        int(match.group("h")) * 3600
-        + int(match.group("m")) * 60
-        + int(match.group("s"))
-        + int(match.group("ms")) / 1000.0
-    )
+    if dot and (not millis.isdigit() or len(millis) > 3):
+        raise ValueError(f"invalid SRT timestamp: {value!r}")
+    hours, minutes, seconds = (int(part) for part in parts)
+    if minutes >= 60 or seconds >= 60:
+        raise ValueError(f"invalid SRT timestamp: {value!r}")
+    fraction = int((millis + "000")[:3]) / 1000.0 if dot else 0.0
+    return hours * 3600 + minutes * 60 + seconds + fraction
 
 
 def _srt_time(seconds: float) -> str:
@@ -87,10 +84,24 @@ def _srt_time(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
 
 
+def _srt_blocks(raw: str) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for raw_line in str(raw or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if line:
+            current.append(line)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
 def parse_srt_text(raw: str) -> list[SrtCue]:
     cues: list[SrtCue] = []
-    for block in re.split(r"\n\s*\n", str(raw or "").replace("\r\n", "\n")):
-        lines = [line.strip() for line in block.splitlines() if line.strip()]
+    for lines in _srt_blocks(raw):
         if len(lines) < 2:
             continue
         time_index = 1 if lines[0].isdigit() else 0
@@ -98,9 +109,9 @@ def parse_srt_text(raw: str) -> list[SrtCue]:
             continue
         left, right = [part.strip() for part in lines[time_index].split("-->", 1)]
         try:
-            start = _srt_seconds(left.split()[0])
-            end = _srt_seconds(right.split()[0])
-        except ValueError:
+            start = _srt_seconds(left)
+            end = _srt_seconds(right)
+        except (IndexError, ValueError):
             continue
         text = " ".join(lines[time_index + 1 :]).strip()
         if not text or end <= start:
@@ -115,9 +126,19 @@ def parse_srt(path: Path) -> list[SrtCue]:
 
 
 def _word_key(text: str) -> str:
-    return " ".join(
-        part for part in _WORD_KEY_RE.sub(" ", str(text or "").casefold()).split() if part
+    normalized = "".join(
+        char if (char.isalnum() or char == "_") else " "
+        for char in str(text or "").casefold()
     )
+    return " ".join(normalized.split())
+
+
+def _contains_normalized_phrase(text: str, phrase: str) -> bool:
+    haystack = _word_key(text)
+    needle = _word_key(phrase)
+    if not haystack or not needle:
+        return False
+    return f" {needle} " in f" {haystack} "
 
 
 def find_donor_cues(
@@ -129,12 +150,11 @@ def find_donor_cues(
     limit: int = 12,
 ) -> list[dict[str, Any]]:
     """Return grounded same-voice donor cue candidates; never edits media."""
-    needle = _word_key(phrase)
-    if not needle:
+    if not _word_key(phrase):
         return []
     out: list[dict[str, Any]] = []
     for cue in parse_srt(srt_path):
-        if needle not in _word_key(cue.text):
+        if not _contains_normalized_phrase(cue.text, phrase):
             continue
         if (
             exclude_start is not None
@@ -174,6 +194,14 @@ def _file_entry(path: Path, *, role: str) -> dict[str, Any]:
     }
 
 
+def _safe_media_id(media_id: str) -> str:
+    safe = "".join(
+        char if (char.isalnum() or char in "_-") else "_"
+        for char in str(media_id or "media")
+    )
+    return safe[:100] or "media"
+
+
 def build_review_pack(
     *,
     output_dir: Path,
@@ -191,7 +219,7 @@ def build_review_pack(
 ) -> Path:
     """Build one small ZIP suitable for ChatGPT/Gemini/human review.
 
-    The video itself is intentionally not copied into the ZIP.  Its local path,
+    The video itself is intentionally not copied into the ZIP. Its local path,
     size and SHA-256 bind any later repair to the exact translated source bytes.
     """
     source_video_path = Path(source_video_path)
@@ -201,7 +229,7 @@ def build_review_pack(
         if not required.exists() or required.stat().st_size <= 0:
             raise FileNotFoundError(f"review pack input missing/empty: {required}")
 
-    safe_id = re.sub(r"[^A-Za-z0-9_-]+", "_", str(media_id or "media"))[:100]
+    safe_id = _safe_media_id(media_id)
     root = Path(output_dir) / f"{safe_id}_translation_editorial_v1"
     if root.exists():
         shutil.rmtree(root)
@@ -470,7 +498,7 @@ async def apply_safe_repairs(
 ) -> Path:
     """Execute only v1 drop/mute operations with FFmpeg.
 
-    Borrowed speech is intentionally not synthesized here.  A review containing
+    Borrowed speech is intentionally not synthesized here. A review containing
     such an action must be handled in a later explicitly approved pass.
     """
     source_video_path = Path(source_video_path)
