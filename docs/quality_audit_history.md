@@ -1057,3 +1057,17 @@ Fixes:
 - Subtitle ASS generation preserves real silence, normalizes overlapping/zero-length word timestamps, prevents remote token merges, normalizes CR/LF/NUL control characters, and validates zero rendered overlap plus karaoke limits at centisecond precision before FFmpeg.
 - Regression coverage includes final-mix RU-vs-original delay semantics, source clock and stage directions, explicit role/caps, edge purity, no-proof behavior, control-character injection, 0.01s overlap/hold limits, transactional subtitle burn and delivery truth.
 - Pre-history exact head `180c01c3f268402a732169b32b346710c52db181` passed full Python 3.11, Python 3.13 and Windows Actions CI #2478; a new exact-head CI is required after this append before squash merge. No code-health baseline or non-Factory quality gate is weakened.
+
+## 2026-08-10 — Shorts Factory overload/editorial production hardening
+
+- A real long-form Factory run exhausted all four configured Gemini 3.6 keys with `503/high demand` after expensive audio preparation; quality is not downgraded: Factory remains exact `gemini-3.6-flash`, `thinking_level=high`, three passes, and no 3.5/2.x model enters candidate selection.
+- Factory now owns one HTTP attempt per API key while preserving the 900-second pass timeout; transient 429/5xx rotation resumes already completed scout/judge passes instead of redoing successful semantic work.
+- Exact prepared analysis audio is retained only in a SHA/probe-verified lossless retry cache bounded by TTL and item count; cross-filesystem copy failures remove partial artifacts.
+- Long operations expose Telegram heartbeat progress for Gemini upload/server processing/HIGH passes, Yandex master preparation and the editorial transcript pack.
+- The active guarded executor again builds exact VOT RU boundary evidence concurrently with LiveDub preparation, preserves the canonical LiveDub timeout floor/cap, and never substitutes unproved original-language boundaries.
+- Render `ai_data` is always built immediately by the original Factory metadata function; request-local editorial capture stores a deep copy and post-alignment refresh never blanks Russian or partially aligned jobs.
+- Successful translated Factory delivery runs the existing immutable Translation Editorial pack with actual aligned candidates; successful ZIP delivery is not suppressed by playlist `silent_errors`.
+- Added `ENG Редактор перевода`: Yandex full master → original English SRT → Russian Whisper `large-v3` → review ZIP, with no Factory Gemini planner; actual probed Yandex duration including its tail is the review duration.
+- The standalone editor explicitly releases only the disk guard's analysis-audio ordering dependency; maximum-video disk proof remains active, avoiding a video-only deadlock without weakening resource checks.
+- Failed editorial handoff masters are diagnostic-only, protected while active, and bounded by TTL/item count after release; failed Factory jobs delete unused handoffs immediately, Russian jobs and disabled automatic editorial packs do not create them.
+- Regressions cover retry ownership/resume, exact cache bytes, partial-copy cleanup, boundary overlap/role fail-closed behavior, full `ai_data` capture, video-only disk-guard release, active-master concurrency protection, pending-master bounds, actual Yandex duration, no-planner editor mode, silent success delivery and runtime-manifest ordering. Final exact-head Python 3.11, Python 3.13 and Windows CI is required before squash merge; no quality baseline or non-Factory route is weakened.

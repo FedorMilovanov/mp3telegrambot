@@ -418,6 +418,14 @@ DEFAULT_RUNTIME_FEATURES = (
         false_is_failure=True,
     ),
     RuntimeFeature(
+        "shorts-factory-overload-editorial-polish",
+        "services.shorts_factory_overload_editorial_polish",
+        "install_shorts_factory_overload_editorial_polish",
+        RuntimePhase.POST_MAIN,
+        dependencies=("shorts-factory-max",),
+        false_is_failure=True,
+    ),
+    RuntimeFeature(
         "dub-studio-runtime",
         "services.dub_studio_runtime",
         "install_dub_studio_runtime",
