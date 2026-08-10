@@ -293,13 +293,12 @@ async def _send_editorial_after_factory(
         ),
         heartbeat=60.0,
     )
-    if not silent_errors:
-        await send_factory_editorial_files(
-            update,
-            pack_path=pack,
-            review_path=review,
-            markdown_path=markdown,
-        )
+    await send_factory_editorial_files(
+        update,
+        pack_path=pack,
+        review_path=review,
+        markdown_path=markdown,
+    )
     source.unlink(missing_ok=True)
     await safe_status(
         "✅ SHORTS FACTORY MAX + Translation Editorial завершены: "
@@ -456,13 +455,12 @@ async def process_translation_editorial_only(
             ),
             heartbeat=60.0,
         )
-        if not silent_errors:
-            await send_factory_editorial_files(
-                update,
-                pack_path=pack,
-                review_path=review,
-                markdown_path=markdown,
-            )
+        await send_factory_editorial_files(
+            update,
+            pack_path=pack,
+            review_path=review,
+            markdown_path=markdown,
+        )
         await safe_status(
             "✅ РЕДАКТОР ПЕРЕВОДА: ZIP готов. Пришлите его в ChatGPT."
         )
