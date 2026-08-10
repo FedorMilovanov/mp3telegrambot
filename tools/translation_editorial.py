@@ -30,6 +30,10 @@ from services.translation_editorial import (
     transcribe_russian_whisper,
     validate_review_document,
 )
+from services.translation_editorial_repair_provenance import (
+    build_repair_provenance,
+    write_repair_provenance,
+)
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -299,7 +303,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 async def _cmd_repair(args: argparse.Namespace) -> int:
-    manifest, review = _load_and_validate(Path(args.pack), Path(args.review))
+    pack_path = Path(args.pack)
+    review_path = Path(args.review)
+    manifest, review = _load_and_validate(pack_path, review_path)
     full = review.get("full_sermon") or {}
     if full.get("verdict") == "reject":
         raise RuntimeError("full sermon is rejected; repair execution is blocked")
@@ -330,13 +336,24 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
             "translated source bytes changed since review pack creation; repair refused"
         )
 
+    repairs = collect_executable_repairs(review)
+    output_path = Path(args.output)
     output = await apply_safe_repairs(
         source_video_path=source_path,
-        output_path=Path(args.output),
+        output_path=output_path,
         duration=float((manifest.get("source") or {}).get("duration_seconds") or 0.0),
-        repairs=collect_executable_repairs(review),
+        repairs=repairs,
     )
+    provenance = await build_repair_provenance(
+        manifest=manifest,
+        review_path=review_path,
+        output_path=output,
+        repairs=repairs,
+    )
+    provenance_path = output.with_suffix(".editorial-repair.json")
+    write_repair_provenance(provenance_path, provenance)
     print(output)
+    print(provenance_path)
     return 0
 
 
