@@ -254,6 +254,7 @@ async def _send_editorial_after_factory(
         send_factory_editorial_files,
     )
 
+    del silent_errors
     if not factory_editorial_pack_enabled():
         return
     plan = state.get("render_plan") or state.get("plan") or {}
@@ -376,6 +377,9 @@ async def process_translation_editorial_only(
         media_probe_is_deliverable,
         probe_media_async,
     )
+    from services.shorts_factory_disk_guard import (
+        mark_factory_analysis_audio_skipped,
+    )
     from services.shorts_factory_execution_guard import (
         enforce_factory_translation_preflight,
         factory_preflight_issues,
@@ -394,6 +398,10 @@ async def process_translation_editorial_only(
     token = STATUS_MESSAGE.set(status_msg)
     try:
         info = await factory_module._load_video_info(url)
+        # Factory's disk guard normally serializes maximum video behind the
+        # analysis-audio download. This mode intentionally has no analysis-audio
+        # phase, so release only that ordering dependency; video disk proof stays.
+        mark_factory_analysis_audio_skipped(url)
         duration = int(float(info.get("duration") or 0))
         if duration <= 0:
             raise RuntimeError("Не удалось определить длительность видео")
