@@ -70,6 +70,46 @@ def _safe_name(value: str, fallback: str = "piece") -> str:
     return safe[:120] or fallback
 
 
+def _piece_media_payload(piece: Any) -> dict[str, Any]:
+    if not isinstance(piece, dict):
+        return {}
+    return {
+        "piece_id": piece.get("piece_id"),
+        "kind": piece.get("kind"),
+        "assembly_mode": piece.get("assembly_mode"),
+        "editorial_rationale": piece.get("editorial_rationale") or "",
+        "segments": piece.get("segments"),
+    }
+
+
+def _composition_identity_payload(document: dict[str, Any]) -> dict[str, Any]:
+    """Bind only media-producing evidence; release copy/paths belong to handoff_id."""
+    source = document.get("source") if isinstance(document.get("source"), dict) else {}
+    repair = source.get("repair_provenance") if isinstance(source.get("repair_provenance"), dict) else {}
+    pieces = document.get("pieces") if isinstance(document.get("pieces"), list) else document.get("pieces")
+    media_pieces = (
+        [_piece_media_payload(piece) for piece in pieces]
+        if isinstance(pieces, list)
+        else pieces
+    )
+    return {
+        "schema_name": document.get("schema_name"),
+        "schema_version": document.get("schema_version"),
+        "source": {
+            "sha256": source.get("sha256"),
+            "bytes": source.get("bytes"),
+            "duration_seconds": source.get("duration_seconds"),
+            "review_pack_id": source.get("review_pack_id") or "",
+            "review_sha256": source.get("review_sha256") or "",
+            "repair_provenance": {
+                "sha256": repair.get("sha256") or "",
+                "repair_result_id": repair.get("repair_result_id") or "",
+            },
+        },
+        "pieces": media_pieces,
+    }
+
+
 def build_composition_template(
     *,
     source_video_path: Path,
@@ -119,8 +159,7 @@ def build_composition_template(
 
 
 def composition_id(document: dict[str, Any]) -> str:
-    payload = {key: value for key, value in document.items() if key != "composition_id"}
-    return _canonical_sha256(payload)
+    return _canonical_sha256(_composition_identity_payload(document))
 
 
 def _segment_values(segment: dict[str, Any]) -> tuple[float, float] | None:
@@ -485,8 +524,8 @@ def _load_verified_existing_result(
         raise RuntimeError("unsupported composition result sidecar schema")
     if provenance.get("composition_id") != document.get("composition_id"):
         raise RuntimeError("existing composition output belongs to another composition_id")
-    if provenance.get("piece") != piece:
-        raise RuntimeError("existing composition output piece metadata changed")
+    if _piece_media_payload(provenance.get("piece")) != _piece_media_payload(piece):
+        raise RuntimeError("existing composition output media piece changed")
     source = provenance.get("source") or {}
     if source.get("sha256") != (document.get("source") or {}).get("sha256"):
         raise RuntimeError("existing composition output source SHA does not match")
@@ -515,11 +554,16 @@ def _publish_new_file(temp_path: Path, final_path: Path) -> None:
     except FileExistsError:
         raise
     except OSError:
+        created = False
         try:
-            with temp_path.open("rb") as source, final_path.open("xb") as target:
+            with final_path.open("xb") as target, temp_path.open("rb") as source:
+                created = True
                 shutil.copyfileobj(source, target, length=1024 * 1024)
+        except FileExistsError:
+            raise
         except Exception:
-            final_path.unlink(missing_ok=True)
+            if created:
+                final_path.unlink(missing_ok=True)
             raise
     finally:
         temp_path.unlink(missing_ok=True)
