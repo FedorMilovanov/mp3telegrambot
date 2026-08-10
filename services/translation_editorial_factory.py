@@ -22,10 +22,12 @@ from services.translation_editorial import (
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
     build_review_pack,
-    load_pack_manifest,
     sha256_file,
     transcribe_russian_whisper,
     validate_review_document,
+)
+from services.translation_editorial_pack_contract import (
+    load_verified_review_pack as load_pack_manifest,
 )
 
 logger = logging.getLogger(__name__)
@@ -501,6 +503,7 @@ async def prepare_factory_editorial_review(
             long_candidates=long_candidates,
             timeline_metadata=_timeline_metadata(),
         )
+        await asyncio.to_thread(load_pack_manifest, pack)
 
     review_path: Path | None = None
     markdown_path: Path | None = None
