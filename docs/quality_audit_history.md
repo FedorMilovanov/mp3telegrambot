@@ -1047,3 +1047,13 @@ Fixes:
 - Automatic `drop_span` is mechanically surgical: one drop is capped at 8 seconds and merged deletion is capped at `min(60s, max(5s, 2% of real source duration))`; review validation and service execution independently enforce the budget before FFmpeg.
 - Focused regressions cover relocation, revision-safe handoffs, Windows collisions, individual/total drop limits and direct-service bypass attempts.
 - Final exact-head Python 3.11 + Python 3.13 + Windows CI is required before squash merge; no product routing/provider boundary or quality baseline is weakened.
+
+## 2026-08-10 — Shorts Factory RU-boundary/subtitle final re-audit
+
+- Rebuilt conflicted PR #115 cleanly on current `main` and re-audited the actual code instead of trusting stale PR metadata; the old branch mixed incompatible tests/production symbols and unrelated audit-history edits.
+- For translated Factory media, Gemini timestamps are semantic discovery only. Exact provenance-bound VOT RU audio supplies speech evidence, RU delay is applied exactly once, provider source captions stay on the original/final-mix clock, and stage-direction-only source cues are excluded.
+- Candidate policy is explicit `short`/`long`; near-cap snapping may reclaim only boundary expansion; source-only speech gets an additional edge-purity veto; missing exact RU proof fails closed with no English/original-timeline publication fallback.
+- Factory orchestration uses the canonical LiveDub source-timeout owner, builds `ai_data` from the post-alignment render plan, and reports/returns actual Telegram-accepted delivery counts.
+- Subtitle ASS generation preserves real silence, normalizes overlapping/zero-length word timestamps, prevents remote token merges, normalizes CR/LF/NUL control characters, and validates zero rendered overlap plus karaoke limits at centisecond precision before FFmpeg.
+- Regression coverage includes final-mix RU-vs-original delay semantics, source clock and stage directions, explicit role/caps, edge purity, no-proof behavior, control-character injection, 0.01s overlap/hold limits, transactional subtitle burn and delivery truth.
+- Pre-history exact head `180c01c3f268402a732169b32b346710c52db181` passed full Python 3.11, Python 3.13 and Windows Actions CI #2478; a new exact-head CI is required after this append before squash merge. No code-health baseline or non-Factory quality gate is weakened.
