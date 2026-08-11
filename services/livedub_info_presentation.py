@@ -295,6 +295,8 @@ def install_livedub_info_presentation() -> None:
             return card
 
         build_card._mp3bot_clean_presentation = True  # type: ignore[attr-defined]
+        if getattr(original_build, "_mp3bot_all_clients", False):
+            build_card._mp3bot_all_clients = True  # type: ignore[attr-defined]
         module.build_livedub_info_card = build_card
         module.format_livedub_info_message = _make_formatter(module)
         logger.info(

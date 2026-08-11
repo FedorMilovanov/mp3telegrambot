@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from services.shorts_factory_capacity_runtime import create_factory_plan_resumable
 from services.shorts_factory_editorial_bridge import (
     EDITORIAL_MODE,
     JOB_STATE,
@@ -20,7 +21,6 @@ from services.shorts_factory_editorial_bridge import (
 )
 from services.shorts_factory_overload_runtime import (
     cleanup_retry_cache,
-    create_factory_plan_resumable,
     download_factory_audio_with_retry_cache,
     factory_overload_error,
     factory_retryable_service_error,
@@ -229,9 +229,9 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     _INSTALLED = True
     logger.info(
         "Shorts Factory overload/editorial polish installed: Gemini 3.6/HIGH 3-pass preserved, "
-        "Factory-only HTTP retry ownership, resumable pass rotation, bounded lossless retry cache, "
-        "canonical LiveDub timeout, active VOT RU proof, complete render ai_data, editorial ZIP "
-        "and standalone ENG editor"
+        "Factory-only HTTP retry ownership, capacity-aware resumable client rotation, bounded "
+        "lossless retry cache, canonical LiveDub timeout, active VOT RU proof, complete render "
+        "ai_data, editorial ZIP and standalone ENG editor"
     )
     return True
 
