@@ -1071,3 +1071,13 @@ Fixes:
 - The standalone editor explicitly releases only the disk guard's analysis-audio ordering dependency; maximum-video disk proof remains active, avoiding a video-only deadlock without weakening resource checks.
 - Failed editorial handoff masters are diagnostic-only, protected while active, and bounded by TTL/item count after release; failed Factory jobs delete unused handoffs immediately, Russian jobs and disabled automatic editorial packs do not create them.
 - Regressions cover retry ownership/resume, exact cache bytes, partial-copy cleanup, boundary overlap/role fail-closed behavior, full `ai_data` capture, video-only disk-guard release, active-master concurrency protection, pending-master bounds, actual Yandex duration, no-planner editor mode, silent success delivery and runtime-manifest ordering. Final exact-head Python 3.11, Python 3.13 and Windows CI is required before squash merge; no quality baseline or non-Factory route is weakened.
+
+## 2026-08-12 — Factory Gemini capacity fast-fail and LiveDub client capability marker
+
+- Production evidence showed a long Factory source repeatedly uploaded/processed across configured Gemini clients after explicit `503/high demand`, turning one model-capacity outage into a long serial key sweep.
+- Factory candidate quality remains unchanged: exact `gemini-3.6-flash`, `thinking_level=high`, three semantic review passes, and no 3.5/2.x candidate-selection downgrade.
+- Explicit `503/high demand` now stops the current Factory client sweep after uploaded-file cleanup and preserves the existing verified lossless retry cache for a later attempt. It no longer claims that every API key was tried when capacity was established on the first explicit overload response.
+- `429` and other retryable non-capacity service failures retain request-local client rotation and resume already-completed Factory passes as before.
+- LiveDub clean-presentation wrapping now preserves `_mp3bot_all_clients` from the native builder, so the quality runtime can recognize existing request-local multi-client support instead of emitting the concurrency-safety warning and disabling unrelated global rotation.
+- Regression coverage proves: (1) 503 stops before client 2; (2) 429 still rotates and completes the unchanged three-pass HIGH contract; (3) the LiveDub all-clients marker survives presentation wrapping.
+- Exact-head GitHub Actions CI is required after this history append before merge; no Factory score, render, Whisper, LiveDub, publication, or non-Factory quality gate is weakened.
