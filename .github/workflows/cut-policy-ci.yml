@@ -68,7 +68,7 @@ on:
       - ".github/workflows/cut-policy-ci.yml"
 
 concurrency:
-  group: cut-policy-${{ github.ref }}-${{ matrix.os }}
+  group: cut-policy-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
