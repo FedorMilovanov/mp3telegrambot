@@ -20,12 +20,12 @@ _RUN_LIVE = (
 def test_factory_live_real_sermon_before_after(tmp_path):
     """One-shot evidence gate; remove after the recorded CI run succeeds."""
     output = tmp_path / "factory-media-evidence"
-    video_id = "FoJGYCc7EUg"
+    video_url = "https://vimeo.com/" + "350667440"
     command = [
         sys.executable,
         "tools/verify_factory_media_quality.py",
         "--url",
-        "https://www.youtube.com/watch?v=" + video_id,
+        video_url,
         "--start",
         "600",
         "--duration",
