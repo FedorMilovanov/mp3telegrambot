@@ -68,3 +68,12 @@ def test_factory_language_prompt_typo_does_not_regress():
     source = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     assert "доминирующий фактически услышанный язык речи" in source
     assert "услышаннный" not in source
+
+
+def test_durable_factory_benchmark_is_provider_independent():
+    source = Path("tools/run_factory_media_benchmark.py").read_text(encoding="utf-8")
+
+    assert "testsrc2=size=1920x1080:rate=30:duration=8" in source
+    assert "verify(" in source
+    assert "https://" not in source
+    assert "http://" not in source
