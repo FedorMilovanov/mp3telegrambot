@@ -62,6 +62,34 @@ def test_factory_quality_gate_requires_verified_boundaries_and_reason():
     assert gated["shorts_candidates"] == []
 
 
+def test_factory_quality_gate_rejects_malformed_or_nonfinite_candidate_numbers():
+    bad_start = _candidate("Плохой start", 99)
+    bad_start["start_seconds"] = "not-a-number"
+    infinite_end = _candidate("Бесконечный end", 99)
+    infinite_end["end_seconds"] = float("inf")
+    reversed_range = _candidate("Обратный диапазон", 99)
+    reversed_range["start_seconds"] = 100
+    reversed_range["end_seconds"] = 10
+    infinite_score = _candidate("Бесконечный score", float("inf"))
+    valid = _candidate("Валидный", 96)
+
+    gated = gate.apply_factory_quality_gate(
+        {
+            "shorts_candidates": [
+                bad_start,
+                infinite_end,
+                reversed_range,
+                infinite_score,
+                valid,
+            ],
+            "long_candidates": [bad_start, infinite_end, infinite_score, valid],
+        }
+    )
+
+    assert [item["title"] for item in gated["shorts_candidates"]] == ["Валидный"]
+    assert [item["title"] for item in gated["long_candidates"]] == ["Валидный"]
+
+
 def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "95")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "93")
@@ -75,6 +103,23 @@ def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
 
     assert [item["title"] for item in gated["shorts_candidates"]] == ["96"]
     assert [item["title"] for item in gated["long_candidates"]] == ["94"]
+
+
+def test_factory_quality_thresholds_reject_nonfinite_environment_values(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "nan")
+    monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "inf")
+
+    gated = gate.apply_factory_quality_gate(
+        {
+            "shorts_candidates": [_candidate("87", 87), _candidate("89", 89)],
+            "long_candidates": [_candidate("84", 84, hook=""), _candidate("86", 86, hook="")],
+        }
+    )
+
+    assert gated["quality_gate"]["min_short_score"] == gate.DEFAULT_MIN_SHORT_SCORE
+    assert gated["quality_gate"]["min_long_score"] == gate.DEFAULT_MIN_LONG_SCORE
+    assert [item["title"] for item in gated["shorts_candidates"]] == ["89"]
+    assert [item["title"] for item in gated["long_candidates"]] == ["86"]
 
 
 def test_factory_plan_language_is_normalized_and_nonsense_rejected():
