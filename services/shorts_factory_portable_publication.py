@@ -13,22 +13,32 @@ _INSTALLED = False
 
 
 def _source_interval(candidate: dict[str, Any]) -> tuple[float, float] | None:
-    """Return a proven original-source interval, never a fabricated zero range."""
+    """Return a proven original-source interval, never a fabricated/render clock."""
     pairs = (
         ("source_start_seconds", "source_end_seconds"),
         ("livedub_semantic_start_seconds", "livedub_semantic_end_seconds"),
         ("start_seconds", "end_seconds"),
     )
+    translated_semantic_present = (
+        "livedub_semantic_start_seconds" in candidate
+        or "livedub_semantic_end_seconds" in candidate
+    )
     for start_key, end_key in pairs:
         if start_key not in candidate or end_key not in candidate:
+            if start_key.startswith("livedub_semantic_") and translated_semantic_present:
+                return None
             continue
         try:
             start = float(candidate.get(start_key))
             end = float(candidate.get(end_key))
         except (TypeError, ValueError, OverflowError):
+            if start_key.startswith("livedub_semantic_"):
+                return None
             continue
         if math.isfinite(start) and math.isfinite(end) and end > start >= 0:
             return start, end
+        if start_key.startswith("livedub_semantic_"):
+            return None
     return None
 
 
