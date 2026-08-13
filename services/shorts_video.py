@@ -43,7 +43,7 @@ def _unlink_short_paths(
 
 
 def _normalize_only_can_copy_video(*, normalize_audio: bool, speed: float) -> bool:
-    """True when postprocess changes audio only and video packets may be copied."""
+    """True when the transform changes audio only and video packets may be copied."""
     try:
         value = float(speed)
     except (TypeError, ValueError, OverflowError):
@@ -80,7 +80,7 @@ async def _normalize_audio_copy_video(input_path: Path, output_path: Path) -> bo
     process = await _impl.run_cancellable_process(command, timeout=600, text=True)
     if process.returncode != 0:
         _impl.logger.warning(
-            "postprocess_short normalize-only copy error: %s",
+            "normalize-only video-copy error: %s",
             (process.stderr or "")[-800:],
         )
         return False
@@ -133,7 +133,7 @@ async def _unowned_short_transform(
     try:
         speed_value = float(speed)
     except (TypeError, ValueError, OverflowError):
-        _impl.logger.warning("postprocess_short: invalid speed=%r", speed)
+        _impl.logger.warning("Short transform: invalid speed=%r", speed)
         return False
     no_op = not normalize_audio and abs(speed_value - 1.0) <= 0.01
     if same_path:
@@ -153,7 +153,7 @@ async def _unowned_short_transform(
             result = await _normalize_audio_copy_video(input_path, output_path)
             if result:
                 _impl.logger.info(
-                    "postprocess_short: normalize-only uses -c:v copy; no extra video generation"
+                    "Short transform: normalize-only uses -c:v copy; no extra video generation"
                 )
         else:
             result = await _LEGACY_SHORT_TRANSFORM(
@@ -254,10 +254,10 @@ async def _unowned_create_short_title_poster(
                     "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
                     "/usr/share/fonts/noto/NotoSans-Bold.ttf",
                     "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-                    "/usr/share/fonts/truetype/inter/Inter-SemiBold.ttf",
+                    "/usr/share/truetype/inter/Inter-SemiBold.ttf",
                     "/usr/local/share/fonts/Inter-SemiBold.ttf",
                     "/usr/share/truetype/montserrat/Montserrat-SemiBold.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                    "/usr/share/truetype/liberation/LiberationSans-Bold.ttf",
                     "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
                     "/usr/share/truetype/dejavu/DejaVuSans-Bold.ttf",
                     "/usr/share/truetype/freefont/FreeSansBold.ttf",
