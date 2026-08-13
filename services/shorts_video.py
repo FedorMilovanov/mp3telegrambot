@@ -42,6 +42,51 @@ def _unlink_short_paths(
             _impl.logger.warning("Shorts cleanup failed for %s: %s", path, exc)
 
 
+def _normalize_only_can_copy_video(*, normalize_audio: bool, speed: float) -> bool:
+    """True when postprocess changes audio only and video packets may be copied."""
+    try:
+        value = float(speed)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return bool(normalize_audio and abs(value - 1.0) <= 0.01)
+
+
+async def _normalize_audio_copy_video(input_path: Path, output_path: Path) -> bool:
+    """Run loudnorm without creating another lossy video generation."""
+    ffmpeg = _impl.shutil.which("ffmpeg")
+    if not ffmpeg or not input_path.exists():
+        return False
+    command = [
+        ffmpeg,
+        "-i",
+        str(input_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0",
+        "-c:v",
+        "copy",
+        "-af",
+        "loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        "-y",
+        str(output_path),
+    ]
+    process = await _impl.run_cancellable_process(command, timeout=600, text=True)
+    if process.returncode != 0:
+        _impl.logger.warning(
+            "postprocess_short normalize-only copy error: %s",
+            (process.stderr or "")[-800:],
+        )
+        return False
+    return output_path.exists() and output_path.stat().st_size > 0
+
+
 async def _unowned_render_short_clip(
     source_video_path: Path,
     output_path: Path,
@@ -85,7 +130,12 @@ async def _unowned_short_transform(
     speed: float = 1.0,
 ) -> bool:
     same_path = _same_short_path(input_path, output_path)
-    no_op = not normalize_audio and abs(float(speed) - 1.0) <= 0.01
+    try:
+        speed_value = float(speed)
+    except (TypeError, ValueError, OverflowError):
+        _impl.logger.warning("postprocess_short: invalid speed=%r", speed)
+        return False
+    no_op = not normalize_audio and abs(speed_value - 1.0) <= 0.01
     if same_path:
         if no_op:
             return input_path.exists() and input_path.stat().st_size > 0
@@ -96,12 +146,22 @@ async def _unowned_short_transform(
 
     _unlink_short_paths(output_path, protected=(input_path,))
     try:
-        result = await _LEGACY_SHORT_TRANSFORM(
-            input_path,
-            output_path,
+        if _normalize_only_can_copy_video(
             normalize_audio=normalize_audio,
-            speed=speed,
-        )
+            speed=speed_value,
+        ):
+            result = await _normalize_audio_copy_video(input_path, output_path)
+            if result:
+                _impl.logger.info(
+                    "postprocess_short: normalize-only uses -c:v copy; no extra video generation"
+                )
+        else:
+            result = await _LEGACY_SHORT_TRANSFORM(
+                input_path,
+                output_path,
+                normalize_audio=normalize_audio,
+                speed=speed_value,
+            )
     except asyncio.CancelledError:
         _unlink_short_paths(output_path, protected=(input_path,))
         raise
@@ -196,11 +256,11 @@ async def _unowned_create_short_title_poster(
                     "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
                     "/usr/share/fonts/truetype/inter/Inter-SemiBold.ttf",
                     "/usr/local/share/fonts/Inter-SemiBold.ttf",
-                    "/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf",
+                    "/usr/share/truetype/montserrat/Montserrat-SemiBold.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                     "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+                    "/usr/share/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/truetype/freefont/FreeSansBold.ttf",
                 ]:
                     if Path(font_path).exists():
                         try:
@@ -391,6 +451,8 @@ async def create_short_snapshot(
 
 _impl._same_short_path = _same_short_path
 _impl._unlink_short_paths = _unlink_short_paths
+_impl._normalize_only_can_copy_video = _normalize_only_can_copy_video
+_impl._normalize_audio_copy_video = _normalize_audio_copy_video
 _impl._unowned_render_short_clip = _unowned_render_short_clip
 _impl._unowned_short_transform = _unowned_short_transform
 _impl._unowned_create_short_title_poster = _unowned_create_short_title_poster
