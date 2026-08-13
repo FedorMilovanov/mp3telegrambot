@@ -32,9 +32,21 @@ from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.nam
 
 import json
 import logging
+import math
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_extras_speed(value) -> tuple[float, bool] | None:
+    """Return finite positive speed and whether the public transform is required."""
+    try:
+        speed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(speed) or speed <= 0.0:
+        return None
+    return speed, abs(speed - 1.0) > 0.01
 
 
 async def _run_montage_or_highlights_pipeline(
@@ -49,7 +61,11 @@ async def _run_montage_or_highlights_pipeline(
     do_snapshot = await asettings_get("shorts_snapshot")
     do_subtitles = await asettings_get("shorts_subtitles")
     do_poster = await asettings_get("shorts_title_poster")
-    speed = float(await ashorts_speed_get())  # AUDIT M4
+    speed_state = _validated_extras_speed(await ashorts_speed_get())
+    if speed_state is None:
+        logger.warning("%s: invalid Shorts speed setting; refusing public render", prefix)
+        return False
+    speed, speed_required = speed_state
 
     raw_path = DOWNLOAD_DIR / f"{media_id}_{prefix}_raw.mp4"
     post_path = DOWNLOAD_DIR / f"{media_id}_{prefix}_post.mp4"
@@ -95,7 +111,7 @@ async def _run_montage_or_highlights_pipeline(
             )
             return False
 
-        need_post = do_normalize or (abs(speed - 1.0) > 0.01)
+        need_post = do_normalize or speed_required
         current_path = raw_path
         speed_applied = False
         if need_post:
@@ -107,17 +123,24 @@ async def _run_montage_or_highlights_pipeline(
             )
             if post_ok:
                 current_path = post_path
-                speed_applied = abs(speed - 1.0) > 0.01
-            else:
+                speed_applied = speed_required
+            elif speed_required:
                 logger.warning(
-                    "%s: обработка не удалась; raw будет доставлен без ложного "
-                    "пересчёта speed=%s",
+                    "%s: required speed transform %.6g failed; refusing raw "
+                    "fallback with the wrong playback speed",
                     prefix,
                     speed,
                 )
+                return False
+            else:
+                logger.warning(
+                    "%s: optional normalize failed; verified raw media remains "
+                    "eligible because playback speed is 1.0",
+                    prefix,
+                )
 
         expected_delivery_duration = (
-            raw_duration / speed if speed_applied and speed > 0 else raw_duration
+            raw_duration / speed if speed_applied else raw_duration
         )
         pre_subtitle_path = current_path
 
