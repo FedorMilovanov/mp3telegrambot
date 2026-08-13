@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 PUBLIC_LONG_MAX_SEC = 900.0
 _UNITY_SPEED_ABS_TOL = 1e-9
+_LONG_INTERVAL_ABS_TOL = 1e-6
 _LONG_PUBLIC_END: ContextVar[float | None] = ContextVar(
     "factory_long_public_end",
     default=None,
@@ -53,9 +54,13 @@ def validated_factory_long_interval(
     if not math.isfinite(start) or not math.isfinite(end):
         return None
     duration = end - start
-    if start < 0.0 or duration <= 0.0 or duration > PUBLIC_LONG_MAX_SEC + 1e-6:
+    if (
+        start < 0.0
+        or duration <= 0.0
+        or duration > PUBLIC_LONG_MAX_SEC + _LONG_INTERVAL_ABS_TOL
+    ):
         return None
-    return start, end
+    return start, min(end, start + PUBLIC_LONG_MAX_SEC)
 
 
 def clamp_factory_long_silence_end(adjusted_end: Any) -> Any:
