@@ -124,6 +124,9 @@ def install_factory_plan_quality_gate() -> bool:
     from services.shorts_factory_video_quality import (
         install_factory_video_quality_policy,
     )
+    from services.shorts_factory_portable_publication import (
+        install_factory_portable_publication,
+    )
     import services.shorts_factory_candidates as candidates_module
 
     if not install_cut_mode_source_policy():
@@ -138,6 +141,8 @@ def install_factory_plan_quality_gate() -> bool:
     # downloader and the long-fit wrapper captures the final Factory renderer.
     if not install_factory_video_quality_policy():
         return False
+    if not install_factory_portable_publication():
+        return False
     if not install_factory_disk_guard():
         return False
 
@@ -147,7 +152,7 @@ def install_factory_plan_quality_gate() -> bool:
     def strict_boundary_prompt(judged_plan, duration):
         return original_boundary_prompt(judged_plan, duration) + (
             "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
-            "доминирующий фактически услышанный язык речи как ISO 639-1 "
+            "доминирующий фактически услышаннный язык речи как ISO 639-1 "
             "(например ru, en, de). Не определяй язык по заголовку. "
             "Если доминирующий язык доказать нельзя, верни mixed."
         )
