@@ -121,6 +121,12 @@ def install_factory_plan_quality_gate() -> bool:
     from services.shorts_factory_source import (
         install_factory_source_quality_policy,
     )
+    from services.shorts_factory_video_quality import (
+        install_factory_video_quality_policy,
+    )
+    from services.shorts_factory_portable_publication import (
+        install_factory_portable_publication,
+    )
     import services.shorts_factory_candidates as candidates_module
 
     if not install_cut_mode_source_policy():
@@ -131,6 +137,12 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_factory_source_quality_policy():
         return False
+    # This must precede the disk guard: the guard captures the final source
+    # downloader and the long-fit wrapper captures the final Factory renderer.
+    if not install_factory_video_quality_policy():
+        return False
+    if not install_factory_portable_publication():
+        return False
     if not install_factory_disk_guard():
         return False
 
@@ -140,7 +152,7 @@ def install_factory_plan_quality_gate() -> bool:
     def strict_boundary_prompt(judged_plan, duration):
         return original_boundary_prompt(judged_plan, duration) + (
             "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
-            "доминирующий фактически услышанный язык речи как ISO 639-1 "
+            "доминирующий фактически услышаннный язык речи как ISO 639-1 "
             "(например ru, en, de). Не определяй язык по заголовку. "
             "Если доминирующий язык доказать нельзя, верни mixed."
         )
@@ -176,7 +188,7 @@ def install_factory_plan_quality_gate() -> bool:
     _INSTALLED = True
     logger.info(
         "Shorts Factory post-media guards installed: validated no-downgrade "
-        "configuration, maximum-quality native sources, selected-format disk "
+        "configuration, <=1080p source-quality policy, selected-format disk "
         "proof, exact audited boundaries, spoken-language execution, "
         "translated ENG source and truthful cached cut replay delivery"
     )
