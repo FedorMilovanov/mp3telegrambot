@@ -35,8 +35,8 @@ def _finite_number(value: Any) -> float | None:
 
 
 def _score(item: dict[str, Any]) -> float:
-    value = _finite_number(item.get("quality_score", 0))
-    return value if value is not None else 0.0
+    value = _finite_number(item.get("quality_score"))
+    return value if value is not None else -math.inf
 
 
 def _valid_interval(item: dict[str, Any]) -> bool:
@@ -48,6 +48,10 @@ def _valid_interval(item: dict[str, Any]) -> bool:
 def _start(item: dict[str, Any]) -> float:
     value = _finite_number(item.get("start_seconds"))
     return value if value is not None else math.inf
+
+
+def _candidate_items(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 
 
 def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
@@ -62,8 +66,8 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         DEFAULT_MIN_LONG_SCORE,
     )
 
-    raw_shorts = result.get("shorts_candidates") or []
-    raw_longs = result.get("long_candidates") or []
+    raw_shorts = _candidate_items(result.get("shorts_candidates"))
+    raw_longs = _candidate_items(result.get("long_candidates"))
     accepted_shorts = [
         item
         for item in raw_shorts
