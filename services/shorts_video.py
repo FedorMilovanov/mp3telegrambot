@@ -48,7 +48,7 @@ def _normalize_only_can_copy_video(*, normalize_audio: bool, speed: float) -> bo
         value = float(speed)
     except (TypeError, ValueError, OverflowError):
         return False
-    return bool(normalize_audio and abs(value - 1.0) <= 0.01)
+    return bool(normalize_audio and abs(value - 1.0) <= 1e-9)
 
 
 async def _normalize_audio_copy_video(input_path: Path, output_path: Path) -> bool:
