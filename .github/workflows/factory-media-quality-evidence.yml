@@ -1,0 +1,60 @@
+name: Factory media quality evidence
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "services/shorts_factory_video_quality.py"
+      - "tools/verify_factory_media_quality.py"
+      - "tests/test_factory_live_media_evidence_temp.py"
+      - ".github/workflows/factory-media-quality-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  before-after:
+    name: Full FFmpeg before/after evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FACTORY_MEDIA_EVIDENCE: "1"
+      VIDEO_FORCE_CPU: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+
+      - name: Run objective Factory video benchmark
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q -s tests/test_factory_live_media_evidence_temp.py 2>&1 | tee factory-media-evidence.txt
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-media-quality-evidence
+          path: factory-media-evidence.txt
+          retention-days: 14
