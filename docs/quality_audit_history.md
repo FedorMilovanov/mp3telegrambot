@@ -1127,3 +1127,10 @@ Fixes:
 - LiveDub masters passed into Clips are explicitly borrowed resources and are never unlinked by the Clips callee; only owned generic downloads may be removed there. The outer LiveDub owner remains responsible for its working-directory lifecycle.
 - Deterministic regressions cover successful probed delivery with actual duration, rejection of a non-empty unproven render, and borrowed LiveDub source survival.
 - No encoder/CQ/CRF profile, Factory policy, candidate-selection threshold or caption policy is changed. Preliminary exact-head CI #2557 and Cut Policy #380 passed before this history append; exact-head CI is required again after the append before merge.
+
+## 2026-08-14 — Montage/Highlights required-speed delivery integrity
+
+- Continued the public-media audit into the shared Montage/Highlights delivery path. A failed postprocess at configured playback speed different from unity could previously fall back to the raw render, silently delivering media at the wrong requested speed.
+- Extras speed input is now validated as finite and positive before public rendering. When a non-unity speed transform is required, postprocess failure is fail-closed and the raw file is not delivered; at unity speed, a failed optional audio-normalize pass may still fall back to the already media-probed raw render.
+- Existing final video+audio probing, real final-duration metadata, subtitle fallback verification and Highlights final QA remain intact; no encoder/CQ/CRF profile, candidate threshold, Factory policy or caption policy is weakened.
+- Deterministic regressions cover finite/positive speed validation and required-speed transform failure without raw delivery. Preliminary exact-head CI #2561 and Cut Policy #384 passed before this history append; exact-head full CI and Cut Policy are required again after the append before merge.
