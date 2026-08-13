@@ -285,6 +285,25 @@ def test_translated_factory_caption_uses_original_semantic_clock_not_render_cloc
     assert "38:31–53:04" not in visible
 
 
+def test_translated_factory_caption_never_falls_back_to_render_clock_when_semantic_clock_is_bad():
+    candidate = _factory_candidate(
+        start_seconds=2311.4,
+        end_seconds=3184.1,
+        livedub_semantic_start_seconds="bad",
+        livedub_semantic_end_seconds=None,
+    )
+
+    visible = html.unescape(
+        publication.build_factory_portable_caption(
+            candidate=candidate,
+            real_author="Водди Бокам",
+        )
+    )
+
+    assert "⏱ Фрагмент в полной проповеди:" not in visible
+    assert "38:31–53:04" not in visible
+
+
 def test_factory_portable_caption_reserves_room_for_existing_publication_paragraph():
     candidate = _factory_candidate(
         title=("Очень длинный содержательный заголовок " * 40).strip(),
