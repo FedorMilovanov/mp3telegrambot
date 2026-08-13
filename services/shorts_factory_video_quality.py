@@ -11,6 +11,7 @@ import asyncio
 import copy
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -361,50 +362,18 @@ def _long_scale_filter(width: int, height: int) -> str:
     )
 
 
-async def render_factory_long_h264(
+def _factory_long_command(
+    *,
+    ffmpeg: str,
     source_video_path: Path,
     output_path: Path,
-    start_seconds: float,
-    end_seconds: float,
-) -> bool:
-    """Render one Factory LONG to H.264, never above 1080p, in one video pass."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not source_video_path.is_file():
-        return False
-    try:
-        start = float(start_seconds)
-        end = float(end_seconds)
-    except (TypeError, ValueError, OverflowError):
-        return False
-    if end <= start:
-        return False
-
-    adjusted_end = await _find_silence_end(
-        source_video_path,
-        end,
-        search_window=8.0,
-    )
-    min_end = start + max(10.0, (end - start) * 0.5)
-    max_end = end + 12.0
-    if min_end < adjusted_end <= max_end and abs(adjusted_end - end) > 0.1:
-        end = float(adjusted_end)
-    duration = end - start
-    if duration <= 0:
-        return False
-
-    source_probe = await probe_media_async(source_video_path)
-    if not media_probe_is_deliverable(source_probe):
-        return False
-    assert source_probe is not None
-
-    encoder, quality, preset = await _factory_h264_encoder(ffmpeg)
-    scale_filter = _long_scale_filter(
-        int(getattr(source_probe, "width", 0) or 0),
-        int(getattr(source_probe, "height", 0) or 0),
-    )
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.unlink(missing_ok=True)
+    start: float,
+    duration: float,
+    scale_filter: str,
+    encoder: str,
+    quality: list[str],
+    preset: list[str],
+) -> list[str]:
     command = [
         ffmpeg,
         "-ss",
@@ -436,7 +405,13 @@ async def render_factory_long_h264(
             str(output_path),
         ]
     )
+    return command
 
+
+async def _run_factory_long_command(
+    command: list[str],
+    output_path: Path,
+) -> tuple[bool, str]:
     from core.resource_scheduler import scheduler as resource_scheduler
 
     try:
@@ -446,16 +421,96 @@ async def render_factory_long_h264(
         output_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        logger.warning("Factory LONG H.264 render failed: %s", exc)
-        output_path.unlink(missing_ok=True)
-        return False
+        return False, str(exc)
     if process.returncode != 0:
+        return False, str(process.stderr or "")[-900:]
+    return True, ""
+
+
+async def render_factory_long_h264(
+    source_video_path: Path,
+    output_path: Path,
+    start_seconds: float,
+    end_seconds: float,
+) -> bool:
+    """Render one Factory LONG to H.264, never above 1080p, in one video pass."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg or not source_video_path.is_file():
+        return False
+    try:
+        start = float(start_seconds)
+        end = float(end_seconds)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(start) or not math.isfinite(end) or end <= start or start < 0:
+        return False
+
+    adjusted_end = await _find_silence_end(
+        source_video_path,
+        end,
+        search_window=8.0,
+    )
+    min_end = start + max(10.0, (end - start) * 0.5)
+    max_end = end + 12.0
+    if min_end < adjusted_end <= max_end and abs(adjusted_end - end) > 0.1:
+        end = float(adjusted_end)
+    duration = end - start
+    if not math.isfinite(duration) or duration <= 0:
+        return False
+
+    source_probe = await probe_media_async(source_video_path)
+    if not media_probe_is_deliverable(source_probe):
+        return False
+    assert source_probe is not None
+
+    encoder, quality, preset = await _factory_h264_encoder(ffmpeg)
+    scale_filter = _long_scale_filter(
+        int(getattr(source_probe, "width", 0) or 0),
+        int(getattr(source_probe, "height", 0) or 0),
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.unlink(missing_ok=True)
+    command = _factory_long_command(
+        ffmpeg=ffmpeg,
+        source_video_path=source_video_path,
+        output_path=output_path,
+        start=start,
+        duration=duration,
+        scale_filter=scale_filter,
+        encoder=encoder,
+        quality=quality,
+        preset=preset,
+    )
+    rendered, error = await _run_factory_long_command(command, output_path)
+
+    if not rendered and encoder == "h264_nvenc":
+        global _H264_NVENC_AVAILABLE
+        _H264_NVENC_AVAILABLE = False
+        output_path.unlink(missing_ok=True)
+        cpu_quality, cpu_preset = factory_libx264_quality_args()
         logger.warning(
-            "Factory LONG H.264 ffmpeg error: %s",
-            str(process.stderr or "")[-900:],
+            "Factory LONG h264_nvenc runtime failed; retrying once with libx264: %s",
+            error,
         )
+        cpu_command = _factory_long_command(
+            ffmpeg=ffmpeg,
+            source_video_path=source_video_path,
+            output_path=output_path,
+            start=start,
+            duration=duration,
+            scale_filter=scale_filter,
+            encoder="libx264",
+            quality=cpu_quality,
+            preset=cpu_preset,
+        )
+        rendered, error = await _run_factory_long_command(cpu_command, output_path)
+
+    if not rendered:
+        logger.warning("Factory LONG H.264 ffmpeg error: %s", error)
         output_path.unlink(missing_ok=True)
         return False
+
     probe = await probe_media_async(output_path)
     if not media_probe_is_deliverable(probe):
         output_path.unlink(missing_ok=True)

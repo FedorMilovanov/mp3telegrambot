@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import html
+import math
 from typing import Any, Callable
 
 _CONTEXT_FIELD = "_factory_publication_source"
@@ -11,28 +12,41 @@ _BASE_CAPTION_LIMIT = 690
 _INSTALLED = False
 
 
-def _source_interval(candidate: dict[str, Any]) -> tuple[float, float]:
-    """Return the original YouTube semantic clock, not shifted LiveDub render time."""
+def _source_interval(candidate: dict[str, Any]) -> tuple[float, float] | None:
+    """Return a proven original-source interval, never a fabricated/render clock."""
     pairs = (
         ("source_start_seconds", "source_end_seconds"),
         ("livedub_semantic_start_seconds", "livedub_semantic_end_seconds"),
         ("start_seconds", "end_seconds"),
     )
+    translated_semantic_present = (
+        "livedub_semantic_start_seconds" in candidate
+        or "livedub_semantic_end_seconds" in candidate
+    )
     for start_key, end_key in pairs:
         if start_key not in candidate or end_key not in candidate:
+            if start_key.startswith("livedub_semantic_") and translated_semantic_present:
+                return None
             continue
         try:
-            start = float(candidate.get(start_key) or 0.0)
-            end = float(candidate.get(end_key) or 0.0)
+            start = float(candidate.get(start_key))
+            end = float(candidate.get(end_key))
         except (TypeError, ValueError, OverflowError):
+            if start_key.startswith("livedub_semantic_"):
+                return None
             continue
-        if end > start >= 0:
+        if math.isfinite(start) and math.isfinite(end) and end > start >= 0:
             return start, end
-    return 0.0, 0.0
+        if start_key.startswith("livedub_semantic_"):
+            return None
+    return None
 
 
 def _timestamp(value: float) -> str:
-    total = max(0, int(round(float(value or 0.0))))
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError("publication timestamp must be finite")
+    total = max(0, int(round(numeric)))
     hours, remainder = divmod(total, 3600)
     minutes, seconds = divmod(remainder, 60)
     if hours:
@@ -67,6 +81,27 @@ def _context_candidates(
     return output
 
 
+def _source_lines(
+    *,
+    candidate: dict[str, Any],
+    source_title: str,
+    source_url: str,
+) -> list[str]:
+    lines: list[str] = []
+    if source_title:
+        lines.append(f"🎙 Полная проповедь: «{source_title}»")
+    interval = _source_interval(candidate)
+    if interval is not None:
+        start, end = interval
+        lines.append(
+            "⏱ Фрагмент в полной проповеди: "
+            f"{_timestamp(start)}–{_timestamp(end)}"
+        )
+    if source_url:
+        lines.append(f"▶️ {source_url}")
+    return lines
+
+
 def _plain_caption(
     *,
     candidate: dict[str, Any],
@@ -89,16 +124,11 @@ def _plain_caption(
 
     source_title = _clean_text(context.get("source_full_title"))
     source_url = _clean_text(context.get("source_url") or yt_url)
-    start, end = _source_interval(candidate)
-    source_lines = []
-    if source_title:
-        source_lines.append(f"🎙 Полная проповедь: «{source_title}»")
-    source_lines.append(
-        "⏱ Фрагмент в полной проповеди: "
-        f"{_timestamp(start)}–{_timestamp(end)}"
+    source_lines = _source_lines(
+        candidate=candidate,
+        source_title=source_title,
+        source_url=source_url,
     )
-    if source_url:
-        source_lines.append(f"▶️ {source_url}")
 
     tag_values = hashtags
     if tag_values is None:
@@ -149,23 +179,17 @@ def build_factory_portable_caption(
         context = context if isinstance(context, dict) else {}
         source_title = _clean_text(context.get("source_full_title"))
         source_url = _clean_text(context.get("source_url") or yt_url)
-        start, end = _source_interval(candidate)
         source_block = "\n".join(
-            part
-            for part in (
-                f"🎙 Полная проповедь: «{source_title}»" if source_title else "",
-                (
-                    "⏱ Фрагмент в полной проповеди: "
-                    f"{_timestamp(start)}–{_timestamp(end)}"
-                ),
-                f"▶️ {source_url}" if source_url else "",
+            _source_lines(
+                candidate=candidate,
+                source_title=source_title,
+                source_url=source_url,
             )
-            if part
         )
         author = _clean_text(real_author or performer)
         header_budget = max(
             0,
-            _BASE_CAPTION_LIMIT - len(source_block) - 2,
+            _BASE_CAPTION_LIMIT - len(source_block) - (2 if source_block else 0),
         )
         if author and header_budget > len(author) + 3:
             title_budget = header_budget - len(author) - 3

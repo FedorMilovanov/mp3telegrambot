@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from services.livedub_mix import build_mix_filter
+from services import shorts_factory_quality_gate as factory_gate
 import services.shorts_subtitle_integrity as subtitle_integrity
 
 
@@ -87,3 +88,48 @@ def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeou
     assert "return _factory_livedub_timeout_seconds()" in source
     assert "factory_completed_delivery_counts()" in source
     assert "return bool(shorts_sent or longs_sent)" in source
+
+
+def _factory_candidate(title: str, score=None) -> dict:
+    item = {
+        "title": title,
+        "hook": "Сильный хук",
+        "reason": "Самостоятельная мысль",
+        "boundary_verified": True,
+        "start_seconds": 10,
+        "end_seconds": 100,
+    }
+    if score is not None:
+        item["quality_score"] = score
+    return item
+
+
+def test_factory_invalid_scores_stay_closed_at_zero_threshold(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "0")
+    monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "0")
+    nonfinite = _factory_candidate("Nonfinite", float("inf"))
+    missing = _factory_candidate("Missing")
+
+    gated = factory_gate.apply_factory_quality_gate(
+        {
+            "shorts_candidates": [nonfinite, missing],
+            "long_candidates": [nonfinite, missing],
+        }
+    )
+
+    assert gated["shorts_candidates"] == []
+    assert gated["long_candidates"] == []
+
+
+def test_factory_malformed_candidate_collections_fail_closed():
+    gated = factory_gate.apply_factory_quality_gate(
+        {
+            "shorts_candidates": 42,
+            "long_candidates": {"unexpected": "mapping"},
+        }
+    )
+
+    assert gated["shorts_candidates"] == []
+    assert gated["long_candidates"] == []
+    assert gated["quality_gate"]["shorts_before"] == 0
+    assert gated["quality_gate"]["longs_before"] == 0
