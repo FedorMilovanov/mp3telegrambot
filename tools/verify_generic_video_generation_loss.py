@@ -40,6 +40,8 @@ def _video_hash(ffmpeg: str, media_path: Path) -> str:
             "0:v:0",
             "-c:v",
             "copy",
+            "-bsf:v",
+            "h264_mp4toannexb",
             "-f",
             "hash",
             "-hash",
@@ -66,6 +68,8 @@ def _concat_video_hash(ffmpeg: str, concat_list: Path) -> str:
             "0:v:0",
             "-c:v",
             "copy",
+            "-bsf:v",
+            "h264_mp4toannexb",
             "-f",
             "hash",
             "-hash",
@@ -180,6 +184,10 @@ async def _verify(ffmpeg: str, ffprobe: str, workdir: Path) -> dict[str, object]
     if not concat_list.exists() or not all(path.exists() for path in parts):
         raise RuntimeError("evidence parts were not preserved")
 
+    # The concat demuxer exposes H.264 in Annex-B form while MP4 stores length-
+    # prefixed NAL units. Canonicalize both to Annex-B before hashing so the
+    # comparison proves compressed video-packet identity rather than container
+    # representation identity.
     concat_source_hash = _concat_video_hash(ffmpeg, concat_list)
     montage_hash = _video_hash(ffmpeg, montage)
     concat_copy_preserved = concat_source_hash == montage_hash
