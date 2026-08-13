@@ -55,22 +55,13 @@ def _candidate_items(value: Any) -> list[Any]:
 
 
 def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
-    """Keep only editorially strong, complete and boundary-verified candidates."""
     result = copy.deepcopy(plan if isinstance(plan, dict) else {})
-    short_threshold = _score_threshold(
-        "SHORTS_FACTORY_MIN_SHORT_SCORE",
-        DEFAULT_MIN_SHORT_SCORE,
-    )
-    long_threshold = _score_threshold(
-        "SHORTS_FACTORY_MIN_LONG_SCORE",
-        DEFAULT_MIN_LONG_SCORE,
-    )
-
+    short_threshold = _score_threshold("SHORTS_FACTORY_MIN_SHORT_SCORE", DEFAULT_MIN_SHORT_SCORE)
+    long_threshold = _score_threshold("SHORTS_FACTORY_MIN_LONG_SCORE", DEFAULT_MIN_LONG_SCORE)
     raw_shorts = _candidate_items(result.get("shorts_candidates"))
     raw_longs = _candidate_items(result.get("long_candidates"))
     accepted_shorts = [
-        item
-        for item in raw_shorts
+        item for item in raw_shorts
         if isinstance(item, dict)
         and item.get("boundary_verified") is True
         and _valid_interval(item)
@@ -80,8 +71,7 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         and str(item.get("reason") or "").strip()
     ]
     accepted_longs = [
-        item
-        for item in raw_longs
+        item for item in raw_longs
         if isinstance(item, dict)
         and item.get("boundary_verified") is True
         and _valid_interval(item)
@@ -89,7 +79,6 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         and str(item.get("title") or "").strip()
         and str(item.get("reason") or "").strip()
     ]
-
     accepted_shorts.sort(key=lambda item: (-_score(item), _start(item)))
     accepted_longs.sort(key=lambda item: (-_score(item), _start(item)))
     result["shorts_candidates"] = accepted_shorts[:5]
@@ -110,48 +99,28 @@ def validated_factory_plan_language(plan: dict[str, Any]) -> str:
     metadata = plan.get("metadata") if isinstance(plan, dict) else {}
     metadata = metadata if isinstance(metadata, dict) else {}
     raw_language = str(metadata.get("language") or "").strip()
-
-    from services.shorts_factory_execution_guard import (
-        normalize_factory_language,
-    )
-
+    from services.shorts_factory_execution_guard import normalize_factory_language
     normalized = normalize_factory_language(raw_language)
     if not normalized:
-        raise RuntimeError(
-            "Gemini не доказала один доминирующий язык речи по аудио"
-        )
+        raise RuntimeError("Gemini не доказала один доминирующий язык речи по аудио")
     return normalized
 
 
 def install_factory_plan_quality_gate() -> bool:
-    """Install every post-media Factory/cut guard before lazy pipeline imports."""
     global _INSTALLED
     if _INSTALLED:
         return True
 
     from services.cut_mode_source_policy import install_cut_mode_source_policy
-    from services.cut_replay_delivery_policy import (
-        install_cut_replay_delivery_policy,
-    )
+    from services.cut_replay_delivery_policy import install_cut_replay_delivery_policy
+    from services.shorts_duration_safety import install_shorts_duration_safety
     from services.shorts_factory_disk_guard import install_factory_disk_guard
-    from services.shorts_factory_execution_guard import (
-        install_shorts_factory_execution_guard,
-    )
-    from services.shorts_factory_no_downgrade import (
-        install_factory_no_downgrade_policy,
-    )
-    from services.shorts_factory_source import (
-        install_factory_source_quality_policy,
-    )
-    from services.shorts_factory_video_quality import (
-        install_factory_video_quality_policy,
-    )
-    from services.shorts_factory_render_polish import (
-        install_factory_render_polish,
-    )
-    from services.shorts_factory_portable_publication import (
-        install_factory_portable_publication,
-    )
+    from services.shorts_factory_execution_guard import install_shorts_factory_execution_guard
+    from services.shorts_factory_no_downgrade import install_factory_no_downgrade_policy
+    from services.shorts_factory_source import install_factory_source_quality_policy
+    from services.shorts_factory_video_quality import install_factory_video_quality_policy
+    from services.shorts_factory_render_polish import install_factory_render_polish
+    from services.shorts_factory_portable_publication import install_factory_portable_publication
     import services.shorts_factory_candidates as candidates_module
 
     if not install_cut_mode_source_policy():
@@ -162,8 +131,8 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_factory_source_quality_policy():
         return False
-    # These must precede the disk guard: it captures the final source/render
-    # seams, including the exact-unity and public-duration polish layer.
+    if not install_shorts_duration_safety():
+        return False
     if not install_factory_video_quality_policy():
         return False
     if not install_factory_render_polish():
@@ -198,8 +167,7 @@ def install_factory_plan_quality_gate() -> bool:
             raise RuntimeError(
                 "Gemini завершила три проверки, но ни один фрагмент не прошёл "
                 "финальный MAX-порог качества: "
-                f"Shorts>={report.get('min_short_score')}, "
-                f"long>={report.get('min_long_score')}"
+                f"Shorts>={report.get('min_short_score')}, long>={report.get('min_long_score')}"
             )
         logger.info("Shorts Factory final quality gate: %s", gated["quality_gate"])
         return gated
