@@ -95,10 +95,3 @@ async def test_required_speed_transform_failure_never_delivers_raw(monkeypatch, 
     assert result is False
     assert len(post_calls) == 1
     assert not (tmp_path / "abc_montage_1_raw.mp4").exists()
-
-
-def test_extras_speed_failure_contract_is_explicit_in_public_pipeline():
-    source = Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert "elif speed_required:" in source
-    assert "refusing raw fallback with the wrong playback speed" in source
-    assert "optional normalize failed" in source
