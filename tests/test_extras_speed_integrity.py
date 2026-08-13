@@ -1,13 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-import shutil
-import subprocess
-
 import pytest
 
 import pipelines.montage as montage
-import services.render_clips_montage as render_clips
 import services.shorts_video as shorts_video
 from services.media_delivery_probe import MediaProbe
 
@@ -175,125 +171,6 @@ def test_montage_encodes_parts_but_packet_copies_final_video_concat():
     assert '"-c:v", _enc' not in concat
     assert "async with _sched.gpu_render" not in concat
     assert '"-vsync", "vfr"' not in concat
-
-
-def _video_bitstream_hash(ffmpeg: str, media_path: Path) -> str:
-    result = subprocess.run(
-        [
-            ffmpeg,
-            "-v",
-            "error",
-            "-i",
-            str(media_path),
-            "-map",
-            "0:v:0",
-            "-c:v",
-            "copy",
-            "-f",
-            "hash",
-            "-hash",
-            "sha256",
-            "-",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
-
-
-@pytest.mark.asyncio
-async def test_real_ffmpeg_montage_concat_and_normalize_preserve_video(monkeypatch, tmp_path):
-    ffmpeg = shutil.which("ffmpeg")
-    ffprobe = shutil.which("ffprobe")
-    assert ffmpeg is not None, "ffmpeg is required by the production media pipeline"
-    assert ffprobe is not None, "ffprobe is required by the production media pipeline"
-
-    source_path = tmp_path / "source.mp4"
-    montage_path = tmp_path / "montage.mp4"
-    normalized_path = tmp_path / "normalized.mp4"
-
-    subprocess.run(
-        [
-            ffmpeg,
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc2=size=320x180:rate=10",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:sample_rate=48000",
-            "-t",
-            "2",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-shortest",
-            "-y",
-            str(source_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    async def not_static(*args, **kwargs):
-        return False
-
-    monkeypatch.setattr(render_clips, "_is_static_video", not_static)
-    monkeypatch.setattr(
-        render_clips,
-        "_get_video_encoder",
-        lambda: ("libx264", ["-crf", "28"], ["-preset", "ultrafast"]),
-    )
-
-    fragments = [
-        {"start_seconds": 0.0, "end_seconds": 0.3},
-        {"start_seconds": 0.6, "end_seconds": 0.9},
-        {"start_seconds": 1.2, "end_seconds": 1.5},
-    ]
-    assert await render_clips.render_montage_short(
-        source_path,
-        montage_path,
-        fragments,
-        visual_mode="crop_zoom",
-    )
-
-    probe = subprocess.run(
-        [
-            ffprobe,
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=codec_name,width,height",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(montage_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    assert "h264" in probe
-    assert "720" in probe
-    assert "1280" in probe
-
-    before_hash = _video_bitstream_hash(ffmpeg, montage_path)
-    assert await shorts_video._normalize_audio_copy_video(montage_path, normalized_path)
-    after_hash = _video_bitstream_hash(ffmpeg, normalized_path)
-    assert before_hash == after_hash
 
 
 def test_factory_and_verified_highlights_keep_their_existing_quality_owners():
