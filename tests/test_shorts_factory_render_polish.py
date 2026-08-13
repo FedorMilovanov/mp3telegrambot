@@ -25,6 +25,7 @@ def test_factory_packet_copy_requires_true_unity_speed():
 
 def test_factory_long_public_interval_is_fail_closed_at_900_seconds():
     assert polish.validated_factory_long_interval(100.0, 1000.0) == (100.0, 1000.0)
+    assert polish.validated_factory_long_interval(0.0, 900.0000005) == (0.0, 900.0)
     assert polish.validated_factory_long_interval(0.0, 900.0001) is None
     assert polish.validated_factory_long_interval(-1.0, 100.0) is None
     assert polish.validated_factory_long_interval(10.0, 10.0) is None
