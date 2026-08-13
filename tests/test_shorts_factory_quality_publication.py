@@ -162,6 +162,29 @@ def test_factory_portable_caption_is_copy_ready_for_telegram_and_youtube():
     assert "**" not in caption
 
 
+def test_factory_portable_caption_omits_unproven_or_nonfinite_source_clock():
+    candidate = _factory_candidate(
+        source_start_seconds=float("inf"),
+        source_end_seconds=float("inf"),
+        livedub_semantic_start_seconds="bad",
+        livedub_semantic_end_seconds=None,
+        start_seconds=float("nan"),
+        end_seconds="not-a-number",
+    )
+
+    visible = html.unescape(
+        publication.build_factory_portable_caption(
+            candidate=candidate,
+            real_author="Водди Бокам",
+        )
+    )
+
+    assert "🎙 Полная проповедь: «Необходимость Абсолютной Истины»" in visible
+    assert "▶️ https://www.youtube.com/watch?v=9EyYaiftkJc" in visible
+    assert "⏱ Фрагмент в полной проповеди:" not in visible
+    assert "0:00–0:00" not in visible
+
+
 def test_translated_factory_caption_uses_original_semantic_clock_not_render_clock():
     candidate = _factory_candidate(
         start_seconds=2311.4,
