@@ -142,6 +142,87 @@ def test_factory_long_profile_keeps_h264_quality_per_byte_controls():
     assert "force_original_aspect_ratio=decrease" in scale
 
 
+@pytest.mark.asyncio
+async def test_factory_long_nvenc_runtime_failure_retries_once_with_libx264(
+    monkeypatch,
+    tmp_path,
+):
+    source_path = tmp_path / "source.mkv"
+    output_path = tmp_path / "long.mp4"
+    source_path.write_bytes(b"source")
+    commands = []
+
+    async def fake_find_silence_end(path, end, *, search_window):
+        return end
+
+    async def fake_encoder(ffmpeg):
+        return "h264_nvenc", ["-cq", "25", "-b:v", "0"], ["-preset", "p6"]
+
+    async def fake_run(command, **kwargs):
+        commands.append(list(command))
+        encoder = command[command.index("-c:v") + 1]
+        if encoder == "h264_nvenc":
+            return SimpleNamespace(returncode=1, stderr="Cannot load libcuda")
+        output_path.write_bytes(b"cpu-output")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    async def fake_probe(path):
+        return _deliverable_probe(width=1920, height=1080, duration=60)
+
+    async def no_evidence(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(quality.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(quality, "_find_silence_end", fake_find_silence_end)
+    monkeypatch.setattr(quality, "_factory_h264_encoder", fake_encoder)
+    monkeypatch.setattr(quality, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(quality, "probe_media_async", fake_probe)
+    monkeypatch.setattr(quality, "media_probe_is_deliverable", lambda probe: probe is not None)
+    monkeypatch.setattr(quality, "log_factory_media_evidence", no_evidence)
+    monkeypatch.setattr(quality, "_H264_NVENC_AVAILABLE", True)
+
+    assert await quality.render_factory_long_h264(
+        source_path,
+        output_path,
+        10.0,
+        70.0,
+    )
+    assert [command[command.index("-c:v") + 1] for command in commands] == [
+        "h264_nvenc",
+        "libx264",
+    ]
+    assert quality._H264_NVENC_AVAILABLE is False
+    assert output_path.is_file()
+
+
+@pytest.mark.asyncio
+async def test_factory_long_rejects_nonfinite_interval_before_ffmpeg(monkeypatch, tmp_path):
+    source_path = tmp_path / "source.mkv"
+    source_path.write_bytes(b"source")
+    calls = []
+
+    async def fake_run(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(quality.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(quality, "run_cancellable_process", fake_run)
+
+    assert not await quality.render_factory_long_h264(
+        source_path,
+        tmp_path / "out.mp4",
+        0.0,
+        float("inf"),
+    )
+    assert not await quality.render_factory_long_h264(
+        source_path,
+        tmp_path / "out.mp4",
+        float("nan"),
+        10.0,
+    )
+    assert calls == []
+
+
 def test_factory_portable_caption_is_copy_ready_for_telegram_and_youtube():
     caption = publication.build_factory_portable_caption(
         candidate=_factory_candidate(),
