@@ -152,7 +152,7 @@ def install_factory_plan_quality_gate() -> bool:
     def strict_boundary_prompt(judged_plan, duration):
         return original_boundary_prompt(judged_plan, duration) + (
             "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
-            "доминирующий фактически услышаннный язык речи как ISO 639-1 "
+            "доминирующий фактически услышанный язык речи как ISO 639-1 "
             "(например ru, en, de). Не определяй язык по заголовку. "
             "Если доминирующий язык доказать нельзя, верни mixed."
         )

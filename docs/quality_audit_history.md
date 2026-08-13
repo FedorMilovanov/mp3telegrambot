@@ -1081,3 +1081,13 @@ Fixes:
 - LiveDub clean-presentation wrapping now preserves `_mp3bot_all_clients` from the native builder, so the quality runtime can recognize existing request-local multi-client support instead of emitting the concurrency-safety warning and disabling unrelated global rotation.
 - Regression coverage proves: (1) 503 stops before client 2; (2) 429 still rotates and completes the unchanged three-pass HIGH contract; (3) the LiveDub all-clients marker survives presentation wrapping.
 - Exact-head GitHub Actions CI is required after this history append before merge; no Factory score, render, Whisper, LiveDub, publication, or non-Factory quality gate is weakened.
+
+## 2026-08-13 — Shorts Factory video/publication quality tail closure
+
+- Closed the production issue behind soft-looking large Factory highlights: the Factory-native source path is capped at a verified `<=1080p` master while the generic Shorts downloader remains unchanged at `<=720p`; vertical output remains `720x1280` rather than inventing fake `1080x1920`.
+- Factory normalize-only processing at speed `1.0` re-encodes audio only and packet-copies the video stream; speed changes still use the normal video encode path. This removes one video generation before subtitle burn.
+- Factory LONG publication uses an H.264 quality-per-byte profile with the verified master and a `<=1080p` ceiling; ordinary Clips/Shorts behavior is unchanged.
+- Factory Telegram captions are copy-ready for YouTube: fragment title/author, existing publication prose, exact source title, original/source semantic time range, visible source URL and normalized hashtags. Translated LiveDub render timing stays separate from the original publication clock.
+- Added `tools/verify_factory_media_quality.py` plus deterministic regressions and `tools/run_factory_media_benchmark.py` for repeatable FFmpeg evidence. The successful `1920x1080/30` benchmark measured Short SSIM `0.951174 -> 0.997069` (`+0.045895`) with pre-subtitle video encode stages `2 -> 1` and exact normalize-stage video stream hash preservation; LONG SSIM `0.935176 -> 0.990901` (`+0.055725`) with final H.264 `1920x1080`. Benchmark file sizes/bitrates were recorded as evidence, not used as fixed production bitrate targets.
+- Corrected the spoken-language guard typo `услышаннный` to `услышанный` and regression-covered it.
+- The one-shot evidence workflow/test used to collect the benchmark was removed after its successful run; no network-dependent or provider-specific CI hook remains. Exact current-head CI and Cut Policy CI are required before merge.
