@@ -2,7 +2,6 @@
 """Final Factory render-safety refinements over the video-quality policy."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 from contextvars import ContextVar
@@ -87,20 +86,14 @@ async def normalize_factory_short_with_fallback(
         "Factory normalize-only packet-copy failed; retrying once with the "
         "canonical Short transform"
     )
-    try:
-        return bool(
-            await fallback_transform(
-                input_path,
-                output_path,
-                normalize_audio=True,
-                speed=1.0,
-            )
+    return bool(
+        await fallback_transform(
+            input_path,
+            output_path,
+            normalize_audio=True,
+            speed=1.0,
         )
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        logger.warning("Factory normalize fallback failed: %s", exc)
-        return False
+    )
 
 
 def install_factory_render_polish() -> bool:
