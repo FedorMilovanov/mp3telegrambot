@@ -146,6 +146,9 @@ def install_factory_plan_quality_gate() -> bool:
     from services.shorts_factory_video_quality import (
         install_factory_video_quality_policy,
     )
+    from services.shorts_factory_render_polish import (
+        install_factory_render_polish,
+    )
     from services.shorts_factory_portable_publication import (
         install_factory_portable_publication,
     )
@@ -159,9 +162,11 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_factory_source_quality_policy():
         return False
-    # This must precede the disk guard: the guard captures the final source
-    # downloader and the long-fit wrapper captures the final Factory renderer.
+    # These must precede the disk guard: it captures the final source/render
+    # seams, including the exact-unity and public-duration polish layer.
     if not install_factory_video_quality_policy():
+        return False
+    if not install_factory_render_polish():
         return False
     if not install_factory_portable_publication():
         return False
