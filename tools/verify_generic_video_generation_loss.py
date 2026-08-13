@@ -12,8 +12,13 @@ import asyncio
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import services.render_clips_montage as render_clips
 import services.shorts_video as shorts_video
