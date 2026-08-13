@@ -1,5 +1,5 @@
 {
-  "files_scanned": 170,
+  "files_scanned": 192,
   "source_title_registry_entries": 198,
   "structured_block_normalizer": true,
   "top_files": [
@@ -58,14 +58,14 @@
       "regex_markers": 9
     },
     {
-      "lines": 2994,
+      "lines": 3037,
       "path": "pipelines/main_pipeline.py",
       "postprocess_markers": 10,
       "regex_markers": 12
     }
   ],
-  "total_postprocess_markers": 271,
-  "total_regex_markers": 726,
+  "total_postprocess_markers": 277,
+  "total_regex_markers": 725,
   "typed_source_cards": true,
   "typo_replacements": 50
 }
