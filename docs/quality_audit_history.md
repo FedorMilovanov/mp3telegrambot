@@ -1101,3 +1101,11 @@ Fixes:
 - Oversized LONG fitting remains the existing exact-interval two-pass `libx264 slow` path; no bitrate shortcut, previous-output transcode or additional lossy-generation workaround was added.
 - Regression coverage includes unproven/non-finite publication clocks, translated semantic-vs-render clock fail-closed behavior, malformed/non-finite plan numerics/collections, non-finite environment thresholds, zero-threshold invalid scores, non-finite LONG intervals and NVENC-runtime-to-libx264 recovery.
 - Generic Shorts/Clips behavior and Factory semantic score, boundary, LiveDub, Whisper, subtitle and publication quality thresholds are unchanged. Exact-head Python 3.11, Python 3.13, Windows and Cut Policy CI are required before merge.
+
+## 2026-08-13 — Shorts Factory render-boundary/normalize follow-up
+
+- A second post-merge audit found two render-stage edges not covered by planning: normalize-only packet-copy accepted a broad near-unity speed tolerance, and LONG silence snapping could extend an already-valid near-900-second candidate past the public 900-second contract.
+- Factory packet-copy now requires finite effective speed 1.0 at machine-level tolerance. If the lossless packet-copy/mux path fails, Factory retries exactly once through the canonical Short transform; cancellation is never converted to a fallback retry.
+- Factory LONG direct intervals are finite, non-negative and increasing and are capped at 900 seconds. Request-local silence-snap evidence is clamped to `start + 900`, and tolerated floating-point drift is normalized back to exactly 900 seconds.
+- The refinement is installed after the Factory video-quality policy and before disk/fit guards, preserving the existing source-quality, H.264/NVENC/libx264, oversize fitting, LiveDub, Whisper, subtitle and publication quality policies.
+- Deterministic regressions cover unity-speed drift, non-finite/overlong LONG intervals, exact float-cap normalization, silence-snap clamping, copy success/fallback/cancellation and installer order. Exact-head Python 3.11, Python 3.13, Windows and Cut Policy CI are required before merge.
