@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import os
 import sys
 from typing import Any
@@ -18,16 +19,35 @@ _INSTALLED = False
 def _score_threshold(name: str, default: float) -> float:
     try:
         value = float(os.getenv(name, "") or default)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if not math.isfinite(value):
         return default
     return max(0.0, min(value, 100.0))
 
 
-def _score(item: dict[str, Any]) -> float:
+def _finite_number(value: Any) -> float | None:
     try:
-        return float(item.get("quality_score", 0))
+        number = float(value)
     except (TypeError, ValueError, OverflowError):
-        return 0.0
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _score(item: dict[str, Any]) -> float:
+    value = _finite_number(item.get("quality_score", 0))
+    return value if value is not None else 0.0
+
+
+def _valid_interval(item: dict[str, Any]) -> bool:
+    start = _finite_number(item.get("start_seconds"))
+    end = _finite_number(item.get("end_seconds"))
+    return bool(start is not None and end is not None and end > start >= 0.0)
+
+
+def _start(item: dict[str, Any]) -> float:
+    value = _finite_number(item.get("start_seconds"))
+    return value if value is not None else math.inf
 
 
 def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
@@ -49,6 +69,7 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         for item in raw_shorts
         if isinstance(item, dict)
         and item.get("boundary_verified") is True
+        and _valid_interval(item)
         and _score(item) >= short_threshold
         and str(item.get("title") or "").strip()
         and str(item.get("hook") or "").strip()
@@ -59,17 +80,14 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         for item in raw_longs
         if isinstance(item, dict)
         and item.get("boundary_verified") is True
+        and _valid_interval(item)
         and _score(item) >= long_threshold
         and str(item.get("title") or "").strip()
         and str(item.get("reason") or "").strip()
     ]
 
-    accepted_shorts.sort(
-        key=lambda item: (-_score(item), float(item.get("start_seconds", 0)))
-    )
-    accepted_longs.sort(
-        key=lambda item: (-_score(item), float(item.get("start_seconds", 0)))
-    )
+    accepted_shorts.sort(key=lambda item: (-_score(item), _start(item)))
+    accepted_longs.sort(key=lambda item: (-_score(item), _start(item)))
     result["shorts_candidates"] = accepted_shorts[:5]
     result["long_candidates"] = accepted_longs[:3]
     result["quality_gate"] = {
