@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa", "shorts_max")
 _DUB_WIZARD_KEY = "dub_universal_wizard"
+_SHORTS_FACTORY_FULL_VIDEO_PREFIX = "shorts_factory_full_video_"
 
 MODE_LABELS = {
     "rus": "🇷🇺 Русский — полный анализ",
@@ -112,43 +113,57 @@ def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(rows)
 
 
-def _analysis_keyboard(current: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def _analysis_keyboard(current: str, *, full_video: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
+            InlineKeyboardButton(
+                _selected_label("rus", current),
+                callback_data="set_mode:rus",
+            ),
+            InlineKeyboardButton(
+                _selected_label("eng", current),
+                callback_data="set_mode:eng",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                _selected_label("eng_fast", current),
+                callback_data="set_mode:eng_fast",
+            ),
+            InlineKeyboardButton(
+                _selected_label("eng_fast_qa", current),
+                callback_data="set_mode:eng_fast_qa",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                _selected_label("shorts_max", current),
+                callback_data="set_mode:shorts_max",
+            )
+        ],
+    ]
+    if current == "shorts_max":
+        rows.append(
             [
                 InlineKeyboardButton(
-                    _selected_label("rus", current),
-                    callback_data="set_mode:rus",
-                ),
-                InlineKeyboardButton(
-                    _selected_label("eng", current),
-                    callback_data="set_mode:eng",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    _selected_label("eng_fast", current),
-                    callback_data="set_mode:eng_fast",
-                ),
-                InlineKeyboardButton(
-                    _selected_label("eng_fast_qa", current),
-                    callback_data="set_mode:eng_fast_qa",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    _selected_label("shorts_max", current),
-                    callback_data="set_mode:shorts_max",
+                    (
+                        "☑️ Полный видео-перевод + нарезки"
+                        if full_video
+                        else "⬜ Только нарезки (без полного видео)"
+                    ),
+                    callback_data="mode_menu:factory_full_video_toggle",
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    "↩️ Все режимы",
-                    callback_data="mode_menu:home",
-                )
-            ],
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                "↩️ Все режимы",
+                callback_data="mode_menu:home",
+            )
         ]
     )
+    return InlineKeyboardMarkup(rows)
 
 
 def _home_text(current: str, *, is_admin: bool) -> str:
@@ -172,7 +187,12 @@ def _home_text(current: str, *, is_admin: bool) -> str:
     return "\n".join(lines)
 
 
-def _analysis_text(current: str, *, saved: bool = False) -> str:
+def _analysis_text(
+    current: str,
+    *,
+    saved: bool = False,
+    full_video: bool = False,
+) -> str:
     lines = [
         "📚 <b>Анализ, LiveDub и нарезка</b>",
         "",
@@ -193,6 +213,20 @@ def _analysis_text(current: str, *, saved: bool = False) -> str:
         )
     for mode in VALID_MODES:
         lines.append(f"{MODE_BUTTON_LABELS[mode]} — <i>{MODE_DESCRIPTIONS[mode]}</i>")
+    if current == "shorts_max":
+        full_video_label = (
+            "☑️ полный русский видео-перевод + нарезки"
+            if full_video
+            else "⬜ только нарезки"
+        )
+        lines.extend(
+            [
+                "",
+                f"📺 <b>Полная проповедь:</b> {full_video_label}.",
+                "<i>Для иностранного источника используется тот же готовый Yandex LiveDub-файл; "
+                "повторный перевод не запускается.</i>",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -227,6 +261,15 @@ async def get_user_mode(user_id: int) -> str:
     return await _read_user_mode(user_id)
 
 
+async def get_shorts_factory_full_video(user_id: int) -> bool:
+    """Return whether this user wants the full translated sermon with Factory clips."""
+    loop = asyncio.get_running_loop()
+    try:
+        return await loop.run_in_executor(None, _get_shorts_factory_full_video_raw, user_id)
+    except Exception:
+        return False
+
+
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _clear_dub_wizard_state(context)
     current = await _read_user_mode(update.effective_user.id)
@@ -258,10 +301,41 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "mode_menu:analysis":
         _clear_dub_wizard_state(context)
         current = await _read_user_mode(user_id)
+        full_video = await get_shorts_factory_full_video(user_id)
         await _safe_edit(
             query,
-            _analysis_text(current),
-            reply_markup=_analysis_keyboard(current),
+            _analysis_text(current, full_video=full_video),
+            reply_markup=_analysis_keyboard(current, full_video=full_video),
+        )
+        return
+
+    if data == "mode_menu:factory_full_video_toggle":
+        _clear_dub_wizard_state(context)
+        current = await _read_user_mode(user_id)
+        if current != "shorts_max":
+            await _safe_edit(
+                query,
+                _analysis_text(current),
+                reply_markup=_analysis_keyboard(current),
+            )
+            return
+        try:
+            enabled = not await get_shorts_factory_full_video(user_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                _set_shorts_factory_full_video_raw,
+                user_id,
+                enabled,
+            )
+        except Exception as exc:
+            logger.error("Shorts Factory full-video setting save err: %s", exc)
+            await _safe_edit(query, "❌ Ошибка сохранения настройки полного видео.")
+            return
+        await _safe_edit(
+            query,
+            _analysis_text(current, full_video=enabled),
+            reply_markup=_analysis_keyboard(current, full_video=enabled),
         )
         return
 
@@ -288,10 +362,11 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await _safe_edit(query, "❌ Ошибка сохранения режима.")
         return
 
+    full_video = await get_shorts_factory_full_video(user_id)
     await _safe_edit(
         query,
-        _analysis_text(mode, saved=True),
-        reply_markup=_analysis_keyboard(mode),
+        _analysis_text(mode, saved=True, full_video=full_video),
+        reply_markup=_analysis_keyboard(mode, full_video=full_video),
     )
 
 
@@ -325,6 +400,34 @@ def _set_user_mode_raw(user_id: int, mode: str) -> None:
         conn.commit()
 
 
+def _get_shorts_factory_full_video_raw(user_id: int) -> bool:
+    """Read the per-user Factory full-video delivery switch; default is clips only."""
+    try:
+        with _db_conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM bot_settings WHERE key = ?",
+                (f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}",),
+            ).fetchone()
+        if row:
+            return str(row[0]).strip().lower() in {"1", "true", "yes", "on"}
+    except Exception:
+        pass
+    return False
+
+
+def _set_shorts_factory_full_video_raw(user_id: int, enabled: bool) -> None:
+    """Persist the per-user Factory full-video delivery switch."""
+    with _db_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
+            (
+                f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}",
+                "1" if enabled else "0",
+            ),
+        )
+        conn.commit()
+
+
 __all__ = [
     "MODE_DESCRIPTIONS",
     "MODE_LABELS",
@@ -332,6 +435,7 @@ __all__ = [
     "_analysis_keyboard",
     "_clear_dub_wizard_state",
     "_mode_home_keyboard",
+    "get_shorts_factory_full_video",
     "get_user_mode",
     "handle_mode_callback",
     "mode_command",
