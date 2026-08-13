@@ -1,0 +1,42 @@
+name: Generic video copy evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/render_clips_montage.py"
+      - "services/shorts_video.py"
+      - "tools/verify_generic_video_generation_loss.py"
+      - ".github/workflows/generic-video-copy-evidence.yml"
+
+jobs:
+  ffmpeg-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Install FFmpeg evidence dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Run real FFmpeg video-copy evidence
+        run: |
+          set -o pipefail
+          python tools/verify_generic_video_generation_loss.py | tee generic-video-copy-evidence.txt
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: generic-video-copy-evidence
+          path: generic-video-copy-evidence.txt
+          retention-days: 7
