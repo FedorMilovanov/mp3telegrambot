@@ -1134,3 +1134,10 @@ Fixes:
 - Extras speed input is now validated as finite and positive before public rendering. When a non-unity speed transform is required, postprocess failure is fail-closed and the raw file is not delivered; at unity speed, a failed optional audio-normalize pass may still fall back to the already media-probed raw render.
 - Existing final video+audio probing, real final-duration metadata, subtitle fallback verification and Highlights final QA remain intact; no encoder/CQ/CRF profile, candidate threshold, Factory policy or caption policy is weakened.
 - Deterministic regressions cover finite/positive speed validation and required-speed transform failure without raw delivery. Preliminary exact-head CI #2561 and Cut Policy #384 passed before this history append; exact-head full CI and Cut Policy are required again after the append before merge.
+
+## 2026-08-14 — Factory same-upload 503 retry policy recorded
+
+- Closed the audit-history gap for the Factory capacity refinement merged immediately before #130. A single `503/high demand` from a HIGH semantic pass is no longer treated as proof that the already-uploaded request can never recover: the current pass receives at most three total attempts on the same client and the same uploaded audio, with bounded short backoff/jitter.
+- Persistent capacity overload still stops before sweeping the remaining API keys, so the large verified lossless source is not re-uploaded across keys. `429` and other retryable non-capacity service failures keep their existing client-rotation behavior.
+- The quality contract remains exact `gemini-3.6-flash`, `thinking_level=high`, three semantic review passes, strict quality, and no 3.5/2.x downgrade. The implementation change is covered by deterministic tests proving bounded persistent-503 behavior and successful recovery with exactly one upload reused across all pass attempts.
+- This entry is governance-only: production code and tests were already present on `main` in commits `63552a9301c4b1348b4b80ededce6e6e5d932f2f` and `95aceca1c5e1b59b23800b28a87551d1f178b364`; this follow-up changes only the durable history required by `AGENTS.md`.
