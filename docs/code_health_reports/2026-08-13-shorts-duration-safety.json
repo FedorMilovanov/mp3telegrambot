@@ -1,0 +1,28 @@
+{
+  "policy": "intentional-code-health-baseline-refresh-v1",
+  "reason": "Measured refresh after the ordinary-Shorts duration/replay authority audit. The previous repository baseline predates several already-merged deterministic runtime modules, so the measured +22 scanned files and +6 postprocess markers are cumulative repository drift rather than debt attributable solely to this PR. This change adds no regex markers; total regex markers decrease by one. The new ordinary-Shorts owner is request-local, Factory-bypassed, and covered by focused regressions for the 180-second contract, speed-transform failure, source-window padding/silence bounds, source-duration rejection and authoritative saved replay timing.",
+  "previous": {
+    "files_scanned": 170,
+    "total_regex_markers": 726,
+    "total_postprocess_markers": 271
+  },
+  "current": {
+    "files_scanned": 192,
+    "total_regex_markers": 725,
+    "total_postprocess_markers": 277
+  },
+  "delta": {
+    "files_scanned": 22,
+    "total_regex_markers": -1,
+    "total_postprocess_markers": 6
+  },
+  "evidence": {
+    "focused_tests": [
+      "tests/test_shorts_duration_safety.py",
+      "tests/test_shorts_duration_authority_followup.py"
+    ],
+    "quality_contract": "Ordinary Shorts keep a single playback-speed compensation, fit optional boundary padding and silence snap inside the same speed-scaled source budget, reject semantic candidates beyond the proved source duration, reject raw fallback when a required speed transform fails, prove final media duration at <=180 seconds plus container tolerance, and persist trim/replay timing from the actual request-local render window. Factory-specific timing and delivery authority remains unchanged.",
+    "measured_ci_head": "0edff79fe857bbf7eebae07e62aa4324257dd9a9",
+    "measured_snapshot_source": "CI #2550 CODE_HEALTH_CURRENT_SNAPSHOT"
+  }
+}

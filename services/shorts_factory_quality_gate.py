@@ -133,6 +133,7 @@ def install_factory_plan_quality_gate() -> bool:
     from services.cut_replay_delivery_policy import (
         install_cut_replay_delivery_policy,
     )
+    from services.shorts_duration_safety import install_shorts_duration_safety
     from services.shorts_factory_disk_guard import install_factory_disk_guard
     from services.shorts_factory_execution_guard import (
         install_shorts_factory_execution_guard,
@@ -161,6 +162,10 @@ def install_factory_plan_quality_gate() -> bool:
     if not install_factory_no_downgrade_policy():
         return False
     if not install_factory_source_quality_policy():
+        return False
+    # Ordinary Shorts establish their duration owner before Factory captures
+    # the generic seams it delegates to outside Factory context.
+    if not install_shorts_duration_safety():
         return False
     # These must precede the disk guard: it captures the final source/render
     # seams, including the exact-unity and public-duration polish layer.
