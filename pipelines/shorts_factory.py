@@ -24,6 +24,7 @@ from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
+from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
 from services.shorts_factory_runtime import (
     factory_completed_delivery_counts,
     factory_render_context,
@@ -486,6 +487,15 @@ async def process_shorts_factory(
                 )
 
         shorts_sent, longs_sent = factory_completed_delivery_counts()
+        plan_meta = render_plan.get("metadata") or {}
+        full_video_sent = await send_factory_full_translation_if_enabled(
+            update,
+            persistent_source_path,
+            title=str(plan_meta.get("title_ru") or title or full_title),
+            duration=render_source_duration,
+            translation_required=translation_required,
+            silent_errors=silent_errors,
+        )
 
         if translation_required and factory_editorial_pack_enabled():
             await _safe_status(
@@ -535,7 +545,7 @@ async def process_shorts_factory(
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
             "delivered_shorts=%d aligned_shorts=%d/%d "
-            "delivered_longs=%d aligned_longs=%d/%d yandex=%s",
+            "delivered_longs=%d aligned_longs=%d/%d yandex=%s full_video=%s",
             media_id,
             duration,
             render_source_duration,
@@ -546,8 +556,9 @@ async def process_shorts_factory(
             len(render_longs),
             len(long_candidates),
             translation_required,
+            full_video_sent,
         )
-        return bool(shorts_sent or longs_sent)
+        return bool(shorts_sent or longs_sent or full_video_sent)
 
     except asyncio.CancelledError:
         raise
