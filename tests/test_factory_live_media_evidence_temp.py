@@ -10,7 +10,8 @@ import pytest
 
 
 _RUN_BENCHMARK = (
-    os.getenv("GITHUB_ACTIONS", "").lower() == "true"
+    os.getenv("FACTORY_MEDIA_EVIDENCE", "").strip() == "1"
+    and os.getenv("GITHUB_ACTIONS", "").lower() == "true"
     and os.name != "nt"
     and sys.version_info[:2] == (3, 11)
 )
@@ -18,7 +19,7 @@ _RUN_BENCHMARK = (
 
 @pytest.mark.skipif(
     not _RUN_BENCHMARK,
-    reason="one-shot full FFmpeg quality benchmark runs only on GitHub Python 3.11",
+    reason="one-shot full FFmpeg quality benchmark requires FACTORY_MEDIA_EVIDENCE=1",
 )
 def test_factory_full_ffmpeg_before_after_benchmark(tmp_path):
     """One-shot objective video-generation benchmark; remove after evidence is recorded."""
