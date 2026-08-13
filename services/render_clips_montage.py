@@ -367,20 +367,19 @@ async def render_montage_short(
             for part_path in existing_parts:
                 f.write(f"file '{part_path.resolve()}'\n")
 
+        # All parts were rendered by the same encoder/filter contract above, so
+        # their video streams are concat-compatible. Re-encoding them here only
+        # adds generational loss; copy video packets and rebuild audio timing.
         concat_cmd = [
             ffmpeg, *_hwaccel, "-f", "concat", "-safe", "0", "-i", str(concat_list_path),
-            "-c:v", _enc, *_preset, *_quality,
+            "-map", "0:v:0", "-map", "0:a:0?",
+            "-c:v", "copy",
             "-c:a", "aac", "-b:a", "128k",
-            "-vsync", "vfr",    # убирает drift между фрагментами с разным GOP
-            "-af", "aresample=async=1",  # синхронизирует аудио после склейки
+            "-af", "aresample=async=1",
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
-        # AUDIT R29b: финальный concat тоже кодирует NVENC — серилизуем (вне
-        # уже завершённого цикла по фрагментам, так что вложенности семафора нет).
-        from core.resource_scheduler import scheduler as _sched
-        async with _sched.gpu_render:
-            proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
+        proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
         _unlink_render_paths(*temp_parts, concat_list_path)
 
         if (
@@ -394,7 +393,10 @@ async def render_montage_short(
 
         total_dur = sum(f["end_seconds"] - f["start_seconds"] for f in fragments)
         size_mb = output_path.stat().st_size / (1024 * 1024)
-        logger.info(f"Montage rendered: {output_path.name} ({len(existing_parts)} фрагм., {total_dur}s, {size_mb:.1f}MB)")
+        logger.info(
+            f"Montage rendered: {output_path.name} ({len(existing_parts)} фрагм., "
+            f"{total_dur}s, {size_mb:.1f}MB; final video concat=-c:v copy)"
+        )
         return True
     except asyncio.CancelledError:
         _unlink_render_paths(*temp_parts, concat_list_path, output_path)
