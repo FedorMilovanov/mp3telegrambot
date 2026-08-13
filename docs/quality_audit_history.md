@@ -1119,3 +1119,11 @@ Fixes:
 - Focused regressions cover single speed compensation, full/near-full source budgets, padding/silence ceilings, proved source-duration rejection, final duration proof, failed-speed raw fallback rejection, non-finite padding and authoritative saved replay timing.
 - Code-health baseline was refreshed only to the measured repository snapshot (`files=192`, `regex=725`, `postprocess=277`) with a dedicated evidence report. The `+22` scanned files and `+6` postprocess-marker delta are cumulative drift since the stale baseline, not attributed solely to this PR; regex markers decreased by one.
 - Exact-head full Python 3.11, Python 3.13, Windows and Cut Policy CI are required after this history append before merge.
+
+## 2026-08-13 — Clips public-media delivery integrity follow-up
+
+- Continued the post-Shorts audit into the ordinary Clips path. A rendered Clip could be treated as successful after a Windows FFmpeg `received signal 2` exit solely because a non-empty file existed; the public Clips pipeline then checked only byte size and did not prove decodable video+audio before Telegram delivery.
+- The delivery boundary now probes the final Clip and requires concrete video+audio evidence before snapshot or send. The probed media duration, not Gemini/candidate-estimated duration, is used for the snapshot position, Telegram duration metadata and delivery logs, so silence-snapped renders report their actual length.
+- LiveDub masters passed into Clips are explicitly borrowed resources and are never unlinked by the Clips callee; only owned generic downloads may be removed there. The outer LiveDub owner remains responsible for its working-directory lifecycle.
+- Deterministic regressions cover successful probed delivery with actual duration, rejection of a non-empty unproven render, and borrowed LiveDub source survival.
+- No encoder/CQ/CRF profile, Factory policy, candidate-selection threshold or caption policy is changed. Preliminary exact-head CI #2557 and Cut Policy #380 passed before this history append; exact-head CI is required again after the append before merge.

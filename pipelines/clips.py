@@ -13,6 +13,7 @@ from core.utils import cleanup_files
 from services.render_clips_montage import render_clip, create_clip_snapshot, build_clip_caption
 from services.shorts_candidates import create_clips_candidates   # FIX pipeline_clips
 from services.shorts_video import download_video_for_shorts      # FIX pipeline_clips
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.telegraph import create_telegraph_synopsis
 from converters.caption import build_caption
 from core.progress import set_progress
@@ -72,6 +73,7 @@ async def process_and_send_clips(
     MP3-пайплайн и Shorts-пайплайн не затронуты.
     """
     video_path = None
+    borrowed_video = False
     clip_paths: list[Path] = []
     snap_paths: list[Path] = []
     try:
@@ -105,10 +107,12 @@ async def process_and_send_clips(
         logger.info(f"Clips: найдено {len(candidates)} кандидатов, скачиваю видео...")
 
         # ── Шаг 2: скачать видео (тот же хелпер что у Shorts) ──
-        # ENG mode: prefer translated (LiveDub) video
+        # ENG mode: prefer translated (LiveDub) video. This path is borrowed
+        # from the LiveDub owner and must never be deleted by the Clips callee.
         from pathlib import Path as _Path
         if livedub_video_path and _Path(livedub_video_path).exists():
             video_path = _Path(livedub_video_path)
+            borrowed_video = True
             logger.info(f"Clips: using LiveDub video: {video_path.name}")
         else:
             video_path = await download_video_for_shorts(url, media_id)
@@ -152,6 +156,20 @@ async def process_and_send_clips(
                 )
                 continue
 
+            # A non-empty file is not delivery evidence. render_clip historically
+            # tolerated a Windows ffmpeg signal-2 exit if bytes existed, so prove
+            # the public artifact has decodable video+audio before size/snapshot/send.
+            clip_probe = await probe_media_async(clip_path)
+            if not media_probe_is_deliverable(clip_probe):
+                logger.warning(
+                    "Clips %d/%d: rendered file failed final media probe — skipping",
+                    i,
+                    total,
+                )
+                continue
+            assert clip_probe is not None
+            delivery_duration = float(clip_probe.duration)
+
             # Проверка размера: Telegram лимит 2GB, но для video-сообщений ~50MB удобнее
             clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
             if clip_size_mb > get_max_file_size_mb():
@@ -165,7 +183,7 @@ async def process_and_send_clips(
             if do_snapshot:
                 try:
                     snap_ok = await create_clip_snapshot(
-                        clip_path, snap_path, c["duration_seconds"]
+                        clip_path, snap_path, delivery_duration
                     )
                     if snap_ok and snap_path.exists():
                         thumb_buf = InputFile(snap_path.read_bytes(), filename=snap_path.name)
@@ -189,8 +207,11 @@ async def process_and_send_clips(
             # ── Шаг 6: отправить ─────────────────────────────
             try:
                 logger.info(
-                    f"Clips: отправляю {i}/{total} "
-                    f"({clip_size_mb:.1f}MB, {c['duration_seconds']:.0f}s)"
+                    "Clips: отправляю %d/%d (%.1fMB, final=%.3fs)",
+                    i,
+                    total,
+                    clip_size_mb,
+                    delivery_duration,
                 )
                 # Path вместо handle: при local_mode PTB шлёт file:// —
                 # сервер читает с диска, без HTTP-передачи (большие клипы
@@ -198,7 +219,7 @@ async def process_and_send_clips(
                 await update.message.reply_video(
                     video=clip_path,
                     caption=caption,
-                    duration=int(c["duration_seconds"]),
+                    duration=max(1, int(round(delivery_duration))),
                     thumbnail=thumb_buf,
                     supports_streaming=True,
                     parse_mode="HTML",
@@ -208,8 +229,13 @@ async def process_and_send_clips(
                 )
                 sent += 1
                 logger.info(
-                    f"Clips: отправлен {i}/{total} "
-                    f"({c['start']}–{c['end']}) '{c['title']}'"
+                    "Clips: отправлен %d/%d (%s–%s) %r, final=%.3fs",
+                    i,
+                    total,
+                    c["start"],
+                    c["end"],
+                    c["title"],
+                    delivery_duration,
                 )
             except Exception as send_err:
                 logger.warning(f"Clips: ошибка отправки {i}/{total}: {send_err}")
@@ -245,11 +271,11 @@ async def process_and_send_clips(
                 pass
         if video_path:
             try:
-                # Не удаляем видео если следом идут Montage или Highlights —
-                # они используют тот же файл (тот же media_id) и скачают заново если его нет.
-                # Проверяем настройки синхронно (допустимо в finally).
+                # Owned generic downloads may be kept for Montage/Highlights.
+                # A LiveDub path is borrowed from the outer pipeline and must be
+                # cleaned only by that owner, even when Clips is the last consumer.
                 _clips_keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
-                if not _clips_keep:
+                if not _clips_keep and not borrowed_video:
                     video_path.unlink(missing_ok=True)
             except Exception:
                 pass
