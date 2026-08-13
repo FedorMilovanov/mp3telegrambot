@@ -254,13 +254,13 @@ async def _unowned_create_short_title_poster(
                     "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
                     "/usr/share/fonts/noto/NotoSans-Bold.ttf",
                     "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-                    "/usr/share/truetype/inter/Inter-SemiBold.ttf",
+                    "/usr/share/fonts/truetype/inter/Inter-SemiBold.ttf",
                     "/usr/local/share/fonts/Inter-SemiBold.ttf",
-                    "/usr/share/truetype/montserrat/Montserrat-SemiBold.ttf",
-                    "/usr/share/truetype/liberation/LiberationSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                     "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
-                    "/usr/share/truetype/dejavu/DejaVuSans-Bold.ttf",
-                    "/usr/share/truetype/freefont/FreeSansBold.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
                 ]:
                     if Path(font_path).exists():
                         try:
