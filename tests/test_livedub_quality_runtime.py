@@ -54,17 +54,26 @@ def test_light_work_uses_35_family_and_never_31_or_2x():
     assert "gemini-2.5" not in src
 
 
-def test_legacy_heavy_fallback_is_neutralized_before_client_creation():
-    package = Path("services/__init__.py").read_text(encoding="utf-8")
-    policy = _max_policy_source()
-    assert package.index("configure_max_quality_env()") < package.index(
-        "configure_gemini_policy()"
-    )
-    assert 'os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""' in policy
+def test_policy_owner_neutralizes_semantic_fallback_even_standalone(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash")
+    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
+    monkeypatch.setenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
+
+    runtime.configure_gemini_policy()
+
+    assert runtime.os.environ["GEMINI_MODEL"] == "gemini-3.6-flash"
+    assert runtime.os.environ["LIVEDUB_INFO_MODEL"] == "gemini-3.6-flash"
+    assert runtime.os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
+    assert runtime.os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
+    assert runtime.os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
 
 
 def test_user_visible_publication_uses_36_high_not_35_utility():
     policy = _max_policy_source()
+    publication = Path("services/livedub_publication_core.py").read_text(
+        encoding="utf-8"
+    )
     resilience = Path("services/gemini36_factory_resilience.py").read_text(
         encoding="utf-8"
     )
@@ -72,9 +81,11 @@ def test_user_visible_publication_uses_36_high_not_35_utility():
     assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""' in policy
     assert 'os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"' in policy
     assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in policy
-    assert "_install_publication_quality_route" in resilience
-    assert 'model != "gemini-3.6-flash"' in resilience
-    assert 'thinking_level="high"' in resilience
+    assert '_PUBLICATION_MODEL = "gemini-3.6-flash"' in publication
+    assert 'thinking_level="high"' in publication
+    assert "GEMINI_LIGHT_MODEL" not in publication
+    assert "_verify_publication_quality_route" in resilience
+    assert "publication.publication_models =" not in resilience
 
 
 def test_gemini_31_is_not_an_active_project_fallback():
@@ -94,7 +105,6 @@ def test_dead_local_proxy_falls_back_to_system_tun():
 def test_yandex_tts_fallback_remains_explicit_opt_in():
     src = _runtime_source()
     assert 'os.environ.setdefault("LIVEDUB_TTS_FALLBACK", "1")' not in src
-    assert "must never silently turn a Live-voice request" in src
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert ".voice_style_tts" in mix
     assert 'os.getenv("LIVEDUB_TTS_FALLBACK", "0")' in mix
@@ -103,10 +113,10 @@ def test_yandex_tts_fallback_remains_explicit_opt_in():
     assert "LIVEDUB_TTS_FALLBACK=1" not in env
 
 
-def test_project_obsolete_models_remain_filtered_in_legacy_runtime():
+def test_project_obsolete_models_remain_filtered_in_policy_runtime():
     src = _runtime_source()
     assert "_RETIRED_MODELS" in src
-    assert "value not in _RETIRED_MODELS" in src
+    assert "current_light in _RETIRED_MODELS" in src
 
 
 def test_gemini_clients_are_never_rotated_globally():
@@ -118,10 +128,20 @@ def test_gemini_clients_are_never_rotated_globally():
     assert "request-local client order" in info_src
 
 
-def test_info_card_tries_all_clients_without_mutating_registry(monkeypatch):
+def test_info_owner_refuses_stale_35_semantic_env(monkeypatch):
+    import services.livedub_info as info
+
+    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
+    assert info.get_light_model() == "gemini-3.6-flash"
+    assert info.get_light_model_fallbacks() == []
+
+
+def test_info_card_tries_all_clients_with_high_config_without_mutating_registry(monkeypatch):
     import services.livedub_info as info
 
     calls: list[tuple[str, str]] = []
+    configs: list[dict] = []
 
     class Models:
         def __init__(self, name: str, *, fail: bool) -> None:
@@ -129,8 +149,9 @@ def test_info_card_tries_all_clients_without_mutating_registry(monkeypatch):
             self.fail = fail
 
         async def generate_content(self, *, model, contents, config):
-            del contents, config
+            del contents
             calls.append((self.name, model))
+            configs.append(config)
             if self.fail:
                 raise RuntimeError(f"{self.name} unavailable")
             payload = {
@@ -151,15 +172,20 @@ def test_info_card_tries_all_clients_without_mutating_registry(monkeypatch):
     clients = [Client("first", fail=True), Client("second", fail=False)]
     original_order = tuple(clients)
     monkeypatch.setattr(info, "GEMINI_CLIENTS", clients)
-    monkeypatch.setattr(info, "get_light_model", lambda: "model-a")
+    monkeypatch.setattr(info, "get_light_model", lambda: "gemini-3.6-flash")
     monkeypatch.setattr(info, "get_light_model_fallbacks", lambda: [])
     monkeypatch.setattr(info, "make_text_config_smart", lambda **kwargs: kwargs)
 
     card = asyncio.run(info.build_livedub_info_card("Title", force=True))
 
     assert card is not None
-    assert card["source"] == "gemini_light"
-    assert calls == [("first", "model-a"), ("second", "model-a")]
+    assert card["source"] == "gemini_quality"
+    assert calls == [
+        ("first", "gemini-3.6-flash"),
+        ("second", "gemini-3.6-flash"),
+    ]
+    assert all(config["thinking_level"] == "high" for config in configs)
+    assert all("temperature" not in config for config in configs)
     assert info.GEMINI_CLIENTS is clients
     assert tuple(info.GEMINI_CLIENTS) == original_order
 
