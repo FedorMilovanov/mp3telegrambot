@@ -55,12 +55,19 @@ def test_utility_work_uses_35_quota_without_semantic_fallback():
     assert "gemini-2.5" not in src
 
 
-def test_publication_metadata_is_overridden_to_36_high_quality_route():
-    src = Path("services/gemini36_factory_resilience.py").read_text(encoding="utf-8")
-    assert "_install_publication_quality_route" in src
-    assert 'model != "gemini-3.6-flash"' in src
-    assert 'thinking_level="high"' in src
-    assert "publication=3.6/HIGH" in src
+def test_publication_metadata_directly_owns_36_high_quality_route():
+    publication = Path("services/livedub_publication_core.py").read_text(
+        encoding="utf-8"
+    )
+    resilience = Path("services/gemini36_factory_resilience.py").read_text(
+        encoding="utf-8"
+    )
+    assert '_PUBLICATION_MODEL = "gemini-3.6-flash"' in publication
+    assert 'thinking_level="high"' in publication
+    assert "GEMINI_LIGHT_MODEL" not in publication
+    assert "temperature=" not in publication
+    assert "_verify_publication_quality_route" in resilience
+    assert "publication.publication_models =" not in resilience
 
 
 def test_services_installs_max_quality_before_general_policy():
