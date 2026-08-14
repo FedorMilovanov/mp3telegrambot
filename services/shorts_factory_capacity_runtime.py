@@ -3,9 +3,10 @@
 
 This keeps the existing Gemini 3.6/HIGH three-pass contract intact while
 separating model-capacity overload from per-client transient failures. A model
-pass that gets 503/high-demand receives a small bounded retry on the same client
-and already-uploaded audio. Persistent capacity overload still stops before a
-multi-key sweep. Other retryable service errors retain client failover.
+pass that gets 503/high-demand receives a bounded exponential retry on the same
+client and already-uploaded analysis audio. Persistent capacity overload still
+stops before a multi-key sweep. Other retryable service errors retain client
+failover.
 """
 from __future__ import annotations
 
@@ -16,10 +17,10 @@ from typing import Any
 
 from services import shorts_factory_overload_runtime as overload_runtime
 
-_FACTORY_CAPACITY_PASS_ATTEMPTS = 3
-_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 2.0
-_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 4.0
-_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 1.0
+_FACTORY_CAPACITY_PASS_ATTEMPTS = 4
+_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 3.0
+_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 20.0
+_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 2.0
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
@@ -88,7 +89,7 @@ async def _run_pass_with_capacity_retry(
                 "⚠️ Gemini 3.6 HIGH вернула 503/high demand. "
                 f"Повторяю текущий проход {attempt + 1}/"
                 f"{_FACTORY_CAPACITY_PASS_ATTEMPTS} на том же ключе и уже "
-                f"загруженном аудио через {delay:.1f} сек…"
+                f"загруженном analysis-аудио через {delay:.1f} сек…"
             )
             await asyncio.sleep(delay)
 
@@ -157,7 +158,7 @@ async def create_factory_plan_resumable(
                     ),
                     label=(
                         f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: "
-                        "загружаю lossless-аудио…"
+                        "загружаю analysis-аудио…"
                     ),
                 )
                 uploaded = await overload_runtime.await_with_heartbeat(
@@ -258,7 +259,7 @@ async def create_factory_plan_resumable(
                 await overload_runtime.safe_status(
                     "⚠️ Gemini 3.6 вернула 503/high demand после ограниченных "
                     "повторов текущего HIGH-прохода. Не загружаю то же "
-                    "lossless-аудио на остальные ключи: качество не понижаю, "
+                    "analysis-аудио на остальные ключи: качество не понижаю, "
                     "retry-кэш сохранён."
                 )
                 break
@@ -282,8 +283,8 @@ async def create_factory_plan_resumable(
             "Gemini 3.6 сейчас перегружена (503/high demand). "
             "Ограниченные повторы текущего HIGH-прохода исчерпаны; перебор "
             "остальных API-ключей остановлен, чтобы не повторять дорогую "
-            "загрузку того же lossless-аудио. Качество не понижено: 3.5/2.x "
-            "не использовались. Lossless-аудио сохранено в retry-кэше примерно на "
+            "загрузку того же analysis-аудио. Качество не понижено: 3.5/2.x "
+            "не использовались. Analysis-аудио сохранено в retry-кэше примерно на "
             f"{overload_runtime.cache_ttl_seconds() / 3600:.0f} ч — "
             "повторите Factory позже."
         ) from last_error
