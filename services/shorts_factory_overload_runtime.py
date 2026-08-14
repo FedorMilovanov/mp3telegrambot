@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Factory-only Gemini overload recovery and lossless retry cache."""
+"""Factory-only Gemini overload recovery and verified analysis-audio retry cache."""
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 FACTORY_HTTP_TIMEOUT_MS = 900_000
 FACTORY_CACHE_DIR = DOWNLOAD_DIR / "factory_retry_cache"
+# Keep the historical policy identifier so an already verified retry-cache entry
+# survives the terminology migration from lossless FLAC to compact analysis AAC.
 FACTORY_CACHE_POLICY = "lossless-analysis-retry-cache-v1"
 STATUS_MESSAGE: ContextVar[Any | None] = ContextVar("factory_overload_status", default=None)
 _CACHE_LOCK = threading.RLock()
@@ -374,8 +376,8 @@ async def download_factory_audio_with_retry_cache(
     cached = await _cached_analysis_audio(url, media_id)
     if cached is not None:
         await safe_status(
-            "♻️ SHORTS FACTORY MAX: использую уже проверенное lossless-аудио "
-            "прошлого запуска; повторная загрузка не нужна."
+            "♻️ SHORTS FACTORY MAX: использую уже проверенное analysis-аудио "
+            "прошлого запуска; повторная подготовка не нужна."
         )
         return cached
     prepared = Path(await original_downloader(url, media_id))
@@ -437,7 +439,7 @@ async def create_factory_plan_resumable(
                     ),
                     label=(
                         f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: "
-                        "загружаю lossless-аудио…"
+                        "загружаю analysis-аудио…"
                     ),
                 )
                 uploaded = await await_with_heartbeat(
@@ -556,7 +558,7 @@ async def create_factory_plan_resumable(
         raise RuntimeError(
             "Gemini 3.6 сейчас перегружена (503/high demand) на всех доступных "
             "ключах. Качество не понижено: 3.5/2.x не использовались. "
-            "Lossless-аудио сохранено в retry-кэше примерно на "
+            "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         )
     raise RuntimeError(
