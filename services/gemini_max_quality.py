@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Enforce the production quality/cost split for Gemini and ASR.
+"""Enforce the production maximum-quality Gemini and ASR policy.
 
-Heavy semantic work stays on Gemini 3.6 Flash with high thinking. Small,
-mechanical and high-volume text work uses the current Gemini 3.5 Flash-Lite
-quota, with Gemini 3.5 Flash as its same-generation fallback. Production never
-falls back to 3.1/2.x and never spends the 3.6 quota on explicitly light work.
+Quality-sensitive semantic work uses Gemini 3.7 Flash with high thinking. Gemini
+3.6 Flash/high is the only semantic fallback. The 3.5 family is reserved for
+explicitly mechanical utility work and never enters Factory selection, semantic
+LiveDub QA or full-sermon translation review. Whisper remains large-v3.
 """
 from __future__ import annotations
 
@@ -15,16 +15,15 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
-_HEAVY_MODEL = "gemini-3.6-flash"
+_HEAVY_MODEL = "gemini-3.7-flash"
+_HEAVY_FALLBACK_MODEL = "gemini-3.6-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 _LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"
 _REQUIRED_WHISPER_MODEL = "large-v3"
 
 
 def configure_max_quality_env() -> str:
-    """Apply the quality/cost policy before ``core.globals`` creates clients."""
-    # Heavy user-facing semantic work: never downgrade the model family. Client
-    # reliability comes from rotating GEMINI_API_KEY[_2.._4], not from 3.5/3.1.
+    """Apply the quality-first policy before ``core.globals`` creates clients."""
     for name in (
         "GEMINI_MODEL",
         "GEMINI_MAX_MODEL",
@@ -35,17 +34,20 @@ def configure_max_quality_env() -> str:
         "SHORTS_FACTORY_MODEL",
     ):
         os.environ[name] = _HEAVY_MODEL
-    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
 
-    # Cheap/light work: titles, compact descriptions, small rewrites and other
-    # mechanical formatting should consume the 3.5 quota, not the 3.6 quota.
+    # Quality-sensitive fallbacks must preserve high-thinking semantics. 3.5/Lite
+    # is intentionally absent from every semantic fallback list.
+    os.environ["GEMINI_QUALITY_FALLBACK_MODELS"] = _HEAVY_FALLBACK_MODEL
+    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = _HEAVY_FALLBACK_MODEL
+    os.environ["SHORTS_FACTORY_FALLBACK_MODELS"] = _HEAVY_FALLBACK_MODEL
+
+    # Explicit utility route only. Callers that affect user-visible meaning must
+    # select the heavy route rather than silently spending this quota.
     os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
     os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL
     os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
-    os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL
-    os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "1"
 
-    # Heavy Gemini 3.x reasoning. Schema output must not disable thinking.
+    # Heavy Gemini reasoning. Schema output is not allowed to disable thinking.
     os.environ["GEMINI_FORCE_THINKING_LEVEL"] = "high"
     os.environ["GEMINI_SCHEMA_THINKING"] = "1"
     for name in (
@@ -56,8 +58,7 @@ def configure_max_quality_env() -> str:
     ):
         os.environ[name] = "high"
 
-    # ASR quality follows the user's maximum-quality requirement. Smaller
-    # Whisper models remain an explicit non-production/experimental choice.
+    # Maximum ASR accuracy in production.
     for name in (
         "WHISPER_MODEL",
         "WHISPER_ENG_SUBTITLES_MODEL",
@@ -66,9 +67,9 @@ def configure_max_quality_env() -> str:
         os.environ[name] = _REQUIRED_WHISPER_MODEL
 
     return (
-        f"heavy={_HEAVY_MODEL}/high; "
-        f"light={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "
-        "heavy_model_fallbacks=none; "
+        f"semantic={_HEAVY_MODEL}/high->{_HEAVY_FALLBACK_MODEL}/high; "
+        f"utility={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}; "
+        "semantic_3.5_downgrade=disabled; "
         f"whisper={_REQUIRED_WHISPER_MODEL}"
     )
 
@@ -88,11 +89,11 @@ def _apply_thinking_policy(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> Any:
-    """Use high on heavy 3.6 and minimal on explicitly light 3.5 work."""
+    """Force high on 3.7/3.6 semantic work and minimal only on explicit utility."""
     positional = list(args)
     options = dict(kwargs)
     model = _model_argument(args, kwargs)
-    if model == _HEAVY_MODEL:
+    if model in {_HEAVY_MODEL, _HEAVY_FALLBACK_MODEL}:
         level = "high"
     elif model in {_LIGHT_MODEL, _LIGHT_FALLBACK_MODEL}:
         level = "minimal"
@@ -125,7 +126,7 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
 
 
 def install_max_quality_runtime() -> None:
-    """Apply model-aware thinking to shared Gemini configuration helpers."""
+    """Install model-aware thinking and legacy 3.7 compatibility seams."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -146,8 +147,6 @@ def install_max_quality_runtime() -> None:
         temperature: float = 0.2,
         max_output_tokens: int = 14000,
     ):
-        # Legacy semantic helper is not a light-work selector; keep it on the
-        # production heavy model and high reasoning.
         return max_text_smart(
             temperature=temperature,
             max_output_tokens=max_output_tokens,
@@ -167,8 +166,15 @@ def install_max_quality_runtime() -> None:
     _replace_loaded_references(original_audio, max_audio)
     _replace_loaded_references(original_text_legacy, max_text_legacy)
 
+    # Older Factory/editorial modules encoded a 3.6-only allow-list. Patch those
+    # seams after core globals exist; the installer is idempotent and is also
+    # called explicitly by the validated entrypoint before post-main Factory setup.
+    from services.gemini37_quality_routes import install_gemini37_quality_routes
+
+    install_gemini37_quality_routes()
+
     _INSTALLED = True
     logger.info(
-        "🧠 Gemini quality split: ✅ heavy=3.6/high; "
-        "light=3.5-Lite→3.5/minimal; no 3.1/2.x; Whisper large-v3"
+        "🧠 Gemini quality route: ✅ 3.7/high → 3.6/high; "
+        "3.5/Lite semantic downgrade disabled; Whisper large-v3"
     )
