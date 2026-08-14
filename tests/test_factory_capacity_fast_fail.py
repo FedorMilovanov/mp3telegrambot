@@ -36,6 +36,8 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
 
+    monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.7-flash")
+    monkeypatch.setenv("SHORTS_FACTORY_FALLBACK_MODELS", "gemini-3.6-flash")
     monkeypatch.setattr(
         candidates,
         "types",
@@ -48,11 +50,6 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
             ),
             UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs),
         ),
-    )
-    monkeypatch.setattr(
-        candidates,
-        "shorts_factory_model",
-        lambda: "gemini-3.6-flash",
     )
     monkeypatch.setattr(candidates, "_run_pass", run_pass)
     monkeypatch.setattr(candidates, "_scout_prompt", lambda *args: "scout")
@@ -79,17 +76,15 @@ def _disable_capacity_retry_delay(monkeypatch) -> None:
     monkeypatch.setattr(capacity_runtime, "_capacity_retry_delay", lambda attempt: 0.0)
 
 
-def test_503_high_demand_retries_bounded_then_stops_before_second_client(
-    monkeypatch, tmp_path
-):
+def test_503_exhausts_37_then_36_and_stops_before_second_client(monkeypatch, tmp_path):
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
 
     async def run_pass(client, **kwargs):
-        calls.append(client.name)
+        calls.append((client.name, kwargs["model"]))
         raise _ServiceError(503, "UNAVAILABLE: high demand")
 
     _install_fake_factory_modules(monkeypatch, run_pass)
@@ -110,12 +105,19 @@ def test_503_high_demand_retries_bounded_then_stops_before_second_client(
             )
         )
 
-    assert calls == ["first", "first", "first"]
-    assert "3.5/2.x" in str(raised.value)
+    assert calls == [
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.6-flash"),
+        ("first", "gemini-3.6-flash"),
+        ("first", "gemini-3.6-flash"),
+    ]
+    assert "3.5/Lite не использовались" in str(raised.value)
     assert "retry-кэше" in str(raised.value)
 
 
-def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_path):
+def test_persistent_37_503_falls_to_36_on_same_uploaded_audio(monkeypatch, tmp_path):
     import services.shorts_factory_candidates as candidates
 
     audio = tmp_path / "factory.flac"
@@ -124,21 +126,16 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
 
     first_files = _FakeFiles("first")
     second_files = _FakeFiles("second")
-    first = SimpleNamespace(
-        name="first",
-        aio=SimpleNamespace(files=first_files),
-    )
-    second = SimpleNamespace(
-        name="second",
-        aio=SimpleNamespace(files=second_files),
-    )
-    calls: list[str] = []
+    first = SimpleNamespace(name="first", aio=SimpleNamespace(files=first_files))
+    second = SimpleNamespace(name="second", aio=SimpleNamespace(files=second_files))
+    calls: list[tuple[str, str]] = []
     audio_parts: list[object] = []
 
     async def run_pass(client, **kwargs):
-        calls.append(client.name)
+        model = kwargs["model"]
+        calls.append((client.name, model))
         audio_parts.append(kwargs["audio_part"])
-        if len(calls) == 1:
+        if model == "gemini-3.7-flash":
             raise _ServiceError(503, "UNAVAILABLE: high demand")
         return {"ok": True, "pass": len(calls)}
 
@@ -163,16 +160,66 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
         )
     )
 
-    assert calls == ["first", "first", "first", "first"]
+    assert calls == [
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.7-flash"),
+        ("first", "gemini-3.6-flash"),
+        ("first", "gemini-3.6-flash"),
+        ("first", "gemini-3.6-flash"),
+    ]
     assert first_files.upload_calls == 1
     assert first_files.delete_calls == 1
     assert second_files.upload_calls == 0
     assert second_files.delete_calls == 0
     assert audio_parts and all(part is audio_parts[0] for part in audio_parts)
+    assert plan["primary_model"] == "gemini-3.7-flash"
     assert plan["model"] == "gemini-3.6-flash"
+    assert plan["models_used"] == ["gemini-3.6-flash"]
     assert plan["thinking_level"] == "high"
     assert plan["review_passes"] == 3
     assert plan["strict_quality"] is True
+    assert plan["semantic_downgrade"] is False
+
+
+def test_transient_37_503_recovers_without_fallback(monkeypatch, tmp_path):
+    audio = tmp_path / "factory.flac"
+    audio.write_bytes(b"x" * 2048)
+    first = SimpleNamespace(name="first")
+    calls: list[str] = []
+
+    async def run_pass(client, **kwargs):
+        calls.append(kwargs["model"])
+        if len(calls) == 1:
+            raise _ServiceError(503, "UNAVAILABLE: high demand")
+        return {"ok": True, "pass": len(calls)}
+
+    _install_fake_factory_modules(monkeypatch, run_pass)
+    _disable_capacity_retry_delay(monkeypatch)
+    monkeypatch.setattr(
+        capacity_runtime.overload_runtime,
+        "factory_gemini_clients",
+        lambda: [first],
+    )
+
+    plan = asyncio.run(
+        capacity_runtime.create_factory_plan_resumable(
+            audio,
+            title="Title",
+            performer="Author",
+            duration=120,
+        )
+    )
+
+    assert calls == [
+        "gemini-3.7-flash",
+        "gemini-3.7-flash",
+        "gemini-3.7-flash",
+        "gemini-3.7-flash",
+    ]
+    assert plan["model"] == "gemini-3.7-flash"
+    assert plan["primary_model"] == "gemini-3.7-flash"
+    assert plan["thinking_level"] == "high"
 
 
 def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_path):
@@ -180,10 +227,10 @@ def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_pa
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
 
     async def run_pass(client, **kwargs):
-        calls.append(client.name)
+        calls.append((client.name, kwargs["model"]))
         if client is first:
             raise _ServiceError(429, "RESOURCE_EXHAUSTED")
         return {"ok": True, "pass": len(calls)}
@@ -204,8 +251,13 @@ def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_pa
         )
     )
 
-    assert calls == ["first", "second", "second", "second"]
-    assert plan["model"] == "gemini-3.6-flash"
+    assert calls == [
+        ("first", "gemini-3.7-flash"),
+        ("second", "gemini-3.7-flash"),
+        ("second", "gemini-3.7-flash"),
+        ("second", "gemini-3.7-flash"),
+    ]
+    assert plan["model"] == "gemini-3.7-flash"
     assert plan["thinking_level"] == "high"
     assert plan["review_passes"] == 3
     assert plan["strict_quality"] is True
