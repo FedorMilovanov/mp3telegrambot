@@ -62,6 +62,13 @@ except RuntimeBootstrapError as exc:
 import main as _main_module
 
 try:
+    # services.__init__ applies the 3.7 environment policy before core.globals is
+    # imported. This explicit idempotent install guarantees that legacy 3.6-only
+    # Factory/editorial seams are upgraded before post-main Factory wiring even
+    # if the compatibility import hook was not triggered by a particular import graph.
+    from services.gemini_max_quality import install_max_quality_runtime
+
+    install_max_quality_runtime()
     install_database_migrations(_main_module)
     bootstrap_post_main(_main_module)
     require_runtime_ready()
