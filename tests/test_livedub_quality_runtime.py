@@ -54,18 +54,40 @@ def test_light_work_uses_35_family_and_never_31_or_2x():
     assert "gemini-2.5" not in src
 
 
-def test_policy_owner_neutralizes_semantic_fallback_even_standalone(monkeypatch):
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash")
+def test_policy_owner_forces_exact_semantic_and_utility_routes_even_standalone(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-experimental-stale")
+    monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.5-flash")
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("LIVEDUB_QUICK_QA_MODEL", "gemini-3.5-flash")
+    monkeypatch.setenv("LIVEDUB_LONG_QA_MODEL", "gemini-experimental-stale")
+    monkeypatch.setenv("LIVEDUB_QA_VERIFY_MODEL", "gemini-3.5-flash")
     monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
+    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-experimental-stale")
     monkeypatch.setenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
 
     runtime.configure_gemini_policy()
 
-    assert runtime.os.environ["GEMINI_MODEL"] == "gemini-3.6-flash"
-    assert runtime.os.environ["LIVEDUB_INFO_MODEL"] == "gemini-3.6-flash"
+    for name in (
+        "GEMINI_MODEL",
+        "GEMINI_MAX_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+    ):
+        assert runtime.os.environ[name] == "gemini-3.6-flash"
+    for name in (
+        "GEMINI_FORCE_THINKING_LEVEL",
+        "LIVEDUB_INFO_THINKING",
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QA_VERIFY_THINKING",
+    ):
+        assert runtime.os.environ[name] == "high"
     assert runtime.os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
     assert runtime.os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
+    assert runtime.os.environ["GEMINI_LIGHT_MODEL"] == "gemini-3.5-flash-lite"
+    assert runtime.os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == "gemini-3.5-flash"
     assert runtime.os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
 
 
@@ -113,10 +135,11 @@ def test_yandex_tts_fallback_remains_explicit_opt_in():
     assert "LIVEDUB_TTS_FALLBACK=1" not in env
 
 
-def test_project_obsolete_models_remain_filtered_in_policy_runtime():
+def test_project_obsolete_models_remain_named_for_diagnostics_only():
     src = _runtime_source()
     assert "_RETIRED_MODELS" in src
-    assert "current_light in _RETIRED_MODELS" in src
+    assert '"gemini-3.1-flash-lite"' in src
+    assert 'os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL' in src
 
 
 def test_gemini_clients_are_never_rotated_globally():
