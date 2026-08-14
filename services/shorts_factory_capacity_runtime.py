@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Capacity-aware Factory plan execution without quality downgrades.
+"""Capacity-aware Factory execution with quality-preserving model fallback.
 
-This keeps the existing Gemini 3.6/HIGH three-pass contract intact while
-separating model-capacity overload from per-client transient failures. A model
-pass that gets 503/high-demand receives a small bounded retry on the same client
-and already-uploaded audio. Persistent capacity overload still stops before a
-multi-key sweep. Other retryable service errors retain client failover.
+Factory uses Gemini 3.7 Flash/high first. A pass that receives explicit
+503/high-demand gets a small bounded retry on the same client and the same
+already-uploaded audio. If 3.7 remains capacity-bound, the exact same pass is
+continued on Gemini 3.6 Flash/high using that same upload. 3.5/Lite is never a
+candidate-selection fallback. Persistent 3.6 capacity overload still fails fast
+before a wasteful multi-key upload sweep and leaves the existing retry cache for
+later resume.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 from pathlib import Path
 from typing import Any
@@ -20,20 +23,40 @@ _FACTORY_CAPACITY_PASS_ATTEMPTS = 3
 _FACTORY_CAPACITY_RETRY_BASE_SECONDS = 2.0
 _FACTORY_CAPACITY_RETRY_MAX_SECONDS = 4.0
 _FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 1.0
+_PRIMARY_MODEL = "gemini-3.7-flash"
+_FALLBACK_MODEL = "gemini-3.6-flash"
+_ALLOWED_MODELS = {_PRIMARY_MODEL, _FALLBACK_MODEL}
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
-    """Classify a failed Factory request without changing model quality.
-
-    ``capacity`` means stop the current key sweep and preserve the retry cache;
-    ``rotate`` means another configured client may still rescue the request;
-    ``reset`` preserves the previous behavior for non-transient pass failures.
-    """
+    """Classify a failed Factory request without changing semantic quality."""
     if overload_runtime.factory_overload_error(exc):
         return "capacity"
     if overload_runtime.factory_retryable_service_error(exc):
         return "rotate"
     return "reset"
+
+
+def _factory_model_chain() -> tuple[str, ...]:
+    primary = os.getenv("SHORTS_FACTORY_MODEL", _PRIMARY_MODEL).strip() or _PRIMARY_MODEL
+    if primary not in _ALLOWED_MODELS:
+        raise RuntimeError(
+            "SHORTS FACTORY MAX requires gemini-3.7-flash/high with "
+            f"gemini-3.6-flash/high fallback; got {primary!r}"
+        )
+    raw = os.getenv("SHORTS_FACTORY_FALLBACK_MODELS", _FALLBACK_MODEL)
+    models = [primary]
+    for item in str(raw or "").split(","):
+        model = item.strip()
+        if not model or model in models:
+            continue
+        if model not in _ALLOWED_MODELS:
+            raise RuntimeError(
+                "Factory semantic fallback may only use gemini-3.6-flash/high; "
+                f"got {model!r}"
+            )
+        models.append(model)
+    return tuple(models)
 
 
 def _capacity_retry_delay(attempt: int) -> float:
@@ -44,55 +67,86 @@ def _capacity_retry_delay(attempt: int) -> float:
     return backoff + random.uniform(0.0, _FACTORY_CAPACITY_RETRY_JITTER_SECONDS)
 
 
-async def _run_pass_with_capacity_retry(
+async def _run_pass_with_capacity_fallback(
     client: Any,
     *,
-    model: str,
+    models: tuple[str, ...],
+    model_index: int,
     audio_part: Any,
     prompt: str,
     max_tokens: int,
-    label: str,
-) -> Any:
-    """Retry only an overloaded model pass while retaining the same upload."""
+    pass_number: int,
+    client_index: int,
+    client_count: int,
+) -> tuple[Any, int]:
+    """Run one HIGH pass, falling forward only after persistent model capacity."""
     import services.shorts_factory_candidates as candidates
 
-    for attempt in range(1, _FACTORY_CAPACITY_PASS_ATTEMPTS + 1):
-        try:
-            return await overload_runtime.await_with_heartbeat(
-                candidates._run_pass(
-                    client,
-                    model=model,
-                    audio_part=audio_part,
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                ),
-                label=label,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            if (
-                not overload_runtime.factory_overload_error(exc)
-                or attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS
-            ):
+    index = model_index
+    while index < len(models):
+        model = models[index]
+        for attempt in range(1, _FACTORY_CAPACITY_PASS_ATTEMPTS + 1):
+            try:
+                response = await overload_runtime.await_with_heartbeat(
+                    candidates._run_pass(
+                        client,
+                        model=model,
+                        audio_part=audio_part,
+                        prompt=prompt,
+                        max_tokens=max_tokens,
+                    ),
+                    label=(
+                        f"🧠 {model} HIGH · ключ {client_index}/{client_count} "
+                        f"· проход {pass_number}/3…"
+                    ),
+                )
+                return response, index
+            except asyncio.CancelledError:
                 raise
-            delay = _capacity_retry_delay(attempt)
-            overload_runtime.logger.warning(
-                "Shorts Factory HIGH pass capacity retry %d/%d after %s: %s",
-                attempt + 1,
-                _FACTORY_CAPACITY_PASS_ATTEMPTS,
-                type(exc).__name__,
-                str(exc)[:500],
-            )
-            await overload_runtime.safe_status(
-                "⚠️ Gemini 3.6 HIGH вернула 503/high demand. "
-                f"Повторяю текущий проход {attempt + 1}/"
-                f"{_FACTORY_CAPACITY_PASS_ATTEMPTS} на том же ключе и уже "
-                f"загруженном аудио через {delay:.1f} сек…"
-            )
-            await asyncio.sleep(delay)
+            except Exception as exc:
+                if not overload_runtime.factory_overload_error(exc):
+                    raise
+                if attempt < _FACTORY_CAPACITY_PASS_ATTEMPTS:
+                    delay = _capacity_retry_delay(attempt)
+                    overload_runtime.logger.warning(
+                        "Shorts Factory %s HIGH pass %d capacity retry %d/%d: %s",
+                        model,
+                        pass_number,
+                        attempt + 1,
+                        _FACTORY_CAPACITY_PASS_ATTEMPTS,
+                        str(exc)[:500],
+                    )
+                    await overload_runtime.safe_status(
+                        f"⚠️ {model} HIGH вернула 503/high demand. "
+                        f"Повторяю проход {pass_number}/3 на том же ключе и уже "
+                        f"загруженном аудио через {delay:.1f} сек…"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
 
-    raise AssertionError("unreachable")
+                # Persistent capacity is model feedback. Move to the next allowed
+                # quality model without re-uploading the file or discarding prior
+                # completed semantic passes.
+                if index + 1 < len(models):
+                    fallback = models[index + 1]
+                    await overload_runtime.safe_status(
+                        f"⚠️ {model} остаётся перегружена. Продолжаю тот же HIGH-"
+                        f"проход {pass_number}/3 на {fallback} без повторной "
+                        "загрузки аудио и без снижения thinking level."
+                    )
+                    overload_runtime.logger.warning(
+                        "Factory capacity fallback %s -> %s on pass %d; same upload retained",
+                        model,
+                        fallback,
+                        pass_number,
+                    )
+                    index += 1
+                    break
+                raise
+        else:  # pragma: no cover - loop always returns, raises or advances
+            raise AssertionError("unreachable")
+
+    raise RuntimeError("Factory exhausted the configured quality model chain")
 
 
 async def create_factory_plan_resumable(
@@ -103,13 +157,7 @@ async def create_factory_plan_resumable(
     duration: int,
     source_language: str = "",
 ) -> dict[str, Any]:
-    """Run the unchanged 3-pass Gemini 3.6/HIGH Factory contract.
-
-    Model-pass 503/high-demand errors get bounded same-upload retries before the
-    existing capacity fast-fail. Persistent capacity errors do not re-upload the
-    source across every key. 429/network/other retryable failures continue to
-    rotate clients as before.
-    """
+    """Run the strict three-pass 3.7/high -> 3.6/high Factory contract."""
     import services.shorts_factory_candidates as candidates
     from services.shorts_factory_quality_gate import (
         apply_factory_quality_gate,
@@ -123,22 +171,23 @@ async def create_factory_plan_resumable(
 
     clients = overload_runtime.factory_gemini_clients()
     if not clients or candidates.types is None:
-        raise RuntimeError(
-            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.6"
-        )
+        raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.7/3.6")
 
-    model = candidates.shorts_factory_model()
+    models = _factory_model_chain()
     mime_type = factory_audio_mime_type(audio_path)
     file_size = audio_path.stat().st_size
     scout = judged = None
+    model_index = 0
+    models_used: list[str] = []
     last_error: BaseException | None = None
     capacity_overload = False
 
-    for index, client in enumerate(clients, 1):
+    for client_index, client in enumerate(clients, 1):
         uploaded_name = ""
         try:
+            active_model = models[model_index]
             await overload_runtime.safe_status(
-                f"🧠 Gemini 3.6 MAX · ключ {index}/{len(clients)}: готовлю аудио…"
+                f"🧠 {active_model} MAX · ключ {client_index}/{len(clients)}: готовлю аудио…"
             )
             if file_size <= 18 * 1024 * 1024:
                 audio_part = candidates.types.Part.from_bytes(
@@ -150,20 +199,18 @@ async def create_factory_plan_resumable(
                         file=audio_path,
                         config=candidates.types.UploadFileConfig(
                             mime_type=mime_type,
-                            display_name=(
-                                f"Shorts Factory MAX — {performer} — {title}"
-                            )[:500],
+                            display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
                         ),
                     ),
                     label=(
-                        f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: "
-                        "загружаю lossless-аудио…"
+                        f"⬆️ {active_model} · ключ {client_index}/{len(clients)}: "
+                        "загружаю analysis-аудио один раз…"
                     ),
                 )
                 uploaded = await overload_runtime.await_with_heartbeat(
                     candidates._wait_uploaded_file(client, uploaded),
                     label=(
-                        f"⏳ Gemini 3.6 · ключ {index}/{len(clients)}: "
+                        f"⏳ {active_model} · ключ {client_index}/{len(clients)}: "
                         "сервер обрабатывает аудио…"
                     ),
                 )
@@ -171,74 +218,67 @@ async def create_factory_plan_resumable(
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
 
             if scout is None:
-                scout = await _run_pass_with_capacity_retry(
+                scout, model_index = await _run_pass_with_capacity_fallback(
                     client,
-                    model=model,
+                    models=models,
+                    model_index=model_index,
                     audio_part=audio_part,
-                    prompt=candidates._scout_prompt(
-                        title,
-                        performer,
-                        duration,
-                        source_language,
-                    ),
+                    prompt=candidates._scout_prompt(title, performer, duration, source_language),
                     max_tokens=32000,
-                    label=(
-                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
-                        "· проход 1/3…"
-                    ),
+                    pass_number=1,
+                    client_index=client_index,
+                    client_count=len(clients),
                 )
+                if models[model_index] not in models_used:
+                    models_used.append(models[model_index])
 
             if judged is None:
-                judged = await _run_pass_with_capacity_retry(
+                judged, model_index = await _run_pass_with_capacity_fallback(
                     client,
-                    model=model,
+                    models=models,
+                    model_index=model_index,
                     audio_part=audio_part,
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
-                    label=(
-                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
-                        "· проход 2/3…"
-                    ),
+                    pass_number=2,
+                    client_index=client_index,
+                    client_count=len(clients),
                 )
+                if models[model_index] not in models_used:
+                    models_used.append(models[model_index])
 
-            audited = await _run_pass_with_capacity_retry(
+            audited, model_index = await _run_pass_with_capacity_fallback(
                 client,
-                model=model,
+                models=models,
+                model_index=model_index,
                 audio_part=audio_part,
                 prompt=candidates._boundary_prompt(judged, duration),
                 max_tokens=28000,
-                label=(
-                    f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
-                    "· проход 3/3…"
-                ),
+                pass_number=3,
+                client_index=client_index,
+                client_count=len(clients),
             )
-            plan = candidates.validate_factory_plan(
-                audited,
-                duration,
-                require_verified=True,
-            )
+            if models[model_index] not in models_used:
+                models_used.append(models[model_index])
+
+            plan = candidates.validate_factory_plan(audited, duration, require_verified=True)
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError(
-                    "Three-pass Gemini review produced no verified candidates"
-                )
+                raise RuntimeError("Three-pass Gemini review produced no verified candidates")
 
             plan.update(
-                model=model,
+                model=models[model_index],
+                primary_model=models[0],
+                models_used=models_used,
                 thinking_level="high",
                 review_passes=3,
                 strict_quality=True,
+                semantic_downgrade=False,
                 audio_mime_type=mime_type,
             )
             gated = apply_factory_quality_gate(plan)
-            gated.setdefault("metadata", {})["language"] = (
-                validated_factory_plan_language(gated)
-            )
-            if not gated.get("shorts_candidates") and not gated.get(
-                "long_candidates"
-            ):
-                raise RuntimeError(
-                    "No candidates passed the final Factory MAX quality gate"
-                )
+            gated.setdefault("metadata", {})["language"] = validated_factory_plan_language(gated)
+            if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
+                raise RuntimeError("No candidates passed the final Factory MAX quality gate")
             return gated
 
         except asyncio.CancelledError:
@@ -248,7 +288,7 @@ async def create_factory_plan_resumable(
             action = factory_client_retry_action(exc)
             overload_runtime.logger.warning(
                 "Shorts Factory capacity-aware client %d/%d failed: %s: %s",
-                index,
+                client_index,
                 len(clients),
                 type(exc).__name__,
                 str(exc)[:500],
@@ -256,20 +296,21 @@ async def create_factory_plan_resumable(
             if action == "capacity":
                 capacity_overload = True
                 await overload_runtime.safe_status(
-                    "⚠️ Gemini 3.6 вернула 503/high demand после ограниченных "
-                    "повторов текущего HIGH-прохода. Не загружаю то же "
-                    "lossless-аудио на остальные ключи: качество не понижаю, "
-                    "retry-кэш сохранён."
+                    f"⚠️ {models[model_index]} остаётся перегружена после bounded retry. "
+                    "Не загружаю то же аудио на остальные ключи; 3.5/Lite не использую, "
+                    "retry-кэш сохранён для продолжения позже."
                 )
                 break
             if action == "rotate":
                 await overload_runtime.safe_status(
-                    f"⚠️ Gemini 3.6 временно недоступна на ключе "
-                    f"{index}/{len(clients)}. Переключаю ключ без повторения "
-                    "уже завершённых проходов…"
+                    f"⚠️ {models[model_index]} временно недоступна на ключе "
+                    f"{client_index}/{len(clients)}. Переключаю ключ и сохраняю "
+                    "уже завершённые HIGH-проходы…"
                 )
                 continue
             scout = judged = None
+            model_index = 0
+            models_used.clear()
         finally:
             if uploaded_name:
                 try:
@@ -278,14 +319,13 @@ async def create_factory_plan_resumable(
                     pass
 
     if capacity_overload:
+        chain = " → ".join(models)
         raise RuntimeError(
-            "Gemini 3.6 сейчас перегружена (503/high demand). "
-            "Ограниченные повторы текущего HIGH-прохода исчерпаны; перебор "
-            "остальных API-ключей остановлен, чтобы не повторять дорогую "
-            "загрузку того же lossless-аудио. Качество не понижено: 3.5/2.x "
-            "не использовались. Lossless-аудио сохранено в retry-кэше примерно на "
-            f"{overload_runtime.cache_ttl_seconds() / 3600:.0f} ч — "
-            "повторите Factory позже."
+            f"Gemini quality chain {chain} сейчас перегружена (503/high demand). "
+            "Bounded same-upload retries исчерпаны; перебор остальных API-ключей "
+            "остановлен, чтобы не повторять дорогую загрузку. Качество не понижено: "
+            "3.5/Lite не использовались. Analysis-аудио сохранено в retry-кэше примерно на "
+            f"{overload_runtime.cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         ) from last_error
 
     raise RuntimeError(
@@ -293,4 +333,7 @@ async def create_factory_plan_resumable(
     )
 
 
-__all__ = ["create_factory_plan_resumable", "factory_client_retry_action"]
+__all__ = [
+    "create_factory_plan_resumable",
+    "factory_client_retry_action",
+]
