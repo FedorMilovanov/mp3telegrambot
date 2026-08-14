@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Verified Gemini 3.6 Factory reliability without semantic quality downgrades.
+"""Verified Gemini 3.6 reliability without semantic quality downgrades.
 
-This runtime owns three narrowly scoped production fixes:
+This runtime owns narrowly scoped production fixes:
 
 * prepare a compact, high-quality AAC surrogate only for Gemini audio analysis;
   original video, LiveDub media and render sources are untouched;
 * widen the app-owned 503/high-demand retry window while reusing the same upload;
+* keep user-visible LiveDub publication metadata on Gemini 3.6/HIGH rather than
+  routing semantic copy through the mechanical 3.5/Lite utility lane;
 * optionally route GenerateContent calls through Gemini Priority inference when
   the operator explicitly enables it on an eligible Tier 2/3 project.
 
-The semantic model remains ``gemini-3.6-flash`` with HIGH thinking. No 3.5/Lite
-fallback is introduced for Factory planning or editorial review.
+The semantic model remains ``gemini-3.6-flash`` with HIGH thinking. 3.5/Lite is
+reserved for genuinely mechanical utility work.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,6 @@ def gemini_analysis_sample_rate() -> int:
         24000,
         48000,
     )
-    # FFmpeg/AAC behaves most predictably on these common rates.
     return 48000 if configured >= 36000 else 24000
 
 
@@ -71,8 +72,7 @@ def configured_service_tier() -> str:
     instead of silently routing requests differently than the operator expects.
     """
     value = os.getenv("GEMINI_SERVICE_TIER", "standard").strip().lower()
-    aliases = {"": "standard", "default": "standard"}
-    value = aliases.get(value, value)
+    value = {"": "standard", "default": "standard"}.get(value, value)
     if value not in {"standard", "priority"}:
         raise RuntimeError(
             "GEMINI_SERVICE_TIER must be 'standard' or 'priority'; "
@@ -86,13 +86,7 @@ async def _prepare_compact_gemini_audio(
     source_probe: Any,
     media_id: str,
 ) -> Path:
-    """Build a Gemini-only mono AAC surrogate and prove it is complete.
-
-    Gemini's documented audio pipeline downsamples input and combines channels,
-    so a hundreds-of-megabytes lossless FLAC only increases upload/capacity cost.
-    128 kbps AAC mono remains far above the model's documented analysis
-    resolution while cutting a typical hour-long upload by several times.
-    """
+    """Build a Gemini-only mono AAC surrogate and prove it is complete."""
     import services.shorts_factory_source as source
 
     source_path = Path(source_path)
@@ -240,11 +234,48 @@ def _install_priority_configs() -> None:
     logger.info("Gemini GenerateContent service tier: priority (operator opt-in)")
 
 
+def _install_publication_quality_route() -> None:
+    """Keep user-visible title/description generation on the heavy quality lane."""
+    import services.livedub_publication_core as publication
+
+    def publication_models() -> list[str]:
+        model = os.getenv("LIVEDUB_INFO_MODEL", "gemini-3.6-flash").strip()
+        if model != "gemini-3.6-flash":
+            raise RuntimeError(
+                "LiveDub publication quality route requires gemini-3.6-flash; "
+                f"LIVEDUB_INFO_MODEL={model!r}"
+            )
+        return [model]
+
+    def publication_config(model_name: str):
+        from core.globals import make_text_config_smart
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "author": {"type": "string"},
+                "description": {"type": "string"},
+            },
+            "required": ["title", "author", "description"],
+        }
+        return make_text_config_smart(
+            max_output_tokens=1200,
+            model_name=model_name,
+            thinking_level="high",
+            response_mime_type="application/json",
+            response_schema=schema,
+        )
+
+    publication.publication_models = publication_models
+    publication._economy_config = publication_config
+
+
 def install_gemini36_factory_resilience() -> str:
-    """Install verified Factory reliability changes after MAX runtime imports."""
+    """Install verified reliability changes after MAX runtime imports."""
     global _INSTALLED
     if _INSTALLED:
-        return "Gemini 3.6/HIGH Factory resilience already installed"
+        return "Gemini 3.6/HIGH resilience already installed"
 
     import services.shorts_factory_capacity_runtime as capacity
     import services.shorts_factory_source as source
@@ -255,12 +286,13 @@ def install_gemini36_factory_resilience() -> str:
     capacity._FACTORY_CAPACITY_RETRY_MAX_SECONDS = _CAPACITY_MAX_SECONDS
     capacity._FACTORY_CAPACITY_RETRY_JITTER_SECONDS = _CAPACITY_JITTER_SECONDS
     _install_priority_configs()
+    _install_publication_quality_route()
 
     tier = configured_service_tier()
     _INSTALLED = True
     logger.info(
-        "Gemini 3.6/HIGH Factory resilience: AAC=%dk mono/%dHz; "
-        "503 attempts=%d backoff<=%.0fs; service_tier=%s",
+        "Gemini 3.6/HIGH resilience: AAC=%dk mono/%dHz; 503 attempts=%d "
+        "backoff<=%.0fs; service_tier=%s; publication=3.6/HIGH",
         gemini_analysis_bitrate_kbps(),
         gemini_analysis_sample_rate(),
         _CAPACITY_ATTEMPTS,
@@ -268,7 +300,7 @@ def install_gemini36_factory_resilience() -> str:
         tier,
     )
     return (
-        "Gemini 3.6/HIGH; compact AAC analysis audio; "
+        "Gemini 3.6/HIGH; compact AAC analysis audio; publication=3.6/HIGH; "
         f"503 attempts={_CAPACITY_ATTEMPTS}; service_tier={tier}"
     )
 
