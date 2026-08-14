@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Install Gemini 3.7 quality-first routes without semantic downgrades.
 
-The project keeps Gemini 3.7 Flash/high as the primary quality route and permits
-Gemini 3.6 Flash/high only as a quality-preserving capacity fallback. 3.5/Lite
-never enters Factory candidate selection or full-sermon translation review.
+Gemini 3.7 Flash/high is the primary semantic route. Gemini 3.6 Flash/high is
+the only quality-preserving fallback. 3.5/Lite never enters Factory candidate
+selection or full-sermon translation review.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import math
 import os
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -18,7 +21,6 @@ PRIMARY_MODEL = "gemini-3.7-flash"
 FALLBACK_MODEL = "gemini-3.6-flash"
 _ALLOWED_QUALITY_MODELS = {PRIMARY_MODEL, FALLBACK_MODEL}
 _INSTALLED = False
-_EDITORIAL_LOCK = asyncio.Lock()
 
 
 def quality_model_chain() -> tuple[str, ...]:
@@ -69,52 +71,130 @@ def _install_factory_model_policy() -> None:
     candidates.shorts_factory_model = factory_model
 
 
+def _editorial_prompt(editorial: Any, pack_path: Path) -> tuple[dict[str, Any], str]:
+    manifest = editorial.load_pack_manifest(pack_path)
+    model_manifest = editorial._manifest_for_model(manifest)
+    original = editorial._read_pack_text(pack_path, "original.srt")
+    russian = editorial._read_pack_text(pack_path, "russian_whisper.srt")
+    candidates = editorial._read_pack_text(pack_path, "candidates.json")
+    prompt = (
+        "Ты редактор переведённой проповеди. Сравни исходный SRT с фактически услышанной "
+        "русской речью из Whisper SRT. Проверяй смысл, а не литературную красоту. "
+        "Небольшая неестественность русского допустима, если смысл сохранён. Особое внимание "
+        "к отрицаниям, субъекту и объекту действия, причинно-следственным связям, именам, "
+        "числам, местам Писания и богословским терминам. Не придумывай ошибок, которых нет "
+        "в русской Whisper-стенограмме. В manifest.timeline явно описаны разные временные "
+        "шкалы: не сопоставляй реплики по одинаковому номеру cue или одинаковой секунде; "
+        "сопоставляй по смысловой последовательности и указанной задержке. Таймкоды issue "
+        "всегда бери из Russian Whisper / translated-video timeline. drop_span выбирай только "
+        "когда удаление короткого дефекта оставляет исходную мысль целой; mute_span только "
+        "для чисто звукового дефекта; иначе reject_region. Для каждого candidate_id обязательно "
+        "верни ровно одну оценку пригодности. Верни только JSON по схеме.\n\n"
+        f"MANIFEST:\n{json.dumps(model_manifest, ensure_ascii=False)}\n\n"
+        f"CANDIDATES:\n{candidates}\n\n"
+        f"ORIGINAL SRT:\n{original}\n\n"
+        f"RUSSIAN WHISPER SRT:\n{russian}"
+    )
+    return manifest, prompt
+
+
+async def _generate_editorial_for_model(
+    editorial: Any,
+    pack_path: Path,
+    *,
+    model: str,
+) -> dict[str, Any] | None:
+    """Run the existing validated full-sermon review contract on one HIGH model."""
+    try:
+        from core.globals import GEMINI_CLIENTS, make_text_config_smart
+    except Exception:
+        return None
+    if not GEMINI_CLIENTS:
+        return None
+
+    manifest, prompt = _editorial_prompt(editorial, Path(pack_path))
+    config = make_text_config_smart(
+        max_output_tokens=12000,
+        model_name=model,
+        thinking_level="high",
+        response_mime_type="application/json",
+        response_schema=editorial._gemini_schema(),
+    )
+    try:
+        timeout = float(
+            os.getenv("SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC", "300") or "300"
+        )
+    except (TypeError, ValueError):
+        timeout = 300.0
+    if not math.isfinite(timeout):
+        timeout = 300.0
+    timeout = max(60.0, min(timeout, 600.0))
+
+    clients = list(GEMINI_CLIENTS)[: editorial._gemini_max_attempts()]
+    for client_index, client in enumerate(clients, 1):
+        try:
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config,
+                ),
+                timeout=timeout,
+            )
+            data = json.loads(editorial._strip_json_fence(getattr(response, "text", "")))
+            if not isinstance(data, dict):
+                continue
+            review = {
+                "schema_name": editorial.REVIEW_SCHEMA_NAME,
+                "schema_version": editorial.REVIEW_SCHEMA_VERSION,
+                "review_pack_id": manifest.get("review_pack_id"),
+                "reviewer": f"gemini:{model}",
+                "full_sermon": data.get("full_sermon"),
+                "candidate_reviews": data.get("candidate_reviews") or [],
+            }
+            errors = editorial.validate_review_document(review, manifest)
+            if errors:
+                logger.warning(
+                    "Factory editorial Gemini review rejected client=%d model=%s: %s",
+                    client_index,
+                    model,
+                    "; ".join(errors[:8]),
+                )
+                continue
+            return review
+        except Exception as exc:
+            logger.info(
+                "Factory editorial Gemini soft-fail client=%d model=%s: %s",
+                client_index,
+                model,
+                str(exc)[:180],
+            )
+    return None
+
+
 def _install_editorial_model_policy() -> None:
     import services.translation_editorial_factory as editorial
 
     if getattr(editorial.generate_gemini_editorial_review, "_mp3bot_gemini37_route", False):
-        editorial.FACTORY_EDITORIAL_GEMINI_MODEL = PRIMARY_MODEL
         return
 
-    original = editorial.generate_gemini_editorial_review
-
     async def quality_first_editorial(pack_path):
-        # The legacy implementation stores the selected model in one module-level
-        # constant. Serialize this optional review seam so concurrent jobs cannot
-        # observe each other's primary/fallback model while retaining the original
-        # validated review schema and quota bounds.
-        async with _EDITORIAL_LOCK:
-            last_model = PRIMARY_MODEL
-            try:
-                for model in quality_model_chain():
-                    last_model = model
-                    editorial.FACTORY_EDITORIAL_GEMINI_MODEL = model
-                    result = await original(pack_path)
-                    if result is not None:
-                        if isinstance(result, dict):
-                            result.setdefault("quality_route", {})
-                            result["quality_route"].update(
-                                primary_model=PRIMARY_MODEL,
-                                effective_model=model,
-                                thinking_level="high",
-                                semantic_downgrade=False,
-                            )
-                        return result
-                    if model != quality_model_chain()[-1]:
-                        logger.warning(
-                            "Factory full-sermon editorial review soft-failed on %s; "
-                            "retrying on quality fallback %s/high",
-                            model,
-                            FALLBACK_MODEL,
-                        )
-                return None
-            finally:
-                editorial.FACTORY_EDITORIAL_GEMINI_MODEL = PRIMARY_MODEL
-                if last_model != PRIMARY_MODEL:
-                    logger.info(
-                        "Factory editorial quality route returned to primary %s",
-                        PRIMARY_MODEL,
-                    )
+        models = quality_model_chain()
+        for index, model in enumerate(models):
+            result = await _generate_editorial_for_model(
+                editorial,
+                Path(pack_path),
+                model=model,
+            )
+            if result is not None:
+                return result
+            if index + 1 < len(models):
+                logger.warning(
+                    "Factory full-sermon review failed on %s/high; retrying on %s/high",
+                    model,
+                    models[index + 1],
+                )
+        return None
 
     quality_first_editorial._mp3bot_gemini37_route = True  # type: ignore[attr-defined]
     editorial.FACTORY_EDITORIAL_GEMINI_MODEL = PRIMARY_MODEL
