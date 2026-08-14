@@ -35,37 +35,45 @@ _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
 def configure_gemini_policy() -> str:
-    """Apply one source-owned semantic/utility split before AI imports.
+    """Apply one exact source-owned semantic/utility split before AI imports.
 
-    User-visible LiveDub info, QA and publication copy are exact Gemini 3.6.
+    User-visible LiveDub info, QA and publication copy are exact Gemini 3.6/HIGH.
     Gemini 3.5/Lite is reserved for explicitly mechanical utility work and may
-    never re-enter the semantic route through a default fallback.
+    never re-enter the semantic route through an environment override or fallback.
     """
-    current_main = os.getenv("GEMINI_MODEL", "").strip()
-    if not current_main or current_main == _UTILITY_FALLBACK_MODEL:
-        os.environ["GEMINI_MODEL"] = _PRIMARY_MODEL
+    for name in (
+        "GEMINI_MODEL",
+        "GEMINI_MAX_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+    ):
+        os.environ[name] = _PRIMARY_MODEL
 
-    current_light = os.getenv("GEMINI_LIGHT_MODEL", "").strip()
-    if not current_light or current_light in _RETIRED_MODELS:
-        os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
+    for name in (
+        "GEMINI_FORCE_THINKING_LEVEL",
+        "LIVEDUB_INFO_THINKING",
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QA_VERIFY_THINKING",
+    ):
+        os.environ[name] = "high"
+    os.environ["GEMINI_SCHEMA_THINKING"] = "1"
 
-    # These are semantic/user-visible routes. Own the exact model contract here
-    # instead of relying on configure_max_quality_env() to repair weaker defaults.
-    os.environ["LIVEDUB_INFO_MODEL"] = _PRIMARY_MODEL
     os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
-    os.environ.setdefault("LIVEDUB_QUICK_QA_MODEL", _PRIMARY_MODEL)
     os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""
     os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"
 
-    # Utility lane only. Never spend/re-enter the semantic 3.6 route as fallback.
-    os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _UTILITY_FALLBACK_MODEL)
+    # Utility lane is also pinned so stale/experimental model IDs cannot turn a
+    # mechanical call into an accidental semantic route or surprise quota owner.
+    os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
+    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _UTILITY_FALLBACK_MODEL
     os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
 
     return (
-        f"semantic={os.environ.get('GEMINI_MODEL', _PRIMARY_MODEL)}, "
-        f"livedub={_PRIMARY_MODEL}/no-fallback, "
-        f"utility={os.environ.get('GEMINI_LIGHT_MODEL', _LIGHT_MODEL)}"
-        f"->{_UTILITY_FALLBACK_MODEL}"
+        f"semantic={_PRIMARY_MODEL}/high/no-fallback, "
+        f"utility={_LIGHT_MODEL}->{_UTILITY_FALLBACK_MODEL}/no-main-fallback"
     )
 
 
