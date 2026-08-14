@@ -29,12 +29,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload pytest diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-output-${{ matrix.python-version }}
           path: pytest-output.txt
@@ -79,6 +79,10 @@ jobs:
       - name: Code health regression gate
         run: python tools/check_code_health.py --fail-on-regression
 
+      - name: Repository verifier contract
+        if: ${{ matrix.python-version == '3.11' }}
+        run: python tools/verify_repo.py
+
   windows-runtime:
     name: Windows runtime safety checks
     runs-on: windows-latest
@@ -86,10 +90,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: "pip"

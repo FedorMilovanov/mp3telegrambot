@@ -33,44 +33,35 @@ def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch):
         resilience.configured_service_tier()
 
 
-def test_priority_preserves_existing_generate_config():
-    original = {"max_output_tokens": 12000, "temperature": 0.1}
+def test_priority_preserves_existing_sampling_free_generate_config():
+    original = {"max_output_tokens": 12000, "response_mime_type": "application/json"}
     configured = resilience._with_service_tier(original, "priority")
     assert configured == {
         "max_output_tokens": 12000,
-        "temperature": 0.1,
+        "response_mime_type": "application/json",
         "service_tier": "priority",
     }
-    assert original == {"max_output_tokens": 12000, "temperature": 0.1}
+    assert original == {
+        "max_output_tokens": 12000,
+        "response_mime_type": "application/json",
+    }
 
 
-def test_user_visible_publication_uses_only_36_quality_route(monkeypatch):
+def test_user_visible_publication_owner_uses_only_36_even_with_stale_env(monkeypatch):
     import services.livedub_publication_core as publication
 
-    original_models = publication.publication_models
-    original_config = publication._economy_config
-    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.6-flash")
-    try:
-        resilience._install_publication_quality_route()
-        assert publication.publication_models() == ["gemini-3.6-flash"]
-    finally:
-        publication.publication_models = original_models
-        publication._economy_config = original_config
-
-
-def test_user_visible_publication_rejects_semantic_35_downgrade(monkeypatch):
-    import services.livedub_publication_core as publication
-
-    original_models = publication.publication_models
-    original_config = publication._economy_config
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
-    try:
-        resilience._install_publication_quality_route()
-        with pytest.raises(RuntimeError, match="gemini-3.6-flash"):
-            publication.publication_models()
-    finally:
-        publication.publication_models = original_models
-        publication._economy_config = original_config
+    monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
+    assert publication.publication_models() == ["gemini-3.6-flash"]
+    resilience._verify_publication_quality_route()
+
+
+def test_publication_invariant_fails_if_owner_regresses(monkeypatch):
+    import services.livedub_publication_core as publication
+
+    monkeypatch.setattr(publication, "publication_models", lambda: ["gemini-3.5-flash-lite"])
+    with pytest.raises(RuntimeError, match="gemini-3.6-flash"):
+        resilience._verify_publication_quality_route()
 
 
 def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(

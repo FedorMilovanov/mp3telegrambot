@@ -63,24 +63,21 @@ def test_mp3_metadata_is_bounded_without_tiny_fragment():
     assert not result.endswith(" ")
 
 
-def test_publication_models_are_lite_only_by_default(monkeypatch):
+def test_publication_models_are_exact_36_even_with_stale_utility_env(monkeypatch):
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv(
         "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
         "gemini-3.5-flash,gemini-3.5-flash-lite",
     )
-    monkeypatch.delenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", raising=False)
-    assert publication.publication_models() == ["gemini-3.5-flash-lite"]
+    monkeypatch.setenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "1")
+    assert publication.publication_models() == ["gemini-3.6-flash"]
 
 
-def test_strong_publication_fallback_is_explicit_opt_in(monkeypatch):
-    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
+def test_publication_strong_fallback_flag_cannot_reenable_35_semantics(monkeypatch):
+    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "1")
-    assert publication.publication_models() == [
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-    ]
+    assert publication.publication_models() == ["gemini-3.6-flash"]
 
 
 def test_bounded_lru_publication_cache(monkeypatch):
@@ -145,7 +142,7 @@ def test_inflight_requests_share_one_task(monkeypatch):
             "author": "Тим Конвей",
             "description": "Описание.",
             "source_url": source_url,
-            "model": "fake-lite",
+            "model": "fake-quality",
         }
 
     monkeypatch.setattr(publication, "_build_uncached", fake_build)
@@ -174,7 +171,7 @@ def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
             "author": "Автор",
             "description": source_url,
             "source_url": source_url,
-            "model": "fake-lite",
+            "model": "fake-quality",
         }
 
     monkeypatch.setattr(publication, "_build_uncached", fake_build)

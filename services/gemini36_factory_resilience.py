@@ -6,8 +6,8 @@ This runtime owns narrowly scoped production fixes:
 * prepare a compact, high-quality AAC surrogate only for Gemini audio analysis;
   original video, LiveDub media and render sources are untouched;
 * widen the app-owned 503/high-demand retry window while reusing the same upload;
-* keep user-visible LiveDub publication metadata on Gemini 3.6/HIGH rather than
-  routing semantic copy through the mechanical 3.5/Lite utility lane;
+* verify that user-visible LiveDub publication metadata owns Gemini 3.6/HIGH
+  directly instead of mutating that route through import-order monkey-patching;
 * optionally route GenerateContent calls through Gemini Priority inference when
   the operator explicitly enables it on an eligible Tier 2/3 project.
 
@@ -234,41 +234,18 @@ def _install_priority_configs() -> None:
     logger.info("Gemini GenerateContent service tier: priority (operator opt-in)")
 
 
-def _install_publication_quality_route() -> None:
-    """Keep user-visible title/description generation on the heavy quality lane."""
+def _verify_publication_quality_route() -> None:
+    """Fail startup if the publication owner ever regresses from exact 3.6."""
     import services.livedub_publication_core as publication
 
-    def publication_models() -> list[str]:
-        model = os.getenv("LIVEDUB_INFO_MODEL", "gemini-3.6-flash").strip()
-        if model != "gemini-3.6-flash":
-            raise RuntimeError(
-                "LiveDub publication quality route requires gemini-3.6-flash; "
-                f"LIVEDUB_INFO_MODEL={model!r}"
-            )
-        return [model]
-
-    def publication_config(model_name: str):
-        from core.globals import make_text_config_smart
-
-        schema = {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "author": {"type": "string"},
-                "description": {"type": "string"},
-            },
-            "required": ["title", "author", "description"],
-        }
-        return make_text_config_smart(
-            max_output_tokens=1200,
-            model_name=model_name,
-            thinking_level="high",
-            response_mime_type="application/json",
-            response_schema=schema,
+    models = publication.publication_models()
+    if models != ["gemini-3.6-flash"]:
+        raise RuntimeError(
+            "LiveDub publication owner must expose exact gemini-3.6-flash only; "
+            f"got {models!r}"
         )
-
-    publication.publication_models = publication_models
-    publication._economy_config = publication_config
+    if not callable(getattr(publication, "_quality_config", None)):
+        raise RuntimeError("LiveDub publication owner is missing its HIGH quality config")
 
 
 def install_gemini36_factory_resilience() -> str:
@@ -286,13 +263,13 @@ def install_gemini36_factory_resilience() -> str:
     capacity._FACTORY_CAPACITY_RETRY_MAX_SECONDS = _CAPACITY_MAX_SECONDS
     capacity._FACTORY_CAPACITY_RETRY_JITTER_SECONDS = _CAPACITY_JITTER_SECONDS
     _install_priority_configs()
-    _install_publication_quality_route()
+    _verify_publication_quality_route()
 
     tier = configured_service_tier()
     _INSTALLED = True
     logger.info(
         "Gemini 3.6/HIGH resilience: AAC=%dk mono/%dHz; 503 attempts=%d "
-        "backoff<=%.0fs; service_tier=%s; publication=3.6/HIGH",
+        "backoff<=%.0fs; service_tier=%s; publication_owner=3.6/HIGH",
         gemini_analysis_bitrate_kbps(),
         gemini_analysis_sample_rate(),
         _CAPACITY_ATTEMPTS,
@@ -300,7 +277,7 @@ def install_gemini36_factory_resilience() -> str:
         tier,
     )
     return (
-        "Gemini 3.6/HIGH; compact AAC analysis audio; publication=3.6/HIGH; "
+        "Gemini 3.6/HIGH; compact AAC analysis audio; publication_owner=3.6/HIGH; "
         f"503 attempts={_CAPACITY_ATTEMPTS}; service_tier={tier}"
     )
 

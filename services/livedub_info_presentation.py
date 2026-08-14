@@ -4,9 +4,9 @@
 The base LiveDub info module intentionally exposes a rich copy-ready bundle.
 For the bot chat that was too verbose: it produced headings such as
 "Готовое описание к переводу", a second YouTube block and several technical
-sections.  This adapter keeps the existing generation logic, adds a cheap
-second-chance title translation across all configured Gemini clients/models,
-and replaces only the final presentation with a concise publication card.
+sections. This adapter keeps the existing generation logic, adds a quality-first
+second-chance title translation across all configured Gemini clients, and
+replaces only the final presentation with a concise publication card.
 """
 from __future__ import annotations
 
@@ -103,14 +103,14 @@ def _title_has_cyrillic(line: str) -> bool:
 
 
 def _fallback_description(title: str, author: str) -> str:
+    """Return metadata-only copy when semantic generation is unavailable."""
     title = _clean(title, 220)
     author = _canonical_author(author)
     if not title:
-        return "Русская аудиоверсия переведённого видео."
-    subject = author or "Автор"
-    if title.endswith("?"):
-        return f"{subject} разбирает вопрос: «{title}»"
-    return f"{subject} рассматривает тему «{title}»."
+        return "Переведённый материал."
+    if author:
+        return f"Материал {author}: «{title}»."
+    return f"Материал: «{title}»."
 
 
 def _strip_json_fence(text: str) -> str:
@@ -121,29 +121,18 @@ def _strip_json_fence(text: str) -> str:
 
 
 async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | None:
-    """Try every configured light/main model and every Gemini client.
-
-    The original implementation iterates models but always uses client 0.  A
-    second configured key/client can therefore never rescue a regional or
-    transient failure.  This call is deliberately tiny and faithful: translate
-    metadata only, without inventing a new headline.
-    """
+    """Try exact Gemini 3.6/HIGH across every client for faithful title metadata."""
     if not title_line or _title_has_cyrillic(title_line):
         return None
     try:
         from core.globals import GEMINI_CLIENTS, make_text_config_smart
-        from services.livedub_info import get_light_model, get_light_model_fallbacks
+        from services.livedub_info import DEFAULT_INFO_MODEL
     except Exception:
         return None
     if not GEMINI_CLIENTS:
         return None
 
-    models: list[str] = []
-    for model in [get_light_model(), *get_light_model_fallbacks()]:
-        model = str(model or "").strip()
-        if model and model not in models:
-            models.append(model)
-
+    model = DEFAULT_INFO_MODEL
     prompt = f"""
 Переведи исходное название христианского видео на русский язык.
 Верни строго JSON: {{"title":"...","author":"..."}}.
@@ -161,44 +150,42 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
 Исходная строка: {title_line}
 """.strip()
 
-    for model in models:
-        for client_index, client in enumerate(GEMINI_CLIENTS):
-            try:
-                cfg = make_text_config_smart(
-                    temperature=0.0,
-                    max_output_tokens=300,
-                    model_name=model,
-                    thinking_level="minimal",
-                    response_mime_type="application/json",
-                    response_schema={
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "author": {"type": "string"},
-                        },
-                        "required": ["title", "author"],
+    for client_index, client in enumerate(GEMINI_CLIENTS):
+        try:
+            cfg = make_text_config_smart(
+                max_output_tokens=600,
+                model_name=model,
+                thinking_level="high",
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "author": {"type": "string"},
                     },
-                )
-                response = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                        config=cfg,
-                    ),
-                    timeout=30.0,
-                )
-                data = json.loads(_strip_json_fence(getattr(response, "text", "") or ""))
-                title = _clean(data.get("title"), 190)
-                author = _canonical_author(_clean(data.get("author"), 100))
-                if title and re.search(r"[А-Яа-яЁё]", title):
-                    return title, author
-            except Exception as exc:
-                logger.info(
-                    "[LiveDubInfoPresentation] title model=%s client=%d failed: %s",
-                    model,
-                    client_index,
-                    str(exc)[:120],
-                )
+                    "required": ["title", "author"],
+                },
+            )
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=cfg,
+                ),
+                timeout=60.0,
+            )
+            data = json.loads(_strip_json_fence(getattr(response, "text", "") or ""))
+            title = _clean(data.get("title"), 190)
+            author = _canonical_author(_clean(data.get("author"), 100))
+            if title and re.search(r"[А-Яа-яЁё]", title):
+                return title, author
+        except Exception as exc:
+            logger.info(
+                "[LiveDubInfoPresentation] title model=%s client=%d failed: %s",
+                model,
+                client_index,
+                str(exc)[:120],
+            )
     return None
 
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from services.livedub_publication import (
     _canonical_title,
     _fallback_description,
@@ -50,11 +52,23 @@ def test_video_caption_is_one_polished_card_without_provider_label():
     assert "Живые голоса Яндекса" not in caption
 
 
-def test_fallback_description_does_not_invent_content_beyond_title():
+def test_fallback_description_is_metadata_only_and_does_not_invent_content():
     text = _fallback_description("Как Побеждать Искушение", "Тим Конвей")
     assert "Как Побеждать Искушение" in text
     assert "Тим Конвей" in text
     assert "стих" not in text.lower()
+    assert "раскрывает" not in text.lower()
+    assert "последовательно" not in text.lower()
+
+
+def test_inline_publication_generator_is_sampling_free_36_high():
+    src = Path("services/livedub_publication.py").read_text(encoding="utf-8")
+    assert "_generate_quality_publication" in src
+    assert "DEFAULT_INFO_MODEL" in src
+    assert 'thinking_level="high"' in src
+    assert "temperature=" not in src
+    assert 'thinking_level="minimal"' not in src
+    assert "_generate_light_publication" not in src
 
 
 def test_candidate_windows_merge_nearby_findings_and_cover_later_one():
