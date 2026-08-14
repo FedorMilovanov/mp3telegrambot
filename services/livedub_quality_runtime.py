@@ -30,46 +30,42 @@ _RETIRED_MODELS = {
 }
 
 _PRIMARY_MODEL = "gemini-3.6-flash"
-_STRONG_FALLBACK_MODEL = "gemini-3.5-flash"
+_UTILITY_FALLBACK_MODEL = "gemini-3.5-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
 def configure_gemini_policy() -> str:
-    """Apply the project-wide 3.6-first model policy before any AI imports.
+    """Apply one source-owned semantic/utility split before AI imports.
 
-    Existing installations commonly pin the former default ``gemini-3.5-flash``
-    in ``.env``. The owner explicitly requested migration to 3.6 everywhere
-    quality matters, so that exact former default is upgraded automatically.
-    Project-obsolete 3.1/2.x light models are migrated to 3.5 Flash-Lite.
-
-    Voice transport policy is intentionally not changed here. In particular,
-    ordinary Yandex TTS remains an explicit operator opt-in; this model-policy
-    bootstrap must never silently turn a Live-voice request into another voice.
+    User-visible LiveDub info, QA and publication copy are exact Gemini 3.6.
+    Gemini 3.5/Lite is reserved for explicitly mechanical utility work and may
+    never re-enter the semantic route through a default fallback.
     """
     current_main = os.getenv("GEMINI_MODEL", "").strip()
-    if not current_main or current_main == _STRONG_FALLBACK_MODEL:
+    if not current_main or current_main == _UTILITY_FALLBACK_MODEL:
         os.environ["GEMINI_MODEL"] = _PRIMARY_MODEL
 
     current_light = os.getenv("GEMINI_LIGHT_MODEL", "").strip()
     if not current_light or current_light in _RETIRED_MODELS:
         os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
 
-    # Quality-sensitive publication and QA tasks use 3.6. Flash-Lite remains
-    # reserved for genuinely mechanical/high-volume formatting work.
-    os.environ.setdefault("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL)
-    os.environ.setdefault(
-        "LIVEDUB_INFO_FALLBACK_MODELS",
-        f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
-    )
+    # These are semantic/user-visible routes. Own the exact model contract here
+    # instead of relying on configure_max_quality_env() to repair weaker defaults.
+    os.environ["LIVEDUB_INFO_MODEL"] = _PRIMARY_MODEL
+    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
     os.environ.setdefault("LIVEDUB_QUICK_QA_MODEL", _PRIMARY_MODEL)
-    os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _STRONG_FALLBACK_MODEL)
-    os.environ.setdefault("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1")
+    os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""
+    os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"
+
+    # Utility lane only. Never spend/re-enter the semantic 3.6 route as fallback.
+    os.environ.setdefault("GEMINI_LIGHT_FALLBACK_MODELS", _UTILITY_FALLBACK_MODEL)
+    os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
 
     return (
-        f"main={os.environ.get('GEMINI_MODEL', _PRIMARY_MODEL)}, "
-        f"quality={os.environ.get('LIVEDUB_INFO_MODEL', _PRIMARY_MODEL)}, "
-        f"light={os.environ.get('GEMINI_LIGHT_MODEL', _LIGHT_MODEL)}, "
-        f"fallback={_STRONG_FALLBACK_MODEL}"
+        f"semantic={os.environ.get('GEMINI_MODEL', _PRIMARY_MODEL)}, "
+        f"livedub={_PRIMARY_MODEL}/no-fallback, "
+        f"utility={os.environ.get('GEMINI_LIGHT_MODEL', _LIGHT_MODEL)}"
+        f"->{_UTILITY_FALLBACK_MODEL}"
     )
 
 
@@ -144,44 +140,17 @@ def configure_gemini_network() -> str:
     return _safe_proxy_label(proxy)
 
 
-def _unique(values: list[str]) -> list[str]:
-    out: list[str] = []
-    for value in values:
-        value = str(value or "").strip()
-        if value and value not in out and value not in _RETIRED_MODELS:
-            out.append(value)
-    return out
-
-
 def _install_quality_models() -> None:
-    """Install model selectors without mutating the shared client registry.
-
-    Native ``livedub_info.build_livedub_info_card`` takes a request-local tuple
-    snapshot and tries clients directly. The historical runtime wrapper rotated
-    ``GEMINI_CLIENTS[:]`` around an await; with concurrent Telegram updates that
-    exposed unrelated analyses to another request's key order.
-    """
+    """Verify native LiveDub info owns the semantic route; do not monkey-patch it."""
     import services.livedub_info as info
-    from core.database import GEMINI_MODEL
 
-    def quality_model() -> str:
-        configured = os.getenv("LIVEDUB_INFO_MODEL", _PRIMARY_MODEL).strip()
-        return configured if configured not in _RETIRED_MODELS else _PRIMARY_MODEL
-
-    def quality_fallbacks() -> list[str]:
-        raw = os.getenv(
-            "LIVEDUB_INFO_FALLBACK_MODELS",
-            f"{_STRONG_FALLBACK_MODEL},{_LIGHT_MODEL}",
+    model = info.get_light_model()
+    fallbacks = info.get_light_model_fallbacks()
+    if model != _PRIMARY_MODEL or fallbacks:
+        raise RuntimeError(
+            "LiveDub info owner violated semantic route: "
+            f"model={model!r} fallbacks={fallbacks!r}"
         )
-        return [
-            model
-            for model in _unique([GEMINI_MODEL, *raw.split(",")])
-            if model != quality_model()
-        ]
-
-    info.DEFAULT_LIGHT_MODEL = _PRIMARY_MODEL
-    info.get_light_model = quality_model
-    info.get_light_model_fallbacks = quality_fallbacks
     if not getattr(info.build_livedub_info_card, "_mp3bot_all_clients", False):
         logger.warning(
             "[LiveDubInfo] native request-local multi-client support is missing; "
@@ -378,7 +347,7 @@ def install_livedub_quality_runtime() -> None:
         _install_audio_once()
         _install_utf8_probe()
         logger.info(
-            "✨ LiveDub quality runtime: ✅ Gemini 3.6 primary → 3.5 fallback, "
-            "request-local client isolation, retry-safe dual-MP3 coalescing, "
-            "UTF-8 ffprobe"
+            "✨ LiveDub quality runtime: semantic=Gemini 3.6/HIGH/no-fallback; "
+            "utility=3.5-Lite→3.5 only; request-local client isolation, "
+            "retry-safe dual-MP3 coalescing, UTF-8 ffprobe"
         )
