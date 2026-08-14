@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Bounded, genuinely light publication-card builder for LiveDub."""
+"""Bounded, quality-first publication-card builder for LiveDub.
+
+Publication title, author and description are user-visible semantic output.  This
+module therefore owns its production Gemini route directly: exact Gemini 3.6
+Flash with HIGH thinking and no 3.5/Lite semantic fallback.  A deterministic
+metadata fallback remains available when Gemini itself is unavailable.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -12,9 +18,9 @@ from collections import OrderedDict
 from typing import Any
 
 logger = logging.getLogger(__name__)
-_TRUE = {"1", "true", "yes", "on"}
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _INFLIGHT: dict[str, asyncio.Task] = {}
+_PUBLICATION_MODEL = "gemini-3.6-flash"
 
 _RU_LOWER_WORDS = {
     "а", "без", "близ", "бы", "в", "вместо", "вне", "во", "вокруг", "для",
@@ -184,34 +190,36 @@ def safe_audio_filename(value: str) -> str:
 
 
 def publication_models() -> list[str]:
-    configured = os.getenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite").strip()
-    raw = os.getenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "").strip()
-    models = [configured or "gemini-3.5-flash-lite"]
-    models.extend(item.strip() for item in raw.split(",") if item.strip())
-    allow_strong = (
-        os.getenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "0").strip().lower()
-        in _TRUE
-    )
-    out: list[str] = []
-    for model in models:
-        if not allow_strong and "lite" not in model.casefold():
-            continue
-        if model and model not in out:
-            out.append(model)
-    return out or ["gemini-3.5-flash-lite"]
+    """Return the one approved model for semantic publication copy."""
+    configured = (
+        os.getenv("LIVEDUB_INFO_MODEL", _PUBLICATION_MODEL) or _PUBLICATION_MODEL
+    ).strip()
+    if configured != _PUBLICATION_MODEL:
+        logger.warning(
+            "[LiveDubPublicationCore] refusing semantic model override %r; using %s",
+            configured,
+            _PUBLICATION_MODEL,
+        )
+    fallbacks = os.getenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "").strip()
+    if fallbacks:
+        logger.warning(
+            "[LiveDubPublicationCore] ignoring semantic fallback models %r",
+            fallbacks,
+        )
+    return [_PUBLICATION_MODEL]
 
 
-def _economy_config(model_name: str):
-    """Bypass the global high-thinking hook for this mechanical text task."""
+def _quality_config(model_name: str):
+    """Build a sampling-free Gemini 3.6/HIGH structured-output config."""
     try:
-        from core.globals import _build_thinking_config, types
+        from core.globals import make_text_config_smart
 
-        if types is None:
-            return None
-        kwargs: dict[str, Any] = {
-            "max_output_tokens": 700,
-            "response_mime_type": "application/json",
-            "response_schema": {
+        return make_text_config_smart(
+            max_output_tokens=1200,
+            model_name=model_name,
+            thinking_level="high",
+            response_mime_type="application/json",
+            response_schema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string"},
@@ -220,14 +228,7 @@ def _economy_config(model_name: str):
                 },
                 "required": ["title", "author", "description"],
             },
-        }
-        if str(model_name).casefold().startswith("gemini-3"):
-            thinking = _build_thinking_config("minimal")
-            if thinking is not None:
-                kwargs["thinking_config"] = thinking
-        else:
-            kwargs["temperature"] = 0.1
-        return types.GenerateContentConfig(**kwargs)
+        )
     except Exception:
         return None
 
@@ -255,7 +256,7 @@ def fallback_description(title: str, author: str) -> str:
     return "Оригинальная публикация доступна по ссылке."
 
 
-async def _generate_light(source_line: str) -> dict[str, str] | None:
+async def _generate_quality(source_line: str) -> dict[str, str] | None:
     try:
         from core.globals import GEMINI_CLIENTS
     except Exception:
@@ -284,16 +285,16 @@ async def _generate_light(source_line: str) -> dict[str, str] | None:
 Исходная строка: {source}
 """.strip()
     attempts = _env_int("LIVEDUB_PUBLICATION_MAX_ATTEMPTS", 2, 1, 8)
-    per_timeout = _env_int("LIVEDUB_PUBLICATION_ATTEMPT_TIMEOUT_SEC", 14, 5, 45)
-    total_timeout = _env_int("LIVEDUB_PUBLICATION_TOTAL_TIMEOUT_SEC", 28, 8, 90)
+    per_timeout = _env_int("LIVEDUB_PUBLICATION_ATTEMPT_TIMEOUT_SEC", 45, 10, 90)
+    total_timeout = _env_int("LIVEDUB_PUBLICATION_TOTAL_TIMEOUT_SEC", 90, 20, 180)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + total_timeout
     used = 0
     for model in publication_models():
-        config = _economy_config(model)
+        config = _quality_config(model)
         if config is None:
             logger.warning(
-                "[LiveDubPublicationCore] safe minimal config unavailable for %s; "
+                "[LiveDubPublicationCore] quality config unavailable for %s; "
                 "using deterministic fallback instead",
                 model,
             )
@@ -341,7 +342,7 @@ async def _generate_light(source_line: str) -> dict[str, str] | None:
 
 async def _build_uncached(source_line: str, source_url: str) -> dict[str, Any]:
     raw_title, raw_author = split_title_author(source_line)
-    generated = await _generate_light(source_line)
+    generated = await _generate_quality(source_line)
     if generated:
         title = generated["title"]
         author = generated.get("author") or raw_author
