@@ -2,12 +2,12 @@
 """User-facing publication card for LiveDub video and MP3 results.
 
 The internal pipeline needs provider markers so the audio companion can recognise a
-successful LiveDub send.  Users do not need those implementation labels.  This
+successful LiveDub send. Users do not need those implementation labels. This
 adapter is installed between ``livedub_output_policy`` and the audio companion:
 
 * the outer companion still sees the private marker;
-* the Telegram API receives a Russian title, a short light-model description and
-  a link to the source video;
+* the Telegram API receives a Russian title and description generated on the
+  source-owned Gemini 3.6/HIGH semantic route, plus a link to the source video;
 * the MP3 caption contains the useful description/link only — never labels such
   as ``Русская аудиоверсия`` or ``Живые голоса Яндекса``;
 * the old separate ENG Quick info card is satisfied from the same cache and
@@ -130,11 +130,12 @@ def _clean_description(value: Any) -> str:
 
 
 def _fallback_description(title: str, author: str) -> str:
+    """Use metadata-only wording; never invent a sermon thesis in fallback."""
     title = _canonical_title(title) or "этот материал"
     author = _canonical_author(author)
     if author:
-        return f"{author} последовательно рассматривает тему «{title}» и раскрывает её основные мысли."
-    return f"Материал последовательно рассматривает тему «{title}» и раскрывает её основные мысли."
+        return f"Материал {author} на тему «{title}»."
+    return f"Материал на тему «{title}»."
 
 
 def _response_schema() -> dict[str, Any]:
@@ -149,25 +150,20 @@ def _response_schema() -> dict[str, Any]:
     }
 
 
-async def _generate_light_publication(source_line: str) -> dict[str, str] | None:
-    """Translate metadata and write one restrained description in a single cheap call."""
+async def _generate_quality_publication(source_line: str) -> dict[str, str] | None:
+    """Translate metadata and write restrained user copy on Gemini 3.6/HIGH."""
     source = _plain(source_line, 320)
     if not source:
         return None
     try:
         from core.globals import GEMINI_CLIENTS, make_text_config_smart
-        from services.livedub_info import get_light_model, get_light_model_fallbacks
+        from services.livedub_info import DEFAULT_INFO_MODEL
     except Exception:
         return None
     if not GEMINI_CLIENTS:
         return None
 
-    models: list[str] = []
-    for model in [get_light_model(), *get_light_model_fallbacks()]:
-        model = str(model or "").strip()
-        if model and model not in models:
-            models.append(model)
-
+    model = DEFAULT_INFO_MODEL
     prompt = f"""
 Подготовь краткую публикационную карточку для русскоязычного Telegram.
 Исходная строка — название христианского видео и, возможно, имя автора.
@@ -188,45 +184,45 @@ async def _generate_light_publication(source_line: str) -> dict[str, str] | None
 Исходная строка: {source}
 """.strip()
 
-    for model in models:
-        for client_index, client in enumerate(GEMINI_CLIENTS):
-            try:
-                cfg = make_text_config_smart(
-                    temperature=0.1,
-                    max_output_tokens=700,
-                    model_name=model,
-                    thinking_level="minimal",
-                    response_mime_type="application/json",
-                    response_schema=_response_schema(),
-                )
-                response = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                        config=cfg,
-                    ),
-                    timeout=35.0,
-                )
-                raw = str(getattr(response, "text", "") or "").strip()
-                raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
-                data = json.loads(raw)
-                title = _canonical_title(str(data.get("title") or ""))
-                author = _canonical_author(str(data.get("author") or ""))
-                description = _clean_description(data.get("description"))
-                if title and re.search(r"[А-Яа-яЁё]", title) and description:
-                    return {
-                        "title": title,
-                        "author": author,
-                        "description": description,
-                        "model": model,
-                    }
-            except Exception as exc:
-                logger.info(
-                    "[LiveDubPublication] model=%s client=%d failed: %s",
-                    model,
-                    client_index,
-                    str(exc)[:140],
-                )
+    for client_index, client in enumerate(GEMINI_CLIENTS):
+        try:
+            cfg = make_text_config_smart(
+                max_output_tokens=1200,
+                model_name=model,
+                thinking_level="high",
+                response_mime_type="application/json",
+                response_schema=_response_schema(),
+            )
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=cfg,
+                ),
+                timeout=90.0,
+            )
+            raw = str(getattr(response, "text", "") or "").strip()
+            raw = re.sub(
+                r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE
+            ).strip()
+            data = json.loads(raw)
+            title = _canonical_title(str(data.get("title") or ""))
+            author = _canonical_author(str(data.get("author") or ""))
+            description = _clean_description(data.get("description"))
+            if title and re.search(r"[А-Яа-яЁё]", title) and description:
+                return {
+                    "title": title,
+                    "author": author,
+                    "description": description,
+                    "model": model,
+                }
+        except Exception as exc:
+            logger.info(
+                "[LiveDubPublication] model=%s client=%d failed: %s",
+                model,
+                client_index,
+                str(exc)[:140],
+            )
     return None
 
 
@@ -238,7 +234,7 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
         return dict(cached)
 
     original_title, original_author = _split_title_author(source_line)
-    generated = await _generate_light_publication(source_line)
+    generated = await _generate_quality_publication(source_line)
     if generated:
         title = generated["title"]
         author = generated.get("author") or original_author
