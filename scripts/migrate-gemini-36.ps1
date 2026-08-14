@@ -82,8 +82,8 @@ if ($Priority) {
 Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
 Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
 Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"
-Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value "gemini-3.5-flash"
-Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "1"
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value ""
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "0"
 
 # Maximum ASR accuracy in production.
 Set-EnvValue -Name "WHISPER_MODEL" -Value "large-v3"
