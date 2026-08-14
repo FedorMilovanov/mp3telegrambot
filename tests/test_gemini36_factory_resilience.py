@@ -44,6 +44,35 @@ def test_priority_preserves_existing_generate_config():
     assert original == {"max_output_tokens": 12000, "temperature": 0.1}
 
 
+def test_user_visible_publication_uses_only_36_quality_route(monkeypatch):
+    import services.livedub_publication_core as publication
+
+    original_models = publication.publication_models
+    original_config = publication._economy_config
+    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.6-flash")
+    try:
+        resilience._install_publication_quality_route()
+        assert publication.publication_models() == ["gemini-3.6-flash"]
+    finally:
+        publication.publication_models = original_models
+        publication._economy_config = original_config
+
+
+def test_user_visible_publication_rejects_semantic_35_downgrade(monkeypatch):
+    import services.livedub_publication_core as publication
+
+    original_models = publication.publication_models
+    original_config = publication._economy_config
+    monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
+    try:
+        resilience._install_publication_quality_route()
+        with pytest.raises(RuntimeError, match="gemini-3.6-flash"):
+            publication.publication_models()
+    finally:
+        publication.publication_models = original_models
+        publication._economy_config = original_config
+
+
 def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     monkeypatch, tmp_path
 ):
