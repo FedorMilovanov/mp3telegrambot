@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from services.gemini36_factory_resilience import install_gemini36_factory_resilience
 from services.shorts_factory_capacity_runtime import create_factory_plan_resumable
 from services.shorts_factory_editorial_bridge import (
     EDITORIAL_MODE,
@@ -69,6 +70,10 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     import services.shorts_factory_runtime as runtime_module
     from services.shorts_factory_source import _factory_livedub_timeout_seconds
 
+    # Install after the base MAX runtime has imported its modules, but before any
+    # Factory job can run. The installer is fail-closed for invalid service-tier
+    # configuration and never changes the semantic model away from 3.6/HIGH.
+    resilience = install_gemini36_factory_resilience()
     install_mode_ui(mode_module)
 
     # The guarded executor historically re-parsed this one setting with a lower
@@ -230,8 +235,9 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     logger.info(
         "Shorts Factory overload/editorial polish installed: Gemini 3.6/HIGH 3-pass preserved, "
         "Factory-only HTTP retry ownership, capacity-aware resumable client rotation, bounded "
-        "lossless retry cache, canonical LiveDub timeout, active VOT RU proof, complete render "
-        "ai_data, editorial ZIP and standalone ENG editor"
+        "compact-analysis retry cache, canonical LiveDub timeout, active VOT RU proof, complete "
+        "render ai_data, editorial ZIP and standalone ENG editor; resilience=%s",
+        resilience,
     )
     return True
 

@@ -63,16 +63,18 @@ def test_legacy_heavy_fallback_is_neutralized_before_client_creation():
     assert 'os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""' in policy
 
 
-def test_light_publication_uses_35_quota_not_36():
+def test_user_visible_publication_uses_36_high_not_35_utility():
     policy = _max_policy_source()
-    publication = Path("services/livedub_publication_core.py").read_text(
+    resilience = Path("services/gemini36_factory_resilience.py").read_text(
         encoding="utf-8"
     )
     assert 'os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL' in policy
-    assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL' in policy
+    assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""' in policy
+    assert 'os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"' in policy
     assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in policy
-    assert 'os.getenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")' in publication
-    assert '_build_thinking_config("minimal")' in publication
+    assert "_install_publication_quality_route" in resilience
+    assert 'model != "gemini-3.6-flash"' in resilience
+    assert 'thinking_level="high"' in resilience
 
 
 def test_gemini_31_is_not_an_active_project_fallback():
@@ -256,18 +258,3 @@ def test_windows_ffprobe_is_utf8_safe():
     assert '"encoding": "utf-8"' in src
     assert '"errors": "replace"' in src
     assert "mix.probe_video_meta = utf8_probe" in src
-
-
-def test_env_migration_script_sets_heavy_36_light_35_models():
-    script = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
-    assert 'GEMINI_MODEL" -Value "gemini-3.6-flash' in script
-    assert 'LIVEDUB_INFO_MODEL" -Value "gemini-3.6-flash' in script
-    assert 'LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.6-flash' in script
-    assert 'GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite' in script
-    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash' in script
-    assert 'GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"' in script
-    assert 'LIVEDUB_INFO_FALLBACK_MODELS" -Value ""' in script
-    assert 'WHISPER_MODEL" -Value "large-v3"' in script
-    assert "gemini-3.1" not in script
-    assert "gemini-2.5" not in script
-    assert ".bak-gemini36-" in script

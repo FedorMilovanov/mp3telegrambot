@@ -1,6 +1,7 @@
 param(
     [string]$EnvPath = "",
-    [switch]$NoTtsFallback
+    [switch]$NoTtsFallback,
+    [switch]$Priority
 )
 
 Set-StrictMode -Version Latest
@@ -45,8 +46,8 @@ function Set-EnvValue {
     }
 }
 
-# Heavy semantic work: Gemini 3.6 Flash + high thinking. Do not silently
-# downgrade Factory/analysis/translation-QA to 3.5 when a key is exhausted.
+# Verified production semantic route: Gemini 3.6 Flash + HIGH thinking.
+# Do not silently downgrade Factory/analysis/translation-QA to 3.5.
 Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.6-flash"
 Set-EnvValue -Name "GEMINI_MAX_MODEL" -Value "gemini-3.6-flash"
 Set-EnvValue -Name "GEMINI_FORCE_THINKING_LEVEL" -Value "high"
@@ -63,14 +64,26 @@ Set-EnvValue -Name "LIVEDUB_LONG_QA_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_QA_VERIFY_THINKING" -Value "high"
 Set-EnvValue -Name "SHORTS_FACTORY_MODEL" -Value "gemini-3.6-flash"
 
-# Light work: spend the separate 3.5 quota for titles, compact descriptions,
-# small rewrites/formatting. 3.5 Flash is the fallback for 3.5 Flash-Lite;
-# never burn the 3.6 quota just because a light-model quota is exhausted.
+# Gemini-only analysis surrogate. This does not alter original video, LiveDub
+# media, render sources or Whisper input. 128 kbps mono/48 kHz is deliberately
+# conservative while avoiding the former hundreds-of-megabytes FLAC upload.
+Set-EnvValue -Name "SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS" -Value "128"
+Set-EnvValue -Name "SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE" -Value "48000"
+
+# Priority inference is a premium Tier 2/3 feature. Enable it only when this
+# switch is explicitly supplied; otherwise production remains on Standard.
+if ($Priority) {
+    Set-EnvValue -Name "GEMINI_SERVICE_TIER" -Value "priority"
+} else {
+    Set-EnvValue -Name "GEMINI_SERVICE_TIER" -Value "standard"
+}
+
+# Light work: separate 3.5 quota for explicitly mechanical utility only.
 Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
 Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value "gemini-3.5-flash"
 Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"
-Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value "gemini-3.5-flash"
-Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "1"
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value ""
+Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "0"
 
 # Maximum ASR accuracy in production.
 Set-EnvValue -Name "WHISPER_MODEL" -Value "large-v3"
@@ -86,10 +99,11 @@ if (-not $NoTtsFallback) {
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllLines($EnvPath, $lines, $utf8NoBom)
 
-Write-Host "✅ .env обновлён: heavy 3.6 / light 3.5" -ForegroundColor Green
-Write-Host "   Heavy: gemini-3.6-flash / thinking=high / no model downgrade"
-Write-Host "   Light: gemini-3.5-flash-lite -> gemini-3.5-flash"
-Write-Host "   Light -> 3.6 fallback: disabled"
-Write-Host "   Shorts Factory: gemini-3.6-flash / high"
+$tier = if ($Priority) { "priority" } else { "standard" }
+Write-Host "✅ .env обновлён: Gemini 3.6 / HIGH / без semantic downgrade" -ForegroundColor Green
+Write-Host "   Heavy: gemini-3.6-flash / thinking=high"
+Write-Host "   Factory Gemini audio: AAC mono 128 kbps / 48 kHz"
+Write-Host "   Service tier: $tier"
+Write-Host "   Light utility only: gemini-3.5-flash-lite -> gemini-3.5-flash"
 Write-Host "   Whisper: large-v3"
 Write-Host "💾 Резервная копия: $backup" -ForegroundColor Cyan
