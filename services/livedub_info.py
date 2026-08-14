@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Lightweight info cards for ENG Quick / LiveDub videos.
+"""Quality-first info cards for ENG Quick / LiveDub videos.
 
-Purpose: produce small text assets (Telegram description, YouTube description,
-compact subtitle-like bullets) without running the heavy audio-analysis pipeline.
-Uses Gemini 3.5 Flash-Lite only for genuinely light/mechanical text work.
+These fields are user-visible semantic output: Telegram/YouTube copy, compact
+meaning summaries, theological terms and Scripture references.  The module owns
+the production route directly so correctness does not depend on a later runtime
+monkey-patch or import order: Gemini 3.6 Flash with HIGH thinking, no semantic
+3.5/Lite fallback.
 """
 from __future__ import annotations
 
@@ -16,7 +18,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.database import GEMINI_MODEL
 from core.globals import GEMINI_CLIENTS, make_text_config_smart
 from core.text_utils import (
     _scrub_inline,
@@ -31,7 +32,9 @@ from services.livedub_qa import srt_to_timed_text
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LIGHT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_INFO_MODEL = "gemini-3.6-flash"
+# Compatibility alias for older diagnostics/tests that imported this symbol.
+DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 
 
 def livedub_info_enabled() -> bool:
@@ -44,30 +47,29 @@ def livedub_info_enabled() -> bool:
 
 
 def get_light_model() -> str:
-    return (
-        os.getenv("GEMINI_LIGHT_MODEL", DEFAULT_LIGHT_MODEL) or DEFAULT_LIGHT_MODEL
+    """Return the approved semantic model (legacy helper name kept for callers)."""
+    configured = (
+        os.getenv("LIVEDUB_INFO_MODEL", DEFAULT_INFO_MODEL) or DEFAULT_INFO_MODEL
     ).strip()
+    if configured != DEFAULT_INFO_MODEL:
+        logger.warning(
+            "[LiveDubInfo] refusing semantic model override %r; using %s",
+            configured,
+            DEFAULT_INFO_MODEL,
+        )
+    return DEFAULT_INFO_MODEL
 
 
 def get_light_model_fallbacks() -> list[str]:
-    # 3.1 and 2.x models are retired from this project.  The only explicit
-    # light fallback is strong GA Gemini 3.5 Flash; the project main model
-    # (normally Gemini 3.6 Flash) remains the final quality fallback.
-    raw = os.getenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash").strip()
-    out: list[str] = []
-    for item in raw.split(","):
-        model = item.strip()
-        if model and model not in out and model != get_light_model():
-            out.append(model)
-    if os.getenv("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }:
-        if GEMINI_MODEL and GEMINI_MODEL not in out and GEMINI_MODEL != get_light_model():
-            out.append(GEMINI_MODEL)
-    return out
+    """Never downgrade user-visible info-card semantics to the utility lane."""
+    configured = os.getenv("LIVEDUB_INFO_FALLBACK_MODELS", "").strip()
+    if configured:
+        logger.warning(
+            "[LiveDubInfo] ignoring semantic fallback models %r; quality route is %s only",
+            configured,
+            DEFAULT_INFO_MODEL,
+        )
+    return []
 
 
 def livedub_info_response_schema() -> dict:
@@ -170,21 +172,18 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         ],
         "scripture_references": scripture[:5],
         "source_url": _safe_text(source_url or fb.get("source_url"), 500),
-        "source": "gemini_light",
+        "source": "gemini_quality",
     }
     for tag in hashtags[:8]:
         norm = normalize_hashtag(str(tag or ""))
         if norm and norm not in out["hashtags"]:
             out["hashtags"].append(norm)
 
-    # Добавляем хэштег автора, если он есть в заголовке
-    if fallback_title:
-        # Пытаемся вытащить автора из "Название - Автор"
-        if " - " in fallback_title:
-            author_part = fallback_title.split(" - ", 1)[1]
-            author_tag = normalize_hashtag(author_part)
-            if author_tag and author_tag not in out["hashtags"]:
-                out["hashtags"].insert(0, author_tag)
+    if fallback_title and " - " in fallback_title:
+        author_part = fallback_title.split(" - ", 1)[1]
+        author_tag = normalize_hashtag(author_part)
+        if author_tag and author_tag not in out["hashtags"]:
+            out["hashtags"].insert(0, author_tag)
 
     return out
 
@@ -201,13 +200,7 @@ async def build_livedub_info_card(
     source_url: str = "",
     force: bool = False,
 ) -> dict | None:
-    """Build a small reusable description pack for a translated LiveDub video.
-
-    Returns a dict or None. Never raises. Each request takes an immutable snapshot
-    of the Gemini clients. This is important because Telegram processes several
-    updates concurrently; reordering the shared ``GEMINI_CLIENTS`` list during an
-    await can route unrelated analyses through the wrong API-key order.
-    """
+    """Build a quality-first reusable description pack for translated LiveDub."""
     if not (force or livedub_info_enabled()):
         return None
     fallback = _fallback_card(title_line, source_url)
@@ -262,10 +255,9 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
         for model in models:
             try:
                 cfg = make_text_config_smart(
-                    temperature=0.2,
                     max_output_tokens=1200,
                     model_name=model,
-                    thinking_level="minimal",
+                    thinking_level="high",
                     response_mime_type="application/json",
                     response_schema=livedub_info_response_schema(),
                 )
@@ -275,7 +267,7 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
                         contents=prompt,
                         config=cfg,
                     ),
-                    timeout=60.0,
+                    timeout=90.0,
                 )
                 raw = _strip_json_fence(getattr(resp, "text", "") or "")
                 data = json.loads(raw)
@@ -293,14 +285,13 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
 
     if last_error:
         logger.info(
-            "[LiveDubInfo] all clients/models failed (%s) — fallback",
+            "[LiveDubInfo] all clients/models failed (%s) — deterministic fallback",
             str(last_error)[:160],
         )
     return fallback
 
 
-# The quality runtime checks this marker and must not install its historical
-# global-list rotation wrapper around the native multi-client implementation.
+# Native request-local multi-client support is concurrency-safe.
 build_livedub_info_card._mp3bot_all_clients = True  # type: ignore[attr-defined]
 
 
@@ -336,7 +327,6 @@ def format_livedub_info_message(card: dict) -> str:
     terms = card.get("key_theological_terms") or []
     if terms:
         lines += ["", "🧠 <b>Богословские термины</b>"]
-        # Выводим термины в одну строку через пробел, как хэштеги.
         tags = []
         for term in terms[:6]:
             tag_body = "".join(word.capitalize() for word in str(term).split())
