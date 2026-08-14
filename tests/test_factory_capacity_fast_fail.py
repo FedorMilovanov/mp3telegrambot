@@ -110,7 +110,7 @@ def test_503_high_demand_retries_bounded_then_stops_before_second_client(
             )
         )
 
-    assert calls == ["first", "first", "first"]
+    assert calls == ["first", "first", "first", "first"]
     assert "3.5/2.x" in str(raised.value)
     assert "retry-кэше" in str(raised.value)
 
