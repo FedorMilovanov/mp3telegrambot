@@ -33,10 +33,14 @@ def test_ci_uses_node24_actions_and_runs_repository_verifier():
 
 
 def test_factory_retry_messages_match_analysis_audio_contract():
-    src = _read("services/shorts_factory_overload_runtime.py")
-    assert "использую уже проверенное analysis-аудио" in src
-    assert "загружаю analysis-аудио" in src
-    assert "Analysis-аудио сохранено в retry-кэше" in src
+    retry_cache = _read("services/shorts_factory_retry_cache.py")
+    capacity = _read("services/shorts_factory_capacity_runtime.py")
+
+    assert "использую уже проверенное analysis-аудио" in retry_cache
+    assert "загружаю analysis-аудио" in capacity
+    assert "загруженном analysis-аудио" in capacity
+    assert "shorts_factory_overload_runtime" not in retry_cache
+    assert "shorts_factory_overload_runtime" not in capacity
 
 
 def test_user_visible_publication_sources_have_no_minimal_or_sampling_route():
