@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -15,13 +16,24 @@ from services.async_worker import await_owned_coroutine
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FACTORY_WHISPER_MODEL = "large-v3"
 FACTORY_SUBTITLE_PROFILE: dict[str, Any] = {
-    "model_name": "large-v3",
+    "model_name": DEFAULT_FACTORY_WHISPER_MODEL,
     "karaoke": True,
     "word_timestamps": True,
     "light": False,
     "gemini_hints": True,
 }
+
+
+def factory_subtitle_profile() -> dict[str, Any]:
+    """Return the strict Factory profile without changing global subtitle settings."""
+    profile = dict(FACTORY_SUBTITLE_PROFILE)
+    profile["model_name"] = (
+        os.getenv("SHORTS_FACTORY_WHISPER_MODEL", "").strip()
+        or DEFAULT_FACTORY_WHISPER_MODEL
+    )
+    return profile
 
 
 def resolve_subtitle_profile(override: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -171,7 +183,9 @@ async def transcribe_short_clip(
 
 
 __all__ = [
+    "DEFAULT_FACTORY_WHISPER_MODEL",
     "FACTORY_SUBTITLE_PROFILE",
+    "factory_subtitle_profile",
     "resolve_subtitle_profile",
     "transcribe_short_clip",
 ]
