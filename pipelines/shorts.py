@@ -26,6 +26,10 @@ from services.shorts_video import (
 from services.shorts_subtitle_burn import burn_subtitles_into_short
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.shorts_candidates import create_shorts_candidates
+from services.shorts_factory_media import (
+    align_livedub_candidates,
+    probe_livedub_source_duration,
+)
 from services.media_delivery_probe import (
     file_size_mb,
     media_probe_is_deliverable,
@@ -116,11 +120,21 @@ async def process_and_send_shorts(
     MP3-пайплайн не затронут.
     """
     video_path = None
+    livedub_source: Path | None = None
     short_paths: list[Path] = []
     poster_paths: list[Path] = []
     speed = float(await ashorts_speed_get())
     _keep_for_montage = False
     try:
+        if livedub_video_path:
+            candidate_source = Path(livedub_video_path)
+            if candidate_source.exists():
+                livedub_source = candidate_source
+                duration = int(round(await probe_livedub_source_duration(
+                    livedub_source,
+                    fallback_duration=float(duration or 0),
+                )))
+
         candidates = await create_shorts_candidates(
             mp3_path=mp3_path,
             ai_data=ai_data,
@@ -131,14 +145,20 @@ async def process_and_send_shorts(
             existing_client=existing_client,
             speed=speed,
         )
+        if livedub_source is not None:
+            candidates = align_livedub_candidates(
+                candidates,
+                source_duration=float(duration),
+                public_max_seconds=180.0,
+            )
         if not candidates:
             logger.info("Shorts: кандидаты не найдены")
             return
 
         logger.info(f"Shorts: найдено {len(candidates)} кандидатов, скачиваю видео...")
 
-        if livedub_video_path and livedub_video_path.exists():
-            video_path = livedub_video_path
+        if livedub_source is not None:
+            video_path = livedub_source
             logger.info(f"Shorts: using LiveDub video: {video_path.name}")
         else:
             video_path = await download_video_for_shorts(url, media_id, workdir=workdir)
@@ -155,7 +175,11 @@ async def process_and_send_shorts(
         do_normalize     = await asettings_get("shorts_audio_normalize")
         do_snapshot      = await asettings_get("shorts_snapshot")
         do_subtitles     = await asettings_get("shorts_subtitles")
-        do_boundary_pad  = await asettings_get("shorts_boundary_padding")
+        do_boundary_pad  = (
+            False
+            if livedub_source is not None
+            else await asettings_get("shorts_boundary_padding")
+        )
         do_title_poster  = await asettings_get("shorts_title_poster")
         _keep_for_montage = (
             await asettings_get("shorts_montage")
@@ -628,7 +652,7 @@ async def process_and_send_shorts(
                 pass
         if video_path:
             try:
-                _borrowed = livedub_video_path is not None and video_path == livedub_video_path
+                _borrowed = livedub_source is not None and video_path == livedub_source
                 if not _keep_for_montage and not _borrowed:
                     video_path.unlink(missing_ok=True)
             except Exception:
