@@ -37,7 +37,7 @@ async def process_single_video(
     silent_errors: bool = False,
 ):
     """Dispatch exactly one video according to the persisted user mode."""
-    from handlers.mode_command import get_user_mode
+    from handlers.mode_command import EDITORIAL_MODE, get_user_mode
 
     user_id = _effective_user_id(update)
     mode = await get_user_mode(user_id) if user_id else "rus"
@@ -58,8 +58,6 @@ async def process_single_video(
             context=context,
             silent_errors=silent_errors,
         )
-
-    from services.shorts_factory_editorial_bridge import EDITORIAL_MODE
 
     if mode == EDITORIAL_MODE:
         from services.shorts_factory_editorial_bridge import (
