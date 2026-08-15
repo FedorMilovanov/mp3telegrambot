@@ -18,10 +18,12 @@ from services.clip_renderer import clip_snap_ceiling, render_clip
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.render_clips_montage import build_clip_caption, create_clip_snapshot
 from services.shorts_candidates import create_clips_candidates
+from services.shorts_factory_publication import wrap_factory_caption_builder
 from services.shorts_video import download_video_for_shorts
 
 logger = logging.getLogger(__name__)
 PUBLIC_CLIP_DURATION_EPSILON_SEC = 0.05
+_FACTORY_CLIP_CAPTION_BUILDER = wrap_factory_caption_builder(build_clip_caption)
 
 
 def _clips_candidate_budget_seconds() -> float:
@@ -58,12 +60,9 @@ async def process_and_send_clips(
     candidates_override: list[dict[str, Any]] | None = None,
     public_max_seconds: float | None = None,
     snapshot_override: bool | None = None,
+    factory_publication: bool = False,
 ) -> int:
-    """Render and send long clips, returning the number actually delivered.
-
-    Factory passes judged candidates and its public duration cap explicitly.
-    Ordinary Clips keep the historical candidate search/settings path.
-    """
+    """Render and send long clips, returning the number actually delivered."""
     video_path: Path | None = None
     borrowed_video = False
     clip_paths: list[Path] = []
@@ -117,14 +116,16 @@ async def process_and_send_clips(
             if snapshot_override is not None
             else bool(await asettings_get("clips_snapshot"))
         )
+        caption_builder = _FACTORY_CLIP_CAPTION_BUILDER if factory_publication else build_clip_caption
 
         total = len(candidates)
         logger.info(
-            "Clips: format=%s snapshot=%s candidates=%d public_max=%s",
+            "Clips: format=%s snapshot=%s candidates=%d public_max=%s factory_publication=%s",
             format_name,
             do_snapshot,
             total,
             public_max_seconds,
+            factory_publication,
         )
 
         for i, candidate in enumerate(candidates, 1):
@@ -227,7 +228,7 @@ async def process_and_send_clips(
                 except Exception as snap_err:
                     logger.warning("Clips %d/%d snapshot error: %s", i, total, snap_err)
 
-            caption = build_clip_caption(
+            caption = caption_builder(
                 candidate=candidate,
                 performer=performer,
                 real_author=real_author,
