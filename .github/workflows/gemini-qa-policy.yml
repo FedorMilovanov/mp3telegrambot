@@ -6,14 +6,18 @@ on:
     branches: ["main"]
     paths:
       - "services/__init__.py"
+      - "services/pre_main_policy.py"
       - "services/gemini_qa_policy.py"
+      - "services/runtime_manifest.py"
       - "tests/test_gemini_qa_policy.py"
       - ".github/workflows/gemini-qa-policy.yml"
   push:
     branches: ["main"]
     paths:
       - "services/__init__.py"
+      - "services/pre_main_policy.py"
       - "services/gemini_qa_policy.py"
+      - "services/runtime_manifest.py"
       - "tests/test_gemini_qa_policy.py"
       - ".github/workflows/gemini-qa-policy.yml"
 
@@ -29,10 +33,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -42,6 +46,8 @@ jobs:
       - name: Compile policy and bootstrap
         run: |
           python -m py_compile services/gemini_qa_policy.py
+          python -m py_compile services/pre_main_policy.py
+          python -m py_compile services/runtime_manifest.py
           python -m py_compile services/__init__.py
 
       - name: Run policy regression tests
@@ -51,4 +57,6 @@ jobs:
         run: >-
           python -m ruff check --select E9,F63,F7,F82
           services/gemini_qa_policy.py
+          services/pre_main_policy.py
+          services/runtime_manifest.py
           tests/test_gemini_qa_policy.py
