@@ -105,14 +105,14 @@ async def test_generic_normalize_only_packet_copies_video(monkeypatch, tmp_path)
     input_path.write_bytes(b"input")
     commands = []
 
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "/usr/bin/ffmpeg")
 
     async def fake_run(command, *, timeout, text):
         commands.append((list(command), timeout, text))
         output_path.write_bytes(b"output")
         return SimpleNamespace(returncode=0, stderr="")
 
-    monkeypatch.setattr(shorts_video, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", fake_run)
 
     assert shorts_video._normalize_only_can_copy_video(
         normalize_audio=True,
@@ -142,8 +142,8 @@ async def test_generic_normalize_only_packet_copies_video(monkeypatch, tmp_path)
 
 def test_generic_transform_uses_copy_only_for_audio_only_unity_path():
     source = Path("services/shorts_video.py").read_text(encoding="utf-8")
-    start = source.index("async def _unowned_short_transform")
-    end = source.index("async def _unowned_create_short_title_poster", start)
+    start = source.index("async def _owned_short_transform")
+    end = source.index("async def _owned_optional_output", start)
     transform = source[start:end]
 
     assert "_normalize_only_can_copy_video(" in transform
