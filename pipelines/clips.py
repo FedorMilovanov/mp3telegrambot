@@ -6,6 +6,7 @@ import asyncio
 import copy
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from services.clip_renderer import clip_snap_ceiling, render_clip
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.render_clips_montage import build_clip_caption, create_clip_snapshot
 from services.shorts_candidates import create_clips_candidates
+from services.shorts_factory_long_fit import fit_factory_long_clip_to_limit
 from services.shorts_factory_publication import wrap_factory_caption_builder
 from services.shorts_video import download_video_for_shorts
 
@@ -117,7 +119,11 @@ async def process_and_send_clips(
             if snapshot_override is not None
             else bool(await asettings_get("clips_snapshot"))
         )
-        caption_builder = _FACTORY_CLIP_CAPTION_BUILDER if factory_publication else build_clip_caption
+        caption_builder = (
+            _FACTORY_CLIP_CAPTION_BUILDER
+            if factory_publication
+            else build_clip_caption
+        )
 
         total = len(candidates)
         logger.info(
@@ -206,15 +212,73 @@ async def process_and_send_clips(
                 )
                 continue
 
+            max_upload_mb = float(get_max_file_size_mb())
             clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
-            if clip_size_mb > get_max_file_size_mb():
+            if clip_size_mb > max_upload_mb:
+                if not factory_publication:
+                    logger.warning(
+                        "Clips %d/%d: file too large (%.0fMB)",
+                        i,
+                        total,
+                        clip_size_mb,
+                    )
+                    continue
+                ffmpeg = shutil.which("ffmpeg")
+                if not ffmpeg:
+                    logger.warning(
+                        "Factory Clip %d/%d requires ffmpeg for long-fit",
+                        i,
+                        total,
+                    )
+                    continue
                 logger.warning(
-                    "Clips %d/%d: file too large (%.0fMB)",
+                    "Factory Clip %d/%d exceeds upload limit: %.1fMB > %.1fMB; "
+                    "fitting the exact audited interval",
                     i,
                     total,
                     clip_size_mb,
+                    max_upload_mb,
                 )
-                continue
+                fitted = await fit_factory_long_clip_to_limit(
+                    video_path,
+                    clip_path,
+                    start_seconds,
+                    end_seconds,
+                    max_file_size_mb=max_upload_mb,
+                    ffmpeg=ffmpeg,
+                )
+                if not fitted:
+                    continue
+                clip_probe = await probe_media_async(clip_path)
+                if not media_probe_is_deliverable(clip_probe):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted file failed media probe",
+                        i,
+                        total,
+                    )
+                    continue
+                assert clip_probe is not None
+                delivery_duration = float(clip_probe.duration)
+                if (
+                    public_max_seconds is not None
+                    and delivery_duration
+                    > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
+                ):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted duration %.3fs exceeds %.3fs",
+                        i,
+                        total,
+                        delivery_duration,
+                        float(public_max_seconds),
+                    )
+                    continue
+                if clip_path.stat().st_size > int(max_upload_mb * 1024 * 1024):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted file still exceeds upload limit",
+                        i,
+                        total,
+                    )
+                    continue
 
             thumb_buf = None
             if do_snapshot:
