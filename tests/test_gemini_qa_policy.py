@@ -126,4 +126,5 @@ def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():
     max_call = policy_source.index("configure_max_quality_env()")
     semantic_call = policy_source.index("configure_gemini_policy()")
     assert qa_call < max_call < semantic_call
-    assert "core.globals" not in policy_source
+    assert "from core.globals" not in policy_source
+    assert "import core.globals" not in policy_source

@@ -85,6 +85,15 @@ def run_bot_process(main_module: ModuleType) -> int:
     runner = getattr(main_module, "run_bot_async", None)
     if not callable(runner):
         raise RuntimeError("main.run_bot_async is required.")
+    from services.restart_state_runtime import reset_cross_loop_state
+
+    cleared = reset_cross_loop_state()
+    total_cleared = sum(int(value or 0) for value in cleared.values())
+    if total_cleared:
+        logger.warning(
+            "Restart state cleared before bot loop: %s",
+            ", ".join(f"{key}={value}" for key, value in cleared.items()),
+        )
     _start_health_thread(main_module)
     result: Any = asyncio.run(runner())
     if result in {None, "stop_requested"}:

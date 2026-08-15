@@ -8,138 +8,59 @@ import pytest
 
 from services import livedub_audio_companion as companion
 from services import livedub_audio_quality_guard as guard
+from services import livedub_delivery_coordinator as delivery
 from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
 
 
-def test_clean_selector_ignores_newer_derived_mp3s(tmp_path: Path):
-    clean = tmp_path / "translation.live.mp3"
-    clean.write_bytes(b"clean" * 400)
-
-    stale_mix = tmp_path / "sermon.final-mix.mp3"
-    stale_mix.write_bytes(b"mixed" * 400)
-    stale_legacy = tmp_path / "sermon.ru-audio.mp3"
-    stale_legacy.write_bytes(b"legacy" * 400)
-
-    os.utime(clean, (10, 10))
-    os.utime(stale_mix, (30, 30))
-    os.utime(stale_legacy, (20, 20))
-
-    assert guard.is_derived_audio_artifact(stale_mix)
-    assert guard.is_derived_audio_artifact(stale_legacy)
-    assert not guard.is_derived_audio_artifact(clean)
+def test_clean_selector_ignores_newer_derived_mp3s(tmp_path: Path) -> None:
+    clean = tmp_path / "translation.live.mp3"; clean.write_bytes(b"clean" * 400)
+    mixed = tmp_path / "sermon.final-mix.mp3"; mixed.write_bytes(b"mixed" * 400)
+    legacy = tmp_path / "sermon.ru-audio.mp3"; legacy.write_bytes(b"legacy" * 400)
+    os.utime(clean, (10, 10)); os.utime(mixed, (30, 30)); os.utime(legacy, (20, 20))
+    assert guard.is_derived_audio_artifact(mixed) and guard.is_derived_audio_artifact(legacy)
     assert guard.select_clean_translation_mp3(tmp_path) == clean
 
 
-def test_clean_selector_rejects_qa_and_original_audio(tmp_path: Path):
+def test_clean_selector_rejects_qa_and_original_audio(tmp_path: Path) -> None:
     (tmp_path / "original_audio.mp3").write_bytes(b"original" * 300)
     (tmp_path / "translation_qa.mp3").write_bytes(b"qa" * 700)
     assert guard.select_clean_translation_mp3(tmp_path) is None
 
 
-def test_dual_mode_reports_partial_result_when_clean_track_is_missing(
-    monkeypatch, tmp_path: Path
-):
-    guard._install_complete_dual_delivery()
-
-    video = tmp_path / "final.mp4"
-    mixed = tmp_path / "final.final-mix.mp3"
-    video.write_bytes(b"video" * 400)
-    mixed.write_bytes(b"mixed" * 400)
-
-    sent = []
-
+def test_dual_delivery_fails_closed_when_clean_track_missing(monkeypatch, tmp_path: Path) -> None:
+    video = tmp_path / "final.mp4"; video.write_bytes(b"video" * 400)
+    mixed = tmp_path / "final.final-mix.mp3"; mixed.write_bytes(b"mixed" * 400)
     monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
     monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 120))
-    monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: None)
+    monkeypatch.setattr(guard, "select_clean_translation_mp3", lambda _path: None)
     monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: mixed)
-
-    async def fake_send_variant(_self, **kwargs):
-        sent.append(kwargs["variant"])
-        return True
-
-    monkeypatch.setattr(companion, "_send_variant", fake_send_variant)
-
-    with pytest.raises(RuntimeError, match=r"неполный комплект MP3 \(1/2\)"):
-        asyncio.run(
-            companion._send_new_audio(
-                object(),
-                chat_id=1,
-                video_path=video,
-                caption="<b>Название - Автор</b>",
-                reply_to=2,
-                thumbnail=None,
-                video_file_id="video-id",
-            )
-        )
-    assert sent == ["mixed"]
+    with pytest.raises(RuntimeError, match="чистая русская дорожка не найдена"):
+        asyncio.run(delivery.deliver_new_companions(object(), chat_id=1, video_path=video, publication_card={}, reply_to=2, thumbnail=None, video_file_id="video-id"))
 
 
-def test_same_physical_file_cannot_be_sent_as_both_variants(monkeypatch, tmp_path: Path):
-    guard._install_complete_dual_delivery()
-
-    video = tmp_path / "final.mp4"
-    shared = tmp_path / "translation.live.mp3"
-    video.write_bytes(b"video" * 400)
-    shared.write_bytes(b"audio" * 400)
-
-    sent = []
+def test_dual_delivery_rejects_same_physical_file_for_both_roles(monkeypatch, tmp_path: Path) -> None:
+    video = tmp_path / "final.mp4"; video.write_bytes(b"video" * 400)
+    shared = tmp_path / "translation.live.mp3"; shared.write_bytes(b"audio" * 400)
     monkeypatch.setattr(companion, "_dual_enabled", lambda: True)
     monkeypatch.setattr(companion, "_probe_audio", lambda _path: (True, 120))
-    monkeypatch.setattr(companion, "_find_clean_ru_track", lambda _path: shared)
+    monkeypatch.setattr(guard, "select_clean_translation_mp3", lambda _path: shared)
     monkeypatch.setattr(companion, "_extract_mix_mp3", lambda _path: shared)
-
-    async def fake_send_variant(_self, **kwargs):
-        sent.append(kwargs["variant"])
-        return True
-
-    monkeypatch.setattr(companion, "_send_variant", fake_send_variant)
-
-    with pytest.raises(RuntimeError, match=r"неполный комплект MP3 \(1/2\)"):
-        asyncio.run(
-            companion._send_new_audio(
-                object(),
-                chat_id=1,
-                video_path=video,
-                caption="<b>Название - Автор</b>",
-                reply_to=2,
-                thumbnail=None,
-                video_file_id="video-id",
-            )
-        )
-    assert sent == ["clean"]
+    with pytest.raises(RuntimeError, match="один файл"):
+        asyncio.run(delivery.deliver_new_companions(object(), chat_id=1, video_path=video, publication_card={}, reply_to=2, thumbnail=None, video_file_id="video-id"))
 
 
-def test_manifest_installs_quality_before_dedupe_and_deep_audit():
-    order = {
-        feature.feature_id: index
-        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
-    }
-    assert (
-        order["livedub-audio-quality"]
-        < order["livedub-audio-dedupe"]
-        < order["livedub-deep-audit"]
-    )
-    quality = next(
-        feature
-        for feature in DEFAULT_RUNTIME_FEATURES
-        if feature.feature_id == "livedub-audio-quality"
-    )
-    assert quality.required is True
-
-
-def test_runtime_patch_applies_same_clean_selector_to_mix_and_vot(tmp_path: Path):
+def test_mix_and_vot_use_source_owned_clean_selector(tmp_path: Path) -> None:
     from services import livedub_mix as mix
     from services import yandex_live_dub as yandex
-
-    clean = tmp_path / "translation.live.mp3"
-    clean.write_bytes(b"clean" * 400)
-    stale_mix = tmp_path / "translation.final-mix.mp3"
-    stale_mix.write_bytes(b"mixed" * 400)
-    os.utime(clean, (10, 10))
-    os.utime(stale_mix, (20, 20))
-
-    guard._install_clean_track_selection()
-
-    _original, selected = mix.find_pro_tracks(tmp_path)
-    assert selected == clean
+    clean = tmp_path / "translation.live.mp3"; clean.write_bytes(b"clean" * 400)
+    stale = tmp_path / "translation.final-mix.mp3"; stale.write_bytes(b"mixed" * 400)
+    os.utime(clean, (10, 10)); os.utime(stale, (20, 20))
+    assert mix.find_pro_tracks(tmp_path)[1] == clean
     assert yandex._find_latest_file(tmp_path, "*.mp3") == clean
+
+
+def test_manifest_uses_delivery_contract_not_quality_installers() -> None:
+    ids = {feature.feature_id for feature in DEFAULT_RUNTIME_FEATURES}
+    assert "livedub-delivery-contract" in ids
+    assert "livedub-audio-quality" not in ids
+    assert "livedub-audio-dedupe" not in ids

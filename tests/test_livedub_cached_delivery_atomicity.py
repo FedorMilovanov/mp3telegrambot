@@ -229,17 +229,8 @@ def test_new_local_video_is_not_deleted_when_mp3_companion_fails():
     assert bot.deleted is False
 
 
-def test_manifest_keeps_cached_transaction_before_capturing_wrappers():
-    order = {
-        feature.feature_id: index
-        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
-    }
-    assert (
-        order["livedub-audio-companion"]
-        < order["livedub-audio-quality"]
-        < order["livedub-ru-provenance"]
-        < order["livedub-new-delivery-atomicity"]
-        < order["livedub-cached-delivery-atomicity"]
-        < order["livedub-audio-dedupe"]
-        < order["livedub-deep-audit"]
-    )
+def test_manifest_uses_single_explicit_cached_delivery_contract():
+    ids = {feature.feature_id for feature in DEFAULT_RUNTIME_FEATURES}
+    assert "livedub-delivery-contract" in ids
+    assert "livedub-cached-delivery-atomicity" not in ids
+    assert "livedub-audio-dedupe" not in ids

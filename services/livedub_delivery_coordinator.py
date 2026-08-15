@@ -510,6 +510,23 @@ def create_source_audio_deferral(
 
 
 
+def reset_delivery_runtime_state() -> int:
+    """Release unfinished companion followers while preserving confirmed success TTLs."""
+    with _COMPANION_LOCK:
+        pending = list(_COMPANION_INFLIGHT.values())
+        _COMPANION_INFLIGHT.clear()
+
+    released = 0
+    for future in pending:
+        try:
+            if not future.done():
+                future.set_result(False)
+            released += 1
+        except Exception:
+            continue
+    return released
+
+
 def validate_livedub_delivery_contract() -> str:
     """Fail startup when the explicit source-owned delivery surface regresses."""
     import services.livedub_audio_companion as companion
@@ -533,6 +550,7 @@ def validate_livedub_delivery_contract() -> str:
         deliver_new_companions,
         deliver_cached_companions,
         create_source_audio_deferral,
+        reset_delivery_runtime_state,
     )
     if not all(callable(item) for item in required):
         raise RuntimeError("explicit LiveDub delivery contract is incomplete")
@@ -548,5 +566,6 @@ __all__ = [
     "delete_message_best_effort",
     "deliver_cached_companions",
     "deliver_new_companions",
+    "reset_delivery_runtime_state",
     "validate_livedub_delivery_contract",
 ]

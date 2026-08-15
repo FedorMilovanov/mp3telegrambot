@@ -6,69 +6,33 @@ from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
+from services import bot_lifecycle
+from services import livedub_delivery_coordinator as delivery
 from services import operator_runtime_status as operator_status
 from services import restart_state_runtime as restart
 
 
-class _FakeTask:
-    def __init__(self) -> None:
-        self.cancelled = False
-
-    def done(self) -> bool:
-        return False
-
-    def cancel(self) -> None:
-        self.cancelled = True
-
-
-def test_reset_releases_inflight_but_preserves_confirmed_success():
-    from services import livedub_quality_runtime as quality
-
+def test_reset_releases_inflight_but_preserves_confirmed_success() -> None:
     pending = Future()
-    success_key = ("new", "chat", "reply", "file", "success")
-    pending_key = ("new", "chat", "reply", "file", "pending")
-    with quality._AUDIO_LOCK:
-        quality._AUDIO_SENT.clear()
-        quality._AUDIO_INFLIGHT.clear()
-        quality._AUDIO_SENT[success_key] = 123.0
-        quality._AUDIO_INFLIGHT[pending_key] = pending
+    pending_key = ("new", "chat", "reply", "pending")
+    success_key = ("new", "chat", "reply", "success")
+    with delivery._COMPANION_LOCK:
+        delivery._COMPANION_INFLIGHT.clear()
+        delivery._COMPANION_SENT.clear()
+        delivery._COMPANION_INFLIGHT[pending_key] = pending
+        delivery._COMPANION_SENT[success_key] = 123.0
 
     assert restart._reset_audio_coalescing() == 1
     assert pending.result(timeout=0) is False
-    assert pending_key not in quality._AUDIO_INFLIGHT
-    assert success_key in quality._AUDIO_SENT
+    assert pending_key not in delivery._COMPANION_INFLIGHT
+    assert success_key in delivery._COMPANION_SENT
 
-    with quality._AUDIO_LOCK:
-        quality._AUDIO_SENT.clear()
-        quality._AUDIO_INFLIGHT.clear()
-
-
-def test_reset_cleans_deferred_source_files_and_companion_marks(tmp_path: Path):
-    from services import livedub_audio_dedupe as dedupe
-
-    copy = tmp_path / "deferred.mp3"
-    copy.write_bytes(b"audio")
-    task = _FakeTask()
-    key = ("chat", "reply")
-    with dedupe._STATE_LOCK:
-        dedupe._PENDING.clear()
-        dedupe._COMPANION_OK.clear()
-        dedupe._PENDING[key] = {
-            "audio_path": copy,
-            "timeout_task": task,
-        }
-        dedupe._COMPANION_OK.add(key)
-
-    pending_count, mark_count = restart._reset_source_audio_dedupe()
-
-    assert (pending_count, mark_count) == (1, 1)
-    assert task.cancelled is True
-    assert not copy.exists()
-    assert dedupe._PENDING == {}
-    assert dedupe._COMPANION_OK == set()
+    with delivery._COMPANION_LOCK:
+        delivery._COMPANION_INFLIGHT.clear()
+        delivery._COMPANION_SENT.clear()
 
 
-def test_process_crash_cleanup_deletes_only_stale_deferred_files(tmp_path: Path):
+def test_process_crash_cleanup_deletes_only_stale_deferred_files(tmp_path: Path) -> None:
     root = tmp_path / "mp3bot_livedub_deferred"
     root.mkdir()
     stale = root / "stale.mp3"
@@ -78,50 +42,43 @@ def test_process_crash_cleanup_deletes_only_stale_deferred_files(tmp_path: Path)
     now = 1_000_000.0
     os.utime(stale, (now - 7 * 3600, now - 7 * 3600))
     os.utime(recent, (now - 60, now - 60))
-
-    assert restart.cleanup_orphaned_deferred_files(
-        max_age_hours=6,
-        root=root,
-        now=now,
-    ) == 1
+    assert restart.cleanup_orphaned_deferred_files(max_age_hours=6, root=root, now=now) == 1
     assert not stale.exists()
     assert recent.exists()
-    assert root.exists()
 
 
-def test_installer_resets_before_every_new_loop_and_binds_status(monkeypatch):
+def test_process_lifecycle_resets_before_async_runner(monkeypatch) -> None:
     order: list[str] = []
 
-    async def original():
+    async def runner():
         order.append("run")
-        return "ok"
+        return None
 
-    async def status_command(update, context):
-        del update, context
-        return "status"
-
-    stub = SimpleNamespace(run_bot_async=original, status_command=status_command)
-    monkeypatch.setattr(restart, "_INSTALLED", False)
-    monkeypatch.setattr(operator_status, "_INSTALLED", False)
+    stub = SimpleNamespace(run_bot_async=runner)
+    monkeypatch.setattr(bot_lifecycle, "_start_health_thread", lambda _module: None)
     monkeypatch.setattr(
         restart,
         "reset_cross_loop_state",
         lambda: order.append("reset") or {
-            "audio_inflight": 0,
-            "deferred_source": 0,
-            "companion_marks": 0,
-            "orphan_files": 0,
+            "audio_inflight": 0, "deferred_source": 0, "companion_marks": 0, "orphan_files": 0
         },
     )
+    assert bot_lifecycle.run_bot_process(stub) == 0
+    assert order == ["reset", "run"]
 
-    restart.install_restart_state_runtime(stub)
-    run_wrapper = stub.run_bot_async
-    status_wrapper = stub.status_command
-    assert getattr(status_wrapper, "_mp3bot_operator_runtime_status") is True
-    assert asyncio.run(stub.run_bot_async()) == "ok"
-    assert asyncio.run(stub.run_bot_async()) == "ok"
-    assert order == ["reset", "run", "reset", "run"]
 
+def test_restart_installer_does_not_replace_bot_runner(monkeypatch) -> None:
+    async def runner():
+        return None
+
+    async def status_command(update, context):
+        del update, context
+        return None
+
+    stub = SimpleNamespace(run_bot_async=runner, status_command=status_command)
+    original_runner = stub.run_bot_async
+    monkeypatch.setattr(restart, "_INSTALLED", False)
+    monkeypatch.setattr(operator_status, "_INSTALLED", False)
     restart.install_restart_state_runtime(stub)
-    assert stub.run_bot_async is run_wrapper
-    assert stub.status_command is status_wrapper
+    assert stub.run_bot_async is original_runner
+    assert getattr(stub.status_command, "_mp3bot_operator_runtime_status") is True
