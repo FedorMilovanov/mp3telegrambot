@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
-from services.gemini36_factory_resilience import install_gemini36_factory_resilience
 from services.shorts_factory_capacity_runtime import create_factory_plan_resumable
 from services.shorts_factory_editorial_bridge import (
     EDITORIAL_MODE,
@@ -70,15 +69,11 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     import services.shorts_factory_runtime as runtime_module
     from services.shorts_factory_source import _factory_livedub_timeout_seconds
 
-    # Install after the base MAX runtime has imported its modules, but before any
-    # Factory job can run. The installer is fail-closed for invalid service-tier
-    # configuration and never changes the semantic model away from 3.6/HIGH.
-    resilience = install_gemini36_factory_resilience()
+    # Gemini audio encoding and service tier are source-owned now. This layer
+    # retains only overload/editorial behavior until those seams are moved into
+    # the Factory owner as well.
     install_mode_ui(mode_module)
 
-    # The guarded executor historically re-parsed this one setting with a lower
-    # 60-second floor. Keep the production LiveDub timeout owner singular so a
-    # local env override cannot cancel a valid long Yandex translation early.
     original_guard_env_int = guard_module._env_int
 
     def canonical_guard_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -233,11 +228,10 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     cleanup_pending_sources()
     _INSTALLED = True
     logger.info(
-        "Shorts Factory overload/editorial polish installed: Gemini 3.6/HIGH 3-pass preserved, "
+        "Shorts Factory overload/editorial polish installed: Gemini config is source-owned; "
         "Factory-only HTTP retry ownership, capacity-aware resumable client rotation, bounded "
         "compact-analysis retry cache, canonical LiveDub timeout, active VOT RU proof, complete "
-        "render ai_data, editorial ZIP and standalone ENG editor; resilience=%s",
-        resilience,
+        "render ai_data, editorial ZIP and standalone ENG editor"
     )
     return True
 
