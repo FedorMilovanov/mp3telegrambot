@@ -2,9 +2,9 @@
 """Ordinary Shorts source-window and public-duration safety.
 
 The ordinary Shorts pipeline still uses this policy while its remaining state
-is moved into the pipeline owner.  Silence snapping is already explicit: the
-calculated absolute ceiling is passed directly to ``render_short_clip`` and no
-imported function is rebound.
+is moved into the pipeline owner. Silence snapping is explicit: the calculated
+absolute ceiling is passed directly to ``render_short_clip`` and no imported
+Factory state or render function is consulted.
 """
 from __future__ import annotations
 
@@ -30,15 +30,6 @@ _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "ordinary_shorts_duration_safety",
     default=None,
 )
-
-
-def _factory_active() -> bool:
-    try:
-        import services.shorts_factory_runtime as runtime
-
-        return runtime._FACTORY_SETTINGS.get() is not None
-    except Exception:
-        return False
 
 
 def _finite_float(value: Any, default: float | None = None) -> float | None:
@@ -134,8 +125,6 @@ def plan_short_source_window(
     if render_end <= render_start:
         return None
 
-    # Renderer may round a snapped end. Use a whole-second ceiling which cannot
-    # round beyond the public source budget or the proved source duration.
     snap_ceiling = math.floor(render_start + source_budget + 1e-9)
     if source_limit > 0.0:
         snap_ceiling = min(snap_ceiling, math.floor(source_limit + 1e-9))
@@ -201,8 +190,6 @@ def install_shorts_duration_safety() -> bool:
     original_resolve_timing = shorts_module.resolve_delivery_timing
 
     async def safe_process(*args, **kwargs):
-        if _factory_active():
-            return await original_process(*args, **kwargs)
         state = {
             "speed": 1.0,
             "boundary_padding": False,
@@ -222,7 +209,7 @@ def install_shorts_duration_safety() -> bool:
     async def safe_speed_get():
         value = await original_speed_get()
         state = _STATE.get()
-        if state is not None and not _factory_active():
+        if state is not None:
             parsed = _finite_float(value)
             if parsed is not None and parsed > 0.0:
                 state["speed"] = parsed
@@ -231,14 +218,14 @@ def install_shorts_duration_safety() -> bool:
     async def safe_setting_get(key: str):
         value = await original_setting_get(key)
         state = _STATE.get()
-        if state is not None and not _factory_active() and key == "shorts_boundary_padding":
+        if state is not None and key == "shorts_boundary_padding":
             state["boundary_padding"] = bool(value)
         return value
 
     async def safe_candidates(*args, **kwargs):
         candidates = await original_candidates(*args, **kwargs)
         state = _STATE.get()
-        if state is None or _factory_active() or not isinstance(candidates, list):
+        if state is None or not isinstance(candidates, list):
             return candidates
         speed = float(state.get("speed") or 1.0)
         enriched: list[Any] = []
@@ -262,7 +249,7 @@ def install_shorts_duration_safety() -> bool:
         visual_mode="full_frame_vertical",
     ):
         state = _STATE.get()
-        if state is None or _factory_active():
+        if state is None:
             return await original_render(
                 source_video_path,
                 output_path,
@@ -322,7 +309,7 @@ def install_shorts_duration_safety() -> bool:
             speed=speed,
         )
         state = _STATE.get()
-        if state is not None and not _factory_active():
+        if state is not None:
             index = _short_index_from_path(output_path) or state.get("current_index")
             if index is not None and short_speed_transform_required(speed):
                 state.setdefault("speed_transform", {})[index] = bool(result)
@@ -335,7 +322,7 @@ def install_shorts_duration_safety() -> bool:
             max_size_mb=max_size_mb,
         )
         state = _STATE.get()
-        if state is None or _factory_active():
+        if state is None:
             return decision
         index = _short_index_from_path(primary_path) or state.get("current_index")
         speed = state.get("speed", 1.0)
@@ -360,7 +347,7 @@ def install_shorts_duration_safety() -> bool:
     async def safe_probe(path, *, timeout=20):
         probe = await original_probe(path, timeout=timeout)
         state = _STATE.get()
-        if state is None or _factory_active() or probe is None:
+        if state is None or probe is None:
             return probe
         index = _short_index_from_path(path)
         if index is None:
@@ -391,7 +378,7 @@ def install_shorts_duration_safety() -> bool:
         final_duration=0.0,
     ):
         state = _STATE.get()
-        if state is not None and not _factory_active():
+        if state is not None:
             index = state.get("current_index")
             render_window = state.get("render_windows", {}).get(index)
             source_start = authoritative_short_source_start(source_start, render_window)
