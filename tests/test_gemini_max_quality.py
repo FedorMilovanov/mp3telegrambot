@@ -52,13 +52,34 @@ def test_utility_work_uses_35_quota_without_semantic_fallback():
 
 def test_publication_metadata_directly_owns_36_high_quality_route():
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
-    resilience = Path("services/gemini36_factory_resilience.py").read_text(encoding="utf-8")
     assert '_PUBLICATION_MODEL = "gemini-3.6-flash"' in publication
     assert 'thinking_level="high"' in publication
     assert "GEMINI_LIGHT_MODEL" not in publication
     assert "temperature=" not in publication
-    assert "_verify_publication_quality_route" in resilience
-    assert "publication.publication_models =" not in resilience
+    assert "gemini36_factory_resilience" not in publication
+
+
+def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
+    source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
+    capacity = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
+    globals_src = Path("core/globals.py").read_text(encoding="utf-8")
+
+    assert not Path("services/gemini36_factory_resilience.py").exists()
+    assert '"-ac",\n        "1"' in source
+    assert '"-c:a",\n        "aac"' in source
+    assert '"-b:a",\n        f"{bitrate}k"' in source
+    assert "_GEMINI_ANALYSIS_BITRATE_KBPS = 128" in source
+    assert "_GEMINI_ANALYSIS_SAMPLE_RATE = 48000" in source
+
+    assert "_FACTORY_CAPACITY_PASS_ATTEMPTS = 4" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 3.0" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 20.0" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 2.0" in capacity
+
+    assert "def configured_gemini_service_tier()" in globals_src
+    assert 'kwargs["service_tier"] = "priority"' in globals_src
+    assert globals_src.count("_apply_gemini_service_tier(kwargs)") >= 2
+    assert "sys.modules" not in globals_src
 
 
 def test_pre_main_manifest_owns_quality_before_core_clients():
