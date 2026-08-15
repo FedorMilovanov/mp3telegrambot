@@ -1,0 +1,83 @@
+name: Source-owned runtime cleanup staging
+
+on:
+  push:
+    branches:
+      - agent/no-monkey-patch-runtime-refactor-staging
+
+permissions:
+  contents: write
+
+jobs:
+  refactor-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+      - name: Apply deterministic source-owned cleanup
+        run: python tools/_stage_source_owned_runtime_tests.py
+      - name: Compile changed runtime and tests
+        run: |
+          python -m py_compile \
+            services/livedub_delivery_coordinator.py \
+            services/restart_state_runtime.py \
+            services/bot_lifecycle.py \
+            tests/test_gemini_qa_policy.py \
+            tests/test_services_import_diagnostics.py \
+            tests/test_service_bootstrap_diagnostic_detail.py \
+            tests/test_restart_state_runtime.py \
+            tests/test_livedub_audio_cache_recovery.py \
+            tests/test_livedub_ru_provenance.py \
+            tests/test_livedub_install_order.py \
+            tests/test_audio_conversion_postcondition.py \
+            tests/test_livedub_quality_runtime.py \
+            tests/test_livedub_audio_companion.py \
+            tests/test_livedub_audio_quality_guard.py \
+            tests/test_livedub_qa_reporting_hardening.py \
+            tests/test_shorts_static_runtime.py \
+            tests/test_livedub_cached_delivery_atomicity.py \
+            tests/test_livedub_deep_audit.py
+      - name: Run focused regressions
+        run: |
+          python -m pytest -q \
+            tests/test_gemini_qa_policy.py \
+            tests/test_services_import_diagnostics.py \
+            tests/test_service_bootstrap_diagnostic_detail.py \
+            tests/test_restart_state_runtime.py \
+            tests/test_livedub_audio_cache_recovery.py \
+            tests/test_livedub_ru_provenance.py \
+            tests/test_livedub_install_order.py \
+            tests/test_audio_conversion_postcondition.py \
+            tests/test_livedub_quality_runtime.py \
+            tests/test_livedub_audio_companion.py \
+            tests/test_livedub_audio_quality_guard.py \
+            tests/test_livedub_qa_reporting_hardening.py \
+            tests/test_shorts_static_runtime.py \
+            tests/test_livedub_cached_delivery_atomicity.py \
+            tests/test_livedub_deep_audit.py \
+            tests/test_explicit_livedub_delivery_transactions.py \
+            tests/test_explicit_livedub_delivery_architecture.py \
+            tests/test_no_runtime_surgery_contract.py
+      - name: Ruff fatal checks
+        run: python -m ruff check --select E9,F63,F7,F82 services/livedub_delivery_coordinator.py services/restart_state_runtime.py services/bot_lifecycle.py tests/test_gemini_qa_policy.py tests/test_services_import_diagnostics.py tests/test_service_bootstrap_diagnostic_detail.py tests/test_restart_state_runtime.py tests/test_livedub_audio_cache_recovery.py tests/test_livedub_ru_provenance.py tests/test_livedub_install_order.py tests/test_audio_conversion_postcondition.py tests/test_livedub_quality_runtime.py tests/test_livedub_audio_companion.py tests/test_livedub_audio_quality_guard.py tests/test_livedub_qa_reporting_hardening.py tests/test_shorts_static_runtime.py tests/test_livedub_cached_delivery_atomicity.py tests/test_livedub_deep_audit.py
+      - name: Commit tested cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Align runtime regressions with explicit ownership"
+          git push origin HEAD:agent/no-monkey-patch-runtime-refactor-staging
