@@ -162,7 +162,12 @@ def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
     assert "probe_livedub_source_duration(" in shorts_source
     assert "align_livedub_candidates(" in shorts_source
     assert "if livedub_source is not None" in shorts_source
-    assert 'else await asettings_get("shorts_boundary_padding")' in shorts_source
+    compact_shorts = " ".join(shorts_source.split())
+    assert (
+        'do_boundary_pad = ( False if livedub_source is not None else bool(await asettings_get("shorts_boundary_padding")) )'
+        in compact_shorts
+    )
+    assert "boundary_padding=do_boundary_pad" in shorts_source
 
     assert "probe_livedub_source_duration(" in clips_source
     assert "align_livedub_candidates(" in clips_source
