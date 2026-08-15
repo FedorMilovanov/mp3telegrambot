@@ -337,17 +337,17 @@ def test_factory_portable_wrapper_is_true_noop_for_non_factory_candidates():
     assert len(calls) == 1
 
 
-def test_factory_quality_policy_install_order_precedes_disk_and_execution_guards():
-    gate = Path("services/shorts_factory_quality_gate.py").read_text(
-        encoding="utf-8"
-    )
+def test_factory_quality_publication_dependencies_are_direct_not_installed():
+    gate = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
+    source_owner = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
+    capacity_owner = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
+    short_delivery = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
+    clips = Path("pipelines/clips.py").read_text(encoding="utf-8")
 
-    source_pos = gate.index("if not install_factory_source_quality_policy():")
-    video_pos = gate.index("if not install_factory_video_quality_policy():")
-    portable_pos = gate.index("if not install_factory_portable_publication():")
-    disk_pos = gate.index("if not install_factory_disk_guard():")
-    execution_pos = gate.index(
-        "if not install_shorts_factory_execution_guard():"
-    )
-
-    assert source_pos < video_pos < portable_pos < disk_pos < execution_pos
+    assert "install_factory_plan_quality_gate" not in gate
+    assert "create_factory_plan_resumable" in source_owner
+    assert "apply_factory_quality_gate" in capacity_owner
+    assert "wrap_factory_caption_builder" in short_delivery
+    assert "wrap_factory_caption_builder" in clips
+    assert "shorts_factory_runtime" not in source_owner
+    assert "shorts_factory_overload_runtime" not in source_owner
