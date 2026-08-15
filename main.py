@@ -18,7 +18,7 @@ from core.database import (
 )
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
+    Application, ApplicationHandlerStop, CommandHandler, MessageHandler, TypeHandler,
     CallbackQueryHandler, PollAnswerHandler, filters,
 )
 from services.shorts_video import (
@@ -742,6 +742,21 @@ async def run_bot_async():
             builder.local_mode(True)
 
     app = builder.build()
+
+    # Source-owned polling reliability: inspect every update before normal
+    # handlers without replacing PTB class methods globally.
+    from services.polling_reliability_runtime import (
+        accept_pending_update,
+        polling_error_callback,
+    )
+
+    async def _pending_update_guard(update, context):
+        del context
+        if not accept_pending_update(update, app.bot_data):
+            raise ApplicationHandlerStop
+
+    app.add_handler(TypeHandler(Update, _pending_update_guard), group=-100)
+
     # FIX 2026-06-10: edited-команды (юзер отредактировал «/modе» → «/mode»)
     # проходят CommandHandler через effective_message, но хендлеры читают
     # update.message (None для edited) → AttributeError. Только новые сообщения.
@@ -853,7 +868,8 @@ async def run_bot_async():
             # pool_timeout kwargs; timeouts are configured on HTTPXRequest above.
             await app.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
+                drop_pending_updates=False,
+                error_callback=polling_error_callback,
             )
         except Exception:
             # If polling fails after app.start(), __aexit__ can't shutdown a

@@ -536,8 +536,10 @@ def test_livedub_file_id_cache_wired():
     assert "adb_set_livedub_file_id" in src
     assert "current_livedub_file_id_cache_version" in src
     assert "кэш file_id устарел" in src
-    # протухший file_id: чистим кэш и сообщаем, НЕ оставляем юзера молча
-    assert "Кэшированный перевод устарел" in src
+    # протухший video/file-id или companion pair: rollback + понятное сообщение
+    assert "deliver_cached_companions" in src
+    assert "delete_message_best_effort" in src
+    assert "Кэшированный перевод или его MP3-комплект устарел" in src
 
 
 def test_db_livedub_file_id_roundtrip(tmp_path, monkeypatch):
@@ -921,12 +923,14 @@ def test_livedub_info_message_uses_safe_html_trim():
     assert "[:3900]" not in src
 
 
-def test_livedub_info_card_sent_for_cached_file_id_too():
+def test_cached_livedub_uses_unified_publication_card_and_companion_transaction():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     helper = src[src.index("async def _send_livedub_result"):src.index("performer, title = parse_title")]
-    cached_block = helper[helper.index("if _livedub_cached_file_id and context:"):helper.index("except Exception as _fid_err")]
-    assert "await _send_livedub_info_card_once(None)" in cached_block
-    assert "async def _send_livedub_info_card_once" in helper
+    cached_block = helper[helper.index("if _livedub_cached_file_id and context:"):helper.index("if not live_dub_task:")]
+    assert "format_video_caption(_publication_card" in cached_block
+    assert "deliver_cached_companions" in cached_block
+    assert "_send_livedub_info_card_once" not in helper
+
 
 
 def test_quick_qa_report_sent_after_video_not_before():
@@ -937,14 +941,15 @@ def test_quick_qa_report_sent_after_video_not_before():
     assert helper.index("_sent_msg = await context.bot.send_video") < helper.index("if _quick_qa_report_html:")
 
 
-def test_livedub_info_card_wired_for_eng_quick_and_quick_qa():
+def test_quick_modes_share_unified_publication_metadata_without_second_ai_card():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "livedub_info_enabled" in src
     assert 'user_mode in ("eng_fast", "eng_fast_qa")' in src
-    assert 'user_mode not in ("eng_fast", "eng_fast_qa")' in src
-    assert "build_livedub_info_card" in src
-    assert "format_livedub_info_message" in src
+    assert "build_publication_card" in src
+    assert "format_video_caption(_publication_card" in src
+    assert "_send_livedub_info_card_once" not in src
+    assert "format_livedub_info_message" not in src
     assert "get_translation_subtitles(video_url, workdir)" in src
+
 
 
 def test_livedub_light_model_env_documented():

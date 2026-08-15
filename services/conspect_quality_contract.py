@@ -8,7 +8,7 @@ imports its prompt/schema helpers.  It has three goals:
 * preserve the established Study-only ❌/✅ orthodoxy pair-card structure;
 * replace decorative dictionary cards with verse-first contextual word studies.
 
-The patch deliberately does not rewrite ``SYNOPSIS_PROMPT_V2``.
+No runtime patching is performed and ``SYNOPSIS_PROMPT_V2`` is never rewritten.
 """
 from __future__ import annotations
 

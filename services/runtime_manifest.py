@@ -274,12 +274,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "polling-reliability",
-        "services.polling_reliability_runtime",
-        "install_polling_reliability_runtime",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
         "shorts-visual-policy",
         "services.shorts_static_runtime",
         "install_short_static_runtime",
