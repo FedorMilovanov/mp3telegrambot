@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -115,24 +116,31 @@ def _parse_json_payload(raw: str) -> dict[str, Any]:
     return data
 
 
-def _seconds(value: Any) -> int:
+def _seconds(value: Any) -> float:
+    """Parse Factory boundaries without throwing away sub-second audit precision."""
     if isinstance(value, (int, float)):
-        return max(0, int(round(float(value))))
-    text = str(value or "").strip()
-    if not text:
-        return 0
-    if re.fullmatch(r"\d+(?:\.\d+)?", text):
-        return max(0, int(round(float(text))))
-    parts = text.split(":")
-    try:
-        nums = [float(part) for part in parts]
-    except ValueError:
-        return 0
-    if len(nums) == 2:
-        return max(0, int(round(nums[0] * 60 + nums[1])))
-    if len(nums) == 3:
-        return max(0, int(round(nums[0] * 3600 + nums[1] * 60 + nums[2])))
-    return 0
+        seconds = float(value)
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return 0.0
+        if re.fullmatch(r"\d+(?:\.\d+)?", text):
+            seconds = float(text)
+        else:
+            parts = text.split(":")
+            try:
+                nums = [float(part) for part in parts]
+            except ValueError:
+                return 0.0
+            if len(nums) == 2:
+                seconds = nums[0] * 60.0 + nums[1]
+            elif len(nums) == 3:
+                seconds = nums[0] * 3600.0 + nums[1] * 60.0 + nums[2]
+            else:
+                return 0.0
+    if not math.isfinite(seconds):
+        return 0.0
+    return round(max(0.0, seconds), 3)
 
 
 def _clean_tags(value: Any) -> list[str]:
