@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Install focused test runner
+        run: python -m pip install --disable-pip-version-check -q pytest
       - name: Apply deterministic polish
         run: python tools/_stage_explicit_livedub_polish.py
       - name: Compile and run focused behavior tests
