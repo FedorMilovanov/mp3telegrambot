@@ -164,7 +164,7 @@ jobs:
             handlers/dub_wizard/__init__.py
       - name: Run focused contracts
         run: |
-          pytest -q \
+          python -m pytest -q \
             tests/test_clean_reference_transport.py \
             tests/test_clean_runtime_contract.py \
             tests/test_clean_runtime_setting_types.py \
