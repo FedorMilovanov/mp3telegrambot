@@ -99,6 +99,10 @@ def normalize_structured_block(raw: Any) -> dict[str, Any] | None:
         return None
     block = dict(raw)
     original_type = str(block.get("type") or "paragraph").strip().lower()
+    if original_type in {"word_study", "wordstudy"}:
+        from core.study_quality import normalize_word_study_or_drop
+
+        return normalize_word_study_or_drop(block)
     btype = canonical_block_type(original_type)
     block["type"] = btype
 

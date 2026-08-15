@@ -12,15 +12,13 @@ The patch deliberately does not rewrite ``SYNOPSIS_PROMPT_V2``.
 """
 from __future__ import annotations
 
-from copy import deepcopy
 import logging
 import re
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _CONTRACT_MARKER = "OPERATOR CONSPECT CONTRACT 2026-07-23"
-_INSTALLED = False
 _DROPPED_LEXICON_SHAPES: set[tuple[str, ...]] = set()
 
 
@@ -239,66 +237,15 @@ def normalize_word_study_block(raw: dict[str, Any]) -> dict[str, Any] | None:
     return {"type": "paragraph", "text": "\n\n".join(parts)}
 
 
-def _patch_structured_block_normalizer() -> None:
-    from core import structured_blocks
-
-    current = structured_blocks.normalize_structured_block
-    if getattr(current, "_operator_conspect_contract", False):
-        return
-
-    original: Callable[[Any], dict[str, Any] | None] = current
-
-    def normalize_with_word_study(raw: Any) -> dict[str, Any] | None:
-        if isinstance(raw, dict):
-            btype = _clean(raw.get("type")).lower()
-            if btype in {"word_study", "wordstudy"}:
-                return normalize_word_study_block(raw)
-            if btype in {"lexicon", "term", "lexical_analysis"}:
-                # Legacy cards are accepted only when they satisfy the new
-                # verse-first contract; thin lemma/role cards are discarded.
-                return normalize_word_study_block(raw)
-        return original(raw)
-
-    normalize_with_word_study._operator_conspect_contract = True  # type: ignore[attr-defined]
-    structured_blocks.normalize_structured_block = normalize_with_word_study
-
-
-def _patch_expanded_schema() -> None:
-    from core import candidate_schema
-
-    current = candidate_schema.expanded_page_response_schema
-    if getattr(current, "_operator_conspect_contract", False):
-        return
-
-    original = current
-
-    def schema_with_word_study() -> dict:
-        schema = deepcopy(original())
-        block = schema["properties"]["sections"]["items"]["properties"]["blocks"]["items"]
-        enum = block["properties"]["type"].setdefault("enum", [])
-        if "word_study" not in enum:
-            enum.append("word_study")
-        for field in _WORD_STUDY_FIELDS:
-            block["properties"].setdefault(field, {"type": "string"})
-        return schema
-
-    schema_with_word_study._operator_conspect_contract = True  # type: ignore[attr-defined]
-    candidate_schema.expanded_page_response_schema = schema_with_word_study
-
 
 def install_conspect_quality_contract() -> str:
-    """Install prompt/schema/normalizer hardening before page modules import."""
-    global _INSTALLED
-    if _INSTALLED:
-        return "conspect contract already installed"
+    """Compatibility validator; schema/normalization are source-owned."""
+    from core.candidate_schema import expanded_page_response_schema
 
-    from core import prompts
-
-    # Deliberately leave SYNOPSIS_PROMPT_V2 and SYNOPSIS_PROMPT_QA untouched.
-    prompts.STUDY_ANALYSIS_PROMPT = build_hardened_study_prompt(
-        prompts.STUDY_ANALYSIS_PROMPT
+    block = (
+        expanded_page_response_schema()["properties"]["sections"]["items"]
+        ["properties"]["blocks"]["items"]
     )
-    _patch_expanded_schema()
-    _patch_structured_block_normalizer()
-    _INSTALLED = True
-    return "verbatim Synopsis preserved; deep Study + contextual word studies enforced"
+    if "word_study" not in block["properties"]["type"].get("enum", []):
+        raise RuntimeError("word_study is missing from the canonical expanded-page schema")
+    return "source-owned Study schema/normalization; no runtime patching"

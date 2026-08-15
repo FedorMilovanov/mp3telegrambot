@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.structured_blocks import normalize_structured_block
+from core.core_utils import time_to_seconds
+from core.study_quality import collect_teacherly_study_warnings
 from core.synopsis_timestamps import reconcile_synopsis_timestamps
 from core.text_utils import (
     find_mixed_greek_cyrillic_tokens,
@@ -43,6 +45,22 @@ _THIRD_PERSON_RE = re.compile(
 _SOURCE_MAP_HEADING_RE = re.compile(r"карта\s+источников", re.IGNORECASE)
 _TRANSLATION_FORKS_HEADING_RE = re.compile(r"переводческ\w*\s+развил", re.IGNORECASE)
 _BULLET_LINE_RE = re.compile(r"^\s*[•\-]\s+(.+?)\s*$")
+_INLINE_EXPANDED_TS_RE = re.compile(
+    r"⏱️?\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}"
+)
+
+
+def _all_inline_expanded_timestamps(section: dict[str, Any]) -> list[str]:
+    values = [str(section.get("content") or "")]
+    for block in section.get("blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        values.extend(value for value in block.values() if isinstance(value, str))
+    return [
+        match.group(1)
+        for value in values
+        for match in _INLINE_EXPANDED_TS_RE.finditer(value)
+    ]
 
 # AUDIT R45 (живой скриншот 2026-07-11): промт дважды прямым текстом запрещает
 # пары ❌/✅ в Reflection ("этот формат только для Study Analysis"), но модель
@@ -506,6 +524,13 @@ def audit_expanded_sections(
                     continue
                 block = normalize_structured_block(raw_block) or dict(raw_block)
                 block_loc = f"{base_loc}.blocks[{bidx}]"
+                if block.get("_drop_word_study"):
+                    issues.append(ContentAuditIssue(
+                        code="word_study_dropped",
+                        location=block_loc,
+                        message="incomplete decorative word-study removed; page preserved",
+                    ))
+                    continue
                 issues.extend(_validate_block_required_fields(block, location=block_loc))
                 issues.extend(_audit_structured_block_semantics(
                     block,
@@ -572,6 +597,42 @@ def audit_expanded_sections(
         oi["title"] = new_title
         new_outline.append(oi)
 
+    # Reconcile tiny section-start rounding drift with inline evidence. Genuine
+    # retrospective links (>30s) are preserved exactly.
+    for sidx, section in enumerate(new_sections):
+        section_time = str(section.get("time") or "").strip()
+        section_sec = time_to_seconds(section_time)
+        inline = [
+            (stamp, time_to_seconds(stamp))
+            for stamp in _all_inline_expanded_timestamps(section)
+        ]
+        inline = [(stamp, sec) for stamp, sec in inline if sec is not None]
+        if section_sec is None or not inline:
+            continue
+        earliest_stamp, earliest_sec = min(inline, key=lambda item: item[1])
+        delta = section_sec - earliest_sec
+        if 0 < delta <= 30:
+            old_time = section_time
+            section["time"] = earliest_stamp
+            if sidx < len(new_outline) and isinstance(new_outline[sidx], dict):
+                new_outline[sidx]["time"] = earliest_stamp
+            issues.append(ContentAuditIssue(
+                code="section_time_reconciled",
+                location=f"{label or 'expanded'}.sections[{sidx}].time",
+                message=f"section start moved {delta}s earlier to match inline timestamp",
+                before=old_time,
+                after=earliest_stamp,
+            ))
+
+    if label == "StudyAnalysis":
+        for finding in collect_teacherly_study_warnings(new_sections):
+            issues.append(ContentAuditIssue(
+                code=finding["code"],
+                location=finding["location"],
+                message=finding["message"],
+                before=finding.get("before", ""),
+            ))
+
     # Synopsis has two independently generated views of one timeline: section
     # starts and inline anchors.  Reconcile them at the audit boundary so both
     # the initial generation and a later density retry return the same fixed
@@ -609,6 +670,10 @@ _WARNING_CODES = {
     "application_anchor_missing_warning",
     "section_time_reconcile_blocked",
     "section_start_non_monotonic",
+    "study_checklist_prose_warning",
+    "study_fragmented_cards_warning",
+    "study_bold_anchor_missing_warning",
+    "study_template_architecture_warning",
 }
 
 

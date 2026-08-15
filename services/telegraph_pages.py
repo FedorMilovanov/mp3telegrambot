@@ -32,7 +32,8 @@ from core.json_parser import (
 )
 from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
 from core.utils import format_timestamp               # FIX telegraph_pages
-from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
+from core.prompts import REFLECTION_APPLICATION_PROMPT
+from services.study_synthesis_policy import TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.source_packs import get_source_pack_for_ai_data
 from core.candidate_schema import expanded_page_response_schema
@@ -1167,10 +1168,14 @@ async def _retry_expanded_sections_for_content_audit(
     retry_sections, retry_outline, retry_issues = audit_expanded_sections(
         retry_sections, retry_outline if isinstance(retry_outline, list) else [], label=label, expected_author=expected_author
     )
-    if _audit_warning_count(retry_issues) <= _audit_warning_count(issues):
+    before_warnings = _audit_warning_count(issues)
+    after_warnings = _audit_warning_count(retry_issues)
+    improved = after_warnings < before_warnings
+    non_study_no_worse = label != "StudyAnalysis" and after_warnings == before_warnings
+    if improved or non_study_no_worse:
         logger.info(
             "%s: content audit retry accepted warnings %d -> %d",
-            label, _audit_warning_count(issues), _audit_warning_count(retry_issues),
+            label, before_warnings, after_warnings,
         )
         return retry_sections, retry_outline, retry_issues
     logger.warning(

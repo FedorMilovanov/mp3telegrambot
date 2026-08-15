@@ -286,12 +286,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "conspect-quality-bootstrap",
-        "services.conspect_bootstrap",
-        "configure_conspect_runtime",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
         "livedub-long-qa",
         "services.livedub_long_qa",
         "install_livedub_long_qa",
