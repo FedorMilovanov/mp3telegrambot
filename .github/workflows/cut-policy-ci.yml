@@ -9,7 +9,6 @@ on:
       - "services/cut_replay_delivery_policy.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
-      - "services/shorts_factory_no_downgrade.py"
       - "services/shorts_factory_source.py"
       - "services/shorts_factory_capacity.py"
       - "services/shorts_factory_capacity_runtime.py"
@@ -18,6 +17,9 @@ on:
       - "services/shorts_factory_long_fit.py"
       - "services/shorts_factory_media.py"
       - "services/shorts_factory_timing.py"
+      - "services/shorts_transcription.py"
+      - "services/shorts_video.py"
+      - "services/clip_renderer.py"
       - "pipelines/shorts_factory.py"
       - "pipelines/factory_short_delivery.py"
       - "pipelines/video_dispatch.py"
@@ -46,7 +48,6 @@ on:
       - "services/cut_replay_delivery_policy.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
-      - "services/shorts_factory_no_downgrade.py"
       - "services/shorts_factory_source.py"
       - "services/shorts_factory_capacity.py"
       - "services/shorts_factory_capacity_runtime.py"
@@ -55,6 +56,9 @@ on:
       - "services/shorts_factory_long_fit.py"
       - "services/shorts_factory_media.py"
       - "services/shorts_factory_timing.py"
+      - "services/shorts_transcription.py"
+      - "services/shorts_video.py"
+      - "services/clip_renderer.py"
       - "pipelines/shorts_factory.py"
       - "pipelines/factory_short_delivery.py"
       - "pipelines/video_dispatch.py"
@@ -119,7 +123,6 @@ jobs:
           services/cut_replay_delivery_policy.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
-          services/shorts_factory_no_downgrade.py
           services/shorts_factory_source.py
           services/shorts_factory_capacity.py
           services/shorts_factory_capacity_runtime.py
@@ -128,6 +131,9 @@ jobs:
           services/shorts_factory_long_fit.py
           services/shorts_factory_media.py
           services/shorts_factory_timing.py
+          services/shorts_transcription.py
+          services/shorts_video.py
+          services/clip_renderer.py
           pipelines/shorts_factory.py
           pipelines/factory_short_delivery.py
           pipelines/video_dispatch.py
@@ -159,7 +165,6 @@ jobs:
           services/cut_replay_delivery_policy.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
-          services/shorts_factory_no_downgrade.py
           services/shorts_factory_source.py
           services/shorts_factory_capacity.py
           services/shorts_factory_capacity_runtime.py
@@ -168,6 +173,9 @@ jobs:
           services/shorts_factory_long_fit.py
           services/shorts_factory_media.py
           services/shorts_factory_timing.py
+          services/shorts_transcription.py
+          services/shorts_video.py
+          services/clip_renderer.py
           pipelines/shorts_factory.py
           pipelines/factory_short_delivery.py
           pipelines/video_dispatch.py
