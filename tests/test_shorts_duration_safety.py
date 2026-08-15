@@ -102,13 +102,21 @@ def test_public_duration_and_required_speed_contracts_are_fail_closed():
     assert safety.short_speed_transform_required(1.5)
 
 
-def test_pipeline_guard_contains_required_speed_failure_block_and_final_probe_gate():
-    source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
+def test_pipeline_guard_passes_silence_ceiling_explicitly_and_keeps_final_probe_gate():
+    safety_source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
+    renderer_source = Path("services/shorts_video.py").read_text(encoding="utf-8")
 
-    assert "required_speed_transform_failed" in source
-    assert "public_short_duration_ok" in source
-    assert "speed_transform" in source
-    assert "_RENDER_SNAP_MAX_END" in source
+    assert "required_speed_transform_failed" in safety_source
+    assert "public_short_duration_ok" in safety_source
+    assert "speed_transform" in safety_source
+    assert "silence_snap_max_end=snap_ceiling" in safety_source
+    assert "_RENDER_SNAP_MAX_END" not in safety_source
+    assert "short_video_impl._find_silence_end" not in safety_source
+
+    assert "silence_snap_max_end: float | None = None" in renderer_source
+    assert "adjusted_end = min(adjusted_end, hard_ceiling)" in renderer_source
+    assert "end_seconds = min(end_seconds, hard_ceiling)" in renderer_source
+    assert "sys.modules" not in renderer_source
 
 
 def test_ordinary_duration_safety_installs_before_factory_video_capture():
