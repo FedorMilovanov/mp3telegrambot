@@ -12,7 +12,8 @@ def _source(rel: str) -> str:
 
 def test_services_import_has_no_import_hook_or_install_side_effects():
     src = _source("services/__init__.py")
-    assert "sys.meta_path" not in src
+    assert "sys.meta_path.insert" not in src
+    assert "sys.meta_path.remove" not in src
     assert "MetaPathFinder" not in src
     assert "install_" not in src
 

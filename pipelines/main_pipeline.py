@@ -1305,19 +1305,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception as _qrep_err:
                         logger.info("[LiveDubQuickQA] report send failed: %s", str(_qrep_err)[:160])
 
-                # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
-                if user_mode in ("eng_fast", "eng_fast_qa") and not is_fallback:
-                    _info_srt = None
-                    try:
-                        if "ld_work" in locals() and ld_work.exists():
-                            _srt_candidates = sorted(
-                                (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
-                                key=lambda f: f.stat().st_mtime, reverse=True,
-                            )
-                            _info_srt = _srt_candidates[0] if _srt_candidates else None
-                    except Exception:
-                        pass
-                    await _send_livedub_info_card_once(_info_srt)
 
                 # ── Отчёт QA (ENG Full): всегда объясняем найденные искажения ──
                 # Проверка и авто-приглушение уже выполнены ДО отправки видео
