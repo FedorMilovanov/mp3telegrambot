@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Maximum-quality media acquisition and Gemini audio input for Factory."""
+"""Factory-owned media acquisition, Gemini audio input and three-pass plan."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
 import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
 from core.globals import DOWNLOAD_DIR
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
-from services.media_delivery_probe import (
-    media_probe_is_deliverable,
-    probe_media_async,
-)
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +21,6 @@ _FACTORY_MEDIA_TIMEOUT_SEC = 7200
 _FACTORY_TAIL_TOLERANCE_SEC = 0.20
 _GEMINI_ANALYSIS_BITRATE_KBPS = 128
 _GEMINI_ANALYSIS_SAMPLE_RATE = 48000
-_INSTALLED = False
 
 _AUDIO_MIME_BY_SUFFIX = {
     ".aac": "audio/aac",
@@ -48,7 +43,6 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 
 def gemini_analysis_bitrate_kbps() -> int:
-    """Return the Factory-owned Gemini analysis AAC bitrate."""
     return _bounded_int(
         "SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS",
         _GEMINI_ANALYSIS_BITRATE_KBPS,
@@ -58,7 +52,6 @@ def gemini_analysis_bitrate_kbps() -> int:
 
 
 def gemini_analysis_sample_rate() -> int:
-    """Return the Factory-owned Gemini analysis sample rate."""
     configured = _bounded_int(
         "SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE",
         _GEMINI_ANALYSIS_SAMPLE_RATE,
@@ -69,7 +62,6 @@ def gemini_analysis_sample_rate() -> int:
 
 
 def factory_audio_mime_type(path: Path) -> str:
-    """Return an officially supported Gemini audio MIME for a prepared file."""
     mime_type = _AUDIO_MIME_BY_SUFFIX.get(Path(path).suffix.casefold(), "")
     if not mime_type:
         raise RuntimeError(
@@ -80,7 +72,6 @@ def factory_audio_mime_type(path: Path) -> str:
 
 
 def factory_audio_probe_is_usable(probe: Any) -> bool:
-    """Require concrete audio evidence without requiring a video stream."""
     return bool(
         probe is not None
         and float(getattr(probe, "duration", 0.0) or 0.0) > 0
@@ -110,7 +101,6 @@ def _remove_paths(paths) -> None:
 
 
 def _factory_livedub_timeout_seconds() -> int:
-    """Return the quality-first Factory LiveDub timeout."""
     try:
         value = int(os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "") or 1800)
     except (TypeError, ValueError):
@@ -140,7 +130,6 @@ async def _prepare_gemini_audio(
     source_probe: Any,
     media_id: str,
 ) -> Path:
-    """Build the compact Gemini-only mono AAC surrogate at the source owner."""
     source_path = Path(source_path)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -150,7 +139,6 @@ async def _prepare_gemini_audio(
     sample_rate = gemini_analysis_sample_rate()
     output_path = DOWNLOAD_DIR / f"{media_id}_factory_audio_gemini.aac"
     output_path.unlink(missing_ok=True)
-
     command = [
         ffmpeg,
         "-i",
@@ -206,7 +194,6 @@ async def _prepare_gemini_audio(
             source_path.unlink(missing_ok=True)
         except OSError:
             pass
-
     logger.info(
         "Factory Gemini analysis audio prepared: codec=AAC mono bitrate=%dk "
         "sample_rate=%d duration=%.3fs size=%.1fMB",
@@ -219,7 +206,6 @@ async def _prepare_gemini_audio(
 
 
 def _factory_quality_sort_reset() -> list[str]:
-    """Discard local container preferences while preserving auth/network args."""
     return [
         "--format-sort-reset",
         "--no-format-sort-force",
@@ -228,7 +214,6 @@ def _factory_quality_sort_reset() -> list[str]:
 
 
 async def download_factory_audio_source(url: str, media_id: str) -> Path:
-    """Download best native audio, then prepare compact Gemini-only AAC."""
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
@@ -263,7 +248,6 @@ async def download_factory_video_source(
     media_id: str,
     workdir: Path | None = None,
 ) -> Path:
-    """Download the best available video+audio without a resolution ceiling."""
     target_dir = Path(workdir) if workdir is not None else DOWNLOAD_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{media_id}_factory_max_source"
@@ -325,7 +309,6 @@ async def prepare_factory_translation_video(
     duration: int,
     source_language: str,
 ) -> Path:
-    """Mix Yandex live audio over the unrestricted maximum-quality original."""
     import pipelines.shorts_factory as factory_pipeline
     from services.livedub_mix import get_mix_params, mix_tracks
     from services.yandex_live_dub import get_live_dub_audio
@@ -403,6 +386,37 @@ async def prepare_factory_translation_video(
     return Path(mixed)
 
 
+def _strict_boundary_prompt(base_prompt: str) -> str:
+    return base_prompt + (
+        "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
+        "доминирующий фактически услышанный язык речи как ISO 639-1 "
+        "(например ru, en, de). Не определяй язык по заголовку. "
+        "Если доминирующий язык доказать нельзя, верни mixed."
+    )
+
+
+def _finalize_factory_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    from services.shorts_factory_quality_gate import (
+        apply_factory_quality_gate,
+        validated_factory_plan_language,
+    )
+
+    gated = apply_factory_quality_gate(plan)
+    normalized_language = validated_factory_plan_language(gated)
+    metadata = gated.setdefault("metadata", {})
+    if isinstance(metadata, dict):
+        metadata["language"] = normalized_language
+    if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
+        report = gated.get("quality_gate") or {}
+        raise RuntimeError(
+            "Gemini завершила три проверки, но ни один фрагмент не прошёл "
+            "финальный MAX-порог качества: "
+            f"Shorts>={report.get('min_short_score')}, "
+            f"long>={report.get('min_long_score')}"
+        )
+    return gated
+
+
 async def create_factory_plan_from_supported_audio(
     audio_path: Path,
     *,
@@ -411,7 +425,7 @@ async def create_factory_plan_from_supported_audio(
     duration: int,
     source_language: str = "",
 ) -> dict[str, Any]:
-    """Run all three Factory passes with the real prepared-audio MIME type."""
+    """Run the complete source-owned three-pass Factory plan and final gate."""
     import services.shorts_factory_candidates as candidates
 
     if (
@@ -472,7 +486,9 @@ async def create_factory_plan_from_supported_audio(
                 client,
                 model=model,
                 audio_part=audio_part,
-                prompt=candidates._boundary_prompt(judged, duration),
+                prompt=_strict_boundary_prompt(
+                    candidates._boundary_prompt(judged, duration)
+                ),
                 max_tokens=28000,
             )
 
@@ -481,15 +497,13 @@ async def create_factory_plan_from_supported_audio(
                 duration,
                 require_verified=True,
             )
-            if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError(
-                    "Three-pass Gemini review produced no candidates with verified boundaries"
-                )
+            plan = _finalize_factory_plan(plan)
             plan["model"] = model
             plan["thinking_level"] = "high"
             plan["review_passes"] = 3
             plan["strict_quality"] = True
             plan["audio_mime_type"] = mime_type
+            logger.info("Shorts Factory final quality gate: %s", plan.get("quality_gate"))
             return plan
         except asyncio.CancelledError:
             raise
@@ -515,37 +529,6 @@ async def create_factory_plan_from_supported_audio(
     )
 
 
-def install_factory_source_quality_policy() -> bool:
-    """Install native-audio and unrestricted-video Factory sources."""
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-
-    import pipelines.shorts_factory as factory_pipeline
-    import services.shorts_factory_candidates as candidates_module
-
-    factory_pipeline._download_factory_audio = download_factory_audio_source
-    factory_pipeline.download_video_for_shorts = download_factory_video_source
-    factory_pipeline._prepare_translation_video = prepare_factory_translation_video
-    factory_pipeline.create_factory_plan = create_factory_plan_from_supported_audio
-    candidates_module.create_factory_plan = create_factory_plan_from_supported_audio
-
-    eager_factory = sys.modules.get("pipelines.shorts_factory")
-    if eager_factory is not None:
-        eager_factory._download_factory_audio = download_factory_audio_source
-        eager_factory.download_video_for_shorts = download_factory_video_source
-        eager_factory._prepare_translation_video = prepare_factory_translation_video
-        eager_factory.create_factory_plan = create_factory_plan_from_supported_audio
-
-    _INSTALLED = True
-    logger.info(
-        "Shorts Factory source quality installed: native bestaudio -> compact AAC mono, "
-        "unrestricted bestvideo+bestaudio for Russian and Yandex LiveDub sources, "
-        "required Russian tail, and mandatory media probes"
-    )
-    return True
-
-
 __all__ = [
     "create_factory_plan_from_supported_audio",
     "download_factory_audio_source",
@@ -554,6 +537,5 @@ __all__ = [
     "factory_audio_probe_is_usable",
     "gemini_analysis_bitrate_kbps",
     "gemini_analysis_sample_rate",
-    "install_factory_source_quality_policy",
     "prepare_factory_translation_video",
 ]
