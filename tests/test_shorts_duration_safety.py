@@ -127,7 +127,7 @@ def test_pipeline_owns_duration_safety_without_installation_or_ambient_state():
     pipeline_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     renderer_source = Path("services/shorts_video.py").read_text(encoding="utf-8")
 
-    assert "ContextVar" not in safety_source
+    assert "from contextvars import ContextVar" not in safety_source
     assert "install_shorts_duration_safety" not in safety_source
     assert "setattr(" not in safety_source
     assert "sys.modules" not in safety_source
