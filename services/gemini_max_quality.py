@@ -126,51 +126,10 @@ def _replace_loaded_references(old: Any, new: Any) -> None:
                     pass
 
 
-def install_max_quality_runtime() -> None:
-    """Apply model-aware thinking to shared Gemini configuration helpers."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-
+def install_max_quality_runtime() -> str:
+    """Compatibility validator; quality is enforced by config owners/pre-main env."""
     import core.globals as globals_module
 
-    original_text_smart = globals_module.make_text_config_smart
-    original_audio = globals_module.make_audio_config
-    original_text_legacy = globals_module.make_text_config
-
-    def max_text_smart(*args, **kwargs):
-        return _apply_thinking_policy(original_text_smart, args, kwargs)
-
-    def max_audio(*args, **kwargs):
-        return _apply_thinking_policy(original_audio, args, kwargs)
-
-    def max_text_legacy(
-        temperature: float = 0.2,
-        max_output_tokens: int = 14000,
-    ):
-        # Legacy semantic helper is not a utility selector; keep it on the
-        # production semantic model and high reasoning.
-        return max_text_smart(
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            model_name=_HEAVY_MODEL,
-            thinking_level="high",
-        )
-
-    max_text_smart._mp3bot_max_quality = True  # type: ignore[attr-defined]
-    max_audio._mp3bot_max_quality = True  # type: ignore[attr-defined]
-    max_text_legacy._mp3bot_max_quality = True  # type: ignore[attr-defined]
-
-    globals_module.make_text_config_smart = max_text_smart
-    globals_module.make_audio_config = max_audio
-    globals_module.make_text_config = max_text_legacy
-
-    _replace_loaded_references(original_text_smart, max_text_smart)
-    _replace_loaded_references(original_audio, max_audio)
-    _replace_loaded_references(original_text_legacy, max_text_legacy)
-
-    _INSTALLED = True
-    logger.info(
-        "🧠 Gemini quality split: semantic=3.6/high; publication=3.6/high; "
-        "utility=3.5-Lite→3.5/minimal; no semantic 3.1/2.x; Whisper large-v3"
-    )
+    if not callable(globals_module.make_text_config_smart):
+        raise RuntimeError("Gemini smart config owner is unavailable")
+    return "source-owned Gemini thinking policy; no post-import reference replacement"

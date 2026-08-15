@@ -349,13 +349,10 @@ def _install_utf8_probe() -> None:
     mix.probe_video_meta = utf8_probe
 
 
-def install_livedub_quality_runtime() -> None:
-    with _INSTALL_LOCK:
-        _install_quality_models()
-        _install_audio_once()
-        _install_utf8_probe()
-        logger.info(
-            "✨ LiveDub quality runtime: semantic=Gemini 3.6/HIGH/no-fallback; "
-            "utility=3.5-Lite→3.5 only; request-local client isolation, "
-            "retry-safe dual-MP3 coalescing, UTF-8 ffprobe"
-        )
+def install_livedub_quality_runtime() -> str:
+    """Compatibility validator; delivery/probe ownership is now explicit."""
+    _install_quality_models()
+    return (
+        "semantic=Gemini 3.6/HIGH/no-fallback; explicit LiveDub coordinator; "
+        "source-owned UTF-8 probes"
+    )

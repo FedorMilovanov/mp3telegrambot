@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from core.globals import GEMINI_CLIENTS
+from core.globals import GEMINI_CLIENTS, make_text_config_smart
 from core.database import GEMINI_MODEL
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.async_process import run_cancellable_process
@@ -44,15 +44,16 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     for attempt in range(max(3, len(GEMINI_CLIENTS))):
         client = GEMINI_CLIENTS[attempt % len(GEMINI_CLIENTS)]
         try:
-            from google.genai import types
             response = await asyncio.wait_for(
                 client.aio.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
+                    config=make_text_config_smart(
+                        max_output_tokens=16000,
+                        model_name=GEMINI_MODEL,
+                        thinking_level="high",
                         response_mime_type="application/json",
-                    )
+                    ),
                 ),
                 timeout=120.0,
             )

@@ -255,6 +255,11 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
     старый «самый свежий файл» мог выдать пользователю ОРИГИНАЛ вместо
     перевода. Служебные имена детерминированы — исключаем их.
     """
+    if str(pattern).casefold() == "*.mp3":
+        from services.livedub_audio_quality_guard import select_clean_translation_mp3
+
+        return select_clean_translation_mp3(directory)
+
     files = [
         p for p in directory.glob(pattern)
         if not p.name.startswith(("original_video", "original_audio", "pro_dub", "live_dub_merged"))

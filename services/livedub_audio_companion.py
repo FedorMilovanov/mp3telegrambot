@@ -169,17 +169,13 @@ def _duration_compatible(reference: int, candidate: int) -> bool:
 
 
 def _find_clean_ru_track(video_path: Path) -> Path | None:
-    try:
-        from services.livedub_mix import find_pro_tracks
+    from services.livedub_audio_quality_guard import select_clean_translation_mp3
 
-        _original, russian = find_pro_tracks(video_path.parent)
-        if russian and russian.is_file():
-            ok, _duration = _probe_audio(russian)
-            if ok:
-                return russian
-    except Exception as exc:
-        logger.debug("[LiveDubAudio] clean RU track lookup failed: %s", exc)
-    return None
+    candidate = select_clean_translation_mp3(Path(video_path).parent)
+    if candidate is None:
+        return None
+    ok, _duration = _probe_audio(candidate)
+    return candidate if ok else None
 
 
 def _extract_mix_mp3(video_path: Path) -> Path:
@@ -231,31 +227,19 @@ def _cache_path() -> Path:
 
 
 def _load_cache() -> dict[str, dict[str, Any]]:
-    path = _cache_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    from services.livedub_audio_cache_recovery import load_recoverable_cache
+
+    data = load_recoverable_cache(_cache_path())
+    return data if isinstance(data, dict) else {}
 
 
 def _save_cache(data: dict[str, dict[str, Any]]) -> None:
-    path = _cache_path()
+    from services.livedub_audio_cache_recovery import save_recoverable_cache
+
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        newest = sorted(
-            data.items(),
-            key=lambda item: float((item[1] or {}).get("saved_at") or 0),
-            reverse=True,
-        )[:500]
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(
-            json.dumps(dict(newest), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temp, path)
-    except OSError as exc:
-        logger.debug("[LiveDubAudio] cache save failed: %s", exc)
+        save_recoverable_cache(_cache_path(), data)
+    except Exception as exc:
+        logger.warning("[LiveDubAudio] recoverable cache save failed: %s", str(exc)[:180])
 
 
 def _normalise_cache_entry(value: Any) -> dict[str, Any] | None:
@@ -497,91 +481,14 @@ async def _send_new_audio(
     raise RuntimeError("оба MP3 не отправлены: " + "; ".join(failures))
 
 
-def _wrap_send_video(cls: type) -> None:
-    original = getattr(cls, "send_video", None)
-    if original is None or getattr(original, "_mp3bot_livedub_audio", False):
-        return
 
-    async def wrapped(self, *args, **kwargs):
-        result = await original(self, *args, **kwargs)
-        if not _enabled() or not _is_livedub_caption(kwargs.get("caption")):
-            return result
-
-        mutable = list(args)
-        video_value = kwargs.get("video")
-        if video_value is None and len(mutable) > 1:
-            video_value = mutable[1]
-        chat_id = kwargs.get("chat_id")
-        if chat_id is None and mutable:
-            chat_id = mutable[0]
-        reply_to = kwargs.get("reply_to_message_id")
-        video_file_id = getattr(getattr(result, "video", None), "file_id", "")
-        video_path = _media_path(video_value)
-
-        try:
-            if video_path is not None:
-                await _send_new_audio(
-                    self,
-                    chat_id=chat_id,
-                    video_path=video_path,
-                    caption=str(kwargs.get("caption") or ""),
-                    reply_to=reply_to,
-                    thumbnail=kwargs.get("thumbnail"),
-                    video_file_id=video_file_id,
-                )
-            else:
-                await _send_cached_audio(
-                    self,
-                    chat_id=chat_id,
-                    video_file_id=video_file_id or str(video_value or ""),
-                    reply_to=reply_to,
-                )
-        except Exception as exc:
-            safe_error = _public_error_text(exc)
-            logger.exception("[LiveDubAudio] MP3 companion failed: %s", safe_error)
-            if video_path is None:
-                # The outer cached-delivery guard removes the cached video and
-                # raises the rebuild signal. A generic "video was sent" message
-                # here would remain in chat after that video has been deleted.
-                logger.warning(
-                    "[LiveDubAudio] cached MP3 failure notice deferred to atomic rebuild guard"
-                )
-            else:
-                try:
-                    await self.send_message(
-                        chat_id=chat_id,
-                        text=(
-                            "⚠️ Видео с переводом отправлено, но полный комплект из двух MP3 "
-                            "сформировать не удалось. "
-                            f"Причина: {safe_error}"
-                        ),
-                        reply_to_message_id=reply_to,
-                    )
-                except Exception:
-                    pass
-        return result
-
-    wrapped._mp3bot_livedub_audio = True  # type: ignore[attr-defined]
-    setattr(cls, "send_video", wrapped)
+def validate_livedub_audio_companion() -> str:
+    """Compatibility/startup validator; performs no Telegram mutation."""
+    if not callable(_cache_get) or not callable(_cache_put_variant):
+        raise RuntimeError("LiveDub companion cache surface is incomplete")
+    return "source-owned companion helpers; explicit coordinator delivery"
 
 
-def install_livedub_audio_companion() -> None:
-    """Install after cloud-media fallback so send_audio keeps its safety net."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        from telegram import Bot
-
-        _wrap_send_video(Bot)
-        try:
-            from telegram.ext import ExtBot
-
-            if ExtBot.send_video is not Bot.send_video:
-                _wrap_send_video(ExtBot)
-        except Exception as exc:
-            logger.debug("[LiveDubAudio] ExtBot patch skipped: %s", exc)
-        mode = "clean RU + final mix" if _dual_enabled() else "single configured variant"
-        logger.info(
-            "🎧 LiveDub audio companion: ✅ %s; independent ffprobe + dual file_id cache",
-            mode,
-        )
+def install_livedub_audio_companion() -> str:
+    """Deprecated compatibility name; no longer patches Bot/ExtBot methods."""
+    return validate_livedub_audio_companion()

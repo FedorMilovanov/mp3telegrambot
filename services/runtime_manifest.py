@@ -16,7 +16,7 @@ from typing import Any, Iterable, Mapping
 
 logger = logging.getLogger(__name__)
 
-RUNTIME_MANIFEST_POLICY = "declarative-runtime-composition-v1"
+RUNTIME_MANIFEST_POLICY = "declarative-runtime-composition-v2"
 
 
 class RuntimePhase(str, Enum):
@@ -268,19 +268,28 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "livedub-info-guard",
-        "services.livedub_info_guard",
-        "install_livedub_info_guard",
+        "pre-main-quality-policy",
+        "services.pre_main_policy",
+        "configure_pre_main_policy",
         RuntimePhase.PRE_MAIN,
-        required=False,
     ),
     RuntimeFeature(
-        "livedub-info-presentation",
-        "services.livedub_info_presentation",
-        "install_livedub_info_presentation",
+        "polling-reliability",
+        "services.polling_reliability_runtime",
+        "install_polling_reliability_runtime",
         RuntimePhase.PRE_MAIN,
-        required=False,
-        dependencies=("livedub-info-guard",),
+    ),
+    RuntimeFeature(
+        "shorts-visual-policy",
+        "services.shorts_static_runtime",
+        "install_short_static_runtime",
+        RuntimePhase.PRE_MAIN,
+    ),
+    RuntimeFeature(
+        "conspect-quality-bootstrap",
+        "services.conspect_bootstrap",
+        "configure_conspect_runtime",
+        RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
         "livedub-long-qa",
@@ -292,12 +301,6 @@ DEFAULT_RUNTIME_FEATURES = (
         "livedub-qa-trust",
         "services.livedub_qa_trust",
         "install_livedub_qa_trust",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-delivery-hardening",
-        "services.livedub_delivery_hardening",
-        "install_livedub_delivery_hardening",
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
@@ -317,90 +320,22 @@ DEFAULT_RUNTIME_FEATURES = (
         requires_main=True,
     ),
     RuntimeFeature(
-        "livedub-output-policy",
-        "services.livedub_output_policy",
-        "install_livedub_output_policy",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-publication",
-        "services.livedub_publication",
-        "install_livedub_publication",
-        RuntimePhase.POST_MAIN,
-        required=False,
-    ),
-    RuntimeFeature(
-        "livedub-publication-diagnostics",
-        "services.livedub_publication_error_diagnostics",
-        "install_livedub_publication_error_diagnostics",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        dependencies=("livedub-publication",),
-    ),
-    RuntimeFeature(
-        "livedub-audio-companion",
-        "services.livedub_audio_companion",
-        "install_livedub_audio_companion",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-audio-cache-recovery",
-        "services.livedub_audio_cache_recovery",
-        "install_livedub_audio_cache_recovery",
-        RuntimePhase.POST_MAIN,
-        dependencies=("livedub-audio-companion",),
-    ),
-    RuntimeFeature(
-        "livedub-audio-quality",
-        "services.livedub_audio_quality_guard",
-        "install_livedub_audio_quality_guard",
-        RuntimePhase.POST_MAIN,
-        dependencies=("livedub-audio-companion",),
-    ),
-    RuntimeFeature(
         "livedub-ru-provenance",
         "services.livedub_ru_provenance",
         "install_livedub_ru_provenance",
         RuntimePhase.POST_MAIN,
     ),
     RuntimeFeature(
-        "livedub-new-delivery-atomicity",
-        "services.livedub_new_delivery_atomicity",
-        "install_livedub_new_delivery_atomicity",
-        RuntimePhase.POST_MAIN,
-        dependencies=("livedub-audio-companion",),
-    ),
-    RuntimeFeature(
-        "livedub-cached-delivery-atomicity",
-        "services.livedub_cached_delivery_atomicity",
-        "install_livedub_cached_delivery_atomicity",
+        "livedub-qa-hardening",
+        "services.livedub_qa_hardening",
+        "install_qa_hardening",
         RuntimePhase.POST_MAIN,
     ),
     RuntimeFeature(
-        "livedub-audio-dedupe",
-        "services.livedub_audio_dedupe",
-        "install_livedub_audio_dedupe",
+        "livedub-delivery-contract",
+        "services.livedub_delivery_coordinator",
+        "validate_livedub_delivery_contract",
         RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-audio-dedupe-hardening",
-        "services.livedub_output_policy",
-        "harden_livedub_audio_dedupe",
-        RuntimePhase.POST_MAIN,
-        dependencies=("livedub-output-policy", "livedub-audio-dedupe"),
-    ),
-    RuntimeFeature(
-        "livedub-deep-audit",
-        "services.livedub_deep_audit",
-        "install_livedub_deep_audit",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-dual-audio-policy",
-        "services.livedub_dual_audio_policy",
-        "install_livedub_dual_audio_policy",
-        RuntimePhase.POST_MAIN,
-        dependencies=("livedub-audio-companion",),
     ),
     RuntimeFeature(
         "project-runtime-hardening",

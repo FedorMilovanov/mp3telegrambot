@@ -146,7 +146,7 @@ async def _publication_audio_fields(card: dict[str, Any], variant: str) -> dict[
     from services.livedub_publication_core import canonical_author, metadata_text
 
     title = metadata_text(str(card.get("title") or "Переведённое видео")) or "Переведённое видео"
-    author = metadata_text(str(card.get("author") or canonical_author(""))) or ""
+    author = metadata_text(str(card.get("author") or "")) or ""
     body = format_audio_caption(card)
     return {
         "title": title,
@@ -501,5 +501,52 @@ def create_source_audio_deferral(
         bot=bot,
         chat_id=chat_id,
         reply_to=reply_to,
-        enabled=bool(enabled and _truthy("LIVEDUB_AUDIO_DEDUPE")),
+        enabled=bool(
+            enabled
+            and _truthy("LIVEDUB_AUDIO_DEDUPE")
+            and _truthy("LIVEDUB_SEND_AUDIO")
+        ),
     )
+
+
+
+def validate_livedub_delivery_contract() -> str:
+    """Fail startup when the explicit source-owned delivery surface regresses."""
+    import services.livedub_audio_companion as companion
+    from services.livedub_audio_cache_recovery import (
+        load_recoverable_cache,
+        save_recoverable_cache,
+    )
+    from services.livedub_audio_quality_guard import select_clean_translation_mp3
+    from services.livedub_publication import build_publication_card, format_video_caption
+
+    required = (
+        companion._probe_audio,
+        companion._extract_mix_mp3,
+        companion._cache_get,
+        companion._cache_put_variant,
+        load_recoverable_cache,
+        save_recoverable_cache,
+        select_clean_translation_mp3,
+        build_publication_card,
+        format_video_caption,
+        deliver_new_companions,
+        deliver_cached_companions,
+        create_source_audio_deferral,
+    )
+    if not all(callable(item) for item in required):
+        raise RuntimeError("explicit LiveDub delivery contract is incomplete")
+    return (
+        "explicit pipeline delivery; source-owned cache/quality/publication; "
+        "no Telegram send_* interception"
+    )
+
+
+__all__ = [
+    "SourceAudioDeferral",
+    "create_source_audio_deferral",
+    "delete_message_best_effort",
+    "deliver_cached_companions",
+    "deliver_new_companions",
+    "validate_livedub_delivery_contract",
+]

@@ -649,23 +649,16 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
 
 
 def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
-    """Ищет сохранённые дорожки pro-микса (для QA-автоправки)."""
+    """Return the source video plus the role-correct clean RU translation."""
     workdir = Path(workdir)
     orig = None
-    # AUDIT ENG (2026-07-05): рядом может лежать audio-only артефакт
-    # (original_video.f140.m4a) — раньше брался первый попавшийся, mix_tracks
-    # отклонял его и авто-правка срывалась, хотя настоящий mp4 лежал рядом.
-    for f in sorted(workdir.glob("original_video.*")):
-        if has_video_stream(f):
-            orig = f
+    for candidate in sorted(workdir.glob("original_video.*")):
+        if has_video_stream(candidate):
+            orig = candidate
             break
-    ru = None
-    mp3s = sorted(workdir.glob("*.mp3"), key=lambda x: x.stat().st_mtime, reverse=True)
-    for f in mp3s:
-        if "original_audio" not in f.name and "_qa" not in f.name:
-            ru = f
-            break
-    return orig, ru
+    from services.livedub_audio_quality_guard import select_clean_translation_mp3
+
+    return orig, select_clean_translation_mp3(workdir)
 
 
 # ── Метаданные для Telegram-отправки ─────────────────────────────
@@ -708,6 +701,7 @@ def probe_video_meta(path: Path) -> dict:
              "-show_entries", "stream=width,height:format=duration",
              "-of", "json", str(path)],
             capture_output=True, text=True, timeout=60,
+            encoding="utf-8", errors="replace",
         )
         data = _json.loads(proc.stdout or "{}")
         streams = data.get("streams") or [{}]
@@ -757,32 +751,50 @@ _FIX_RU_GAIN = _env_float("LIVEDUB_AUTOFIX_RU_VOLUME", 0.0)
 _FIX_EN_BOOST = _env_float("LIVEDUB_AUTOFIX_EN_BOOST", 2.2)   # 0.45 * 2.2 ≈ 1.0
 
 
-def extract_fix_intervals(issues: list[dict], max_fixes: int = 6) -> list[tuple[float, float]]:
-    """major-проблемы QA → интервалы (start, end) для авто-правки."""
-    # Таймкоды QA приходят из SRT Яндекса (без задержки) или из дубляжа
-    # (с задержкой) — компенсируем сдвиг перевода в миксе, расширяя окно.
+def extract_fix_intervals(
+    issues: list[dict],
+    max_fixes: int | None = None,
+) -> list[tuple[float, float]]:
+    """Return merged windows covering every valid major QA timestamp.
+
+    A positive explicit/environment limit fails closed instead of silently
+    truncating the repair set. ``0``/unset means unlimited.
+    """
     delay_s = get_mix_params()["delay_ms"] / 1000.0
     intervals: list[tuple[float, float]] = []
     for issue in issues or []:
-        if not isinstance(issue, dict):   # AUDIT R39: модель без схемы могла дать список строк
+        if not isinstance(issue, dict):
             continue
-        if str(issue.get("severity")) != "major":
+        if str(issue.get("severity") or "").strip().casefold() != "major":
             continue
-        t = parse_mmss(str(issue.get("time") or ""))
-        if t is None:
+        moment = parse_mmss(str(issue.get("time") or ""))
+        if moment is None:
             continue
-        intervals.append((max(0.0, t - _FIX_PRE),
-                          t - _FIX_PRE + _FIX_LEN + delay_s))
-        if len(intervals) >= max_fixes:
-            break
-    # слить пересекающиеся
+        intervals.append((
+            max(0.0, moment - _FIX_PRE),
+            moment - _FIX_PRE + _FIX_LEN + delay_s,
+        ))
+
     intervals.sort()
     merged: list[tuple[float, float]] = []
-    for a, b in intervals:
-        if merged and a <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
         else:
-            merged.append((a, b))
+            merged.append((start, end))
+
+    configured = os.getenv("LIVEDUB_AUTOFIX_MAX_INTERVALS", "0").strip()
+    try:
+        env_limit = max(0, int(configured or "0"))
+    except ValueError:
+        env_limit = 0
+    explicit_limit = max(0, int(max_fixes or 0))
+    limit = explicit_limit or env_limit
+    if limit and len(merged) > limit:
+        raise RuntimeError(
+            f"QA produced {len(merged)} independent major intervals, above "
+            f"the configured safe limit {limit}; refusing a partial auto-fix"
+        )
     return merged
 
 
@@ -807,6 +819,23 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Pa
     result = await mix_tracks(orig_video, ru_audio, out,
                               ru_extra_expr=ru_expr, en_extra_expr=en_expr)
     if result:
+        expected_duration = await asyncio.to_thread(probe_media_duration, orig_video)
+        actual_duration = await asyncio.to_thread(probe_media_duration, Path(result))
+        tolerance = max(3.0, float(expected_duration or 0) * 0.015)
+        if (
+            not has_video_stream(Path(result))
+            or not expected_duration
+            or not actual_duration
+            or abs(float(expected_duration) - float(actual_duration)) > tolerance
+        ):
+            try:
+                Path(result).unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError(
+                f"QA auto-fix postcondition failed: source={expected_duration}, "
+                f"fixed={actual_duration}"
+            )
         logger.info("[LiveDubMix] авто-правка: %d интервал(ов) приглушено", len(intervals))
         # FIX 2026-06-10: короткие ролики (<3 мин) шлются с ВШИТЫМИ
         # русскими субтитрами (gemini_subs.srt); пересборка из чистых

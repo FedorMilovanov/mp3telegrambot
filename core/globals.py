@@ -253,6 +253,16 @@ def _build_thinking_config(level: str = "high"):
                 return None
 
 
+def _effective_thinking_level(model_name: str, requested: str) -> str:
+    """Enforce the production semantic/utility split at the config owner."""
+    model = str(model_name or "").strip().casefold()
+    if model == "gemini-3.6-flash":
+        return "high"
+    if model in {"gemini-3.5-flash-lite", "gemini-3.5-flash"}:
+        return "minimal"
+    return str(requested or "high").strip().lower() or "high"
+
+
 def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):
     """ULTIMATE FIX 3.5-FLASH: конфиг для audio-вызовов с авто-адаптацией под поколение.
 
@@ -275,6 +285,7 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
             model_name = ""
 
     is_3x = _is_gemini_3x(model_name)
+    thinking_level = _effective_thinking_level(model_name, thinking_level)
     # FIX 2026-05-21 #12 P2: gemini-3.5-flash поддерживает 65k output tokens [Google I/O 2026].
     # Раньше cap=40000 урезал доступный потолок, что снижало качество длинных анализов.
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
@@ -321,6 +332,7 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
             model_name = ""
 
     is_3x = _is_gemini_3x(model_name)
+    thinking_level = _effective_thinking_level(model_name, thinking_level)
     # FIX 2026-05-21 #12 P2: cap 65k для 3.x (см. выше в make_audio_config).
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
 
@@ -342,12 +354,13 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
 
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
-    """Для чисто текстовых вызовов Gemini — audio_timestamp не нужен."""
-    if not HAS_GEMINI or types is None:
-        return None
-    return types.GenerateContentConfig(
+    """Legacy semantic helper routed through the source-owned smart config."""
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
+    return make_text_config_smart(
         temperature=temperature,
         max_output_tokens=max_output_tokens,
+        model_name=model_name,
+        thinking_level="high",
     )
 
 
