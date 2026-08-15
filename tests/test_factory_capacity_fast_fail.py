@@ -8,6 +8,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from services import livedub_info_presentation
+from services import shorts_factory_capacity as capacity
 from services import shorts_factory_capacity_runtime as capacity_runtime
 
 
@@ -94,11 +95,7 @@ def test_503_high_demand_retries_bounded_then_stops_before_second_client(
 
     _install_fake_factory_modules(monkeypatch, run_pass)
     _disable_capacity_retry_delay(monkeypatch)
-    monkeypatch.setattr(
-        capacity_runtime.overload_runtime,
-        "factory_gemini_clients",
-        lambda: [first, second],
-    )
+    monkeypatch.setattr(capacity, "factory_gemini_clients", lambda: [first, second])
 
     with pytest.raises(RuntimeError, match="503/high demand") as raised:
         asyncio.run(
@@ -148,11 +145,7 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     _install_fake_factory_modules(monkeypatch, run_pass)
     _disable_capacity_retry_delay(monkeypatch)
     monkeypatch.setattr(candidates, "_wait_uploaded_file", wait_uploaded_file)
-    monkeypatch.setattr(
-        capacity_runtime.overload_runtime,
-        "factory_gemini_clients",
-        lambda: [first, second],
-    )
+    monkeypatch.setattr(capacity, "factory_gemini_clients", lambda: [first, second])
 
     plan = asyncio.run(
         capacity_runtime.create_factory_plan_resumable(
@@ -189,11 +182,7 @@ def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_pa
         return {"ok": True, "pass": len(calls)}
 
     _install_fake_factory_modules(monkeypatch, run_pass)
-    monkeypatch.setattr(
-        capacity_runtime.overload_runtime,
-        "factory_gemini_clients",
-        lambda: [first, second],
-    )
+    monkeypatch.setattr(capacity, "factory_gemini_clients", lambda: [first, second])
 
     plan = asyncio.run(
         capacity_runtime.create_factory_plan_resumable(
