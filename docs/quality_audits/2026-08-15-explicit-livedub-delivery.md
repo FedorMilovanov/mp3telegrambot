@@ -35,3 +35,14 @@ stale cached video is rolled back when its companion set cannot be proven.
 
 Exact-head full repository CI, Windows full-suite and `tools/verify_repo.py` are
 required before merge.
+
+
+## Follow-up — QA/provenance ownership
+
+The re-audit found four remaining LiveDub QA/provenance installers that still
+replaced functions after import. They were removed from runtime composition too.
+`livedub_qa.run_translation_qa` now owns the complete QA flow directly: base
+Gemini audio comparison, long segmented coverage, exact-timeline evidence,
+focused candidate confirmation and truthful report decoration. VOT provenance is
+recorded by `get_live_dub_audio` and consumed by `find_pro_tracks` directly.
+No QA/trust/provenance module assigns functions into another imported module.

@@ -24,13 +24,11 @@ import math
 import os
 import re
 import tempfile
-import threading
 from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_INSTALL_LOCK = threading.Lock()
 _TRUE = {"1", "true", "yes", "on"}
 _STOPWORDS = {
     "была", "было", "были", "быть", "весь", "вместо", "для", "его", "если", "есть",
@@ -118,56 +116,9 @@ def _numeric_score(value: Any) -> float | None:
 
 
 def _confirmed_result(primary: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
-    first_issues = _clean_issues(primary.get("issues"))
-    second_issues = _clean_issues(validation.get("issues"))
-    confirmed: list[dict[str, Any]] = []
+    from services.livedub_qa_hardening import confirmed_result_one_to_one
 
-    for issue in first_issues:
-        match = next((candidate for candidate in second_issues if _issues_match(issue, candidate)), None)
-        if match is None:
-            continue
-        merged = dict(issue)
-        # Auto-muting is destructive, so both passes must independently vote major.
-        merged["severity"] = (
-            "major"
-            if str(issue.get("severity")) == "major" and str(match.get("severity")) == "major"
-            else "minor"
-        )
-        if str(match.get("heard") or "").strip():
-            merged["heard"] = str(match.get("heard") or "").strip()
-        confirmed.append(merged)
-
-    result = dict(primary)
-    result["issues"] = confirmed
-    result["_qa_audio_grounded"] = True
-    result["_qa_confirmation_passes"] = 2
-    result["_qa_candidate_count"] = len(first_issues)
-    result["_qa_unconfirmed_dropped"] = max(0, len(first_issues) - len(confirmed))
-
-    first_score = _numeric_score(primary.get("score"))
-    second_score = _numeric_score(validation.get("score"))
-    if confirmed and first_score is not None and second_score is not None:
-        result["score"] = round((first_score + second_score) / 2)
-    elif not confirmed:
-        result.pop("score", None)
-
-    majors = sum(1 for item in confirmed if str(item.get("severity")) == "major")
-    if confirmed:
-        major_note = f", серьёзных — {majors}" if majors else ""
-        result["verdict"] = (
-            "Полная аудиопроверка и точечная перепроверка подтвердили "
-            f"{len(confirmed)} неточностей{major_note}."
-        )
-    else:
-        result["verdict"] = (
-            "Точечная аудиопроверка не подтвердила искажений смысла, "
-            "предположенных первым проходом."
-        )
-    result["reasoning"] = (
-        "Сначала сравнивались фактически звучащие английская и русская дорожки по всей записи. "
-        "Затем подозрительные места были заново вырезаны и проверены отдельными короткими аудиоокнами."
-    )
-    return result
+    return confirmed_result_one_to_one(primary, validation)
 
 
 def _unconfirmed_failure_result(primary: dict[str, Any], reason: str = "") -> dict[str, Any]:
@@ -260,7 +211,9 @@ async def _verify_candidate_windows(
         return _unconfirmed_failure_result(primary, "фактически отправленная русская дорожка недоступна")
 
     issues = _clean_issues(primary.get("issues"))
-    max_issues = _env_int("LIVEDUB_QA_VERIFY_MAX_ISSUES", 8, 1, 16)
+    max_issues = _env_int("LIVEDUB_QA_VERIFY_MAX_ISSUES", 20, 1, 40)
+    total_candidates = len(issues)
+    omitted_by_limit = max(0, total_candidates - max_issues)
     before_sec = _env_int("LIVEDUB_QA_VERIFY_BEFORE_SEC", 14, 5, 45)
     after_sec = _env_int("LIVEDUB_QA_VERIFY_AFTER_SEC", 30, 10, 75)
     windows = _candidate_windows(
@@ -351,6 +304,12 @@ async def _verify_candidate_windows(
         result["_qa_verification_partial"] = True
         result["_low_confidence"] = True
 
+    if omitted_by_limit:
+        result["_qa_candidate_count_total"] = total_candidates
+        result["_qa_verification_limit_dropped"] = omitted_by_limit
+        result["_qa_unconfirmed_dropped"] = int(result.get("_qa_unconfirmed_dropped") or 0) + omitted_by_limit
+        result["_low_confidence"] = True
+
     if clean_ru is None:
         # The final mix contains quiet English beneath Russian. It is useful for
         # review, but not safe enough for destructive automatic muting.
@@ -408,91 +367,80 @@ def _insert_report_notes(text: str, qa: dict[str, Any]) -> str:
         return joined[:3900]
 
 
-def install_livedub_qa_trust() -> None:
-    """Wrap the already-installed short/long QA implementation once."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        from services import livedub_qa as module
 
-        original_run = module.run_translation_qa
-        original_format = module.format_qa_report
-        if getattr(original_run, "_mp3bot_audio_trust", False):
-            return
+def audio_trust_enabled() -> bool:
+    return _enabled()
 
-        async def wrapped_run(
-            dub_video_path: Path,
-            original_audio_path: Optional[Path],
-            ai_data: Optional[dict],
-            duration: int,
-            model_name: str = "",
-            dub_srt_path: Optional[Path] = None,
-            dub_audio_path: Optional[Path] = None,
-            existing_audio_part=None,
-            existing_client=None,
-            thinking_level: str = "high",
-        ) -> Optional[dict]:
-            common = dict(
-                dub_video_path=dub_video_path,
-                original_audio_path=original_audio_path,
-                ai_data=ai_data,
-                duration=duration,
-                model_name=model_name,
-                # Critical trust boundary: compare what the user actually hears.
-                dub_srt_path=None,
-                dub_audio_path=dub_audio_path,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                thinking_level=thinking_level,
-            )
-            primary = await original_run(**common)
-            if not isinstance(primary, dict):
-                return primary
-            primary = dict(primary)
 
-            original_available = bool(
-                _local_path(original_audio_path)
-                or (_active_audio_part(existing_audio_part) and existing_client is not None)
-            )
-            russian_available = bool(_local_path(dub_audio_path) or _local_path(dub_video_path))
-            primary["_qa_audio_grounded"] = original_available and russian_available
-            primary["_qa_confirmation_passes"] = 1
-            if not primary["_qa_audio_grounded"]:
-                primary["_low_confidence"] = True
+async def apply_audio_trust(
+    base_runner,
+    *,
+    primary: dict[str, Any] | None,
+    dub_video_path: Path,
+    original_audio_path: Optional[Path],
+    duration: int,
+    model_name: str = "",
+    dub_audio_path: Optional[Path] = None,
+    existing_audio_part=None,
+    existing_client=None,
+) -> Optional[dict]:
+    """Confirm broad-pass candidates against fresh local audio windows."""
+    if not isinstance(primary, dict) or not _enabled():
+        return primary
+    result = dict(primary)
+    original_available = bool(
+        _local_path(original_audio_path)
+        or (_active_audio_part(existing_audio_part) and existing_client is not None)
+    )
+    russian_available = bool(_local_path(dub_audio_path) or _local_path(dub_video_path))
+    result["_qa_audio_grounded"] = original_available and russian_available
+    result["_qa_confirmation_passes"] = 1
+    if not result["_qa_audio_grounded"]:
+        result["_low_confidence"] = True
 
-            issues = _clean_issues(primary.get("issues"))
-            if not issues or not _confirmation_enabled():
-                return primary
-            if not original_available or not russian_available:
-                return _unconfirmed_failure_result(primary, "нет обеих фактически звучащих дорожек")
+    issues = _clean_issues(result.get("issues"))
+    if not issues or not _confirmation_enabled():
+        return result
+    if not original_available or not russian_available:
+        return _unconfirmed_failure_result(result, "нет обеих фактически звучащих дорожек")
 
-            logger.info(
-                "[LiveDubQATrust] %d candidate issue(s): focused audio verification",
-                len(issues),
-            )
-            result = await _verify_candidate_windows(
-                original_run,
-                primary=primary,
-                dub_video_path=Path(dub_video_path),
-                original_audio_path=original_audio_path,
-                duration=int(duration or 0),
-                model_name=model_name,
-                dub_audio_path=dub_audio_path,
-            )
-            logger.info(
-                "[LiveDubQATrust] confirmed=%d dropped=%d windows=%d/%d",
-                len(result.get("issues") or []),
-                int(result.get("_qa_unconfirmed_dropped") or 0),
-                int(result.get("_qa_verification_windows") or 0),
-                int(result.get("_qa_verification_windows_total") or 0),
-            )
-            return result
+    logger.info(
+        "[LiveDubQATrust] %d candidate issue(s): focused audio verification",
+        len(issues),
+    )
+    verified = await _verify_candidate_windows(
+        base_runner,
+        primary=result,
+        dub_video_path=Path(dub_video_path),
+        original_audio_path=original_audio_path,
+        duration=int(duration or 0),
+        model_name=model_name,
+        dub_audio_path=dub_audio_path,
+    )
+    logger.info(
+        "[LiveDubQATrust] confirmed=%d dropped=%d windows=%d/%d",
+        len(verified.get("issues") or []),
+        int(verified.get("_qa_unconfirmed_dropped") or 0),
+        int(verified.get("_qa_verification_windows") or 0),
+        int(verified.get("_qa_verification_windows_total") or 0),
+    )
+    return verified
 
-        def wrapped_format(qa: dict, video_url: str = "") -> str:
-            return _insert_report_notes(original_format(qa, video_url=video_url), dict(qa or {}))
 
-        wrapped_run._mp3bot_audio_trust = True  # type: ignore[attr-defined]
-        wrapped_format._mp3bot_audio_trust = True  # type: ignore[attr-defined]
-        module.run_translation_qa = wrapped_run
-        module.format_qa_report = wrapped_format
-        logger.info("🎧 LiveDub QA trust: full scan + focused audio verification enabled")
+def decorate_trust_report(text: str, qa: dict[str, Any]) -> str:
+    return _insert_report_notes(text, qa)
+
+
+def install_livedub_qa_trust() -> str:
+    """Compatibility validator; trust is called by the QA owner."""
+    if not callable(apply_audio_trust):
+        raise RuntimeError("LiveDub QA trust strategy is unavailable")
+    return "source-owned full-scan + focused-audio trust strategy"
+
+
+__all__ = [
+    "apply_audio_trust",
+    "audio_trust_enabled",
+    "decorate_trust_report",
+    "install_livedub_qa_trust",
+]

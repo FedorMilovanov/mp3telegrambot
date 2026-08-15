@@ -657,8 +657,10 @@ def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
             orig = candidate
             break
     from services.livedub_audio_quality_guard import select_clean_translation_mp3
+    from services.livedub_ru_provenance import read_ru_audio_provenance
 
-    return orig, select_clean_translation_mp3(workdir)
+    exact = read_ru_audio_provenance(workdir)
+    return orig, exact or select_clean_translation_mp3(workdir)
 
 
 # ── Метаданные для Telegram-отправки ─────────────────────────────

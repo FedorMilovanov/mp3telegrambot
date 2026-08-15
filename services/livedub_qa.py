@@ -307,7 +307,7 @@ def _parse_qa_json(text: str) -> Optional[dict]:
     return data
 
 
-async def run_translation_qa(
+async def _run_translation_qa_base(
     dub_video_path: Path,
     original_audio_path: Optional[Path],
     ai_data: Optional[dict],
@@ -617,11 +617,61 @@ async def run_translation_qa(
                 pass
 
 
+async def run_translation_qa(
+    dub_video_path: Path,
+    original_audio_path: Optional[Path],
+    ai_data: Optional[dict],
+    duration: int,
+    model_name: str = "",
+    dub_srt_path: Optional[Path] = None,
+    dub_audio_path: Optional[Path] = None,
+    existing_audio_part=None,
+    existing_client=None,
+    thinking_level: str = "high",
+) -> Optional[dict]:
+    """Source-owned QA pipeline: evidence -> coverage -> confirmation."""
+    from services.livedub_long_qa import run_long_translation_qa
+    from services.livedub_qa_hardening import (
+        annotate_qa_availability,
+        prepare_exact_timeline_inputs,
+    )
+    from services.livedub_qa_trust import apply_audio_trust, audio_trust_enabled
+
+    options = dict(
+        dub_video_path=Path(dub_video_path),
+        original_audio_path=original_audio_path,
+        ai_data=ai_data,
+        duration=int(duration or 0),
+        model_name=model_name,
+        dub_srt_path=None if audio_trust_enabled() else dub_srt_path,
+        dub_audio_path=dub_audio_path,
+        existing_audio_part=existing_audio_part,
+        existing_client=existing_client,
+        thinking_level=thinking_level,
+    )
+    options, exact_original = prepare_exact_timeline_inputs(options)
+    primary = await run_long_translation_qa(_run_translation_qa_base, **options)
+    if not isinstance(primary, dict):
+        return primary
+    primary = annotate_qa_availability(primary, options, exact_original)
+    return await apply_audio_trust(
+        _run_translation_qa_base,
+        primary=primary,
+        dub_video_path=options["dub_video_path"],
+        original_audio_path=options["original_audio_path"],
+        duration=options["duration"],
+        model_name=options["model_name"],
+        dub_audio_path=options["dub_audio_path"],
+        existing_audio_part=options["existing_audio_part"],
+        existing_client=options["existing_client"],
+    )
+
+
 # ══════════════════════════════════════════════════════════════
 #  3. Форматирование отчёта
 # ══════════════════════════════════════════════════════════════
 
-def format_qa_report(qa: dict, video_url: str = "") -> str:
+def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
     """Собирает HTML-сообщение с результатом проверки перевода.
 
     video_url: если задан — таймкоды проблем становятся кликабельными
@@ -714,3 +764,39 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
     if truncated:
         text += _tail
     return text[:_LIMIT]
+
+
+
+def format_qa_report(qa: dict, video_url: str = "") -> str:
+    """Render one truthful report through pure source-owned decorators."""
+    from services.livedub_long_qa import decorate_segment_report
+    from services.livedub_qa_hardening import decorate_hardened_report
+    from services.livedub_qa_trust import decorate_trust_report
+
+    text = _format_qa_report_base(qa, video_url=video_url)
+    text = decorate_segment_report(text, qa)
+    text = decorate_trust_report(text, qa)
+    text = decorate_hardened_report(text, qa)
+    try:
+        from converters.md_telegraph import safe_trim_caption
+        return safe_trim_caption(text, 3900)
+    except Exception:
+        return text[:3900]
+
+
+def validate_livedub_qa_contract() -> str:
+    """Startup invariant for the direct QA pipeline."""
+    from services.livedub_long_qa import run_long_translation_qa
+    from services.livedub_qa_hardening import confirmed_result_one_to_one
+    from services.livedub_qa_trust import apply_audio_trust
+
+    if not all(callable(item) for item in (
+        _run_translation_qa_base,
+        run_translation_qa,
+        run_long_translation_qa,
+        apply_audio_trust,
+        confirmed_result_one_to_one,
+        format_qa_report,
+    )):
+        raise RuntimeError("source-owned LiveDub QA contract is incomplete")
+    return "source-owned LiveDub QA: base -> segmented coverage -> focused confirmation"

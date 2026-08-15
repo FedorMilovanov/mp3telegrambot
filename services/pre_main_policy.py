@@ -8,6 +8,8 @@ owner instead of depending on package import order.
 """
 from __future__ import annotations
 
+import os
+
 
 def configure_pre_main_policy() -> str:
     from services.gemini_max_quality import configure_max_quality_env
@@ -17,6 +19,7 @@ def configure_pre_main_policy() -> str:
         configure_gemini_policy,
     )
 
+    os.environ.setdefault("LIVEDUB_QUICK_QA_MAX_DURATION", "10800")
     qa = configure_gemini_qa_policy()
     maximum = configure_max_quality_env()
     livedub = configure_gemini_policy()

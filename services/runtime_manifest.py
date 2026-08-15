@@ -286,18 +286,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "livedub-long-qa",
-        "services.livedub_long_qa",
-        "install_livedub_long_qa",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-qa-trust",
-        "services.livedub_qa_trust",
-        "install_livedub_qa_trust",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
         "gemini-startup-diagnostics",
         "services.gemini_startup_diagnostics",
         "install_gemini_startup_diagnostics",
@@ -314,15 +302,9 @@ DEFAULT_RUNTIME_FEATURES = (
         requires_main=True,
     ),
     RuntimeFeature(
-        "livedub-ru-provenance",
-        "services.livedub_ru_provenance",
-        "install_livedub_ru_provenance",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "livedub-qa-hardening",
-        "services.livedub_qa_hardening",
-        "install_qa_hardening",
+        "livedub-qa-contract",
+        "services.livedub_qa",
+        "validate_livedub_qa_contract",
         RuntimePhase.POST_MAIN,
     ),
     RuntimeFeature(
