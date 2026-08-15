@@ -61,6 +61,7 @@ async def process_and_send_clips(
     public_max_seconds: float | None = None,
     snapshot_override: bool | None = None,
     factory_publication: bool = False,
+    snap_to_silence: bool = True,
 ) -> int:
     """Render and send long clips, returning the number actually delivered."""
     video_path: Path | None = None
@@ -120,12 +121,14 @@ async def process_and_send_clips(
 
         total = len(candidates)
         logger.info(
-            "Clips: format=%s snapshot=%s candidates=%d public_max=%s factory_publication=%s",
+            "Clips: format=%s snapshot=%s candidates=%d public_max=%s "
+            "factory_publication=%s snap_to_silence=%s",
             format_name,
             do_snapshot,
             total,
             public_max_seconds,
             factory_publication,
+            snap_to_silence,
         )
 
         for i, candidate in enumerate(candidates, 1):
@@ -174,6 +177,7 @@ async def process_and_send_clips(
                 start_seconds,
                 end_seconds,
                 silence_snap_max_end=snap_ceiling,
+                snap_to_silence=snap_to_silence,
             )
             if not ok:
                 continue
