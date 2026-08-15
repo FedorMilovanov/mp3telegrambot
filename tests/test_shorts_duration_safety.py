@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import services.shorts_duration_safety as safety
 
@@ -102,28 +103,43 @@ def test_public_duration_and_required_speed_contracts_are_fail_closed():
     assert safety.short_speed_transform_required(1.5)
 
 
-def test_pipeline_guard_passes_silence_ceiling_explicitly_and_keeps_final_probe_gate():
+def test_final_public_short_gate_checks_probe_duration_and_upload_cap():
+    safe = SimpleNamespace(
+        duration=179.9,
+        width=720,
+        height=1280,
+        has_video=True,
+        has_audio=True,
+        audio_sample_rate=48000,
+        audio_codec="aac",
+        size_mb=40.0,
+    )
+    assert safety.final_public_short_is_safe(safe, max_file_size_mb=50.0)
+
+    too_long = SimpleNamespace(**{**safe.__dict__, "duration": 180.06})
+    too_large = SimpleNamespace(**{**safe.__dict__, "size_mb": 51.0})
+    assert not safety.final_public_short_is_safe(too_long, max_file_size_mb=50.0)
+    assert not safety.final_public_short_is_safe(too_large, max_file_size_mb=50.0)
+
+
+def test_pipeline_owns_duration_safety_without_installation_or_ambient_state():
     safety_source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
+    pipeline_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     renderer_source = Path("services/shorts_video.py").read_text(encoding="utf-8")
 
-    assert "required_speed_transform_failed" in safety_source
-    assert "public_short_duration_ok" in safety_source
-    assert "speed_transform" in safety_source
-    assert "silence_snap_max_end=snap_ceiling" in safety_source
-    assert "_RENDER_SNAP_MAX_END" not in safety_source
-    assert "short_video_impl._find_silence_end" not in safety_source
+    assert "ContextVar" not in safety_source
+    assert "install_shorts_duration_safety" not in safety_source
+    assert "setattr(" not in safety_source
+    assert "sys.modules" not in safety_source
+
+    assert "window = plan_short_source_window(" in pipeline_source
+    assert "silence_snap_max_end=snap_ceiling" in pipeline_source
+    assert "short_speed_transform_required(speed)" in pipeline_source
+    assert "required speed transform" in pipeline_source
+    assert "final_public_short_is_safe(" in pipeline_source
+    assert "speed_extra" not in pipeline_source
 
     assert "silence_snap_max_end: float | None = None" in renderer_source
     assert "adjusted_end = min(adjusted_end, hard_ceiling)" in renderer_source
     assert "end_seconds = min(end_seconds, hard_ceiling)" in renderer_source
     assert "sys.modules" not in renderer_source
-
-
-def test_ordinary_duration_safety_installs_before_factory_video_capture():
-    gate = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
-
-    ordinary_pos = gate.index("if not install_shorts_duration_safety():")
-    factory_video_pos = gate.index("if not install_factory_video_quality_policy():")
-    disk_pos = gate.index("if not install_factory_disk_guard():")
-
-    assert ordinary_pos < factory_video_pos < disk_pos
