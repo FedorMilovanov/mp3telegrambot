@@ -2,7 +2,7 @@
 """Owned public boundary for Shorts video processing.
 
 The legacy implementation module still provides unchanged helpers while public
-rendering and transactional output ownership live here.  This module never
+long-running operations and transactional outputs live here. This module never
 rewrites ``sys.modules`` or mutates imported modules at runtime.
 """
 from __future__ import annotations
@@ -17,13 +17,15 @@ from services import shorts_video_impl as _impl
 
 TRANSACTIONAL_SHORTS_OUTPUT_POLICY = "transactional-shorts-outputs-v3"
 
+_LEGACY_DOWNLOAD_VIDEO = _impl._unowned_download_video_for_shorts
+_LEGACY_TRANSCRIBE_SHORT_CLIP = _impl._unowned_transcribe_short_clip
 _LEGACY_SHORT_TRANSFORM = _impl._unowned_short_transform
 _LEGACY_CREATE_SHORT_TITLE_POSTER = _impl.create_short_title_poster
 _LEGACY_CREATE_SHORT_SNAPSHOT = _impl.create_short_snapshot
 
 
 def __getattr__(name: str) -> Any:
-    """Delegate unchanged public helpers to the implementation module."""
+    """Delegate unchanged helpers only; long-running public operations are explicit."""
     try:
         return getattr(_impl, name)
     except AttributeError as exc:
@@ -64,6 +66,27 @@ def _finite_ceiling(value: float | int | None) -> float | None:
     except (TypeError, ValueError, OverflowError):
         return None
     return parsed if math.isfinite(parsed) else None
+
+
+async def download_video_for_shorts(
+    url: str,
+    media_id: str,
+    workdir: Path | None = None,
+):
+    """Own the full download awaitable so repeated outer cancellation cannot orphan it."""
+    return await _impl.await_owned_coroutine(
+        _LEGACY_DOWNLOAD_VIDEO(url, media_id, workdir=workdir)
+    )
+
+
+async def transcribe_short_clip(
+    video_path: Path,
+    ai_data: dict | None = None,
+) -> list[dict]:
+    """Own extraction + Whisper as one public operation, not only the worker thread."""
+    return await _impl.await_owned_coroutine(
+        _LEGACY_TRANSCRIBE_SHORT_CLIP(video_path, ai_data=ai_data)
+    )
 
 
 async def _owned_render_short_clip(
@@ -481,4 +504,22 @@ async def create_short_snapshot(
             snapshot_path,
             clip_duration_seconds,
         )
+    )
+
+
+async def burn_subtitles_into_short(
+    input_path: Path,
+    output_path: Path,
+    segments: list[dict],
+    *,
+    karaoke: bool | None = None,
+) -> bool:
+    """Delegate to the transactional subtitle owner without legacy burn fallback."""
+    from services.shorts_subtitle_burn import burn_subtitles_into_short as owned_burn
+
+    return await owned_burn(
+        input_path,
+        output_path,
+        segments,
+        karaoke=karaoke,
     )
