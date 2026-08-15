@@ -27,17 +27,21 @@ FACTORY_SUBTITLE_PROFILE: dict[str, Any] = {
 
 
 def factory_subtitle_profile() -> dict[str, Any]:
-    """Return the strict Factory profile without changing global subtitle settings."""
-    profile = dict(FACTORY_SUBTITLE_PROFILE)
-    profile["model_name"] = (
+    """Return the fail-closed Factory profile without global subtitle mutation."""
+    requested = (
         os.getenv("SHORTS_FACTORY_WHISPER_MODEL", "").strip()
         or DEFAULT_FACTORY_WHISPER_MODEL
     )
-    return profile
+    if requested.casefold() != DEFAULT_FACTORY_WHISPER_MODEL:
+        raise RuntimeError(
+            "SHORTS FACTORY MAX requires faster-whisper large-v3 exactly; "
+            f"{requested!r} is a quality downgrade"
+        )
+    return dict(FACTORY_SUBTITLE_PROFILE)
 
 
 def resolve_subtitle_profile(override: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Return a complete profile without mutating global settings."""
+    """Return a complete ordinary-Shorts profile without mutating global settings."""
     base = dict(_impl.get_subtitles_mode_settings())
     if override:
         base.update(dict(override))
