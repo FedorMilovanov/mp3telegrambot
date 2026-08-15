@@ -178,9 +178,10 @@ def test_factory_subtitles_use_explicit_max_quality_profile(monkeypatch):
     }
 
 
-def test_factory_whisper_model_has_explicit_override(monkeypatch):
+def test_factory_whisper_model_rejects_quality_downgrade(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_WHISPER_MODEL", "large-v3-turbo")
-    assert factory_subtitle_profile()["model_name"] == "large-v3-turbo"
+    with pytest.raises(RuntimeError, match="quality downgrade"):
+        factory_subtitle_profile()
 
 
 def test_factory_short_ceiling_is_absolute_start_plus_180_and_source_bounded():
@@ -199,6 +200,7 @@ def test_factory_short_delivery_has_no_runtime_proxy_or_trim_ui():
     assert "reply_markup=" not in source
     assert "speed=1.0" in source
     assert "silence_snap_max_end=ceiling" in source
+    assert "snap_to_silence=False" in source
     assert "sent += 1" in source
 
 
