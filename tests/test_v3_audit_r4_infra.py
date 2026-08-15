@@ -99,8 +99,15 @@ def test_env_int_parsing_guarded():
     паттерн MAX_FILE_SIZE_MB (try/except с дефолтом) обязателен для всех."""
     db = Path("core/database.py").read_text(encoding="utf-8")
     assert 'int(os.getenv("CACHE_TTL_DAYS", "45").strip() or "45")' in db
+
     g = Path("core/globals.py").read_text(encoding="utf-8")
-    assert 'float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600")' in g
+    idx = g.find("_VIDEO_LOCK_TTL_SEC = float(")
+    assert idx != -1
+    lock_block = g[idx:idx + 260]
+    assert 'os.getenv("VIDEO_LOCK_TTL_SEC", "3600")' in lock_block
+    assert "except ValueError:" in lock_block
+    assert "_VIDEO_LOCK_TTL_SEC = 3600.0" in lock_block
+
     m = Path("main.py").read_text(encoding="utf-8")
     assert 'int(os.environ.get("PORT", "10000").strip() or "10000")' in m
 
