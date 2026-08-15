@@ -109,11 +109,20 @@ def test_explicit_emergency_escape_can_disable_confirmation(monkeypatch):
     assert "confirm=0" in diagnostic
 
 
-def test_services_bootstrap_installs_qa_policy_before_core_clients():
-    source = (Path(__file__).parents[1] / "services" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
-    qa_call = source.index("configure_gemini_qa_policy()")
-    policy_call = source.index("configure_gemini_policy()")
-    first_core_import = source.index("from core import")
-    assert qa_call < policy_call < first_core_import
+def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():
+    root = Path(__file__).parents[1]
+    package_source = (root / "services" / "__init__.py").read_text(encoding="utf-8")
+    manifest_source = (root / "services" / "runtime_manifest.py").read_text(encoding="utf-8")
+    policy_source = (root / "services" / "pre_main_policy.py").read_text(encoding="utf-8")
+
+    assert "configure_gemini_qa_policy()" not in package_source
+    assert "sys.meta_path" not in package_source
+    assert '"pre-main-quality-policy"' in manifest_source
+    assert '"services.pre_main_policy"' in manifest_source
+    assert 'RuntimePhase.PRE_MAIN' in manifest_source
+
+    qa_call = policy_source.index("configure_gemini_qa_policy()")
+    max_call = policy_source.index("configure_max_quality_env()")
+    semantic_call = policy_source.index("configure_gemini_policy()")
+    assert qa_call < max_call < semantic_call
+    assert "core.globals" not in policy_source
