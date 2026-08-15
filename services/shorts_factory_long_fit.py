@@ -2,19 +2,14 @@
 """Highest-quality two-pass fit for oversized Factory long clips."""
 from __future__ import annotations
 
-import functools
 import logging
 import math
 import os
 import shutil
 from pathlib import Path
 
-from core.database import get_max_file_size_mb
 from services.async_process import run_cancellable_process
-from services.media_delivery_probe import (
-    media_probe_is_deliverable,
-    probe_media_async,
-)
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +21,6 @@ _FACTORY_LONG_MAX_SEC = 900.0
 _FACTORY_LONG_DURATION_EPSILON_SEC = 0.05
 _FACTORY_LONG_EXPECTED_TOLERANCE_SEC = 0.75
 _FACTORY_LONG_FIT_DISK_RESERVE_BYTES = 512 * 1024**2
-_INSTALLED = False
 
 
 def factory_long_target_video_kbps(
@@ -177,7 +171,7 @@ async def fit_factory_long_clip_to_limit(
     max_file_size_mb: float,
     ffmpeg: str,
 ) -> bool:
-    """Two-pass encode the exact interval at the highest bitrate that fits."""
+    """Two-pass encode the exact audited interval at the highest bitrate that fits."""
     duration = float(end_seconds) - float(start_seconds)
     if duration <= 0 or duration > _FACTORY_LONG_MAX_SEC:
         raise RuntimeError(
@@ -186,10 +180,7 @@ async def fit_factory_long_clip_to_limit(
 
     ensure_factory_long_fit_space(output_path.parent, max_file_size_mb)
     limit_bytes = int(float(max_file_size_mb) * 1024 * 1024)
-    target_kbps = factory_long_target_video_kbps(
-        max_file_size_mb,
-        duration,
-    )
+    target_kbps = factory_long_target_video_kbps(max_file_size_mb, duration)
     fitted, passlog = _fit_artifacts(output_path)
     _cleanup_fit_artifacts(fitted, passlog)
 
@@ -251,8 +242,8 @@ async def fit_factory_long_clip_to_limit(
                 output_path.unlink(missing_ok=True)
                 fitted.replace(output_path)
                 logger.info(
-                    "Factory long fitted to Telegram limit: attempt=%d "
-                    "bitrate=%dk duration=%.3fs size=%.1fMB limit=%.1fMB",
+                    "Factory long fitted to Telegram limit: attempt=%d bitrate=%dk "
+                    "duration=%.3fs size=%.1fMB limit=%.1fMB",
                     attempt + 1,
                     target_kbps,
                     probe.duration,
@@ -277,75 +268,9 @@ async def fit_factory_long_clip_to_limit(
         _cleanup_fit_artifacts(fitted, passlog)
 
 
-def install_factory_long_fit_policy() -> bool:
-    """Wrap long rendering only inside the task-local Factory context."""
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-
-    import pipelines.clips as clips_module
-    import services.render_clips_montage as render_module
-    import services.shorts_factory_runtime as runtime_module
-
-    original_render_clip = render_module.render_clip
-
-    @functools.wraps(original_render_clip)
-    async def factory_size_safe_render_clip(
-        source_video_path: Path,
-        output_path: Path,
-        start_seconds: float,
-        end_seconds: float,
-    ) -> bool:
-        rendered = await original_render_clip(
-            source_video_path,
-            output_path,
-            start_seconds,
-            end_seconds,
-        )
-        if not rendered or runtime_module._FACTORY_SETTINGS.get() is None:
-            return rendered
-
-        max_size_mb = float(get_max_file_size_mb())
-        limit_bytes = int(max_size_mb * 1024 * 1024)
-        if output_path.is_file() and output_path.stat().st_size <= limit_bytes:
-            return True
-
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            logger.error("Factory long fit requires ffmpeg")
-            return False
-        logger.warning(
-            "Factory long clip exceeds Telegram limit; starting two-pass fit: "
-            "file=%s size=%.1fMB limit=%.1fMB",
-            output_path.name,
-            output_path.stat().st_size / (1024 * 1024),
-            max_size_mb,
-        )
-        return await fit_factory_long_clip_to_limit(
-            source_video_path,
-            output_path,
-            start_seconds,
-            end_seconds,
-            max_file_size_mb=max_size_mb,
-            ffmpeg=ffmpeg,
-        )
-
-    render_module.render_clip = factory_size_safe_render_clip
-    clips_module.render_clip = factory_size_safe_render_clip
-
-    _INSTALLED = True
-    logger.info(
-        "Shorts Factory long-fit policy installed: original CRF render first, "
-        "then exact-interval two-pass libx264 slow only when the hard Telegram "
-        "size limit is exceeded"
-    )
-    return True
-
-
 __all__ = [
     "ensure_factory_long_fit_space",
     "factory_long_fit_required_free_bytes",
     "factory_long_target_video_kbps",
     "fit_factory_long_clip_to_limit",
-    "install_factory_long_fit_policy",
 ]
