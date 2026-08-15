@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Runtime safety for ordinary Shorts source windows and public duration.
+"""Ordinary Shorts source-window and public-duration safety.
 
-The candidate planner already scales source duration by the selected playback
-speed so that the delivered Short can remain <=3 minutes. This layer makes the
-render/delivery pipeline honor that contract exactly: optional boundary padding
-must fit inside the same source budget, the renderer cannot add a second speed
-compensation, silence snapping cannot escape the source budget, and a failed
-required speed transform cannot fall back to an overlong raw file.
-
-Factory jobs have their own stricter request-local timing/delivery authority and
-are deliberately bypassed here.
+The ordinary Shorts pipeline still uses this policy while its remaining state
+is moved into the pipeline owner.  Silence snapping is already explicit: the
+calculated absolute ceiling is passed directly to ``render_short_clip`` and no
+imported function is rebound.
 """
 from __future__ import annotations
 
@@ -33,10 +28,6 @@ _INSTALLED = False
 
 _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "ordinary_shorts_duration_safety",
-    default=None,
-)
-_RENDER_SNAP_MAX_END: ContextVar[float | None] = ContextVar(
-    "ordinary_shorts_render_snap_max_end",
     default=None,
 )
 
@@ -92,13 +83,7 @@ def plan_short_source_window(
     pre_roll: float | None = None,
     post_roll: float | None = None,
 ) -> tuple[float, float, float] | None:
-    """Return start/end/silence-snap ceiling for one ordinary Short.
-
-    The semantic candidate is never shortened merely to make room for optional
-    padding. Padding is proportionally reduced when the semantic candidate is
-    near the public source budget. A candidate that itself exceeds the budget
-    or the proved source duration fails closed instead of being silently cut.
-    """
+    """Return start, requested end and absolute silence-snap ceiling."""
     start = _finite_float(candidate.get("start_seconds"))
     end = _finite_float(candidate.get("end_seconds"))
     speed_value = _finite_float(speed)
@@ -144,15 +129,13 @@ def plan_short_source_window(
 
     render_start = max(0.0, start - desired_pre * scale)
     render_end = end + desired_post * scale
-
     if source_limit > 0.0:
         render_end = min(render_end, source_limit)
     if render_end <= render_start:
         return None
 
-    # Generic renderer rounds a silence-snapped end to whole seconds. Keep its
-    # extension ceiling on a whole-second value that cannot round past the raw
-    # source budget. The requested render_end itself remains precise.
+    # Renderer may round a snapped end. Use a whole-second ceiling which cannot
+    # round beyond the public source budget or the proved source duration.
     snap_ceiling = math.floor(render_start + source_budget + 1e-9)
     if source_limit > 0.0:
         snap_ceiling = min(snap_ceiling, math.floor(source_limit + 1e-9))
@@ -167,7 +150,6 @@ def authoritative_short_source_start(
     pipeline_source_start: Any,
     render_window: Any,
 ) -> float:
-    """Use the real request-local render start for saved trim/replay timing."""
     fallback = max(0.0, _finite_float(pipeline_source_start, 0.0) or 0.0)
     if not isinstance(render_window, (tuple, list)) or not render_window:
         return fallback
@@ -195,23 +177,18 @@ def _short_index_from_path(path: Any) -> int | None:
 
 
 def _source_duration_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> float:
-    raw = (
-        kwargs.get("duration")
-        if "duration" in kwargs
-        else (args[5] if len(args) > 5 else 0)
-    )
+    raw = kwargs.get("duration") if "duration" in kwargs else (args[5] if len(args) > 5 else 0)
     value = _finite_float(raw, 0.0) or 0.0
     return max(0.0, value)
 
 
 def install_shorts_duration_safety() -> bool:
-    """Install ordinary-Shorts timing guards before Factory captures its seams."""
+    """Install ordinary-Shorts guards until the remaining state is pipeline-owned."""
     global _INSTALLED
     if _INSTALLED:
         return True
 
     import pipelines.shorts as shorts_module
-    import services.shorts_video_impl as short_video_impl
 
     original_process = shorts_module.process_and_send_shorts
     original_candidates = shorts_module.create_shorts_candidates
@@ -222,7 +199,6 @@ def install_shorts_duration_safety() -> bool:
     original_select = shorts_module.select_delivery_file
     original_probe = shorts_module.probe_media_async
     original_resolve_timing = shorts_module.resolve_delivery_timing
-    original_find_silence_end = short_video_impl._find_silence_end
 
     async def safe_process(*args, **kwargs):
         if _factory_active():
@@ -255,11 +231,7 @@ def install_shorts_duration_safety() -> bool:
     async def safe_setting_get(key: str):
         value = await original_setting_get(key)
         state = _STATE.get()
-        if (
-            state is not None
-            and not _factory_active()
-            and key == "shorts_boundary_padding"
-        ):
+        if state is not None and not _factory_active() and key == "shorts_boundary_padding":
             state["boundary_padding"] = bool(value)
         return value
 
@@ -327,27 +299,14 @@ def install_shorts_duration_safety() -> bool:
         render_start, render_end, snap_ceiling = plan
         state["current_index"] = index
         state.setdefault("render_windows", {})[index] = (render_start, render_end)
-        token = _RENDER_SNAP_MAX_END.set(snap_ceiling)
-        try:
-            return await original_render(
-                source_video_path,
-                output_path,
-                render_start,
-                render_end,
-                visual_mode=visual_mode,
-            )
-        finally:
-            _RENDER_SNAP_MAX_END.reset(token)
-
-    async def safe_find_silence_end(*args, **kwargs):
-        adjusted = await original_find_silence_end(*args, **kwargs)
-        ceiling = _RENDER_SNAP_MAX_END.get()
-        if ceiling is None:
-            return adjusted
-        value = _finite_float(adjusted)
-        if value is None:
-            return adjusted
-        return min(value, ceiling)
+        return await original_render(
+            source_video_path,
+            output_path,
+            render_start,
+            render_end,
+            visual_mode=visual_mode,
+            silence_snap_max_end=snap_ceiling,
+        )
 
     async def safe_postprocess(
         input_path,
@@ -386,8 +345,7 @@ def install_shorts_duration_safety() -> bool:
             and state.get("speed_transform", {}).get(index) is not True
         ):
             logger.warning(
-                "Shorts %s rejected: required speed transform failed; "
-                "raw fallback is unsafe",
+                "Shorts %s rejected: required speed transform failed; raw fallback is unsafe",
                 index,
             )
             return DeliveryFileSelection(
@@ -413,9 +371,7 @@ def install_shorts_duration_safety() -> bool:
             counts = state.setdefault("raw_probe_count", {})
             counts[index] = int(counts.get(index, 0)) + 1
             final_check = counts[index] > 1
-        if final_check and not public_short_duration_ok(
-            getattr(probe, "duration", 0.0)
-        ):
+        if final_check and not public_short_duration_ok(getattr(probe, "duration", 0.0)):
             logger.warning(
                 "Shorts %d rejected: final duration %.3fs exceeds public %.0fs cap",
                 index,
@@ -438,10 +394,7 @@ def install_shorts_duration_safety() -> bool:
         if state is not None and not _factory_active():
             index = state.get("current_index")
             render_window = state.get("render_windows", {}).get(index)
-            source_start = authoritative_short_source_start(
-                source_start,
-                render_window,
-            )
+            source_start = authoritative_short_source_start(source_start, render_window)
         return original_resolve_timing(
             source_start=source_start,
             raw_duration=raw_duration,
@@ -460,13 +413,12 @@ def install_shorts_duration_safety() -> bool:
     shorts_module.select_delivery_file = safe_select
     shorts_module.probe_media_async = safe_probe
     shorts_module.resolve_delivery_timing = safe_resolve_timing
-    short_video_impl._find_silence_end = safe_find_silence_end
 
     _INSTALLED = True
     logger.info(
-        "Ordinary Shorts duration safety installed: one speed compensation, "
-        "padding/silence inside source budget, required speed fail-closed, "
-        "authoritative replay timing, final duration <=180s"
+        "Ordinary Shorts duration safety installed: explicit silence ceiling, one speed "
+        "compensation, required speed fail-closed, authoritative replay timing, "
+        "final duration <=180s"
     )
     return True
 
