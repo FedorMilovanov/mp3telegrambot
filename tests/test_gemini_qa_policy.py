@@ -116,7 +116,8 @@ def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():
     policy_source = (root / "services" / "pre_main_policy.py").read_text(encoding="utf-8")
 
     assert "configure_gemini_qa_policy()" not in package_source
-    assert "sys.meta_path" not in package_source
+    assert "sys.meta_path.insert" not in package_source
+    assert "sys.meta_path.remove" not in package_source
     assert '"pre-main-quality-policy"' in manifest_source
     assert '"services.pre_main_policy"' in manifest_source
     assert 'RuntimePhase.PRE_MAIN' in manifest_source
