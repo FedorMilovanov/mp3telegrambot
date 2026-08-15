@@ -39,6 +39,7 @@ on:
       - "tests/test_cut_runtime_installation.py"
       - "tests/test_highlights_candidate_gate.py"
       - "tests/test_segment_delivery_media.py"
+      - "tools/run_pytest_with_annotations.py"
       - "requirements-lock.txt"
       - ".github/workflows/cut-policy-ci.yml"
   pull_request:
@@ -78,6 +79,7 @@ on:
       - "tests/test_cut_runtime_installation.py"
       - "tests/test_highlights_candidate_gate.py"
       - "tests/test_segment_delivery_media.py"
+      - "tools/run_pytest_with_annotations.py"
       - "requirements-lock.txt"
       - ".github/workflows/cut-policy-ci.yml"
 
@@ -140,10 +142,11 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/run_pytest_with_annotations.py
 
       - name: Run focused regressions
         run: >-
-          python -m pytest -q
+          python tools/run_pytest_with_annotations.py -q
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_cut_replay_delivery_policy.py
           tests/test_shorts_factory_no_downgrade.py
@@ -182,6 +185,7 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/run_pytest_with_annotations.py
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_cut_replay_delivery_policy.py
           tests/test_shorts_factory_no_downgrade.py
