@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owned long-clip renderer with explicit silence-snap bounds."""
+"""Owned long-clip renderer with explicit silence-snap policy and bounds."""
 from __future__ import annotations
 
 import asyncio
@@ -52,8 +52,9 @@ async def render_clip(
     end_seconds: float,
     *,
     silence_snap_max_end: float | None = None,
+    snap_to_silence: bool = True,
 ) -> bool:
-    """Render a long clip while enforcing an optional absolute snap ceiling."""
+    """Render a long clip with explicit snap behavior and optional hard ceiling."""
     source_video_path = Path(source_video_path)
     output_path = Path(output_path)
     _unlink(output_path)
@@ -93,35 +94,36 @@ async def render_clip(
             return False
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        adjusted = await _find_silence_end(
-            source_video_path,
-            end,
-            search_window=8.0,
-        )
-        try:
-            adjusted = float(adjusted)
-        except (TypeError, ValueError, OverflowError):
-            adjusted = end
-        if not math.isfinite(adjusted):
-            adjusted = end
+        if snap_to_silence:
+            adjusted = await _find_silence_end(
+                source_video_path,
+                end,
+                search_window=8.0,
+            )
+            try:
+                adjusted = float(adjusted)
+            except (TypeError, ValueError, OverflowError):
+                adjusted = end
+            if not math.isfinite(adjusted):
+                adjusted = end
 
-        min_end = start + max(10.0, (end - start) * 0.5)
-        max_end = end + 12.0
-        if ceiling is not None:
-            adjusted = min(adjusted, ceiling)
-            max_end = min(max_end, ceiling)
-        if min_end < adjusted <= max_end and abs(adjusted - end) > 0.1:
-            snapped = float(round(adjusted))
+            min_end = start + max(10.0, (end - start) * 0.5)
+            max_end = end + 12.0
             if ceiling is not None:
-                snapped = min(snapped, ceiling)
-            if snapped > start:
-                logger.info(
-                    "Clip end adjusted: %.3fs -> %.3fs (silence snap, ceiling=%s)",
-                    end,
-                    snapped,
-                    f"{ceiling:.3f}" if ceiling is not None else "none",
-                )
-                end = snapped
+                adjusted = min(adjusted, ceiling)
+                max_end = min(max_end, ceiling)
+            if min_end < adjusted <= max_end and abs(adjusted - end) > 0.1:
+                snapped = float(round(adjusted))
+                if ceiling is not None:
+                    snapped = min(snapped, ceiling)
+                if snapped > start:
+                    logger.info(
+                        "Clip end adjusted: %.3fs -> %.3fs (silence snap, ceiling=%s)",
+                        end,
+                        snapped,
+                        f"{ceiling:.3f}" if ceiling is not None else "none",
+                    )
+                    end = snapped
         if ceiling is not None:
             end = min(end, ceiling)
 
