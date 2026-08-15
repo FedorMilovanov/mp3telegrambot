@@ -17,6 +17,7 @@ from typing import Any
 from core.globals import DOWNLOAD_DIR, GEMINI_CLIENTS
 
 logger = logging.getLogger(__name__)
+MIN_FACTORY_FREE_GB = 2.0
 
 _LANGUAGE_ALIASES = {
     "ru": "ru",
@@ -210,8 +211,8 @@ def _min_free_gb() -> float:
     try:
         value = float(os.getenv("SHORTS_FACTORY_MIN_FREE_GB", "2.0") or "2.0")
     except (TypeError, ValueError):
-        value = 2.0
-    return max(0.5, min(value, 100.0))
+        value = MIN_FACTORY_FREE_GB
+    return max(MIN_FACTORY_FREE_GB, min(value, 100.0))
 
 
 def enforce_factory_preflight() -> None:
@@ -284,6 +285,7 @@ async def process_shorts_factory_guarded(
 
 
 __all__ = [
+    "MIN_FACTORY_FREE_GB",
     "enforce_factory_preflight",
     "enforce_factory_translation_preflight",
     "factory_language_needs_translation",
