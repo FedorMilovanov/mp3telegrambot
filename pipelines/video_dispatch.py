@@ -60,7 +60,7 @@ async def process_single_video(
         )
 
     if mode == EDITORIAL_MODE:
-        from services.shorts_factory_editorial_bridge import (
+        from services.translation_editorial_runner import (
             process_translation_editorial_only,
         )
 
