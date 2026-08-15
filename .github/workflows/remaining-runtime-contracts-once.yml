@@ -27,7 +27,7 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
       - name: Apply deterministic cleanup
-        run: python tools/_stage_remaining_runtime_contracts.py
+        run: python tools/_run_remaining_runtime_contracts.py
       - name: Compile changed surfaces
         run: |
           python -m py_compile \
