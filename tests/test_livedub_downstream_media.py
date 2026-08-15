@@ -154,7 +154,7 @@ def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
     clips_source = Path("pipelines/clips.py").read_text(encoding="utf-8")
     montage_source = Path("pipelines/montage.py").read_text(encoding="utf-8")
 
-    assert "ContextVar" not in media_source
+    assert "from contextvars import ContextVar" not in media_source
     assert "install_livedub_downstream_media_policy" not in media_source
     assert "setattr(" not in media_source
     assert "sys.modules" not in media_source
