@@ -18,7 +18,7 @@ from core.database import (
 )
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
+    Application, ApplicationHandlerStop, CommandHandler, MessageHandler, TypeHandler,
     CallbackQueryHandler, PollAnswerHandler, filters,
 )
 from services.shorts_video import (
@@ -26,6 +26,8 @@ from services.shorts_video import (
     get_subtitles_mode_settings,
     _get_whisper_model,
 )
+from services.audio_cache_maintenance import cleanup_stale_cached_audio
+from services.process_singleton import singleton_lock_path
 from handlers.commands import (
     start, help_command, handle_message, reset_cache_command, pdf_command,
     stop_command, metrics_command, archive_command, lastpages_command,
@@ -61,7 +63,7 @@ _STOP_EVENT = threading.Event()
 # а по логу первый выглядел «рабочим» (просто висел в цикле ретраев PTB).
 # Проверка перед стартом polling даёт честную ошибку сразу вместо скрытой
 # борьбы за long-poll на стороне Telegram.
-_SINGLETON_LOCK_PATH = Path("bot.lock")
+_SINGLETON_LOCK_PATH = singleton_lock_path()
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -742,6 +744,21 @@ async def run_bot_async():
             builder.local_mode(True)
 
     app = builder.build()
+
+    # Source-owned polling reliability: inspect every update before normal
+    # handlers without replacing PTB class methods globally.
+    from services.polling_reliability_runtime import (
+        accept_pending_update,
+        polling_error_callback,
+    )
+
+    async def _pending_update_guard(update, context):
+        del context
+        if not accept_pending_update(update, app.bot_data):
+            raise ApplicationHandlerStop
+
+    app.add_handler(TypeHandler(Update, _pending_update_guard), group=-100)
+
     # FIX 2026-06-10: edited-команды (юзер отредактировал «/modе» → «/mode»)
     # проходят CommandHandler через effective_message, но хендлеры читают
     # update.message (None для edited) → AttributeError. Только новые сообщения.
@@ -853,7 +870,8 @@ async def run_bot_async():
             # pool_timeout kwargs; timeouts are configured on HTTPXRequest above.
             await app.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
+                drop_pending_updates=False,
+                error_callback=polling_error_callback,
             )
         except Exception:
             # If polling fails after app.start(), __aexit__ can't shutdown a
@@ -927,6 +945,7 @@ async def run_bot_async():
                 try:
                     await loop.run_in_executor(None, cleanup_nosub_files)
                     await loop.run_in_executor(None, cleanup_stale_downloads)
+                    await loop.run_in_executor(None, cleanup_stale_cached_audio)
                     await loop.run_in_executor(None, db_cleanup_old_records)
                     await loop.run_in_executor(None, db_backup)
                     # AUDIT 2026-06-10: data-dir локального Bot API сервера и

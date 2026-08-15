@@ -734,6 +734,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _livedub_result_sent = False
         _livedub_video_for_downstream = None
 
+        from services.livedub_delivery_coordinator import create_source_audio_deferral
+
+        _source_audio_delivery = create_source_audio_deferral(
+            bot=context.bot if context else None,
+            chat_id=update.effective_chat.id if context else None,
+            reply_to=update.message.message_id if context else None,
+            enabled=bool(
+                context
+                and user_mode == "eng"
+                and (_livedub_cached_file_id or live_dub_task)
+            ),
+        )
+
         async def _send_livedub_result() -> bool:
             """Отправляет готовый LIVEDUB-перевод пользователю.
 
@@ -755,6 +768,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if user_mode != "eng" or _livedub_failure_notice_sent:
                     return False
                 _livedub_failure_notice_sent = True
+                await _source_audio_delivery.flush("LiveDub unavailable")
                 reason = str(reason or "").strip()
                 if not reason:
                     reason = "Яндекс/VOT не отдал живой дубляж для этого ролика."
@@ -776,57 +790,54 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     logger.info("[LiveDub] failure notice not sent: %s", str(_ld_notice_err)[:160])
                     return False
 
-            _livedub_title_line = ""
-            try:
-                _ai_for_livedub_title = None
-                try:
-                    _ai_for_livedub_title = ai_data if isinstance(ai_data, dict) else None
-                except NameError:
-                    _ai_for_livedub_title = None
-                if _ai_for_livedub_title is None:
-                    try:
-                        _ai_for_livedub_title = c_ai if isinstance(c_ai, dict) else None
-                    except NameError:
-                        _ai_for_livedub_title = None
-                _analysis_title = (_ai_for_livedub_title or {}).get("real_title", "") if _ai_for_livedub_title else ""
-                _analysis_author = (_ai_for_livedub_title or {}).get("real_author", "") if _ai_for_livedub_title else ""
-                _title_ru, _author_ru = await _translate_livedub_title_for_caption(
-                    full_title, title, performer, channel_name,
-                    analysis_title=_analysis_title,
-                    analysis_author=_analysis_author,
-                )
-                _livedub_title_line = _format_livedub_title_line(_title_ru, _author_ru)
-            except Exception as _lte:
-                logger.info("[LiveDubTitle] caption title unavailable: %s", str(_lte)[:120])
-                _livedub_title_line = title_case_fragment(normalize_title_text(title) or title or "")
-            _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
+            from services.livedub_publication import (
+                build_publication_card,
+                format_video_caption,
+            )
 
-            async def _send_livedub_info_card_once(dub_srt_path=None) -> None:
-                if user_mode not in ("eng_fast", "eng_fast_qa"):
-                    return
+            _publication_ai = None
+            try:
+                _publication_ai = ai_data if isinstance(ai_data, dict) else None
+            except NameError:
+                _publication_ai = None
+            if _publication_ai is None:
                 try:
-                    from services.livedub_info import build_livedub_info_card, format_livedub_info_message
-                    _info_card = await build_livedub_info_card(_livedub_title_line, dub_srt_path, source_url=url)
-                    _info_msg = format_livedub_info_message(_info_card or {})
-                    if _info_msg:
-                        await context.bot.send_message(
-                            chat_id=update.effective_chat.id,
-                            text=_info_msg,
-                            parse_mode="HTML",
-                            reply_to_message_id=update.message.message_id,
-                            disable_web_page_preview=True,
-                        )
-                except Exception as _info_err:
-                    logger.info("[LiveDubInfo] skip: %s", str(_info_err)[:160])
+                    _publication_ai = c_ai if isinstance(c_ai, dict) else None
+                except NameError:
+                    _publication_ai = None
+
+            _publication_title = str((_publication_ai or {}).get("real_title") or title or "").strip()
+            _publication_author = str((_publication_ai or {}).get("real_author") or performer or "").strip()
+            _publication_source_line = (
+                f"{_publication_title} - {_publication_author}"
+                if _publication_author
+                else (_publication_title or full_title or "Переведённое видео")
+            )
+            _publication_card = await build_publication_card(_publication_source_line, url)
+            _pub_title = str(_publication_card.get("title") or _publication_title or "Переведённое видео").strip()
+            _pub_author = str(_publication_card.get("author") or _publication_author or "").strip()
+            _livedub_title_line = (
+                f"{_pub_title} - {_pub_author}"
+                if _pub_author and _pub_author.casefold() not in _pub_title.casefold()
+                else _pub_title
+            )
+            _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
 
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
+                from services.livedub_delivery_coordinator import (
+                    delete_message_best_effort,
+                    deliver_cached_companions,
+                )
+
+                _cached_internal_caption = (
+                    f"<b>{_livedub_title_html}</b>\n🎬 Живые голоса Яндекса"
+                    if _livedub_title_html else "🎬 Живые голоса Яндекса"
+                )
+                _cached_cap = format_video_caption(_publication_card, _cached_internal_caption)
+                _cached_video_message = None
                 try:
-                    _cached_cap = (
-                        f"<b>{_livedub_title_html}</b>\n🎬 Живые голоса Яндекса"
-                        if _livedub_title_html else "🎬 Живые голоса Яндекса"
-                    )
-                    await context.bot.send_video(
+                    _cached_video_message = await context.bot.send_video(
                         chat_id=update.effective_chat.id,
                         video=_livedub_cached_file_id,
                         caption=_cached_cap,
@@ -834,29 +845,44 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         reply_to_message_id=update.message.message_id,
                         supports_streaming=True,
                     )
-                    await _send_livedub_info_card_once(None)
-                    _livedub_result_sent = True
-                    return True
+                    companions_ok = await deliver_cached_companions(
+                        context.bot,
+                        chat_id=update.effective_chat.id,
+                        video_file_id=_livedub_cached_file_id,
+                        publication_card=_publication_card,
+                        reply_to=update.message.message_id,
+                    )
+                    if not companions_ok:
+                        raise RuntimeError("cached LiveDub companion set is missing")
                 except Exception as _fid_err:
-                    # file_id протух (смена бота/сервера). Чистим кэш, чтобы
-                    # следующая отправка ссылки запустила полный цикл, и честно
-                    # говорим пользователю (vot-cli в этом заходе не запускался).
-                    logger.warning(f"[LiveDub] file_id из кэша не сработал: {_fid_err}")
+                    if _cached_video_message is not None:
+                        await delete_message_best_effort(
+                            context.bot, update.effective_chat.id, _cached_video_message
+                        )
+                    logger.warning("[LiveDub] cached pair rejected: %s", _fid_err)
                     try:
                         from core.database import adb_set_livedub_file_id
                         await adb_set_livedub_file_id(media_id, "")
                     except Exception:
                         pass
+                    await _source_audio_delivery.flush("cached LiveDub pair unavailable")
                     try:
                         await context.bot.send_message(
                             chat_id=update.effective_chat.id,
-                            text="⚠️ Кэшированный перевод устарел. Отправьте ссылку ещё раз — перевод будет создан заново.",
+                            text=(
+                                "⚠️ Кэшированный перевод или его MP3-комплект устарел. "
+                                "Отправьте ссылку ещё раз — полный комплект будет создан заново."
+                            ),
                             reply_to_message_id=update.message.message_id,
                         )
                     except Exception:
                         pass
                     _livedub_result_sent = True
-                    return True  # юзер получил объяснение
+                    return True
+
+                _source_audio_delivery.discard("cached LiveDub pair delivered")
+                _livedub_result_sent = True
+                return True
             if not live_dub_task:
                 return False
             try:
@@ -1115,6 +1141,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {get_max_file_size_mb()} МБ.{_livedub_hint}",
                         reply_to_message_id=update.message.message_id,
                     )
+                    await _source_audio_delivery.flush("LiveDub video exceeds Telegram limit")
                     _livedub_result_sent = True
                     return True
                 _title_prefix = f"<b>{_livedub_title_html}</b>\n" if _livedub_title_html else ""
@@ -1139,6 +1166,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     # юзер должен это видеть, а не думать, что перевод проверен.
                     if user_mode == "eng_fast_qa" and _quick_qa_skip_note:
                         caption += f"\n🔍 {_quick_qa_skip_note}"
+                if not is_fallback:
+                    caption = format_video_caption(_publication_card, caption)
+
                 # Path вместо file handle: с локальным Bot API (local_mode=True)
                 # PTB передаёт file:// URI — сервер читает файл с диска напрямую,
                 # без HTTP-загрузки сотен МБ (это причина TimedOut на больших файлах).
@@ -1200,16 +1230,60 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     # Старый Bot API сервер/прокси может не знать cover — повтор без него
                     logger.info(f"[LiveDub] cover не принят ({str(_cov_err)[:100]}) — отправка без cover")
                     _sent_msg = await context.bot.send_video(**_send_kwargs)
-                # Сохраняем file_id для мгновенной повторной отправки
-                if not is_fallback:
+                # Companion delivery is an explicit transaction. Only a complete
+                # video+MP3 result enters the fast-resend video cache.
+                _video_file_id = str(
+                    getattr(getattr(_sent_msg, "video", None), "file_id", "") or ""
+                ).strip()
+                if is_fallback:
+                    await _source_audio_delivery.flush("LiveDub fell back to original video")
+                else:
+                    from services.livedub_delivery_coordinator import deliver_new_companions
+
+                    _companions_ok = False
                     try:
-                        _fid = getattr(getattr(_sent_msg, "video", None), "file_id", "")
-                        if _fid:
-                            from core.database import adb_set_livedub_file_id
-                            await adb_set_livedub_file_id(media_id, _fid)
-                            logger.info(f"[LiveDub] file_id сохранён в кэш ({media_id})")
-                    except Exception as _fid_save_err:
-                        logger.warning(f"[LiveDub] не сохранил file_id: {_fid_save_err}")
+                        _companions_ok = await deliver_new_companions(
+                            context.bot,
+                            chat_id=update.effective_chat.id,
+                            video_path=Path(livedub_path),
+                            publication_card=_publication_card,
+                            reply_to=update.message.message_id,
+                            thumbnail=_v_thumb,
+                            video_file_id=_video_file_id,
+                        )
+                    except Exception as _companion_err:
+                        logger.exception(
+                            "[LiveDub] companion transaction failed: %s",
+                            str(_companion_err)[:180],
+                        )
+                        await _source_audio_delivery.flush("LiveDub companion transaction failed")
+                        try:
+                            await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=(
+                                    "⚠️ Видео с переводом отправлено, но полный проверенный "
+                                    "MP3-комплект сформировать не удалось. Видео не сохранено "
+                                    "в быстрый кэш как полный комплект."
+                                ),
+                                reply_to_message_id=update.message.message_id,
+                            )
+                        except Exception:
+                            pass
+
+                    if _companions_ok:
+                        _source_audio_delivery.discard("complete LiveDub video+MP3 set delivered")
+                        if _video_file_id:
+                            try:
+                                from core.database import adb_set_livedub_file_id
+                                await adb_set_livedub_file_id(media_id, _video_file_id)
+                                logger.info("[LiveDub] complete pair file_id cached (%s)", media_id)
+                            except Exception as _fid_save_err:
+                                logger.warning("[LiveDub] complete pair cache save failed: %s", _fid_save_err)
+                                try:
+                                    import services.livedub_audio_companion as _companion_cache
+                                    _companion_cache._cache_drop(_video_file_id)
+                                except Exception:
+                                    pass
 
                 # В Quick QA проверка нужна ДО отправки (чтобы успеть авто-вырезать
                 # major), но отчёт показываем ПОСЛЕ видео: главный результат режима
@@ -1231,19 +1305,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception as _qrep_err:
                         logger.info("[LiveDubQuickQA] report send failed: %s", str(_qrep_err)[:160])
 
-                # ── ENG Quick: лёгкая карточка описания без тяжёлого анализа ──
-                if user_mode in ("eng_fast", "eng_fast_qa") and not is_fallback:
-                    _info_srt = None
-                    try:
-                        if "ld_work" in locals() and ld_work.exists():
-                            _srt_candidates = sorted(
-                                (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
-                                key=lambda f: f.stat().st_mtime, reverse=True,
-                            )
-                            _info_srt = _srt_candidates[0] if _srt_candidates else None
-                    except Exception:
-                        pass
-                    await _send_livedub_info_card_once(_info_srt)
 
                 # ── Отчёт QA (ENG Full): всегда объясняем найденные искажения ──
                 # Проверка и авто-приглушение уже выполнены ДО отправки видео
@@ -1265,6 +1326,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_result_sent = True
                 return True
             except asyncio.TimeoutError:
+                await _source_audio_delivery.flush("LiveDub timeout")
                 # wait_for отменяет задачу при таймауте — перевод уже не придёт.
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
@@ -1274,6 +1336,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_result_sent = True
                 return True
             except Exception as e:
+                await _source_audio_delivery.flush("LiveDub send/generation failure")
                 logger.warning(f"[LiveDub] fail: {e}")
                 # AUDIT R21 (живой лог: перевод сгенерировался, но отправка
                 # видео упала с "Request Entity Too Large" — юзер не получил
@@ -1599,7 +1662,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Telegram: resend по file_id бесплатен и без лимитов размера.
             _audio_fid = (cached or {}).get("audio_file_id") or ""
             _fid_sent = False
-            if _audio_fid:
+            if _audio_fid and not _source_audio_delivery.enabled:
                 try:
                     await update.message.reply_audio(
                         audio=_audio_fid, caption=caption, parse_mode="HTML",
@@ -1646,8 +1709,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 for _attempt in range(3):
                     try:
                         af.seek(0)
-                        _sent_audio_msg = await update.message.reply_audio(
-                            audio=af, title=_title_c, performer=_performer_c,
+                        _sent_audio_msg = await _source_audio_delivery.send_or_defer(
+                            update.message,
+                            audio=af, fallback_path=mp3_path,
+                            title=_title_c, performer=_performer_c,
                             thumbnail=thumb_buffer, duration=duration,
                             caption=caption, parse_mode="HTML",
                             write_timeout=180, read_timeout=180, connect_timeout=60,
@@ -2710,8 +2775,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             for _attempt in range(3):
                 try:
                     audio_file.seek(0)
-                    _sent_fresh_audio = await update.message.reply_audio(
-                        audio=audio_file, title=audio_title, performer=audio_performer,
+                    _sent_fresh_audio = await _source_audio_delivery.send_or_defer(
+                        update.message,
+                        audio=audio_file, fallback_path=mp3_path,
+                        title=audio_title, performer=audio_performer,
                         thumbnail=thumb_buffer, duration=duration, caption=caption,
                         parse_mode="HTML",
                         write_timeout=180, read_timeout=180, connect_timeout=60,
@@ -2972,6 +3039,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # --- LIVEDUB: отправка результата (общий хелпер) ---
         await _send_livedub_result()
+        if _source_audio_delivery.has_pending:
+            await _source_audio_delivery.flush("pipeline completed without a complete LiveDub pair")
         cleanup_files(media_id)
 
         return True

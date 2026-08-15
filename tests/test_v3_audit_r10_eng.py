@@ -27,7 +27,9 @@ def _read(rel: str) -> str:
 
 def _qa_fn_src() -> str:
     src = _read("services/livedub_qa.py")
-    return src.split("async def run_translation_qa", 1)[1].split("\ndef ", 1)[0]
+    return src.split("async def _run_translation_qa_base", 1)[1].split(
+        "\n\nasync def run_translation_qa", 1
+    )[0]
 
 
 def test_qa_parses_srt_before_deciding_dub_audio():

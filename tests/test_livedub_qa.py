@@ -2,15 +2,20 @@
 
 The historical suite is kept in ``livedub_qa_cases.py`` so its large body stays
 byte-for-byte stable. This collector replaces only obsolete assertions whose
-production contract intentionally changed: the old four-mode registry and the
-old user-visible 3.5 fallback chain.
+production contract intentionally changed: the old mode registry and the old
+user-visible 3.5 fallback chain.
 """
 from __future__ import annotations
 
 from pathlib import Path
 import runpy
 
-from handlers.mode_command import MODE_DESCRIPTIONS, MODE_LABELS, VALID_MODES
+from handlers.mode_command import (
+    EDITORIAL_MODE,
+    MODE_DESCRIPTIONS,
+    MODE_LABELS,
+    VALID_MODES,
+)
 
 _REPLACED_CASES = {
     "test_three_modes_defined",
@@ -33,6 +38,7 @@ def test_all_modes_defined() -> None:
         "eng_fast",
         "eng_fast_qa",
         "shorts_max",
+        EDITORIAL_MODE,
     )
     for mode in VALID_MODES:
         assert mode in MODE_LABELS

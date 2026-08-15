@@ -40,6 +40,9 @@ BAD_META_PATTERNS = [
 _COMMON_TYPO_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     # Live-run polish: frequent Gemini/ASR Russian typos seen in Telegraph pages.
     # Kept deliberately narrow: these are unambiguous spelling/case fixes.
+    ("Слово Божьего — нструмент", "Слово Божье — инструмент"),
+    ("слово Божьего — нструмент", "слово Божье — инструмент"),
+    ("проповедь Слово Божьего", "проповедь Слова Божьего"),
     ("доктлиналь", "доктриналь"),
     ("Доктлиналь", "Доктриналь"),
     ("богологами", "богословами"),

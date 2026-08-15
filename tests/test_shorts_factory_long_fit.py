@@ -5,7 +5,6 @@ import pytest
 
 import services.shorts_factory_long_fit as long_fit
 
-
 _GIB = 1024**3
 
 
@@ -46,7 +45,6 @@ def test_long_fit_disk_guard_rejects_shortage(monkeypatch, tmp_path):
         "disk_usage",
         lambda _path: SimpleNamespace(free=1 * _GIB),
     )
-
     with pytest.raises(RuntimeError, match="недостаточно места"):
         long_fit.ensure_factory_long_fit_space(tmp_path, 2000)
 
@@ -61,7 +59,6 @@ def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path):
         duration_seconds=600.125,
         video_kbps=12000,
     )
-
     for command in (first, second):
         assert command[command.index("-ss") + 1] == "123.456"
         assert command[command.index("-t") + 1] == "600.125"
@@ -71,7 +68,6 @@ def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path):
         assert command[command.index("-pix_fmt") + 1] == "yuv420p"
         assert "-vf" not in command
         assert "-s" not in command
-
     assert first[first.index("-pass") + 1] == "1"
     assert "-an" in first
     assert first[first.index("-f") + 1] == "null"
@@ -82,10 +78,7 @@ def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_two_pass_fit_replaces_oversized_output_after_proof(
-    monkeypatch,
-    tmp_path,
-):
+async def test_two_pass_fit_replaces_oversized_output_after_proof(monkeypatch, tmp_path):
     source_path = tmp_path / "source.mkv"
     output_path = tmp_path / "clip.mp4"
     source_path.write_bytes(b"s" * 4096)
@@ -94,8 +87,7 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(
 
     async def fake_run(command, **kwargs):
         commands.append(list(command))
-        pass_number = command[command.index("-pass") + 1]
-        if pass_number == "2":
+        if command[command.index("-pass") + 1] == "2":
             Path(command[-1]).write_bytes(b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -105,16 +97,8 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(
 
     monkeypatch.setattr(long_fit, "run_cancellable_process", fake_run)
     monkeypatch.setattr(long_fit, "probe_media_async", fake_probe)
-    monkeypatch.setattr(
-        long_fit,
-        "media_probe_is_deliverable",
-        lambda value: value is not None,
-    )
-    monkeypatch.setattr(
-        long_fit,
-        "ensure_factory_long_fit_space",
-        lambda *args, **kwargs: None,
-    )
+    monkeypatch.setattr(long_fit, "media_probe_is_deliverable", lambda value: value is not None)
+    monkeypatch.setattr(long_fit, "ensure_factory_long_fit_space", lambda *args, **kwargs: None)
 
     result = await long_fit.fit_factory_long_clip_to_limit(
         source_path,
@@ -124,7 +108,6 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(
         max_file_size_mb=100,
         ffmpeg="ffmpeg",
     )
-
     assert result is True
     assert output_path.read_bytes() == b"f" * 4096
     assert len(commands) == 2
@@ -133,10 +116,7 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(
 
 
 @pytest.mark.asyncio
-async def test_two_pass_fit_rejects_truncated_result(
-    monkeypatch,
-    tmp_path,
-):
+async def test_two_pass_fit_rejects_truncated_result(monkeypatch, tmp_path):
     source_path = tmp_path / "source.mkv"
     output_path = tmp_path / "clip.mp4"
     source_path.write_bytes(b"s" * 4096)
@@ -147,22 +127,13 @@ async def test_two_pass_fit_rejects_truncated_result(
             Path(command[-1]).write_bytes(b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
+    async def fake_probe(_path):
+        return _probe(597.0)
+
     monkeypatch.setattr(long_fit, "run_cancellable_process", fake_run)
-    monkeypatch.setattr(
-        long_fit,
-        "probe_media_async",
-        lambda _path: __import__("asyncio").sleep(0, result=_probe(597.0)),
-    )
-    monkeypatch.setattr(
-        long_fit,
-        "media_probe_is_deliverable",
-        lambda value: value is not None,
-    )
-    monkeypatch.setattr(
-        long_fit,
-        "ensure_factory_long_fit_space",
-        lambda *args, **kwargs: None,
-    )
+    monkeypatch.setattr(long_fit, "probe_media_async", fake_probe)
+    monkeypatch.setattr(long_fit, "media_probe_is_deliverable", lambda value: value is not None)
+    monkeypatch.setattr(long_fit, "ensure_factory_long_fit_space", lambda *args, **kwargs: None)
 
     result = await long_fit.fit_factory_long_clip_to_limit(
         source_path,
@@ -172,29 +143,24 @@ async def test_two_pass_fit_rejects_truncated_result(
         max_file_size_mb=100,
         ffmpeg="ffmpeg",
     )
-
     assert result is False
     assert output_path.read_bytes() == b"original"
     assert not (tmp_path / "clip_factory_fit.mp4").exists()
 
 
-def test_long_fit_is_required_by_disk_guard_before_execution():
-    disk_guard = Path("services/shorts_factory_disk_guard.py").read_text(
-        encoding="utf-8"
-    )
-    long_fit_source = Path(
-        "services/shorts_factory_long_fit.py"
-    ).read_text(encoding="utf-8")
-    quality = Path("services/shorts_factory_quality_gate.py").read_text(
-        encoding="utf-8"
-    )
+def test_clips_pipeline_owns_factory_long_fit_without_runtime_rebinding():
+    clips = Path("pipelines/clips.py").read_text(encoding="utf-8")
+    utility = Path(long_fit.__file__).read_text(encoding="utf-8")
+    assert "fit_factory_long_clip_to_limit(" in clips
+    assert "if not factory_publication:" in clips
+    assert "Factory Clip" in clips
+    assert "install_factory_long_fit_policy" not in utility
+    assert "render_module.render_clip =" not in utility
+    assert "clips_module.render_clip =" not in utility
+    assert "_FACTORY_SETTINGS" not in utility
 
-    assert "if not install_factory_long_fit_policy():" in disk_guard
-    disk_pos = quality.index("if not install_factory_disk_guard():")
-    execution_pos = quality.index(
-        "if not install_shorts_factory_execution_guard():"
-    )
-    assert disk_pos < execution_pos
-    assert "render_module.render_clip = factory_size_safe_render_clip" in long_fit_source
-    assert "clips_module.render_clip = factory_size_safe_render_clip" in long_fit_source
-    assert "\ninstall_factory_long_fit_policy()\n" not in long_fit_source
+
+def test_factory_pipeline_disables_second_silence_snap_for_longs():
+    factory = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
+    assert "factory_publication=True" in factory
+    assert "snap_to_silence=False" in factory

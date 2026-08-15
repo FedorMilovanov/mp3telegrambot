@@ -191,19 +191,9 @@ def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
     assert second["source_url"].endswith("two")
 
 
-def test_manifest_installs_deep_audit_after_dedupe_before_hardening():
-    order = {
-        feature.feature_id: index
-        for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)
-    }
-    assert (
-        order["livedub-audio-dedupe"]
-        < order["livedub-deep-audit"]
-        < order["project-runtime-hardening"]
-    )
-    deep = next(
-        feature
-        for feature in DEFAULT_RUNTIME_FEATURES
-        if feature.feature_id == "livedub-deep-audit"
-    )
-    assert deep.required is True
+def test_manifest_uses_source_owned_livedub_contracts_before_project_hardening():
+    order = {feature.feature_id: index for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)}
+    assert order["livedub-qa-contract"] < order["project-runtime-hardening"]
+    assert order["livedub-delivery-contract"] < order["project-runtime-hardening"]
+    assert "livedub-deep-audit" not in order
+    assert "livedub-audio-dedupe" not in order

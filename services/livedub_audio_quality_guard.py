@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Strict clean-track selection and complete two-MP3 delivery for LiveDub."""
+"""Pure quality helpers for LiveDub companion audio.
+
+Clean-track selection is now called directly by the owning services/coordinator;
+there is no runtime replacement of ``livedub_mix``, ``yandex_live_dub`` or
+companion functions.
+"""
 from __future__ import annotations
 
-import asyncio
-import logging
-import threading
 from pathlib import Path
-from typing import Any
 
-logger = logging.getLogger(__name__)
-_LOCK = threading.Lock()
-_INSTALLED = False
 _DERIVED_MARKERS = (".final-mix", ".ru-audio", " финальный микс", " чистый ru")
 _DERIVED_PREFIXES = ("pro_dub", "live_dub_merged")
 
@@ -27,7 +25,7 @@ def is_derived_audio_artifact(path: Path | str) -> bool:
 
 
 def select_clean_translation_mp3(workdir: Path | str) -> Path | None:
-    """Choose by file role; ffprobe validates integrity later."""
+    """Return the newest role-correct original RU translation MP3."""
     try:
         candidates = sorted(
             Path(workdir).glob("*.mp3"),
@@ -36,6 +34,7 @@ def select_clean_translation_mp3(workdir: Path | str) -> Path | None:
         )
     except OSError:
         return None
+
     for candidate in candidates:
         low = candidate.name.casefold()
         try:
@@ -52,172 +51,20 @@ def select_clean_translation_mp3(workdir: Path | str) -> Path | None:
     return None
 
 
-def _install_clean_track_selection() -> None:
-    import services.livedub_mix as mix
-    import services.yandex_live_dub as yandex
-
-    current_tracks = mix.find_pro_tracks
-    if not getattr(current_tracks, "_mp3bot_clean_track_guard", False):
-
-        def guarded_tracks(workdir: Path):
-            original, _legacy = current_tracks(workdir)
-            return original, select_clean_translation_mp3(workdir)
-
-        guarded_tracks._mp3bot_clean_track_guard = True  # type: ignore[attr-defined]
-        mix.find_pro_tracks = guarded_tracks
-
-    current_latest = yandex._find_latest_file
-    if not getattr(current_latest, "_mp3bot_clean_track_guard", False):
-
-        def guarded_latest(directory: Path, pattern: str):
-            if str(pattern).casefold() == "*.mp3":
-                return select_clean_translation_mp3(directory)
-            return current_latest(directory, pattern)
-
-        guarded_latest._mp3bot_clean_track_guard = True  # type: ignore[attr-defined]
-        yandex._find_latest_file = guarded_latest
+def validate_livedub_audio_quality_contract() -> str:
+    """Validate the source-owned selection API without mutating any module."""
+    if not callable(select_clean_translation_mp3):
+        raise RuntimeError("clean translation selector is unavailable")
+    return "source-owned clean-RU role selection; derived audio excluded"
 
 
-def _install_conversion_postcondition() -> None:
-    """Verify the invariant now owned by the atomic converter itself.
-
-    Kept as a compatibility hook for callers and historical tests; it no longer
-    mutates `_SubprocessProxy.run` or depends on installer order.
-    """
-    from services import project_runtime_hardening as hardening
-
-    policy = getattr(
-        hardening._SubprocessProxy,
-        "conversion_postcondition_policy",
-        "",
-    )
-    if policy != hardening._CONVERSION_POSTCONDITION:
-        raise RuntimeError("Atomic MP3 converter lacks its required postcondition.")
+# Compatibility name for old diagnostics. It performs no installation.
+def install_livedub_audio_quality_guard() -> str:
+    return validate_livedub_audio_quality_contract()
 
 
-def _install_complete_dual_delivery() -> None:
-    import services.livedub_audio_companion as companion
-
-    current = companion._send_new_audio
-    if getattr(current, "_mp3bot_complete_dual_delivery", False):
-        return
-
-    async def send_complete(
-        self,
-        *,
-        chat_id: Any,
-        video_path: Path,
-        caption: str,
-        reply_to: Any,
-        thumbnail: Any,
-        video_file_id: str,
-    ) -> bool:
-        title, performer = companion._title_parts(caption, video_path.stem)
-        video_ok, video_duration = await asyncio.to_thread(
-            companion._probe_audio,
-            video_path,
-        )
-        if not video_ok:
-            raise RuntimeError(
-                "финальное LiveDub-видео не содержит проверяемой аудиодорожки"
-            )
-
-        dual = companion._dual_enabled()
-        sources: list[tuple[str, Path]] = []
-        failures: list[str] = []
-        clean = await asyncio.to_thread(
-            companion._find_clean_ru_track,
-            video_path,
-        )
-        if clean is not None and not is_derived_audio_artifact(clean):
-            sources.append(("clean", clean))
-        elif dual:
-            failures.append(
-                "Чистый русский перевод: исходная RU-дорожка не сохранилась"
-            )
-
-        mixed = None
-        try:
-            mixed = await asyncio.to_thread(companion._extract_mix_mp3, video_path)
-            sources.append(("mixed", mixed))
-        except Exception as exc:
-            failures.append(f"Финальный объединённый микс: {str(exc)[:180]}")
-            logger.exception("[LiveDubAudioQuality] mix extraction failed: %s", exc)
-
-        if not dual:
-            sources = (
-                [("clean", clean)]
-                if clean is not None
-                else ([("mixed", mixed)] if mixed is not None else [])
-            )
-
-        unique: list[tuple[str, Path]] = []
-        seen: set[str] = set()
-        for variant, source in sources:
-            try:
-                identity = str(source.resolve()).casefold()
-            except OSError:
-                identity = str(source).casefold()
-            if identity in seen:
-                failures.append(
-                    f"{companion._VARIANT_LABELS[variant]}: совпадает с другой версией"
-                )
-                continue
-            seen.add(identity)
-            unique.append((variant, source))
-
-        sent = 0
-        for variant, source in unique:
-            try:
-                ok = await companion._send_variant(
-                    self,
-                    variant=variant,
-                    source=source,
-                    video_path=video_path,
-                    title=title,
-                    performer=performer,
-                    chat_id=chat_id,
-                    reply_to=reply_to,
-                    thumbnail=thumbnail,
-                    video_file_id=video_file_id,
-                    reference_duration=video_duration,
-                )
-                sent += int(bool(ok))
-            except Exception as exc:
-                failures.append(
-                    f"{companion._VARIANT_LABELS[variant]}: {str(exc)[:180]}"
-                )
-                logger.exception(
-                    "[LiveDubAudioQuality] %s failed: %s",
-                    variant,
-                    exc,
-                )
-
-        expected = 2 if dual else 1
-        if sent == expected:
-            return True
-        detail = "; ".join(failures) or "неизвестная ошибка"
-        if sent:
-            raise RuntimeError(
-                f"отправлен неполный комплект MP3 ({sent}/{expected}); {detail}"
-            )
-        raise RuntimeError(f"комплект MP3 не отправлен (0/{expected}); {detail}")
-
-    send_complete._mp3bot_complete_dual_delivery = True  # type: ignore[attr-defined]
-    companion._send_new_audio = send_complete
-
-
-def install_livedub_audio_quality_guard() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        _install_clean_track_selection()
-        _install_conversion_postcondition()
-        _install_complete_dual_delivery()
-        _INSTALLED = True
-        logger.info(
-            "🎧 LiveDub audio quality guard: clean RU + strict 2/2 + valid conversion"
-        )
+__all__ = [
+    "is_derived_audio_artifact",
+    "select_clean_translation_mp3",
+    "validate_livedub_audio_quality_contract",
+]

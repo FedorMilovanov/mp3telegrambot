@@ -23,8 +23,6 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
-_ORIGINAL_RUN = None
-_ORIGINAL_FORMAT = None
 
 
 def _enabled() -> bool:
@@ -440,89 +438,71 @@ async def _run_long_qa(
     )
 
 
-def install_livedub_long_qa() -> None:
-    """Raise the Quick-QA gate and patch the shared QA function once."""
-    global _ORIGINAL_RUN, _ORIGINAL_FORMAT
-    if not _enabled():
-        return
-    os.environ.setdefault("LIVEDUB_QUICK_QA_MAX_DURATION", "10800")
 
-    from services import livedub_qa as module
-
-    if getattr(module, "_MP3BOT_LONG_QA_INSTALLED", False):
-        return
-    _ORIGINAL_RUN = module.run_translation_qa
-    _ORIGINAL_FORMAT = module.format_qa_report
-    threshold = _env_int("LIVEDUB_LONG_QA_THRESHOLD_SEC", 480, 120, 3600)
-
-    async def wrapped_run(
-        dub_video_path: Path,
-        original_audio_path: Optional[Path],
-        ai_data: Optional[dict],
-        duration: int,
-        model_name: str = "",
-        dub_srt_path: Optional[Path] = None,
-        dub_audio_path: Optional[Path] = None,
-        existing_audio_part=None,
-        existing_client=None,
-        thinking_level: str = "high",
-    ) -> Optional[dict]:
-        if not duration or duration <= threshold:
-            return await _ORIGINAL_RUN(
-                dub_video_path=dub_video_path,
-                original_audio_path=original_audio_path,
-                ai_data=ai_data,
-                duration=duration,
-                model_name=model_name,
-                dub_srt_path=dub_srt_path,
-                dub_audio_path=dub_audio_path,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                thinking_level=thinking_level,
-            )
-        return await _run_long_qa(
-            _ORIGINAL_RUN,
-            dub_video_path=Path(dub_video_path),
-            original_audio_path=original_audio_path,
-            ai_data=ai_data,
-            duration=int(duration),
-            model_name=model_name,
-            dub_srt_path=dub_srt_path,
-            dub_audio_path=dub_audio_path,
-            existing_audio_part=existing_audio_part,
-            existing_client=existing_client,
-            thinking_level=thinking_level,
-        )
-
-    def wrapped_format(qa: dict, video_url: str = "") -> str:
-        text = _ORIGINAL_FORMAT(qa, video_url=video_url)
-        if not isinstance(qa, dict) or not qa.get("_segmented"):
-            return text
-        checked = int(qa.get("_segments_checked") or 0)
-        total = int(qa.get("_segments_total") or 0)
-        coverage = float(qa.get("_coverage_ratio") or 0) * 100
-        if qa.get("_segmented_partial"):
-            note = f"⚠️ Сегментная проверка частичная: {checked}/{total}, покрытие {coverage:.0f}%."
-        else:
-            note = f"🧩 Вся запись проверена по сегментам: {checked}/{total}, покрытие {coverage:.0f}%."
-        lines = str(text or "").splitlines()
-        lines.insert(1 if lines else 0, note)
-        try:
-            from converters.md_telegraph import safe_trim_caption
-
-            return safe_trim_caption("\n".join(lines), 3900)
-        except Exception:
-            return "\n".join(lines)[:3900]
-
-    wrapped_run._mp3bot_long_qa = True  # type: ignore[attr-defined]
-    wrapped_format._mp3bot_long_qa = True  # type: ignore[attr-defined]
-    module.run_translation_qa = wrapped_run
-    module.format_qa_report = wrapped_format
-    module._MP3BOT_LONG_QA_INSTALLED = True
-    logger.info(
-        "🔍 LiveDub long QA: ✅ max=%ss segment=%ss overlap=%ss threshold=%ss",
-        os.environ["LIVEDUB_QUICK_QA_MAX_DURATION"],
-        _env_int("LIVEDUB_LONG_QA_SEGMENT_SEC", 480, 180, 1200),
-        _env_int("LIVEDUB_LONG_QA_OVERLAP_SEC", 20, 0, 120),
-        threshold,
+async def run_long_translation_qa(
+    base_runner,
+    *,
+    dub_video_path: Path,
+    original_audio_path: Optional[Path],
+    ai_data: Optional[dict],
+    duration: int,
+    model_name: str = "",
+    dub_srt_path: Optional[Path] = None,
+    dub_audio_path: Optional[Path] = None,
+    existing_audio_part=None,
+    existing_client=None,
+    thinking_level: str = "high",
+) -> Optional[dict]:
+    """Use segmented complete coverage only when the recording crosses the threshold."""
+    common = dict(
+        dub_video_path=dub_video_path,
+        original_audio_path=original_audio_path,
+        ai_data=ai_data,
+        duration=duration,
+        model_name=model_name,
+        dub_srt_path=dub_srt_path,
+        dub_audio_path=dub_audio_path,
+        existing_audio_part=existing_audio_part,
+        existing_client=existing_client,
+        thinking_level=thinking_level,
     )
+    threshold = _env_int("LIVEDUB_LONG_QA_THRESHOLD_SEC", 480, 120, 3600)
+    if not _enabled() or not duration or duration <= threshold:
+        return await base_runner(**common)
+    return await _run_long_qa(base_runner, **common)
+
+
+def decorate_segment_report(text: str, qa: dict[str, Any]) -> str:
+    if not isinstance(qa, dict) or not qa.get("_segmented"):
+        return text
+    checked = int(qa.get("_segments_checked") or 0)
+    total = int(qa.get("_segments_total") or 0)
+    coverage = float(qa.get("_coverage_ratio") or 0) * 100
+    note = (
+        f"⚠️ Сегментная проверка частичная: {checked}/{total}, покрытие {coverage:.0f}%."
+        if qa.get("_segmented_partial")
+        else f"🧩 Вся запись проверена по сегментам: {checked}/{total}, покрытие {coverage:.0f}%."
+    )
+    lines = str(text or "").splitlines()
+    lines.insert(1 if lines else 0, note)
+    try:
+        from converters.md_telegraph import safe_trim_caption
+        return safe_trim_caption(chr(10).join(lines), 3900)
+    except Exception:
+        return chr(10).join(lines)[:3900]
+
+
+def install_livedub_long_qa() -> str:
+    """Compatibility validator; long QA is called by the QA owner."""
+    if not callable(run_long_translation_qa):
+        raise RuntimeError("long LiveDub QA strategy is unavailable")
+    return "source-owned segmented LiveDub QA strategy"
+
+
+__all__ = [
+    "aggregate_segment_results",
+    "decorate_segment_report",
+    "install_livedub_long_qa",
+    "run_long_translation_qa",
+    "segment_windows",
+]

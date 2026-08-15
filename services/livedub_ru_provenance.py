@@ -15,7 +15,6 @@ If provenance is missing or invalid, the existing selector remains the fallback.
 """
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import os
@@ -25,8 +24,6 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
-_LOCK = threading.Lock()
-_INSTALLED = False
 _MARKER_NAME = ".livedub_ru_audio.json"
 _SCHEMA_VERSION = 1
 
@@ -173,72 +170,55 @@ def _voice_style(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     return "live"
 
 
-def _install_vot_recorder() -> None:
-    from services import yandex_live_dub as yandex
 
-    current = yandex.get_live_dub_audio
-    if getattr(current, "_mp3bot_ru_provenance", False):
-        return
-
-    @functools.wraps(current)
-    async def recorded(*args: Any, **kwargs: Any):
-        workdir = _output_dir(args, kwargs)
-        before = _snapshot_mp3(workdir)
-        result = await current(*args, **kwargs)
-        try:
-            candidate = Path(result)
-            if workdir is None or candidate.parent.resolve() != workdir.resolve():
-                logger.warning(
-                    "[LiveDubProvenance] returned MP3 is outside requested output_dir: %s",
-                    candidate,
-                )
-                return result
-            after = _file_state(candidate)
-            if after is None or before.get(candidate.name) == after:
-                logger.warning(
-                    "[LiveDubProvenance] unchanged pre-existing MP3 not recorded: %s",
-                    candidate.name,
-                )
-                return result
-            if write_ru_audio_provenance(candidate, voice_style=_voice_style(args, kwargs)):
-                logger.info("[LiveDubProvenance] exact VOT RU source recorded: %s", candidate.name)
-        except Exception as exc:
-            logger.warning("[LiveDubProvenance] recorder skipped: %s", str(exc)[:180])
-        return result
-
-    recorded._mp3bot_ru_provenance = True  # type: ignore[attr-defined]
-    yandex.get_live_dub_audio = recorded
+def snapshot_ru_audio_candidates(workdir: Path | str) -> dict[str, tuple[int, int]]:
+    return _snapshot_mp3(Path(workdir))
 
 
-def _install_track_reader() -> None:
-    from services import livedub_mix as mix
+def record_returned_ru_audio(
+    result: Path | str,
+    *,
+    workdir: Path | str,
+    before: dict[str, tuple[int, int]],
+    voice_style: str = "live",
+) -> bool:
+    """Record only a new/changed MP3 returned by the current VOT call."""
+    try:
+        root = Path(workdir)
+        candidate = Path(result)
+        if candidate.parent.resolve() != root.resolve():
+            logger.warning(
+                "[LiveDubProvenance] returned MP3 is outside requested output_dir: %s",
+                candidate,
+            )
+            return False
+        after = _file_state(candidate)
+        if after is None or before.get(candidate.name) == after:
+            logger.warning(
+                "[LiveDubProvenance] unchanged pre-existing MP3 not recorded: %s",
+                candidate.name,
+            )
+            return False
+        saved = write_ru_audio_provenance(candidate, voice_style=voice_style)
+        if saved:
+            logger.info("[LiveDubProvenance] exact VOT RU source recorded: %s", candidate.name)
+        return saved
+    except Exception as exc:
+        logger.warning("[LiveDubProvenance] recorder skipped: %s", str(exc)[:180])
+        return False
 
-    current = mix.find_pro_tracks
-    if getattr(current, "_mp3bot_ru_provenance", False):
-        return
 
-    @functools.wraps(current)
-    def exact_tracks(workdir: Path):
-        original, fallback = current(workdir)
-        exact = read_ru_audio_provenance(workdir)
-        if exact is not None:
-            logger.info("[LiveDubProvenance] exact RU source selected: %s", exact.name)
-            return original, exact
-        return original, fallback
-
-    exact_tracks._mp3bot_ru_provenance = True  # type: ignore[attr-defined]
-    mix.find_pro_tracks = exact_tracks
+def install_livedub_ru_provenance() -> str:
+    """Compatibility validator; provenance is source-owned by producer/consumer."""
+    if not callable(write_ru_audio_provenance) or not callable(read_ru_audio_provenance):
+        raise RuntimeError("LiveDub RU provenance helpers are unavailable")
+    return "source-owned VOT provenance; no producer/consumer wrapping"
 
 
-def install_livedub_ru_provenance() -> None:
-    """Install after clean-track guards and before delivery captures track lookup."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        _install_vot_recorder()
-        _install_track_reader()
-        _INSTALLED = True
-        logger.info("🧬 LiveDub RU provenance: exact current-call VOT source enabled")
+__all__ = [
+    "install_livedub_ru_provenance",
+    "read_ru_audio_provenance",
+    "record_returned_ru_audio",
+    "snapshot_ru_audio_candidates",
+    "write_ru_audio_provenance",
+]

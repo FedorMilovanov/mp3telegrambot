@@ -254,7 +254,8 @@ def _build_ytdlp_base_args() -> list:
     # deno быстрее для YouTube. node — fallback при отсутствии deno.
     js_runtimes = _supported_js_runtimes()
     if js_runtimes:
-        args += ["--js-runtimes", ",".join(js_runtimes)]
+        for runtime in js_runtimes:
+            args += ["--js-runtimes", runtime]
         args += ["--remote-components", "ejs:github"]
     else:
         logger.warning("⚠️ Node.js/Deno не найдены — js-runtimes отключён")

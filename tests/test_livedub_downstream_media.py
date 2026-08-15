@@ -148,22 +148,32 @@ async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
     ) == 900
 
 
-def test_runtime_policy_wires_every_requested_cut_mode_without_import_side_effect():
-    source = Path("services/shorts_factory_media.py").read_text(encoding="utf-8")
-    timing_source = Path("services/shorts_factory_timing.py").read_text(
-        encoding="utf-8"
-    )
-    runtime_source = Path("services/shorts_factory_runtime.py").read_text(
-        encoding="utf-8"
-    )
+def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
+    media_source = Path("services/shorts_factory_media.py").read_text(encoding="utf-8")
+    shorts_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
+    clips_source = Path("pipelines/clips.py").read_text(encoding="utf-8")
+    montage_source = Path("pipelines/montage.py").read_text(encoding="utf-8")
 
-    assert "shorts_module.process_and_send_shorts = process_shorts" in source
-    assert "clips_module.process_and_send_clips = process_clips" in source
-    assert "clips_module.render_clip = verified_render_clip" in source
-    assert "montage_module.process_and_send_montage = process_montage" in source
-    assert "montage_module.process_and_send_highlights = process_highlights" in source
-    assert "main_pipeline_module.process_and_send_highlights = process_highlights" in source
-    assert "media_probe_is_deliverable(probe)" in source
-    assert "\ninstall_livedub_downstream_media_policy()\n" not in source
-    assert "\ninstall_livedub_downstream_media_policy()\n" not in timing_source
-    assert "if not install_livedub_downstream_media_policy():" in runtime_source
+    assert "from contextvars import ContextVar" not in media_source
+    assert "install_livedub_downstream_media_policy" not in media_source
+    assert "setattr(" not in media_source
+    assert "sys.modules" not in media_source
+
+    assert "probe_livedub_source_duration(" in shorts_source
+    assert "align_livedub_candidates(" in shorts_source
+    assert "if livedub_source is not None" in shorts_source
+    compact_shorts = " ".join(shorts_source.split())
+    assert (
+        'do_boundary_pad = ( False if livedub_source is not None else bool(await asettings_get("shorts_boundary_padding")) )'
+        in compact_shorts
+    )
+    assert "boundary_padding=do_boundary_pad" in shorts_source
+
+    assert "probe_livedub_source_duration(" in clips_source
+    assert "align_livedub_candidates(" in clips_source
+    assert "factory_publication" in clips_source
+    assert "media_probe_is_deliverable(clip_probe)" in clips_source
+
+    assert "probe_livedub_source_duration(" in montage_source
+    assert "align_livedub_montage_candidates(" in montage_source
+    assert "source_duration=float(duration or 0)" in montage_source

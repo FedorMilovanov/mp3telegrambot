@@ -1,42 +1,38 @@
 #!/usr/bin/env python3
-"""
-Clips Pipeline — process_and_send_clips.
-Извлечено из bot.py строки 11355–11548.
-"""
-from core.globals import DOWNLOAD_DIR
-from core.database import (
-    adb_get, adb_save, asettings_get,
-    settings_get,           # FIX pipeline_clips
-    get_max_file_size_mb,   # FIX pipeline_clips
-)
-from core.utils import cleanup_files
-from services.render_clips_montage import render_clip, create_clip_snapshot, build_clip_caption
-from services.shorts_candidates import create_clips_candidates   # FIX pipeline_clips
-from services.shorts_video import download_video_for_shorts      # FIX pipeline_clips
-from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.telegraph import create_telegraph_synopsis
-from converters.caption import build_caption
-from core.progress import set_progress
-from converters.md_telegraph import visible_length, safe_trim_caption
-from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
+"""Long Clips pipeline with explicit candidate and public-duration ownership."""
+from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import os
-from io import BytesIO    # FIX pipeline_clips
+import shutil
 from pathlib import Path
+from typing import Any
+
+from telegram import InputFile
+
+from core.database import asettings_get, get_max_file_size_mb, settings_get
+from core.globals import DOWNLOAD_DIR
+from converters.md_telegraph import safe_trim_caption, visible_length
+from services.clip_renderer import clip_snap_ceiling, render_clip
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+from services.render_clips_montage import build_clip_caption, create_clip_snapshot
+from services.shorts_candidates import create_clips_candidates
+from services.shorts_factory_long_fit import fit_factory_long_clip_to_limit
+from services.shorts_factory_media import (
+    align_livedub_candidates,
+    probe_livedub_source_duration,
+)
+from services.shorts_factory_publication import wrap_factory_caption_builder
+from services.shorts_video import download_video_for_shorts
 
 logger = logging.getLogger(__name__)
+PUBLIC_CLIP_DURATION_EPSILON_SEC = 0.05
+_FACTORY_CLIP_CAPTION_BUILDER = wrap_factory_caption_builder(build_clip_caption)
 
 
 def _clips_candidate_budget_seconds() -> float:
-    """Wall-clock budget for the optional Gemini candidate search.
-
-    Clips run after the primary delivery and must never keep the whole job alive
-    through a long chain of overload retries.  The shared Gemini retry policy is
-    intentionally left untouched; this boundary applies only to the optional
-    Clips feature.
-    """
     raw = (os.getenv("CLIPS_CANDIDATE_BUDGET_SECONDS", "90") or "90").strip()
     try:
         value = float(raw)
@@ -45,154 +41,285 @@ def _clips_candidate_budget_seconds() -> float:
     return max(15.0, min(value, 300.0))
 
 
+def _candidate_label(candidate: dict[str, Any], key: str, fallback_key: str) -> str:
+    value = candidate.get(key)
+    if value not in (None, ""):
+        return str(value)
+    return str(candidate.get(fallback_key, ""))
+
+
 async def process_and_send_clips(
     url: str,
     media_id: str,
     mp3_path: Path,
     title: str,
     performer: str,
-    duration: int,
+    duration: int | float,
     ai_data: dict,
     update,
     existing_audio_part=None,
     existing_client=None,
     rutube_url: str = "",
     vk_url: str = "",
-    livedub_video_path=None,  # ENG: path to translated video
-) -> None:
-    """
-    Полный clips-пайплайн:
-      1. Найти clip-кандидатов (Gemini)
-      2. Скачать видео (переиспользуем download_video_for_shorts)
-      3. Вырезать clip (render_clip) — оригинальное соотношение сторон
-      4. [опц] Snapshot-постер (create_clip_snapshot)
-      5. Отправить в Telegram как video
-      6. Логировать результат
-
-    Ошибки не пробрасываются — clips не должны валить основной результат.
-    MP3-пайплайн и Shorts-пайплайн не затронуты.
-    """
-    video_path = None
+    livedub_video_path=None,
+    *,
+    candidates_override: list[dict[str, Any]] | None = None,
+    public_max_seconds: float | None = None,
+    snapshot_override: bool | None = None,
+    factory_publication: bool = False,
+    snap_to_silence: bool = True,
+) -> int:
+    """Render and send long clips, returning the number actually delivered."""
+    video_path: Path | None = None
     borrowed_video = False
     clip_paths: list[Path] = []
     snap_paths: list[Path] = []
+    sent = 0
     try:
-        # ── Шаг 1: найти кандидатов ──────────────────────────
-        candidate_budget = _clips_candidate_budget_seconds()
-        try:
-            candidates = await asyncio.wait_for(
-                create_clips_candidates(
-                    mp3_path=mp3_path,
-                    ai_data=ai_data,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                    existing_audio_part=existing_audio_part,
-                    existing_client=existing_client,
-                ),
-                timeout=candidate_budget,
+        livedub_source: Path | None = None
+        if livedub_video_path:
+            candidate_source = Path(livedub_video_path)
+            if candidate_source.exists():
+                livedub_source = candidate_source
+                if not factory_publication:
+                    duration = await probe_livedub_source_duration(
+                        livedub_source,
+                        fallback_duration=float(duration or 0.0),
+                    )
+
+        if candidates_override is None:
+            candidate_budget = _clips_candidate_budget_seconds()
+            try:
+                candidates = await asyncio.wait_for(
+                    create_clips_candidates(
+                        mp3_path=mp3_path,
+                        ai_data=ai_data,
+                        title=title,
+                        performer=performer,
+                        duration=duration,
+                        existing_audio_part=existing_audio_part,
+                        existing_client=existing_client,
+                    ),
+                    timeout=candidate_budget,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Clips: optional candidate search exceeded %.0fs budget; skipping",
+                    candidate_budget,
+                )
+                return 0
+        else:
+            candidates = copy.deepcopy(candidates_override)
+
+        if livedub_source is not None and candidates_override is None and not factory_publication:
+            candidates = align_livedub_candidates(
+                candidates,
+                source_duration=float(duration),
+                public_max_seconds=900.0,
             )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Clips: optional candidate search exceeded %.0fs budget — "
-                "skipping Clips without delaying the completed primary delivery",
-                candidate_budget,
-            )
-            return
 
         if not candidates:
-            logger.info("Clips: кандидаты не найдены")
-            return
+            logger.info("Clips: no candidates")
+            return 0
 
-        logger.info(f"Clips: найдено {len(candidates)} кандидатов, скачиваю видео...")
-
-        # ── Шаг 2: скачать видео (тот же хелпер что у Shorts) ──
-        # ENG mode: prefer translated (LiveDub) video. This path is borrowed
-        # from the LiveDub owner and must never be deleted by the Clips callee.
-        from pathlib import Path as _Path
-        if livedub_video_path and _Path(livedub_video_path).exists():
-            video_path = _Path(livedub_video_path)
+        if livedub_source is not None:
+            video_path = livedub_source
             borrowed_video = True
-            logger.info(f"Clips: using LiveDub video: {video_path.name}")
+            logger.info("Clips: using owned/borrowed prepared video: %s", video_path.name)
         else:
             video_path = await download_video_for_shorts(url, media_id)
         if not video_path:
-            logger.warning("Clips: не удалось скачать видео")
+            logger.warning("Clips: video download failed")
             await update.message.reply_text("🎬 Не удалось скачать видео для Clips.")
-            return
+            return 0
 
         format_name = (ai_data or {}).get("format", "other") or "other"
         real_author = (ai_data or {}).get("real_author", "") or performer or ""
-        real_event  = (ai_data or {}).get("real_event", "") or ""
-        do_snapshot = await asettings_get("clips_snapshot")
-
-        logger.info(
-            f"Clips: format={format_name} snapshot={do_snapshot} "
-            f"кандидатов={len(candidates)}"
+        real_event = (ai_data or {}).get("real_event", "") or ""
+        do_snapshot = (
+            bool(snapshot_override)
+            if snapshot_override is not None
+            else bool(await asettings_get("clips_snapshot"))
+        )
+        caption_builder = (
+            _FACTORY_CLIP_CAPTION_BUILDER
+            if factory_publication
+            else build_clip_caption
         )
 
         total = len(candidates)
-        sent  = 0
+        logger.info(
+            "Clips: format=%s snapshot=%s candidates=%d public_max=%s "
+            "factory_publication=%s snap_to_silence=%s",
+            format_name,
+            do_snapshot,
+            total,
+            public_max_seconds,
+            factory_publication,
+            snap_to_silence,
+        )
 
-        for i, c in enumerate(candidates, 1):
+        for i, candidate in enumerate(candidates, 1):
+            if not isinstance(candidate, dict):
+                logger.warning("Clips: invalid candidate %d/%d: %r", i, total, candidate)
+                continue
             clip_path = DOWNLOAD_DIR / f"{media_id}_clip_{i}.mp4"
             snap_path = DOWNLOAD_DIR / f"{media_id}_clip_{i}_snap.jpg"
             clip_paths.append(clip_path)
             snap_paths.append(snap_path)
 
-            logger.info(
-                f"Clips: рендер {i}/{total} "
-                f"({c['start']}–{c['end']}) '{c['title']}'"
-            )
+            try:
+                start_seconds = float(candidate["start_seconds"])
+                end_seconds = float(candidate["end_seconds"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                logger.warning("Clips: candidate %d has invalid boundaries", i)
+                continue
 
-            # ── Шаг 3: вырезать ──────────────────────────────
-            ok = await render_clip(
-                video_path, clip_path,
-                c["start_seconds"], c["end_seconds"],
+            snap_ceiling = clip_snap_ceiling(
+                start_seconds,
+                public_max_seconds,
+                duration,
             )
-            if not ok:
+            if snap_ceiling is not None and end_seconds > snap_ceiling + 1e-9:
                 logger.warning(
-                    f"Clips: не удалось вырезать {i}/{total} ({c['start']}–{c['end']})"
+                    "Clips %d/%d rejected before render: %.3f..%.3f exceeds ceiling %.3f",
+                    i,
+                    total,
+                    start_seconds,
+                    end_seconds,
+                    snap_ceiling,
                 )
                 continue
 
-            # A non-empty file is not delivery evidence. render_clip historically
-            # tolerated a Windows ffmpeg signal-2 exit if bytes existed, so prove
-            # the public artifact has decodable video+audio before size/snapshot/send.
+            logger.info(
+                "Clips: render %d/%d (%.3f..%.3f) %r",
+                i,
+                total,
+                start_seconds,
+                end_seconds,
+                candidate.get("title", ""),
+            )
+            ok = await render_clip(
+                video_path,
+                clip_path,
+                start_seconds,
+                end_seconds,
+                silence_snap_max_end=snap_ceiling,
+                snap_to_silence=snap_to_silence,
+            )
+            if not ok:
+                continue
+
             clip_probe = await probe_media_async(clip_path)
             if not media_probe_is_deliverable(clip_probe):
                 logger.warning(
-                    "Clips %d/%d: rendered file failed final media probe — skipping",
+                    "Clips %d/%d: rendered file failed final media probe",
                     i,
                     total,
                 )
                 continue
             assert clip_probe is not None
             delivery_duration = float(clip_probe.duration)
-
-            # Проверка размера: Telegram лимит 2GB, но для video-сообщений ~50MB удобнее
-            clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
-            if clip_size_mb > get_max_file_size_mb():
+            if (
+                public_max_seconds is not None
+                and delivery_duration
+                > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
+            ):
                 logger.warning(
-                    f"Clips {i}/{total}: файл слишком большой ({clip_size_mb:.0f}MB), пропускаем"
+                    "Clips %d/%d rejected: final %.3fs exceeds public %.3fs",
+                    i,
+                    total,
+                    delivery_duration,
+                    float(public_max_seconds),
                 )
                 continue
 
-            # ── Шаг 4: snapshot (опционально) ────────────────
+            max_upload_mb = float(get_max_file_size_mb())
+            clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
+            if clip_size_mb > max_upload_mb:
+                if not factory_publication:
+                    logger.warning(
+                        "Clips %d/%d: file too large (%.0fMB)",
+                        i,
+                        total,
+                        clip_size_mb,
+                    )
+                    continue
+                ffmpeg = shutil.which("ffmpeg")
+                if not ffmpeg:
+                    logger.warning(
+                        "Factory Clip %d/%d requires ffmpeg for long-fit",
+                        i,
+                        total,
+                    )
+                    continue
+                logger.warning(
+                    "Factory Clip %d/%d exceeds upload limit: %.1fMB > %.1fMB; "
+                    "fitting the exact audited interval",
+                    i,
+                    total,
+                    clip_size_mb,
+                    max_upload_mb,
+                )
+                fitted = await fit_factory_long_clip_to_limit(
+                    video_path,
+                    clip_path,
+                    start_seconds,
+                    end_seconds,
+                    max_file_size_mb=max_upload_mb,
+                    ffmpeg=ffmpeg,
+                )
+                if not fitted:
+                    continue
+                clip_probe = await probe_media_async(clip_path)
+                if not media_probe_is_deliverable(clip_probe):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted file failed media probe",
+                        i,
+                        total,
+                    )
+                    continue
+                assert clip_probe is not None
+                delivery_duration = float(clip_probe.duration)
+                if (
+                    public_max_seconds is not None
+                    and delivery_duration
+                    > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
+                ):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted duration %.3fs exceeds %.3fs",
+                        i,
+                        total,
+                        delivery_duration,
+                        float(public_max_seconds),
+                    )
+                    continue
+                if clip_path.stat().st_size > int(max_upload_mb * 1024 * 1024):
+                    logger.warning(
+                        "Factory Clip %d/%d fitted file still exceeds upload limit",
+                        i,
+                        total,
+                    )
+                    continue
+
             thumb_buf = None
             if do_snapshot:
                 try:
                     snap_ok = await create_clip_snapshot(
-                        clip_path, snap_path, delivery_duration
+                        clip_path,
+                        snap_path,
+                        delivery_duration,
                     )
                     if snap_ok and snap_path.exists():
-                        thumb_buf = InputFile(snap_path.read_bytes(), filename=snap_path.name)
+                        thumb_buf = InputFile(
+                            snap_path.read_bytes(),
+                            filename=snap_path.name,
+                        )
                 except Exception as snap_err:
-                    logger.warning(f"Clips {i}/{total}: snapshot error: {snap_err}")
+                    logger.warning("Clips %d/%d snapshot error: %s", i, total, snap_err)
 
-            # ── Шаг 5: caption ────────────────────────────────
-            caption = build_clip_caption(
-                candidate=c,
+            caption = caption_builder(
+                candidate=candidate,
                 performer=performer,
                 real_author=real_author,
                 real_event=real_event,
@@ -204,18 +331,7 @@ async def process_and_send_clips(
             if visible_length(caption) > 1024:
                 caption = safe_trim_caption(caption, 1024)
 
-            # ── Шаг 6: отправить ─────────────────────────────
             try:
-                logger.info(
-                    "Clips: отправляю %d/%d (%.1fMB, final=%.3fs)",
-                    i,
-                    total,
-                    clip_size_mb,
-                    delivery_duration,
-                )
-                # Path вместо handle: при local_mode PTB шлёт file:// —
-                # сервер читает с диска, без HTTP-передачи (большие клипы
-                # >100MB по HTTP ловили TimedOut; см. fix LIVEDUB)
                 await update.message.reply_video(
                     video=clip_path,
                     caption=caption,
@@ -223,61 +339,53 @@ async def process_and_send_clips(
                     thumbnail=thumb_buf,
                     supports_streaming=True,
                     parse_mode="HTML",
-                    write_timeout=300,   # длинные clips = больше времени на отправку
+                    write_timeout=300,
                     read_timeout=300,
                     connect_timeout=30,
                 )
                 sent += 1
                 logger.info(
-                    "Clips: отправлен %d/%d (%s–%s) %r, final=%.3fs",
+                    "Clips: sent %d/%d (%s-%s) %r, final=%.3fs",
                     i,
                     total,
-                    c["start"],
-                    c["end"],
-                    c["title"],
+                    _candidate_label(candidate, "start", "start_seconds"),
+                    _candidate_label(candidate, "end", "end_seconds"),
+                    candidate.get("title", ""),
                     delivery_duration,
                 )
             except Exception as send_err:
-                logger.warning(f"Clips: ошибка отправки {i}/{total}: {send_err}")
-            finally:
-                # AUDIT R25: thumb_buf теперь InputFile (данные в памяти) —
-                # закрывать нечего.
-                pass
+                logger.warning("Clips: send error %d/%d: %s", i, total, send_err)
 
-        # ── Шаг 6: итог ──────────────────────────────────────
         if sent == 0:
-            logger.warning("Clips: ни один clip не был отправлен")
+            logger.warning("Clips: no clips delivered")
         else:
-            logger.info(f"Clips: итого отправлено {sent}/{total}")
+            logger.info("Clips: delivered %d/%d", sent, total)
+        return sent
 
-    except Exception as e:
-        logger.warning(f"Clips process_and_send error: {e}")
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning("Clips process_and_send error: %s", exc)
         try:
             await update.message.reply_text(
-                f"🎬 Ошибка при подготовке Clips: {str(e)[:150]}"
+                f"🎬 Ошибка при подготовке Clips: {str(exc)[:150]}"
             )
         except Exception:
             pass
+        return sent
     finally:
-        for p in clip_paths:
+        for path in (*clip_paths, *snap_paths):
             try:
-                p.unlink(missing_ok=True)
-            except Exception:
-                pass
-        for p in snap_paths:
-            try:
-                p.unlink(missing_ok=True)
+                path.unlink(missing_ok=True)
             except Exception:
                 pass
         if video_path:
             try:
-                # Owned generic downloads may be kept for Montage/Highlights.
-                # A LiveDub path is borrowed from the outer pipeline and must be
-                # cleaned only by that owner, even when Clips is the last consumer.
-                _clips_keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
-                if not _clips_keep and not borrowed_video:
+                keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
+                if not keep and not borrowed_video:
                     video_path.unlink(missing_ok=True)
             except Exception:
                 pass
 
 
+__all__ = ["PUBLIC_CLIP_DURATION_EPSILON_SEC", "process_and_send_clips"]

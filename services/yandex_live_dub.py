@@ -255,6 +255,11 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
     старый «самый свежий файл» мог выдать пользователю ОРИГИНАЛ вместо
     перевода. Служебные имена детерминированы — исключаем их.
     """
+    if str(pattern).casefold() == "*.mp3":
+        from services.livedub_audio_quality_guard import select_clean_translation_mp3
+
+        return select_clean_translation_mp3(directory)
+
     files = [
         p for p in directory.glob(pattern)
         if not p.name.startswith(("original_video", "original_audio", "pro_dub", "live_dub_merged"))
@@ -275,15 +280,30 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     AUDIT 2026-06-11: Яндекс готовит перевод длинного видео МИНУТЫ.
     OAuth-токен теперь обязателен для живых голосов.
     """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    from services.livedub_ru_provenance import (
+        record_returned_ru_audio,
+        snapshot_ru_audio_candidates,
+    )
+    _ru_before = snapshot_ru_audio_candidates(output_dir)
+
     # ── Путь 1: новый протокол (@vot.js/node, OAuth) ──
     helper = await asyncio.get_running_loop().run_in_executor(None, _ensure_vot_helper)
     if helper:
         try:
-            return await _get_audio_new_protocol(
+            _new_result = await _get_audio_new_protocol(
                 helper, video_url, output_dir,
                 timeout=max(timeout, 900), voice_style=voice_style, duration=duration,
                 lang=lang,
             )
+            record_returned_ru_audio(
+                _new_result,
+                workdir=output_dir,
+                before=_ru_before,
+                voice_style=voice_style,
+            )
+            return _new_result
         except RuntimeError as e:
             msg = str(e)
             if "LIVEDUB_AUTH_REQUIRED" in msg or "LIVEDUB_NOT_AVAILABLE" in msg:
@@ -338,6 +358,12 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     if not downloaded_path or not downloaded_path.exists():
         raise RuntimeError(f"vot-cli-live не сохранил MP3. stdout: {stdout[:500]}")
 
+    record_returned_ru_audio(
+        downloaded_path,
+        workdir=output_dir,
+        before=_ru_before,
+        voice_style=voice_style,
+    )
     logger.info(f"[LiveDub] Готово аудио: {downloaded_path}")
     return downloaded_path
 

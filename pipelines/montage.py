@@ -20,6 +20,10 @@ from services.shorts_video import (
 )
 from services.shorts_subtitle_burn import burn_subtitles_into_short
 from services.highlights_candidate_gate import verify_highlights_candidate
+from services.shorts_factory_media import (
+    align_livedub_montage_candidates,
+    probe_livedub_source_duration,
+)
 from converters.md_telegraph import visible_length, safe_trim_caption
 from services.media_delivery_probe import (
     file_size_mb,
@@ -365,6 +369,19 @@ async def process_and_send_montage(
     video_path, owned_video = None, False
     try:
         candidates = prefetched_candidates or []
+        livedub_source: Path | None = None
+        if livedub_video_path:
+            candidate_source = Path(livedub_video_path)
+            if candidate_source.exists():
+                livedub_source = candidate_source
+                duration = int(round(await probe_livedub_source_duration(
+                    livedub_source,
+                    fallback_duration=float(duration or 0),
+                )))
+                candidates = align_livedub_montage_candidates(
+                    candidates,
+                    source_duration=float(duration),
+                )
         if not candidates:
             logger.info("Montage: кандидаты не найдены")
             try:
@@ -375,10 +392,8 @@ async def process_and_send_montage(
                 pass
             return
 
-        from pathlib import Path as _P
-
-        if livedub_video_path and _P(livedub_video_path).exists():
-            video_path = _P(livedub_video_path)
+        if livedub_source is not None:
+            video_path = livedub_source
             logger.info("Montage: using LiveDub video: %s", video_path.name)
         else:
             video_path = await download_video_for_shorts(url, media_id)
@@ -459,10 +474,18 @@ async def process_and_send_highlights(
                 pass
             return
 
-        from pathlib import Path as _P
+        livedub_source: Path | None = None
+        if livedub_video_path:
+            candidate_source = Path(livedub_video_path)
+            if candidate_source.exists():
+                livedub_source = candidate_source
+                duration = int(round(await probe_livedub_source_duration(
+                    livedub_source,
+                    fallback_duration=float(duration or 0),
+                )))
 
-        if livedub_video_path and _P(livedub_video_path).exists():
-            video_path = _P(livedub_video_path)
+        if livedub_source is not None:
+            video_path = livedub_source
             logger.info("Highlights: using LiveDub video: %s", video_path.name)
         else:
             video_path = await download_video_for_shorts(url, media_id)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -178,14 +179,15 @@ def test_explicit_false_is_a_failure_for_boolean_guards():
         manifest.install_phase(RuntimePhase.PRE_MAIN)
 
 
-def test_shorts_factory_runtime_is_required_and_fail_closed():
-    feature = next(
-        item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "shorts-factory-max"
-    )
+def test_shorts_factory_is_source_owned_not_a_runtime_manifest_feature():
+    feature_ids = {item.feature_id for item in DEFAULT_RUNTIME_FEATURES}
+    manifest_source = Path("services/runtime_manifest.py").read_text(encoding="utf-8")
+    dispatch_source = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
+    factory_source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
 
-    assert feature.module == "services.shorts_factory_runtime"
-    assert feature.installer == "install_shorts_factory_mode"
-    assert feature.phase is RuntimePhase.POST_MAIN
-    assert feature.required is True
-    assert feature.requires_main is True
-    assert feature.false_is_failure is True
+    assert "shorts-factory-max" not in feature_ids
+    assert "services.shorts_factory_runtime" not in manifest_source
+    assert "install_shorts_factory_mode" not in manifest_source
+    assert 'if mode == "shorts_max":' in dispatch_source
+    assert "from pipelines.shorts_factory import process_shorts_factory" in dispatch_source
+    assert "async def process_shorts_factory(" in factory_source

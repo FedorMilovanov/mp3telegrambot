@@ -60,13 +60,24 @@ _STAGE_ONLY_WORDS = {
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    """Read one finite bounded Factory tuning value without changing its meaning."""
     try:
         value = float(os.getenv(name, "") or default)
     except (TypeError, ValueError):
         value = default
     if not math.isfinite(value):
         value = default
-    return max(minimum, min(value, maximum))
+    return max(float(minimum), min(value, float(maximum)))
+
+
+def _env_quality_min(name: str, default: float, minimum: float, maximum: float) -> float:
+    """For minimum-quality thresholds, permit only equal or stricter (higher) values."""
+    return max(float(default), _env_float(name, default, minimum, maximum))
+
+
+def _env_quality_max(name: str, default: float, minimum: float, maximum: float) -> float:
+    """For maximum tolerances, permit only equal or stricter (lower) values."""
+    return min(float(default), _env_float(name, default, minimum, maximum))
 
 
 def _candidate_seconds(item: dict[str, Any]) -> tuple[float, float]:
@@ -90,7 +101,6 @@ def _format_seconds(seconds: float) -> str:
 
 
 def _strip_simple_html(text: str) -> str:
-    """Remove caption formatting tags without regex or semantic rewriting."""
     out: list[str] = []
     in_tag = False
     for char in str(text or ""):
@@ -106,7 +116,6 @@ def _strip_simple_html(text: str) -> str:
 
 
 def _caption_cue_is_lexical_speech(text: str) -> bool:
-    """Reject stage-direction-only cues while retaining real words and lyrics."""
     cleaned = " ".join(_strip_simple_html(text).replace("\x00", " ").split()).strip()
     if not cleaned:
         return False
@@ -130,7 +139,6 @@ def _caption_cue_is_lexical_speech(text: str) -> bool:
 
 
 def _silence_event_value(line: str, marker: str) -> float | None:
-    """Parse one FFmpeg silencedetect numeric value without regex."""
     position = str(line or "").find(marker)
     if position < 0:
         return None
@@ -150,7 +158,6 @@ def speech_intervals_from_silence_log(
     duration: float,
     minimum_speech: float = 0.08,
 ) -> list[tuple[float, float]]:
-    """Invert FFmpeg silencedetect events into non-silent spans."""
     try:
         limit = max(0.0, float(duration))
     except (TypeError, ValueError):
@@ -213,7 +220,6 @@ def _merge_intervals(
 
 
 async def _probe_audio_duration(path: Path) -> float:
-    """Return the actual audio duration or zero when it cannot be proved."""
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return 0.0
@@ -241,7 +247,6 @@ async def _probe_audio_duration(path: Path) -> float:
 
 
 async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
-    """Build a deterministic speech timeline from the exact VOT RU track."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is unavailable for Factory RU boundary proof")
@@ -318,7 +323,6 @@ async def _download_source_speech_intervals(
     workdir: Path,
     source_language: str,
 ) -> tuple[list[tuple[float, float]], str]:
-    """Use lexical provider/manual captions as source-speech timing evidence."""
     from services.translation_editorial import parse_srt
     from services.translation_editorial_factory import download_original_srt
 
@@ -348,7 +352,6 @@ async def prepare_factory_ru_boundary_evidence(
     workdir: Path,
     source_language: str,
 ) -> dict[str, Any]:
-    """Build request-local RU/source speech evidence before translated rendering."""
     exact_ru = read_ru_audio_provenance(workdir)
     if exact_ru is None:
         raise RuntimeError(
@@ -537,17 +540,17 @@ def align_candidates_to_ru_speech(
     if not math.isfinite(source_limit) or source_limit <= 0:
         raise RuntimeError("Factory translated source duration is not finite/positive")
     delay = max(0.0, float(delay_seconds)) if math.isfinite(float(delay_seconds)) else 0.0
-    max_start_back = _env_float("SHORTS_FACTORY_RU_START_BACK_SEC", 3.0, 0.25, 8.0)
-    max_start_forward = _env_float("SHORTS_FACTORY_RU_START_FORWARD_SEC", 4.0, 0.25, 10.0)
-    max_end_forward = _env_float("SHORTS_FACTORY_RU_END_FORWARD_SEC", 4.0, 0.25, 10.0)
-    max_end_back = _env_float("SHORTS_FACTORY_RU_END_BACK_SEC", 4.0, 0.25, 10.0)
+    max_start_back = _env_quality_max("SHORTS_FACTORY_RU_START_BACK_SEC", 3.0, 0.25, 8.0)
+    max_start_forward = _env_quality_max("SHORTS_FACTORY_RU_START_FORWARD_SEC", 4.0, 0.25, 10.0)
+    max_end_forward = _env_quality_max("SHORTS_FACTORY_RU_END_FORWARD_SEC", 4.0, 0.25, 10.0)
+    max_end_back = _env_quality_max("SHORTS_FACTORY_RU_END_BACK_SEC", 4.0, 0.25, 10.0)
     end_pad = _env_float("SHORTS_FACTORY_RU_END_PAD_SEC", 0.08, 0.0, 0.30)
-    source_cover_grace = _env_float("SHORTS_FACTORY_SOURCE_RU_COVERAGE_GRACE_SEC", 0.20, 0.0, 0.75)
-    edge_window = _env_float("SHORTS_FACTORY_SOURCE_EDGE_WINDOW_SEC", 2.0, 0.5, 5.0)
-    no_source_max_gap = _env_float("SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC" if is_long else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC", 12.0 if is_long else 4.5, 1.0, 30.0)
-    minimum_coverage = _env_float("SHORTS_FACTORY_RU_MIN_COVERAGE_LONG" if is_long else "SHORTS_FACTORY_RU_MIN_COVERAGE", 0.30 if is_long else 0.45, 0.15, 0.98)
-    max_source_without_ru = _env_float("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", 8.0 if is_long else 4.0, 1.0, 20.0)
-    configured_edge_limit = _env_float("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC", 1.50 if is_long else 1.25, 0.50, 4.0)
+    source_cover_grace = _env_quality_max("SHORTS_FACTORY_SOURCE_RU_COVERAGE_GRACE_SEC", 0.20, 0.0, 0.75)
+    edge_window = _env_quality_min("SHORTS_FACTORY_SOURCE_EDGE_WINDOW_SEC", 2.0, 0.5, 5.0)
+    no_source_max_gap = _env_quality_max("SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC" if is_long else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC", 12.0 if is_long else 4.5, 1.0, 30.0)
+    minimum_coverage = _env_quality_min("SHORTS_FACTORY_RU_MIN_COVERAGE_LONG" if is_long else "SHORTS_FACTORY_RU_MIN_COVERAGE", 0.30 if is_long else 0.45, 0.15, 0.98)
+    max_source_without_ru = _env_quality_max("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", 8.0 if is_long else 4.0, 1.0, 20.0)
+    configured_edge_limit = _env_quality_max("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC", 1.50 if is_long else 1.25, 0.50, 4.0)
     edge_source_without_ru = max(configured_edge_limit, delay + source_cover_grace + 0.15)
     aligned, rejected = [], []
     for item in copy.deepcopy(candidates):

@@ -13,22 +13,35 @@ def test_operator_contract_is_recorded_for_future_agents() -> None:
     assert "Original-language study is verse-first" in agents
 
 
-def test_install_preserves_synopsis_and_hardens_only_study() -> None:
+def test_contract_validator_preserves_prompts_and_source_owns_study() -> None:
     from core import prompts
-    from services.conspect_quality_contract import install_conspect_quality_contract
+    from services.conspect_quality_contract import (
+        build_hardened_study_prompt,
+        install_conspect_quality_contract,
+    )
 
     synopsis_before = prompts.SYNOPSIS_PROMPT_V2
     qa_before = prompts.SYNOPSIS_PROMPT_QA
+    study_before = prompts.STUDY_ANALYSIS_PROMPT
 
     status = install_conspect_quality_contract()
+    hardened = build_hardened_study_prompt(study_before)
 
     assert prompts.SYNOPSIS_PROMPT_V2 == synopsis_before
     assert prompts.SYNOPSIS_PROMPT_QA == qa_before
-    assert "OPERATOR CONSPECT CONTRACT 2026-07-23" in prompts.STUDY_ANALYSIS_PROMPT
-    assert "Ключевые слова в контексте Писания" in prompts.STUDY_ANALYSIS_PROMPT
-    assert "2–5 содержательных карточек" in prompts.STUDY_ANALYSIS_PROMPT
-    assert "0–3 блока; отсутствие блока является нормальным результатом" in prompts.STUDY_ANALYSIS_PROMPT
-    assert "conspect contract" in status or "verbatim Synopsis" in status
+    assert prompts.STUDY_ANALYSIS_PROMPT == study_before
+    assert "OPERATOR CONSPECT CONTRACT 2026-07-23" in hardened
+    assert "Ключевые слова в контексте Писания" in hardened
+    assert "2–5 содержательных карточек" in hardened
+    assert "0–3 блока; отсутствие блока является нормальным результатом" in hardened
+    assert "no runtime patching" in status
+
+    telegraph = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
+    assert (
+        "from services.study_synthesis_policy import "
+        "TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT"
+    ) in telegraph
+
 
 
 def test_hardened_study_prompt_is_idempotent_and_keeps_pair_cards() -> None:

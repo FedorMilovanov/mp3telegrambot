@@ -109,13 +109,18 @@ def test_one_telegraph_page_budget_replaces_short_word_cap() -> None:
     assert 'target_chars="16000–26000 символов"' in profile_source
 
 
-def test_teacherly_runtime_is_final_prompt_layer() -> None:
-    init_source = (ROOT / "services" / "__init__.py").read_text(encoding="utf-8")
-    quality_pos = init_source.index("install_conspect_quality_contract()")
-    audit_pos = init_source.index("install_conspect_audit_runtime()")
-    teacher_pos = init_source.index("install_teacherly_study_runtime()")
-    assert quality_pos < audit_pos < teacher_pos
-    assert "_prompts.STUDY_ANALYSIS_PROMPT = _legacy_effective_study_prompt" in init_source
+def test_teacherly_policy_is_source_owned_by_telegraph_pages() -> None:
+    package = (ROOT / "services" / "__init__.py").read_text(encoding="utf-8")
+    telegraph = (ROOT / "services" / "telegraph_pages.py").read_text(encoding="utf-8")
+    runtime = (ROOT / "services" / "study_synthesis_runtime.py").read_text(encoding="utf-8")
+    assert "install_teacherly_study_runtime()" not in package
+    assert (
+        "from services.study_synthesis_policy import "
+        "TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT"
+    ) in telegraph
+    assert "performs no mutation" in runtime
+    assert "STUDY_ANALYSIS_PROMPT =" not in runtime
+
 
 
 def test_agent_contract_prevents_rubric_regression() -> None:

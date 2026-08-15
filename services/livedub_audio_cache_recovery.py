@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""Make the dual-MP3 Telegram file-id cache recoverable.
+"""Recoverable persistence backend for LiveDub companion audio file IDs.
 
-``livedub_audio_companion`` stores up to 500 video→audio pairs in one JSON file.
-The legacy loader returned an empty mapping for any read/JSON error. A subsequent
-successful delivery could then overwrite the damaged file with one new entry,
-permanently discarding every previously cached pair.
-
-This adapter keeps one validated previous generation in ``.bak``. Reads recover a
-corrupt/oversized primary from that backup; writes back up only a valid primary,
-run the established pruning/atomic-save implementation, then verify that the
-persisted object is the exact expected pruned generation. A syntactically valid
-but stale/wrong primary is therefore treated as a failed save and rolled back just
-like malformed JSON. Cache failures remain non-fatal to user delivery.
+This module is a normal service, not a runtime installer.  The companion cache
+calls it directly, so corruption recovery and exact-generation verification do
+not depend on import order or monkey-patching private functions.
 """
 from __future__ import annotations
 
@@ -22,11 +14,10 @@ import shutil
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
-_LOCK = threading.Lock()
-_INSTALLED = False
+
 _DEFAULT_MAX_BYTES = 16 * 1024 * 1024
 _MAX_ENTRIES = 500
 
@@ -45,7 +36,6 @@ def _backup_path(path: Path) -> Path:
 
 
 def _read_mapping(path: Path, *, max_bytes: int | None = None) -> dict[str, Any] | None:
-    """Read one bounded UTF-8 JSON object, distinguishing invalid from empty."""
     limit = _max_bytes() if max_bytes is None else int(max_bytes)
     try:
         if not path.is_file():
@@ -70,14 +60,10 @@ def _saved_at(item: tuple[str, Any]) -> float:
 
 
 def _expected_generation(data: dict[str, Any]) -> dict[str, Any]:
-    """Mirror the base companion's newest-500 persistence contract."""
-    return dict(
-        sorted(data.items(), key=_saved_at, reverse=True)[:_MAX_ENTRIES]
-    )
+    return dict(sorted(data.items(), key=_saved_at, reverse=True)[:_MAX_ENTRIES])
 
 
 def _atomic_copy(source: Path, target: Path) -> bool:
-    """Copy one validated cache generation using fsync + atomic replace."""
     temp = target.with_name(
         f"{target.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
     )
@@ -90,8 +76,32 @@ def _atomic_copy(source: Path, target: Path) -> bool:
         os.replace(temp, target)
         return True
     except OSError as exc:
-        logger.warning("[LiveDubAudioCache] atomic copy failed %s -> %s: %s", source, target, exc)
+        logger.warning(
+            "[LiveDubAudioCache] atomic copy failed %s -> %s: %s",
+            source,
+            target,
+            exc,
+        )
         return False
+    finally:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    temp = path.with_name(
+        f"{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
+    )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        with temp.open("wb") as dst:
+            dst.write(encoded)
+            dst.flush()
+            os.fsync(dst.fileno())
+        os.replace(temp, path)
     finally:
         try:
             temp.unlink(missing_ok=True)
@@ -105,94 +115,62 @@ def _recover_primary(path: Path, backup: Path) -> dict[str, Any] | None:
         return None
     restored = _atomic_copy(backup, path)
     logger.warning(
-        "[LiveDubAudioCache] primary cache recovered from backup: %s entries=%d restored=%s",
-        path,
+        "[LiveDubAudioCache] primary recovered from backup: entries=%d restored=%s",
         len(data),
         restored,
     )
     return data
 
 
-def _discard_unverified_primary(path: Path) -> None:
+def load_recoverable_cache(path: Path) -> dict[str, Any]:
+    """Read a bounded cache, restoring the last validated generation if needed."""
+    path = Path(path)
+    primary = _read_mapping(path)
+    if primary is not None:
+        return primary
+    recovered = _recover_primary(path, _backup_path(path))
+    return recovered if recovered is not None else {}
+
+
+def save_recoverable_cache(path: Path, data: dict[str, Any]) -> None:
+    """Persist newest 500 entries and prove the exact generation reached disk."""
+    path = Path(path)
+    expected = _expected_generation(data)
+    backup = _backup_path(path)
+    previous = _read_mapping(path)
+    if previous is not None:
+        _atomic_copy(path, backup)
+
     try:
-        path.unlink(missing_ok=True)
-    except OSError as exc:
-        logger.warning("[LiveDubAudioCache] could not discard unverified primary %s: %s", path, exc)
-
-
-def _install_cache_recovery() -> None:
-    import services.livedub_audio_companion as companion
-
-    current_load: Callable[[], dict[str, Any]] = companion._load_cache
-    current_save: Callable[[dict[str, Any]], None] = companion._save_cache
-    if getattr(current_load, "_mp3bot_cache_recovery", False):
-        return
-
-    def resilient_load() -> dict[str, Any]:
-        path = companion._cache_path()
-        primary = _read_mapping(path)
-        if primary is not None:
-            return primary
-        recovered = _recover_primary(path, _backup_path(path))
-        if recovered is not None:
-            return recovered
-        # Preserve custom/test loaders, but never trust a non-dict result.
-        try:
-            fallback = current_load()
-            return fallback if isinstance(fallback, dict) else {}
-        except Exception as exc:
-            logger.warning("[LiveDubAudioCache] legacy loader failed: %s", str(exc)[:180])
-            return {}
-
-    def resilient_save(data: dict[str, Any]) -> None:
-        path = companion._cache_path()
-        backup = _backup_path(path)
-        expected = _expected_generation(data)
-        previous = _read_mapping(path)
-        if previous is not None:
-            _atomic_copy(path, backup)
-
-        try:
-            current_save(data)
-        except Exception as exc:
-            logger.warning("[LiveDubAudioCache] base save raised: %s", str(exc)[:180])
-
+        _atomic_write(path, expected)
         written = _read_mapping(path)
         if written == expected:
             return
-
-        mismatch = "invalid" if written is None else "valid-but-wrong"
+        raise RuntimeError("persisted LiveDub audio cache differs from requested generation")
+    except BaseException:
         recovered = _recover_primary(path, backup)
         if recovered is None:
-            _discard_unverified_primary(path)
-            logger.error(
-                "[LiveDubAudioCache] %s new generation and no valid backup exists: %s",
-                mismatch,
-                path,
-            )
-        else:
-            logger.error(
-                "[LiveDubAudioCache] %s new generation rolled back to %d cached videos",
-                mismatch,
-                len(recovered),
-            )
-
-    resilient_load._mp3bot_cache_recovery = True  # type: ignore[attr-defined]
-    resilient_save._mp3bot_cache_recovery = True  # type: ignore[attr-defined]
-    resilient_load.__wrapped__ = current_load  # type: ignore[attr-defined]
-    resilient_save.__wrapped__ = current_save  # type: ignore[attr-defined]
-    companion._load_cache = resilient_load
-    companion._save_cache = resilient_save
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
-def install_livedub_audio_cache_recovery() -> None:
-    """Install after the base companion defines its cache helpers."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        _install_cache_recovery()
-        _INSTALLED = True
-        logger.info("💾 LiveDub audio cache: exact-generation backup + self-recovery enabled")
+def validate_livedub_audio_cache_backend() -> str:
+    """Startup contract used by tests/diagnostics; performs no mutation."""
+    if _MAX_ENTRIES != 500:
+        raise RuntimeError("unexpected LiveDub audio cache retention contract")
+    return "source-owned recoverable audio cache; exact-generation verification"
+
+
+# Compatibility name for old diagnostics. It no longer installs or replaces anything.
+def install_livedub_audio_cache_recovery() -> str:
+    return validate_livedub_audio_cache_backend()
+
+
+__all__ = [
+    "load_recoverable_cache",
+    "save_recoverable_cache",
+    "validate_livedub_audio_cache_backend",
+]

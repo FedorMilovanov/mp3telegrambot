@@ -9,17 +9,30 @@ import pytest
 from services import shorts_video
 
 
-OWNED_FUNCTIONS = {
-    "download_video_for_shorts": "_unowned_download_video_for_shorts",
-    "render_short_clip": "_unowned_render_short_clip",
-    "postprocess_short": "_unowned_short_transform",
-    "transcribe_short_clip": "_unowned_transcribe_short_clip",
-    "create_short_title_poster": "_unowned_create_short_title_poster",
-    "create_short_snapshot": "_unowned_create_short_snapshot",
-}
+PUBLIC_OWNED = (
+    "download_video_for_shorts",
+    "render_short_clip",
+    "postprocess_short",
+    "transcribe_short_clip",
+    "create_short_title_poster",
+    "create_short_snapshot",
+    "burn_subtitles_into_short",
+)
 
 
-def test_active_shorts_functions_have_one_public_wrapper() -> None:
+def _public_source(source: str, name: str) -> str:
+    tree = ast.parse(source)
+    node = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
+    )
+    value = ast.get_source_segment(source, node)
+    assert value is not None
+    return value
+
+
+def test_active_shorts_functions_have_one_public_owner() -> None:
     source = Path(shorts_video.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
     names = [
@@ -28,44 +41,38 @@ def test_active_shorts_functions_have_one_public_wrapper() -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     ]
 
-    for public_name, implementation_name in OWNED_FUNCTIONS.items():
+    for public_name in PUBLIC_OWNED:
         assert names.count(public_name) == 1
-        assert names.count(implementation_name) == 1
+
+    assert names.count("_owned_render_short_clip") == 1
+    assert names.count("_owned_short_transform") == 1
+    assert names.count("_owned_optional_output") == 1
+    assert "_unowned_render_short_clip" not in names
+    assert "_unowned_transcribe_short_clip" not in names
 
 
-def test_public_wrappers_use_owned_coroutine_contract() -> None:
+def test_public_long_running_wrappers_use_owned_coroutine_contract() -> None:
     source = Path(shorts_video.__file__).read_text(encoding="utf-8")
-    assert "from services.async_worker import await_owned_coroutine" in source
-    tree = ast.parse(source)
 
-    for public_name, implementation_name in OWNED_FUNCTIONS.items():
-        public_source = ast.get_source_segment(
-            source,
-            next(
-                node
-                for node in tree.body
-                if isinstance(node, ast.AsyncFunctionDef)
-                and node.name == public_name
-            ),
-        )
-        assert public_source is not None
-        assert "await await_owned_coroutine(" in public_source
-        assert f"{implementation_name}(" in public_source
+    expected_targets = {
+        "download_video_for_shorts": "_LEGACY_DOWNLOAD_VIDEO(",
+        "transcribe_short_clip": "_LEGACY_TRANSCRIBE_SHORT_CLIP(",
+        "render_short_clip": "_owned_render_short_clip(",
+        "postprocess_short": "_owned_short_transform(",
+        "create_short_title_poster": "_owned_optional_output(",
+        "create_short_snapshot": "_owned_optional_output(",
+    }
+    for public_name, target in expected_targets.items():
+        public_source = _public_source(source, public_name)
+        assert "_impl.await_owned_coroutine(" in public_source
+        assert target in public_source
 
 
 def test_legacy_burn_delegates_to_transactional_owner() -> None:
     source = Path(shorts_video.__file__).read_text(encoding="utf-8")
-    public_source = ast.get_source_segment(
-        source,
-        next(
-            node
-            for node in ast.parse(source).body
-            if isinstance(node, ast.AsyncFunctionDef)
-            and node.name == "burn_subtitles_into_short"
-        ),
-    )
-    assert public_source is not None
+    public_source = _public_source(source, "burn_subtitles_into_short")
     assert "services.shorts_subtitle_burn" in public_source
+    assert "owned_burn(" in public_source
     assert "_unowned_burn_subtitles_into_short" not in public_source
 
 
@@ -78,7 +85,11 @@ async def test_transcribe_wrapper_forwards_arguments(monkeypatch, tmp_path: Path
         observed["ai_data"] = ai_data
         return [{"text": "готово"}]
 
-    monkeypatch.setattr(shorts_video, "_unowned_transcribe_short_clip", fake)
+    monkeypatch.setitem(
+        shorts_video.transcribe_short_clip.__globals__,
+        "_LEGACY_TRANSCRIBE_SHORT_CLIP",
+        fake,
+    )
     video = tmp_path / "clip.mp4"
     result = await shorts_video.transcribe_short_clip(video, ai_data={"x": 1})
 
@@ -107,7 +118,7 @@ async def test_render_wrapper_survives_repeated_outer_cancellation(
 
     monkeypatch.setitem(
         shorts_video.render_short_clip.__globals__,
-        "_unowned_render_short_clip",
+        "_owned_render_short_clip",
         fake,
     )
     task = asyncio.create_task(

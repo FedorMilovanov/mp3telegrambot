@@ -56,7 +56,7 @@ async def _configure_pipeline(monkeypatch, tmp_path: Path, *, probe):
         assert key == "clips_snapshot"
         return False
 
-    async def render(source, target, start, end):
+    async def render(source, target, start, end, **kwargs):
         assert source.exists()
         target.write_bytes(b"rendered")
         return True
@@ -65,10 +65,15 @@ async def _configure_pipeline(monkeypatch, tmp_path: Path, *, probe):
         assert path.exists()
         return probe
 
+    async def probe_livedub(source_path, *, fallback_duration=0.0):
+        assert source_path.exists()
+        return 600.0
+
     monkeypatch.setattr(clips, "create_clips_candidates", candidates)
     monkeypatch.setattr(clips, "asettings_get", setting)
     monkeypatch.setattr(clips, "render_clip", render)
     monkeypatch.setattr(clips, "probe_media_async", probe_media)
+    monkeypatch.setattr(clips, "probe_livedub_source_duration", probe_livedub)
     monkeypatch.setattr(clips, "get_max_file_size_mb", lambda: 100.0)
     monkeypatch.setattr(clips, "settings_get", lambda key: False)
     monkeypatch.setattr(clips, "build_clip_caption", lambda **kwargs: "clip")
@@ -132,7 +137,9 @@ async def test_clips_reject_nonempty_render_without_delivery_probe(
 def test_clips_delivery_boundary_uses_media_probe_and_borrowed_ownership():
     source = Path("pipelines/clips.py").read_text(encoding="utf-8")
 
+    assert "probe_livedub_source_duration(" in source
+    assert "align_livedub_candidates(" in source
     assert "media_probe_is_deliverable(clip_probe)" in source
     assert "delivery_duration = float(clip_probe.duration)" in source
     assert "duration=max(1, int(round(delivery_duration)))" in source
-    assert "not _clips_keep and not borrowed_video" in source
+    assert "if not keep and not borrowed_video" in source

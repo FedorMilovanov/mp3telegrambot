@@ -6,45 +6,34 @@ from types import SimpleNamespace
 
 import pytest
 
-from services import gemini36_factory_resilience as resilience
+import services.shorts_factory_capacity as capacity
+import services.shorts_factory_source as source
 
 
 def test_analysis_audio_defaults_are_quality_conservative(monkeypatch):
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS", raising=False)
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE", raising=False)
-    assert resilience.gemini_analysis_bitrate_kbps() == 128
-    assert resilience.gemini_analysis_sample_rate() == 48000
+    assert source.gemini_analysis_bitrate_kbps() == 128
+    assert source.gemini_analysis_sample_rate() == 48000
 
 
 def test_analysis_audio_never_accepts_low_fidelity_env(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS", "32")
     monkeypatch.setenv("SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE", "8000")
-    assert resilience.gemini_analysis_bitrate_kbps() == 96
-    assert resilience.gemini_analysis_sample_rate() == 24000
+    assert source.gemini_analysis_bitrate_kbps() == 96
+    assert source.gemini_analysis_sample_rate() == 24000
 
 
 def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch):
+    from core import globals as core_globals
+
     monkeypatch.delenv("GEMINI_SERVICE_TIER", raising=False)
-    assert resilience.configured_service_tier() == "standard"
+    assert core_globals.configured_gemini_service_tier() == "standard"
     monkeypatch.setenv("GEMINI_SERVICE_TIER", "priority")
-    assert resilience.configured_service_tier() == "priority"
+    assert core_globals.configured_gemini_service_tier() == "priority"
     monkeypatch.setenv("GEMINI_SERVICE_TIER", "flex")
     with pytest.raises(RuntimeError, match="standard.*priority"):
-        resilience.configured_service_tier()
-
-
-def test_priority_preserves_existing_sampling_free_generate_config():
-    original = {"max_output_tokens": 12000, "response_mime_type": "application/json"}
-    configured = resilience._with_service_tier(original, "priority")
-    assert configured == {
-        "max_output_tokens": 12000,
-        "response_mime_type": "application/json",
-        "service_tier": "priority",
-    }
-    assert original == {
-        "max_output_tokens": 12000,
-        "response_mime_type": "application/json",
-    }
+        core_globals.configured_gemini_service_tier()
 
 
 def test_user_visible_publication_owner_uses_only_36_even_with_stale_env(monkeypatch):
@@ -53,22 +42,48 @@ def test_user_visible_publication_owner_uses_only_36_even_with_stale_env(monkeyp
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
     assert publication.publication_models() == ["gemini-3.6-flash"]
-    resilience._verify_publication_quality_route()
 
 
-def test_publication_invariant_fails_if_owner_regresses(monkeypatch):
-    import services.livedub_publication_core as publication
+def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
+    from core import globals as core_globals
 
-    monkeypatch.setattr(publication, "publication_models", lambda: ["gemini-3.5-flash-lite"])
-    with pytest.raises(RuntimeError, match="gemini-3.6-flash"):
-        resilience._verify_publication_quality_route()
+    created = []
+
+    class Retry:
+        def __init__(self, *, attempts):
+            self.attempts = attempts
+
+    class Http:
+        def __init__(self, *, timeout, retry_options):
+            self.timeout = timeout
+            self.retry_options = retry_options
+
+    def client(**kwargs):
+        created.append(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(core_globals, "HAS_GEMINI", True)
+    monkeypatch.setattr(core_globals, "genai", SimpleNamespace(Client=client))
+    monkeypatch.setattr(
+        core_globals,
+        "types",
+        SimpleNamespace(HttpRetryOptions=Retry, HttpOptions=Http),
+    )
+    monkeypatch.setattr(core_globals, "GEMINI_API_KEY", "k1")
+    monkeypatch.setattr(core_globals, "GEMINI_API_KEY_2", "k2")
+    monkeypatch.setattr(core_globals, "GEMINI_API_KEY_3", "")
+    monkeypatch.setattr(core_globals, "GEMINI_API_KEY_4", "")
+
+    clients = capacity.factory_gemini_clients()
+    assert len(clients) == 2
+    assert [item["api_key"] for item in created] == ["k1", "k2"]
+    assert all(item["http_options"].timeout == 900_000 for item in created)
+    assert all(item["http_options"].retry_options.attempts == 1 for item in created)
 
 
 def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     monkeypatch, tmp_path
 ):
-    import services.shorts_factory_source as source
-
     source_file = tmp_path / "video_factory_audio_source.webm"
     source_file.write_bytes(b"source" * 500)
     source_probe = SimpleNamespace(
@@ -91,23 +106,17 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
         output.write_bytes(b"aac" * 1000)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(path):
+    async def fake_probe(_path):
         return final_probe
 
     monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
     monkeypatch.setattr(source, "run_cancellable_process", fake_run)
     monkeypatch.setattr(source, "probe_media_async", fake_probe)
-    monkeypatch.setattr(resilience.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(source.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS", raising=False)
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE", raising=False)
 
-    result = asyncio.run(
-        resilience._prepare_compact_gemini_audio(
-            source_file,
-            source_probe,
-            "video",
-        )
-    )
+    result = asyncio.run(source._prepare_gemini_audio(source_file, source_probe, "video"))
 
     assert result == tmp_path / "video_factory_audio_gemini.aac"
     assert result.exists()
@@ -123,9 +132,9 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
 
 
 def test_capacity_defaults_are_bounded_not_sdk_retry_cascade():
-    import services.shorts_factory_capacity_runtime as capacity
+    import services.shorts_factory_capacity_runtime as runtime
 
-    assert capacity._FACTORY_CAPACITY_PASS_ATTEMPTS == 4
-    assert capacity._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 3.0
-    assert capacity._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 20.0
-    assert capacity._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 2.0
+    assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 4
+    assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 3.0
+    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 20.0
+    assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 2.0

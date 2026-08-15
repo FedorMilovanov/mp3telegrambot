@@ -51,8 +51,8 @@ def test_montage_does_not_own_borrowed_livedub_video():
 def test_shorts_keeps_video_for_clips_and_never_deletes_borrowed():
     src = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     assert 'asettings_get("clips")' in src
-    assert "_borrowed" in src
-    assert "video_path == livedub_video_path" in src
+    assert "borrowed = livedub_source is not None and video_path == livedub_source" in src
+    assert "if not keep_for_montage and not borrowed:" in src
 
 
 def test_livedub_bg_cancels_inner_tasks_on_teardown():

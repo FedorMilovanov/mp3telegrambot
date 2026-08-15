@@ -82,11 +82,15 @@ def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeou
 
     render_plan_pos = source.index("render_plan = dict(plan")
     ai_data_pos = source.index("ai_data = factory_ai_data(")
-    assert render_plan_pos < ai_data_pos
+    shorts_send_pos = source.index("shorts_sent = await process_and_send_factory_shorts(")
+    longs_send_pos = source.index("longs_sent = await process_and_send_clips(")
+    assert render_plan_pos < ai_data_pos < shorts_send_pos < longs_send_pos
     assert 'candidate_kind="short"' in source
     assert 'candidate_kind="long"' in source
     assert "return _factory_livedub_timeout_seconds()" in source
-    assert "factory_completed_delivery_counts()" in source
+    assert "shorts_sent <= 0" in source
+    assert "longs_sent <= 0" in source
+    assert "factory_completed_delivery_counts()" not in source
     assert "send_factory_full_translation_if_enabled(" in source
     assert "return bool(shorts_sent or longs_sent or full_video_sent)" in source
 

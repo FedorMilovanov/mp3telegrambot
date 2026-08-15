@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Transactional, validated ASS subtitle burn for public Shorts outputs.
-
-FFmpeg only receives an ASS document after deterministic timing validation.
-Malformed/overlapping/abnormally long karaoke events fail closed and the stale
-or partial output is removed, so a visually broken subtitle artifact cannot be
-mistaken for a successful burn.
-"""
+"""Transactional, validated ASS subtitle burn for public Shorts outputs."""
 from __future__ import annotations
 
 import asyncio
@@ -27,14 +21,10 @@ from services.shorts_video import get_subtitles_mode_settings
 logger = logging.getLogger(__name__)
 
 _BURN_TIMEOUT_SECONDS = 600.0
-# Preserve the long-standing module seam used by process-ownership tests and
-# downstream monkeypatches, while production points it at the validated
-# generator.  This is compatibility, not a second subtitle implementation.
 _generate_ass_from_segments = _validated_generate_ass_from_segments
 
 
 async def _run_burn_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run one encoded burn while retaining the shared GPU semaphore."""
     from core.resource_scheduler import scheduler as resource_scheduler
 
     async with resource_scheduler.gpu_render:
@@ -60,8 +50,10 @@ async def burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
     segments: list[dict],
+    *,
+    karaoke: bool | None = None,
 ) -> bool:
-    """Validate, burn and commit only a non-empty finished subtitle output."""
+    """Validate, burn and commit one subtitle output with explicit style support."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg or not input_path.is_file() or not segments:
         return False
@@ -70,12 +62,15 @@ async def burn_subtitles_into_short(
     _remove_partial_output(output_path)
 
     try:
-        subtitle_config = get_subtitles_mode_settings()
-        karaoke = bool(subtitle_config["karaoke"])
+        if karaoke is None:
+            subtitle_config = get_subtitles_mode_settings()
+            karaoke_enabled = bool(subtitle_config["karaoke"])
+        else:
+            karaoke_enabled = bool(karaoke)
         try:
             ass_content = _generate_ass_from_segments(
                 segments,
-                karaoke=karaoke,
+                karaoke=karaoke_enabled,
             )
         except (TypeError, ValueError) as exc:
             logger.warning("Subtitle burn rejected transcript timing: %s", exc)
@@ -86,7 +81,7 @@ async def burn_subtitles_into_short(
             return False
         validation_issues = validate_ass_document(
             ass_content,
-            karaoke=karaoke,
+            karaoke=karaoke_enabled,
         )
         if validation_issues:
             logger.warning(
@@ -135,9 +130,10 @@ async def burn_subtitles_into_short(
             return False
 
         logger.info(
-            "Subtitles burned transactionally after ASS validation: %s (%.1fMB)",
+            "Subtitles burned transactionally after ASS validation: %s (%.1fMB, karaoke=%s)",
             output_path.name,
             output_path.stat().st_size / 1024 / 1024,
+            karaoke_enabled,
         )
         return True
     except asyncio.CancelledError:

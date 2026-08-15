@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m pytest -q 2>&1 | tee pytest-output.txt
+          python tools/run_pytest_with_annotations.py -q 2>&1 | tee pytest-output.txt
 
       - name: Upload pytest diagnostics
         if: failure()
@@ -112,14 +112,14 @@ jobs:
         shell: pwsh
         run: |
           python -m compileall -q bot_new.py services handlers tools/voxcpm2 tests
-          python -m py_compile tools/check_tts_model_catalog.py
+          python -m py_compile tools/check_tts_model_catalog.py tools/run_pytest_with_annotations.py
           if ($LASTEXITCODE -ne 0) {
             throw "Runtime compile surface failed."
           }
 
       - name: Run Windows-sensitive regression tests
         run: >-
-          python -m pytest -q
+          python tools/run_pytest_with_annotations.py -q
           tests/test_runtime_manifest.py
           tests/test_cut_runtime_installation.py
           tests/test_shorts_factory_candidates.py
@@ -183,6 +183,7 @@ jobs:
           handlers
           tools/voxcpm2
           tools/check_tts_model_catalog.py
+          tools/run_pytest_with_annotations.py
           tests/test_runtime_manifest.py
           tests/test_cut_runtime_installation.py
           tests/test_shorts_factory_candidates.py

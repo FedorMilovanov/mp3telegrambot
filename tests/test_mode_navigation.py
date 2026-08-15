@@ -48,16 +48,19 @@ def test_regular_user_sees_only_normal_processing_modes() -> None:
 
 def test_analysis_menu_is_compact_and_has_back_button() -> None:
     markup = _analysis_keyboard("eng_fast")
-    assert len(markup.inline_keyboard) == 4
+    assert len(markup.inline_keyboard) == 5
+    assert all(len(row) <= 2 for row in markup.inline_keyboard)
     assert _callbacks(markup) == [
         "set_mode:rus",
         "set_mode:eng",
         "set_mode:eng_fast",
         "set_mode:eng_fast_qa",
         "set_mode:shorts_max",
+        "set_mode:translation_editorial",
         "mode_menu:home",
     ]
     assert markup.inline_keyboard[1][0].text.startswith("✓ ")
+    assert markup.inline_keyboard[-1][0].text == "↩️ Все режимы"
 
 
 def test_leaving_dub_wizard_clears_hidden_prompt_state() -> None:
@@ -105,6 +108,7 @@ def test_main_routes_mode_callbacks_before_global_callback() -> None:
     assert mode_route in source
     assert source.index(mode_route) < source.index(global_route)
     assert 'BotCommand("dub",        "🎙 Дубляж: Gemini MAX / готовый SRT")' in source
+
 
 def test_dub_command_has_one_owner_and_start_cancels_wizard() -> None:
     wizard = Path("handlers/dub_wizard.py").read_text(encoding="utf-8")
