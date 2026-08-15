@@ -65,7 +65,7 @@ def test_factory_media_evidence_gate_requires_h264_and_1080_ceiling():
 
 
 def test_factory_language_prompt_typo_does_not_regress():
-    source = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
+    source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     assert "доминирующий фактически услышанный язык речи" in source
     assert "услышаннный" not in source
 
