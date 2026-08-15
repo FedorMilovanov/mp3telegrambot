@@ -16,6 +16,9 @@ def test_factory_quality_and_delivery_are_owned_by_source_modules():
     factory_source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     short_delivery = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
     source_owner = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
+    capacity_owner = Path("services/shorts_factory_capacity_runtime.py").read_text(
+        encoding="utf-8"
+    )
     quality_gate = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     timing_source = Path("services/shorts_factory_timing.py").read_text(encoding="utf-8")
 
@@ -25,7 +28,8 @@ def test_factory_quality_and_delivery_are_owned_by_source_modules():
     assert "speed=1.0" in short_delivery
     assert "create_factory_plan_resumable" in source_owner
     assert "download_factory_audio_with_retry_cache" in source_owner
-    assert "apply_factory_quality_gate" in source_owner
+    assert "apply_factory_quality_gate" in capacity_owner
+    assert "validated_factory_plan_language" in capacity_owner
     assert "install_factory_plan_quality_gate" not in quality_gate
     assert "shorts_factory_runtime" not in factory_source
     assert "_TIMELINE_BY_VIDEO" not in timing_source
