@@ -10,11 +10,8 @@ from __future__ import annotations
 import logging
 
 from handlers.mode_command import EDITORIAL_MODE
-from services.shorts_factory_editorial_bridge import (
-    cleanup_pending_sources,
-    process_translation_editorial_only,
-)
 from services.shorts_factory_retry_cache import cleanup_retry_cache
+from services.translation_editorial_runner import process_translation_editorial_only
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
@@ -78,7 +75,6 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     playlist_module.process_single_video = wrap_router(previous_playlist_process)
 
     cleanup_retry_cache()
-    cleanup_pending_sources()
     _INSTALLED = True
     logger.info(
         "Temporary Factory routing bridge installed; execution and mode UI are source-owned"
