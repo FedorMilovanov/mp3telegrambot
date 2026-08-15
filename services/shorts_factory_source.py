@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 _FACTORY_AUDIO_INLINE_LIMIT_BYTES = 18 * 1024 * 1024
 _FACTORY_MEDIA_TIMEOUT_SEC = 7200
 _FACTORY_TAIL_TOLERANCE_SEC = 0.20
+_GEMINI_ANALYSIS_BITRATE_KBPS = 128
+_GEMINI_ANALYSIS_SAMPLE_RATE = 48000
 _INSTALLED = False
 
 _AUDIO_MIME_BY_SUFFIX = {
@@ -35,6 +37,35 @@ _AUDIO_MIME_BY_SUFFIX = {
     ".oga": "audio/ogg",
     ".wav": "audio/wav",
 }
+
+
+def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, "") or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def gemini_analysis_bitrate_kbps() -> int:
+    """Return the Factory-owned Gemini analysis AAC bitrate."""
+    return _bounded_int(
+        "SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS",
+        _GEMINI_ANALYSIS_BITRATE_KBPS,
+        96,
+        192,
+    )
+
+
+def gemini_analysis_sample_rate() -> int:
+    """Return the Factory-owned Gemini analysis sample rate."""
+    configured = _bounded_int(
+        "SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE",
+        _GEMINI_ANALYSIS_SAMPLE_RATE,
+        24000,
+        48000,
+    )
+    return 48000 if configured >= 36000 else 24000
 
 
 def factory_audio_mime_type(path: Path) -> str:
@@ -79,16 +110,9 @@ def _remove_paths(paths) -> None:
 
 
 def _factory_livedub_timeout_seconds() -> int:
-    """Return the quality-first Factory LiveDub timeout.
-
-    A shorter timeout can abort a valid long Yandex translation, while an
-    unbounded value can leave a worker occupied indefinitely. Keep the
-    production floor at 30 minutes and cap one provider call at two hours.
-    """
+    """Return the quality-first Factory LiveDub timeout."""
     try:
-        value = int(
-            os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "") or 1800
-        )
+        value = int(os.getenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "") or 1800)
     except (TypeError, ValueError):
         value = 1800
     return max(1800, min(value, 7200))
@@ -98,9 +122,7 @@ async def _select_audio_source(media_id: str) -> tuple[Path, Any]:
     candidates = sorted(
         (
             path
-            for path in DOWNLOAD_DIR.glob(
-                f"{media_id}_factory_audio_source.*"
-            )
+            for path in DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_source.*")
             if path.is_file() and not _partial_media(path)
         ),
         key=lambda path: path.stat().st_mtime,
@@ -110,9 +132,7 @@ async def _select_audio_source(media_id: str) -> tuple[Path, Any]:
         probe = await probe_media_async(path)
         if factory_audio_probe_is_usable(probe):
             return path, probe
-    raise RuntimeError(
-        "yt-dlp completed without a probed Factory audio stream"
-    )
+    raise RuntimeError("yt-dlp completed without a probed Factory audio stream")
 
 
 async def _prepare_gemini_audio(
@@ -120,30 +140,17 @@ async def _prepare_gemini_audio(
     source_probe: Any,
     media_id: str,
 ) -> Path:
-    """Remux supported codecs or decode unsupported codecs to lossless FLAC."""
+    """Build the compact Gemini-only mono AAC surrogate at the source owner."""
+    source_path = Path(source_path)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        raise RuntimeError("ffmpeg is required to prepare Factory audio")
+        raise RuntimeError("ffmpeg is required to prepare Factory Gemini audio")
 
-    codec = str(getattr(source_probe, "audio_codec", "") or "").casefold()
-    final_stem = DOWNLOAD_DIR / f"{media_id}_factory_audio_gemini"
-    if codec == "aac":
-        output_path = final_stem.with_suffix(".aac")
-        codec_args = ["-c:a", "copy", "-f", "adts"]
-    elif codec == "mp3":
-        output_path = final_stem.with_suffix(".mp3")
-        codec_args = ["-c:a", "copy", "-f", "mp3"]
-    elif codec == "vorbis":
-        output_path = final_stem.with_suffix(".ogg")
-        codec_args = ["-c:a", "copy", "-f", "ogg"]
-    elif codec == "flac":
-        output_path = final_stem.with_suffix(".flac")
-        codec_args = ["-c:a", "copy", "-f", "flac"]
-    else:
-        output_path = final_stem.with_suffix(".flac")
-        codec_args = ["-c:a", "flac", "-compression_level", "12"]
-
+    bitrate = gemini_analysis_bitrate_kbps()
+    sample_rate = gemini_analysis_sample_rate()
+    output_path = DOWNLOAD_DIR / f"{media_id}_factory_audio_gemini.aac"
     output_path.unlink(missing_ok=True)
+
     command = [
         ffmpeg,
         "-i",
@@ -151,7 +158,16 @@ async def _prepare_gemini_audio(
         "-map",
         "0:a:0",
         "-vn",
-        *codec_args,
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-c:a",
+        "aac",
+        "-b:a",
+        f"{bitrate}k",
+        "-f",
+        "adts",
         "-y",
         str(output_path),
     ]
@@ -163,35 +179,39 @@ async def _prepare_gemini_audio(
     if process.returncode != 0:
         output_path.unlink(missing_ok=True)
         raise RuntimeError(
-            "ffmpeg could not prepare a Gemini-supported Factory audio file: "
+            "ffmpeg could not prepare compact Gemini Factory audio: "
             + _stderr_tail(process)
         )
 
     probe = await probe_media_async(output_path)
     if not factory_audio_probe_is_usable(probe):
         output_path.unlink(missing_ok=True)
-        raise RuntimeError(
-            "Prepared Factory audio failed its audio-stream probe"
-        )
+        raise RuntimeError("Compact Gemini Factory audio failed its audio-stream probe")
+
     source_duration = float(getattr(source_probe, "duration", 0.0) or 0.0)
     final_duration = float(getattr(probe, "duration", 0.0) or 0.0)
     if source_duration > 0 and final_duration + 2.0 < source_duration:
         output_path.unlink(missing_ok=True)
         raise RuntimeError(
-            "Prepared Factory audio is truncated: "
+            "Compact Gemini Factory audio is truncated: "
             f"source={source_duration:.3f}s final={final_duration:.3f}s"
         )
+    if output_path.stat().st_size < 1024:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("Compact Gemini Factory audio is empty")
+
     factory_audio_mime_type(output_path)
     if output_path != source_path:
         try:
             source_path.unlink(missing_ok=True)
         except OSError:
             pass
+
     logger.info(
-        "Factory audio source prepared: source_codec=%s output=%s "
-        "duration=%.3fs size=%.1fMB",
-        codec or "unknown",
-        output_path.name,
+        "Factory Gemini analysis audio prepared: codec=AAC mono bitrate=%dk "
+        "sample_rate=%d duration=%.3fs size=%.1fMB",
+        bitrate,
+        sample_rate,
         final_duration,
         output_path.stat().st_size / (1024 * 1024),
     )
@@ -199,7 +219,7 @@ async def _prepare_gemini_audio(
 
 
 def _factory_quality_sort_reset() -> list[str]:
-    """Discard local container preferences while preserving all auth/network args."""
+    """Discard local container preferences while preserving auth/network args."""
     return [
         "--format-sort-reset",
         "--no-format-sort-force",
@@ -208,7 +228,7 @@ def _factory_quality_sort_reset() -> list[str]:
 
 
 async def download_factory_audio_source(url: str, media_id: str) -> Path:
-    """Download best native audio, never yt-dlp-transcode it to MP3."""
+    """Download best native audio, then prepare compact Gemini-only AAC."""
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
@@ -232,15 +252,8 @@ async def download_factory_audio_source(url: str, media_id: str) -> Path:
                 + _stderr_tail(process)
             )
         source_path, source_probe = await _select_audio_source(media_id)
-        return await _prepare_gemini_audio(
-            source_path,
-            source_probe,
-            media_id,
-        )
+        return await _prepare_gemini_audio(source_path, source_probe, media_id)
     except (asyncio.CancelledError, Exception):
-        # A cancelled or failed yt-dlp/ffmpeg job must not leave raw, prepared
-        # or .part artifacts that can be mistaken for a valid source by a later
-        # run with the same media id.
         _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
         raise
 
@@ -277,7 +290,6 @@ async def download_factory_video_source(
                 "yt-dlp maximum-quality Factory video download failed: "
                 + _stderr_tail(process)
             )
-
         candidates = sorted(
             (
                 path
@@ -291,8 +303,7 @@ async def download_factory_video_source(
             probe = await probe_media_async(path)
             if media_probe_is_deliverable(probe):
                 logger.info(
-                    "Factory maximum-quality video source: %s %sx%s "
-                    "%.3fs %.1fMB",
+                    "Factory maximum-quality video source: %s %sx%s %.3fs %.1fMB",
                     path.name,
                     getattr(probe, "width", 0),
                     getattr(probe, "height", 0),
@@ -301,8 +312,7 @@ async def download_factory_video_source(
                 )
                 return path
         raise RuntimeError(
-            "yt-dlp completed without a probed maximum-quality "
-            "video+audio source"
+            "yt-dlp completed without a probed maximum-quality video+audio source"
         )
     except (asyncio.CancelledError, Exception):
         _remove_paths(target_dir.glob(f"{prefix}.*"))
@@ -359,24 +369,19 @@ async def prepare_factory_translation_video(
 
     original_probe = await probe_media_async(original_video)
     if not media_probe_is_deliverable(original_probe):
-        raise RuntimeError(
-            "Maximum-quality original for Factory LiveDub failed media probe"
-        )
+        raise RuntimeError("Maximum-quality original for Factory LiveDub failed media probe")
 
     output_path = workdir / "factory_max_livedub.mp4"
     output_path.unlink(missing_ok=True)
     mixed = await mix_tracks(original_video, ru_audio, output_path)
     if not mixed or not Path(mixed).is_file():
         raise RuntimeError(
-            "Factory could not mix Yandex live audio over the maximum-quality "
-            "original"
+            "Factory could not mix Yandex live audio over the maximum-quality original"
         )
 
     final_probe = await probe_media_async(Path(mixed))
     if not media_probe_is_deliverable(final_probe):
-        raise RuntimeError(
-            "Maximum-quality Factory LiveDub result failed media probe"
-        )
+        raise RuntimeError("Maximum-quality Factory LiveDub result failed media probe")
     assert original_probe is not None and final_probe is not None
     mix_params = get_mix_params()
     required_tail = float(mix_params.get("tail_pad_ms", 0) or 0) / 1000.0
@@ -388,8 +393,7 @@ async def prepare_factory_translation_video(
             f"required={minimum_duration:.3f}s final={final_probe.duration:.3f}s"
         )
     logger.info(
-        "Factory maximum-quality LiveDub: source=%sx%s %.3fs final=%.3fs "
-        "required_tail=%.3fs",
+        "Factory maximum-quality LiveDub: source=%sx%s %.3fs final=%.3fs required_tail=%.3fs",
         original_probe.width,
         original_probe.height,
         original_probe.duration,
@@ -415,9 +419,7 @@ async def create_factory_plan_from_supported_audio(
         or not candidates.GEMINI_CLIENTS
         or candidates.types is None
     ):
-        raise RuntimeError(
-            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini"
-        )
+        raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini")
     audio_path = Path(audio_path)
     if not audio_path.is_file() or audio_path.stat().st_size < 1024:
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
@@ -440,15 +442,10 @@ async def create_factory_plan_from_supported_audio(
                     file=audio_path,
                     config=candidates.types.UploadFileConfig(
                         mime_type=mime_type,
-                        display_name=(
-                            f"Shorts Factory MAX — {performer} — {title}"
-                        )[:500],
+                        display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
                     ),
                 )
-                uploaded = await candidates._wait_uploaded_file(
-                    client,
-                    uploaded,
-                )
+                uploaded = await candidates._wait_uploaded_file(client, uploaded)
                 audio_part = uploaded
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
 
@@ -486,8 +483,7 @@ async def create_factory_plan_from_supported_audio(
             )
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
                 raise RuntimeError(
-                    "Three-pass Gemini review produced no candidates with "
-                    "verified boundaries"
+                    "Three-pass Gemini review produced no candidates with verified boundaries"
                 )
             plan["model"] = model
             plan["thinking_level"] = "high"
@@ -500,8 +496,7 @@ async def create_factory_plan_from_supported_audio(
         except Exception as exc:
             last_error = exc
             logger.warning(
-                "Shorts Factory source client %d/%d failed strict review: "
-                "%s: %s",
+                "Shorts Factory source client %d/%d failed strict review: %s: %s",
                 client_index,
                 len(candidates.GEMINI_CLIENTS),
                 type(exc).__name__,
@@ -544,9 +539,8 @@ def install_factory_source_quality_policy() -> bool:
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory source quality installed: native bestaudio, "
-        "Gemini-supported remux/lossless FLAC, unrestricted "
-        "bestvideo+bestaudio for Russian and Yandex LiveDub sources, "
+        "Shorts Factory source quality installed: native bestaudio -> compact AAC mono, "
+        "unrestricted bestvideo+bestaudio for Russian and Yandex LiveDub sources, "
         "required Russian tail, and mandatory media probes"
     )
     return True
@@ -558,6 +552,8 @@ __all__ = [
     "download_factory_video_source",
     "factory_audio_mime_type",
     "factory_audio_probe_is_usable",
+    "gemini_analysis_bitrate_kbps",
+    "gemini_analysis_sample_rate",
     "install_factory_source_quality_policy",
     "prepare_factory_translation_video",
 ]
