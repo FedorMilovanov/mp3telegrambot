@@ -19,7 +19,7 @@ jobs:
       - name: Install focused test runner
         run: python -m pip install --disable-pip-version-check -q pytest
       - name: Apply deterministic LiveDub QA codemod
-        run: python tools/_stage_source_owned_livedub_qa.py
+        run: python tools/_run_source_owned_livedub_qa.py
       - name: Compile source-owned QA surfaces
         run: |
           python -m py_compile \
