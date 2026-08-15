@@ -42,11 +42,15 @@ def test_subtitle_text_polish_applies_common_typos_and_spacing():
 
 def test_shorts_pipeline_wires_boundary_padding_and_subtitle_hints():
     shorts = Path("pipelines/shorts.py").read_text(encoding="utf-8")
+    safety = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
     video = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
+
     assert 'await asettings_get("shorts_boundary_padding")' in shorts
-    assert "SHORTS_PREROLL_SECONDS" in shorts
-    assert "SHORTS_POSTROLL_SECONDS" in shorts
-    assert "boundary_pad" in shorts
+    assert "do_boundary_pad" in shorts
+    assert "boundary_padding=do_boundary_pad" in shorts
+    assert "SHORTS_PREROLL_SECONDS" in safety
+    assert "SHORTS_POSTROLL_SECONDS" in safety
+
     assert 'settings_get("shorts_subtitles_gemini_hints")' in video
     assert "build_whisper_initial_prompt" in video
     assert "Gemini is used only as vocabulary/context hints" in video
