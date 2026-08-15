@@ -13,7 +13,15 @@ from core.database import ADMIN_IDS, _db_conn
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("rus", "eng", "eng_fast", "eng_fast_qa", "shorts_max")
+EDITORIAL_MODE = "translation_editorial"
+VALID_MODES = (
+    "rus",
+    "eng",
+    "eng_fast",
+    "eng_fast_qa",
+    "shorts_max",
+    EDITORIAL_MODE,
+)
 _DUB_WIZARD_KEY = "dub_universal_wizard"
 _SHORTS_FACTORY_FULL_VIDEO_PREFIX = "shorts_factory_full_video_"
 
@@ -23,6 +31,7 @@ MODE_LABELS = {
     "eng_fast": "⚡ ENG Quick — перевод + два MP3",
     "eng_fast_qa": "⚡🔍 ENG Quick QA — перевод + два MP3 + проверка",
     "shorts_max": "✂️🧠 SHORTS FACTORY MAX — нарезка без конспектов",
+    EDITORIAL_MODE: "🔎 ENG Редактор перевода — Yandex + Whisper → ZIP",
 }
 
 MODE_BUTTON_LABELS = {
@@ -31,6 +40,7 @@ MODE_BUTTON_LABELS = {
     "eng_fast": "⚡ ENG Quick",
     "eng_fast_qa": "⚡🔍 Quick QA",
     "shorts_max": "✂️🧠 SHORTS FACTORY MAX",
+    EDITORIAL_MODE: "🔎 ENG Редактор перевода",
 }
 
 _AUDIO_SET = "видео с переводом, чистый русский MP3 и финальный объединённый MP3"
@@ -55,6 +65,10 @@ MODE_DESCRIPTIONS = {
         "субтитрами и законченные фрагменты 5–15 минут. Английская озвучка — только "
         "Яндекс «Живые голоса», без собственного нейроперевода."
     ),
+    EDITORIAL_MODE: (
+        "Без Gemini-нарезки: Yandex LiveDub → original SRT → "
+        "Russian Whisper large-v3 → ZIP для ChatGPT."
+    ),
 }
 
 
@@ -64,7 +78,6 @@ def _is_admin(update: Update) -> bool:
 
 
 def _clear_dub_wizard_state(context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Cancel an unfinished Dub Studio prompt when the user leaves its wizard."""
     return context.user_data.pop(_DUB_WIZARD_KEY, None) is not None
 
 
@@ -75,38 +88,20 @@ def _selected_label(mode: str, current: str) -> str:
 
 def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup:
     del current
-    rows: list[list[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(
-                "📚 Анализ, LiveDub и нарезка",
-                callback_data="mode_menu:analysis",
-            )
-        ]
-    ]
+    rows: list[list[InlineKeyboardButton]] = [[
+        InlineKeyboardButton(
+            "📚 Анализ, LiveDub и нарезка",
+            callback_data="mode_menu:analysis",
+        )
+    ]]
     if is_admin:
         rows.extend(
             [
+                [InlineKeyboardButton("🤖 Дубляж — Gemini MAX", callback_data="dubwiz|mode|gemini")],
+                [InlineKeyboardButton("✍️ Дубляж — мой готовый SRT", callback_data="dubwiz|mode|direct")],
                 [
-                    InlineKeyboardButton(
-                        "🤖 Дубляж — Gemini MAX",
-                        callback_data="dubwiz|mode|gemini",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "✍️ Дубляж — мой готовый SRT",
-                        callback_data="dubwiz|mode|direct",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "📂 Проекты",
-                        callback_data="dubwiz|projects|list",
-                    ),
-                    InlineKeyboardButton(
-                        "🩺 Проверка",
-                        callback_data="mode_menu:dubcheck",
-                    ),
+                    InlineKeyboardButton("📂 Проекты", callback_data="dubwiz|projects|list"),
+                    InlineKeyboardButton("🩺 Проверка", callback_data="mode_menu:dubcheck"),
                 ],
             ]
         )
@@ -116,53 +111,35 @@ def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup
 def _analysis_keyboard(current: str, *, full_video: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(
-                _selected_label("rus", current),
-                callback_data="set_mode:rus",
-            ),
-            InlineKeyboardButton(
-                _selected_label("eng", current),
-                callback_data="set_mode:eng",
-            ),
+            InlineKeyboardButton(_selected_label("rus", current), callback_data="set_mode:rus"),
+            InlineKeyboardButton(_selected_label("eng", current), callback_data="set_mode:eng"),
         ],
         [
-            InlineKeyboardButton(
-                _selected_label("eng_fast", current),
-                callback_data="set_mode:eng_fast",
-            ),
-            InlineKeyboardButton(
-                _selected_label("eng_fast_qa", current),
-                callback_data="set_mode:eng_fast_qa",
-            ),
+            InlineKeyboardButton(_selected_label("eng_fast", current), callback_data="set_mode:eng_fast"),
+            InlineKeyboardButton(_selected_label("eng_fast_qa", current), callback_data="set_mode:eng_fast_qa"),
         ],
+        [InlineKeyboardButton(_selected_label("shorts_max", current), callback_data="set_mode:shorts_max")],
         [
             InlineKeyboardButton(
-                _selected_label("shorts_max", current),
-                callback_data="set_mode:shorts_max",
+                _selected_label(EDITORIAL_MODE, current),
+                callback_data=f"set_mode:{EDITORIAL_MODE}",
             )
         ],
     ]
     if current == "shorts_max":
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    (
-                        "☑️ Полный видео-перевод + нарезки"
-                        if full_video
-                        else "⬜ Только нарезки (без полного видео)"
-                    ),
-                    callback_data="mode_menu:factory_full_video_toggle",
-                )
-            ]
-        )
-    rows.append(
-        [
+        rows.append([
             InlineKeyboardButton(
-                "↩️ Все режимы",
-                callback_data="mode_menu:home",
+                (
+                    "☑️ Полный видео-перевод + нарезки"
+                    if full_video
+                    else "⬜ Только нарезки (без полного видео)"
+                ),
+                callback_data="mode_menu:factory_full_video_toggle",
             )
-        ]
-    )
+        ])
+    rows.append([
+        InlineKeyboardButton("↩️ Все режимы", callback_data="mode_menu:home")
+    ])
     return InlineKeyboardMarkup(rows)
 
 
@@ -193,24 +170,17 @@ def _analysis_text(
     saved: bool = False,
     full_video: bool = False,
 ) -> str:
-    lines = [
-        "📚 <b>Анализ, LiveDub и нарезка</b>",
-        "",
-    ]
+    lines = ["📚 <b>Анализ, LiveDub и нарезка</b>", ""]
     if saved:
-        lines.extend(
-            [
-                f"✅ Установлен: <b>{MODE_LABELS.get(current, current)}</b>",
-                "",
-            ]
-        )
+        lines.extend([
+            f"✅ Установлен: <b>{MODE_LABELS.get(current, current)}</b>",
+            "",
+        ])
     else:
-        lines.extend(
-            [
-                f"Текущий режим: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
-                "",
-            ]
-        )
+        lines.extend([
+            f"Текущий режим: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
+            "",
+        ])
     for mode in VALID_MODES:
         lines.append(f"{MODE_BUTTON_LABELS[mode]} — <i>{MODE_DESCRIPTIONS[mode]}</i>")
     if current == "shorts_max":
@@ -219,20 +189,16 @@ def _analysis_text(
             if full_video
             else "⬜ только нарезки"
         )
-        lines.extend(
-            [
-                "",
-                f"📺 <b>Полная проповедь:</b> {full_video_label}.",
-                "<i>Для иностранного источника используется тот же готовый Yandex LiveDub-файл; "
-                "повторный перевод не запускается.</i>",
-            ]
-        )
-    lines.extend(
-        [
+        lines.extend([
             "",
-            "Этот выбор действует для обычной ссылки и для элементов плейлиста.",
-        ]
-    )
+            f"📺 <b>Полная проповедь:</b> {full_video_label}.",
+            "<i>Для иностранного источника используется тот же готовый Yandex LiveDub-файл; "
+            "повторный перевод не запускается.</i>",
+        ])
+    lines.extend([
+        "",
+        "Этот выбор действует для обычной ссылки и для элементов плейлиста.",
+    ])
     return "\n".join(lines)
 
 
@@ -257,12 +223,10 @@ async def _read_user_mode(user_id: int) -> str:
 
 
 async def get_user_mode(user_id: int) -> str:
-    """Public async reader used by the mode-aware link router."""
     return await _read_user_mode(user_id)
 
 
 async def get_shorts_factory_full_video(user_id: int) -> bool:
-    """Return whether this user wants the full translated sermon with Factory clips."""
     loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(None, _get_shorts_factory_full_video_raw, user_id)
@@ -370,11 +334,7 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
-# --- helpers: direct DB access ---
-
-
 def _get_user_mode_raw(user_id: int) -> str:
-    """Read the user's normal link-processing mode from bot_settings."""
     try:
         with _db_conn() as conn:
             row = conn.execute(
@@ -389,7 +349,6 @@ def _get_user_mode_raw(user_id: int) -> str:
 
 
 def _set_user_mode_raw(user_id: int, mode: str) -> None:
-    """Persist the user's normal link-processing mode."""
     if mode not in VALID_MODES:
         raise ValueError(f"invalid mode: {mode}")
     with _db_conn() as conn:
@@ -401,7 +360,6 @@ def _set_user_mode_raw(user_id: int, mode: str) -> None:
 
 
 def _get_shorts_factory_full_video_raw(user_id: int) -> bool:
-    """Read the per-user Factory full-video delivery switch; default is clips only."""
     try:
         with _db_conn() as conn:
             row = conn.execute(
@@ -416,19 +374,16 @@ def _get_shorts_factory_full_video_raw(user_id: int) -> bool:
 
 
 def _set_shorts_factory_full_video_raw(user_id: int, enabled: bool) -> None:
-    """Persist the per-user Factory full-video delivery switch."""
     with _db_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (
-                f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}",
-                "1" if enabled else "0",
-            ),
+            (f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}", "1" if enabled else "0"),
         )
         conn.commit()
 
 
 __all__ = [
+    "EDITORIAL_MODE",
     "MODE_DESCRIPTIONS",
     "MODE_LABELS",
     "VALID_MODES",
