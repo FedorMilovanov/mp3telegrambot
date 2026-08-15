@@ -438,6 +438,7 @@ async def process_shorts_factory(
                 candidates_override=enriched_longs,
                 public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
                 factory_publication=True,
+                snap_to_silence=False,
             )
             if longs_sent <= 0:
                 raise RuntimeError("SHORTS FACTORY не доставил ни одного длинного клипа")
