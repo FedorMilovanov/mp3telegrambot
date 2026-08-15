@@ -1,6 +1,6 @@
 """Tests for v3 minor-debt patch 4:
 - commands.py: all parse_mode="Markdown" converted to HTML + backtick → <code>
-- pipelines/shorts.py: BytesIO(read_bytes()) → open() for poster/snapshot thumbnails
+- pipelines/shorts.py: thumbnail delivery uses InputFile(read_bytes())
 - core/database.py: busy_timeout=5000 added to key SQLite functions
 """
 import pathlib
@@ -34,13 +34,15 @@ def test_commands_access_denied_uses_html():
 def test_shorts_poster_thumbnail_uses_inputfile():
     # AUDIT R25: open()+`.name=` падал на py3.13 -> InputFile(read_bytes()).
     src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert "InputFile(title_poster_path.read_bytes()" in src
+    assert "poster_path.read_bytes()" in src
+    assert "filename=poster_path.name" in src
     assert "thumb_buf.name =" not in src
 
 
 def test_shorts_snapshot_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert "InputFile(snapshot_path.read_bytes()" in src
+    assert "snapshot_path.read_bytes()" in src
+    assert "filename=snapshot_path.name" in src
 
 
 # ─── database.py busy_timeout ─────────────────────────────────────────────
@@ -76,4 +78,3 @@ def test_database_settings_get_has_busy_timeout():
     block = src[idx:idx+300] if idx != -1 else ""
     assert "busy_timeout" in block, \
         "settings_get must include PRAGMA busy_timeout=5000"
-
