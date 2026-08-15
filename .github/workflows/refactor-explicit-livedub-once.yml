@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply deterministic codemod
-        run: python tools/_one_shot_explicit_livedub_refactor.py
+        run: python tools/_one_shot_explicit_livedub_wrapper.py
       - name: Compile changed Python surfaces
         run: |
           python -m py_compile \
