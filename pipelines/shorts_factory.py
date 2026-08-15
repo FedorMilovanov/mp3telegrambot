@@ -22,6 +22,12 @@ from pipelines.factory_short_delivery import process_and_send_factory_shorts
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.shorts_factory_candidates import factory_ai_data
+from services.shorts_factory_execution_guard import (
+    enforce_factory_preflight,
+    enforce_factory_translation_preflight,
+    factory_language_needs_translation,
+    resolve_factory_spoken_language,
+)
 from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
 from services.shorts_factory_media import validated_factory_source_duration
 from services.shorts_factory_publication import enrich_factory_candidates
@@ -99,20 +105,6 @@ def _media_id(info: dict[str, Any], url: str) -> str:
     if value:
         return re.sub(r"[^A-Za-z0-9_-]", "", value)[:80]
     return str(abs(hash(url)))
-
-
-def _looks_russian(text: str) -> bool:
-    return bool(re.search(r"[А-Яа-яЁё]", str(text or "")))
-
-
-def _source_needs_translation(info: dict[str, Any]) -> bool:
-    language = str(info.get("language") or "").strip().lower()
-    if language.startswith(("ru", "uk", "be")):
-        return False
-    if language:
-        return True
-    title = str(info.get("title") or "")
-    return bool(title and not _looks_russian(title))
 
 
 def _translation_backend() -> str:
@@ -221,7 +213,7 @@ async def process_shorts_factory(
     context=None,
     silent_errors: bool = False,
 ):
-    """Analyze only for extraction, then render Shorts and 5–15 minute clips."""
+    """Analyze speech first, then select and render the proved source route."""
     del context, progress_prefix
     url = get_youtube_video_url(url)
     mp3_path: Path | None = None
@@ -231,6 +223,7 @@ async def process_shorts_factory(
     source_task: asyncio.Task | None = None
 
     try:
+        enforce_factory_preflight()
         _cleanup_expired_factory_sources()
         if status_msg is None:
             status_msg = await update.message.reply_text(
@@ -240,10 +233,19 @@ async def process_shorts_factory(
             await _safe_status(status_msg, "🧠 SHORTS FACTORY MAX: получаю метаданные…")
 
         info = await _load_video_info(url)
-        if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
-            raise RuntimeError("Live-трансляцию можно нарезать только после завершения")
+        if info.get("is_live") or info.get("live_status") in {
+            "is_live",
+            "is_upcoming",
+            "post_live",
+        }:
+            raise RuntimeError(
+                "Live-трансляцию можно нарезать только после завершения обработки записи"
+            )
 
-        duration = int(float(info.get("duration") or 0))
+        try:
+            duration = int(float(info.get("duration") or 0))
+        except (TypeError, ValueError, OverflowError):
+            duration = 0
         if duration <= 0:
             raise RuntimeError("Не удалось определить длительность видео")
         max_duration = int(os.getenv("SHORTS_FACTORY_MAX_SOURCE_SEC", "10800") or "10800")
@@ -256,25 +258,17 @@ async def process_shorts_factory(
         full_title = str(info.get("title") or "Видео").strip()
         channel_name = str(info.get("channel") or info.get("uploader") or "").strip()
         performer, title = parse_title(full_title, channel_name)
-        source_language = str(info.get("language") or "").strip().lower()
-        translation_required = _source_needs_translation(info)
-
-        if translation_required:
-            source_task = asyncio.create_task(
-                _prepare_translation_video(url, workdir, duration, source_language),
-                name=f"shorts-factory-yandex-{media_id}",
-            )
-        else:
-            source_task = asyncio.create_task(
-                download_video_for_shorts(url, media_id, workdir=workdir),
-                name=f"shorts-factory-source-{media_id}",
-            )
+        metadata_language = str(info.get("language") or "").strip().lower()
 
         await _safe_status(
             status_msg,
             "🎧 SHORTS FACTORY MAX: готовлю компактное анализ-аудио для Gemini…",
         )
-        mp3_path = await _download_factory_audio(url, media_id)
+        mp3_path = await _download_factory_audio(
+            url,
+            media_id,
+            status_msg=status_msg,
+        )
 
         await _safe_status(
             status_msg,
@@ -285,13 +279,33 @@ async def process_shorts_factory(
             title=title or full_title,
             performer=performer or channel_name,
             duration=duration,
-            source_language=source_language,
+            source_language=metadata_language,
+            status_msg=status_msg,
         )
+        spoken_language = resolve_factory_spoken_language(plan, info)
+        translation_required = factory_language_needs_translation(spoken_language)
 
         await _safe_status(
             status_msg,
-            "🎙 План готов. Подготавливаю единый источник для всех вырезок…",
+            "🎙 План и язык речи доказаны. Подготавливаю единый источник для всех вырезок…",
         )
+        if translation_required:
+            enforce_factory_translation_preflight()
+            source_task = asyncio.create_task(
+                _prepare_translation_video(
+                    url,
+                    workdir,
+                    duration,
+                    spoken_language,
+                ),
+                name=f"shorts-factory-yandex-{media_id}",
+            )
+        else:
+            source_task = asyncio.create_task(
+                download_video_for_shorts(url, media_id, workdir=workdir),
+                name=f"shorts-factory-source-{media_id}",
+            )
+
         source_timeout = _factory_source_timeout_seconds()
         try:
             source_video_path = await asyncio.wait_for(source_task, timeout=source_timeout)
@@ -308,13 +322,14 @@ async def process_shorts_factory(
         except Exception as exc:
             if translation_required:
                 raise RuntimeError(
-                    "Яндекс LiveDub «Живые голоса» недоступен для этого источника. "
-                    "Нарезка иностранного оригинала и собственный нейроперевод намеренно не выполняются. "
-                    f"Причина: {str(exc)[:240]}"
+                    "Яндекс LiveDub «Живые голоса» недоступен или не прошёл "
+                    "обязательную локальную проверку для этого источника. "
+                    "Нарезка иностранного оригинала и собственный нейроперевод "
+                    f"намеренно не выполняются. Причина: {str(exc)[:240]}"
                 ) from exc
             raise
 
-        if not source_video_path or not Path(source_video_path).exists():
+        if not source_video_path or not Path(source_video_path).is_file():
             raise RuntimeError("Не удалось получить общий видеоисточник для Factory")
         persistent_source_path = _persist_factory_source(Path(source_video_path), media_id)
         render_source_duration = await _validated_source_duration(
@@ -339,7 +354,7 @@ async def process_shorts_factory(
             ru_boundary_evidence = await prepare_factory_ru_boundary_evidence(
                 url=url,
                 workdir=workdir,
-                source_language=source_language,
+                source_language=spoken_language,
             )
             with factory_ru_boundary_context(ru_boundary_evidence):
                 render_shorts = _shift_candidates_for_livedub(
@@ -449,7 +464,7 @@ async def process_shorts_factory(
                     title=title or full_title,
                     performer=performer or channel_name,
                     duration=render_source_duration,
-                    source_language=source_language,
+                    source_language=spoken_language,
                     translated_video_path=persistent_source_path,
                     shorts_candidates=render_shorts,
                     long_candidates=render_longs,
@@ -485,7 +500,8 @@ async def process_shorts_factory(
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "
             "delivered_shorts=%d aligned_shorts=%d/%d "
-            "delivered_longs=%d aligned_longs=%d/%d yandex=%s full_video=%s",
+            "delivered_longs=%d aligned_longs=%d/%d yandex=%s spoken_language=%s "
+            "full_video=%s",
             media_id,
             duration,
             render_source_duration,
@@ -496,6 +512,7 @@ async def process_shorts_factory(
             len(render_longs),
             len(long_candidates),
             translation_required,
+            spoken_language,
             full_video_sent,
         )
         return bool(shorts_sent or longs_sent or full_video_sent)
