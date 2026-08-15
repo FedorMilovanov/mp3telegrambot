@@ -20,6 +20,10 @@ from services.media_delivery_probe import media_probe_is_deliverable, probe_medi
 from services.render_clips_montage import build_clip_caption, create_clip_snapshot
 from services.shorts_candidates import create_clips_candidates
 from services.shorts_factory_long_fit import fit_factory_long_clip_to_limit
+from services.shorts_factory_media import (
+    align_livedub_candidates,
+    probe_livedub_source_duration,
+)
 from services.shorts_factory_publication import wrap_factory_caption_builder
 from services.shorts_video import download_video_for_shorts
 
@@ -72,6 +76,17 @@ async def process_and_send_clips(
     snap_paths: list[Path] = []
     sent = 0
     try:
+        livedub_source: Path | None = None
+        if livedub_video_path:
+            candidate_source = Path(livedub_video_path)
+            if candidate_source.exists():
+                livedub_source = candidate_source
+                if not factory_publication:
+                    duration = await probe_livedub_source_duration(
+                        livedub_source,
+                        fallback_duration=float(duration or 0.0),
+                    )
+
         if candidates_override is None:
             candidate_budget = _clips_candidate_budget_seconds()
             try:
@@ -96,12 +111,19 @@ async def process_and_send_clips(
         else:
             candidates = copy.deepcopy(candidates_override)
 
+        if livedub_source is not None and candidates_override is None and not factory_publication:
+            candidates = align_livedub_candidates(
+                candidates,
+                source_duration=float(duration),
+                public_max_seconds=900.0,
+            )
+
         if not candidates:
             logger.info("Clips: no candidates")
             return 0
 
-        if livedub_video_path and Path(livedub_video_path).exists():
-            video_path = Path(livedub_video_path)
+        if livedub_source is not None:
+            video_path = livedub_source
             borrowed_video = True
             logger.info("Clips: using owned/borrowed prepared video: %s", video_path.name)
         else:
