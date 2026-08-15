@@ -23,7 +23,7 @@ from core.database import (
     WHITELIST_IDS,
 )
 from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp, _firefox_cookie_source_available
-from pipelines.main_pipeline import process_single_video
+from pipelines.video_dispatch import process_single_video
 from core.progress import safe_edit_text
 from core.utils import mask_api_key as _mask
 
