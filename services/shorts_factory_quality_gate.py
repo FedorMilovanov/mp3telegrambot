@@ -12,13 +12,14 @@ DEFAULT_MIN_LONG_SCORE = 85.0
 
 
 def _score_threshold(name: str, default: float) -> float:
+    """Allow an environment override to tighten a floor, never lower it."""
     try:
         value = float(os.getenv(name, "") or default)
     except (TypeError, ValueError, OverflowError):
         return default
     if not math.isfinite(value):
         return default
-    return max(0.0, min(value, 100.0))
+    return max(float(default), min(value, 100.0))
 
 
 def _finite_number(value: Any) -> float | None:
