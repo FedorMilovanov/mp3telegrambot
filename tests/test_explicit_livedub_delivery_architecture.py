@@ -10,6 +10,16 @@ def _source(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+def _function_source(source: str, name: str) -> str:
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            end = getattr(node, "end_lineno", node.lineno)
+            return "\n".join(lines[node.lineno - 1 : end])
+    raise AssertionError(f"function {name!r} not found")
+
+
 def test_services_import_has_no_import_hook_or_install_side_effects():
     src = _source("services/__init__.py")
     assert "sys.meta_path.insert" not in src
@@ -74,11 +84,17 @@ def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
 
 def test_gemini_semantic_config_is_source_owned_high_and_sampling_free():
     src = _source("core/globals.py")
-    assert 'if model == "gemini-3.6-flash":' in src
-    assert 'return "high"' in src
-    legacy = src[src.index("def make_text_config("):src.index("# FIX #2:")]
+    thinking = _function_source(src, "_effective_thinking_level")
+    legacy = _function_source(src, "make_text_config")
+    smart = _function_source(src, "make_text_config_smart")
+
+    assert 'model == "gemini-3.6-flash"' in thinking
+    assert 'return "high"' in thinking
     assert "make_text_config_smart(" in legacy
     assert "GenerateContentConfig(" not in legacy
+    assert 'kwargs["temperature"] = temperature' in smart
+    assert "if is_3x:" in smart
+
     subtitles = _source("services/eng_subtitles.py")
     assert 'thinking_level="high"' in subtitles
     assert "temperature=0.2" not in subtitles
