@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Temporary routing bridge while video dispatch becomes source-owned.
+"""Temporary routing bridge while handlers adopt the source-owned dispatcher.
 
-Factory source, plan, translation, publication and delivery behavior are no
-longer patched here. This bridge only preserves the two mode routes until
+Factory execution, source selection, publication, delivery and mode UI are all
+source-owned. This module temporarily preserves only two route overrides until
 handlers/playlist import ``pipelines.video_dispatch`` directly.
 """
 from __future__ import annotations
 
 import logging
 
+from handlers.mode_command import EDITORIAL_MODE
 from services.shorts_factory_editorial_bridge import (
-    EDITORIAL_MODE,
     cleanup_pending_sources,
-    install_mode_ui,
     process_translation_editorial_only,
 )
 from services.shorts_factory_retry_cache import cleanup_retry_cache
@@ -30,8 +29,6 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     import handlers.mode_command as mode_module
     import pipelines.playlist as playlist_module
     import pipelines.shorts_factory as factory_module
-
-    install_mode_ui(mode_module)
 
     previous_commands_process = commands_module.process_single_video
     previous_playlist_process = playlist_module.process_single_video
@@ -84,7 +81,7 @@ def install_shorts_factory_overload_editorial_polish() -> bool:
     cleanup_pending_sources()
     _INSTALLED = True
     logger.info(
-        "Temporary Factory routing bridge installed; Factory execution is source-owned"
+        "Temporary Factory routing bridge installed; execution and mode UI are source-owned"
     )
     return True
 
