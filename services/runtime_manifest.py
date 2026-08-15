@@ -315,19 +315,10 @@ DEFAULT_RUNTIME_FEATURES = (
         requires_main=True,
     ),
     RuntimeFeature(
-        "shorts-factory-max",
-        "services.shorts_factory_runtime",
-        "install_shorts_factory_mode",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
-        false_is_failure=True,
-    ),
-    RuntimeFeature(
-        "shorts-factory-overload-editorial-polish",
+        "shorts-factory-routing-bridge",
         "services.shorts_factory_overload_editorial_polish",
         "install_shorts_factory_overload_editorial_polish",
         RuntimePhase.POST_MAIN,
-        dependencies=("shorts-factory-max",),
         false_is_failure=True,
     ),
     RuntimeFeature(
