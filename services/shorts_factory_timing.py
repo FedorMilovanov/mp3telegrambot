@@ -60,13 +60,15 @@ _STAGE_ONLY_WORDS = {
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    """Allow Factory tuning to tighten a default, never lower its quality floor."""
     try:
         value = float(os.getenv(name, "") or default)
     except (TypeError, ValueError):
         value = default
     if not math.isfinite(value):
         value = default
-    return max(minimum, min(value, maximum))
+    floor = max(float(default), float(minimum))
+    return max(floor, min(value, maximum))
 
 
 def _candidate_seconds(item: dict[str, Any]) -> tuple[float, float]:
@@ -90,7 +92,6 @@ def _format_seconds(seconds: float) -> str:
 
 
 def _strip_simple_html(text: str) -> str:
-    """Remove caption formatting tags without regex or semantic rewriting."""
     out: list[str] = []
     in_tag = False
     for char in str(text or ""):
@@ -106,7 +107,6 @@ def _strip_simple_html(text: str) -> str:
 
 
 def _caption_cue_is_lexical_speech(text: str) -> bool:
-    """Reject stage-direction-only cues while retaining real words and lyrics."""
     cleaned = " ".join(_strip_simple_html(text).replace("\x00", " ").split()).strip()
     if not cleaned:
         return False
@@ -130,7 +130,6 @@ def _caption_cue_is_lexical_speech(text: str) -> bool:
 
 
 def _silence_event_value(line: str, marker: str) -> float | None:
-    """Parse one FFmpeg silencedetect numeric value without regex."""
     position = str(line or "").find(marker)
     if position < 0:
         return None
@@ -150,7 +149,6 @@ def speech_intervals_from_silence_log(
     duration: float,
     minimum_speech: float = 0.08,
 ) -> list[tuple[float, float]]:
-    """Invert FFmpeg silencedetect events into non-silent spans."""
     try:
         limit = max(0.0, float(duration))
     except (TypeError, ValueError):
@@ -213,7 +211,6 @@ def _merge_intervals(
 
 
 async def _probe_audio_duration(path: Path) -> float:
-    """Return the actual audio duration or zero when it cannot be proved."""
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return 0.0
@@ -241,7 +238,6 @@ async def _probe_audio_duration(path: Path) -> float:
 
 
 async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
-    """Build a deterministic speech timeline from the exact VOT RU track."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is unavailable for Factory RU boundary proof")
@@ -318,7 +314,6 @@ async def _download_source_speech_intervals(
     workdir: Path,
     source_language: str,
 ) -> tuple[list[tuple[float, float]], str]:
-    """Use lexical provider/manual captions as source-speech timing evidence."""
     from services.translation_editorial import parse_srt
     from services.translation_editorial_factory import download_original_srt
 
@@ -348,7 +343,6 @@ async def prepare_factory_ru_boundary_evidence(
     workdir: Path,
     source_language: str,
 ) -> dict[str, Any]:
-    """Build request-local RU/source speech evidence before translated rendering."""
     exact_ru = read_ru_audio_provenance(workdir)
     if exact_ru is None:
         raise RuntimeError(
