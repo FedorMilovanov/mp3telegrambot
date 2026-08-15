@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Strict media and timing policy for Factory and legacy LiveDub cut modes."""
+"""Pure media/timing helpers for Factory and legacy LiveDub cut modes.
+
+This module owns no runtime installation, ContextVar state or post-import
+rebinding. Callers explicitly probe translated masters and align their own
+candidate lists before rendering.
+"""
 from __future__ import annotations
 
 import copy
 import logging
 import os
-from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +17,6 @@ from services.livedub_mix import get_mix_params
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 
 logger = logging.getLogger(__name__)
-
-_LIVEDUB_SOURCE_DURATION: ContextVar[float] = ContextVar(
-    "livedub_downstream_source_duration",
-    default=0.0,
-)
-_LIVEDUB_POLICY_INSTALLED = False
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -218,297 +216,11 @@ async def validated_factory_source_duration(
     return exact_duration
 
 
-def install_livedub_downstream_media_policy() -> bool:
-    """Install task-local wrappers for Shorts, Clips, Montage and Highlights."""
-    global _LIVEDUB_POLICY_INSTALLED
-    if _LIVEDUB_POLICY_INSTALLED:
-        return True
-
-    import pipelines.clips as clips_module
-    import pipelines.main_pipeline as main_pipeline_module
-    import pipelines.montage as montage_module
-    import pipelines.shorts as shorts_module
-
-    original_process_shorts = shorts_module.process_and_send_shorts
-    original_process_clips = clips_module.process_and_send_clips
-    original_process_montage = montage_module.process_and_send_montage
-    original_process_highlights = montage_module.process_and_send_highlights
-    original_shorts_candidates = shorts_module.create_shorts_candidates
-    original_clips_candidates = clips_module.create_clips_candidates
-    original_shorts_setting = shorts_module.asettings_get
-    original_render_clip = clips_module.render_clip
-
-    async def livedub_shorts_setting(key: str):
-        if _LIVEDUB_SOURCE_DURATION.get() > 0 and key == "shorts_boundary_padding":
-            return False
-        return await original_shorts_setting(key)
-
-    async def livedub_shorts_candidates(*args, **kwargs):
-        candidates = await original_shorts_candidates(*args, **kwargs)
-        source_duration = _LIVEDUB_SOURCE_DURATION.get()
-        if source_duration <= 0:
-            return candidates
-        return align_livedub_candidates(
-            candidates,
-            source_duration=source_duration,
-            public_max_seconds=180.0,
-        )
-
-    async def livedub_clips_candidates(*args, **kwargs):
-        candidates = await original_clips_candidates(*args, **kwargs)
-        source_duration = _LIVEDUB_SOURCE_DURATION.get()
-        if source_duration <= 0:
-            return candidates
-        return align_livedub_candidates(
-            candidates,
-            source_duration=source_duration,
-            public_max_seconds=900.0,
-        )
-
-    async def verified_render_clip(*args, **kwargs):
-        ok = await original_render_clip(*args, **kwargs)
-        if not ok:
-            return False
-        output_path = kwargs.get("output_path")
-        if output_path is None and len(args) >= 2:
-            output_path = args[1]
-        if output_path is None:
-            return False
-        output = Path(output_path)
-        probe = await probe_media_async(output)
-        if not media_probe_is_deliverable(probe):
-            logger.warning(
-                "Clips delivery rejected: rendered file lacks verified video+audio: %s",
-                output,
-            )
-            output.unlink(missing_ok=True)
-            return False
-        return True
-
-    async def process_shorts(
-        url,
-        media_id,
-        mp3_path,
-        title,
-        performer,
-        duration,
-        ai_data,
-        update,
-        existing_audio_part=None,
-        existing_client=None,
-        rutube_url="",
-        vk_url="",
-        workdir=None,
-        livedub_video_path=None,
-    ):
-        if not livedub_video_path or not Path(livedub_video_path).exists():
-            return await original_process_shorts(
-                url,
-                media_id,
-                mp3_path,
-                title,
-                performer,
-                duration,
-                ai_data,
-                update,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                workdir=workdir,
-                livedub_video_path=livedub_video_path,
-            )
-        actual_duration = await probe_livedub_source_duration(
-            Path(livedub_video_path),
-            fallback_duration=duration,
-        )
-        token = _LIVEDUB_SOURCE_DURATION.set(actual_duration)
-        try:
-            return await original_process_shorts(
-                url,
-                media_id,
-                mp3_path,
-                title,
-                performer,
-                actual_duration,
-                ai_data,
-                update,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                workdir=workdir,
-                livedub_video_path=livedub_video_path,
-            )
-        finally:
-            _LIVEDUB_SOURCE_DURATION.reset(token)
-
-    async def process_clips(
-        url,
-        media_id,
-        mp3_path,
-        title,
-        performer,
-        duration,
-        ai_data,
-        update,
-        existing_audio_part=None,
-        existing_client=None,
-        rutube_url="",
-        vk_url="",
-        livedub_video_path=None,
-    ):
-        if not livedub_video_path or not Path(livedub_video_path).exists():
-            return await original_process_clips(
-                url,
-                media_id,
-                mp3_path,
-                title,
-                performer,
-                duration,
-                ai_data,
-                update,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                livedub_video_path=livedub_video_path,
-            )
-        actual_duration = await probe_livedub_source_duration(
-            Path(livedub_video_path),
-            fallback_duration=duration,
-        )
-        token = _LIVEDUB_SOURCE_DURATION.set(actual_duration)
-        try:
-            return await original_process_clips(
-                url,
-                media_id,
-                mp3_path,
-                title,
-                performer,
-                actual_duration,
-                ai_data,
-                update,
-                existing_audio_part=existing_audio_part,
-                existing_client=existing_client,
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                livedub_video_path=livedub_video_path,
-            )
-        finally:
-            _LIVEDUB_SOURCE_DURATION.reset(token)
-
-    async def process_montage(
-        url,
-        media_id,
-        mp3_path,
-        title,
-        performer,
-        duration,
-        ai_data,
-        update,
-        existing_audio_part=None,
-        existing_client=None,
-        rutube_url="",
-        vk_url="",
-        prefetched_candidates=None,
-        livedub_video_path=None,
-    ):
-        candidates = prefetched_candidates
-        actual_duration = float(duration or 0)
-        if livedub_video_path and Path(livedub_video_path).exists():
-            actual_duration = await probe_livedub_source_duration(
-                Path(livedub_video_path),
-                fallback_duration=duration,
-            )
-            candidates = align_livedub_montage_candidates(
-                prefetched_candidates or [],
-                source_duration=actual_duration,
-            )
-        return await original_process_montage(
-            url,
-            media_id,
-            mp3_path,
-            title,
-            performer,
-            actual_duration,
-            ai_data,
-            update,
-            existing_audio_part=existing_audio_part,
-            existing_client=existing_client,
-            rutube_url=rutube_url,
-            vk_url=vk_url,
-            prefetched_candidates=candidates,
-            livedub_video_path=livedub_video_path,
-        )
-
-    async def process_highlights(
-        url,
-        media_id,
-        mp3_path,
-        title,
-        performer,
-        duration,
-        ai_data,
-        update,
-        existing_audio_part=None,
-        existing_client=None,
-        rutube_url="",
-        vk_url="",
-        prefetched_candidates=None,
-        livedub_video_path=None,
-    ):
-        actual_duration = float(duration or 0)
-        if livedub_video_path and Path(livedub_video_path).exists():
-            actual_duration = await probe_livedub_source_duration(
-                Path(livedub_video_path),
-                fallback_duration=duration,
-            )
-        return await original_process_highlights(
-            url,
-            media_id,
-            mp3_path,
-            title,
-            performer,
-            actual_duration,
-            ai_data,
-            update,
-            existing_audio_part=existing_audio_part,
-            existing_client=existing_client,
-            rutube_url=rutube_url,
-            vk_url=vk_url,
-            prefetched_candidates=prefetched_candidates,
-            livedub_video_path=livedub_video_path,
-        )
-
-    shorts_module.asettings_get = livedub_shorts_setting
-    shorts_module.create_shorts_candidates = livedub_shorts_candidates
-    shorts_module.process_and_send_shorts = process_shorts
-    clips_module.create_clips_candidates = livedub_clips_candidates
-    clips_module.render_clip = verified_render_clip
-    clips_module.process_and_send_clips = process_clips
-    montage_module.process_and_send_montage = process_montage
-    montage_module.process_and_send_highlights = process_highlights
-
-    main_pipeline_module.process_and_send_shorts = process_shorts
-    main_pipeline_module.process_and_send_clips = process_clips
-    main_pipeline_module.process_and_send_montage = process_montage
-    main_pipeline_module.process_and_send_highlights = process_highlights
-
-    _LIVEDUB_POLICY_INSTALLED = True
-    logger.info(
-        "LiveDub downstream media policy installed: exact source duration, "
-        "complete Russian tail, verified Clip video+audio"
-    )
-    return True
-
-
 __all__ = [
     "align_livedub_candidate",
     "align_livedub_candidates",
     "align_livedub_interval",
     "align_livedub_montage_candidates",
-    "install_livedub_downstream_media_policy",
     "livedub_downstream_envelope",
     "probe_livedub_source_duration",
     "validated_factory_source_duration",
