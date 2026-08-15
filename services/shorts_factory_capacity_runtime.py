@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Capacity-aware Factory plan execution without quality downgrades.
 
-This keeps the existing Gemini 3.6/HIGH three-pass contract intact while
-separating model-capacity overload from per-client transient failures. A model
-pass that gets 503/high-demand receives a bounded exponential retry on the same
-client and already-uploaded analysis audio. Persistent capacity overload still
-stops before a multi-key sweep. Other retryable service errors retain client
-failover.
+This keeps the Gemini 3.6/HIGH three-pass contract intact while separating
+model-capacity overload from per-client transient failures. The module is a
+normal callable helper; it does not install or rebind Factory functions.
 """
 from __future__ import annotations
 
@@ -24,12 +21,6 @@ _FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 2.0
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
-    """Classify a failed Factory request without changing model quality.
-
-    ``capacity`` means stop the current key sweep and preserve the retry cache;
-    ``rotate`` means another configured client may still rescue the request;
-    ``reset`` preserves the previous behavior for non-transient pass failures.
-    """
     if overload_runtime.factory_overload_error(exc):
         return "capacity"
     if overload_runtime.factory_retryable_service_error(exc):
@@ -104,19 +95,16 @@ async def create_factory_plan_resumable(
     duration: int,
     source_language: str = "",
 ) -> dict[str, Any]:
-    """Run the unchanged 3-pass Gemini 3.6/HIGH Factory contract.
-
-    Model-pass 503/high-demand errors get bounded same-upload retries before the
-    existing capacity fast-fail. Persistent capacity errors do not re-upload the
-    source across every key. 429/network/other retryable failures continue to
-    rotate clients as before.
-    """
+    """Run strict three-pass Factory planning with bounded capacity retries."""
     import services.shorts_factory_candidates as candidates
+    from services.shorts_factory_source import (
+        _strict_boundary_prompt,
+        factory_audio_mime_type,
+    )
     from services.shorts_factory_quality_gate import (
         apply_factory_quality_gate,
         validated_factory_plan_language,
     )
-    from services.shorts_factory_source import factory_audio_mime_type
 
     audio_path = Path(audio_path)
     if not audio_path.is_file() or audio_path.stat().st_size < 1024:
@@ -143,7 +131,8 @@ async def create_factory_plan_resumable(
             )
             if file_size <= 18 * 1024 * 1024:
                 audio_part = candidates.types.Part.from_bytes(
-                    data=audio_path.read_bytes(), mime_type=mime_type
+                    data=audio_path.read_bytes(),
+                    mime_type=mime_type,
                 )
             else:
                 uploaded = await overload_runtime.await_with_heartbeat(
@@ -206,7 +195,9 @@ async def create_factory_plan_resumable(
                 client,
                 model=model,
                 audio_part=audio_part,
-                prompt=candidates._boundary_prompt(judged, duration),
+                prompt=_strict_boundary_prompt(
+                    candidates._boundary_prompt(judged, duration)
+                ),
                 max_tokens=28000,
                 label=(
                     f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
@@ -234,9 +225,7 @@ async def create_factory_plan_resumable(
             gated.setdefault("metadata", {})["language"] = (
                 validated_factory_plan_language(gated)
             )
-            if not gated.get("shorts_candidates") and not gated.get(
-                "long_candidates"
-            ):
+            if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
                 raise RuntimeError(
                     "No candidates passed the final Factory MAX quality gate"
                 )
