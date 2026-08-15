@@ -167,15 +167,19 @@ async def process_and_send_factory_shorts(
                 continue
             assert raw_probe is not None
 
-            current_path = raw_path
             normalized = await postprocess_short(
                 raw_path,
                 post_path,
                 normalize_audio=True,
                 speed=1.0,
             )
-            if normalized:
-                current_path = post_path
+            if not normalized:
+                logger.warning(
+                    "Factory Short %d rejected: mandatory audio normalization failed",
+                    index,
+                )
+                continue
+            current_path = post_path
 
             segments = await transcribe_short_clip(
                 current_path,
