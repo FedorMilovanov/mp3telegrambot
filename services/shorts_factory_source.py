@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Factory-owned media acquisition, Gemini audio input and three-pass plan."""
+"""Factory-owned media acquisition, Gemini audio input and plan boundary."""
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +16,6 @@ from services.media_delivery_probe import media_probe_is_deliverable, probe_medi
 
 logger = logging.getLogger(__name__)
 
-_FACTORY_AUDIO_INLINE_LIMIT_BYTES = 18 * 1024 * 1024
 _FACTORY_MEDIA_TIMEOUT_SEC = 7200
 _FACTORY_TAIL_TOLERANCE_SEC = 0.20
 _GEMINI_ANALYSIS_BITRATE_KBPS = 128
@@ -43,6 +42,7 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 
 def gemini_analysis_bitrate_kbps() -> int:
+    """Return the Factory-owned compact Gemini AAC bitrate."""
     return _bounded_int(
         "SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS",
         _GEMINI_ANALYSIS_BITRATE_KBPS,
@@ -52,6 +52,7 @@ def gemini_analysis_bitrate_kbps() -> int:
 
 
 def gemini_analysis_sample_rate() -> int:
+    """Return the Factory-owned compact Gemini sample rate."""
     configured = _bounded_int(
         "SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE",
         _GEMINI_ANALYSIS_SAMPLE_RATE,
@@ -130,6 +131,7 @@ async def _prepare_gemini_audio(
     source_probe: Any,
     media_id: str,
 ) -> Path:
+    """Build the compact Gemini-only mono AAC surrogate at the source owner."""
     source_path = Path(source_path)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -213,7 +215,7 @@ def _factory_quality_sort_reset() -> list[str]:
     ]
 
 
-async def download_factory_audio_source(url: str, media_id: str) -> Path:
+async def _download_factory_audio_fresh(url: str, media_id: str) -> Path:
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
@@ -243,11 +245,31 @@ async def download_factory_audio_source(url: str, media_id: str) -> Path:
         raise
 
 
+async def download_factory_audio_source(
+    url: str,
+    media_id: str,
+    *,
+    status_msg: Any = None,
+) -> Path:
+    """Return verified compact analysis audio through the source-owned retry cache."""
+    from services.shorts_factory_retry_cache import (
+        download_factory_audio_with_retry_cache,
+    )
+
+    return await download_factory_audio_with_retry_cache(
+        url,
+        media_id,
+        original_downloader=_download_factory_audio_fresh,
+        status_msg=status_msg,
+    )
+
+
 async def download_factory_video_source(
     url: str,
     media_id: str,
     workdir: Path | None = None,
 ) -> Path:
+    """Download the best available video+audio without a resolution ceiling."""
     target_dir = Path(workdir) if workdir is not None else DOWNLOAD_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{media_id}_factory_max_source"
@@ -309,6 +331,7 @@ async def prepare_factory_translation_video(
     duration: int,
     source_language: str,
 ) -> Path:
+    """Mix Yandex live audio over the unrestricted maximum-quality original."""
     import pipelines.shorts_factory as factory_pipeline
     from services.livedub_mix import get_mix_params, mix_tracks
     from services.yandex_live_dub import get_live_dub_audio
@@ -395,28 +418,6 @@ def _strict_boundary_prompt(base_prompt: str) -> str:
     )
 
 
-def _finalize_factory_plan(plan: dict[str, Any]) -> dict[str, Any]:
-    from services.shorts_factory_quality_gate import (
-        apply_factory_quality_gate,
-        validated_factory_plan_language,
-    )
-
-    gated = apply_factory_quality_gate(plan)
-    normalized_language = validated_factory_plan_language(gated)
-    metadata = gated.setdefault("metadata", {})
-    if isinstance(metadata, dict):
-        metadata["language"] = normalized_language
-    if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
-        report = gated.get("quality_gate") or {}
-        raise RuntimeError(
-            "Gemini завершила три проверки, но ни один фрагмент не прошёл "
-            "финальный MAX-порог качества: "
-            f"Shorts>={report.get('min_short_score')}, "
-            f"long>={report.get('min_long_score')}"
-        )
-    return gated
-
-
 async def create_factory_plan_from_supported_audio(
     audio_path: Path,
     *,
@@ -424,108 +425,18 @@ async def create_factory_plan_from_supported_audio(
     performer: str,
     duration: int,
     source_language: str = "",
+    status_msg: Any = None,
 ) -> dict[str, Any]:
-    """Run the complete source-owned three-pass Factory plan and final gate."""
-    import services.shorts_factory_candidates as candidates
+    """Run the strict source-owned three-pass plan with bounded capacity retry."""
+    from services.shorts_factory_capacity_runtime import create_factory_plan_resumable
 
-    if (
-        not candidates.HAS_GEMINI
-        or not candidates.GEMINI_CLIENTS
-        or candidates.types is None
-    ):
-        raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini")
-    audio_path = Path(audio_path)
-    if not audio_path.is_file() or audio_path.stat().st_size < 1024:
-        raise RuntimeError("Audio file for Shorts Factory is missing or empty")
-
-    mime_type = factory_audio_mime_type(audio_path)
-    model = candidates.shorts_factory_model()
-    file_size = audio_path.stat().st_size
-    last_error: Exception | None = None
-
-    for client_index, client in enumerate(candidates.GEMINI_CLIENTS, 1):
-        uploaded_name = ""
-        try:
-            if file_size <= _FACTORY_AUDIO_INLINE_LIMIT_BYTES:
-                audio_part = candidates.types.Part.from_bytes(
-                    data=audio_path.read_bytes(),
-                    mime_type=mime_type,
-                )
-            else:
-                uploaded = await client.aio.files.upload(
-                    file=audio_path,
-                    config=candidates.types.UploadFileConfig(
-                        mime_type=mime_type,
-                        display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
-                    ),
-                )
-                uploaded = await candidates._wait_uploaded_file(client, uploaded)
-                audio_part = uploaded
-                uploaded_name = str(getattr(uploaded, "name", "") or "")
-
-            scout = await candidates._run_pass(
-                client,
-                model=model,
-                audio_part=audio_part,
-                prompt=candidates._scout_prompt(
-                    title,
-                    performer,
-                    duration,
-                    source_language,
-                ),
-                max_tokens=32000,
-            )
-            judged = await candidates._run_pass(
-                client,
-                model=model,
-                audio_part=audio_part,
-                prompt=candidates._judge_prompt(scout, duration),
-                max_tokens=28000,
-            )
-            audited = await candidates._run_pass(
-                client,
-                model=model,
-                audio_part=audio_part,
-                prompt=_strict_boundary_prompt(
-                    candidates._boundary_prompt(judged, duration)
-                ),
-                max_tokens=28000,
-            )
-
-            plan = candidates.validate_factory_plan(
-                audited,
-                duration,
-                require_verified=True,
-            )
-            plan = _finalize_factory_plan(plan)
-            plan["model"] = model
-            plan["thinking_level"] = "high"
-            plan["review_passes"] = 3
-            plan["strict_quality"] = True
-            plan["audio_mime_type"] = mime_type
-            logger.info("Shorts Factory final quality gate: %s", plan.get("quality_gate"))
-            return plan
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            last_error = exc
-            logger.warning(
-                "Shorts Factory source client %d/%d failed strict review: %s: %s",
-                client_index,
-                len(candidates.GEMINI_CLIENTS),
-                type(exc).__name__,
-                exc,
-            )
-        finally:
-            if uploaded_name:
-                try:
-                    await client.aio.files.delete(name=uploaded_name)
-                except Exception:
-                    pass
-
-    raise RuntimeError(
-        "All Gemini clients failed strict Shorts Factory review: "
-        f"{last_error}"
+    return await create_factory_plan_resumable(
+        audio_path,
+        title=title,
+        performer=performer,
+        duration=duration,
+        source_language=source_language,
+        status_msg=status_msg,
     )
 
 
