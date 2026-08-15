@@ -50,6 +50,16 @@ def test_saved_replay_start_uses_actual_reclaimed_render_window():
 
 
 def test_duration_owner_wires_authoritative_delivery_timing():
-    source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
-    assert "render_windows" in source
-    assert "shorts_module.resolve_delivery_timing = safe_resolve_timing" in source
+    safety_source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
+    pipeline_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
+
+    assert "resolve_delivery_timing(" in pipeline_source
+    assert "source_start=render_start" in pipeline_source
+    assert "raw_duration=raw_duration" in pipeline_source
+    assert "final_duration=final_probe.duration" in pipeline_source
+    assert "timing.source_start" in pipeline_source
+    assert "timing.source_end" in pipeline_source
+
+    assert "resolve_delivery_timing =" not in safety_source
+    assert "setattr(" not in safety_source
+    assert "sys.modules" not in safety_source
