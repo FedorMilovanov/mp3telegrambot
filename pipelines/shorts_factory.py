@@ -22,15 +22,22 @@ from pipelines.clips import process_and_send_clips
 from pipelines.shorts import process_and_send_shorts
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
-from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.shorts_factory_candidates import create_factory_plan, factory_ai_data
+from services.shorts_factory_candidates import factory_ai_data
 from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
+from services.shorts_factory_media import validated_factory_source_duration
 from services.shorts_factory_runtime import (
+    FACTORY_LONG_PUBLIC_MAX_SEC,
     factory_completed_delivery_counts,
     factory_render_context,
 )
-from services.shorts_factory_source import _factory_livedub_timeout_seconds
-from services.shorts_video import download_video_for_shorts
+from services.shorts_factory_source import (
+    _factory_livedub_timeout_seconds,
+    create_factory_plan_from_supported_audio,
+    download_factory_audio_source,
+    download_factory_video_source,
+    prepare_factory_translation_video,
+)
+from services.shorts_factory_timing import align_factory_livedub_candidates
 from services.translation_editorial_factory import (
     factory_editorial_pack_enabled,
     prepare_factory_editorial_review,
@@ -39,6 +46,16 @@ from services.translation_editorial_factory import (
 
 logger = logging.getLogger(__name__)
 
+# Source-owned seams. Runtime composition may still wrap some of these while the
+# remaining legacy bridge is removed, but the Factory itself has valid owners
+# without any installer.
+_download_factory_audio = download_factory_audio_source
+download_video_for_shorts = download_factory_video_source
+_prepare_translation_video = prepare_factory_translation_video
+create_factory_plan = create_factory_plan_from_supported_audio
+_validated_source_duration = validated_factory_source_duration
+_shift_candidates_for_livedub = align_factory_livedub_candidates
+
 
 def _env_bool(name: str, default: bool = True) -> bool:
     raw = os.getenv(name, "1" if default else "0").strip().lower()
@@ -46,7 +63,6 @@ def _env_bool(name: str, default: bool = True) -> bool:
 
 
 def _factory_source_timeout_seconds() -> int:
-    """Use the same bounded timeout owner as the production LiveDub source."""
     return _factory_livedub_timeout_seconds()
 
 
@@ -69,11 +85,11 @@ async def _load_video_info(url: str) -> dict[str, Any]:
     except Exception as exc:
         logger.info("Shorts Factory metadata in-process fallback: %s", exc)
 
-    cmd = list(YTDLP_BASE_ARGS) + ["--dump-json", "--no-playlist", url]
-    proc = await run_cancellable_process(cmd, timeout=240, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or "yt-dlp metadata error")[-800:])
-    for line in (proc.stdout or "").splitlines():
+    command = list(YTDLP_BASE_ARGS) + ["--dump-json", "--no-playlist", url]
+    process = await run_cancellable_process(command, timeout=240, text=True)
+    if process.returncode != 0:
+        raise RuntimeError((process.stderr or "yt-dlp metadata error")[-800:])
+    for line in (process.stdout or "").splitlines():
         line = line.strip()
         if line.startswith("{"):
             try:
@@ -92,33 +108,6 @@ def _media_id(info: dict[str, Any], url: str) -> str:
     return str(abs(hash(url)))
 
 
-async def _download_factory_audio(url: str, media_id: str) -> Path:
-    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    output_template = DOWNLOAD_DIR / f"{media_id}_factory.%(ext)s"
-    cmd = list(YTDLP_BASE_ARGS) + [
-        "--extract-audio",
-        "--audio-format",
-        "mp3",
-        "--audio-quality",
-        "0",
-        "--no-playlist",
-        "--output",
-        str(output_template),
-        url,
-    ]
-    proc = await run_cancellable_process(cmd, timeout=1800, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or "yt-dlp audio download error")[-900:])
-    candidates = sorted(
-        DOWNLOAD_DIR.glob(f"{media_id}_factory*.mp3"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if not candidates or candidates[0].stat().st_size < 1024:
-        raise RuntimeError("Audio download completed without a usable MP3")
-    return candidates[0]
-
-
 def _looks_russian(text: str) -> bool:
     return bool(re.search(r"[А-Яа-яЁё]", str(text or "")))
 
@@ -134,7 +123,6 @@ def _source_needs_translation(info: dict[str, Any]) -> bool:
 
 
 def _translation_backend() -> str:
-    """Reserved provider seam; only Yandex LiveDub is enabled today."""
     backend = os.getenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live").strip().lower()
     aliases = {
         "yandex": "yandex_live",
@@ -142,51 +130,6 @@ def _translation_backend() -> str:
         "live": "yandex_live",
     }
     return aliases.get(backend, backend)
-
-
-async def _prepare_translation_video(
-    url: str,
-    workdir: Path,
-    duration: int,
-    source_language: str,
-) -> Path:
-    backend = _translation_backend()
-    if backend != "yandex_live":
-        raise RuntimeError(
-            "SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». "
-            f"Backend {backend!r} оставлен для будущего расширения, но ещё не реализован."
-        )
-    if not _env_bool("SHORTS_FACTORY_LIVEDUB", True):
-        raise RuntimeError(
-            "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть включён: "
-            "собственный нейроперевод в этом режиме запрещён."
-        )
-
-    from services.yandex_live_dub import get_live_dub_video
-
-    translated = await get_live_dub_video(
-        url,
-        workdir,
-        duration=float(duration),
-        lang=source_language,
-    )
-    if not translated or not translated.exists():
-        raise RuntimeError("Яндекс LiveDub не вернул готовое переведённое видео")
-    return translated
-
-
-def _shift_candidates_for_livedub(
-    candidates: list[dict[str, Any]],
-    *,
-    source_duration: int,
-    candidate_kind: str,
-) -> list[dict[str, Any]]:
-    """Fail closed unless the required runtime installs speech-proven alignment."""
-    del candidates, source_duration, candidate_kind
-    raise RuntimeError(
-        "SHORTS FACTORY translated boundary aligner is not installed; "
-        "refusing heuristic original-timeline cuts"
-    )
 
 
 def _cleanup_expired_factory_sources() -> None:
@@ -203,7 +146,6 @@ def _cleanup_expired_factory_sources() -> None:
 
 
 def _persist_factory_source(source_path: Path, media_id: str) -> Path:
-    """Keep one source for interactive trim buttons and reuse by long clips."""
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     suffix = source_path.suffix.lower() or ".mp4"
     destination = DOWNLOAD_DIR / f"{media_id}_factory_source{suffix}"
@@ -227,22 +169,7 @@ def _persist_factory_source(source_path: Path, media_id: str) -> Path:
     return destination
 
 
-async def _validated_source_duration(source_path: Path, expected_duration: int) -> int:
-    """Return the real render timeline and reject truncated video/audio sources."""
-    probe = await probe_media_async(source_path)
-    if not media_probe_is_deliverable(probe):
-        raise RuntimeError("Общий Factory-источник не прошёл media probe (нужны video+audio)")
-    assert probe is not None
-    if probe.duration + 3.0 < float(expected_duration):
-        raise RuntimeError(
-            "Общий Factory-источник обрезан: "
-            f"ожидалось около {expected_duration:.0f}с, получено {probe.duration:.1f}с"
-        )
-    return max(1, int(math.ceil(probe.duration)))
-
-
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
-    """Render only the publication-ready candidate plan shown to the operator."""
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
     longs = plan.get("long_candidates") or []
@@ -352,7 +279,7 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            "🎧 SHORTS FACTORY MAX: скачиваю аудио без потерь для точного анализа…",
+            "🎧 SHORTS FACTORY MAX: готовлю компактное анализ-аудио для Gemini…",
         )
         mp3_path = await _download_factory_audio(url, media_id)
 
@@ -484,6 +411,7 @@ async def process_shorts_factory(
                     ai_data=ai_data,
                     update=update,
                     livedub_video_path=persistent_source_path,
+                    public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
                 )
 
         shorts_sent, longs_sent = factory_completed_delivery_counts()
@@ -589,3 +517,6 @@ async def process_shorts_factory(
             except OSError:
                 pass
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+__all__ = ["process_shorts_factory"]
