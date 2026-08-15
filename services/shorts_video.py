@@ -74,8 +74,9 @@ async def _owned_render_short_clip(
     *,
     visual_mode: str = "full_frame_vertical",
     silence_snap_max_end: float | None = None,
+    snap_to_silence: bool = True,
 ) -> bool:
-    """Render one vertical clip with an optional explicit absolute snap ceiling."""
+    """Render one vertical clip with explicit silence-snap policy and ceiling."""
     source_video_path = Path(source_video_path)
     output_path = Path(output_path)
     hard_ceiling = _finite_ceiling(silence_snap_max_end)
@@ -115,35 +116,36 @@ async def _owned_render_short_clip(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        adjusted_end = await _impl._find_silence_end(
-            source_video_path,
-            float(end_seconds),
-        )
-        try:
-            adjusted_end = float(adjusted_end)
-        except (TypeError, ValueError, OverflowError):
-            adjusted_end = end_seconds
-        if not math.isfinite(adjusted_end):
-            adjusted_end = end_seconds
+        if snap_to_silence:
+            adjusted_end = await _impl._find_silence_end(
+                source_video_path,
+                float(end_seconds),
+            )
+            try:
+                adjusted_end = float(adjusted_end)
+            except (TypeError, ValueError, OverflowError):
+                adjusted_end = end_seconds
+            if not math.isfinite(adjusted_end):
+                adjusted_end = end_seconds
 
-        min_end = start_seconds + max(10.0, (end_seconds - start_seconds) * 0.5)
-        max_end = end_seconds + 10.0
-        if hard_ceiling is not None:
-            max_end = min(max_end, hard_ceiling)
-            adjusted_end = min(adjusted_end, hard_ceiling)
-
-        if min_end < adjusted_end <= max_end and abs(adjusted_end - end_seconds) > 0.1:
-            snapped_end = float(round(adjusted_end))
+            min_end = start_seconds + max(10.0, (end_seconds - start_seconds) * 0.5)
+            max_end = end_seconds + 10.0
             if hard_ceiling is not None:
-                snapped_end = min(snapped_end, hard_ceiling)
-            if snapped_end > start_seconds:
-                _impl.logger.info(
-                    "Short end adjusted: %.3fs -> %.3fs (silence snap, ceiling=%s)",
-                    end_seconds,
-                    snapped_end,
-                    f"{hard_ceiling:.3f}" if hard_ceiling is not None else "none",
-                )
-                end_seconds = snapped_end
+                max_end = min(max_end, hard_ceiling)
+                adjusted_end = min(adjusted_end, hard_ceiling)
+
+            if min_end < adjusted_end <= max_end and abs(adjusted_end - end_seconds) > 0.1:
+                snapped_end = float(round(adjusted_end))
+                if hard_ceiling is not None:
+                    snapped_end = min(snapped_end, hard_ceiling)
+                if snapped_end > start_seconds:
+                    _impl.logger.info(
+                        "Short end adjusted: %.3fs -> %.3fs (silence snap, ceiling=%s)",
+                        end_seconds,
+                        snapped_end,
+                        f"{hard_ceiling:.3f}" if hard_ceiling is not None else "none",
+                    )
+                    end_seconds = snapped_end
 
         if hard_ceiling is not None:
             end_seconds = min(end_seconds, hard_ceiling)
@@ -417,6 +419,7 @@ async def render_short_clip(
     *,
     visual_mode: str = "full_frame_vertical",
     silence_snap_max_end: float | None = None,
+    snap_to_silence: bool = True,
 ) -> bool:
     """Public renderer with explicit silence-snap ownership."""
     return await _impl.await_owned_coroutine(
@@ -427,6 +430,7 @@ async def render_short_clip(
             end_seconds,
             visual_mode=visual_mode,
             silence_snap_max_end=silence_snap_max_end,
+            snap_to_silence=snap_to_silence,
         )
     )
 
