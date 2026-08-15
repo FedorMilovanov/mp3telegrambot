@@ -89,21 +89,44 @@ def test_factory_livedub_timeout_cannot_be_lowered(monkeypatch):
     assert factory_source._factory_livedub_timeout_seconds() == 2400
 
 
-def test_factory_timing_defaults_cannot_be_lowered(monkeypatch):
+def test_factory_timing_quality_bounds_are_direction_aware(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_SILENCE_SEC", "0.05")
     assert timing._env_float(
         "SHORTS_FACTORY_RU_MIN_SILENCE_SEC",
         0.25,
         0.10,
         1.50,
-    ) == 0.25
+    ) == 0.10
+
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_COVERAGE", "0.10")
-    assert timing._env_float(
+    assert timing._env_quality_min(
         "SHORTS_FACTORY_RU_MIN_COVERAGE",
         0.45,
         0.15,
         0.98,
     ) == 0.45
+    monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_COVERAGE", "0.70")
+    assert timing._env_quality_min(
+        "SHORTS_FACTORY_RU_MIN_COVERAGE",
+        0.45,
+        0.15,
+        0.98,
+    ) == 0.70
+
+    monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", "1.5")
+    assert timing._env_quality_max(
+        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
+        4.0,
+        1.0,
+        20.0,
+    ) == 1.5
+    monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", "8.0")
+    assert timing._env_quality_max(
+        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
+        4.0,
+        1.0,
+        20.0,
+    ) == 4.0
 
 
 def test_factory_exact_audited_ends_are_explicit_not_ambient():
