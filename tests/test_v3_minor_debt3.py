@@ -1,5 +1,5 @@
 """Tests for v3 minor-debt patch 3:
-- clips/montage: open() instead of BytesIO(read_bytes()) for thumbnails
+- clips/montage: InputFile(read_bytes()) thumbnails without writable .name hacks
 - montage: highlights cand guard against missing fragments/title
 - commands: _do_resetcache_one uses HTML parse_mode (not Markdown)
 """
@@ -8,21 +8,24 @@ import pathlib
 
 def test_clips_thumbnail_uses_inputfile():
     # AUDIT R25: open()+`.name=` падал на py3.13 (BufferedReader.name read-only).
-    # Теперь InputFile(read_bytes()) — байты в памяти, handle не держим.
+    # InputFile(read_bytes()) keeps bytes in memory and does not retain a handle.
     src = pathlib.Path("pipelines/clips.py").read_text(encoding="utf-8")
-    assert "InputFile(snap_path.read_bytes()" in src
+    assert "snap_path.read_bytes()" in src
+    assert "filename=snap_path.name" in src
     assert "thumb_buf.name =" not in src
 
 
 def test_montage_poster_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert "InputFile(poster_path.read_bytes()" in src
+    assert "poster_path.read_bytes()" in src
+    assert "filename=poster_path.name" in src
     assert "thumb_buf.name =" not in src
 
 
 def test_montage_snapshot_thumbnail_uses_inputfile():
     src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert "InputFile(snapshot_path.read_bytes()" in src
+    assert "snapshot_path.read_bytes()" in src
+    assert "filename=snapshot_path.name" in src
 
 
 def test_highlights_cand_guard_present():
