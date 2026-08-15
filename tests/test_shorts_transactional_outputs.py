@@ -12,10 +12,9 @@ from services import shorts_video
 
 SOURCE_PATH = Path("services/shorts_video.py")
 FUNCTIONS = (
-    "_unowned_render_short_clip",
-    "_unowned_short_transform",
-    "_unowned_create_short_title_poster",
-    "_unowned_create_short_snapshot",
+    "_owned_render_short_clip",
+    "_owned_short_transform",
+    "_owned_optional_output",
 )
 
 
@@ -37,15 +36,15 @@ def _configure_render(monkeypatch, owner) -> None:
     async def no_crop(path, start_seconds=0.0):
         return ""
 
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(shorts_video, "_find_silence_end", no_snap)
-    monkeypatch.setattr(shorts_video, "_detect_black_bars", no_crop)
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(shorts_video._impl, "_find_silence_end", no_snap)
+    monkeypatch.setattr(shorts_video._impl, "_detect_black_bars", no_crop)
     monkeypatch.setattr(
-        shorts_video,
+        shorts_video._impl,
         "_get_video_encoder",
         lambda: ("libx264", ["-crf", "23"], ["-preset", "veryfast"]),
     )
-    monkeypatch.setattr(shorts_video, "run_cancellable_process", owner)
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", owner)
 
 
 def test_active_short_outputs_have_transactional_contract() -> None:
@@ -54,12 +53,16 @@ def test_active_short_outputs_have_transactional_contract() -> None:
 
     assert "def _same_short_path(" in source
     assert "def _unlink_short_paths(" in source
-    assert selected.count("except asyncio.CancelledError:") == 4
-    assert selected.count("_unlink_short_paths(") >= 14
+    assert selected.count("except asyncio.CancelledError:") == 3
+    assert selected.count("_unlink_short_paths(") >= 9
     assert "protected=(source_video_path,)" in selected
     assert "protected=(input_path,)" in selected
-    assert "protected=(video_path,)" in selected
+    assert "protected=(video_path,)" not in selected
     assert "_same_short_path(input_path, output_path)" in selected
+    assert "async def render_short_clip(" in source
+    assert "async def postprocess_short(" in source
+    assert "async def create_short_title_poster(" in source
+    assert "async def create_short_snapshot(" in source
 
 
 @pytest.mark.asyncio
@@ -77,7 +80,7 @@ async def test_stale_render_is_not_accepted_when_ffmpeg_writes_nothing(
 
     _configure_render(monkeypatch, empty_success)
 
-    result = await shorts_video._unowned_render_short_clip(
+    result = await shorts_video.render_short_clip(
         source_path,
         output_path,
         10,
@@ -105,7 +108,7 @@ async def test_render_cancellation_removes_partial_output(
     _configure_render(monkeypatch, cancelled_owner)
 
     with pytest.raises(asyncio.CancelledError):
-        await shorts_video._unowned_render_short_clip(
+        await shorts_video.render_short_clip(
             source_path,
             output_path,
             10,
@@ -121,7 +124,7 @@ async def test_noop_transform_preserves_same_path_input(tmp_path: Path) -> None:
     media_path = tmp_path / "same.mp4"
     media_path.write_bytes(b"same path media")
 
-    result = await shorts_video._unowned_short_transform(
+    result = await shorts_video.postprocess_short(
         media_path,
         media_path,
         normalize_audio=False,
@@ -139,7 +142,7 @@ async def test_filtered_transform_rejects_same_path_without_deleting_input(
     media_path = tmp_path / "same.mp4"
     media_path.write_bytes(b"same path media")
 
-    result = await shorts_video._unowned_short_transform(
+    result = await shorts_video.postprocess_short(
         media_path,
         media_path,
         normalize_audio=True,
@@ -164,11 +167,11 @@ async def test_transform_cancellation_removes_partial_output(
         Path(command[-1]).write_bytes(b"partial processed")
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(shorts_video, "run_cancellable_process", cancelled_owner)
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", cancelled_owner)
 
     with pytest.raises(asyncio.CancelledError):
-        await shorts_video._unowned_short_transform(
+        await shorts_video.postprocess_short(
             input_path,
             output_path,
             normalize_audio=True,
@@ -189,9 +192,9 @@ async def test_transform_without_ffmpeg_removes_stale_output(
     input_path.write_bytes(b"input")
     output_path.write_bytes(b"old processed")
 
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: None)
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: None)
 
-    result = await shorts_video._unowned_short_transform(
+    result = await shorts_video.postprocess_short(
         input_path,
         output_path,
         normalize_audio=True,
@@ -216,11 +219,11 @@ async def test_poster_ffmpeg_failure_removes_stale_poster(
     async def failed_owner(command, **kwargs):
         return subprocess.CompletedProcess(command, 1, "", "frame failed")
 
-    monkeypatch.setattr(shorts_video, "HAS_PILLOW", True)
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(shorts_video, "run_cancellable_process", failed_owner)
+    monkeypatch.setattr(shorts_video._impl, "HAS_PILLOW", True)
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", failed_owner)
 
-    result = await shorts_video._unowned_create_short_title_poster(
+    result = await shorts_video.create_short_title_poster(
         video_path,
         poster_path,
         "Test title",
@@ -244,10 +247,10 @@ async def test_snapshot_failure_removes_stale_snapshot(
     async def failed_owner(command, **kwargs):
         return subprocess.CompletedProcess(command, 1, "", "snapshot failed")
 
-    monkeypatch.setattr(shorts_video.shutil, "which", lambda name: "ffmpeg")
-    monkeypatch.setattr(shorts_video, "run_cancellable_process", failed_owner)
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", failed_owner)
 
-    result = await shorts_video._unowned_create_short_snapshot(
+    result = await shorts_video.create_short_snapshot(
         video_path,
         snapshot_path,
         30,
