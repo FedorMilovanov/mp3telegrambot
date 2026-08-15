@@ -157,6 +157,7 @@ async def process_and_send_factory_shorts(
                 end,
                 visual_mode=visual_mode,
                 silence_snap_max_end=ceiling,
+                snap_to_silence=False,
             )
             if not rendered:
                 continue
