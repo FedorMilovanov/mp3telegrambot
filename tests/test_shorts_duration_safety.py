@@ -142,4 +142,5 @@ def test_pipeline_owns_duration_safety_without_installation_or_ambient_state():
     assert "silence_snap_max_end: float | None = None" in renderer_source
     assert "adjusted_end = min(adjusted_end, hard_ceiling)" in renderer_source
     assert "end_seconds = min(end_seconds, hard_ceiling)" in renderer_source
-    assert "sys.modules" not in renderer_source
+    assert "import sys" not in renderer_source
+    assert "sys.modules[" not in renderer_source
