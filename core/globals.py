@@ -1,53 +1,49 @@
 #!/usr/bin/env python3
-"""
-Globals — импорты и глобальные переменные.
-Telegram Bot: Media Audio Converter + AI Analysis
-"""
+"""Globals — imports, clients, configuration and process-wide utilities."""
 
+import asyncio
+import html as html_mod
+import logging
 import os
 import re
-import html as html_mod
-import asyncio
-import logging
-import time
 import threading
-from dotenv import load_dotenv
+import time
 from pathlib import Path
 
-load_dotenv()
+from dotenv import load_dotenv
 
-# Явно указываем кэш HuggingFace — модели Whisper ищутся здесь
+load_dotenv()
 os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-# === Flask-сервер (обязателен для Render.com!) ===
 flask_app = Flask(__name__)
+
 
 @flask_app.route("/")
 def home():
     return "Bot is running!"
 
-# Состояние бота для умного /health (обновляется из main.py)
+
 _LAST_BOT_OK_TS: float = 0.0
 
+
 def mark_bot_alive() -> None:
-    """Зовётся из run_bot_async() каждые N секунд, чтобы /health знал что live."""
     global _LAST_BOT_OK_TS
     _LAST_BOT_OK_TS = time.time()
 
 
 @flask_app.route("/health")
 def health():
-    """Возвращает 503 если бот не пинговал > 5 минут — Render/Railway перезапустит контейнер."""
     age = time.time() - _LAST_BOT_OK_TS if _LAST_BOT_OK_TS else 999999
     if age > 300:
         return ("STALE", 503)
     return ("OK", 200)
 
+
 try:
-    import PIL  # noqa: F401 — HAS_PILLOW flag only
+    import PIL  # noqa: F401
     HAS_PILLOW = True
 except ImportError:
     HAS_PILLOW = False
@@ -58,52 +54,55 @@ try:
     HAS_GEMINI = True
 except ImportError:
     HAS_GEMINI = False
-    genai = None      # type: ignore
-    types = None      # type: ignore
+    genai = None  # type: ignore
+    types = None  # type: ignore
 
-# ─── Настройки ───────────────────────────────────────────────
-BOT_TOKEN      = os.getenv("BOT_TOKEN", "").strip()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 LOCAL_BOT_API_URL = os.getenv("LOCAL_BOT_API_URL", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-DOWNLOAD_DIR   = Path("downloads")
+DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
-THUMBS_DIR     = DOWNLOAD_DIR / "thumbs"
+THUMBS_DIR = DOWNLOAD_DIR / "thumbs"
 THUMBS_DIR.mkdir(exist_ok=True)
-DB_PATH        = Path("bot_cache.db")
+DB_PATH = Path("bot_cache.db")
 
-# ─── Лимиты и throttle ────────────────────────────────────────
-DAILY_LIMIT      = 2   # Макс. видео в день для обычных пользователей
-COOLDOWN_SECONDS = 60  # Минимум секунд между запросами
+DAILY_LIMIT = 2
+COOLDOWN_SECONDS = 60
+_THUMBS_CLEANUP_INTERVAL: float = 3600.0
 
-# FIXED #36: throttle для обхода THUMBS_DIR — не чаще раза в час.
-# AUDIT L1: реальная переменная _THUMBS_LAST_CLEANUP живёт в core/utils.py;
-# здесь хранится только interval.
-_THUMBS_CLEANUP_INTERVAL: float = 3600.0  # секунд
-
-# ─── Инициализация Gemini ─────────────────────────────────────
-# FIX #1: все переменные определяются ДО их использования
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2", "").strip()
 GEMINI_API_KEY_3 = os.getenv("GEMINI_API_KEY_3", "").strip()
 GEMINI_API_KEY_4 = os.getenv("GEMINI_API_KEY_4", "").strip()
-
-# FIXED #32: читаем один раз при старте
 TELEGRAPH_TOKEN = os.getenv("TELEGRAPH_TOKEN", "").strip()
 
-# Прокси для Gemini — httpx читает из os.environ напрямую.
-# FIX: если HTTPS_PROXY не задан явно, подхватываем TELEGRAM_PROXY_URL как
-# fallback. Без этого в no-TUN режиме (v2rayN mixed port) Gemini API
-# получает запросы с российского IP → 400 FAILED_PRECONDITION
-# "User location is not supported for the API use."
-# v2rayN mixed port принимает и SOCKS5, и HTTP на одном порту —
-# конвертируем socks5h→http, чтобы httpx не требовал socksio.
+
+def configured_gemini_service_tier() -> str:
+    """Return the source-owned GenerateContent service tier.
+
+    Priority is opt-in and invalid configuration fails during module startup,
+    before any request can be routed with an unintended service class.
+    """
+    value = os.getenv("GEMINI_SERVICE_TIER", "standard").strip().lower()
+    value = {"": "standard", "default": "standard"}.get(value, value)
+    if value not in {"standard", "priority"}:
+        raise RuntimeError(
+            "GEMINI_SERVICE_TIER must be 'standard' or 'priority'; "
+            f"got {value!r}"
+        )
+    return value
+
+
+GEMINI_SERVICE_TIER = configured_gemini_service_tier()
+
 _proxy_url = (
-    os.environ.get("HTTPS_PROXY") or
-    os.environ.get("https_proxy") or
-    os.environ.get("HTTP_PROXY") or
-    os.environ.get("http_proxy")
+    os.environ.get("HTTPS_PROXY")
+    or os.environ.get("https_proxy")
+    or os.environ.get("HTTP_PROXY")
+    or os.environ.get("http_proxy")
 )
-_gemini_proxy_log: str = ""  # logger ещё не создан; сохраняем сообщение для main.py
-_proxy_was_auto = False  # True если мы САМИ выставили HTTPS_PROXY (а не пользователь)
+_gemini_proxy_log: str = ""
+_proxy_was_auto = False
 if not _proxy_url:
     _fallback_proxy = (
         os.getenv("GEMINI_PROXY_URL", "").strip()
@@ -112,15 +111,14 @@ if not _proxy_url:
     )
     if _fallback_proxy:
         from urllib.parse import urlparse as _urlparse
+
         _u = _urlparse(_fallback_proxy)
         if (_u.scheme or "").lower().startswith("socks"):
-            # v2rayN mixed port: HTTP на том же порту работает без socksio
-            # AUDIT R40: guard split — «socks5:1080» без «//» иначе ронял [1]
-            # (IndexError) и валил бота на старте.
             _sp = _fallback_proxy.split("://", 1)
             _proxy_url = "http://" + _sp[1] if len(_sp) == 2 else _fallback_proxy
             _gemini_proxy_log = (
-                f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} (из {_fallback_proxy})"
+                f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} "
+                f"(из {_fallback_proxy})"
             )
         else:
             _proxy_url = _fallback_proxy
@@ -129,18 +127,12 @@ if not _proxy_url:
 if _proxy_url:
     os.environ["HTTPS_PROXY"] = _proxy_url
     os.environ["https_proxy"] = _proxy_url
-    os.environ["HTTP_PROXY"]  = _proxy_url
-    os.environ["http_proxy"]  = _proxy_url
-    # FIX: если прокси подхвачен автоматически (из TELEGRAM_PROXY_URL), исключаем
-    # российские/доступные из РФ сервисы из прокси. Без этого requests.get к
-    # RuTube, VK, Telegraph молча идёт через прокси → медленнее или ломается.
-    # Если пользователь САМ задал HTTPS_PROXY, он знает что делает — не трогаем.
+    os.environ["HTTP_PROXY"] = _proxy_url
+    os.environ["http_proxy"] = _proxy_url
     if _proxy_was_auto:
         _no_proxy = os.environ.get("NO_PROXY", "")
         _auto_no_proxy = (
-            "rutube.ru,api.vk.com,vk.com,"
-            "api.telegram.org,"
-            "127.0.0.1,localhost"
+            "rutube.ru,api.vk.com,vk.com,api.telegram.org,127.0.0.1,localhost"
         )
         for _host in _auto_no_proxy.split(","):
             if _host not in _no_proxy:
@@ -148,19 +140,10 @@ if _proxy_url:
         os.environ["NO_PROXY"] = _no_proxy
         os.environ["no_proxy"] = _no_proxy
 
-# AUDIT R32 (живой баг: дочерний `python.exe` от бота падает 0xc0000142 при
-# спавне yt-dlp, хотя `python -m yt_dlp` из чистого терминала работает).
-# Причина — PATH процесса-бота: лаунчер/окружение GPU-Whisper (CUDA/cuDNN/
-# ffmpeg) кладёт свой bin-каталог ПЕРЕД системным, и свежий python.exe при
-# инициализации находит там чужую DLL (vcruntime/api-ms-win/python3xx),
-# несовместимую с загрузчиком → STATUS_DLL_INIT_FAILED (0xc0000142).
-# Лечение (только Windows, только PREPEND — ничего не удаляем): ставим в
-# НАЧАЛО PATH каталог самого интерпретатора и System32, чтобы дочерний
-# python.exe грузил ПРАВИЛЬНЫЕ core-DLL раньше любого «отравленного»
-# каталога. Родительский процесс уже загрузил свои DLL — на него не влияет.
 if os.name == "nt":
     try:
         import sys as _sys
+
         _sysroot = os.environ.get("SystemRoot", r"C:\Windows")
         _front = [
             os.path.dirname(_sys.executable),
@@ -170,26 +153,24 @@ if os.name == "nt":
         _cur_path = os.environ.get("PATH", "")
         _cur_dirs = [p for p in _cur_path.split(os.pathsep) if p]
         _front = [d for d in _front if d]
-        # не дублируем каталоги, которые и так уже в начале
-        _rest = [d for d in _cur_dirs if os.path.normcase(d) not in
-                 {os.path.normcase(x) for x in _front}]
+        _front_norm = {os.path.normcase(x) for x in _front}
+        _rest = [d for d in _cur_dirs if os.path.normcase(d) not in _front_norm]
         os.environ["PATH"] = os.pathsep.join(_front + _rest)
     except Exception:
         pass
 
-# FIX #1: инициализируем None ДО создания клиентов
-gemini_client   = None
+gemini_client = None
 gemini_client_2 = None
 gemini_client_3 = None
 gemini_client_4 = None
 
-# HttpOptions: явный таймаут 900 000 мс = 15 минут
 _gemini_http_options = None
 if HAS_GEMINI:
     try:
         _gemini_http_options = types.HttpOptions(timeout=900_000)
     except Exception:
         pass
+
 
 def _make_gemini_client(api_key: str):
     if _gemini_http_options is not None:
@@ -198,6 +179,7 @@ def _make_gemini_client(api_key: str):
         except TypeError:
             pass
     return genai.Client(api_key=api_key)
+
 
 if HAS_GEMINI and GEMINI_API_KEY:
     gemini_client = _make_gemini_client(GEMINI_API_KEY)
@@ -208,53 +190,44 @@ if HAS_GEMINI and GEMINI_API_KEY_3:
 if HAS_GEMINI and GEMINI_API_KEY_4:
     gemini_client_4 = _make_gemini_client(GEMINI_API_KEY_4)
 
-# Список клиентов по порядку — используется для fallback
-GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4] if c]
+GEMINI_CLIENTS = [
+    c
+    for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4]
+    if c
+]
 
 
-# ─── Единый конфиг для Gemini-вызовов с аудио ─────────────────
-# audio_timestamp=True ОБЯЗАТЕЛЕН для audio-only входов по официальной
-# документации Google: https://ai.google.dev/gemini-api/docs/audio
-# Без него точность таймкодов снижается ~30%, а у нас на таймкодах построены
-# конспекты, Shorts, Clips и Montage.
 def _is_gemini_3x(model_name: str) -> bool:
-    """Определяет 3.x семейство Gemini моделей.
-
-    Важно: проверяем всё семейство 3.x, а не только текущий default
-    gemini-3.5-flash. Иначе резервные/preview-имена вида gemini-3.1-*
-    или gemini-3-* получают конфиг как 2.x: temperature вместо
-    thinking_config. Это не security-баг, но реальная quality-regression.
-    """
     if not model_name:
         return False
     m = model_name.lower().strip()
-    # gemini-3.5-flash, gemini-3.1-flash-lite, gemini-3-flash-preview.
-    # Use fullmatch so aliases like "my-gemini-3-proxy" do not get 3.x config.
-    return bool(re.fullmatch(r'gemini-3(?:[.\-]\d+)?(?:[\-_.].*)?', m))
+    return bool(re.fullmatch(r"gemini-3(?:[.\-]\d+)?(?:[\-_.].*)?", m))
 
 
 def _build_thinking_config(level: str = "high"):
-    """ULTIMATE FIX: создаёт ThinkingConfig с fallback на старый thinking_budget."""
     if not HAS_GEMINI or types is None:
         return None
     try:
-        # 2026-06-11: В новых версиях API thinking_level может быть enum.
-        # Обеспечиваем совместимость с любыми вариантами.
         return types.ThinkingConfig(thinking_level=level.upper())
     except (AttributeError, TypeError):
         try:
             return types.ThinkingConfig(thinking_level=level)
         except Exception:
-            # SDK старый — пробуем deprecated thinking_budget
             try:
-                budget_map = {"minimal": 4096, "low": 8192, "medium": 16384, "high": 24576}
-                return types.ThinkingConfig(thinking_budget=budget_map.get(level, 24576))
+                budget_map = {
+                    "minimal": 4096,
+                    "low": 8192,
+                    "medium": 16384,
+                    "high": 24576,
+                }
+                return types.ThinkingConfig(
+                    thinking_budget=budget_map.get(level, 24576)
+                )
             except Exception:
                 return None
 
 
 def _effective_thinking_level(model_name: str, requested: str) -> str:
-    """Enforce the production semantic/utility split at the config owner."""
     model = str(model_name or "").strip().casefold()
     if model == "gemini-3.6-flash":
         return "high"
@@ -263,20 +236,21 @@ def _effective_thinking_level(model_name: str, requested: str) -> str:
     return str(requested or "high").strip().lower() or "high"
 
 
-def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):
-    """ULTIMATE FIX 3.5-FLASH: конфиг для audio-вызовов с авто-адаптацией под поколение.
+def _apply_gemini_service_tier(kwargs: dict) -> None:
+    if GEMINI_SERVICE_TIER == "priority":
+        kwargs["service_tier"] = "priority"
 
-    Для 3.x: thinking_level настраивается по задаче, без temperature
-    Для 2.x: temperature как раньше
 
-    max_output_tokens снижен до 40000 для 3.x — оставляем место для thinking-токенов
-    (high может занимать до 30K токенов до начала финального ответа).
-
-    AUDIT FIX 2026-05-20: google-genai 1.x не поддерживает audio_timestamp.
-    """
+def make_audio_config(
+    temperature: float = 0.1,
+    max_output_tokens: int = 65536,
+    model_name: str = None,
+    thinking_level: str = "high",
+    response_mime_type: str | None = None,
+    response_schema=None,
+):
     if not HAS_GEMINI or types is None:
         return None
-
     if model_name is None:
         try:
             from core.database import GEMINI_MODEL as _m
@@ -286,44 +260,36 @@ def make_audio_config(temperature: float = 0.1, max_output_tokens: int = 65536, 
 
     is_3x = _is_gemini_3x(model_name)
     thinking_level = _effective_thinking_level(model_name, thinking_level)
-    # FIX 2026-05-21 #12 P2: gemini-3.5-flash поддерживает 65k output tokens [Google I/O 2026].
-    # Раньше cap=40000 урезал доступный потолок, что снижало качество длинных анализов.
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
-
     kwargs = {"max_output_tokens": _safe_max}
     if response_mime_type:
         kwargs["response_mime_type"] = response_mime_type
     if response_schema is not None:
         kwargs["response_schema"] = response_schema
-
     if is_3x:
-        # 3.x supports schema-constrained output together with thinking_config.
-        # Keep an opt-out env flag for SDK/API regressions.
-        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
+        if (
+            (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower()
+            not in {"0", "false", "no", "off"}
+        ):
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
-        # На 3.x Google рекомендует НЕ переопределять temperature/top_p/top_k
-        # (Gemini Developer Guide май 2026)
     else:
         kwargs["temperature"] = temperature
-
+    _apply_gemini_service_tier(kwargs)
     return types.GenerateContentConfig(**kwargs)
 
 
-def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14000, model_name: str = None, thinking_level: str = "high", response_mime_type: str | None = None, response_schema=None):
-    """ULTIMATE FIX 3.5-FLASH: конфиг для ТЕКСТОВЫХ вызовов с thinking_level для 3.x.
-
-    Используется в services/telegraph_pages.py:_gemini_text_request для StudyAnalysis
-    и ReflectionApplication. Это даёт глубокий анализ на 3.5-flash вместо поверхностного.
-
-    Параметры:
-        thinking_level: "minimal" | "low" | "medium" | "high" — на 3.x. По умолчанию "high"
-                        для качественного анализа Reflection/Study.
-    """
+def make_text_config_smart(
+    temperature: float = 0.4,
+    max_output_tokens: int = 14000,
+    model_name: str = None,
+    thinking_level: str = "high",
+    response_mime_type: str | None = None,
+    response_schema=None,
+):
     if not HAS_GEMINI or types is None:
         return None
-
     if model_name is None:
         try:
             from core.database import GEMINI_MODEL as _m
@@ -333,29 +299,31 @@ def make_text_config_smart(temperature: float = 0.4, max_output_tokens: int = 14
 
     is_3x = _is_gemini_3x(model_name)
     thinking_level = _effective_thinking_level(model_name, thinking_level)
-    # FIX 2026-05-21 #12 P2: cap 65k для 3.x (см. выше в make_audio_config).
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
-
     kwargs = {"max_output_tokens": _safe_max}
     if response_mime_type:
         kwargs["response_mime_type"] = response_mime_type
     if response_schema is not None:
         kwargs["response_schema"] = response_schema
-
     if is_3x:
-        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
+        if (
+            (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower()
+            not in {"0", "false", "no", "off"}
+        ):
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
     else:
         kwargs["temperature"] = temperature
-
+    _apply_gemini_service_tier(kwargs)
     return types.GenerateContentConfig(**kwargs)
 
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
-    """Legacy semantic helper routed through the source-owned smart config."""
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
+    model_name = (
+        os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+        or "gemini-3.6-flash"
+    )
     return make_text_config_smart(
         temperature=temperature,
         max_output_tokens=max_output_tokens,
@@ -364,21 +332,16 @@ def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
     )
 
 
-# FIX #2: убран вызов db_cleanup_old_records() — функция из database.py,
-# которая здесь не импортирована (импортировать нельзя — циклическая зависимость).
-# db_cleanup_old_records() вызывается в конце database.py после определения констант.
-
-# ─── Per-video lock ───────────────────────────────────────────
-# dict[str, asyncio.Lock] оставлен для совместимости импортов, но добавлена
-# мета-информация и централизованный release. TTL чистит только НЕЗАНЯТЫЕ
-# lock-и: принудительно "разлочивать" активный asyncio.Lock небезопасно.
 _video_processing_locks: dict[str, asyncio.Lock] = {}
 _video_lock_meta: dict[str, float] = {}
 _video_locks_mutex = threading.Lock()
 try:
-    _VIDEO_LOCK_TTL_SEC = float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600")
+    _VIDEO_LOCK_TTL_SEC = float(
+        os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600"
+    )
 except ValueError:
     _VIDEO_LOCK_TTL_SEC = 3600.0
+
 
 def _cleanup_video_locks_locked(now: float | None = None) -> None:
     now = now or time.time()
@@ -391,12 +354,8 @@ def _cleanup_video_locks_locked(now: float | None = None) -> None:
         _video_processing_locks.pop(vid, None)
         _video_lock_meta.pop(vid, None)
 
-def _get_video_lock(video_id: str) -> asyncio.Lock:
-    """Возвращает (или создаёт) asyncio.Lock для данного video_id.
 
-    Созданный, но не захваченный lock не блокирует обработку; проблема была
-    не в deadlock, а в потенциальном росте словаря. TTL решает именно это.
-    """
+def _get_video_lock(video_id: str) -> asyncio.Lock:
     video_id = str(video_id or "").strip() or "unknown"
     now = time.time()
     with _video_locks_mutex:
@@ -408,16 +367,16 @@ def _get_video_lock(video_id: str) -> asyncio.Lock:
         _video_lock_meta[video_id] = now
         return lock
 
-def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None:
-    """Удаляет per-video lock из registry, если он уже свободен.
 
-    Важно проверять identity: если за время ожидания был создан новый lock с тем
-    же video_id, старый обработчик не должен удалить чужую запись.
-    """
+def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None:
     video_id = str(video_id or "").strip() or "unknown"
     with _video_locks_mutex:
         current = _video_processing_locks.get(video_id)
-        if current is not None and (lock is None or current is lock) and not current.locked():
+        if (
+            current is not None
+            and (lock is None or current is lock)
+            and not current.locked()
+        ):
             _video_processing_locks.pop(video_id, None)
             _video_lock_meta.pop(video_id, None)
         else:
@@ -428,9 +387,17 @@ _EXHAUSTED_MODELS: dict[str, float] = {}
 
 
 def _quota_retry_delay_seconds(e, default: int = 3600) -> int:
-    m = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)s", str(e), re.IGNORECASE)
+    m = re.search(
+        r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)s",
+        str(e),
+        re.IGNORECASE,
+    )
     if not m:
-        m = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", str(e), re.IGNORECASE)
+        m = re.search(
+            r"retry in\s+([0-9]+(?:\.[0-9]+)?)s",
+            str(e),
+            re.IGNORECASE,
+        )
     if m:
         try:
             return max(60, min(int(float(m.group(1))) + 5, 24 * 3600))
@@ -439,11 +406,19 @@ def _quota_retry_delay_seconds(e, default: int = 3600) -> int:
     return default
 
 
-def mark_model_exhausted(model_name: str, err=None, *, seconds: int | None = None) -> None:
-    """Remember project/model-level Gemini quota exhaustion in-memory."""
+def mark_model_exhausted(
+    model_name: str,
+    err=None,
+    *,
+    seconds: int | None = None,
+) -> None:
     model = str(model_name or "").strip()
     if not model:
-        m = re.search(r"model['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_.-]+)", str(err), re.IGNORECASE)
+        m = re.search(
+            r"model['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_.-]+)",
+            str(err),
+            re.IGNORECASE,
+        )
         model = m.group(1) if m else ""
     if not model:
         return
@@ -462,29 +437,37 @@ def is_model_exhausted(model_name: str) -> bool:
         _EXHAUSTED_MODELS.pop(model, None)
     return False
 
+
 def is_quota_error(e) -> bool:
     s = str(e).lower()
     return "quota" in s or "429" in s or "resource_exhausted" in s
+
 
 def is_overload_error(e) -> bool:
     s = str(e).lower()
     name = type(e).__name__.lower()
     return (
-        "503" in s or bool(re.search(r'\b500\b', s)) or "unavailable" in s or "overloaded" in s
-        or "high demand" in s or "internal server error" in s
-        or "remoteprotocolerror" in name or "disconnect" in s
-        or "server disconnected" in s or "without sending a response" in s
+        "503" in s
+        or bool(re.search(r"\b500\b", s))
+        or "unavailable" in s
+        or "overloaded" in s
+        or "high demand" in s
+        or "internal server error" in s
+        or "remoteprotocolerror" in name
+        or "disconnect" in s
+        or "server disconnected" in s
+        or "without sending a response" in s
     )
 
 
 _current_client_idx = 0
+
 
 async def gemini_generate(client_list, fn, model_name: str = ""):
     global _current_client_idx
     last_err = None
     if not client_list:
         raise RuntimeError("No Gemini clients available")
-        
     if model_name and is_model_exhausted(model_name):
         raise RuntimeError(f"Gemini model quota exhausted in-memory: {model_name}")
 
@@ -493,25 +476,28 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
         idx = (start_idx + i) % len(client_list)
         client = client_list[idx]
         _current_client_idx = (idx + 1) % len(client_list)
-        
         for attempt in range(3):
             try:
                 return await fn(client)
             except Exception as e:
                 if is_quota_error(e):
-                    # ВАЖНО: Не баним модель глобально при первом 429!
-                    # Ключи могут иметь РАЗНЫЕ квоты (разные проекты).
-                    logger.warning(f"Gemini квота на ключе {idx}; перехожу к следующему ключу...")
+                    logging.getLogger(__name__).warning(
+                        "Gemini квота на ключе %s; перехожу к следующему ключу...",
+                        idx,
+                    )
                     last_err = e
                     break
-                elif is_overload_error(e):
+                if is_overload_error(e):
                     wait = 10 * (attempt + 1)
-                    logger.warning(f"Gemini перегружен (500/503), жду {wait}с... (попытка {attempt+1}/3)")
+                    logging.getLogger(__name__).warning(
+                        "Gemini перегружен (500/503), жду %sс... (попытка %s/3)",
+                        wait,
+                        attempt + 1,
+                    )
                     await asyncio.sleep(wait)
                     last_err = e
                     continue
-                else:
-                    raise
+                raise
     raise last_err or RuntimeError("Все Gemini-клиенты недоступны или список пуст")
 
 
@@ -520,36 +506,32 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# Файловый лог — сохраняет логи при закрытии консоли (Windows local)
 try:
     from logging.handlers import RotatingFileHandler
+
     _file_handler = RotatingFileHandler(
-        "bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
+        "bot.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
     )
-    _file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    ))
+    _file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
     _file_handler.setLevel(logging.INFO)
     logging.getLogger().addHandler(_file_handler)
 except Exception:
-    pass  # Не блокируем старт если лог-файл недоступен
+    pass
 logger = logging.getLogger(__name__)
 
-
-# AUDIT R40: маскировка по ШАБЛОНАМ, а не только по известным env-секретам —
-# креды в URL (user:pass@host у proxy), telegram bot token, google AIza-ключ.
-# Ловит секрет, попавший в лог из библиотеки/URL, которого нет в env-списке.
 _CRED_PATTERNS: tuple[tuple, ...] = (
-    (re.compile(r"(://)[^/\s:@]+:[^/\s@]+@"), r"\1***:***@"),   # user:pass@host
-    # bot token часто склеен с «bot» в URL (…/bot123:ABC…/) — без \b-якорей
-    (re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}"), "***"),          # telegram bot token
-    (re.compile(r"AIza[0-9A-Za-z_\-]{35}"), "***"),            # google api key
+    (re.compile(r"(://)[^/\s:@]+:[^/\s@]+@"), r"\1***:***@"),
+    (re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}"), "***"),
+    (re.compile(r"AIza[0-9A-Za-z_\-]{35}"), "***"),
 )
 
 
 def mask_credentials(text: str) -> str:
-    """Маскирует креды по шаблонам (URL user:pass@, bot token, AIza-ключ).
-    Публичный помощник — используется и user-facing маской (core/utils)."""
     out = str(text)
     for _pat, _repl in _CRED_PATTERNS:
         out = _pat.sub(_repl, out)
@@ -557,8 +539,6 @@ def mask_credentials(text: str) -> str:
 
 
 class _TokenMaskFilter(logging.Filter):
-    """Маскирует все секретные токены/ключи во всех лог-сообщениях."""
-
     def __init__(self):
         super().__init__()
         self._secrets: list[str] | None = None
@@ -566,13 +546,13 @@ class _TokenMaskFilter(logging.Filter):
     def _get_secrets(self) -> list[str]:
         if self._secrets is None:
             candidates = [
-                os.getenv("BOT_TOKEN",       "").strip(),
-                os.getenv("GEMINI_API_KEY",  "").strip(),
-                os.getenv("GEMINI_API_KEY_2","").strip(),
-                os.getenv("GEMINI_API_KEY_3","").strip(),
-                os.getenv("GEMINI_API_KEY_4","").strip(),
+                os.getenv("BOT_TOKEN", "").strip(),
+                os.getenv("GEMINI_API_KEY", "").strip(),
+                os.getenv("GEMINI_API_KEY_2", "").strip(),
+                os.getenv("GEMINI_API_KEY_3", "").strip(),
+                os.getenv("GEMINI_API_KEY_4", "").strip(),
                 os.getenv("TELEGRAPH_TOKEN", "").strip(),
-                os.getenv("VK_API_TOKEN",    "").strip(),
+                os.getenv("VK_API_TOKEN", "").strip(),
             ]
             self._secrets = [s for s in candidates if len(s) >= 8]
         return self._secrets
@@ -581,7 +561,7 @@ class _TokenMaskFilter(logging.Filter):
         for secret in self._get_secrets():
             if secret in text:
                 text = text.replace(secret, "***")
-        return mask_credentials(text)   # AUDIT R40: + шаблоны (proxy creds/token/AIza)
+        return mask_credentials(text)
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
@@ -591,15 +571,10 @@ class _TokenMaskFilter(logging.Filter):
                 formatted = record.getMessage()
                 masked = self._mask(formatted)
                 if masked != formatted:
-                    record.msg  = masked
+                    record.msg = masked
                     record.args = ()
             elif record.msg is not None and not isinstance(record.msg, str):
-                # AUDIT R40: не-строковый msg без args (напр. logger.error(exc))
-                # раньше уходил МИМО маски — маскируем его строковое представление.
                 record.msg = self._mask(str(record.msg))
-            # Трейсбеки тоже содержат секреты (например, URL с access_token
-            # внутри requests.ConnectionError). Formatter использует exc_text,
-            # если он уже установлен — маскируем и кэшируем его здесь.
             if record.exc_info and record.exc_info[1] is not None and not record.exc_text:
                 exc_text = logging.Formatter().formatException(record.exc_info)
                 record.exc_text = self._mask(exc_text)
@@ -609,17 +584,8 @@ class _TokenMaskFilter(logging.Filter):
 
 
 _token_filter = _TokenMaskFilter()
-# ВАЖНО: фильтр на самом root-логгере срабатывает только для записей,
-# сделанных напрямую через root. Записи из logging.getLogger(__name__)
-# (все модули бота) проходят к root-хендлерам МИМО фильтров root-логгера —
-# поэтому вешаем фильтр на сами хендлеры (console из basicConfig + файл).
 logging.getLogger().addFilter(_token_filter)
 for _h in logging.getLogger().handlers:
     _h.addFilter(_token_filter)
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("google_genai").setLevel(logging.WARNING)
-logging.getLogger("google_genai.models").setLevel(logging.WARNING)
-logging.getLogger("telegram.vendor.ptb_urllib3").setLevel(logging.WARNING)
-logging.getLogger("telegram.ext.Application").setLevel(logging.WARNING)
