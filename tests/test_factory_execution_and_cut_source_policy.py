@@ -20,26 +20,18 @@ from services.shorts_factory_execution_guard import (
     normalize_factory_language,
     resolve_factory_spoken_language,
 )
-from services.shorts_factory_quality_gate import (
-    validated_factory_plan_language,
-)
+from services.shorts_factory_quality_gate import validated_factory_plan_language
 
 
 def test_factory_quality_gate_requires_proven_dominant_spoken_language():
-    assert validated_factory_plan_language(
-        {"metadata": {"language": "en"}}
-    ) == "en"
-
+    assert validated_factory_plan_language({"metadata": {"language": "en"}}) == "en"
     with pytest.raises(RuntimeError, match="доминирующий язык речи"):
-        validated_factory_plan_language(
-            {"metadata": {"language": "mixed"}}
-        )
+        validated_factory_plan_language({"metadata": {"language": "mixed"}})
 
 
 def test_factory_spoken_language_prefers_audio_plan_over_title_metadata():
     plan = {"metadata": {"language": "English"}}
     info = {"language": "ru", "title": "Русский заголовок"}
-
     assert resolve_factory_spoken_language(plan, info) == "en"
     assert factory_language_needs_translation("en") is True
 
@@ -47,7 +39,6 @@ def test_factory_spoken_language_prefers_audio_plan_over_title_metadata():
 def test_factory_russian_audio_skips_translation_even_with_english_title():
     plan = {"metadata": {"language": "русский"}}
     info = {"language": "", "title": "An English SEO title"}
-
     assert resolve_factory_spoken_language(plan, info) == "ru"
     assert factory_language_needs_translation("ru") is False
 
@@ -81,16 +72,11 @@ def test_factory_unknown_language_is_fail_closed_without_title_guessing():
 
 
 def test_enabled_legacy_cuts_convert_valid_cache_to_replay():
-    assert cut_cache_validity(
-        True,
-        "ok",
-        pipeline_requested=True,
-    ) == (False, "cut_cache_replay")
-    assert cut_cache_validity(
-        True,
-        "ok",
-        pipeline_requested=False,
-    ) == (True, "ok")
+    assert cut_cache_validity(True, "ok", pipeline_requested=True) == (
+        False,
+        "cut_cache_replay",
+    )
+    assert cut_cache_validity(True, "ok", pipeline_requested=False) == (True, "ok")
 
 
 def test_eng_cut_ignores_cached_file_id_but_keeps_other_cache_fields():
@@ -99,19 +85,16 @@ def test_eng_cut_ignores_cached_file_id_but_keeps_other_cache_fields():
         "livedub_file_id": "telegram-file-id",
         "livedub_file_id_version": "v1",
     }
-
     adjusted = cached_record_for_cut_source(
         cached,
         pipeline_requested=True,
         translated_required=True,
     )
-
     assert adjusted is not cached
     assert adjusted["ai_data"] == cached["ai_data"]
     assert adjusted["livedub_file_id"] == ""
     assert adjusted["livedub_file_id_version"] == ""
     assert cached["livedub_file_id"] == "telegram-file-id"
-
     assert cached_record_for_cut_source(
         cached,
         pipeline_requested=True,
@@ -126,7 +109,6 @@ def test_cached_cut_replay_disables_publication_features_only_task_locally():
         "shorts": True,
         "clips": True,
     }
-
     with cut_source_mode_context("rus", pipeline_requested=True):
         token = source_policy._CUT_CACHE_REPLAY.set(True)
         try:
@@ -138,7 +120,6 @@ def test_cached_cut_replay_disables_publication_features_only_task_locally():
             assert cut_replay_setting_value("generate_pdf", True) is False
         finally:
             source_policy._CUT_CACHE_REPLAY.reset(token)
-
     assert cut_replay_settings(base) == base
     assert cut_replay_setting_value("synopsis", True) is True
 
@@ -160,7 +141,6 @@ async def test_cached_cut_replay_suppresses_only_main_mp3(tmp_path):
 
     message = Message()
     proxy = source_policy._CutReplayMessageProxy(message)
-
     replay_token = source_policy._CUT_CACHE_REPLAY.set(True)
     mp3_token = source_policy._CUT_MAIN_MP3_PATH.set(main_mp3)
     try:
@@ -169,7 +149,6 @@ async def test_cached_cut_replay_suppresses_only_main_mp3(tmp_path):
     finally:
         source_policy._CUT_MAIN_MP3_PATH.reset(mp3_token)
         source_policy._CUT_CACHE_REPLAY.reset(replay_token)
-
     assert suppressed.audio is None
     assert delivered == "sent"
     assert message.audios == [companion]
@@ -178,23 +157,17 @@ async def test_cached_cut_replay_suppresses_only_main_mp3(tmp_path):
 def test_legacy_eng_cut_source_policy_is_task_local_and_fail_closed(tmp_path):
     translated = tmp_path / "translated.mp4"
     translated.write_bytes(b"x")
-
     assert translated_source_required("rus") is False
     assert translated_source_required("eng") is True
-
     with cut_source_mode_context("eng", pipeline_requested=True):
         assert cut_source_is_usable(None) is False
         assert cut_source_is_usable(translated) is True
-
     with cut_source_mode_context("rus"):
         assert cut_source_is_usable(None) is True
 
 
 @pytest.mark.asyncio
-async def test_clip_delivery_proxy_uses_actual_probed_duration(
-    monkeypatch,
-    tmp_path,
-):
+async def test_clip_delivery_proxy_uses_actual_probed_duration(monkeypatch, tmp_path):
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"x" * 2048)
     probe = SimpleNamespace(duration=612.6)
@@ -204,11 +177,7 @@ async def test_clip_delivery_proxy_uses_actual_probed_duration(
         return probe
 
     monkeypatch.setattr(source_policy, "probe_media_async", fake_probe)
-    monkeypatch.setattr(
-        source_policy,
-        "media_probe_is_deliverable",
-        lambda value: value is probe,
-    )
+    monkeypatch.setattr(source_policy, "media_probe_is_deliverable", lambda value: value is probe)
 
     class Message:
         def __init__(self):
@@ -220,7 +189,6 @@ async def test_clip_delivery_proxy_uses_actual_probed_duration(
 
     message = Message()
     proxy = source_policy._ClipMessageProxy(message)
-
     assert await proxy.reply_video(video=video, duration=600) == "sent"
     assert message.kwargs["duration"] == 613
 
@@ -255,7 +223,6 @@ def test_factory_preflight_reports_every_missing_runtime_dependency():
         free_gb=0.4,
         min_free_gb=2.0,
     )
-
     assert issues == (
         "Gemini API clients are unavailable",
         "faster-whisper is unavailable",
@@ -276,40 +243,29 @@ def test_factory_preflight_accepts_complete_runtime():
     ) == ()
 
 
-def test_factory_executor_analyzes_audio_before_selecting_source_backend():
-    source = Path("services/shorts_factory_execution_guard.py").read_text(
-        encoding="utf-8"
-    )
-
-    plan_pos = source.index(
-        "plan = await factory_module.create_factory_plan("
-    )
-    source_task_pos = source.index(
-        "source_task = asyncio.create_task(",
-        plan_pos,
-    )
-
-    assert plan_pos < source_task_pos
+def test_factory_owner_proves_language_before_selecting_source_backend():
+    source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
+    plan_pos = source.index("plan = await create_factory_plan(")
+    language_pos = source.index("spoken_language = resolve_factory_spoken_language(plan, info)")
+    source_task_pos = source.index("source_task = asyncio.create_task(", language_pos)
+    assert plan_pos < language_pos < source_task_pos
     assert "_source_needs_translation" not in source
-    assert "resolve_factory_spoken_language(plan, info)" in source
+    assert "factory_language_needs_translation(spoken_language)" in source
 
 
-def test_factory_partial_delivery_keeps_trim_source_and_reports_actual_counts():
-    source = Path("services/shorts_factory_execution_guard.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "shorts_sent, longs_sent = factory_completed_delivery_counts()" in source
-    assert "keep_source_for_trim = shorts_sent > 0" in source
-    assert "SHORTS FACTORY MAX частично завершён" in source
-    assert "if total_sent <= 0:" in source
+def test_factory_delivery_counts_are_return_values_not_context_proxies():
+    source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
+    short_source = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
+    assert "shorts_sent = await process_and_send_factory_shorts(" in source
+    assert "longs_sent = await process_and_send_clips(" in source
+    assert "factory_completed_delivery_counts" not in source
+    assert "factory_render_context" not in source
+    assert "sent += 1" in short_source
+    assert "SHORTS FACTORY MAX завершён" in source
 
 
 def test_cut_mode_context_preserves_each_existing_entrypoint_chain():
-    source = Path("services/cut_mode_source_policy.py").read_text(
-        encoding="utf-8"
-    )
-
+    source = Path("services/cut_mode_source_policy.py").read_text(encoding="utf-8")
     assert "original_main_process = main_pipeline_module.process_single_video" in source
     assert "original_commands_process = commands_module.process_single_video" in source
     assert "original_playlist_process = playlist_module.process_single_video" in source
@@ -318,10 +274,7 @@ def test_cut_mode_context_preserves_each_existing_entrypoint_chain():
 
 
 def test_cached_cut_replay_preserves_cache_and_archive_surfaces():
-    source = Path("services/cut_mode_source_policy.py").read_text(
-        encoding="utf-8"
-    )
-
+    source = Path("services/cut_mode_source_policy.py").read_text(encoding="utf-8")
     assert "Cached cut replay: preserving existing video_cache record" in source
     assert "main_pipeline_module.adb_save = cut_aware_adb_save" in source
     assert "main_pipeline_module.asave_generated_page_record" in source
@@ -329,18 +282,10 @@ def test_cached_cut_replay_preserves_cache_and_archive_surfaces():
     assert "main_pipeline_module.gemini_analyze_audio = cut_aware_gemini_analyze" in source
 
 
-def test_required_runtime_installs_new_guards_without_import_side_effects():
-    quality = Path("services/shorts_factory_quality_gate.py").read_text(
-        encoding="utf-8"
-    )
-    execution = Path("services/shorts_factory_execution_guard.py").read_text(
-        encoding="utf-8"
-    )
-    source_policy = Path("services/cut_mode_source_policy.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "if not install_cut_mode_source_policy():" in quality
-    assert "if not install_shorts_factory_execution_guard():" in quality
-    assert "\ninstall_shorts_factory_execution_guard()\n" not in execution
-    assert "\ninstall_cut_mode_source_policy()\n" not in source_policy
+def test_factory_quality_and_execution_contracts_are_not_installer_stacks():
+    quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
+    execution = Path("services/shorts_factory_execution_guard.py").read_text(encoding="utf-8")
+    assert "install_factory_plan_quality_gate" not in quality
+    assert "install_shorts_factory_execution_guard" not in execution
+    assert "shorts_factory_runtime" not in execution
+    assert "process_shorts_factory_guarded" in execution
