@@ -6,13 +6,13 @@ import pytest
 from handlers.mode_command import MODE_DESCRIPTIONS, MODE_LABELS, VALID_MODES
 import pipelines.factory_short_delivery as short_delivery
 import pipelines.shorts_factory as factory
-from pipelines.shorts_factory import (
-    _persist_factory_source,
-    _source_needs_translation,
-    _translation_backend,
-)
+from pipelines.shorts_factory import _persist_factory_source, _translation_backend
 import pipelines.video_dispatch as video_dispatch
 import services.shorts_factory_media as factory_media
+from services.shorts_factory_execution_guard import (
+    factory_language_needs_translation,
+    resolve_factory_spoken_language,
+)
 from services.shorts_factory_media import validated_factory_source_duration
 from services.shorts_factory_timing import (
     RU_ONLY_BOUNDARY_PROOF,
@@ -33,15 +33,18 @@ def test_shorts_factory_is_exposed_as_persistent_mode():
     assert "без собственного нейроперевода" in description
 
 
-def test_non_russian_source_requires_translation():
-    assert _source_needs_translation({"language": "en", "title": "A sermon"}) is True
-    assert _source_needs_translation({"language": "fr", "title": "Un sermon"}) is True
-    assert _source_needs_translation({"language": "ru", "title": "Проповедь"}) is False
+def test_translation_decision_prefers_spoken_audio_over_title_or_metadata():
+    plan = {"metadata": {"language": "en"}}
+    info = {"language": "ru", "title": "Русский заголовок"}
+    spoken = resolve_factory_spoken_language(plan, info)
+    assert spoken == "en"
+    assert factory_language_needs_translation(spoken) is True
 
-
-def test_unknown_language_uses_title_script_as_conservative_signal():
-    assert _source_needs_translation({"language": "", "title": "The Gospel"}) is True
-    assert _source_needs_translation({"language": "", "title": "Евангелие"}) is False
+    plan = {"metadata": {"language": "ru"}}
+    info = {"language": "en", "title": "English title"}
+    spoken = resolve_factory_spoken_language(plan, info)
+    assert spoken == "ru"
+    assert factory_language_needs_translation(spoken) is False
 
 
 def test_translation_backend_defaults_to_yandex_only(monkeypatch):
