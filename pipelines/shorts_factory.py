@@ -6,7 +6,6 @@ import asyncio
 import html
 import json
 import logging
-import math
 import os
 import re
 import shutil
@@ -19,17 +18,13 @@ from core.globals import DOWNLOAD_DIR
 from core.url_utils import get_youtube_video_url
 from core.utils import parse_title
 from pipelines.clips import process_and_send_clips
-from pipelines.shorts import process_and_send_shorts
+from pipelines.factory_short_delivery import process_and_send_factory_shorts
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.shorts_factory_candidates import factory_ai_data
 from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
 from services.shorts_factory_media import validated_factory_source_duration
-from services.shorts_factory_runtime import (
-    FACTORY_LONG_PUBLIC_MAX_SEC,
-    factory_completed_delivery_counts,
-    factory_render_context,
-)
+from services.shorts_factory_publication import enrich_factory_candidates
 from services.shorts_factory_source import (
     _factory_livedub_timeout_seconds,
     create_factory_plan_from_supported_audio,
@@ -45,10 +40,8 @@ from services.translation_editorial_factory import (
 )
 
 logger = logging.getLogger(__name__)
+FACTORY_LONG_PUBLIC_MAX_SEC = 900.0
 
-# Source-owned seams. Runtime composition may still wrap some of these while the
-# remaining legacy bridge is removed, but the Factory itself has valid owners
-# without any installer.
 _download_factory_audio = download_factory_audio_source
 download_video_for_shorts = download_factory_video_source
 _prepare_translation_video = prepare_factory_translation_video
@@ -165,7 +158,7 @@ def _persist_factory_source(source_path: Path, media_id: str) -> Path:
     except (OSError, shutil.Error):
         shutil.copy2(source_path, destination)
     if not destination.exists() or destination.stat().st_size < 1024:
-        raise RuntimeError("Не удалось сохранить общий источник для рендера и trim-кнопок")
+        raise RuntimeError("Не удалось сохранить общий источник для Factory")
     return destination
 
 
@@ -233,7 +226,7 @@ async def process_shorts_factory(
     url = get_youtube_video_url(url)
     mp3_path: Path | None = None
     persistent_source_path: Path | None = None
-    keep_source_for_trim = False
+    keep_source = False
     workdir = Path(tempfile.mkdtemp(prefix="shorts_factory_"))
     source_task: asyncio.Task | None = None
 
@@ -385,36 +378,55 @@ async def process_shorts_factory(
             "✂️ Рендерю SHORTS HIGHLIGHTS и длинные фрагменты…",
         )
 
-        with factory_render_context(render_shorts, render_longs):
-            if render_shorts:
-                await process_and_send_shorts(
-                    url=url,
-                    media_id=media_id,
-                    mp3_path=mp3_path,
-                    title=title or full_title,
-                    performer=performer or channel_name,
-                    duration=render_source_duration,
-                    ai_data=ai_data,
-                    update=update,
-                    workdir=workdir,
-                    livedub_video_path=persistent_source_path,
-                )
-                keep_source_for_trim = True
-            if render_longs:
-                await process_and_send_clips(
-                    url=url,
-                    media_id=media_id,
-                    mp3_path=mp3_path,
-                    title=title or full_title,
-                    performer=performer or channel_name,
-                    duration=render_source_duration,
-                    ai_data=ai_data,
-                    update=update,
-                    livedub_video_path=persistent_source_path,
-                    public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
+        shorts_sent = 0
+        longs_sent = 0
+        if render_shorts:
+            shorts_sent = await process_and_send_factory_shorts(
+                url=url,
+                media_id=media_id,
+                mp3_path=mp3_path,
+                title=title or full_title,
+                performer=performer or channel_name,
+                source_duration=render_source_duration,
+                ai_data=ai_data,
+                candidates=render_shorts,
+                source_video_path=persistent_source_path,
+                update=update,
+            )
+            if shorts_sent <= 0:
+                raise RuntimeError(
+                    "SHORTS FACTORY не доставил ни одного Short с обязательными субтитрами"
                 )
 
-        shorts_sent, longs_sent = factory_completed_delivery_counts()
+        if render_longs:
+            enriched_longs = await enrich_factory_candidates(
+                render_longs,
+                call_kwargs={
+                    "mp3_path": mp3_path,
+                    "ai_data": ai_data,
+                    "title": title or full_title,
+                    "performer": performer or channel_name,
+                    "duration": render_source_duration,
+                },
+                kind="long",
+            )
+            longs_sent = await process_and_send_clips(
+                url=url,
+                media_id=media_id,
+                mp3_path=mp3_path,
+                title=title or full_title,
+                performer=performer or channel_name,
+                duration=render_source_duration,
+                ai_data=ai_data,
+                update=update,
+                livedub_video_path=persistent_source_path,
+                candidates_override=enriched_longs,
+                public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
+                factory_publication=True,
+            )
+            if longs_sent <= 0:
+                raise RuntimeError("SHORTS FACTORY не доставил ни одного длинного клипа")
+
         plan_meta = render_plan.get("metadata") or {}
         full_video_sent = await send_factory_full_translation_if_enabled(
             update,
@@ -443,7 +455,7 @@ async def process_shorts_factory(
                     long_candidates=render_longs,
                     ai_data=ai_data,
                 )
-                keep_source_for_trim = True
+                keep_source = True
                 if not silent_errors:
                     await send_factory_editorial_files(
                         update,
@@ -511,7 +523,7 @@ async def process_shorts_factory(
                 mp3_path.unlink(missing_ok=True)
             except OSError:
                 pass
-        if persistent_source_path is not None and not keep_source_for_trim:
+        if persistent_source_path is not None and not keep_source:
             try:
                 persistent_source_path.unlink(missing_ok=True)
             except OSError:
@@ -519,4 +531,4 @@ async def process_shorts_factory(
         shutil.rmtree(workdir, ignore_errors=True)
 
 
-__all__ = ["process_shorts_factory"]
+__all__ = ["FACTORY_LONG_PUBLIC_MAX_SEC", "process_shorts_factory"]
