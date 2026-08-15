@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Final no-compromise acceptance gate for Shorts Factory plans."""
+"""Pure Factory plan acceptance policy plus remaining cut-policy composition."""
 from __future__ import annotations
 
 import copy
 import logging
 import math
 import os
-import sys
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -107,13 +106,12 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def validated_factory_plan_language(plan: dict[str, Any]) -> str:
+    """Normalize the audio-proven language and fail closed on mixed/unknown input."""
     metadata = plan.get("metadata") if isinstance(plan, dict) else {}
     metadata = metadata if isinstance(metadata, dict) else {}
     raw_language = str(metadata.get("language") or "").strip()
 
-    from services.shorts_factory_execution_guard import (
-        normalize_factory_language,
-    )
+    from services.shorts_factory_execution_guard import normalize_factory_language
 
     normalized = normalize_factory_language(raw_language)
     if not normalized:
@@ -124,36 +122,20 @@ def validated_factory_plan_language(plan: dict[str, Any]) -> str:
 
 
 def install_factory_plan_quality_gate() -> bool:
-    """Install every post-media Factory/cut guard before lazy pipeline imports."""
+    """Compose the remaining cut/media guards while they are moved to owners."""
     global _INSTALLED
     if _INSTALLED:
         return True
 
     from services.cut_mode_source_policy import install_cut_mode_source_policy
-    from services.cut_replay_delivery_policy import (
-        install_cut_replay_delivery_policy,
-    )
+    from services.cut_replay_delivery_policy import install_cut_replay_delivery_policy
     from services.shorts_duration_safety import install_shorts_duration_safety
     from services.shorts_factory_disk_guard import install_factory_disk_guard
-    from services.shorts_factory_execution_guard import (
-        install_shorts_factory_execution_guard,
-    )
-    from services.shorts_factory_no_downgrade import (
-        install_factory_no_downgrade_policy,
-    )
-    from services.shorts_factory_source import (
-        install_factory_source_quality_policy,
-    )
-    from services.shorts_factory_video_quality import (
-        install_factory_video_quality_policy,
-    )
-    from services.shorts_factory_render_polish import (
-        install_factory_render_polish,
-    )
-    from services.shorts_factory_portable_publication import (
-        install_factory_portable_publication,
-    )
-    import services.shorts_factory_candidates as candidates_module
+    from services.shorts_factory_execution_guard import install_shorts_factory_execution_guard
+    from services.shorts_factory_no_downgrade import install_factory_no_downgrade_policy
+    from services.shorts_factory_portable_publication import install_factory_portable_publication
+    from services.shorts_factory_render_polish import install_factory_render_polish
+    from services.shorts_factory_video_quality import install_factory_video_quality_policy
 
     if not install_cut_mode_source_policy():
         return False
@@ -161,14 +143,10 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_factory_no_downgrade_policy():
         return False
-    if not install_factory_source_quality_policy():
-        return False
-    # Ordinary Shorts establish their duration owner before Factory captures
-    # the generic seams it delegates to outside Factory context.
+    # Source acquisition, compact Gemini AAC, three-pass plan, language proof and
+    # final quality acceptance are already owned by shorts_factory_source.
     if not install_shorts_duration_safety():
         return False
-    # These must precede the disk guard: it captures the final source/render
-    # seams, including the exact-unity and public-duration polish layer.
     if not install_factory_video_quality_policy():
         return False
     if not install_factory_render_polish():
@@ -177,52 +155,12 @@ def install_factory_plan_quality_gate() -> bool:
         return False
     if not install_factory_disk_guard():
         return False
-
-    original_boundary_prompt = candidates_module._boundary_prompt
-    original_create_factory_plan = candidates_module.create_factory_plan
-
-    def strict_boundary_prompt(judged_plan, duration):
-        return original_boundary_prompt(judged_plan, duration) + (
-            "\n\nОБЯЗАТЕЛЬНО: metadata.language должен содержать один "
-            "доминирующий фактически услышанный язык речи как ISO 639-1 "
-            "(например ru, en, de). Не определяй язык по заголовку. "
-            "Если доминирующий язык доказать нельзя, верни mixed."
-        )
-
-    candidates_module._boundary_prompt = strict_boundary_prompt
-
-    async def strict_create_factory_plan(*args, **kwargs):
-        plan = await original_create_factory_plan(*args, **kwargs)
-        gated = apply_factory_quality_gate(plan)
-        normalized_language = validated_factory_plan_language(gated)
-        metadata = gated.setdefault("metadata", {})
-        if isinstance(metadata, dict):
-            metadata["language"] = normalized_language
-        if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
-            report = gated.get("quality_gate") or {}
-            raise RuntimeError(
-                "Gemini завершила три проверки, но ни один фрагмент не прошёл "
-                "финальный MAX-порог качества: "
-                f"Shorts>={report.get('min_short_score')}, "
-                f"long>={report.get('min_long_score')}"
-            )
-        logger.info("Shorts Factory final quality gate: %s", gated["quality_gate"])
-        return gated
-
-    candidates_module.create_factory_plan = strict_create_factory_plan
-    eager_factory = sys.modules.get("pipelines.shorts_factory")
-    if eager_factory is not None:
-        eager_factory.create_factory_plan = strict_create_factory_plan
-
     if not install_shorts_factory_execution_guard():
         return False
 
     _INSTALLED = True
     logger.info(
-        "Shorts Factory post-media guards installed: validated no-downgrade "
-        "configuration, <=1080p source-quality policy, selected-format disk "
-        "proof, exact audited boundaries, spoken-language execution, "
-        "translated ENG source and truthful cached cut replay delivery"
+        "Factory remaining cut/media guards installed; source plan quality is owner-native"
     )
     return True
 
