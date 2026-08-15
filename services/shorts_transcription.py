@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 FACTORY_SUBTITLE_PROFILE: dict[str, Any] = {
     "model_name": "large-v3",
-    "karaoke": False,
-    "word_timestamps": False,
+    "karaoke": True,
+    "word_timestamps": True,
     "light": False,
     "gemini_hints": True,
 }
