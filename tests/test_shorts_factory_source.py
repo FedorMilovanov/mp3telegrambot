@@ -206,8 +206,15 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
     original_path.write_bytes(b"v" * 4096)
     ru_path.write_bytes(b"r" * 4096)
 
-    async def fake_download_original(url, media_id, workdir=None):
+    async def fake_download_original(
+        url,
+        media_id,
+        workdir=None,
+        *,
+        expected_duration=0.0,
+    ):
         assert media_id == "translated"
+        assert expected_duration == 100.0
         return original_path
 
     async def fake_get_live_audio(*args, **kwargs):
@@ -232,6 +239,7 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
     monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live")
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB", "1")
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "60")
+    monkeypatch.setattr(source, "ensure_factory_video_space", lambda *args, **kwargs: None)
     monkeypatch.setattr(source, "download_factory_video_source", fake_download_original)
     monkeypatch.setattr(yandex_live_dub, "get_live_dub_audio", fake_get_live_audio)
     monkeypatch.setattr(livedub_mix, "mix_tracks", fake_mix)
@@ -260,6 +268,7 @@ async def test_factory_livedub_rejects_missing_required_tail(
     ru_path.write_bytes(b"r" * 4096)
 
     async def fake_download_original(*args, **kwargs):
+        assert kwargs["expected_duration"] == 100.0
         return original_path
 
     async def fake_get_live_audio(*args, **kwargs):
@@ -278,6 +287,7 @@ async def test_factory_livedub_rejects_missing_required_tail(
 
     monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live")
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB", "1")
+    monkeypatch.setattr(source, "ensure_factory_video_space", lambda *args, **kwargs: None)
     monkeypatch.setattr(source, "download_factory_video_source", fake_download_original)
     monkeypatch.setattr(yandex_live_dub, "get_live_dub_audio", fake_get_live_audio)
     monkeypatch.setattr(livedub_mix, "mix_tracks", fake_mix)
