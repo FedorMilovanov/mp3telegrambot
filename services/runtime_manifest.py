@@ -256,7 +256,7 @@ class RuntimeManifest:
 DEFAULT_RUNTIME_FEATURES = (
     RuntimeFeature(
         "singleton",
-        "services.project_runtime_hardening",
+        "services.process_singleton",
         "acquire_early_singleton",
         RuntimePhase.PRE_MAIN,
         false_is_failure=True,
