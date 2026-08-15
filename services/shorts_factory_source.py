@@ -13,6 +13,11 @@ from core.globals import DOWNLOAD_DIR
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+from services.shorts_factory_disk_guard import (
+    ensure_factory_audio_space,
+    ensure_factory_video_space,
+    factory_delivery_sort_args,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,11 +213,13 @@ async def _prepare_gemini_audio(
 
 
 def _factory_quality_sort_reset() -> list[str]:
-    return [
-        "--format-sort-reset",
-        "--no-format-sort-force",
-        "--no-prefer-free-formats",
-    ]
+    return factory_delivery_sort_args(
+        [
+            "--format-sort-reset",
+            "--no-format-sort-force",
+            "--no-prefer-free-formats",
+        ]
+    )
 
 
 async def _download_factory_audio_fresh(url: str, media_id: str) -> Path:
@@ -250,8 +257,15 @@ async def download_factory_audio_source(
     media_id: str,
     *,
     status_msg: Any = None,
+    expected_duration: float = 0.0,
 ) -> Path:
     """Return verified compact analysis audio through the source-owned retry cache."""
+    if expected_duration > 0:
+        ensure_factory_audio_space(
+            [DOWNLOAD_DIR],
+            duration_seconds=float(expected_duration),
+        )
+
     from services.shorts_factory_retry_cache import (
         download_factory_audio_with_retry_cache,
     )
@@ -268,10 +282,17 @@ async def download_factory_video_source(
     url: str,
     media_id: str,
     workdir: Path | None = None,
+    *,
+    expected_duration: float = 0.0,
 ) -> Path:
     """Download the best available video+audio without a resolution ceiling."""
     target_dir = Path(workdir) if workdir is not None else DOWNLOAD_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
+    if expected_duration > 0:
+        ensure_factory_video_space(
+            [DOWNLOAD_DIR, target_dir],
+            duration_seconds=float(expected_duration),
+        )
     prefix = f"{media_id}_factory_max_source"
     _remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
@@ -350,6 +371,10 @@ async def prepare_factory_translation_video(
 
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    ensure_factory_video_space(
+        [DOWNLOAD_DIR, workdir],
+        duration_seconds=float(duration),
+    )
     ru_task = asyncio.create_task(
         get_live_dub_audio(
             url,
@@ -361,7 +386,12 @@ async def prepare_factory_translation_video(
         )
     )
     original_task = asyncio.create_task(
-        download_factory_video_source(url, "translated", workdir=workdir)
+        download_factory_video_source(
+            url,
+            "translated",
+            workdir=workdir,
+            expected_duration=float(duration),
+        )
     )
     tasks = (ru_task, original_task)
     try:
