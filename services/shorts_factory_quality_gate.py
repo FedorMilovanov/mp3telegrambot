@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""Pure Factory plan acceptance policy plus remaining cut-policy composition."""
+"""Pure Factory plan acceptance policy."""
 from __future__ import annotations
 
 import copy
-import logging
 import math
 import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 DEFAULT_MIN_SHORT_SCORE = 88.0
 DEFAULT_MIN_LONG_SCORE = 85.0
-_INSTALLED = False
 
 
 def _score_threshold(name: str, default: float) -> float:
@@ -121,54 +117,9 @@ def validated_factory_plan_language(plan: dict[str, Any]) -> str:
     return normalized
 
 
-def install_factory_plan_quality_gate() -> bool:
-    """Compose the remaining cut/media guards while they are moved to owners."""
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-
-    from services.cut_mode_source_policy import install_cut_mode_source_policy
-    from services.cut_replay_delivery_policy import install_cut_replay_delivery_policy
-    from services.shorts_duration_safety import install_shorts_duration_safety
-    from services.shorts_factory_disk_guard import install_factory_disk_guard
-    from services.shorts_factory_execution_guard import install_shorts_factory_execution_guard
-    from services.shorts_factory_no_downgrade import install_factory_no_downgrade_policy
-    from services.shorts_factory_portable_publication import install_factory_portable_publication
-    from services.shorts_factory_render_polish import install_factory_render_polish
-    from services.shorts_factory_video_quality import install_factory_video_quality_policy
-
-    if not install_cut_mode_source_policy():
-        return False
-    if not install_cut_replay_delivery_policy():
-        return False
-    if not install_factory_no_downgrade_policy():
-        return False
-    # Source acquisition, compact Gemini AAC, three-pass plan, language proof and
-    # final quality acceptance are already owned by shorts_factory_source.
-    if not install_shorts_duration_safety():
-        return False
-    if not install_factory_video_quality_policy():
-        return False
-    if not install_factory_render_polish():
-        return False
-    if not install_factory_portable_publication():
-        return False
-    if not install_factory_disk_guard():
-        return False
-    if not install_shorts_factory_execution_guard():
-        return False
-
-    _INSTALLED = True
-    logger.info(
-        "Factory remaining cut/media guards installed; source plan quality is owner-native"
-    )
-    return True
-
-
 __all__ = [
     "DEFAULT_MIN_LONG_SCORE",
     "DEFAULT_MIN_SHORT_SCORE",
     "apply_factory_quality_gate",
-    "install_factory_plan_quality_gate",
     "validated_factory_plan_language",
 ]
