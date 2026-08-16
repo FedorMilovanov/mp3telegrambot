@@ -3,24 +3,89 @@
 """Audio-only and segment-only repair controls for completed Dub Studio projects."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import html
 import json
 import os
 import re
+import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes, filters
 
 from core.database import ADMIN_IDS
 from services.dub_studio import DubStore, studio_root, utc_now
+from tools.voxcpm2 import clean_production_core as strict_core
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _GENERIC_RECIPE = "generic_short_v1"
 _RANGE_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
 _ACTIVE_JOB_STATES = {"queued", "running", "cancel_requested"}
+_DUBFIX_LOCK = asyncio.Lock()
+_DUBFIX_PROCESS_LOCK_STALE_SECONDS = 30 * 60
+
+
+def _process_lock_path() -> Path:
+    root = Path(studio_root()).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root / ".dubfix.request.lock"
+
+
+@contextmanager
+def _dubfix_process_lock() -> Iterator[Path]:
+    """Hold an atomic cross-process lock for request-write + enqueue."""
+    path = _process_lock_path()
+    descriptor: int | None = None
+    for attempt in range(2):
+        try:
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            break
+        except FileExistsError as exc:
+            try:
+                age = max(0.0, time.time() - path.stat().st_mtime)
+            except FileNotFoundError:
+                continue
+            if age > _DUBFIX_PROCESS_LOCK_STALE_SECONDS and attempt == 0:
+                path.unlink(missing_ok=True)
+                continue
+            raise RuntimeError(
+                "Другой процесс уже создаёт /dubfix request; повторите команду после завершения."
+            ) from exc
+    if descriptor is None:
+        raise RuntimeError("Не удалось захватить межпроцессный /dubfix lock.")
+    try:
+        payload = json.dumps(
+            {"pid": os.getpid(), "acquired_unix": time.time()},
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+        yield path
+    finally:
+        try:
+            os.close(descriptor)
+        finally:
+            path.unlink(missing_ok=True)
+
+
+def _strict_ids(values: Any, *, field: str) -> list[int]:
+    if not isinstance(values, (list, tuple)) or not values:
+        raise RuntimeError(f"{field} должен быть непустым списком ID.")
+    result: list[int] = []
+    seen: set[int] = set()
+    for position, value in enumerate(values, start=1):
+        item_id = strict_core._strict_int(
+            value, field=f"{field}[{position}]", low=1, high=2**31 - 1
+        )
+        if item_id in seen:
+            raise RuntimeError(f"{field} содержит повторный ID={item_id}.")
+        seen.add(item_id)
+        result.append(item_id)
+    return result
 
 
 def _short(value: str, limit: int = 180) -> str:
@@ -77,21 +142,47 @@ def _segments_path(project_id: str) -> Path:
 def load_repair_segments(project_id: str) -> list[dict[str, Any]]:
     path = _segments_path(project_id)
     if not path.is_file():
-        raise RuntimeError("У проекта ещё нет segments_ru_final.json; сначала завершите обычный рендер.")
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        raise RuntimeError(
+            "У проекта ещё нет segments_ru_final.json; сначала завершите обычный рендер."
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("segments_ru_final.json повреждён.") from exc
     if not isinstance(payload, list) or not payload:
         raise RuntimeError("Список реплик проекта пуст или повреждён.")
     result: list[dict[str, Any]] = []
-    seen: set[int] = set()
-    for raw in payload:
+    raw_ids: list[Any] = []
+    for position, raw in enumerate(payload, start=1):
         if not isinstance(raw, dict):
-            raise RuntimeError("Некорректная запись реплики в segments_ru_final.json.")
+            raise RuntimeError(
+                f"segment[{position}] должен быть JSON-объектом, получено {type(raw).__name__}."
+            )
         item = dict(raw)
-        segment_id = int(item.get("id") or 0)
-        if segment_id <= 0 or segment_id in seen:
-            raise RuntimeError("Некорректные или повторяющиеся ID реплик.")
-        seen.add(segment_id)
+        raw_ids.append(item.get("id"))
+        start = strict_core._finite(item.get("start"), field=f"segment[{position}].start")
+        end = strict_core._finite(item.get("end"), field=f"segment[{position}].end")
+        if start < 0.0 or end <= start:
+            raise RuntimeError(f"Некорректный timing segment[{position}].")
+        item["start"] = start
+        item["end"] = end
+        if item.get("source_end") is not None:
+            source_end = strict_core._finite(
+                item.get("source_end"), field=f"segment[{position}].source_end"
+            )
+            if source_end < start:
+                raise RuntimeError(f"source_end segment[{position}] раньше start.")
+            item["source_end"] = source_end
+        item["start_delay_ms"] = strict_core._strict_int(
+            item.get("start_delay_ms", 0),
+            field=f"segment[{position}].start_delay_ms", low=0, high=1500,
+        )
+        if not str(item.get("text") or "").strip():
+            raise RuntimeError(f"segment[{position}] не содержит текста.")
         result.append(item)
+    ids = _strict_ids(raw_ids, field="segments.id")
+    for item, segment_id in zip(result, ids, strict=True):
+        item["id"] = segment_id
     return sorted(result, key=lambda item: int(item["id"]))
 
 
@@ -159,25 +250,49 @@ def _write_repair_request(
     *,
     requested_by: int,
 ) -> Path:
-    root = _project_root(str(project["id"]))
+    if not isinstance(project, dict):
+        raise RuntimeError("Project должен быть JSON-объектом.")
+    project_id = str(project.get("id") or "").strip()
+    if not project_id:
+        raise RuntimeError("Project ID пуст.")
+    owner_id = strict_core._strict_int(
+        requested_by, field="audio_repair.requested_by", low=1, high=2**63 - 1
+    )
+    all_ids = _strict_ids(
+        [item.get("id") if isinstance(item, dict) else None for item in segments],
+        field="segments.id",
+    )
+    selected = _strict_ids(selected_ids, field="audio_repair.segment_ids")
+    selected_set = set(selected)
+    all_set = set(all_ids)
+    if not selected_set.issubset(all_set):
+        raise RuntimeError("Выбраны неизвестные segment ID.")
+    root = _project_root(project_id)
     input_dir = root / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
-    segments_path = _segments_path(str(project["id"]))
+    segments_path = _segments_path(project_id)
+    if not segments_path.is_file():
+        raise RuntimeError("segments_ru_final.json исчез до создания repair request.")
     digest = hashlib.sha256(segments_path.read_bytes()).hexdigest()
-    all_ids = [int(item["id"]) for item in segments]
     payload = {
         "schema_version": 1,
-        "project_id": str(project["id"]),
-        "segment_ids": selected_ids,
-        "repair_all": selected_ids == all_ids,
+        "project_id": project_id,
+        "segment_ids": selected,
+        "repair_all": selected_set == all_set,
         "segments_sha256": digest,
-        "requested_by": int(requested_by),
+        "requested_by": owner_id,
         "requested_at": utc_now(),
     }
     destination = input_dir / "audio_repair.json"
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, destination)
+    temporary = destination.with_name(destination.name + f".tmp.{os.getpid()}.{id(payload)}")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     return destination
 
 
@@ -196,7 +311,7 @@ async def dubsegments_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 1000)), parse_mode="HTML")
 
 
-async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _dubfix_command_unlocked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
     args = list(context.args or [])
@@ -254,6 +369,17 @@ async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 1100)), parse_mode="HTML")
 
 
+async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with _DUBFIX_LOCK:
+        try:
+            with _dubfix_process_lock():
+                await _dubfix_command_unlocked(update, context)
+        except RuntimeError as exc:
+            if update.effective_message is None:
+                raise
+            await update.effective_message.reply_text(f"⚠️ {exc}")
+
+
 def register_dub_audio_repair_handlers(application: Any) -> None:
     if application.bot_data.get("dub_audio_repair_handlers_registered"):
         return
@@ -263,6 +389,8 @@ def register_dub_audio_repair_handlers(application: Any) -> None:
 
 
 __all__ = [
+    "_dubfix_process_lock",
+    "_write_repair_request",
     "_ensure_repair_slot",
     "dubfix_command",
     "dubsegments_command",
