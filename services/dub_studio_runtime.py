@@ -7,6 +7,7 @@ services. No PTB class methods are replaced at runtime.
 from __future__ import annotations
 
 from core.media_title_policy import canonical_media_title
+from services.dub_worker_release import WORKER_RUNTIME
 
 import asyncio
 import html
@@ -21,7 +22,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 _GENERIC_RECIPE = "generic_short_v1"
-_WORKER_RUNTIME = "dub-worker-quality-v4.5"
+_WORKER_RUNTIME = WORKER_RUNTIME
 _PROGRESS_METADATA_KEY = "dub_progress_message_v1"
 _ACTIVE_PROJECT_STATES = {"queued", "rendering", "cancelling"}
 _PERMANENT_EDIT_ERRORS = (
@@ -103,7 +104,7 @@ def ensure_worker_running() -> bool:
     command = [
         sys.executable,
         "-m",
-        "tools.voxcpm2.dub_worker_hardened",
+        "tools.voxcpm2.dub_worker",
         "--root",
         str(root),
     ]
@@ -124,7 +125,7 @@ def ensure_worker_running() -> bool:
                 stdin=subprocess.DEVNULL,
                 **kwargs,
             )
-        logger.info("🎙 Dub Studio worker v4.5 autostart requested: %s", root)
+        logger.info("🎙 Dub Studio worker %s autostart requested: %s", WORKER_RUNTIME, root)
         return True
     except Exception as exc:
         logger.warning("⚠️ Dub Studio worker autostart failed: %s", exc)
@@ -531,7 +532,7 @@ def register_dub_studio(application: Any) -> bool:
     register_dub_quickstart_handler(application)
     register_dub_multicommand_handler(application)
     ensure_worker_running()
-    logger.info("🎙 Dub Studio v4.5 handlers registered on Application")
+    logger.info("🎙 Dub Studio handlers registered on Application")
     return True
 
 
