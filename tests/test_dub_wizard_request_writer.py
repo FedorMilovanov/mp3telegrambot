@@ -10,6 +10,8 @@ import pytest
 
 from handlers import dub_wizard
 from services.speech_backends import DEFAULT_MODEL_PROFILE_ID, default_model_profile
+from services.tts_profile_selection import write_durable_request
+from tools.voxcpm2 import generic_project_runtime
 
 
 def _payload(**overrides):
@@ -32,27 +34,18 @@ def _payload(**overrides):
     }
 
 
-def test_wizard_writes_validated_request_inside_project_root(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(
-        dub_wizard.generic_project_runtime,
-        "studio_root",
-        lambda: tmp_path / "studio",
-    )
-    path = dub_wizard._write_request("dub-0123456789", _payload())
-    expected = (
-        tmp_path
-        / "studio"
-        / "projects"
-        / "dub-0123456789"
-        / "request.json"
-    ).resolve()
+def _validate_and_write(path: Path, payload: dict[str, Any]) -> Path:
+    validated = generic_project_runtime.validate_request_payload(payload)
+    write_durable_request(path, validated)
+    return path
+
+
+def test_source_owned_writer_persists_validated_request(tmp_path: Path) -> None:
+    path = tmp_path / "projects" / "dub-0123456789" / "request.json"
+    _validate_and_write(path, _payload())
     saved = json.loads(path.read_text(encoding="utf-8"))
     profile = default_model_profile()
 
-    assert path == expected
     assert saved["video_id"] == "AbCdEf12345"
     assert saved["speech_backend"] == profile.backend_id
     assert saved["speech_model_profile"] == profile.profile_id
@@ -77,53 +70,24 @@ def test_wizard_writes_validated_request_inside_project_root(
         _payload(speech_options={"temperature": 0.7}),
     ],
 )
-def test_invalid_wizard_request_is_not_written(
-    monkeypatch,
+def test_invalid_request_is_rejected_before_durable_write(
     tmp_path: Path,
     payload: dict,
 ) -> None:
-    monkeypatch.setattr(
-        dub_wizard.generic_project_runtime,
-        "studio_root",
-        lambda: tmp_path / "studio",
-    )
-    with pytest.raises(RuntimeError):
-        dub_wizard._write_request("dub-0123456789", payload)
-    request_path = (
-        tmp_path
-        / "studio"
-        / "projects"
-        / "dub-0123456789"
-        / "request.json"
-    )
+    request_path = tmp_path / "projects" / "dub-0123456789" / "request.json"
+    with pytest.raises((RuntimeError, ValueError)):
+        _validate_and_write(request_path, payload)
     assert not request_path.exists()
     assert not list(request_path.parent.glob(".request.json.*.tmp"))
 
 
-def test_three_argument_request_call_remains_default_profile_compatible(
-    monkeypatch,
-) -> None:
-    for name in (
-        "DUB_TTS_OPTIONS_JSON",
-        "DUB_TTS_BACKEND_CONFIG_JSON",
-        "DUB_VOX_THREADS",
-        "DUB_VOX_STEPS",
-        "DUB_VOX_CFG",
-        "DUB_VOX_CACHE_LENGTH",
-        "DUB_VOX_BASE_SEED",
-        "DUB_VOX_ARCHIVE",
-        "DUB_CPU_VENV",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    payload = dub_wizard._request_payload(
-        "AbCdEf12345",
-        "https://youtube.com/watch?v=AbCdEf12345",
-        "gemini",
-    )
-
-    assert payload["speech_model_profile"] == DEFAULT_MODEL_PROFILE_ID
-    assert payload["speech_profile_fingerprint"] == default_model_profile().fingerprint()
+def test_request_payload_requires_explicit_production_profile() -> None:
+    with pytest.raises(TypeError):
+        dub_wizard._request_payload(
+            "AbCdEf12345",
+            "https://youtube.com/watch?v=AbCdEf12345",
+            "gemini",
+        )
 
 
 def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) -> None:
@@ -234,11 +198,10 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
         lambda _project_id: Path("/tmp/dub-project"),
     )
 
-    def write_request(path: Path, payload: dict[str, Any]) -> Path:
+    def write_request(path: Path, payload: dict[str, Any]) -> None:
         assert path.name == "request.json"
         assert payload["speech_profile_fingerprint"] == profile.fingerprint()
         order.append("request")
-        return path
 
     monkeypatch.setattr(dub_wizard, "write_durable_request", write_request)
     context = SimpleNamespace(user_data={dub_wizard._WIZARD_KEY: {"awaiting": "url"}})
@@ -325,7 +288,7 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
         lambda _project_id: Path("/tmp/dub-project"),
     )
 
-    def fail_write(*_args: Any, **_kwargs: Any) -> Path:
+    def fail_write(*_args: Any, **_kwargs: Any) -> None:
         order.append("request-failed")
         raise OSError("DISK_SENTINEL")
 
@@ -344,5 +307,3 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
 
     assert order == ["create", "request-failed"]
     assert not any(item.startswith("enqueue:") for item in order)
-
-
