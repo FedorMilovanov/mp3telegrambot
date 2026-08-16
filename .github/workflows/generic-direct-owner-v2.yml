@@ -1,0 +1,52 @@
+name: Generic Direct Owner V2
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .generic-direct-owner-v2-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Promote clean direct route into canonical owner
+        run: python tools/source_own_generic_direct_route_v2.py
+      - name: Compile production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py bot_new.py
+      - name: Verify canonical direct recipe route
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f tools/voxcpm2/generic_clean_direct_runtime.py
+          test ! -f tools/voxcpm2/_generic_clean_direct_runtime_base.py
+          ! grep -RInE 'generic_clean_direct_runtime|_generic_clean_direct_runtime_base|install_generic_preflight' tools/voxcpm2 services handlers core pipelines --include='*.py'
+          grep -q 'CLEAN_DIRECT_POLICY = "generic-clean-direct-v2"' tools/voxcpm2/generic_direct_runtime.py
+          grep -q 'class RetryAwareManifest' tools/voxcpm2/generic_direct_runtime.py
+          grep -q 'direct_timing_guard.run_pre_model_guard' tools/voxcpm2/generic_direct_runtime.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          assert recipe['actions']['render_direct']['python_module'] == 'tools.voxcpm2.generic_direct_runtime'
+          PY
+      - name: Commit migration
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Source-own generic direct Dub route"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
