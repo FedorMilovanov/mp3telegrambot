@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flatten simple VoxCPM .py/package wrappers into a single canonical .py owner."""
+"""Flatten VoxCPM .py/package wrappers into one canonical .py owner."""
 from __future__ import annotations
 
 import ast
@@ -7,13 +7,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "tools" / "voxcpm2"
 TARGETS = (
-    "clean_production_core",
-    "direct_max_quality_render",
-    "direct_russian_cadence",
-    "direct_timeline_delivery_qa",
-    "expressive_continuity",
-    "final_media_qa",
-    "generic_clean_audio_repair_runtime",
+    "clean_runtime_contract",
+    "continuous_reference_policy",
+    "direct_max_quality_cli",
+    "direct_monolith_contract",
+    "direct_source_prosody",
+    "direct_tail_artifact",
+    "dub_quality_v4",
+    "final_media_spatial_bed",
+    "generic_clean_direct_runtime",
+    "generic_project_runtime",
+    "professional_audio_qa_v45",
 )
 
 
@@ -69,14 +73,16 @@ def flatten(stem: str) -> None:
             continue
         segment=segment.replace('getattr(_legacy, "__all__", ())', '_BASE_ALL')
         segment=segment.replace("getattr(_legacy, '__all__', ())", '_BASE_ALL')
+        segment=segment.replace("getattr(_legacy,", "globals().get(")
         segment=segment.replace("_legacy.", "")
         pieces.append(segment)
     merged=base.rstrip()+"\n\n_BASE_ALL = tuple(globals().get('__all__', ()))\n\n"+"\n\n".join(pieces)+"\n"
+    parsed=ast.parse(merged, filename=str(py))
     forbidden=("spec_from_file_location", "module_from_spec", "exec_module", "sys.modules", "_legacy.")
     bad=[token for token in forbidden if token in merged]
-    if bad:
-        raise RuntimeError(f"{stem}: forbidden tokens survived: {bad}")
-    ast.parse(merged, filename=str(py))
+    legacy_names=[n.lineno for n in ast.walk(parsed) if isinstance(n,ast.Name) and n.id=="_legacy"]
+    if bad or legacy_names:
+        raise RuntimeError(f"{stem}: forbidden survived tokens={bad} _legacy_lines={legacy_names}")
     py.write_text(merged, encoding="utf-8")
     init.unlink()
     main_file=ROOT/stem/"__main__.py"
