@@ -988,9 +988,12 @@ async def run_bot_async():
 
 
 def run_bot():
+    from services.restart_state_runtime import reset_cross_loop_state
+
     restart_delay = 5   # базовая задержка между перезапусками
     _net_fail_streak = 0
     while True:
+        reset_cross_loop_state()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:

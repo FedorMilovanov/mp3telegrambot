@@ -87,7 +87,7 @@ def test_recipe_routes_all_modes_through_clean_runtime() -> None:
         "tools.voxcpm2.generic_gemini_runtime"
     )
     assert recipe.action("render_direct")["module"] == (
-        "tools.voxcpm2.generic_clean_direct_runtime"
+        "tools.voxcpm2.generic_direct_runtime"
     )
     assert recipe.action("repair_audio")["module"] == (
         "tools.voxcpm2.generic_clean_audio_repair_runtime"

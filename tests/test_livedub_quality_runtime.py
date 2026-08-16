@@ -85,7 +85,7 @@ def test_info_card_tries_clients_without_mutating_registry(monkeypatch) -> None:
 
 def test_singleflight_failure_releases_retry_key() -> None:
     delivery.reset_delivery_runtime_state()
-    key = ("new", "chat", "reply", "video")
+    key = ("new", "failure-test-chat", "failure-test-reply", "failure-test-video")
     attempts = 0
     async def scenario():
         nonlocal attempts

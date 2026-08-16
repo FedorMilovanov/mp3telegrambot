@@ -74,7 +74,7 @@ def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
         ),
     )
     assert runtime.as_dict()["media_master_policy"] == MEDIA_MASTER_POLICY
-    assert "master_monolithic_mix.py" in command[1]
+    assert "master_direct_russian_only.py" in command[1]
     assert "--source-video" in command
     assert get_final_validator().validator_id == "ffprobe-av-contract"
     assert FINAL_MEDIA_VALIDATOR_POLICY.startswith("backend-neutral")

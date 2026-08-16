@@ -45,7 +45,7 @@ def test_title_policy_is_source_owned_across_public_surfaces() -> None:
         "services/dub_studio_runtime.py": "canonical_media_title",
         "handlers/dub_delivery.py": "canonical_delivery_filename",
         "services/livedub_output_policy.py": "canonical_media_title",
-        "tools/voxcpm2/generic_short_runtime.py": "canonical_media_title",
+        "tools/voxcpm2/generic_short_production.py": "canonical_media_title",
     }
     for rel, marker in expected.items():
         source = (ROOT / rel).read_text(encoding="utf-8")

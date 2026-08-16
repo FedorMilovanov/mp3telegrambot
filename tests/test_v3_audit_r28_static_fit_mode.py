@@ -13,13 +13,14 @@ from pathlib import Path
 from services.ffmpeg import _is_static_video
 
 
-def test_is_static_video_is_async_and_uses_freezedetect():
+def test_is_static_video_is_async_and_uses_source_owned_static_policy():
     assert inspect.iscoroutinefunction(_is_static_video)
-    src = Path("services/ffmpeg.py").read_text(encoding="utf-8")
-    seg = src.split("async def _is_static_video(", 1)[1][:1200]
-    assert "freezedetect" in seg
-    # безопасный дефолт: при ошибке/отсутствии ffmpeg — не статично (crop как был)
-    assert "return False" in seg
+    wrapper = Path("services/ffmpeg.py").read_text(encoding="utf-8")
+    policy = Path("services/shorts_static_policy.py").read_text(encoding="utf-8")
+    assert "_is_static_video_confident" in wrapper
+    assert "freezedetect" in policy
+    assert "moving/default-crop" in policy
+
 
 
 def test_shorts_render_switches_static_to_full_frame():

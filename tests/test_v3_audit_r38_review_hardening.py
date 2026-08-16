@@ -121,7 +121,8 @@ def test_r29b_all_nvenc_encodes_under_semaphore():
 
 # ── R28b: статикой считаем только доминирующий freeze ──────────────────────
 def test_r28b_static_requires_dominant_freeze():
-    src = Path("services/ffmpeg.py").read_text(encoding="utf-8")
-    seg = src.split("async def _is_static_video(", 1)[1].split("def _crop_consensus", 1)[0]
-    assert "freeze_duration" in seg          # парсим длительность, не просто freeze_start
-    assert "0.8" in seg                      # порог доминирования
+    src = Path("services/shorts_static_policy.py").read_text(encoding="utf-8")
+    assert "freeze_duration" in src
+    assert "freeze_ratio >= freeze_min" in src
+    assert 'SHORTS_STATIC_FREEZE_RATIO_MIN", 0.86' in src
+

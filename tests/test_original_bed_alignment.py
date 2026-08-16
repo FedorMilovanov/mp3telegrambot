@@ -119,11 +119,11 @@ def test_missing_project_inputs_stay_json_serializable(tmp_path: Path) -> None:
     assert "source/source.mp4" in raw
 
 
-def test_zero_safe_package_keeps_legacy_alignment_bounded() -> None:
+def test_source_owned_alignment_is_bounded() -> None:
     assert Path(final_media_qa.__file__).name == "final_media_qa.py"
-    legacy = Path(final_media_qa.__file__).resolve().parents[1] / "final_media_qa.py"
-    source = legacy.read_text(encoding="utf-8")
+    source = Path(final_media_qa.__file__).read_text(encoding="utf-8")
     assert "ORIGINAL_ALIGNMENT_MAX_SECONDS = 0.15" in source
     assert "ORIGINAL_ALIGNMENT_PROBE_SECONDS = 180.0" in source
     assert "_estimate_alignment_lag" in source
     assert "_align_three" in source
+

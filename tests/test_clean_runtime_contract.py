@@ -195,11 +195,11 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert '"schema_version": 3' in source
     assert '"release_complete": False' in source
     assert "release_complete=True" in source
-    assert '"tools/voxcpm2/direct_source_prosody.py"' in contract_source
-    assert '"tools/voxcpm2/clean_source_download.py"' in contract_source
-    assert '"tools/voxcpm2/clean_request_settings.py"' in contract_source
-    assert '"tools/voxcpm2/strict_translation_payload.py"' in contract_source
-    assert '"tools/voxcpm2/legacy_segment_migration_v45.py"' in contract_source
+    assert "tools/voxcpm2/direct_source_prosody.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/clean_source_download.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/clean_request_settings.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/strict_translation_payload.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/legacy_segment_migration_v45.py" in contract._RENDER_MODULES
     assert 'request.get("cfg") or' not in contract_source
     assert 'request.get("threads") or' not in contract_source
     assert 'request.get("steps") or' not in contract_source

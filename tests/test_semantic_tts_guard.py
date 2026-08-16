@@ -154,29 +154,3 @@ def _fake_voxcpm_class(model_class: type) -> type:
     return FakeVoxCPM
 
 
-def test_voxcpm_wrapper_supports_old_new_and_legacy_kwargs_apis(monkeypatch) -> None:
-    import sys
-    import types
-
-    from tools.voxcpm2.examples.john_piper_z20py4yqhyq import voxcpm2_cpu_semantic_wrapper as wrapper
-
-    for api in ("old", "legacy_kwargs", "new"):
-        calls: list[dict[str, Any]] = []
-        fake_voxcpm = _fake_voxcpm_class(_model_class(api, calls))
-
-        fake_module = types.ModuleType("voxcpm")
-        fake_module.VoxCPM = fake_voxcpm
-        monkeypatch.setitem(sys.modules, "voxcpm", fake_module)
-        wrapper._install_voxcpm_patch({"extended": "English prompt", "composite": "Other prompt"})
-        model = fake_voxcpm.from_pretrained("fake", load_denoiser=False)
-        model.generate(
-            text="Русский текст",
-            reference_wav_path="extended.wav",
-            cfg_value=1.8,
-            normalize=True,
-            denoise=False,
-            retry_badcase=False,
-        )
-        assert calls[-1]["reference"] == "extended.wav"
-        assert calls[-1]["retry"] is True
-        assert calls[-1]["prompt"] == ("English prompt" if api == "new" else None)

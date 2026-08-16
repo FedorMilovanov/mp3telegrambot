@@ -435,7 +435,7 @@ def render_and_master(
             f"direct NoChew round {round_index + 1}/2; seed={round_seed}; "
             "без renderer wrappers"
         )
-        result = subprocess.run(command, cwd=str(repo), env=env, check=False)
+        result = _run_child_process(command, cwd=str(repo), env=env, check=False)
         if result.returncode != 0:
             raise RuntimeError(
                 f"Прямой speech backend renderer завершился с кодом {result.returncode}."
@@ -506,7 +506,7 @@ def render_and_master(
             "target_tp": f"{MASTER_TP:.1f}",
         },
     )
-    result = subprocess.run(master_command, cwd=str(repo), env=env, check=False)
+    result = _run_child_process(master_command, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
         raise RuntimeError(
             f"Прямой speech backend master завершился с кодом {result.returncode}."
@@ -599,7 +599,7 @@ from tools.voxcpm2 import final_encoded_delivery_qa
 
 from tools.voxcpm2 import semantic_block_runtime
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _legacy_build_direct_segments = build_direct_segments
 
@@ -772,15 +772,6 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
             ) from exc
     return result
 
-class _SubprocessProxy:
-    """Module-like proxy scoped to the legacy clean-core module only."""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(_stdlib_subprocess, name)
-
-    @staticmethod
-    def run(command: Any, *args: Any, **kwargs: Any):
-        return _run_child_process(command, *args, **kwargs)
 
 def _finite(value: Any, *, field: str) -> float:
     if isinstance(value, bool):
@@ -910,7 +901,6 @@ def build_direct_segments(
 
 build_direct_segments = build_direct_segments
 
-subprocess = _SubprocessProxy()
 
 _finite = _finite
 

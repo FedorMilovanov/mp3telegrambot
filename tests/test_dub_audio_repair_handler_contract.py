@@ -163,7 +163,7 @@ def test_concurrent_dubfix_commands_are_serialized(
         order.append(f"end-{update.name}")
         active -= 1
 
-    monkeypatch.setattr(handler, "_legacy_dubfix_command", fake_command)
+    monkeypatch.setattr(handler, "_dubfix_command_unlocked", fake_command)
 
     async def run() -> None:
         await asyncio.gather(

@@ -166,7 +166,12 @@ def test_signature_covers_current_source_owned_runtime_layers() -> None:
         "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
     ):
         assert marker in files
-    assert not any("/__init__.py" in path for path in files)
+    for retired in (
+        "tools/voxcpm2/clean_runtime_contract/__init__.py",
+        "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
+        "tools/voxcpm2/direct_max_quality_cli/__init__.py",
+    ):
+        assert retired not in files
     assert len(identity["sha256"]) == 64
     assert callable(clean_runtime_contract.build_fingerprints)
 

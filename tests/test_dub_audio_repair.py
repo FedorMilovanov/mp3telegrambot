@@ -84,7 +84,7 @@ def test_recipe_routes_audio_repair_through_clean_utility_without_gemini() -> No
     assert command[1:3] == ['-m', spec['module']]
     assert '-Mode' not in command
     repair_source = Path('tools/voxcpm2/generic_audio_repair_runtime.py').read_text(encoding='utf-8')
-    clean_source = Path('tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py').read_text(encoding='utf-8')
+    clean_source = Path('tools/voxcpm2/generic_clean_audio_repair_runtime.py').read_text(encoding='utf-8')
     assert 'translate_groups_max' not in repair_source
     assert 'gemini_json' not in repair_source
     assert 'translate_groups_max' not in clean_source

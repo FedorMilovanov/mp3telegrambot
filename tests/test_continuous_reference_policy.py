@@ -12,9 +12,9 @@ from tools.voxcpm2 import continuous_reference_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUTES = (
-    "generic_clean_gemini_runtime.py",
-    "generic_clean_direct_runtime.py",
-    "generic_clean_custom_runtime.py",
+    "generic_gemini_runtime.py",
+    "generic_direct_runtime.py",
+    "generic_custom_runtime.py",
     "generic_clean_audio_repair_runtime.py",
 )
 

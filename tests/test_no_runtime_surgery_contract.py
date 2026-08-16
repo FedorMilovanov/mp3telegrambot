@@ -32,6 +32,7 @@ CRITICAL_SURFACES = (
     "core/structured_blocks.py",
     "core/content_audit.py",
     "pipelines/main_pipeline.py",
+    "tools/voxcpm2/clean_production_core.py",
 )
 
 FORBIDDEN_TEXT = (
@@ -52,6 +53,8 @@ FORBIDDEN_TEXT = (
     ".normalize_structured_block =",
     ".audit_expanded_sections =",
     ".STUDY_ANALYSIS_PROMPT =",
+    "_SubprocessProxy",
+    "subprocess = _SubprocessProxy()",
 )
 
 TELEGRAM_METHODS = {"send_video", "send_audio", "send_message", "reply_audio"}

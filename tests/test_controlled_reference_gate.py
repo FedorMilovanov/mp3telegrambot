@@ -252,9 +252,9 @@ def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -
 
 def test_every_production_route_uses_transactional_identity_gate() -> None:
     for name in (
-        "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
-        "generic_clean_custom_runtime.py",
+        "generic_gemini_runtime.py",
+        "generic_direct_runtime.py",
+        "generic_custom_runtime.py",
         "generic_clean_audio_repair_runtime.py",
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")

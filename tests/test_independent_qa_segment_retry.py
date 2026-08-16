@@ -152,26 +152,3 @@ def test_recovery_is_fail_closed_without_authoritative_report(
         )
 
 
-def test_ready_srt_entrypoint_installs_release_scoped_recovery() -> None:
-    repo = Path(__file__).resolve().parents[1]
-    entrypoint = (
-        repo
-        / "tools"
-        / "voxcpm2"
-        / "generic_clean_direct_runtime"
-        / "__main__.py"
-    ).read_text(encoding="utf-8")
-    contract = (
-        repo / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
-    ).read_text(encoding="utf-8")
-
-    assert "independent_qa_retry.install()" in entrypoint
-    assert '"tools/voxcpm2/independent_qa_retry.py"' in contract
-    assert '"tools/voxcpm2/generic_clean_direct_runtime/__main__.py"' in contract
-    render_block, release_block = contract.split("_FACADE_RELEASE_MODULES", maxsplit=1)
-    assert '"tools/voxcpm2/generic_clean_direct_runtime/__main__.py"' not in render_block
-    assert '"tools/voxcpm2/independent_qa_retry.py"' in release_block
-    assert WORKER_RUNTIME.startswith("dub-worker-quality-v")
-    assert INDEPENDENT_QA_RECOVERY_POLICY == (
-        "bounded-independent-qa-segment-retry-v1"
-    )

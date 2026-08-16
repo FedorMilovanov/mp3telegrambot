@@ -9,14 +9,15 @@ import sys
 from pathlib import Path
 
 
-def test_restart_clears_rate_limit_and_video_lock_meta():
-    """asyncio.Lock'и переживают пересоздание event loop после краша:
-    без очистки первый же не-VIP запрос падает с RuntimeError
-    "bound to a different event loop"."""
-    src = Path("main.py").read_text(encoding="utf-8")
-    assert "_rate_limit_async_locks.clear()" in src
-    assert "_rate_limit_locks_guard = asyncio.Lock()" in src
-    assert "_video_lock_meta.clear()" in src
+def test_restart_uses_source_owned_cross_loop_cleanup():
+    main = Path("main.py").read_text(encoding="utf-8")
+    owner = Path("services/restart_state_runtime.py").read_text(encoding="utf-8")
+    run_block = main[main.index("def run_bot():"):main.index("def main():")]
+    assert "from services.restart_state_runtime import reset_cross_loop_state" in run_block
+    assert run_block.index("reset_cross_loop_state()") < run_block.index("asyncio.new_event_loop()")
+    assert "reset_delivery_runtime_state" in owner
+    assert "ContextVar" not in owner
+
 
 
 def test_token_mask_filter_attached_to_handlers():

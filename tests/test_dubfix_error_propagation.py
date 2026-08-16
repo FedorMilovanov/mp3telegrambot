@@ -19,7 +19,7 @@ def test_handler_failure_propagates_and_releases_process_lock(
     async def failing_command(_update, _context) -> None:
         raise RuntimeError("unexpected handler failure")
 
-    monkeypatch.setattr(handler, "_legacy_dubfix_command", failing_command)
+    monkeypatch.setattr(handler, "_dubfix_command_unlocked", failing_command)
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="unexpected handler failure"):

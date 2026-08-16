@@ -97,7 +97,7 @@ def _smooth(values: list[float]) -> list[float]:
     return [max(-1.65, min(1.65, value)) for value in limited]
 
 
-def _style(
+def _source_style(
     score: float,
     rate_z: float,
     text: str,
@@ -239,7 +239,7 @@ def plan_segments(
     for index, (item, score) in enumerate(zip(segments, scores, strict=True)):
         updated = dict(item)
         text = str(item.get("text") or "")
-        tier, instruction = _style(
+        tier, instruction = _source_style(
             score,
             rate_z[index],
             text,
