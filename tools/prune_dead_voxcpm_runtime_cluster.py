@@ -21,12 +21,13 @@ SKIP_PREFIXES = (
     "tools/refactor_", "tools/flatten_", "tools/source_own_", "tools/runtime_",
     "tools/prune_dead_voxcpm_runtime_cluster.py", "tools/classify_remaining_runtime_roots.py",
     "tools/remaining_runtime_call_graph.py", "tools/zero_runtime_marathon.py",
+    ".github/workflows/prune-dead-voxcpm-runtime.yml",
 )
 
 
 def main() -> int:
     dead_paths = {ROOT / rel for rel in DEAD}
-    missing = [rel for rel, path in zip(DEAD, dead_paths) if not path.is_file()]
+    missing = [rel for rel in DEAD if not (ROOT / rel).is_file()]
     if missing:
         raise RuntimeError("dead-cluster inputs missing: " + ", ".join(missing))
 
@@ -46,8 +47,6 @@ def main() -> int:
         text = path.read_text(encoding="utf-8", errors="replace")
         hits = sorted(token for token in stems | modules if token in text)
         if hits:
-            # The runtime fingerprint is metadata, not an execution reference; it is
-            # rewritten below. Everything else must be absent before deletion.
             if path.resolve() == CONTRACT.resolve():
                 continue
             blockers.append(f"{rel}: {', '.join(hits)}")
