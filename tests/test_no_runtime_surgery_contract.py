@@ -73,6 +73,7 @@ FORBIDDEN_TEXT = (
 
 TELEGRAM_METHODS = {"send_video", "send_audio", "send_message", "reply_audio"}
 SYS_MODULE_MUTATORS = {"setdefault", "update", "__setitem__"}
+SYS_META_PATH_MUTATORS = {"append", "clear", "extend", "insert", "remove", "__setitem__"}
 
 
 def _source(rel: str) -> str:
@@ -108,11 +109,31 @@ def _is_sys_modules(node: ast.AST) -> bool:
     )
 
 
-def _target_writes_sys_modules(target: ast.AST) -> bool:
+def _is_sys_meta_path(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "sys"
+        and node.attr == "meta_path"
+    )
+
+
+def _target_writes_container(target: ast.AST, predicate) -> bool:
     return any(
-        isinstance(node, ast.Subscript) and _is_sys_modules(node.value)
+        predicate(node)
+        or (isinstance(node, ast.Subscript) and predicate(node.value))
         for node in ast.walk(target)
     )
+
+
+def _references_meta_path_finder(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id == "MetaPathFinder"
+    if isinstance(node, ast.Attribute):
+        return node.attr == "MetaPathFinder"
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return any(alias.name == "MetaPathFinder" for alias in node.names)
+    return False
 
 
 def test_critical_runtime_surfaces_have_no_import_or_assignment_surgery():
@@ -148,13 +169,12 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
 
     for path in _production_python_paths():
         rel = path.relative_to(ROOT).as_posix()
-        src = path.read_text(encoding="utf-8")
-        tree = ast.parse(src, filename=rel)
-
-        if "sys.meta_path" in src or "MetaPathFinder" in src:
-            import_hook_findings.append(rel)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
 
         for node in ast.walk(tree):
+            if _references_meta_path_finder(node):
+                import_hook_findings.append(f"{rel}:{getattr(node, 'lineno', 0)}:MetaPathFinder")
+
             if isinstance(node, ast.Call):
                 target_name = _call_target_name(node)
                 if target_name.startswith("install_"):
@@ -169,14 +189,30 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
                     module_aliases.append(
                         f"{rel}:{node.lineno}:sys.modules.{node.func.attr}"
                     )
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in SYS_META_PATH_MUTATORS
+                    and _is_sys_meta_path(node.func.value)
+                ):
+                    import_hook_findings.append(
+                        f"{rel}:{node.lineno}:sys.meta_path.{node.func.attr}"
+                    )
 
             targets: tuple[ast.AST, ...] = ()
             if isinstance(node, ast.Assign):
                 targets = tuple(node.targets)
             elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
                 targets = (node.target,)
-            if any(_target_writes_sys_modules(target) for target in targets):
-                module_aliases.append(f"{rel}:{node.lineno}:sys.modules[...] assignment")
+            if any(
+                _target_writes_container(target, _is_sys_modules)
+                for target in targets
+            ):
+                module_aliases.append(f"{rel}:{node.lineno}:sys.modules assignment")
+            if any(
+                _target_writes_container(target, _is_sys_meta_path)
+                for target in targets
+            ):
+                import_hook_findings.append(f"{rel}:{node.lineno}:sys.meta_path assignment")
 
     findings = {
         "ROOT_CALLS": install_calls,
