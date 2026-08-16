@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 NEEDLES = (
     "install_dub_title_policy",
     "install_voxcpm_title_policy",
+    "install_release_health_hook",
+    "dub_release_health_v64",
     "canonical_media_title",
     "canonical_delivery_filename",
     "sentence_case_russian_title",
