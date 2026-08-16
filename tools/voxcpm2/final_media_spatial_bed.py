@@ -480,3 +480,42 @@ __all__ = [
     "estimate_spatial_bed",
     "verify_spatial_bed_files",
 ]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+from pathlib import Path
+
+import types
+
+import numpy as np
+
+ALIGNMENT_POLICY = "russian-reference-to-mixed-alignment-v2"
+
+def _align_stereo(
+    source: np.ndarray,
+    mixed: np.ndarray,
+    russian: np.ndarray,
+    lag_samples: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Align source/Russian reference together against the encoded mixed branch."""
+    lag = int(lag_samples)
+    if lag > 0:
+        # mixed is delayed relative to the Russian-only reference.
+        source = source[:-lag]
+        russian = russian[:-lag]
+        mixed = mixed[lag:]
+    elif lag < 0:
+        # mixed starts earlier; trim source and Russian by the opposite offset.
+        offset = -lag
+        source = source[offset:]
+        russian = russian[offset:]
+        mixed = mixed[:-offset]
+    length = min(len(source), len(mixed), len(russian))
+    return source[:length], mixed[:length], russian[:length]
+
+_align_stereo = _align_stereo
+
+__all__ = sorted(
+    set(name for name in _BASE_ALL if not name.startswith("__"))
+    | {"ALIGNMENT_POLICY", "_align_stereo"}
+)
