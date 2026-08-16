@@ -434,68 +434,11 @@ def _source_speech_onset(source: Path) -> float:
     return float(match.group(1)) if match else 0.0
 
 
-def install_gemini_quality(production: Any, pipeline: Any) -> None:
-    """Install caption coverage, micro-segmentation and local timing policies."""
-    pipeline.group_cues = group_cues_v4
-    pipeline.build_reference = build_reference_v4
-    production._build_render_segments = build_render_segments_v4
-    original_acquire = production.acquire_transcript
-
-    def acquire_with_coverage(
-        source_url: str,
-        source: Path,
-        source_dir: Path,
-        metadata: dict[str, Any],
-        *,
-        whisper_model: str,
-        duration: float,
-    ) -> tuple[list[Any], str, str]:
-        cues, kind, language = original_acquire(
-            source_url,
-            source,
-            source_dir,
-            metadata,
-            whisper_model=whisper_model,
-            duration=duration,
-        )
-        if not cues:
-            return cues, kind, language
-        onset = _source_speech_onset(source)
-        first = float(cues[0].start)
-        uncovered = first - onset
-        if kind != "whisper" and uncovered > 0.72:
-            log(f"caption coverage gap={uncovered:.3f}s; Whisper проверяет пропущенное начало")
-            whisper_cues, whisper_language = production.whisper_transcribe_auto(
-                source, model_name=whisper_model
-            )
-            prefix = [cue for cue in whisper_cues if float(cue.end) <= first - 0.03]
-            if prefix:
-                cues = pipeline.normalize_cues(prefix + cues, duration)
-                kind = f"{kind}+whisper_prefix"
-                language = language or whisper_language
-                log(f"добавлено Whisper-prefix cues={len(prefix)}; новое начало={cues[0].start:.3f}s")
-            elif whisper_cues and float(whisper_cues[0].start) + 0.45 < first:
-                cues = pipeline.normalize_cues(whisper_cues, duration)
-                kind = "whisper_coverage_fallback"
-                language = whisper_language
-                log("caption track rejected: Whisper covers substantially more source speech")
-        return cues, kind, language
-
-    production.acquire_transcript = acquire_with_coverage
-
-
-def install_direct_quality(production: Any, pipeline: Any) -> None:
-    pipeline.build_reference = build_reference_v4
-    production.group_srt_cues = group_ready_srt_v4
-
-
 __all__ = [
     "build_reference_v4",
     "build_render_segments_v4",
     "group_cues_v4",
     "group_ready_srt_v4",
-    "install_direct_quality",
-    "install_gemini_quality",
 ]
 
 _BASE_ALL = tuple(globals().get('__all__', ()))

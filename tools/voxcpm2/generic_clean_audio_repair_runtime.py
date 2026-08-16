@@ -236,7 +236,7 @@ def _reload_repair_and_segments(
     segments_path: Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     repair = legacy_repair._load_object(repair_path, "audio_repair.json")
-    segments = legacy_repair._load_segments(segments_path)
+    segments = _load_segments(segments_path)
     if str(repair.get("segments_sha256") or "") != legacy_repair._sha256(segments_path):
         raise RuntimeError(
             "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
@@ -429,6 +429,8 @@ if __name__ == "__main__":
         print(f"ОШИБКА CLEAN AUDIO REPAIR: {exc}", file=__import__("sys").stderr)
         traceback.print_exc()
         raise SystemExit(1)
+
+_source_main = main
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
@@ -720,7 +722,7 @@ def main() -> None:
     project_id = production.current_project_id()
     root = production.project_root(project_id)
     _validate_repair_request(root, project_id)
-    main()
+    _source_main()
 
 _next_seed = _next_seed
 
@@ -728,20 +730,8 @@ _checkpoint_ready = _checkpoint_ready
 
 _update_manifest = _update_manifest
 
-legacy_repair._load_segments = _load_segments
-
-__all__ = sorted(
-    set(name for name in dir(_legacy) if not name.startswith("__"))
-    | {
-        "_checkpoint_ready",
-        "_delay_evidence",
-        "_dominant_segment_delay",
-        "_load_segments",
-        "_next_seed",
-        "_strict_ids",
-        "_validate_repair_request",
-        "_validated_sha256",
-        "_update_manifest",
-        "main",
-    }
-)
+__all__ = [
+    "_checkpoint_ready", "_delay_evidence", "_dominant_segment_delay",
+    "_load_segments", "_next_seed", "_strict_ids", "_validate_repair_request",
+    "_validated_sha256", "_update_manifest", "main",
+]

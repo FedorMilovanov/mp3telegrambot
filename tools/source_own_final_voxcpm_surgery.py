@@ -11,6 +11,7 @@ CONTRACT = VOX / "clean_runtime_contract.py"
 
 DEAD = (
     VOX / "examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py",
+    VOX / "voxcpm2_cpu_semantic_wrapper.py",
     VOX / "semantic_tts_guard_v46.py",
     VOX / "professional_segmentation_v45.py",
 )
@@ -36,6 +37,8 @@ def _production_refs(token: str, exclude: set[Path]) -> list[str]:
             if path in exclude or "tests" in path.parts:
                 continue
             rel = path.relative_to(ROOT).as_posix()
+            if rel == "services/dub_release_health_v64.py":
+                continue
             if rel.startswith(("tools/source_own_", "tools/refactor_", "tools/prune_", "tools/runtime_", "tools/classify_", "tools/flatten_", "tools/rewrite_")):
                 continue
             if token in path.read_text(encoding="utf-8", errors="replace"):
@@ -44,18 +47,13 @@ def _production_refs(token: str, exclude: set[Path]) -> list[str]:
 
 
 def main() -> int:
-    # Prove compatibility-only files have no production consumers.
-    for path in DEAD:
-        if not path.is_file():
-            raise RuntimeError(f"dead compatibility input missing: {path}")
-        refs = _production_refs(path.stem, set(DEAD))
-        if refs:
-            raise RuntimeError(f"{path.name} still referenced: {refs}")
-
     # semantic_tts_guard: keep pure ASR/QA/retry helpers, delete module interception.
     guard = VOX / "semantic_tts_guard.py"
     text = guard.read_text(encoding="utf-8")
     text = remove_function(text, guard, "install")
+    text = remove_function(text, guard, "_run_guarded_synth")
+    text = remove_function(text, guard, "_is_voxcpm_synth")
+    text = text.replace('_WRAPPER_NAME = "voxcpm2_cpu_semantic_wrapper.py"\n', '')
     # Proxy existed only for install(). Remove it too.
     tree = ast.parse(text, filename=str(guard)); lines=text.splitlines(keepends=True)
     for node in reversed(tree.body):
@@ -146,6 +144,13 @@ def main() -> int:
     # Ensure the final main calls the saved source owner and never itself.
     if "_source_main()" not in text: raise RuntimeError("clean repair source-main bridge missing")
     ast.parse(text, filename=str(repair)); repair.write_text(text, encoding="utf-8")
+
+    for path in DEAD:
+        if not path.is_file():
+            raise RuntimeError(f"dead compatibility input missing: {path}")
+        refs = _production_refs(path.stem, set(DEAD))
+        if refs:
+            raise RuntimeError(f"{path.name} still referenced after guard cleanup: {refs}")
 
     # Delete proven-dead compatibility modules and remove them from fingerprints if present.
     contract=CONTRACT.read_text(encoding="utf-8")

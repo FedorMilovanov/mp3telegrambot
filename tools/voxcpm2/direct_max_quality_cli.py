@@ -36,6 +36,7 @@ from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     REFERENCE_TAIL_SILENCE,
     MAX_TEMPO,
+    PREFERRED_MAX_TEMPO,
     SPEECH_SLOT_POLICY,
     configure_utf8,
     log,
@@ -49,7 +50,7 @@ from tools.voxcpm2.direct_max_quality_analysis import (
     _mono,
     activity_stats,
     candidate_hard_ok,
-    candidate_score,
+    candidate_score as _base_candidate_score,
     clean_tail_restart,
     clipping_ratio,
     detect_tail_restart,
@@ -75,6 +76,26 @@ from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
     source_prosody_penalty,
 )
+
+def _tempo_policy_penalty(duration: float, speech_slot: float) -> float:
+    ratio = float(duration) / max(0.1, float(speech_slot))
+    if ratio <= PREFERRED_MAX_TEMPO:
+        return 0.0
+    return 90.0 + (ratio - PREFERRED_MAX_TEMPO) * 400.0
+
+
+def candidate_score(
+    candidate: dict[str, Any],
+    speech_slot: float,
+    reference_voice: dict[str, Any],
+) -> float:
+    """Score with source-owned preference against avoidable hard fitting."""
+    base = float(_base_candidate_score(candidate, speech_slot, reference_voice))
+    penalty = _tempo_policy_penalty(float(candidate.get("duration") or 0.0), speech_slot)
+    candidate["tempo_preference_penalty"] = float(penalty)
+    candidate["required_tempo_estimate"] = float(candidate.get("duration") or 0.0) / max(0.1, float(speech_slot))
+    return base + penalty
+
 
 BASE_CANDIDATE_ATTEMPTS = 3
 MAX_CANDIDATE_ATTEMPTS = 5
