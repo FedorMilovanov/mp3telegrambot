@@ -48,11 +48,14 @@ def test_audio_filename_is_russian_safe_and_bounded():
 
 
 def test_cached_file_id_never_receives_synthetic_filename():
-    src = (Path(__file__).parents[1] / "services/livedub_deep_audit.py").read_text(
+    src = (Path(__file__).parents[1] / "services/livedub_delivery_coordinator.py").read_text(
         encoding="utf-8"
     )
-    assert "if _is_local_audio_upload(kwargs.get(\"audio\"))" in src
-    assert 'kwargs.pop("filename", None)' in src
+    start = src.index("async def deliver_cached_companions")
+    end = src.index("@dataclass", start)
+    cached = src[start:end]
+    assert 'audio=meta["audio_file_id"]' in cached
+    assert "filename=" not in cached
 
 
 def test_mp3_metadata_is_bounded_without_tiny_fragment():
@@ -191,9 +194,13 @@ def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
     assert second["source_url"].endswith("two")
 
 
-def test_manifest_uses_source_owned_livedub_contracts_before_project_hardening():
-    order = {feature.feature_id: index for index, feature in enumerate(DEFAULT_RUNTIME_FEATURES)}
-    assert order["livedub-qa-contract"] < order["project-runtime-hardening"]
-    assert order["livedub-delivery-contract"] < order["project-runtime-hardening"]
-    assert "livedub-deep-audit" not in order
-    assert "livedub-audio-dedupe" not in order
+def test_manifest_uses_source_owned_livedub_contracts_only():
+    feature_ids = {feature.feature_id for feature in DEFAULT_RUNTIME_FEATURES}
+    assert "livedub-qa-contract" in feature_ids
+    assert "livedub-delivery-contract" in feature_ids
+    for retired in (
+        "livedub-deep-audit",
+        "livedub-audio-dedupe",
+        "project-runtime-hardening",
+    ):
+        assert retired not in feature_ids
