@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  flatten:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile current tree
-        run: python -m compileall -q tools/voxcpm2 handlers services core
-      - name: Map VoxCPM import-name collisions
-        run: python tools/voxcpm_collision_audit.py
+      - name: Flatten simple wrappers
+        run: python tools/flatten_simple_voxcpm.py
+      - name: Compile flattened owners
+        run: python -m compileall -q tools/voxcpm2/clean_source_download.py tools/voxcpm2/direct_max_quality_analysis.py
+      - name: Verify dynamic loaders are gone
+        run: |
+          test ! -f tools/voxcpm2/clean_source_download/__init__.py
+          test ! -f tools/voxcpm2/direct_max_quality_analysis/__init__.py
+          ! grep -nE 'spec_from_file_location|module_from_spec|sys\.modules|_legacy\.' tools/voxcpm2/clean_source_download.py
+          ! grep -nE 'spec_from_file_location|module_from_spec|sys\.modules|_legacy\.' tools/voxcpm2/direct_max_quality_analysis.py
+      - name: Commit flatten
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Flatten verified VoxCPM source wrappers"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
