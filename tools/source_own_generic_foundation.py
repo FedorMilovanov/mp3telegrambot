@@ -17,54 +17,37 @@ SHORT_RECIPE = ROOT / "tools/voxcpm2/recipes/short_tnliocegylk.json"
 WORKFLOWS = ROOT / ".github/workflows"
 
 FUNCTIONS = (
-    "standardize_russian_title",
-    "_standardize_title_payload",
-    "_ytdlp_base",
-    "download_source",
-    "download_captions",
-    "_bounded_env_seconds",
-    "_translation_timeouts",
-    "_load_dotenv_for_manual_run",
-    "_translation_keys",
-    "_translation_client",
-    "_close_client",
-    "_prompt_label",
-    "_generation_config",
+    "standardize_russian_title", "_standardize_title_payload", "_ytdlp_base",
+    "download_source", "download_captions", "_bounded_env_seconds",
+    "_translation_timeouts", "_load_dotenv_for_manual_run", "_translation_keys",
+    "_translation_client", "_close_client", "_prompt_label", "_generation_config",
     "gemini_json",
 )
 CONSTANTS = (
-    "_TITLE_PROMPT_MARKER",
-    "_JOHN_PIPER_RE",
-    "_GEMINI_KEY_NAMES",
-    "_DEFAULT_REQUEST_TIMEOUT_SECONDS",
-    "_DEFAULT_PASS_TIMEOUT_SECONDS",
+    "_TITLE_PROMPT_MARKER", "_JOHN_PIPER_RE", "_GEMINI_KEY_NAMES",
+    "_DEFAULT_REQUEST_TIMEOUT_SECONDS", "_DEFAULT_PASS_TIMEOUT_SECONDS",
     "_MIN_REQUEST_TIMEOUT_SECONDS",
 )
 
 
 def nodes_by_name(text: str, path: Path) -> dict[str, ast.AST]:
-    tree = ast.parse(text, filename=str(path))
-    result: dict[str, ast.AST] = {}
+    tree = ast.parse(text, filename=str(path)); result: dict[str, ast.AST] = {}
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Assign, ast.AnnAssign)):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                result[node.name] = node
-            else:
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        result[target.id] = node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            result[node.name] = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name): result[target.id] = node
     return result
 
 
 def source_of(text: str, node: ast.AST) -> str:
-    lines = text.splitlines()
-    return "\n".join(lines[node.lineno - 1 : node.end_lineno])
+    lines = text.splitlines(); return "\n".join(lines[node.lineno - 1 : node.end_lineno])
 
 
 def replace_function(text: str, path: Path, name: str, replacement: str) -> str:
-    tree = ast.parse(text, filename=str(path))
-    lines = text.splitlines(keepends=True)
+    tree = ast.parse(text, filename=str(path)); lines = text.splitlines(keepends=True)
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
             lines[node.lineno - 1 : node.end_lineno] = [replacement.rstrip() + "\n"]
@@ -74,132 +57,73 @@ def replace_function(text: str, path: Path, name: str, replacement: str) -> str:
 
 def main() -> int:
     for path in (PROD, RUNTIME, PROJECT, SOURCE, CONTRACT, HEALTH, SHORT_RECIPE):
-        if not path.is_file():
-            raise RuntimeError(f"missing input: {path}")
-    runtime = RUNTIME.read_text(encoding="utf-8")
-    production = PROD.read_text(encoding="utf-8")
+        if not path.is_file(): raise RuntimeError(f"missing input: {path}")
+    runtime = RUNTIME.read_text(encoding="utf-8"); production = PROD.read_text(encoding="utf-8")
     nodes = nodes_by_name(runtime, RUNTIME)
     missing = [name for name in (*CONSTANTS, *FUNCTIONS) if name not in nodes]
-    if missing:
-        raise RuntimeError("runtime contract nodes missing: " + ", ".join(missing))
-
-    # Canonical owner needs the hardened runtime dependencies itself.
-    if "import time\n" not in production:
-        production = production.replace("import tempfile\n", "import tempfile\nimport time\n", 1)
-    import_anchor = "from services.speech_backends import DEFAULT_BACKEND_ID, get_backend\n"
-    if import_anchor not in production:
-        raise RuntimeError("production import anchor changed")
-    owner_imports = (
-        "from core.media_title_policy import canonical_media_title\n"
-        "from core.text_utils import title_case_fragment\n"
-    )
-    production = production.replace(import_anchor, owner_imports + import_anchor, 1)
-
+    if missing: raise RuntimeError("runtime contract nodes missing: " + ", ".join(missing))
+    if "import time\n" not in production: production = production.replace("import tempfile\n", "import tempfile\nimport time\n", 1)
+    anchor = "from services.speech_backends import DEFAULT_BACKEND_ID, get_backend\n"
+    if anchor not in production: raise RuntimeError("production import anchor changed")
+    production = production.replace(anchor, "from core.media_title_policy import canonical_media_title\nfrom core.text_utils import title_case_fragment\n" + anchor, 1)
     constants_src = "\n\n".join(source_of(runtime, nodes[name]) for name in CONSTANTS)
     functions: dict[str, str] = {}
     for name in FUNCTIONS:
         value = source_of(runtime, nodes[name])
-        value = value.replace("pipeline.run_checked", "run_checked")
-        value = value.replace("pipeline.parse_vtt", "parse_vtt")
-        value = value.replace("pipeline.log", "log")
-        value = value.replace("pipeline._extract_json", "_extract_json")
-        value = value.replace("list[pipeline.Cue]", "list[Cue]")
+        for old, new in (
+            ("pipeline.run_checked", "run_checked"), ("pipeline.parse_vtt", "parse_vtt"),
+            ("pipeline.log", "log"), ("pipeline._extract_json", "_extract_json"),
+            ("list[pipeline.Cue]", "list[Cue]"),
+        ): value = value.replace(old, new)
         functions[name] = value
-
-    # Replace pre-existing generic implementations with hardened owner versions.
     for name in ("download_source", "download_captions", "gemini_json"):
         production = replace_function(production, PROD, name, functions.pop(name))
-
     insertion_anchor = "\ndef download_source(url: str, source: Path) -> dict[str, Any]:\n"
-    if insertion_anchor not in production:
-        raise RuntimeError("download_source insertion anchor changed")
+    if insertion_anchor not in production: raise RuntimeError("download_source insertion anchor changed")
     helpers = constants_src + "\n\n" + "\n\n".join(functions.values()) + "\n\n"
     production = production.replace(insertion_anchor, "\n" + helpers + insertion_anchor, 1)
-    # There is no runtime installer in the canonical owner.
-    for token in ("install_runtime_adapters", "semantic_tts_guard", "pipeline.", "generic_short_runtime"):
-        if token in production:
-            raise RuntimeError(f"canonical short production retained runtime token: {token}")
-    for required in (
-        "def _ytdlp_base(",
-        "def standardize_russian_title(",
-        "DUB_GEMINI_REQUEST_TIMEOUT_SEC",
-        "types.HttpOptions(timeout=",
-        "load_dotenv(override=False)",
-        "пробую следующий",
-    ):
-        if required not in production:
-            raise RuntimeError(f"canonical short production missing {required}")
-    ast.parse(production, filename=str(PROD))
-    PROD.write_text(production, encoding="utf-8")
+    for token in ("install_runtime_adapters", "semantic_tts_guard", "generic_short_runtime", "pipeline.download_source =", "pipeline.download_captions =", "pipeline.gemini_json ="):
+        if token in production: raise RuntimeError(f"canonical short production retained runtime token: {token}")
+    for required in ("def _ytdlp_base(", "def standardize_russian_title(", "DUB_GEMINI_REQUEST_TIMEOUT_SEC", "types.HttpOptions(timeout=", "load_dotenv(override=False)", "пробую следующий"):
+        if required not in production: raise RuntimeError(f"canonical short production missing {required}")
+    ast.parse(production, filename=str(PROD)); PROD.write_text(production, encoding="utf-8")
 
     project = PROJECT.read_text(encoding="utf-8")
-    project = project.replace("from tools.voxcpm2 import generic_short_runtime as hardened\n", "")
-    project = project.replace("hardened.", "pipeline.")
-    project = project.replace("    pipeline.install_runtime_adapters()\n", "")
-    project = project.replace("    hardened.install_runtime_adapters()\n", "")
-    # If the prefix replacement happened first, remove that exact line too.
-    project = project.replace("    pipeline.install_runtime_adapters()\n", "")
-    if "generic_short_runtime" in project or "install_runtime_adapters" in project or "hardened." in project:
-        raise RuntimeError("project runtime retained adapter-layer references")
-    ast.parse(project, filename=str(PROJECT))
-    PROJECT.write_text(project, encoding="utf-8")
+    project = project.replace("from tools.voxcpm2 import generic_short_runtime as hardened\n", "").replace("hardened.", "pipeline.")
+    project = project.replace("    pipeline.install_runtime_adapters()\n", "").replace("    hardened.install_runtime_adapters()\n", "")
+    if "generic_short_runtime" in project or "install_runtime_adapters" in project or "hardened." in project: raise RuntimeError("project runtime retained adapter-layer references")
+    ast.parse(project, filename=str(PROJECT)); PROJECT.write_text(project, encoding="utf-8")
 
-    source = SOURCE.read_text(encoding="utf-8")
-    source = source.replace("from tools.voxcpm2 import generic_short_runtime as hardened\n", "")
-    source = source.replace("hardened._ytdlp_base()", "pipeline._ytdlp_base()")
-    if "generic_short_runtime" in source or "hardened." in source:
-        raise RuntimeError("clean source download retained runtime adapter refs")
-    ast.parse(source, filename=str(SOURCE))
-    SOURCE.write_text(source, encoding="utf-8")
+    source = SOURCE.read_text(encoding="utf-8").replace("from tools.voxcpm2 import generic_short_runtime as hardened\n", "").replace("hardened._ytdlp_base()", "pipeline._ytdlp_base()")
+    if "generic_short_runtime" in source or "hardened." in source: raise RuntimeError("clean source download retained runtime adapter refs")
+    ast.parse(source, filename=str(SOURCE)); SOURCE.write_text(source, encoding="utf-8")
 
-    recipe = json.loads(SHORT_RECIPE.read_text(encoding="utf-8"))
-    changed_recipe = False
+    recipe = json.loads(SHORT_RECIPE.read_text(encoding="utf-8")); changed = False
     for action in (recipe.get("actions") or {}).values():
         if isinstance(action, dict) and action.get("module") == "tools.voxcpm2.generic_short_runtime":
-            action["module"] = "tools.voxcpm2.generic_short_production"
-            changed_recipe = True
-    if not changed_recipe:
-        raise RuntimeError("short recipe did not reference generic_short_runtime")
+            action["module"] = "tools.voxcpm2.generic_short_production"; changed = True
+    if not changed: raise RuntimeError("short recipe did not reference generic_short_runtime")
     SHORT_RECIPE.write_text(json.dumps(recipe, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    contract = CONTRACT.read_text(encoding="utf-8")
-    contract = contract.replace("'tools/voxcpm2/generic_short_runtime.py', ", "")
-    if "generic_short_runtime.py" in contract:
-        raise RuntimeError("runtime fingerprint retained generic_short_runtime")
-    ast.parse(contract, filename=str(CONTRACT))
-    CONTRACT.write_text(contract, encoding="utf-8")
-
-    health = HEALTH.read_text(encoding="utf-8")
-    health = health.replace('"gemini_runtime": voxcpm / "generic_short_runtime.py"', '"gemini_runtime": voxcpm / "generic_short_production.py"')
-    if "generic_short_runtime.py" in health:
-        raise RuntimeError("dub health retained generic_short_runtime")
-    ast.parse(health, filename=str(HEALTH))
-    HEALTH.write_text(health, encoding="utf-8")
-
-    # Canonical CI/workflows must not assert the retired adapter module.
+    contract = CONTRACT.read_text(encoding="utf-8").replace("'tools/voxcpm2/generic_short_runtime.py', ", "")
+    if "generic_short_runtime.py" in contract: raise RuntimeError("runtime fingerprint retained generic_short_runtime")
+    ast.parse(contract, filename=str(CONTRACT)); CONTRACT.write_text(contract, encoding="utf-8")
+    health = HEALTH.read_text(encoding="utf-8").replace('"gemini_runtime": voxcpm / "generic_short_runtime.py"', '"gemini_runtime": voxcpm / "generic_short_production.py"')
+    if "generic_short_runtime.py" in health: raise RuntimeError("dub health retained generic_short_runtime")
+    ast.parse(health, filename=str(HEALTH)); HEALTH.write_text(health, encoding="utf-8")
     for path in WORKFLOWS.glob("*.yml"):
-        if path.name in {"zero-runtime-marathon.yml", "classify-runtime-roots.yml", "prune-dead-voxcpm-runtime.yml"}:
-            continue
+        if path.name in {"zero-runtime-marathon.yml", "classify-runtime-roots.yml", "prune-dead-voxcpm-runtime.yml", "source-own-generic-foundation.yml"}: continue
         text = path.read_text(encoding="utf-8")
         if "generic_short_runtime" in text:
-            text = text.replace("tools.voxcpm2.generic_short_runtime", "tools.voxcpm2.generic_short_production")
-            text = text.replace("tools/voxcpm2/generic_short_runtime.py", "tools/voxcpm2/generic_short_production.py")
+            text = text.replace("tools.voxcpm2.generic_short_runtime", "tools.voxcpm2.generic_short_production").replace("tools/voxcpm2/generic_short_runtime.py", "tools/voxcpm2/generic_short_production.py")
             path.write_text(text, encoding="utf-8")
-
     RUNTIME.unlink()
-
-    blockers: list[str] = []
+    blockers=[]
     for root_name in ("tools/voxcpm2", "services", "handlers", "core", "pipelines"):
-        for path in (ROOT / root_name).rglob("*.py"):
-            if "tests" in path.parts:
-                continue
-            if "generic_short_runtime" in path.read_text(encoding="utf-8", errors="replace"):
-                blockers.append(path.relative_to(ROOT).as_posix())
-    if blockers:
-        raise RuntimeError("retired generic_short_runtime refs remain: " + ", ".join(sorted(set(blockers))))
-    print("generic short/project foundation source-owned")
-    return 0
+        for path in (ROOT/root_name).rglob("*.py"):
+            if "tests" in path.parts: continue
+            if "generic_short_runtime" in path.read_text(encoding="utf-8", errors="replace"): blockers.append(path.relative_to(ROOT).as_posix())
+    if blockers: raise RuntimeError("retired generic_short_runtime refs remain: " + ", ".join(sorted(set(blockers))))
+    print("generic short/project foundation source-owned"); return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())
