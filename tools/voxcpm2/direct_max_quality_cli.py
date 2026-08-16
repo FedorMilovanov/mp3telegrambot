@@ -910,7 +910,7 @@ def _render_main() -> None:
 from tools.voxcpm2 import direct_universal_runtime as universal_runtime
 from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
 from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
-from tools.voxcpm2.direct_final_audit_v3 import install_final_audit
+from tools.voxcpm2 import direct_final_audit_v3 as final_audit
 from tools.voxcpm2.direct_failure_recovery import (
     POLICY as EARLY_STOP_RECOVERY_POLICY,
     run_with_failure_recovery,
@@ -1516,7 +1516,105 @@ def _raw_failure_evidence(
         return payload
 
 install_global_polish()
-install_final_audit(globals())
+FINAL_AUDIT_POLICY = final_audit.POLICY
+_FINAL_AUDIT_STATE: dict[str, Any] = {
+    "segments": [],
+    "segments_json": None,
+    "segments_json_sha256": "",
+    "work_dir": None,
+    "preflight_done": False,
+    "model_context": {},
+}
+_final_audit_base_read_segments = read_segments
+_final_audit_base_prepare_reference = prepare_reference
+_final_audit_base_get_backend = get_backend
+
+
+def _final_audit_base_context() -> dict[str, Any]:
+    return {
+        "final_audit_policy": final_audit.POLICY,
+        "final_audit_sha256": final_audit._module_sha256(sha256_file),
+        "segments_json_sha256": _FINAL_AUDIT_STATE.get("segments_json_sha256") or "",
+        **dict(_FINAL_AUDIT_STATE.get("model_context") or {}),
+    }
+
+
+def _final_audit_persist_context() -> dict[str, Any]:
+    work = _FINAL_AUDIT_STATE.get("work_dir")
+    if work is None:
+        return _final_audit_base_context()
+    current = dict(surgical_runtime.guard.load_signature_context(Path(work)))
+    current.update(_final_audit_base_context())
+    surgical_runtime.guard.write_signature_context(Path(work), current)
+    return current
+
+
+def read_segments(path: Path) -> list[dict[str, Any]]:
+    source = Path(path).resolve()
+    final_audit._raw_segments(source)
+    values = list(_final_audit_base_read_segments(source))
+    if not values:
+        raise RuntimeError("Direct renderer получил пустой список сегментов.")
+    _FINAL_AUDIT_STATE.update(
+        segments=values,
+        segments_json=source,
+        segments_json_sha256=str(sha256_file(source)),
+        work_dir=None,
+        preflight_done=False,
+        model_context={},
+    )
+    return values
+
+
+def _final_audit_model_discovered(model_path: Path) -> None:
+    model = Path(model_path).resolve()
+    _FINAL_AUDIT_STATE["model_context"] = final_audit._model_context(
+        model,
+        sha256_file,
+    )
+    _final_audit_persist_context()
+
+
+def get_backend(name: str) -> Any:
+    backend = _final_audit_base_get_backend(name)
+    if str(getattr(backend, "backend_id", "")).strip().casefold() != "voxcpm2":
+        return backend
+    setter = getattr(backend, "set_model_discovery_callback", None)
+    if not callable(setter):
+        raise RuntimeError(
+            "VoxCPM2 backend не поддерживает source-owned model discovery audit callback."
+        )
+    setter(_final_audit_model_discovered)
+    return backend
+
+
+def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
+    target = Path(output).resolve()
+    work = (
+        target.parent.parent
+        if target.parent.name == "references_guarded"
+        else target.parent
+    )
+    _FINAL_AUDIT_STATE["work_dir"] = work
+    if not bool(_FINAL_AUDIT_STATE.get("preflight_done")):
+        segments = list(_FINAL_AUDIT_STATE.get("segments") or [])
+        if not segments:
+            raise RuntimeError("Direct timing preflight вызван до read_segments.")
+        context = _final_audit_persist_context()
+        report = surgical_runtime.guard.run_pre_model_guard(
+            segments,
+            work_dir=work,
+            max_tempo=float(MAX_TEMPO),
+            signature_context=context,
+        )
+        _FINAL_AUDIT_STATE["preflight_done"] = True
+        warnings = report.get("warning_ids") if isinstance(report, Mapping) else []
+        log(
+            "direct final timing preflight passed before references/model: "
+            f"warnings={warnings or []}"
+        )
+    return dict(_final_audit_base_prepare_reference(source, output, sf_module))
+
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
