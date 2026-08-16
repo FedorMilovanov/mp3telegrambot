@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tools.voxcpm2 import direct_retry_epoch
-from tools.voxcpm2 import direct_surgical_guard
 from tools.voxcpm2 import direct_surgical_io
 from tools.voxcpm2 import direct_timing_guard as guard
 
@@ -18,7 +17,6 @@ POLICY = "voxcpm2-surgical-runtime-v1"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v2"
 _RUNTIME_SCOPE_FILES = (
     "tools/voxcpm2/direct_timing_guard.py",
-    "tools/voxcpm2/direct_surgical_guard.py",
     "tools/voxcpm2/direct_universal_runtime.py",
     "tools/voxcpm2/direct_surgical_runtime.py",
     "tools/voxcpm2/direct_surgical_io.py",
@@ -58,7 +56,6 @@ def _progress_value(
 
 def install_surgical_runtime(namespace: MutableMapping[str, Any]) -> None:
     """Install lazy loading, strict retry scope, cache and structured stops."""
-    direct_surgical_guard.install_guard_contract()
     required = (
         "read_segments",
         "_build_generation_length_request",

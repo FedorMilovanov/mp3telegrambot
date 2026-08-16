@@ -281,16 +281,15 @@ def main() -> int:
     guard = rename_top_function(guard, GUARD, "run_pre_model_guard", "_base_run_pre_model_guard")
     guard = rename_top_function(guard, GUARD, "enforce_retry_epoch_budget", "_base_enforce_retry_epoch_budget")
     guard = replace_top_function(guard, GUARD, "persist_timing_block", PERSIST)
-    guard = replace_top_function(guard, GUARD, "load_matching_timing_block", LOAD)
     guard = replace_top_function(guard, GUARD, "format_timing_block_message", FORMAT)
     guard = guard.replace('POLICY = "voxcpm2-direct-timing-guard-v1"', 'POLICY = "voxcpm2-direct-timing-guard-v2"', 1)
     # Place public v2 wrappers after base implementations but before the final exports.
     all_index = guard.rfind("\n__all__")
     if all_index < 0:
         raise RuntimeError("direct_timing_guard __all__ not found")
-    guard = guard[:all_index] + "\n\n" + EXTRA.strip() + "\n" + guard[all_index:]
+    guard = guard[:all_index] + "\n\n" + EXTRA.strip() + "\n\n" + LOAD.strip() + "\n" + guard[all_index:]
     # Ensure source owner exports the new exception/policy.
-    guard = guard.replace('"POLICY",', '"POLICY",\n    "SURGICAL_GUARD_POLICY",\n    "RetryableSynthesisFailure",', 1)
+    guard = guard.replace('"POLICY",', '"POLICY",\n    "SURGICAL_GUARD_POLICY",\n    "RetryableSynthesisFailure",\n    "load_matching_timing_block",', 1)
     if "guard." in guard or "install_guard_contract" in guard:
         raise RuntimeError("timing owner unexpectedly contains patch-layer references")
     ast.parse(guard, filename=str(GUARD))

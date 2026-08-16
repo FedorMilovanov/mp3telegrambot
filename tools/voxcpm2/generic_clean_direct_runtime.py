@@ -16,7 +16,6 @@ from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
-from tools.voxcpm2.direct_surgical_guard import install_guard_contract
 from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
 from tools.voxcpm2.direct_universal_runtime import install_generic_preflight
 
@@ -67,7 +66,6 @@ REFERENCE_BUILDERS = (
     _expression_contract,
 )
 
-install_guard_contract()
 install_global_polish()
 install_generic_preflight(globals())
 
