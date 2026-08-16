@@ -318,6 +318,8 @@ def generate_russian_title(
         log(f"Лёгкая модель названия недоступна: {type(exc).__name__}; использую исходное название.")
         title = original_title
     fallback = f"Видео {video_id}"
+    context = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+    title = hardened.standardize_russian_title(title, context=context)
     return safe_russian_filename(title, fallback=fallback)
 
 

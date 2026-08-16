@@ -10,7 +10,7 @@ analysis-window-aware terminal-noise checks.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from services.dub_worker_release import (
     BACKEND_COMMAND_POLICY,
@@ -29,7 +29,6 @@ from services.dub_worker_release import (
 
 POLICY = "truthful-master-reference-import-and-tail-health-v4"
 _SUPERSEDED_CHECK = "dialogue-suppressed-master"
-_HOOKED = False
 
 
 def _read(path: Path) -> str:
@@ -304,71 +303,6 @@ def _russian_only_master_contract(repo: Path) -> tuple[bool, str]:
     return _v68_quality_contract(repo)
 
 
-def _upgrade_monolithic_contract(title: Any) -> None:
-    current = title._monolithic_static_contract
-    if getattr(current, "_dub_v68_quality_contract", False):
-        return
-
-    def v68_monolithic_contract(repo: Path) -> tuple[bool, str]:
-        ok, detail = current(Path(repo))
-        remaining: list[str] = []
-        base_detail = str(detail)
-        if not ok:
-            prefix = "monolithic-контракты не прошли: "
-            if not base_detail.startswith(prefix):
-                return False, base_detail
-            failed = [
-                item.strip()
-                for item in base_detail[len(prefix):].split(",")
-                if item.strip()
-            ]
-            remaining = [item for item in failed if item != _SUPERSEDED_CHECK]
-        current_ok, current_detail = _v67_quality_contract(Path(repo))
-        if remaining:
-            return False, "monolithic-контракты не прошли: " + ", ".join(remaining)
-        if not current_ok:
-            return False, current_detail
-        stable_detail = base_detail if ok else (
-            "semantic-breath, one-identity, pronunciation, fail-closed timeline, noise and "
-            "fingerprint contracts active"
-        )
-        return True, stable_detail + "; " + current_detail
-
-    v68_monolithic_contract._dub_v68_quality_contract = True  # type: ignore[attr-defined]
-    title._monolithic_static_contract = v68_monolithic_contract
-    legacy = getattr(title, "_legacy", None)
-    if legacy is not None and hasattr(legacy, "_monolithic_static_contract"):
-        legacy._monolithic_static_contract = v68_monolithic_contract
-
-
-def _install_after_title_policy() -> None:
-    from services import dub_title_policy as title
-
-    _upgrade_monolithic_contract(title)
-
-
-def install_release_health_hook() -> None:
-    """Wrap the regular title installer so current release health is applied last."""
-    global _HOOKED
-    if _HOOKED:
-        return
-    from services import dub_title_policy as title
-
-    current: Callable[..., Any] = title.install_dub_title_policy
-    if getattr(current, "_dub_v68_release_health_hook", False):
-        _HOOKED = True
-        return
-
-    def install_dub_title_policy_v68(*args: Any, **kwargs: Any) -> Any:
-        result = current(*args, **kwargs)
-        _install_after_title_policy()
-        return result
-
-    install_dub_title_policy_v68._dub_v68_release_health_hook = True  # type: ignore[attr-defined]
-    title.install_dub_title_policy = install_dub_title_policy_v68
-    _HOOKED = True
-
-
 __all__ = [
     "POLICY",
     "WORKER_RUNTIME",
@@ -377,5 +311,4 @@ __all__ = [
     "_v66_quality_contract",
     "_v67_quality_contract",
     "_v68_quality_contract",
-    "install_release_health_hook",
 ]

@@ -51,9 +51,9 @@ def main() -> int:
     # DubStore normalizes historical/project rows at its own DB boundary.
     rel = "services/dub_studio.py"
     text = read(rel)
-    import_anchor = "from typing import Any\n"
+    import_anchor = "from __future__ import annotations\n"
     if import_anchor not in text:
-        raise RuntimeError("DubStore import anchor missing")
+        raise RuntimeError("DubStore future-import anchor missing")
     text = text.replace(import_anchor, import_anchor + "\nfrom core.media_title_policy import canonical_media_title\n", 1)
     row_anchor = '''        item["metadata"] = _json_load(item.pop("metadata_json", "{}"), {})\n        item["progress"] = int(item.get("progress") or 0)\n        return item\n'''
     row_new = '''        item["metadata"] = _json_load(item.pop("metadata_json", "{}"), {})\n        item["progress"] = int(item.get("progress") or 0)\n        if item.get("title"):\n            item["title"] = canonical_media_title(item["title"])\n        return item\n'''
@@ -64,9 +64,9 @@ def main() -> int:
     # Notification query normalizes title evidence directly.
     rel = "services/dub_studio_runtime.py"
     text = read(rel)
-    import_anchor = "from typing import Any\n"
+    import_anchor = "from __future__ import annotations\n"
     if import_anchor not in text:
-        raise RuntimeError("Dub runtime import anchor missing")
+        raise RuntimeError("Dub runtime future-import anchor missing")
     text = text.replace(import_anchor, import_anchor + "\nfrom core.media_title_policy import canonical_media_title\n", 1)
     notif_anchor = '''        item["payload"] = payload if isinstance(payload, dict) else {}\n        result.append(item)\n'''
     notif_new = '''        item["payload"] = payload if isinstance(payload, dict) else {}\n        if item.get("project_title"):\n            item["project_title"] = canonical_media_title(item["project_title"])\n        result.append(item)\n'''
@@ -77,9 +77,9 @@ def main() -> int:
     # Delivery owns public filenames.
     rel = "handlers/dub_delivery.py"
     text = read(rel)
-    import_anchor = "from typing import Any\n"
+    import_anchor = "from __future__ import annotations\n"
     if import_anchor not in text:
-        raise RuntimeError("dub_delivery import anchor missing")
+        raise RuntimeError("dub_delivery future-import anchor missing")
     text = text.replace(import_anchor, import_anchor + "\nfrom core.media_title_policy import canonical_delivery_filename\n", 1)
     old = '''def available_outputs(project: dict[str, Any], *, include_all_video: bool = False) -> list[dict[str, Any]]:\n    dynamic = _dynamic_outputs(project, include_all_video=include_all_video)\n    return dynamic if dynamic else _recipe_outputs(project, include_all_video=include_all_video)\n'''
     new = '''def available_outputs(project: dict[str, Any], *, include_all_video: bool = False) -> list[dict[str, Any]]:\n    dynamic = _dynamic_outputs(project, include_all_video=include_all_video)\n    rows = dynamic if dynamic else _recipe_outputs(project, include_all_video=include_all_video)\n    for row in rows:\n        row["filename"] = canonical_delivery_filename(row.get("filename") or "")\n    return rows\n'''
@@ -90,9 +90,9 @@ def main() -> int:
     # LiveDub heading uses the same canonical policy directly.
     rel = "services/livedub_output_policy.py"
     text = read(rel)
-    import_anchor = "from typing import Any\n"
+    import_anchor = "from __future__ import annotations\n"
     if import_anchor not in text:
-        raise RuntimeError("livedub output import anchor missing")
+        raise RuntimeError("livedub output future-import anchor missing")
     text = text.replace(import_anchor, import_anchor + "\nfrom core.media_title_policy import canonical_media_title\n", 1)
     pattern = re.compile(r'def _russian_heading_case\(value: str\) -> str:\n.*?(?=\n\ndef )', re.DOTALL)
     text, count = pattern.subn(

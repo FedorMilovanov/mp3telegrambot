@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from core.text_utils import title_case_fragment
+from core.media_title_policy import canonical_media_title
 import tools.voxcpm2.generic_short_production as pipeline
 
 _TITLE_PROMPT_MARKER = "Ты создаёшь имя готового русского видеофайла"
@@ -65,7 +66,7 @@ def standardize_russian_title(value: str, *, context: str = "") -> str:
         ).strip(" .—–-")
         title = f"{title} - Джон Пайпер" if title else "Джон Пайпер"
 
-    return title_case_fragment(re.sub(r"\s+", " ", title).strip())
+    return canonical_media_title(title_case_fragment(re.sub(r"\s+", " ", title).strip()))
 
 
 def _standardize_title_payload(payload: Any, prompt: str) -> Any:
@@ -77,39 +78,6 @@ def _standardize_title_payload(payload: Any, prompt: str) -> Any:
         context=prompt,
     )
     return result
-
-
-def _install_project_title_standard() -> None:
-    for module in list(sys.modules.values()):
-        if module is None:
-            continue
-        file_name = Path(
-            str(getattr(module, "__file__", "") or "")
-        ).name.casefold()
-        if file_name != "generic_project_runtime.py":
-            continue
-        original = getattr(module, "generate_russian_title", None)
-        if (
-            not callable(original)
-            or getattr(original, "_dub_title_standard", False)
-        ):
-            continue
-
-        def standardized_generate(
-            *args: Any,
-            _original: Any = original,
-            **kwargs: Any,
-        ) -> str:
-            generated = str(_original(*args, **kwargs) or "")
-            metadata = args[0] if args else kwargs.get("metadata", {})
-            try:
-                context = json.dumps(metadata, ensure_ascii=False)
-            except (TypeError, ValueError):
-                context = str(metadata or "")
-            return standardize_russian_title(generated, context=context)
-
-        standardized_generate._dub_title_standard = True  # type: ignore[attr-defined]
-        module.generate_russian_title = standardized_generate
 
 
 def _ytdlp_base() -> list[str]:

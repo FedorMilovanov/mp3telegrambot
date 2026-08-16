@@ -15,6 +15,8 @@ publication caption produced here.
 """
 from __future__ import annotations
 
+from core.media_title_policy import canonical_media_title
+
 import asyncio
 import html
 import logging
@@ -134,64 +136,8 @@ def _has_cyrillic_title(line: str) -> bool:
 
 
 def _russian_heading_case(value: str) -> str:
-    """Preserve proper names but force Russian function words to lowercase."""
-    text = re.sub(r"\s+", " ", _plain(value, 220)).strip()
-    if not text:
-        return ""
-
-    # Uppercase the first alphabetic character only; do not title-case the rest.
-    chars = list(text)
-    for index, char in enumerate(chars):
-        if char.isalpha():
-            chars[index] = char.upper()
-            break
-    text = "".join(chars)
-
-    tokens = text.split(" ")
-    for index in range(1, len(tokens)):
-        token = tokens[index]
-        match = re.match(r"^([^A-Za-zА-Яа-яЁё]*)([A-Za-zА-Яа-яЁё]+)(.*)$", token)
-        if not match:
-            continue
-        prefix, word, suffix = match.groups()
-        if word.casefold() in _RU_SERVICE_WORDS:
-            tokens[index] = prefix + word.lower() + suffix
-    return " ".join(tokens)
-
-
-async def _translate_title_line(source_line: str) -> tuple[str, str] | None:
-    source = _plain(source_line, 300)
-    if not source:
-        return None
-    if _has_cyrillic_title(source):
-        title, author = _split_title_author(source)
-        return _russian_heading_case(title), _canonical_author(author)
-
-    cache_key = source.casefold()
-    cached = _TITLE_CACHE.get(cache_key)
-    if cached:
-        return cached
-
-    try:
-        import services.livedub_info_presentation as presentation
-
-        # Make the same canonical spelling available to its parser/translator.
-        presentation._AUTHOR_OVERRIDES.update(_AUTHOR_OVERRIDES)  # type: ignore[attr-defined]
-        translated = await presentation._translate_title_second_chance(source)  # type: ignore[attr-defined]
-    except Exception as exc:
-        logger.info("[LiveDubOutput] light title translation unavailable: %s", str(exc)[:160])
-        translated = None
-
-    if not translated:
-        return None
-    title, author = translated
-    title = _russian_heading_case(title)
-    author = _canonical_author(author)
-    if not title or not re.search(r"[А-Яа-яЁё]", title):
-        return None
-    result = (title, author)
-    _TITLE_CACHE[cache_key] = result
-    return result
+    """Apply the canonical project title policy at the output owner."""
+    return canonical_media_title(value)
 
 
 def _clean_video_caption(value: Any) -> str:

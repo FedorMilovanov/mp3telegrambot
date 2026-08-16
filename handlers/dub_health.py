@@ -91,7 +91,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "repair": voxcpm / "generic_clean_audio_repair_runtime.py",
         "runtime": repo / "services" / "dub_studio_runtime.py",
         "worker": voxcpm / "dub_worker_hardened.py",
-        "title": repo / "services" / "dub_title_policy.py",
+        "title": repo / "core" / "media_title_policy.py",
     }
     text = {name: _read(path) for name, path in paths.items()}
     missing = [name for name, value in text.items() if not value]
@@ -366,7 +366,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "status in _FINAL_JOB_STATES" in text["worker"]
             and 'return current, ""' in text["worker"]
         ),
-        "single-title-policy": "install_dub_title_policy" in text["title"],
+        "single-title-policy": ("def canonical_media_title(" in text["title"] and "def canonical_delivery_filename(" in text["title"]),
     }
     failed = [name for name, ok in contracts.items() if not ok]
     return not failed, (
@@ -414,12 +414,17 @@ def _recipe_checks() -> list[dict[str, Any]]:
 
 def collect_dub_health() -> list[dict[str, Any]]:
     checks = _recipe_checks()
-    quality_ok, quality_detail = _quality_contract(Path(__file__).resolve().parents[1])
+    repo = Path(__file__).resolve().parents[1]
+    quality_ok, quality_detail = _quality_contract(repo)
+    from core.media_title_policy import media_title_policy_contract
+    from services.dub_release_health_v64 import _v68_quality_contract
+    title_ok, title_detail = media_title_policy_contract()
+    release_ok, release_detail = _v68_quality_contract(repo)
     checks.append(
         _check(
             "Clean Expressive NoChew + независимый QA",
-            quality_ok,
-            quality_detail
+            quality_ok and title_ok and release_ok,
+            quality_detail + "; " + title_detail + "; " + release_detail
             + "; verified YouTube ID + sampled source cache; truthful 0%/0ms settings; "
             "strict unique translation IDs + creator-repeat preservation + actual source language; "
             "runtime v2 complete clean-path fingerprints; direct v3 16→48k; "

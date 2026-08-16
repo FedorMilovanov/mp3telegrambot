@@ -12,7 +12,6 @@ globals()["__name__"] = "tools.voxcpm2._generic_clean_direct_runtime_base_exec"
 exec(compile(_BASE.read_text(encoding="utf-8-sig"), str(_BASE), "exec"), globals())
 globals()["__name__"] = _ORIGINAL_NAME
 
-from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_source_download
 from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
@@ -29,8 +28,6 @@ hardened = production.hardened
 hardened.download_source = clean_source_download.download_source
 hardened.pipeline.download_source = clean_source_download.download_source
 
-if not callable(install_voxcpm_title_policy):
-    raise RuntimeError("Clean direct title-policy installer is unavailable.")
 
 
 def _continuous_reference_contract(**kwargs: Any) -> Any:

@@ -285,12 +285,6 @@ DEFAULT_RUNTIME_FEATURES = (
         "validate_livedub_delivery_contract",
         RuntimePhase.POST_MAIN,
     ),
-    RuntimeFeature(
-        "dub-title-policy",
-        "services.dub_title_policy",
-        "install_dub_title_policy",
-        RuntimePhase.POST_MAIN,
-    ),
 )
 
 _DEFAULT_MANIFEST = RuntimeManifest(DEFAULT_RUNTIME_FEATURES)

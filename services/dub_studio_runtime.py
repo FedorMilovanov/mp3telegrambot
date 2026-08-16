@@ -6,6 +6,8 @@ services. No PTB class methods are replaced at runtime.
 """
 from __future__ import annotations
 
+from core.media_title_policy import canonical_media_title
+
 import asyncio
 import html
 import json
@@ -425,6 +427,8 @@ def _undelivered_notification_events(store: Any, limit: int = 20) -> list[dict[s
         except (TypeError, json.JSONDecodeError):
             payload = {}
         item["payload"] = payload if isinstance(payload, dict) else {}
+        if item.get("project_title"):
+            item["project_title"] = canonical_media_title(item["project_title"])
         result.append(item)
     return result
 

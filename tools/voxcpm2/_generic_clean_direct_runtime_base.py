@@ -8,7 +8,6 @@ import math
 from pathlib import Path
 from typing import Any
 
-from services.dub_title_policy import install_voxcpm_title_policy
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import clean_source_download
@@ -33,8 +32,6 @@ def _install_clean_runtime_adapters() -> None:
     hardened.pipeline.download_source = clean_source_download.download_source
     hardened.pipeline.download_captions = hardened.download_captions
     hardened.pipeline.gemini_json = hardened.gemini_json
-    install_voxcpm_title_policy(hardened)
-    hardened._install_project_title_standard()
     production.log(
         "clean adapters: verified yt-dlp source + canonical title route; "
         "TTS guard disabled"
