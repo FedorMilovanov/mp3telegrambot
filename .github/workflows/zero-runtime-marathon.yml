@@ -26,6 +26,7 @@ jobs:
       - name: Apply wave
         run: |
           set -euo pipefail
+          python tools/repair_title_runner.py
           python tools/zero_runtime_marathon.py
 
       - name: Compile source-owned title surfaces
