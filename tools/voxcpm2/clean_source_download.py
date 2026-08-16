@@ -247,3 +247,33 @@ __all__ = [
     "POLICY",
     "download_source",
 ]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+from pathlib import Path
+
+from typing import Any
+
+_legacy_download_source = download_source
+
+def download_source(url: str, source: Path) -> dict[str, Any]:
+    source = Path(source)
+    url_video_id = _url_video_id(str(url))
+    if not url_video_id:
+        raise RuntimeError(
+            "Источник должен быть канонической ссылкой на один YouTube-ролик."
+        )
+    project_video_id = _project_request_video_id(source)
+    if project_video_id and project_video_id != url_video_id:
+        raise RuntimeError(
+            "Project request и YouTube URL имеют разные video ID до yt-dlp: "
+            f"request={project_video_id}, url={url_video_id}."
+        )
+    return _legacy_download_source(str(url), source)
+
+download_source = download_source
+
+__all__ = sorted(
+    set(_BASE_ALL)
+    | {"download_source"}
+)
