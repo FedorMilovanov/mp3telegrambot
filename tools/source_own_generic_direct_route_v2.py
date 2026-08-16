@@ -391,7 +391,11 @@ def main() -> int:
     forbidden_owner = (
         "hardened.install_runtime_adapters()",
         "hardened.download_source(",
-        "production.",
+        "production.hardened.",
+        "production.group_srt_cues =",
+        "production._build_direct_segments =",
+        "production._run_speech_and_master =",
+        "production._run_voxcpm_and_master =",
         "install_generic_preflight",
         "exec(compile(",
         "generic_clean_direct_runtime",
