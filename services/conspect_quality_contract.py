@@ -235,17 +235,3 @@ def normalize_word_study_block(raw: dict[str, Any]) -> dict[str, Any] | None:
         )
     )
     return {"type": "paragraph", "text": "\n\n".join(parts)}
-
-
-
-def install_conspect_quality_contract() -> str:
-    """Compatibility validator; schema/normalization are source-owned."""
-    from core.candidate_schema import expanded_page_response_schema
-
-    block = (
-        expanded_page_response_schema()["properties"]["sections"]["items"]
-        ["properties"]["blocks"]["items"]
-    )
-    if "word_study" not in block["properties"]["type"].get("enum", []):
-        raise RuntimeError("word_study is missing from the canonical expanded-page schema")
-    return "source-owned Study schema/normalization; no runtime patching"

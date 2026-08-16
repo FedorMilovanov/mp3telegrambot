@@ -331,41 +331,6 @@ def format_audio_caption(card: dict[str, Any]) -> str:
         return text[:1000]
 
 
-def _install_source_context() -> None:
-    import pipelines.main_pipeline as pipeline
-
-    original = pipeline.process_single_video
-    if getattr(original, "_mp3bot_publication_context", False):
-        return
-
-    async def wrapped(url, *args, **kwargs):
-        token = _CURRENT_SOURCE_URL.set(_source_url(url))
-        try:
-            return await original(url, *args, **kwargs)
-        finally:
-            _CURRENT_SOURCE_URL.reset(token)
-
-    wrapped._mp3bot_publication_context = True  # type: ignore[attr-defined]
-    pipeline.process_single_video = wrapped
-
-    # Both modules import the function by value, so updating only the pipeline
-    # module would leave the real message and playlist handlers on the old callable.
-    try:
-        import handlers.commands as commands
-
-        if getattr(commands, "process_single_video", None) is original:
-            commands.process_single_video = wrapped
-    except Exception as exc:
-        logger.debug("[LiveDubPublication] command binding patch skipped: %s", exc)
-    try:
-        import pipelines.playlist as playlist
-
-        if getattr(playlist, "process_single_video", None) is original:
-            playlist.process_single_video = wrapped
-    except Exception as exc:
-        logger.debug("[LiveDubPublication] playlist binding patch skipped: %s", exc)
-
-
 def _wrap_send_video(cls: type) -> None:
     original = getattr(cls, "send_video", None)
     if original is None or getattr(original, "_mp3bot_publication_card", False):
@@ -455,26 +420,3 @@ def _reuse_and_suppress_legacy_info_card() -> None:
     format_message._mp3bot_inline_publication = True  # type: ignore[attr-defined]
     module.build_livedub_info_card = build
     module.format_livedub_info_message = format_message
-
-
-def install_livedub_publication() -> None:
-    """Install after output policy and before the LiveDub audio companion."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        _install_source_context()
-        _reuse_and_suppress_legacy_info_card()
-        from telegram import Bot
-
-        _wrap_send_video(Bot)
-        _wrap_send_audio(Bot)
-        try:
-            from telegram.ext import ExtBot
-
-            if ExtBot.send_video is not Bot.send_video:
-                _wrap_send_video(ExtBot)
-            if ExtBot.send_audio is not Bot.send_audio:
-                _wrap_send_audio(ExtBot)
-        except Exception as exc:
-            logger.debug("[LiveDubPublication] ExtBot patch skipped: %s", exc)
-        logger.info("✨ LiveDub publication: Russian title + description + source link enabled")

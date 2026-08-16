@@ -264,28 +264,6 @@ def _wrap_send_audio(cls: type) -> None:
     setattr(cls, "send_audio", wrapped)
 
 
-def install_livedub_output_policy() -> None:
-    """Install title and caption publication guards once."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        _patch_pipeline_title()
-        from telegram import Bot
-
-        _wrap_send_video(Bot)
-        _wrap_send_audio(Bot)
-        try:
-            from telegram.ext import ExtBot
-
-            if ExtBot.send_video is not Bot.send_video:
-                _wrap_send_video(ExtBot)
-            if ExtBot.send_audio is not Bot.send_audio:
-                _wrap_send_audio(ExtBot)
-        except Exception as exc:
-            logger.debug("[LiveDubOutput] ExtBot patch skipped: %s", exc)
-        logger.info("🇷🇺 LiveDub output policy: Russian titles + neutral captions enabled")
-
-
 def harden_livedub_audio_dedupe() -> None:
     """Relax the source-MP3 detector after the dedupe adapter is installed.
 

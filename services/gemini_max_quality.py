@@ -60,13 +60,4 @@ def configure_max_quality_env() -> str:
     )
 
 
-def install_max_quality_runtime() -> str:
-    """Compatibility validator; performs no post-import reference replacement."""
-    import core.globals as globals_module
-
-    if not callable(globals_module.make_text_config_smart):
-        raise RuntimeError("Gemini smart config owner is unavailable")
-    return "source-owned Gemini thinking policy; no post-import reference replacement"
-
-
 __all__ = ["configure_max_quality_env", "install_max_quality_runtime"]

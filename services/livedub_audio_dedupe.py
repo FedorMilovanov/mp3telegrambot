@@ -329,28 +329,3 @@ def _wrap_send_message(cls: type) -> None:
 
     wrapped._mp3bot_livedub_dedupe = True  # type: ignore[attr-defined]
     setattr(cls, "send_message", wrapped)
-
-
-def install_livedub_audio_dedupe() -> None:
-    """Install after ``install_livedub_audio_companion`` in bot_new.py."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        from telegram import Bot, Message
-
-        _patch_companion_success_hooks()
-        _wrap_reply_audio(Message)
-        _wrap_send_video(Bot)
-        _wrap_send_message(Bot)
-        try:
-            from telegram.ext import ExtBot
-
-            if ExtBot.send_video is not Bot.send_video:
-                _wrap_send_video(ExtBot)
-            if ExtBot.send_message is not Bot.send_message:
-                _wrap_send_message(ExtBot)
-        except Exception as exc:
-            logger.debug("[LiveDubAudioDedupe] ExtBot patch skipped: %s", exc)
-        logger.info(
-            "🎧 LiveDub audio dedupe: ✅ one Russian MP3; source MP3 only on fallback"
-        )

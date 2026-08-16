@@ -431,16 +431,8 @@ def decorate_trust_report(text: str, qa: dict[str, Any]) -> str:
     return _insert_report_notes(text, qa)
 
 
-def install_livedub_qa_trust() -> str:
-    """Compatibility validator; trust is called by the QA owner."""
-    if not callable(apply_audio_trust):
-        raise RuntimeError("LiveDub QA trust strategy is unavailable")
-    return "source-owned full-scan + focused-audio trust strategy"
-
-
 __all__ = [
     "apply_audio_trust",
     "audio_trust_enabled",
     "decorate_trust_report",
-    "install_livedub_qa_trust",
 ]

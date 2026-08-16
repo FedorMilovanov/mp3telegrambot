@@ -208,15 +208,7 @@ def record_returned_ru_audio(
         return False
 
 
-def install_livedub_ru_provenance() -> str:
-    """Compatibility validator; provenance is source-owned by producer/consumer."""
-    if not callable(write_ru_audio_provenance) or not callable(read_ru_audio_provenance):
-        raise RuntimeError("LiveDub RU provenance helpers are unavailable")
-    return "source-owned VOT provenance; no producer/consumer wrapping"
-
-
 __all__ = [
-    "install_livedub_ru_provenance",
     "read_ru_audio_provenance",
     "record_returned_ru_audio",
     "snapshot_ru_audio_candidates",
