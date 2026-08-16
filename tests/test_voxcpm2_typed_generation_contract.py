@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import inspect
 from pathlib import Path
-import sys
 
 import pytest
 
@@ -16,7 +14,7 @@ from tools.voxcpm2 import direct_max_quality_cli
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
+CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
 
 
 class _FakeModel:
@@ -114,53 +112,17 @@ def test_production_candidate_hook_builds_neutral_request() -> None:
     )
 
 
-def test_raw_cli_generation_boundary_does_not_depend_on_package_override() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "tests._standalone_direct_max_quality_cli",
-        RAW_CLI,
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    try:
-        spec.loader.exec_module(module)
-        captured: list[BackendGenerationRequest] = []
+def test_canonical_cli_owns_typed_generation_boundary_without_facade() -> None:
+    source = CLI.read_text(encoding="utf-8")
 
-        class CapturingSession:
-            def generate(self, request: BackendGenerationRequest):
-                captured.append(request)
-                return "raw-wav"
-
-        result = module._backend_generate(
-            CapturingSession(),
-            **_generation_kwargs(),
-        )
-    finally:
-        sys.modules.pop(spec.name, None)
-
-    assert result == "raw-wav"
-    assert len(captured) == 1
-    assert isinstance(captured[0], BackendGenerationRequest)
-    assert captured[0].backend_options["steps"] == 16
-    assert captured[0].backend_options["min_len"] == 2
-
-
-def test_package_overrides_typed_factories_not_backend_execution() -> None:
-    facade_source = (
-        ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli" / "__init__.py"
-    ).read_text(encoding="utf-8")
-    raw_source = RAW_CLI.read_text(encoding="utf-8")
-
-    assert (
-        "_legacy._build_generation_length_request = _build_generation_length_request"
-        in facade_source
-    )
-    assert "_legacy._build_generation_request = _build_generation_request" in facade_source
-    assert "_legacy._backend_generate =" not in facade_source
-    assert "base_request = _legacy_build_generation_request(session, **kwargs)" in facade_source
-    assert "request = _build_generation_request(session, **kwargs)" in raw_source
-    assert "return session.generate(request)" in raw_source
-    assert "backend_options.update(" not in raw_source
+    assert "def _build_generation_request(" in source
+    assert "request = _build_generation_request(session, **kwargs)" in source
+    assert "return session.generate(request)" in source
+    assert "BackendGenerationRequest" in source
+    assert "_legacy." not in source
+    assert "backend_options.update(" not in source
+    assert not (ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py").exists()
+    assert not (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli" / "__init__.py").exists()
 
 
 def test_adapter_source_has_no_legacy_generation_translation() -> None:
