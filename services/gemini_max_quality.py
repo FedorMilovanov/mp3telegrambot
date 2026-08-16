@@ -60,4 +60,4 @@ def configure_max_quality_env() -> str:
     )
 
 
-__all__ = ["configure_max_quality_env", "install_max_quality_runtime"]
+__all__ = ["configure_max_quality_env"]

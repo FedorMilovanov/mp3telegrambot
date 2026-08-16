@@ -28,79 +28,6 @@ from tools.voxcpm2.direct_max_quality_io import (
 )
 
 
-def fit_without_slowdown(
-    clean_path: Path,
-    fitted_path: Path,
-    target_duration: float,
-    tail_guard: float,
-    output_sample_rate: int = EXPECTED_OUTPUT_SR,
-) -> dict[str, Any]:
-    output_sample_rate = int(output_sample_rate)
-    if output_sample_rate <= 0:
-        raise ValueError("output_sample_rate должен быть > 0.")
-    clean_duration = probe_duration(clean_path)
-    speech_slot = speech_slot_seconds(target_duration, tail_guard)
-    if clean_duration > speech_slot:
-        tempo = clean_duration / speech_slot
-        tempo_filters = atempo_chain(tempo)
-    else:
-        tempo = 1.0
-        tempo_filters = []
-
-    # Fade around the real spoken material, before padding. The previous 8 ms
-    # one-sided fade behaved almost like a hard edit: Russian phrases appeared
-    # abruptly and the fixed English bed seemed to jump between segments. A
-    # short equal-purpose in/out envelope keeps consonants intact while making
-    # phrase boundaries perceptually continuous.
-    rendered_speech_duration = min(clean_duration / max(tempo, 1e-9), speech_slot)
-    fade_in = min(0.032, max(0.010, rendered_speech_duration * 0.10))
-    fade_out = min(0.060, max(0.018, rendered_speech_duration * 0.16))
-    fade_out_start = max(fade_in, rendered_speech_duration - fade_out)
-    fade_out = max(0.008, rendered_speech_duration - fade_out_start)
-
-    filters = tempo_filters + [
-        f"afade=t=in:st=0:d={fade_in:.6f}",
-        f"afade=t=out:st={fade_out_start:.6f}:d={fade_out:.6f}",
-        f"apad=pad_dur={target_duration:.6f}",
-        f"atrim=duration={target_duration:.6f}",
-        "asetpts=N/SR/TB",
-    ]
-    run_checked(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(clean_path),
-            "-af",
-            ",".join(filters),
-            "-ar",
-            str(output_sample_rate),
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s24le",
-            str(fitted_path),
-        ]
-    )
-    return {
-        "clean_duration": clean_duration,
-        "target_duration": target_duration,
-        "speech_slot": speech_slot,
-        "speech_slot_policy": SPEECH_SLOT_POLICY,
-        "tail_guard": tail_guard,
-        "tempo": tempo,
-        "slowed_down": False,
-        "rendered_speech_duration": rendered_speech_duration,
-        "fade_in_seconds": fade_in,
-        "fade_out_start_seconds": fade_out_start,
-        "fade_out_seconds": fade_out,
-        "fitted_duration": probe_duration(fitted_path),
-    }
-
-
 def build_timeline(
     fitted_segments: list[tuple[dict[str, Any], Path]],
     output: Path,
@@ -254,32 +181,7 @@ TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
 
-HOOK_SYNC_POLICY = "facade-runtime-hook-sync-v2"
-
 _legacy_build_timeline = build_timeline
-
-_DEFAULT_PROBE_DURATION = probe_duration
-
-_DEFAULT_RUN_CHECKED = run_checked
-
-_DEFAULT_TIMELINE_QA = direct_timeline_delivery_qa
-
-def _sync_legacy_hooks() -> None:
-    """Expose explicit facade injections without erasing direct legacy patches.
-
-    Tests and clean runtimes use both supported seams: assigning a hook on this
-    facade and assigning it on ``_legacy``.  A default facade binding must not
-    overwrite a deliberate legacy replacement immediately before execution.
-    """
-    facade_probe = globals().get("probe_duration")
-    if callable(facade_probe) and facade_probe is not _DEFAULT_PROBE_DURATION:
-        probe_duration = facade_probe
-    facade_runner = globals().get("run_checked")
-    if callable(facade_runner) and facade_runner is not _DEFAULT_RUN_CHECKED:
-        run_checked = facade_runner
-    facade_qa = globals().get("direct_timeline_delivery_qa")
-    if facade_qa is not None and facade_qa is not _DEFAULT_TIMELINE_QA:
-        direct_timeline_delivery_qa = facade_qa
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
     """Compatibility wrapper around the selected backend's typed planner."""
@@ -324,7 +226,6 @@ def fit_without_slowdown(
     output_sample_rate = int(output_sample_rate)
     if output_sample_rate <= 0:
         raise ValueError("output_sample_rate должен быть > 0.")
-    _sync_legacy_hooks()
     clean_duration = probe_duration(Path(clean_path))
     speech_slot = speech_slot_seconds(target_duration, tail_guard)
     if clean_duration > speech_slot:
@@ -397,7 +298,6 @@ def build_timeline(
         "duration/gap QA without late compaction",
         flush=True,
     )
-    _sync_legacy_hooks()
     _legacy_build_timeline(
         fitted_segments,
         output,
@@ -405,7 +305,6 @@ def build_timeline(
         output_sample_rate=output_sample_rate,
     )
 
-_sync_legacy_hooks()
 
 _generation_profile = _generation_profile
 

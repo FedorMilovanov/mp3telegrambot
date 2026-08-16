@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from collections.abc import Mapping
 import gc
 import json
@@ -30,8 +31,8 @@ from services.speech_backends import (
     BackendSessionConfig,
     get_backend,
 )
+from tools.voxcpm2 import direct_timing_guard
 from tools.voxcpm2.direct_max_quality_io import (
-    POLICY,
     EXPECTED_ENCODE_SR,
     EXPECTED_OUTPUT_SR,
     REFERENCE_TAIL_SILENCE,

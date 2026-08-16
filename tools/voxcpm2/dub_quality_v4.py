@@ -212,31 +212,6 @@ def group_cues_v4(
     return groups
 
 
-def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dict[str, Any]]:
-    """Respect user SRT anchors and split only physically overlong cues."""
-    groups: list[dict[str, Any]] = []
-    for cue in sorted(cues, key=lambda item: (float(item.start), float(item.end))):
-        for part in _split_timed_text(
-            float(cue.start),
-            float(cue.end),
-            str(cue.text or ""),
-            max_seconds=max_seconds,
-        ):
-            groups.append({"start": part.start, "end": part.end, "source": part.text})
-
-    groups = _merge_tiny_groups(
-        groups,
-        text_key="source",
-        max_seconds=max_seconds,
-        min_seconds=1.15,
-    )
-    for index, group in enumerate(groups, start=1):
-        group["id"] = index
-        group["start"] = round(float(group["start"]), 3)
-        group["end"] = round(float(group["end"]), 3)
-    return groups
-
-
 def build_render_segments_v4(
     groups: list[dict[str, Any]],
     translations: list[dict[str, Any]],

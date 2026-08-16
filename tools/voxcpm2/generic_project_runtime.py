@@ -47,39 +47,6 @@ def current_project_id() -> str:
     return value
 
 
-def project_root(project_id: str | None = None) -> Path:
-    project_id = project_id or current_project_id()
-    root = (studio_root() / "projects" / project_id).resolve()
-    allowed = (studio_root() / "projects").resolve()
-    try:
-        root.relative_to(allowed)
-    except ValueError as exc:
-        raise RuntimeError("Project root escaped Dub Studio projects directory.") from exc
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
-def load_request(root: Path) -> dict[str, Any]:
-    path = root / "request.json"
-    if not path.is_file():
-        raise RuntimeError(f"Не найден request.json проекта: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    if not isinstance(payload, dict) or int(payload.get("schema_version", 0)) != 1:
-        raise RuntimeError("Неподдерживаемый request.json проекта.")
-    video_id = str(payload.get("video_id") or "").strip()
-    source_url = str(payload.get("source_url") or "").strip()
-    if not _VIDEO_ID_RE.fullmatch(video_id):
-        raise RuntimeError("Некорректный video_id в request.json.")
-    if not source_url.startswith(("https://youtube.com/", "https://www.youtube.com/", "https://youtu.be/", "https://m.youtube.com/")):
-        raise RuntimeError("Generic Dub Studio принимает только YouTube URL.")
-    return payload
-
-
-def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def safe_russian_filename(value: str, fallback: str = "Русский дубляж", limit: int = 92) -> str:
     value = _INVALID_WINDOWS_CHARS.sub(" ", str(value or ""))
     value = re.sub(r"\s+", " ", value).strip(" .-")

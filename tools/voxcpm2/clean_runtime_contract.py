@@ -10,8 +10,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from tools.voxcpm2.direct_max_quality_io import discover_model
-
 POLICY = "clean-runtime-contract-v2"
 MAX_THREADS = 64
 MAX_STEPS = 64
@@ -240,36 +238,6 @@ def _digest(payload: dict[str, Any]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
-
-def build_fingerprints(
-    *,
-    repo: Path,
-    archive: Path,
-    cpu_python: Path,
-    backend_id: str | None = None,
-) -> dict[str, Any]:
-    repo = repo.resolve()
-    archive = archive.resolve()
-    render_payload = {
-        "policy": POLICY,
-        "backend_id": str(backend_id or "default"),
-        "contract_module_sha256": sha256_file(Path(__file__).resolve()),
-        "implementation": _module_hashes(repo, _RENDER_MODULES),
-        "model": _model_manifest(archive),
-        "voxcpm_runtime": _voxcpm_runtime(cpu_python.resolve()),
-    }
-    release_payload = {
-        "policy": POLICY,
-        "implementation": _module_hashes(repo, _RELEASE_MODULES),
-    }
-    return {
-        "policy": POLICY,
-        "render_contract_sha256": _digest(render_payload),
-        "release_contract_sha256": _digest(release_payload),
-        "render": render_payload,
-        "release": release_payload,
-    }
 
 
 from services.speech_backends import (

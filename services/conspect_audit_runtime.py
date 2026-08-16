@@ -13,4 +13,4 @@ def _normalize_legacy_lexicon(raw: dict[str, Any]) -> dict[str, Any]:
     return normalize_structured_block(block) or block
 
 
-__all__ = ["_normalize_legacy_lexicon", "install_conspect_audit_runtime"]
+__all__ = ["_normalize_legacy_lexicon"]
