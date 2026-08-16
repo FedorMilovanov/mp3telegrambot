@@ -8,7 +8,7 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   remaining-reference-audit:
@@ -23,10 +23,11 @@ jobs:
           python-version: '3.11'
       - name: Compile current production tree
         run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
-      - name: Show production references for remaining runtime modules
+      - name: Write production references for remaining runtime modules
         shell: bash
         run: |
           set -euo pipefail
+          : > .remaining-runtime-refs.txt
           names=(
             generic_clean_custom_runtime generic_clean_direct_runtime generic_clean_gemini_runtime
             generic_gemini_runtime generic_project_runtime generic_short_runtime
@@ -34,6 +35,15 @@ jobs:
             voxcpm2_production_semantic_rescue voxcpm2_universal_payload
           )
           for name in "${names[@]}"; do
-            echo "===== $name ====="
-            grep -RIn --include='*.py' --exclude-dir=tests --exclude-dir=.git --exclude="${name}.py" "$name" services handlers pipelines core tools/voxcpm2 main.py bot_new.py || true
+            echo "===== $name =====" >> .remaining-runtime-refs.txt
+            grep -RIn --include='*.py' --exclude-dir=tests --exclude-dir=.git --exclude="${name}.py" "$name" services handlers pipelines core tools/voxcpm2 main.py bot_new.py >> .remaining-runtime-refs.txt || true
           done
+      - name: Commit reference audit artifact
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .remaining-runtime-refs.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Record remaining runtime reference audit"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
