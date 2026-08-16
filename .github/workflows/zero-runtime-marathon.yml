@@ -32,9 +32,8 @@ jobs:
       - name: Compile changed owners
         run: |
           python -m compileall -q \
-            pipelines/main_pipeline.py \
-            services/mp3_conversion.py \
-            core/bounded_cache.py \
+            main.py \
+            services/dub_studio_runtime.py \
             services/runtime_manifest.py
 
       - name: Run focused tests when test runtime is available
@@ -45,13 +44,7 @@ jobs:
           if importlib.util.find_spec('pytest') is None:
               print('pytest is not installed in the temporary refactor runner; canonical PR CI owns test execution')
               raise SystemExit(0)
-          needles = (
-              'project_runtime_hardening',
-              'bounded_cache',
-              'mp3_conversion',
-              'runtime_manifest',
-              'main_pipeline',
-          )
+          needles = ('dub_studio_runtime', 'runtime_manifest', 'dub_studio')
           selected = []
           for path in sorted(Path('tests').glob('test_*.py')):
               text = path.read_text(encoding='utf-8', errors='replace')
