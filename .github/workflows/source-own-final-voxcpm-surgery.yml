@@ -1,0 +1,45 @@
+name: Source-own Final VoxCPM Surgery
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .source-own-final-voxcpm-surgery-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Source-own final VoxCPM surgery
+        run: python tools/source_own_final_voxcpm_surgery.py
+      - name: Compile production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py bot_new.py
+      - name: Verify zero active installer roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/remaining_runtime_call_graph.py | tee /tmp/root-graph.txt
+          grep -q '^ROOT_CALLS=0$' /tmp/root-graph.txt
+          ! grep -RIn --include='*.py' --exclude-dir=tests --exclude='source_own_final_voxcpm_surgery.py' \
+            -E 'sys\.modules|setattr\(module|pipeline\.subprocess[[:space:]]*=|_direct_cli\.(candidate_score|MAX_TEMPO)[[:space:]]*=|legacy_repair\._load_segments[[:space:]]*=' \
+            tools/voxcpm2 services handlers core pipelines
+      - name: Commit final source ownership
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove final VoxCPM runtime surgery"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
