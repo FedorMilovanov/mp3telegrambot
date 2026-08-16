@@ -32,29 +32,8 @@ jobs:
       - name: Compile changed owners
         run: |
           python -m compileall -q \
-            handlers/commands.py \
-            services/operator_runtime_status.py \
-            services/restart_state_runtime.py \
-            services/runtime_manifest.py
-
-      - name: Run focused tests when test runtime is available
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import importlib.util, subprocess, sys
-          if importlib.util.find_spec('pytest') is None:
-              print('pytest is not installed in the temporary refactor runner; canonical PR CI owns test execution')
-              raise SystemExit(0)
-          needles = ('operator_runtime_status', 'restart_state_runtime', 'livedub_help', 'gemini_startup_diagnostics', 'runtime_manifest')
-          selected = []
-          for path in sorted(Path('tests').glob('test_*.py')):
-              text = path.read_text(encoding='utf-8', errors='replace')
-              if any(needle in text or needle in path.name for needle in needles):
-                  selected.append(str(path))
-          print('focused tests:', selected)
-          if selected:
-              subprocess.check_call([sys.executable, '-m', 'pytest', '-q', *selected])
-          PY
+            services/dub_studio_runtime.py \
+            main.py
 
       - name: Commit wave
         run: |
