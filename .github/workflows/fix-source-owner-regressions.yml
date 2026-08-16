@@ -21,61 +21,51 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Apply consolidated source-owner finalizers
-        run: |
-          python tools/finalize_source_owner_regressions_v3.py
-          python tools/finalize_source_owner_regressions_v4.py
-          python tools/finalize_source_owner_regressions_v6.py
-          python tools/finalize_source_owner_regressions_v7.py
-          python tools/finalize_source_owner_regressions_v8.py
-          python tools/finalize_source_owner_regressions_v9.py
-          python tools/finalize_source_owner_regressions_v10.py
+      - name: Apply v11 source-owner finalizer
+        run: python tools/finalize_source_owner_regressions_v11.py
       - name: Install locked test dependencies
         run: python -m pip install -r requirements-lock.txt
-      - name: Compile and run restored contracts
+      - name: Compile production and updated contracts
         run: |
           set -euo pipefail
-          python -m compileall -q services tools/voxcpm2 tests
-          python -m pytest -q \
-            tests/test_livedub_info_guard.py \
-            tests/test_livedub_delivery_coordinator_source_owned.py \
-            tests/test_cross_language_identity_fail_closed.py \
-            tests/test_factory_capacity_fast_fail.py \
-            tests/test_factory_execution_and_cut_source_policy.py \
-            tests/test_generic_project_runtime.py \
-            tests/test_generic_direct_runtime.py \
-            tests/test_generic_short_production.py \
-            tests/test_dub_runtime_regressions.py \
-            tests/test_dub_quality_process_entrypoints.py \
-            tests/test_gemini_translation_quality.py \
-            tests/test_clean_request_settings.py \
-            tests/test_clean_dub_health_contract.py \
-            tests/test_preflight_json_protocol.py \
-            tests/test_speech_backend_runtime_paths.py \
-            tests/test_direct_master_source_owner.py \
-            tests/test_direct_surgical_io.py \
-            tests/test_direct_surgical_guard.py \
-            tests/test_direct_surgical_recovery.py \
-            tests/test_direct_renderer_failure_resume.py \
-            tests/test_direct_tempo_boundary_resume.py \
-            tests/test_strict_translation_payload.py \
-            tests/test_audio_conversion_postcondition.py \
-            tests/test_source_owner_retired_modules.py \
-            tests/test_clean_repair_request_contract.py \
-            tests/test_final_media_qa.py \
-            tests/test_dub_loudness_tolerance.py \
-            tests/test_speech_backend_generation_length_plan.py \
-            tests/test_shorts_factory_mode.py \
-            tests/test_shorts_factory_ru_boundaries.py \
-            tests/test_dub_worker.py \
-            tests/test_clean_source_download.py \
-            tests/test_speech_backend_command_contract.py
-      - name: Record remaining collection failures
-        if: always()
+          python -m py_compile main.py tools/finalize_source_owner_regressions_v11.py
+          python -m compileall -q services tools/voxcpm2 handlers tests
+      - name: Run v11 regression gate
         run: |
-          python -m pytest --collect-only -q > collection.txt 2>&1 || true
-          tail -n 260 collection.txt
-      - name: Commit integration cleanup
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_no_runtime_surgery_contract.py \
+            tests/test_clean_master_child_process_contract.py \
+            tests/test_clean_runtime_contract.py \
+            tests/test_continuous_reference_policy.py \
+            tests/test_continuous_reference_release_contract.py \
+            tests/test_controlled_reference_gate.py \
+            tests/test_dub_architecture_boundaries.py \
+            tests/test_dub_audio_repair.py \
+            tests/test_dub_audio_repair_handler_contract.py \
+            tests/test_dub_continuation_and_command_recovery.py \
+            tests/test_dub_job_preflight_v2.py \
+            tests/test_dub_professional_audio_v45.py \
+            tests/test_dub_quality_v4.py \
+            tests/test_dub_title_policy.py \
+            tests/test_dubfix_error_propagation.py \
+            tests/test_expressive_contour_plan.py \
+            tests/test_expressive_dub_policy.py \
+            tests/test_ffmpeg_probe_ownership.py \
+            tests/test_independent_qa_segment_retry.py \
+            tests/test_livedub_quality_runtime.py \
+            tests/test_original_bed_alignment.py \
+            tests/test_semantic_tts_guard.py \
+            tests/test_shorts_factory_editorial_lifecycle.py \
+            tests/test_timeline_onset_repair_and_speech_backends.py \
+            tests/test_transcript_source_priority.py \
+            tests/test_v3_audit_r24_local_botapi_patient_wait.py \
+            tests/test_v3_audit_r28_static_fit_mode.py \
+            tests/test_v3_audit_r38_review_hardening.py \
+            tests/test_v3_audit_r4_infra.py
+      - name: Collect full suite
+        run: python -m pytest --collect-only -q
+      - name: Commit v11 integration cleanup
         if: success()
         run: |
           set -euo pipefail
@@ -83,5 +73,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Fix source-owned runtime regressions"
+          git commit -m "Apply v11 source-owner regression cleanup"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
