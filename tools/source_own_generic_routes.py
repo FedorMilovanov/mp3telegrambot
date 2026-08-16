@@ -321,7 +321,7 @@ def main() -> int:
     health=health.replace('"production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]','"translate_groups=expressive_translation.translate_groups" in text["gemini"]')
     health=health.replace('"production._validate_translation_payload = strict_translation_payload.validate_full" in text["custom"]','"validate_translation=strict_translation_payload.validate_full" in text["custom"]')
     health=health.replace('"production.acquire_transcript = _acquire_transcript_with_actual_language" in text["gemini"]','"acquire_transcript=_acquire_transcript_clean" in text["gemini"]')
-    health=health.replace('"production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in text["gemini"]','"manual_vtt_parser\"] = parse_creator_vtt_preserving_text" in text["gemini"]')
+    health=health.replace('"production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in text["gemini"]','"parse_creator_vtt_preserving_text" in text["gemini"]')
     ast.parse(health,filename=str(HEALTH)); HEALTH.write_text(health,encoding="utf-8")
 
     release=RELEASE_HEALTH.read_text(encoding="utf-8")

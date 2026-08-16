@@ -11,7 +11,7 @@
       "kind": "render",
       "label": "Gemini MAX — живой чистый полный рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_clean_gemini_runtime",
+      "module": "tools.voxcpm2.generic_gemini_runtime",
       "parameters": {
         "Mode": "gemini"
       }
@@ -20,7 +20,7 @@
       "kind": "render",
       "label": "Gemini MAX — живой перевод, выразительный клон и ролик",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_clean_gemini_runtime",
+      "module": "tools.voxcpm2.generic_gemini_runtime",
       "parameters": {
         "Mode": "gemini"
       }
@@ -45,7 +45,7 @@
       "kind": "prepare",
       "label": "Подготовить шаблон пользовательского перевода",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_clean_custom_runtime",
+      "module": "tools.voxcpm2.generic_custom_runtime",
       "parameters": {
         "Mode": "custom",
         "PrepareOnly": true
@@ -55,7 +55,7 @@
       "kind": "render",
       "label": "Пользовательский перевод — живой чистый рендер",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_clean_custom_runtime",
+      "module": "tools.voxcpm2.generic_custom_runtime",
       "parameters": {
         "Mode": "custom"
       }

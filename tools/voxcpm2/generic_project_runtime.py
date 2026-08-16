@@ -11,6 +11,8 @@ translation without rewriting it.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+from dataclasses import dataclass
 import json
 import os
 import re
@@ -195,7 +197,7 @@ def parse_manual_vtt(path: Path) -> list[pipeline.Cue]:
     return cues
 
 
-def _download_track(url: str, source_dir: Path, *, kind: str, language: str) -> list[pipeline.Cue]:
+def _download_track(url: str, source_dir: Path, *, kind: str, language: str, manual_vtt_parser: Callable[[Path], list[pipeline.Cue]] | None = None) -> list[pipeline.Cue]:
     for old in source_dir.glob("preferred_caption*.vtt"):
         old.unlink(missing_ok=True)
     template = source_dir / "preferred_caption.%(language)s.%(ext)s"
@@ -227,7 +229,8 @@ def _download_track(url: str, source_dir: Path, *, kind: str, language: str) -> 
     )
     files = sorted(source_dir.glob("preferred_caption*.vtt"), key=lambda path: path.stat().st_size, reverse=True)
     for path in files:
-        cues = parse_manual_vtt(path) if kind == "manual" else pipeline.parse_vtt(path)
+        parser = manual_vtt_parser or parse_manual_vtt
+        cues = parser(path) if kind == "manual" else pipeline.parse_vtt(path)
         if cues:
             log(f"Субтитры: {kind}, язык={language}, файл={path.name}")
             return cues
@@ -268,19 +271,20 @@ def acquire_transcript(
     *,
     whisper_model: str,
     duration: float,
+    manual_vtt_parser: Callable[[Path], list[pipeline.Cue]] | None = None,
 ) -> tuple[list[pipeline.Cue], str, str]:
     preferred_kind, preferred_language = choose_caption_track(metadata)
     cues: list[pipeline.Cue] = []
     used_kind = preferred_kind
     used_language = preferred_language
     if preferred_kind in {"manual", "automatic"}:
-        cues = _download_track(source_url, source_dir, kind=preferred_kind, language=preferred_language)
+        cues = _download_track(source_url, source_dir, kind=preferred_kind, language=preferred_language, manual_vtt_parser=manual_vtt_parser)
     if not cues and preferred_kind == "manual":
         automatic = metadata.get("automatic_captions") or {}
         ranked = _language_priority(automatic.keys(), str(metadata.get("language") or "")) if isinstance(automatic, dict) else []
         if ranked:
             used_kind, used_language = "automatic", ranked[0]
-            cues = _download_track(source_url, source_dir, kind="automatic", language=used_language)
+            cues = _download_track(source_url, source_dir, kind="automatic", language=used_language, manual_vtt_parser=manual_vtt_parser)
     if not cues:
         cues, used_language = whisper_transcribe_auto(source, model_name=whisper_model)
         used_kind = "whisper"
@@ -446,7 +450,7 @@ def write_translation_template(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
-def parse_custom_translation(text: str, groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def parse_custom_translation(text: str, groups: list[dict[str, Any]], *, validator: Callable[[Any, list[dict[str, Any]]], list[dict[str, Any]]] = _validate_translation_payload) -> list[dict[str, Any]]:
     raw = str(text or "").strip()
     if not raw:
         raise RuntimeError("Перевод пуст.")
@@ -455,7 +459,7 @@ def parse_custom_translation(text: str, groups: list[dict[str, Any]]) -> list[di
     except json.JSONDecodeError:
         payload = None
     if payload is not None:
-        return _validate_translation_payload(payload, groups)
+        return validator(payload, groups)
 
     blocks = list(re.finditer(r"(?ms)^\s*\[(\d+)\][^\n]*\n(.*?)(?=^\s*\[\d+\]|\Z)", raw))
     mapped: list[dict[str, Any]] = []
@@ -668,7 +672,42 @@ def _run_speech_and_master(**kwargs: Any) -> Path:
     return _run_voxcpm_and_master(**kwargs)
 
 
-def main() -> None:
+@dataclass(frozen=True)
+class ProjectRoute:
+    download_source: Callable[..., dict[str, Any]]
+    acquire_transcript: Callable[..., tuple[list[pipeline.Cue], str, str]]
+    group_source: Callable[[list[pipeline.Cue]], list[dict[str, Any]]]
+    translate_groups: Callable[..., list[dict[str, Any]]]
+    validate_translation: Callable[[Any, list[dict[str, Any]]], list[dict[str, Any]]]
+    build_render_segments: Callable[..., tuple[list[dict[str, Any]], list[pipeline.Cue]]]
+    run_speech_and_master: Callable[..., Path]
+    delay_ms: Callable[[dict[str, Any]], int]
+    finalize: Callable[[Path, dict[str, Any]], None]
+
+
+def _default_delay_ms(request: dict[str, Any]) -> int:
+    return int(request.get("russian_delay_ms") or 420)
+
+
+def _no_finalize(root: Path, request: dict[str, Any]) -> None:
+    del root, request
+
+
+def default_project_route() -> ProjectRoute:
+    return ProjectRoute(
+        download_source=pipeline.download_source,
+        acquire_transcript=acquire_transcript,
+        group_source=_source_groups,
+        translate_groups=translate_groups_max,
+        validate_translation=_validate_translation_payload,
+        build_render_segments=_build_render_segments,
+        run_speech_and_master=_run_speech_and_master,
+        delay_ms=_default_delay_ms,
+        finalize=_no_finalize,
+    )
+
+def main(route: ProjectRoute | None = None) -> None:
+    route = route or default_project_route()
     pipeline.configure_utf8()
     parser = argparse.ArgumentParser(description="Universal Dub Studio project runtime")
     parser.add_argument("-Mode", "--mode", choices=("gemini", "custom"), required=True)
@@ -696,13 +735,13 @@ def main() -> None:
     title_model = str(request.get("title_model") or "gemini-3.5-flash-lite")
 
     log("=== 1. SOURCE / YOUTUBE ===")
-    metadata = pipeline.download_source(source_url, source)
+    metadata = route.download_source(source_url, source)
     duration = pipeline.ffprobe_duration(source)
     log(f"Источник: {metadata.get('title') or video_id}")
     log(f"Длительность: {duration:.3f} сек.")
 
     log("=== 2. PREFERRED TRANSCRIPT ===")
-    cues, caption_origin, source_language = acquire_transcript(
+    cues, caption_origin, source_language = route.acquire_transcript(
         source_url,
         source,
         source_dir,
@@ -710,7 +749,7 @@ def main() -> None:
         whisper_model=whisper_model,
         duration=duration,
     )
-    groups = _source_groups(cues)
+    groups = route.group_source(cues)
     source_srt = output_dir / "source_subtitles.srt"
     source_txt = output_dir / "source_transcript.txt"
     groups_json = root / "source_groups.json"
@@ -777,13 +816,14 @@ def main() -> None:
             ],
         })
         save_json(manifest_path, base_manifest)
+        route.finalize(root, request)
         log("=== ПОДГОТОВКА ГОТОВА: ОЖИДАЕТСЯ ПЕРЕВОД ПОЛЬЗОВАТЕЛЯ ===")
         return
 
     log("=== 4. RUSSIAN TRANSLATION ===")
     qa_path = output_dir / "translation_qa.txt"
     if mode == "gemini":
-        translations = translate_groups_max(
+        translations = route.translate_groups(
             groups,
             metadata=metadata,
             caption_origin=caption_origin,
@@ -797,12 +837,12 @@ def main() -> None:
         custom_json = input_dir / "custom_translation.json"
         custom_txt = input_dir / "custom_translation.txt"
         if custom_json.is_file():
-            translations = _validate_translation_payload(
+            translations = route.validate_translation(
                 json.loads(custom_json.read_text(encoding="utf-8-sig")),
                 groups,
             )
         elif custom_txt.is_file():
-            translations = parse_custom_translation(custom_txt.read_text(encoding="utf-8-sig"), groups)
+            translations = parse_custom_translation(custom_txt.read_text(encoding="utf-8-sig"), groups, validator=route.validate_translation)
         else:
             raise RuntimeError("Не загружен пользовательский перевод. Используйте /dubtranslation.")
         timing_warnings = validate_custom_timing(translations, groups)
@@ -823,8 +863,8 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    delay_ms = int(request.get("russian_delay_ms") or 420)
-    render_segments, russian_cues = _build_render_segments(
+    delay_ms = route.delay_ms(request)
+    render_segments, russian_cues = route.build_render_segments(
         groups,
         translations,
         delay_ms=delay_ms,
@@ -837,7 +877,7 @@ def main() -> None:
 
     stable_mixed = output_dir / "final_upload.mp4"
     stable_russian = output_dir / "russian_only.mp4"
-    russian_timeline = _run_speech_and_master(
+    russian_timeline = route.run_speech_and_master(
         root=root,
         request=request,
         source=source,
@@ -882,6 +922,7 @@ def main() -> None:
         ],
     })
     save_json(manifest_path, base_manifest)
+    route.finalize(root, request)
     log("=== ГОТОВО ===")
     log(f"Mixed: {named_mixed}")
     log(f"Russian-only: {named_russian}")

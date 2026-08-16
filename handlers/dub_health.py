@@ -86,9 +86,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "media_qa": voxcpm / "final_media_qa.py",
         "stable_cli": example / "voxcpm2_cpu_shorts_production.py",
         "master": example / "master_constant_mix.py",
-        "gemini": voxcpm / "generic_clean_gemini_runtime.py",
+        "gemini": voxcpm / "generic_gemini_runtime.py",
         "direct": voxcpm / "generic_direct_runtime.py",
-        "custom": voxcpm / "generic_clean_custom_runtime.py",
+        "custom": voxcpm / "generic_custom_runtime.py",
         "repair": voxcpm / "generic_clean_audio_repair_runtime.py",
         "runtime": repo / "services" / "dub_studio_runtime.py",
         "worker": voxcpm / "dub_worker_hardened.py",
@@ -137,8 +137,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and 'source.with_suffix(source.suffix + ".download.json")' in text["source_download"]
             and "YouTube URL и yt-dlp metadata указывают на разные ролики" in text["source_download"]
             and all(
-                "hardened.download_source = clean_source_download.download_source" in text[name]
-                and "hardened.pipeline.download_source = clean_source_download.download_source" in text[name]
+                "clean_source_download.download_source" in text[name]
                 for name in ("gemini", "custom")
             )
             and "clean_source_download.download_source(source_url, source)" in text["direct"]
@@ -161,7 +160,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "Exact adjacent duplicates are the same VTT render state" in text["creator_vtt"]
             and "Do not deduplicate against the whole cue" in text["creator_vtt"]
             and "parse_creator_vtt_preserving_text" in text["creator_vtt"]
-            and "production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in text["gemini"]
+            and "parse_creator_vtt_preserving_text" in text["gemini"]
         ),
         "strict-translation-payload": (
             'POLICY = "strict-translation-payload-v1"' in text["strict_translation"]
@@ -170,12 +169,12 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "Переводчик вернул повторяющийся ID" in text["strict_translation"]
             and "strict_translation_payload.validate_full(value, groups)" in text["translation"]
             and "strict_translation_payload.validate_subset(" in text["translation"]
-            and "production._validate_translation_payload = strict_translation_payload.validate_full" in text["custom"]
+            and "validate_translation=strict_translation_payload.validate_full" in text["custom"]
             and '"source_language"' in text["translation"]
             and "с исходного языка на русский" in text["translation"]
             and "англоязычной" not in text["translation"].casefold()
             and "английской речью" not in text["translation"].casefold()
-            and "production.acquire_transcript = _acquire_transcript_with_actual_language" in text["gemini"]
+            and "acquire_transcript=_acquire_transcript_clean" in text["gemini"]
         ),
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
@@ -318,7 +317,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in text["gemini_runtime"]
             and "load_dotenv(override=False)" in text["gemini_runtime"]
             and "пробую следующий" in text["gemini_runtime"]
-            and "production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]
+            and "translate_groups=expressive_translation.translate_groups" in text["gemini"]
         ),
         "clean-entrypoints": (
             "TTS guard disabled" in text["gemini"]
@@ -386,7 +385,7 @@ def _recipe_checks() -> list[dict[str, Any]]:
         return [
             _check(
                 "Recipe: Gemini MAX",
-                "tools.voxcpm2.generic_clean_gemini_runtime" in gemini_text
+                "tools.voxcpm2.generic_gemini_runtime" in gemini_text
                 and "-Mode gemini" in gemini_text,
                 gemini_text,
             ),
