@@ -291,10 +291,6 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
     return fallback
 
 
-# Native request-local multi-client support is concurrency-safe.
-build_livedub_info_card._mp3bot_all_clients = True  # type: ignore[attr-defined]
-
-
 def _h(text: Any) -> str:
     return html.escape(str(text or ""), quote=False)
 
