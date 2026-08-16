@@ -393,9 +393,6 @@ async def prepare_factory_ru_boundary_evidence(
     }
 
 
-@contextmanager
-
-
 def _candidate_limits(candidate_kind: CandidateKind) -> tuple[float, float, bool]:
     if candidate_kind == "long":
         return LONG_MIN_SEC, PUBLIC_LONG_MAX_SEC, True

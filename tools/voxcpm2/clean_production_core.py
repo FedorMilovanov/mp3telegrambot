@@ -1010,7 +1010,7 @@ def render_and_master(*args: Any, **kwargs: Any) -> Any:
     raise RuntimeError("Недостижимое состояние automatic delivery retry.")
 
 __all__ = sorted(
-    set(name for name in dir(_legacy) if not name.startswith("__"))
+    set(name for name in globals() if not name.startswith("__") and name != "_legacy")
     | {
         "CHILD_PYTHON_POLICY",
         "DELIVERY_RETRY_POLICY",
