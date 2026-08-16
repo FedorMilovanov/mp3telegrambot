@@ -14,7 +14,6 @@ SOURCE = ROOT / "tools/voxcpm2/clean_source_download.py"
 CONTRACT = ROOT / "tools/voxcpm2/clean_runtime_contract.py"
 HEALTH = ROOT / "handlers/dub_health.py"
 SHORT_RECIPE = ROOT / "tools/voxcpm2/recipes/short_tnliocegylk.json"
-WORKFLOWS = ROOT / ".github/workflows"
 
 FUNCTIONS = (
     "standardize_russian_title", "_standardize_title_payload", "_ytdlp_base",
@@ -111,12 +110,7 @@ def main() -> int:
     health = HEALTH.read_text(encoding="utf-8").replace('"gemini_runtime": voxcpm / "generic_short_runtime.py"', '"gemini_runtime": voxcpm / "generic_short_production.py"')
     if "generic_short_runtime.py" in health: raise RuntimeError("dub health retained generic_short_runtime")
     ast.parse(health, filename=str(HEALTH)); HEALTH.write_text(health, encoding="utf-8")
-    for path in WORKFLOWS.glob("*.yml"):
-        if path.name in {"zero-runtime-marathon.yml", "classify-runtime-roots.yml", "prune-dead-voxcpm-runtime.yml", "source-own-generic-foundation.yml"}: continue
-        text = path.read_text(encoding="utf-8")
-        if "generic_short_runtime" in text:
-            text = text.replace("tools.voxcpm2.generic_short_runtime", "tools.voxcpm2.generic_short_production").replace("tools/voxcpm2/generic_short_runtime.py", "tools/voxcpm2/generic_short_production.py")
-            path.write_text(text, encoding="utf-8")
+
     RUNTIME.unlink()
     blockers=[]
     for root_name in ("tools/voxcpm2", "services", "handlers", "core", "pipelines"):
