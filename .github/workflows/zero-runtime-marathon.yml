@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  remaining-reference-audit:
+  current-zero-surgery-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,27 +23,23 @@ jobs:
           python-version: '3.11'
       - name: Compile current production tree
         run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
-      - name: Write production references for remaining runtime modules
+      - name: Persist current zero-surgery status
         shell: bash
         run: |
           set -euo pipefail
-          : > .remaining-runtime-refs.txt
-          names=(
-            generic_clean_custom_runtime generic_clean_direct_runtime generic_clean_gemini_runtime
-            generic_gemini_runtime generic_project_runtime generic_short_runtime
-            professional_audio_qa_v45 professional_segmentation semantic_tts_guard semantic_tts_guard_v4
-            voxcpm2_production_semantic_rescue voxcpm2_universal_payload
-          )
-          for name in "${names[@]}"; do
-            echo "===== $name =====" >> .remaining-runtime-refs.txt
-            grep -RIn --include='*.py' --exclude-dir=tests --exclude-dir=.git --exclude="${name}.py" "$name" services handlers pipelines core tools/voxcpm2 main.py bot_new.py >> .remaining-runtime-refs.txt || true
-          done
-      - name: Commit reference audit artifact
+          {
+            echo '===== ROOT CALL GRAPH ====='
+            python tools/remaining_runtime_call_graph.py
+            echo
+            echo '===== AST SURGERY AUDIT ====='
+            python tools/runtime_surgery_audit.py
+          } > .zero-runtime-status.txt
+      - name: Commit audit status
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .remaining-runtime-refs.txt
+          git add .zero-runtime-status.txt
           git diff --cached --quiet && exit 0
-          git commit -m "Record remaining runtime reference audit"
+          git commit -m "Record current zero-runtime audit status"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
