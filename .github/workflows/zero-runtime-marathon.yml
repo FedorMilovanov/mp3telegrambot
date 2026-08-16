@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  final-audit-dependencies:
+  direct-final-audit-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,24 +21,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own final-audit dependencies
-        run: python tools/source_own_final_audit_dependencies.py
+      - name: Source-own direct final audit
+        run: python tools/source_own_direct_final_audit.py
       - name: Compile direct production tree
         run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify dependency ownership
+      - name: Verify final-audit installer is gone
         run: |
-          grep -q 'from numbers import Integral' tools/voxcpm2/direct_retry_epoch.py
-          grep -q 'not isinstance(value, Integral)' tools/voxcpm2/direct_retry_epoch.py
-          grep -q 'def _prune_marker_archives' tools/voxcpm2/direct_timing_guard.py
-          grep -q '_prune_marker_archives(path.parent, path.name, limit=8)' tools/voxcpm2/direct_timing_guard.py
-          grep -q 'def set_model_discovery_callback' tools/voxcpm2/direct_surgical_io.py
-          grep -q 'def discover_model(self, archive_root: Path)' tools/voxcpm2/direct_surgical_io.py
-      - name: Commit final-audit dependencies
+          ! grep -RInE 'install_final_audit|retry\._strict_segment_id\s*=|guard\.load_matching_timing_block\s*=|\.discover_model\s*=|namespace\[' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_final_audit_v3.py
+          grep -q 'FINAL_AUDIT_POLICY = final_audit.POLICY' tools/voxcpm2/direct_max_quality_cli.py
+          grep -q 'set_model_discovery_callback' tools/voxcpm2/direct_max_quality_cli.py
+          grep -q 'def _final_audit_model_discovered' tools/voxcpm2/direct_max_quality_cli.py
+      - name: Commit source-owned direct final audit
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Source-own direct final audit dependencies"
+          git commit -m "Source-own direct final audit"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
