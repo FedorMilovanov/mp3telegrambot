@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  flatten-direct-retry:
+  final-audit-dependencies:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +21,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Flatten direct retry snapshot
-        run: python tools/flatten_direct_retry_epoch.py
+      - name: Source-own final-audit dependencies
+        run: python tools/source_own_final_audit_dependencies.py
       - name: Compile direct production tree
         run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify canonical retry owner
+      - name: Verify dependency ownership
         run: |
-          test ! -f tools/voxcpm2/_direct_retry_epoch_base.py
-          ! grep -nE '_direct_retry_epoch_base|exec\(compile|globals\(\)\["__name__"\]|_ORIGINAL_NAME|_required_export|_required_callable' tools/voxcpm2/direct_retry_epoch.py
-          grep -q 'BASE_POLICY = POLICY' tools/voxcpm2/direct_retry_epoch.py
-          grep -q 'MAX_SCOPE_EPOCH = 3' tools/voxcpm2/direct_retry_epoch.py
-      - name: Commit canonical retry owner
+          grep -q 'from numbers import Integral' tools/voxcpm2/direct_retry_epoch.py
+          grep -q 'not isinstance(value, Integral)' tools/voxcpm2/direct_retry_epoch.py
+          grep -q 'def _prune_marker_archives' tools/voxcpm2/direct_timing_guard.py
+          grep -q '_prune_marker_archives(path.parent, path.name, limit=8)' tools/voxcpm2/direct_timing_guard.py
+          grep -q 'def set_model_discovery_callback' tools/voxcpm2/direct_surgical_io.py
+          grep -q 'def discover_model(self, archive_root: Path)' tools/voxcpm2/direct_surgical_io.py
+      - name: Commit final-audit dependencies
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Flatten direct retry epoch source snapshot"
+          git commit -m "Source-own direct final audit dependencies"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
