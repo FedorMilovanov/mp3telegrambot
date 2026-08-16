@@ -17,9 +17,8 @@ on:
       - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
       - "services/dub_studio_runtime.py"
-      - "handlers/dub_health/**"
+      - "handlers/dub_health.py"
       - "handlers/dub_wizard.py"
-      - "handlers/dub_wizard/**"
       - "tests/test_dub_wizard*.py"
       - "tests/test_speech_backend_*.py"
       - "tests/test_speech_model_*.py"
@@ -42,9 +41,8 @@ on:
       - "services/dub_rendering.py"
       - "services/dub_worker_release.py"
       - "services/dub_studio_runtime.py"
-      - "handlers/dub_health/**"
+      - "handlers/dub_health.py"
       - "handlers/dub_wizard.py"
-      - "handlers/dub_wizard/**"
       - "tests/test_dub_wizard*.py"
       - "tests/test_speech_backend_*.py"
       - "tests/test_speech_model_*.py"
@@ -64,10 +62,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -97,7 +95,7 @@ jobs:
       - name: Compile backend and VoxCPM2 surfaces
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/tts_weighted_runner_provisioning.py services/dub_preflight.py services/dub_rendering.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard tools/voxcpm2
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/tts_weighted_runner_provisioning.py services/dub_preflight.py services/dub_rendering.py handlers/dub_health.py handlers/dub_wizard.py tools/voxcpm2
           python -m py_compile services/dub_worker_release.py services/dub_studio_runtime.py tools/check_tts_model_catalog.py tools/check_tts_weighted_runner_provisioning.py
           if ($LASTEXITCODE -ne 0) {
             throw "Backend/VoxCPM2 compile failed."
@@ -187,9 +185,8 @@ jobs:
           services/dub_rendering.py
           services/dub_worker_release.py
           services/dub_studio_runtime.py
-          handlers/dub_health
+          handlers/dub_health.py
           handlers/dub_wizard.py
-          handlers/dub_wizard
           tools/check_tts_model_catalog.py
           tools/check_tts_weighted_runner_provisioning.py
           tools/voxcpm2
