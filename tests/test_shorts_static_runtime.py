@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_PATH = ROOT / "services" / "shorts_static_runtime.py"
+RUNTIME_PATH = ROOT / "services" / "shorts_static_policy.py"
 
 
 def _load_runtime():
@@ -134,15 +134,12 @@ def test_opening_slide_then_moving_footage_keeps_crop(monkeypatch, tmp_path: Pat
     assert asyncio.run(runtime._is_static_video_confident(source, 30.0)) is False
 
 
-def test_manifest_owns_shorts_visual_policy_before_main_import() -> None:
-    init_source = (ROOT / "services" / "__init__.py").read_text(encoding="utf-8")
-    manifest_source = (ROOT / "services" / "runtime_manifest.py").read_text(encoding="utf-8")
-    assert "install_short_static_runtime()" not in init_source
-    assert '"shorts-visual-policy"' in manifest_source
-    assert '"services.shorts_static_runtime"' in manifest_source
-    runtime_source = (ROOT / "services" / "shorts_static_runtime.py").read_text(encoding="utf-8")
-    assert "moving=crop_zoom" in runtime_source
-    assert "SHORTS_STATIC_SECOND_PROBE_OFFSET" in runtime_source
-    assert "await run_cancellable_process(" in runtime_source
-    assert "run_in_executor" not in runtime_source
-    assert "subprocess.run(" not in runtime_source
+def test_ffmpeg_uses_source_owned_shorts_visual_policy() -> None:
+    ffmpeg_source = (ROOT / "services" / "ffmpeg.py").read_text(encoding="utf-8")
+    policy_source = RUNTIME_PATH.read_text(encoding="utf-8")
+    assert "from services.shorts_static_policy import _is_static_video_confident" in ffmpeg_source
+    assert "moving/uncertain→crop_zoom" in policy_source
+    assert "SHORTS_STATIC_SECOND_PROBE_OFFSET" in policy_source
+    assert "await run_cancellable_process(" in policy_source
+    assert "run_in_executor" not in policy_source
+    assert "subprocess.run(" not in policy_source
