@@ -48,41 +48,6 @@ def _progress_value(
     return max(8, min(86, 8 + round(fraction / total_value * 78)))
 
 
-def install_worker_progress(namespace: MutableMapping[str, Any]) -> None:
-    """Ignore model-internal tqdm and keep explicit project progress authoritative."""
-    original = namespace.get("_progress_from_line_v44")
-    if not callable(original):
-        raise RuntimeError("dub_worker_hardened не содержит _progress_from_line_v44.")
-
-    def _progress_from_line_v44(line: str, current: int) -> tuple[int, str]:
-        text = str(line or "").strip()
-        if _MODEL_TQDM_RE.match(text):
-            return int(current), ""
-        return original(line, current)
-
-    namespace["_MODEL_TQDM_RE"] = _MODEL_TQDM_RE
-    namespace["_progress_from_line_v44"] = _progress_from_line_v44
-    namespace["_RUNTIME_VERSION"] = "dub-worker-quality-v4.7-universal-tts"
-
-
-def install_runtime_fingerprint(namespace: MutableMapping[str, Any]) -> None:
-    modules = tuple(namespace.get("_RENDER_MODULES") or ())
-    additions = (
-        "tools/voxcpm2/direct_timing_guard.py",
-        "tools/voxcpm2/direct_universal_runtime.py",
-        "tools/voxcpm2/direct_retry_epoch.py",
-        "tools/voxcpm2/_direct_retry_epoch_base.py",
-        "tools/voxcpm2/direct_max_quality_cli.py",
-        "tools/voxcpm2/generic_clean_direct_runtime.py",
-        "tools/voxcpm2/_generic_clean_direct_runtime_base.py",
-        "tools/voxcpm2/clean_production_core/__init__.py",
-        "services/speech_backends/voxcpm2.py",
-        "services/speech_backends/base.py",
-        "services/speech_backends/control_plane.py",
-    )
-    namespace["_RENDER_MODULES"] = tuple(dict.fromkeys((*modules, *additions)))
-
-
 def install_generic_preflight(namespace: MutableMapping[str, Any]) -> None:
     """Run final semantic-block timing validation before references and model."""
     original = namespace.get("_run_clean_voxcpm_and_master")
@@ -374,7 +339,4 @@ def install_direct_runtime(namespace: MutableMapping[str, Any]) -> None:
     namespace["UNIVERSAL_RUNTIME_POLICY"] = POLICY
 
 
-__all__ = [
-    "POLICY", "install_direct_runtime", "install_generic_preflight",
-    "install_runtime_fingerprint", "install_worker_progress",
-]
+__all__ = ['POLICY', 'install_direct_runtime', 'install_generic_preflight']
