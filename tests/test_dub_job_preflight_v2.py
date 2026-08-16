@@ -41,12 +41,12 @@ def _request(**overrides: Any) -> dict[str, Any]:
     }
 
 
-def test_preflight_import_resolves_to_v2_package() -> None:
+def test_preflight_import_resolves_to_source_owner() -> None:
     assert Path(preflight.__file__).name == "dub_job_preflight.py"
     assert preflight.POLICY == "dub-production-preflight-v2"
     assert preflight.REPORT_SCHEMA == 2
     assert preflight.PREFLIGHT_HEARTBEAT_SECONDS == 5.0
-    assert preflight.run is preflight.run
+    assert callable(preflight.run)
 
 
 def test_project_root_is_canonical_and_cross_project_safe(
@@ -104,7 +104,11 @@ def test_render_custom_runs_preflight_and_writes_action_report(
     tmp_path: Path,
 ) -> None:
     written: list[tuple[Path, dict[str, Any]]] = []
-    monkeypatch.setattr(preflight, "_runtime_paths", lambda _project: {"root": tmp_path})
+    monkeypatch.setattr(
+        preflight,
+        "_runtime_paths",
+        lambda _project, **_kwargs: {"root": tmp_path},
+    )
     monkeypatch.setattr(
         preflight,
         "_signature",
@@ -151,13 +155,18 @@ def test_atomic_preflight_reports_do_not_share_temp_names(tmp_path: Path) -> Non
     assert not list(tmp_path.glob("production_preflight.json.tmp.*"))
 
 
-def test_signature_covers_clean_modules_and_preflight_layers() -> None:
+def test_signature_covers_current_source_owned_runtime_layers() -> None:
     identity = preflight._implementation_identity(ROOT)
     files = identity["files"]
-    assert "tools/voxcpm2/dub_job_preflight.py" in files
-    assert "tools/voxcpm2/dub_job_preflight/__init__.py" in files
-    assert "tools/voxcpm2/clean_production_core/__init__.py" in files
-    assert "tools/voxcpm2/clean_source_download/__init__.py" in files
+    for marker in (
+        "tools/voxcpm2/dub_job_preflight.py",
+        "tools/voxcpm2/clean_production_core.py",
+        "tools/voxcpm2/clean_source_download.py",
+        "tools/voxcpm2/generic_project_runtime.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
+    ):
+        assert marker in files
+    assert not any("/__init__.py" in path for path in files)
     assert len(identity["sha256"]) == 64
     assert callable(clean_runtime_contract.build_fingerprints)
 
@@ -195,6 +204,4 @@ def test_preflight_heartbeat_uses_shared_worker_release(
 
 def test_health_and_supervisor_share_worker_release() -> None:
     assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
-    assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
-    assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
     assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
