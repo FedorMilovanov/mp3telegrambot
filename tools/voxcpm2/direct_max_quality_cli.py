@@ -267,7 +267,7 @@ def _raw_failure_evidence(
     }
 
 
-def main() -> None:
+def _render_main() -> None:
     configure_utf8()
     parser = argparse.ArgumentParser(
         description="Direct maximum-quality speech backend renderer."
@@ -911,13 +911,15 @@ from tools.voxcpm2.direct_universal_runtime import install_direct_runtime
 from tools.voxcpm2.direct_surgical_runtime import install_surgical_runtime
 from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
 from tools.voxcpm2.direct_final_audit_v3 import install_final_audit
-from tools.voxcpm2.direct_failure_recovery import install_main_failure_recovery
+from tools.voxcpm2.direct_failure_recovery import (
+    POLICY as EARLY_STOP_RECOVERY_POLICY,
+    run_with_failure_recovery,
+)
 
 install_direct_runtime(globals())
 install_surgical_runtime(globals())
 install_global_polish()
 install_final_audit(globals())
-install_main_failure_recovery(globals())
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
@@ -1263,7 +1265,9 @@ _candidate_failure_summary = _candidate_failure_summary
 
 _raw_failure_evidence = _raw_failure_evidence
 
-main = main
+def main() -> Any:
+    return run_with_failure_recovery(_render_main, invalidate_segment_for_retry)
+
 
 __all__ = sorted(
     set(name for name in _BASE_ALL if not name.startswith("__"))
