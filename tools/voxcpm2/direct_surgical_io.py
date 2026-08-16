@@ -113,15 +113,30 @@ class LazyBackend:
         encode: int,
         output: int,
         log: Callable[[str], Any],
+        model_discovery_callback: Callable[[Path], Any] | None = None,
     ) -> None:
         self._backend = backend
         self._encode = int(encode)
         self._output = int(output)
         self._log = log
+        self._model_discovery_callback = model_discovery_callback
         self._session: LazySession | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._backend, name)
+
+    def set_model_discovery_callback(
+        self,
+        callback: Callable[[Path], Any] | None,
+    ) -> None:
+        self._model_discovery_callback = callback
+
+    def discover_model(self, archive_root: Path) -> Path:
+        model = Path(self._backend.discover_model(Path(archive_root))).resolve()
+        callback = self._model_discovery_callback
+        if callback is not None:
+            callback(model)
+        return model
 
     def open_session(self, config: Any) -> LazySession:
         if self._session is not None:

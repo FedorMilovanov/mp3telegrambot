@@ -541,6 +541,15 @@ def enforce_retry_epoch_budget(
         signature_context=signature_context,
     )
 
+
+def _prune_marker_archives(directory: Path, stem: str, *, limit: int = 8) -> None:
+    files: list[Path] = []
+    for pattern in (f"{stem}.stale-*", f"{stem}.corrupt-*", f"{stem}.oversized-*"):
+        files.extend(path for path in Path(directory).glob(pattern) if path.is_file())
+    files.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for stale in files[max(0, int(limit)):]:
+        stale.unlink(missing_ok=True)
+
 def load_matching_timing_block(
     work_dir: Path,
     *,
@@ -554,26 +563,29 @@ def load_matching_timing_block(
         if path.stat().st_size > MAX_MARKER_BYTES:
             _archive_timing_marker(path, "oversized")
             return None
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        _archive_timing_marker(path, "corrupt-json")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            _archive_timing_marker(path, "corrupt-json")
+            return None
+        if not isinstance(payload, dict) or (
+            payload.get("schema_version") != MARKER_SCHEMA_VERSION
+            or payload.get("policy") != SURGICAL_GUARD_POLICY
+            or int(payload.get("segment_id") or 0) != int(segment.get("id") or 0)
+            or not isinstance(payload.get("evidence"), dict)
+            or not isinstance(payload.get("recommendation"), dict)
+        ):
+            _archive_timing_marker(path, "contract-mismatch")
+            return None
+        expected = failure_scope_fingerprint(
+            segment, signature_context=signature_context
+        )
+        if payload.get("signature") == expected:
+            return payload
+        _archive_timing_marker(path, "input-changed")
         return None
-    if not isinstance(payload, dict) or (
-        payload.get("schema_version") != MARKER_SCHEMA_VERSION
-        or payload.get("policy") != SURGICAL_GUARD_POLICY
-        or int(payload.get("segment_id") or 0) != int(segment.get("id") or 0)
-        or not isinstance(payload.get("evidence"), dict)
-        or not isinstance(payload.get("recommendation"), dict)
-    ):
-        _archive_timing_marker(path, "contract-mismatch")
-        return None
-    expected = failure_scope_fingerprint(
-        segment, signature_context=signature_context
-    )
-    if payload.get("signature") == expected:
-        return payload
-    _archive_timing_marker(path, "input-changed")
-    return None
+    finally:
+        _prune_marker_archives(path.parent, path.name, limit=8)
 
 __all__ = [
     "CONTEXT_NAME", "POLICY",

@@ -14,6 +14,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from numbers import Integral
 from typing import Any
 
 POLICY = "failed-segment-seed-epoch-v1"
@@ -30,12 +31,9 @@ def _now() -> str:
 
 
 def _strict_segment_id(value: Any) -> int:
-    if isinstance(value, bool):
-        raise RuntimeError("segment_id не может быть bool.")
-    try:
-        result = int(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise RuntimeError(f"Некорректный segment_id: {value!r}") from exc
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise RuntimeError(f"Некорректный segment_id: {value!r}")
+    result = int(value)
     if not 1 <= result <= MAX_SEGMENT_ID:
         raise RuntimeError(
             f"segment_id должен быть в диапазоне 1..{MAX_SEGMENT_ID}: {result}."
