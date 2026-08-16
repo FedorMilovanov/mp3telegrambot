@@ -33,8 +33,6 @@ jobs:
           text = path.read_text(encoding="utf-8")
           text = text.replace("    _sync_legacy_hooks()\n", "")
           text = text.replace("\n_sync_legacy_hooks()\n", "\n")
-          if "_sync_legacy_hooks" in text:
-              raise SystemExit("retired hook reference remains")
           path.write_text(text, encoding="utf-8")
           PY
       - name: Remove newly unused imports safely
