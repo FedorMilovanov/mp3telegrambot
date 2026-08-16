@@ -8,23 +8,29 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/zero-runtime-surgery-marathon
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Compile production tree
+      - name: Delete proven dead runtime patch modules
+        run: python tools/dead_runtime_cleanup.py
+      - name: Compile production tree after cleanup
         run: python -m compileall -q core handlers pipelines services tools converters main.py bot_new.py
-
-      - name: Runtime reference map
-        run: python tools/runtime_reference_audit.py
+      - name: Commit cleanup
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Delete proven-dead runtime patch modules"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
