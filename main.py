@@ -14,6 +14,7 @@ from core.globals import (
 from core.database import (
     db_init, asettings_get,
     GEMINI_MODEL, WHITELIST_IDS, ADMIN_IDS,
+    reset_rate_limit_async_state,
     set_effective_max_file_size_mb,
 )
 from telegram import Update
@@ -148,9 +149,12 @@ async def run_bot_async():
     # per-user asyncio.Lock'и переживают пересоздание event loop и остаются
     # привязаны к мёртвому loop — каждый не-VIP запрос падал бы с
     # RuntimeError "bound to a different event loop" до ручного рестарта.
-    import core.database as _core_db
-    _core_db._rate_limit_async_locks.clear()
-    _core_db._rate_limit_locks_guard = asyncio.Lock()
+    _stale_rate_limit_locks = reset_rate_limit_async_state()
+    if _stale_rate_limit_locks:
+        logger.info(
+            "🧹 Очищено rate-limit locks от предыдущего event loop: %d",
+            _stale_rate_limit_locks,
+        )
 
     logger.info("🚀 Бот запускается...")
     # AUDIT 2026-06-10: startup-диагностика внешних инструментов.
