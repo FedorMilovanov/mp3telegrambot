@@ -53,7 +53,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
     clean_core = _read(voxcpm / "clean_production_core.py")
     source_policy = _read(voxcpm / "source_prosody_policy.py")
     semantic_blocks = _read(voxcpm / "semantic_block_runtime.py")
-    direct_runtime = _read(voxcpm / "generic_clean_direct_runtime.py")
+    direct_runtime = _read(voxcpm / "generic_direct_runtime.py")
     direct_cli = _read(voxcpm / "direct_max_quality_cli.py")
     render_core = _read(voxcpm / "direct_max_quality_render.py")
     project_runtime = _read(voxcpm / "generic_project_runtime" / "__init__.py")
@@ -205,7 +205,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             "backend.build_master_command(",
         ) and _all(
             direct_runtime,
-            "production._run_speech_and_master = _run_clean_voxcpm_and_master",
+            "clean.render_and_master(",
         ),
         "semantic-block-direct-runtime": _all(
             semantic_blocks,
@@ -219,7 +219,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         ) and _all(
             direct_runtime,
             "semantic_block_runtime.group_ready_srt",
-            "clean.build_direct_segments(",
+            "semantic_block_runtime.build_direct_segments(",
             "_run_speech_and_master",
         ) and _all(
             direct_cli,

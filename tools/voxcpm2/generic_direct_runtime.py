@@ -11,13 +11,22 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import re
 import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
+from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_request_settings
+from tools.voxcpm2 import clean_source_download
+from tools.voxcpm2 import continuous_reference_policy
+from tools.voxcpm2 import controlled_reference_gate
+from tools.voxcpm2 import direct_max_quality_io as direct_io
+from tools.voxcpm2 import direct_timing_guard
+from tools.voxcpm2 import expressive_continuity
+from tools.voxcpm2 import semantic_block_runtime
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import generic_short_runtime as hardened
 from tools.voxcpm2.generic_project_runtime import (
     _hardlink_or_copy,
     _run_voxcpm_and_master,
@@ -31,9 +40,276 @@ from tools.voxcpm2.generic_project_runtime import (
 )
 
 
-def _run_speech_and_master(**kwargs: Any) -> Path:
-    """Generic engine hook; the selected route may replace this before main()."""
-    return _run_voxcpm_and_master(**kwargs)
+CLEAN_DIRECT_ROUTE_POLICY = "source-owned-clean-direct-v1"
+
+def _read_json_value(path: Path) -> Any:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    payload = _read_json_value(path)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _same_number(left: Any, right: Any, *, tolerance: float = 1e-6) -> bool:
+    try:
+        a = float(left)
+        b = float(right)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(a) and math.isfinite(b) and abs(a - b) <= tolerance
+
+
+def _expected_expression(segment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "policy": str(segment.get("expression_policy") or ""),
+        "tier": str(segment.get("expression_tier") or ""),
+        "score": segment.get("expression_score"),
+        "style_instruction": str(segment.get("style_instruction") or ""),
+        "source_prosody": segment.get("source_prosody") or {},
+    }
+
+
+def _legacy_checkpoint_prefix(root: Path, request: dict[str, Any]) -> list[int]:
+    segments_payload = _read_json_value(root / "segments_ru_final.json")
+    if not isinstance(segments_payload, list) or len(segments_payload) < 2:
+        return []
+    segments = {
+        int(item.get("id")): item
+        for item in segments_payload
+        if isinstance(item, dict) and str(item.get("id") or "").isdigit()
+    }
+    if len(segments) != len(segments_payload):
+        return []
+    segment_work = root / "segment_work"
+    checkpoint_paths = sorted((segment_work / "checkpoints").glob("segment_*.json"))
+    fitted_dir = segment_work / "segments_fitted"
+    if not checkpoint_paths:
+        return []
+    steps = int(request["steps"]) if request.get("steps") is not None else 16
+    cfg = float(request["cfg"]) if request.get("cfg") is not None else 1.8
+    base_seed = int(request["base_seed"]) if request.get("base_seed") is not None else 2026072800
+    accepted_ids: list[int] = []
+    for path in checkpoint_paths:
+        payload = _read_json(path)
+        signature = payload.get("signature")
+        report = payload.get("report")
+        if not isinstance(signature, dict) or not isinstance(report, dict):
+            return []
+        try:
+            segment_id = int(report.get("id"))
+        except (TypeError, ValueError, OverflowError):
+            return []
+        segment = segments.get(segment_id)
+        if not isinstance(segment, dict):
+            return []
+        profile = str(segment.get("reference_profile") or "")
+        fitted = fitted_dir / f"{segment_id:02d}_{profile}_fitted.wav"
+        fit = report.get("fit")
+        if (
+            not fitted.is_file()
+            or fitted.stat().st_size < 4096
+            or report.get("renderer_policy") != direct_io.POLICY
+            or report.get("selected_raw_pitch_evidence_ok") is not True
+            or not isinstance(fit, dict)
+            or not _same_number(report.get("start"), segment.get("start"))
+            or not _same_number(report.get("end"), segment.get("end"))
+            or not _same_number(report.get("tail_guard"), segment.get("tail_guard"))
+            or float(fit.get("tempo") or 999.0) > 1.35 + 1e-6
+        ):
+            return []
+        expected_core = {
+            "policy": direct_io.POLICY,
+            "text": str(segment.get("text") or ""),
+            "start": float(segment["start"]),
+            "end": float(segment["end"]),
+            "tail_guard": float(segment["tail_guard"]),
+            "start_delay_ms": int(segment.get("start_delay_ms", 0)),
+            "reference_profile": profile,
+            "expression": _expected_expression(segment),
+            "steps": steps,
+            "cfg": cfg,
+            "base_seed": base_seed,
+        }
+        for key, expected in expected_core.items():
+            actual = signature.get(key)
+            if isinstance(expected, float):
+                if not _same_number(actual, expected):
+                    return []
+            elif actual != expected:
+                return []
+        if not str(signature.get("model_config_sha256") or ""):
+            return []
+        if not str(signature.get("reference_sha256") or ""):
+            return []
+        accepted_ids.append(segment_id)
+    accepted_ids = sorted(set(accepted_ids))
+    if not accepted_ids or accepted_ids != list(range(1, accepted_ids[-1] + 1)):
+        return []
+    if accepted_ids[-1] >= len(segments_payload):
+        return []
+    return accepted_ids
+
+
+def _seed_resumable_clean_marker(root: Path, request: dict[str, Any]) -> None:
+    segment_work = root / "segment_work"
+    checkpoints = segment_work / "checkpoints"
+    if not any(checkpoints.glob("segment_*.json")):
+        return
+    repo = Path(__file__).resolve().parents[2]
+    cpu_python = clean._cpu_python(request)
+    archive = Path(str(request.get("vox_archive") or r"C:\AI-Archive\VoxCPM2-paused-RTX3060")).resolve()
+    fingerprints = clean.clean_runtime_contract.build_fingerprints(
+        repo=repo,
+        archive=archive,
+        cpu_python=cpu_python,
+        backend_id=request.get("speech_backend"),
+    )
+    expected_direct = {
+        "schema_version": 1,
+        "policy": "direct-cli-runtime-marker-v1",
+        "render_contract_sha256": fingerprints["render_contract_sha256"],
+        "cache_length": 4096,
+        "python_executable": str(cpu_python.resolve()),
+    }
+    direct_marker_path = segment_work / "direct_cli_runtime.marker.json"
+    direct_marker = _read_json(direct_marker_path)
+    migration_ids: list[int] = []
+    if direct_marker != expected_direct:
+        migration_ids = _legacy_checkpoint_prefix(root, request)
+        if not migration_ids:
+            return
+        direct_marker_path.write_text(
+            json.dumps(expected_direct, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+    marker = {
+        "schema_version": 3,
+        "policy": clean.POLICY,
+        "runtime_contract_policy": clean.clean_runtime_contract.POLICY,
+        "render_contract_sha256": fingerprints["render_contract_sha256"],
+        "release_contract_sha256": fingerprints["release_contract_sha256"],
+        "segment_qa_passed": False,
+        "release_complete": False,
+        "checkpoint_resume_provisional": True,
+    }
+    if migration_ids:
+        marker.update(
+            checkpoint_resume_migration="validated-late-prefix-after-tempo-policy-v1",
+            adopted_checkpoint_ids=migration_ids,
+        )
+    segment_work.mkdir(parents=True, exist_ok=True)
+    (segment_work / "clean_production.marker.json").write_text(
+        json.dumps(marker, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    if migration_ids:
+        log(f"восстановлен проверенный checkpoint-prefix 1–{migration_ids[-1]}")
+    else:
+        log("совместимые fingerprinted checkpoints сохранены для продолжения")
+
+
+def _renderer_failure_detail(root: Path) -> str:
+    payload = _read_json(root / "segment_work" / "direct_renderer_failure.json")
+    message = str(payload.get("message") or "").strip()
+    error_type = str(payload.get("error_type") or "RuntimeError").strip()
+    return f"{error_type}: {message}" if message else ""
+
+
+def _run_speech_and_master(
+    *,
+    root: Path,
+    request: dict[str, Any],
+    source: Path,
+    cues: list[Any],
+    duration: float,
+    segments_json: Path,
+    final_mixed: Path,
+    final_russian: Path,
+) -> Path:
+    settings = clean.clean_runtime_contract.normalize_settings(request, duration=duration)
+    backend = clean.get_backend(request.get("speech_backend") or clean.DEFAULT_BACKEND_ID)
+    if backend.backend_id == "voxcpm2":
+        repo = Path(__file__).resolve().parents[2]
+        runtime = backend.runtime_paths(repo, request)
+        model_path = backend.discover_model(runtime.archive_root)
+        model_config = model_path / "config.json"
+        if not model_config.is_file():
+            raise RuntimeError(f"Не найден config.json выбранной TTS-модели: {model_config}")
+        segments_payload = _read_json_value(segments_json)
+        if not isinstance(segments_payload, list):
+            raise RuntimeError("segments_ru_final.json повреждён до timing preflight.")
+        speech_options = request.get("speech_options") or {}
+        if not isinstance(speech_options, dict):
+            raise RuntimeError("speech_options должен быть JSON-объектом.")
+        context = {
+            "policy": "voxcpm2-universal-production-hardening-v1",
+            "backend": backend.backend_id,
+            "adapter_policy": backend.adapter_policy,
+            "cfg": float(settings["cfg"]),
+            "steps": int(settings["steps"]),
+            "base_seed": int(settings["base_seed"]),
+            "max_tempo": float(direct_io.MAX_TEMPO),
+            "model_config_sha256": direct_io.sha256_file(model_config),
+            "speech_model_profile": str(request.get("speech_model_profile") or ""),
+            "speech_profile_fingerprint": str(request.get("speech_profile_fingerprint") or ""),
+            "speech_options": speech_options,
+        }
+        work_dir = root / "segment_work"
+        direct_timing_guard.write_signature_context(work_dir, context)
+        report = direct_timing_guard.run_pre_model_guard(
+            segments_payload,
+            work_dir=work_dir,
+            max_tempo=direct_io.MAX_TEMPO,
+            signature_context=context,
+        )
+        log(
+            "universal timing preflight passed before voice references/model: "
+            f"warnings={report.get('warning_ids') or []}"
+        )
+    extended, composite = continuous_reference_policy.build_calm_references(
+        source=source,
+        cues=cues,
+        duration=duration,
+        reference_dir=root / "references",
+    )
+    planned = expressive_continuity.plan_json(
+        source=source,
+        segments_path=segments_json,
+        duration=duration,
+        report_path=root / "output" / "expressive_continuity.json",
+    )
+    _built, reference_detail = controlled_reference_gate.build_or_keep_calm(
+        source=source,
+        segments=planned,
+        output=composite,
+        identity_reference=extended,
+    )
+    log("source-guided emotional arc prepared; user SRT text preserved; " + reference_detail)
+    _seed_resumable_clean_marker(root, request)
+    try:
+        return clean.render_and_master(
+            root=root,
+            request=request,
+            source=source,
+            duration=duration,
+            segments_json=segments_json,
+            extended_reference=extended,
+            composite_reference=composite,
+            final_mixed=final_mixed,
+            final_russian=final_russian,
+            force_fresh=False,
+        )
+    except RuntimeError as exc:
+        detail = _renderer_failure_detail(root)
+        if detail and "завершился с кодом" in str(exc):
+            raise RuntimeError(f"Прямой VoxCPM2 renderer: {detail}") from exc
+        raise
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _TIMING_RE = re.compile(
@@ -210,48 +486,18 @@ def group_srt_cues(
     return groups
 
 
+
 def _build_direct_segments(
     groups: list[dict[str, Any]],
     *,
     delay_ms: int,
     duration: float,
 ) -> tuple[list[dict[str, Any]], list[pipeline.Cue]]:
-    delay = max(0, int(delay_ms)) / 1000.0
-    segments: list[dict[str, Any]] = []
-    subtitles: list[pipeline.Cue] = []
-
-    for index, group in enumerate(groups, start=1):
-        start = max(0.0, float(group["start"]))
-        source_end = min(float(duration), float(group["end"]))
-        max_delay = max(0.0, duration - start - 0.35)
-        effective_delay = min(delay, max_delay)
-        effective_delay_ms = int(round(effective_delay * 1000.0))
-        latest_render_end = max(start + 0.35, duration - effective_delay)
-        render_end = max(start + 0.35, source_end - effective_delay)
-        render_end = min(render_end, latest_render_end)
-        if render_end <= start:
-            raise RuntimeError(f"Реплика #{index} не помещается до конца видео.")
-        profile = "composite" if index == len(groups) or index % 4 == 0 else "extended"
-        text = str(group["source"]).strip()
-
-        segments.append(
-            {
-                "id": index,
-                "start": round(start, 3),
-                "end": round(render_end, 3),
-                "start_delay_ms": effective_delay_ms,
-                "reference_profile": profile,
-                "tail_guard": 0.36 if profile == "extended" else 0.42,
-                "text": text,
-                "source_end": round(source_end, 3),
-                "source": text,
-            }
-        )
-        subtitle_start = min(duration, start + effective_delay)
-        subtitle_end = max(subtitle_start + 0.05, source_end)
-        subtitles.append(pipeline.Cue(subtitle_start, min(duration, subtitle_end), text))
-
-    return segments, subtitles
+    return semantic_block_runtime.build_direct_segments(
+        groups,
+        delay_ms=delay_ms,
+        duration=duration,
+    )
 
 
 def _write_plain_translation(groups: list[dict[str, Any]], path: Path) -> None:
@@ -272,7 +518,7 @@ def main() -> None:
     parser.add_argument("-Mode", "--mode", choices=("direct",), default="direct")
     parser.parse_args()
 
-    hardened.install_runtime_adapters()
+    log("clean direct adapters source-owned; TTS guard disabled")
     project_id = current_project_id()
     root = project_root(project_id)
     request = load_request(root)
@@ -297,13 +543,13 @@ def main() -> None:
     source = source_dir / "source.mp4"
     source_url = str(request["source_url"])
     video_id = str(request["video_id"])
-    metadata = hardened.download_source(source_url, source)
+    metadata = clean_source_download.download_source(source_url, source)
     duration = pipeline.ffprobe_duration(source)
     log(f"Источник: {metadata.get('title') or video_id}")
     log(f"Длительность: {duration:.3f} сек.")
 
     normalized_cues, timing_adjustments = normalize_srt_cues(parsed_cues, duration)
-    groups = group_srt_cues(normalized_cues)
+    groups = semantic_block_runtime.group_ready_srt(normalized_cues)
     if not groups:
         raise RuntimeError("Не удалось построить речевые блоки из SRT.")
 
@@ -331,7 +577,7 @@ def main() -> None:
         },
     )
 
-    delay_ms = int(request.get("russian_delay_ms") or 420)
+    delay_ms = clean_request_settings.russian_delay_ms(request)
     render_segments, shifted_cues = _build_direct_segments(
         groups,
         delay_ms=delay_ms,
@@ -452,6 +698,7 @@ def main() -> None:
         ],
     }
     save_json(output_dir / "manifest.json", manifest)
+    clean_request_settings.repair_manifest(root, request)
     log("=== ГОТОВО ===")
     log(f"Mixed: {named_mixed}")
     log(f"Russian-only: {named_russian}")

@@ -12,21 +12,27 @@
       "label": "Gemini MAX — живой чистый полный рендер",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_clean_gemini_runtime",
-      "parameters": {"Mode": "gemini"}
+      "parameters": {
+        "Mode": "gemini"
+      }
     },
     "render_gemini": {
       "kind": "render",
       "label": "Gemini MAX — живой перевод, выразительный клон и ролик",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_clean_gemini_runtime",
-      "parameters": {"Mode": "gemini"}
+      "parameters": {
+        "Mode": "gemini"
+      }
     },
     "render_direct": {
       "kind": "render",
       "label": "Мой готовый SRT — живой прямой рендер без изменений",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_clean_direct_runtime",
-      "parameters": {"Mode": "direct"}
+      "module": "tools.voxcpm2.generic_direct_runtime",
+      "parameters": {
+        "Mode": "direct"
+      }
     },
     "repair_audio": {
       "kind": "utility",
@@ -40,14 +46,19 @@
       "label": "Подготовить шаблон пользовательского перевода",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_clean_custom_runtime",
-      "parameters": {"Mode": "custom", "PrepareOnly": true}
+      "parameters": {
+        "Mode": "custom",
+        "PrepareOnly": true
+      }
     },
     "render_custom": {
       "kind": "render",
       "label": "Пользовательский перевод — живой чистый рендер",
       "runner": "python_module",
       "module": "tools.voxcpm2.generic_clean_custom_runtime",
-      "parameters": {"Mode": "custom"}
+      "parameters": {
+        "Mode": "custom"
+      }
     }
   },
   "outputs": {
@@ -56,7 +67,14 @@
       "path": "{work_root}/output/manifest.json",
       "required": true,
       "min_bytes": 128,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio", "prepare_custom"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio",
+        "prepare_custom"
+      ]
     },
     "mixed_video": {
       "label": "Основной mixed MP4",
@@ -65,7 +83,13 @@
       "primary": true,
       "media": "av",
       "min_bytes": 102400,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio"
+      ]
     },
     "russian_only_video": {
       "label": "Russian-only MP4",
@@ -73,35 +97,61 @@
       "required": true,
       "media": "av",
       "min_bytes": 102400,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio"
+      ]
     },
     "russian_srt": {
       "label": "Russian SRT",
       "path": "{work_root}/output/russian_subtitles.srt",
       "required": true,
       "min_bytes": 32,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio"
+      ]
     },
     "translation": {
       "label": "Russian translation",
       "path": "{work_root}/output/russian_translation.txt",
       "required": true,
       "min_bytes": 32,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio"
+      ]
     },
     "translation_qa": {
       "label": "Translation QA report",
       "path": "{work_root}/output/translation_qa.txt",
       "required": true,
       "min_bytes": 16,
-      "actions": ["render", "render_gemini", "render_direct", "render_custom", "repair_audio"]
+      "actions": [
+        "render",
+        "render_gemini",
+        "render_direct",
+        "render_custom",
+        "repair_audio"
+      ]
     },
     "translation_template": {
       "label": "Custom translation template",
       "path": "{work_root}/output/translation_template.txt",
       "required": true,
       "min_bytes": 32,
-      "actions": ["prepare_custom"]
+      "actions": [
+        "prepare_custom"
+      ]
     }
   }
 }

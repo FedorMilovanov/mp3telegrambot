@@ -87,7 +87,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "stable_cli": example / "voxcpm2_cpu_shorts_production.py",
         "master": example / "master_constant_mix.py",
         "gemini": voxcpm / "generic_clean_gemini_runtime.py",
-        "direct": voxcpm / "generic_clean_direct_runtime.py",
+        "direct": voxcpm / "generic_direct_runtime.py",
         "custom": voxcpm / "generic_clean_custom_runtime.py",
         "repair": voxcpm / "generic_clean_audio_repair_runtime.py",
         "runtime": repo / "services" / "dub_studio_runtime.py",
@@ -139,8 +139,9 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and all(
                 "hardened.download_source = clean_source_download.download_source" in text[name]
                 and "hardened.pipeline.download_source = clean_source_download.download_source" in text[name]
-                for name in source_route_names
+                for name in ("gemini", "custom")
             )
+            and "clean_source_download.download_source(source_url, source)" in text["direct"]
         ),
         "truthful-request-settings": (
             'POLICY = "clean-request-settings-v1"' in text["request_settings"]
@@ -391,7 +392,7 @@ def _recipe_checks() -> list[dict[str, Any]]:
             ),
             _check(
                 "Recipe: готовый SRT",
-                "tools.voxcpm2.generic_clean_direct_runtime" in direct_text
+                "tools.voxcpm2.generic_direct_runtime" in direct_text
                 and "-Mode direct" in direct_text,
                 direct_text,
             ),
