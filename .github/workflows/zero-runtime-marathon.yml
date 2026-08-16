@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  direct-failure-owner:
+  current-runtime-graph:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own direct failure recovery
-        run: python tools/source_own_direct_failure_recovery.py
-      - name: Compile direct production tree
-        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify explicit failure recovery
-        run: |
-          ! grep -nE 'install_main_failure_recovery|namespace\["main"\]|MutableMapping' tools/voxcpm2/direct_failure_recovery.py tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'def run_with_failure_recovery' tools/voxcpm2/direct_failure_recovery.py
-          grep -q 'def _render_main(' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'return run_with_failure_recovery(_render_main, invalidate_segment_for_retry)' tools/voxcpm2/direct_max_quality_cli.py
-      - name: Commit source-owned direct failure recovery
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "Source-own direct failure recovery"
-          git push origin HEAD:agent/zero-runtime-surgery-marathon
+      - name: Compile current production tree
+        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
+      - name: Current runtime root calls
+        run: python tools/remaining_runtime_call_graph.py
+      - name: Current runtime surgery AST audit
+        run: python tools/runtime_surgery_audit.py
