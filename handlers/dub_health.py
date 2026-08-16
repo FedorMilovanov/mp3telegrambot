@@ -74,7 +74,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "reference_gate": voxcpm / "controlled_reference_gate.py",
         "numeric": voxcpm / "russian_spoken_numbers.py",
         "translation": voxcpm / "expressive_translation.py",
-        "gemini_runtime": voxcpm / "generic_short_runtime.py",
+        "gemini_runtime": voxcpm / "generic_short_production.py",
         "reference": voxcpm / "professional_audio_v45.py",
         "qa": voxcpm / "professional_audio_qa_v45.py",
         "io": voxcpm / "direct_max_quality_io.py",

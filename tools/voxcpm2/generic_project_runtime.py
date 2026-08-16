@@ -23,7 +23,6 @@ from typing import Any, Iterable
 from services.dub_studio import DubStore, studio_root, utc_now
 from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import generic_short_runtime as hardened
 
 _PROJECT_RE = re.compile(r"^dub-[a-f0-9]{10}$")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
@@ -206,7 +205,7 @@ def _download_track(url: str, source_dir: Path, *, kind: str, language: str) -> 
         mode = ["--no-write-subs", "--write-auto-subs"]
     proc = subprocess.run(
         [
-            *hardened._ytdlp_base(),
+            *pipeline._ytdlp_base(),
             "--no-playlist",
             "--skip-download",
             *mode,
@@ -312,14 +311,14 @@ def generate_russian_title(
 Фрагмент точной расшифровки: {_compact_context(groups, 2200)}
 """.strip()
     try:
-        payload = hardened.gemini_json(prompt, model_name=model_name)
+        payload = pipeline.gemini_json(prompt, model_name=model_name)
         title = str(payload.get("title") if isinstance(payload, dict) else "")
     except Exception as exc:
         log(f"Лёгкая модель названия недоступна: {type(exc).__name__}; использую исходное название.")
         title = original_title
     fallback = f"Видео {video_id}"
     context = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
-    title = hardened.standardize_russian_title(title, context=context)
+    title = pipeline.standardize_russian_title(title, context=context)
     return safe_russian_filename(title, fallback=fallback)
 
 
@@ -357,7 +356,7 @@ def translate_groups_max(
 Контекст: {json.dumps(context, ensure_ascii=False)}
 Исходные блоки: {source_json}
 """.strip()
-    draft = _validate_translation_payload(hardened.gemini_json(draft_prompt, model_name=model_name), groups)
+    draft = _validate_translation_payload(pipeline.gemini_json(draft_prompt, model_name=model_name), groups)
 
     fidelity_prompt = f"""
 Ты — независимый старший редактор перевода. Построчно сверь русский черновик с исходником.
@@ -372,7 +371,7 @@ def translate_groups_max(
 ЧЕРНОВИК:
 {json.dumps(draft, ensure_ascii=False, indent=2)}
 """.strip()
-    reviewed = _validate_translation_payload(hardened.gemini_json(fidelity_prompt, model_name=model_name), groups)
+    reviewed = _validate_translation_payload(pipeline.gemini_json(fidelity_prompt, model_name=model_name), groups)
 
     final_prompt = f"""
 Ты — выпускающий редактор русского дубляжа. Это последний контроль качества.
@@ -387,7 +386,7 @@ ID строго один к одному. Верни только JSON: {{"segme
 СВЕРЕННЫЙ ПЕРЕВОД:
 {json.dumps(reviewed, ensure_ascii=False, indent=2)}
 """.strip()
-    final = _validate_translation_payload(hardened.gemini_json(final_prompt, model_name=model_name), groups)
+    final = _validate_translation_payload(pipeline.gemini_json(final_prompt, model_name=model_name), groups)
 
     overloaded: list[dict[str, Any]] = []
     for source, translated in zip(groups, final, strict=True):
@@ -409,7 +408,7 @@ ID строго один к одному. Верни только JSON: {{"segme
 
 {json.dumps(overloaded, ensure_ascii=False, indent=2)}
 """.strip()
-        compact = hardened.gemini_json(compression_prompt, model_name=model_name)
+        compact = pipeline.gemini_json(compression_prompt, model_name=model_name)
         compact_list = compact.get("segments") if isinstance(compact, dict) else compact
         compact_by_id = {
             int(item["id"]): re.sub(r"\s+", " ", str(item.get("russian") or "")).strip()
@@ -676,7 +675,6 @@ def main() -> None:
     parser.add_argument("-PrepareOnly", "--prepare-only", action="store_true")
     args = parser.parse_args()
 
-    hardened.install_runtime_adapters()
     project_id = current_project_id()
     root = project_root(project_id)
     request = load_request(root)
@@ -698,7 +696,7 @@ def main() -> None:
     title_model = str(request.get("title_model") or "gemini-3.5-flash-lite")
 
     log("=== 1. SOURCE / YOUTUBE ===")
-    metadata = hardened.download_source(source_url, source)
+    metadata = pipeline.download_source(source_url, source)
     duration = pipeline.ffprobe_duration(source)
     log(f"Источник: {metadata.get('title') or video_id}")
     log(f"Длительность: {duration:.3f} сек.")
