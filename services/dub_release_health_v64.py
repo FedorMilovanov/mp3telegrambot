@@ -151,7 +151,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         ),
         "worker-preflight": _has(
             text["preflight"],
-            "def main(",
+            "def run(",
         ) and _has(
             text["worker"],
             "class WorkerDubStore(DubStore):",
