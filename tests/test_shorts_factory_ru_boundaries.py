@@ -274,5 +274,6 @@ def test_unproved_runtime_timeline_has_no_original_timestamp_fallback():
         align_factory_livedub_candidates(
             [_short()],
             source_duration=200.0,
+            evidence={},
             candidate_kind="short",
         )

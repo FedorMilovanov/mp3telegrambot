@@ -84,7 +84,7 @@ def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
 def test_recipe_routes_all_modes_through_clean_runtime() -> None:
     recipe = load_recipe("generic_short_v1")
     assert recipe.action("render_gemini")["module"] == (
-        "tools.voxcpm2.generic_clean_gemini_runtime"
+        "tools.voxcpm2.generic_gemini_runtime"
     )
     assert recipe.action("render_direct")["module"] == (
         "tools.voxcpm2.generic_clean_direct_runtime"

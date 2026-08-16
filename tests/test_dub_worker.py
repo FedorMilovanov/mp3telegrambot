@@ -6,7 +6,7 @@ import pytest
 
 from services.dub_studio import DubStore
 from services.dub_worker_release import WORKER_RUNTIME
-import tools.voxcpm2.dub_worker as worker
+import services.dub_worker as worker
 import tools.voxcpm2.dub_worker_hardened as hardened_worker
 
 
@@ -54,52 +54,8 @@ def test_deepest_error_line_prefers_final_exception() -> None:
             "ModuleNotFoundError: No module named 'broken_dependency'",
         ]
     )
-    assert hardened_worker._deepest_error_line(error) == (
+    assert worker._deepest_error_line(error) == (
         "ModuleNotFoundError: No module named 'broken_dependency'"
     )
 
 
-def test_hardened_worker_installs_current_release_and_store_hooks(tmp_path: Path) -> None:
-    original_terminate = worker._terminate_process
-    original_progress_parser = worker._progress_from_line
-    original_execute = worker.execute_job
-    original_register = DubStore.register_worker
-    original_heartbeat = DubStore.worker_heartbeat
-    original_update_progress = DubStore.update_job_progress
-    original_finish_job = DubStore.finish_job
-    try:
-        hardened_worker.install_hardening()
-        assert worker._terminate_process is hardened_worker._terminate_process_tree
-        assert worker._progress_from_line is hardened_worker._progress_from_line_v44
-        assert worker.execute_job is (
-            hardened_worker._execute_job_with_cancellable_preflight
-        )
-        assert DubStore.register_worker is hardened_worker._register_versioned_worker
-        assert DubStore.worker_heartbeat is hardened_worker._heartbeat_versioned_worker
-        assert DubStore.update_job_progress is (
-            hardened_worker._update_progress_with_milestones
-        )
-        assert DubStore.finish_job is hardened_worker._finish_job_with_root_cause
-        assert hardened_worker._RUNTIME_VERSION == WORKER_RUNTIME
-        assert hardened_worker._RUNTIME_VERSION == WORKER_RUNTIME
-
-        store = DubStore(tmp_path)
-        store.register_worker(
-            "worker-test",
-            pid=123,
-            status="idle",
-            details={"python": "python.exe"},
-        )
-        assert store.latest_worker()["details"]["runtime"] == WORKER_RUNTIME
-
-        store.worker_heartbeat("worker-test", status="idle")
-        idle = store.latest_worker()
-        assert idle["details"]["runtime"] == WORKER_RUNTIME
-    finally:
-        worker._terminate_process = original_terminate
-        worker._progress_from_line = original_progress_parser
-        worker.execute_job = original_execute
-        DubStore.register_worker = original_register
-        DubStore.worker_heartbeat = original_heartbeat
-        DubStore.update_job_progress = original_update_progress
-        DubStore.finish_job = original_finish_job

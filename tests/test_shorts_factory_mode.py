@@ -109,7 +109,7 @@ def test_livedub_alignment_rejects_unproved_original_timeline_fallback():
         "title": "Без Русского Доказательства",
     }]
     with pytest.raises(RuntimeError, match="refusing unverified original-timeline cuts"):
-        align_factory_livedub_candidates(candidates, source_duration=300)
+        align_factory_livedub_candidates(candidates, source_duration=300, evidence={})
 
 
 def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):

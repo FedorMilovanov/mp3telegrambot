@@ -1391,7 +1391,7 @@ def _build_generation_length_request(
             segment,
             speech_slot=max(0.001, float(duration_budget)),
             retry_epoch=epoch,
-            _surgical_max_tempo=_surgical_max_tempo,
+            max_tempo=_surgical_max_tempo,
         )
         position, total = _position(segment_id)
         _surgical_base_log(
@@ -1409,7 +1409,7 @@ def _build_generation_length_request(
                         f"вариант {int(attempt)}/{int(plan.get('max_attempts') or 5)} · "
                         f"epoch {epoch}"
                     ),
-                    "policy": _PROGRESS_POLICY,
+                    "policy": surgical_runtime._PROGRESS_POLICY,
                     "risk_band": plan.get("risk_band"),
                 },
                 ensure_ascii=False,
@@ -1458,7 +1458,7 @@ def _acceptable_candidates(
             segment=segment,
             speech_slot=float(speech_slot),
             retry_epoch=epoch,
-            _surgical_max_tempo=_surgical_max_tempo,
+            max_tempo=_surgical_max_tempo,
         )
         if timing is not None and work is not None:
             marker = surgical_runtime.guard.persist_timing_block(
@@ -1479,7 +1479,7 @@ def _acceptable_candidates(
             segment,
             speech_slot=float(speech_slot),
             retry_epoch=epoch,
-            _surgical_max_tempo=_surgical_max_tempo,
+            max_tempo=_surgical_max_tempo,
         )
         budget = int(plan.get("max_attempts") or 5)
         if len(candidates) >= budget:

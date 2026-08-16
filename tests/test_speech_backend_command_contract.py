@@ -176,7 +176,7 @@ def test_backend_owns_renderer_and_master_command_shapes() -> None:
     assert render[render.index("--speech-backend") + 1] == "voxcpm2"
     assert master[1] == str(runtime.master_entrypoint)
     assert master[master.index("--russian-only-video") + 1] == "russian.mp4"
-    assert runtime.master_module == "tools.voxcpm2.master_monolithic_mix"
+    assert runtime.master_module == "tools.voxcpm2.master_direct_russian_only"
 
 
 def test_non_direct_mode_keeps_backend_boundary_for_legacy_master() -> None:

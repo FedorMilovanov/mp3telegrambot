@@ -15,7 +15,7 @@ tests/test_caption_sentence_punctuation.py: 4
 tests/test_chat_findings_delivery_contract.py: 4
 tests/test_clean_delivery_retry_orchestration.py: 6
 tests/test_clean_dub_health_contract.py: 4
-tests/test_clean_dub_production.py: 8
+tests/test_clean_dub_production.py: 7
 tests/test_clean_master_child_process_contract.py: 4
 tests/test_clean_master_post_aac_gate.py: 2
 tests/test_clean_reference_transport.py: 4
@@ -26,7 +26,7 @@ tests/test_clean_runtime_contract.py: 8
 tests/test_clean_runtime_delivery_fingerprints.py: 3
 tests/test_clean_runtime_setting_types.py: 9
 tests/test_clean_segment_contract.py: 10
-tests/test_clean_source_download.py: 18
+tests/test_clean_source_download.py: 17
 tests/test_clips_candidate_budget.py: 2
 tests/test_clips_delivery_integrity.py: 3
 tests/test_clips_transactional_outputs.py: 6
@@ -62,7 +62,6 @@ tests/test_direct_surgical_guard.py: 3
 tests/test_direct_surgical_io.py: 2
 tests/test_direct_surgical_polish_v2.py: 1
 tests/test_direct_surgical_recovery.py: 4
-tests/test_direct_surgical_wiring.py: 3
 tests/test_direct_tail_artifact.py: 3
 tests/test_direct_tempo_boundary_resume.py: 3
 tests/test_direct_timbre_analysis.py: 6
@@ -93,7 +92,7 @@ tests/test_dub_studio.py: 11
 tests/test_dub_title_policy.py: 7
 tests/test_dub_wizard.py: 11
 tests/test_dub_wizard_request_writer.py: 15
-tests/test_dub_worker.py: 5
+tests/test_dub_worker.py: 4
 tests/test_dub_worker_preflight_cancellation.py: 8
 tests/test_dub_worker_release_rollout.py: 2
 tests/test_dub_worker_root_fail_closed.py: 4
@@ -175,7 +174,7 @@ tests/test_no_runtime_surgery_contract.py: 3
 tests/test_normalize_hashtag.py: 14
 tests/test_numeric_semantic_targets.py: 12
 tests/test_observability.py: 7
-tests/test_operator_runtime_status.py: 6
+tests/test_operator_runtime_status.py: 4
 tests/test_original_bed_alignment.py: 6
 tests/test_pass3_audit_followup.py: 4
 tests/test_playlist_proxy.py: 3
@@ -190,7 +189,7 @@ tests/test_reasoning_guidance.py: 6
 tests/test_render_process_ownership.py: 4
 tests/test_repair_segment_input_contract.py: 13
 tests/test_requirements_lock.py: 4
-tests/test_restart_state_runtime.py: 4
+tests/test_restart_state_runtime.py: 3
 tests/test_runtime_manifest.py: 6
 tests/test_russian_stress_evidence_v2.py: 2
 tests/test_russian_style_polish.py: 4

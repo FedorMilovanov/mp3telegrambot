@@ -1142,8 +1142,6 @@ def verify_final_file(
     target_lra: float,
     target_tp: float,
 ) -> dict[str, Any]:
-    probe_media = probe_media
-    measure_loudness = measure_loudness
     return _legacy_verify_final_file(
         path,
         source_duration=source_duration,

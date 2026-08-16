@@ -120,7 +120,7 @@ def test_missing_project_inputs_stay_json_serializable(tmp_path: Path) -> None:
 
 
 def test_zero_safe_package_keeps_legacy_alignment_bounded() -> None:
-    assert Path(final_media_qa.__file__).name == "__init__.py"
+    assert Path(final_media_qa.__file__).name == "final_media_qa.py"
     legacy = Path(final_media_qa.__file__).resolve().parents[1] / "final_media_qa.py"
     source = legacy.read_text(encoding="utf-8")
     assert "ORIGINAL_ALIGNMENT_MAX_SECONDS = 0.15" in source

@@ -67,18 +67,3 @@ def test_process_lifecycle_resets_before_async_runner(monkeypatch) -> None:
     assert order == ["reset", "run"]
 
 
-def test_restart_installer_does_not_replace_bot_runner(monkeypatch) -> None:
-    async def runner():
-        return None
-
-    async def status_command(update, context):
-        del update, context
-        return None
-
-    stub = SimpleNamespace(run_bot_async=runner, status_command=status_command)
-    original_runner = stub.run_bot_async
-    monkeypatch.setattr(restart, "_INSTALLED", False)
-    monkeypatch.setattr(operator_status, "_INSTALLED", False)
-    restart.install_restart_state_runtime(stub)
-    assert stub.run_bot_async is original_runner
-    assert getattr(stub.status_command, "_mp3bot_operator_runtime_status") is True

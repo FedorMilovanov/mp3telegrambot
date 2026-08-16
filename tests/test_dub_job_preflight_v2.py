@@ -42,7 +42,7 @@ def _request(**overrides: Any) -> dict[str, Any]:
 
 
 def test_preflight_import_resolves_to_v2_package() -> None:
-    assert Path(preflight.__file__).name == "__init__.py"
+    assert Path(preflight.__file__).name == "dub_job_preflight.py"
     assert preflight.POLICY == "dub-production-preflight-v2"
     assert preflight.REPORT_SCHEMA == 2
     assert preflight.PREFLIGHT_HEARTBEAT_SECONDS == 5.0
