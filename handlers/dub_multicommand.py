@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Reliable multiline Dub commands and stale callback-card recovery."""
+"""Reliable multiline Dub command dispatch."""
 from __future__ import annotations
 
 import re
 from typing import Any, Awaitable, Callable
 
-from telegram.error import BadRequest
 from telegram.ext import (
     ApplicationHandlerStop,
     ContextTypes,
@@ -42,13 +41,6 @@ _SUPPORTED_COMMANDS = frozenset(
         "dubsegments",
         "dubfix",
     }
-)
-_PERMANENT_EDIT_ERRORS = (
-    "message to edit not found",
-    "message can't be edited",
-    "message cannot be edited",
-    "message identifier is not specified",
-    "message_id_invalid",
 )
 
 
@@ -121,39 +113,9 @@ async def handle_dub_multicommand(
     raise ApplicationHandlerStop
 
 
-def _permanent_edit_failure(exc: BaseException) -> bool:
-    detail = str(exc or "").casefold()
-    return any(marker in detail for marker in _PERMANENT_EDIT_ERRORS)
-
-
-def install_stale_card_fallback() -> None:
-    """Patch callback edits so an expired card is replaced instead of failing."""
-    from handlers import dub_commands
-
-    current = dub_commands._safe_edit
-    if getattr(current, "_dub_stale_card_fallback", False):
-        return
-
-    async def safe_edit_or_reply(query: Any, text: str, **kwargs: Any) -> bool:
-        try:
-            return await current(query, text, **kwargs)
-        except BadRequest as exc:
-            if not _permanent_edit_failure(exc):
-                raise
-            message = getattr(query, "message", None)
-            if message is None or not hasattr(message, "reply_text"):
-                raise
-            await message.reply_text(text, **kwargs)
-            return True
-
-    safe_edit_or_reply._dub_stale_card_fallback = True  # type: ignore[attr-defined]
-    dub_commands._safe_edit = safe_edit_or_reply
-
-
 def register_dub_multicommand_handler(application: Any) -> None:
     if application.bot_data.get("dub_multicommand_registered"):
         return
-    install_stale_card_fallback()
     application.add_handler(
         MessageHandler(
             filters.UpdateType.MESSAGE
@@ -171,7 +133,6 @@ __all__ = [
     "MULTICOMMAND_POLICY",
     "STALE_CARD_POLICY",
     "handle_dub_multicommand",
-    "install_stale_card_fallback",
     "parse_dub_command_lines",
     "register_dub_multicommand_handler",
 ]

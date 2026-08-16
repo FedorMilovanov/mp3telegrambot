@@ -342,10 +342,7 @@ async def process_shorts_factory(
         render_shorts = shorts_candidates
         render_longs = long_candidates
         if translation_required:
-            from services.shorts_factory_timing import (
-                factory_ru_boundary_context,
-                prepare_factory_ru_boundary_evidence,
-            )
+            from services.shorts_factory_timing import prepare_factory_ru_boundary_evidence
 
             await _safe_status(
                 status_msg,
@@ -356,17 +353,18 @@ async def process_shorts_factory(
                 workdir=workdir,
                 source_language=spoken_language,
             )
-            with factory_ru_boundary_context(ru_boundary_evidence):
-                render_shorts = _shift_candidates_for_livedub(
-                    shorts_candidates,
-                    source_duration=render_source_duration,
-                    candidate_kind="short",
-                )
-                render_longs = _shift_candidates_for_livedub(
-                    long_candidates,
-                    source_duration=render_source_duration,
-                    candidate_kind="long",
-                )
+            render_shorts = _shift_candidates_for_livedub(
+                shorts_candidates,
+                source_duration=render_source_duration,
+                evidence=ru_boundary_evidence,
+                candidate_kind="short",
+            )
+            render_longs = _shift_candidates_for_livedub(
+                long_candidates,
+                source_duration=render_source_duration,
+                evidence=ru_boundary_evidence,
+                candidate_kind="long",
+            )
             if not render_shorts and not render_longs:
                 raise RuntimeError(
                     "Ни один выбранный фрагмент не прошёл доказанную проверку "

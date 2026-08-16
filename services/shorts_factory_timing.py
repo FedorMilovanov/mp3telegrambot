@@ -8,8 +8,8 @@ provenance-bound Yandex VOT audio, optionally adds provider-caption evidence for
 source-language speech, and refines every translated candidate on the real
 final-mix timeline.
 
-Evidence is request-local through ``ContextVar``. There is no process-global
-timeline handoff and no fallback to unverified original-language timestamps.
+Evidence is passed explicitly by the Factory composition owner. There is no
+ambient timeline state and no fallback to unverified original-language timestamps.
 """
 from __future__ import annotations
 
@@ -19,10 +19,8 @@ import logging
 import math
 import os
 import shutil
-from contextlib import contextmanager
-from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Iterator, Literal
+from typing import Any, Literal
 
 from services.async_process import run_cancellable_process
 from services.livedub_mix import get_mix_params
@@ -37,11 +35,6 @@ LONG_MIN_SEC = 300.0
 RU_BOUNDARY_PROOF = "exact-vot-ru-plus-source-speech-v4"
 RU_ONLY_BOUNDARY_PROOF = "exact-vot-ru-silencedetect-v4"
 CandidateKind = Literal["short", "long"]
-
-_CURRENT_TIMELINE: ContextVar[dict[str, Any] | None] = ContextVar(
-    "factory_ru_boundary_timeline",
-    default=None,
-)
 
 _STAGE_ONLY_WORDS = {
     "applause",
@@ -401,12 +394,6 @@ async def prepare_factory_ru_boundary_evidence(
 
 
 @contextmanager
-def factory_ru_boundary_context(evidence: dict[str, Any]) -> Iterator[None]:
-    token = _CURRENT_TIMELINE.set(dict(evidence))
-    try:
-        yield
-    finally:
-        _CURRENT_TIMELINE.reset(token)
 
 
 def _candidate_limits(candidate_kind: CandidateKind) -> tuple[float, float, bool]:
@@ -617,25 +604,36 @@ def align_candidates_to_ru_speech(
     return aligned
 
 
-def align_factory_livedub_candidates(candidates: list[dict[str, Any]], *, source_duration: int | float, candidate_kind: CandidateKind = "short") -> list[dict[str, Any]]:
+def align_factory_livedub_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    source_duration: int | float,
+    evidence: dict[str, Any],
+    candidate_kind: CandidateKind = "short",
+) -> list[dict[str, Any]]:
     if not candidates:
         return []
-    timeline = _CURRENT_TIMELINE.get()
+    timeline = dict(evidence or {})
     if not timeline:
-        raise RuntimeError("Exact VOT RU boundary proof is unavailable; refusing unverified original-timeline cuts")
+        raise RuntimeError(
+            "Exact VOT RU boundary proof is unavailable; "
+            "refusing unverified original-timeline cuts"
+        )
     return align_candidates_to_ru_speech(
-        candidates, source_duration=source_duration,
+        candidates,
+        source_duration=source_duration,
         speech_intervals=list(timeline.get("intervals") or []),
         delay_seconds=float(timeline.get("delay_seconds") or 0.0),
         source_speech_intervals=list(timeline.get("source_speech_intervals") or []),
         source_speech_proof=str(timeline.get("source_speech_proof") or "unavailable"),
-        proof=str(timeline.get("proof") or RU_ONLY_BOUNDARY_PROOF), candidate_kind=candidate_kind,
+        proof=str(timeline.get("proof") or RU_ONLY_BOUNDARY_PROOF),
+        candidate_kind=candidate_kind,
     )
 
 
 __all__ = [
     "PUBLIC_LONG_MAX_SEC", "PUBLIC_SHORT_MAX_SEC", "RU_BOUNDARY_PROOF",
     "RU_ONLY_BOUNDARY_PROOF", "align_candidates_to_ru_speech",
-    "align_factory_livedub_candidates", "factory_ru_boundary_context",
+    "align_factory_livedub_candidates",
     "prepare_factory_ru_boundary_evidence", "speech_intervals_from_silence_log",
 ]
