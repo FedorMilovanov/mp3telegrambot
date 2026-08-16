@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
 BASE = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
 POLISH = ROOT / "tools" / "voxcpm2" / "direct_surgical_polish_v2.py"
+UNIVERSAL = ROOT / "tools" / "voxcpm2" / "direct_universal_runtime.py"
 
 
 def strip_main_guard(text: str) -> str:
@@ -79,6 +80,17 @@ def main() -> int:
         raise RuntimeError("direct surgical polish still fingerprints deleted CLI base")
     ast.parse(polish, filename=str(POLISH))
     POLISH.write_text(polish, encoding="utf-8")
+
+    universal = UNIVERSAL.read_text(encoding="utf-8")
+    for stale in (
+        '        "tools/voxcpm2/_direct_max_quality_cli_base.py",\n',
+        '        "tools/voxcpm2/direct_max_quality_cli/__init__.py",\n',
+    ):
+        universal = universal.replace(stale, "")
+    if "_direct_max_quality_cli_base.py" in universal:
+        raise RuntimeError("direct universal runtime still fingerprints deleted CLI base")
+    ast.parse(universal, filename=str(UNIVERSAL))
+    UNIVERSAL.write_text(universal, encoding="utf-8")
 
     blockers: list[str] = []
     for path in ROOT.rglob("*.py"):
