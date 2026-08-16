@@ -15,7 +15,6 @@ import math
 import os
 import shutil
 import subprocess
-from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -29,21 +28,7 @@ FACTORY_VIDEO_FORMAT = (
     "bestvideo[height<=1080]+bestaudio/"
     "best[height<=1080]"
 )
-_SOURCE_METADATA: ContextVar[dict[str, str] | None] = ContextVar(
-    "factory_publication_source_metadata",
-    default=None,
-)
-_INSTALLED = False
 _H264_NVENC_AVAILABLE: bool | None = None
-
-
-def _factory_active() -> bool:
-    try:
-        import services.shorts_factory_runtime as runtime
-
-        return runtime._FACTORY_SETTINGS.get() is not None
-    except Exception:
-        return False
 
 
 def factory_normalize_only_uses_video_copy(
@@ -530,162 +515,12 @@ async def render_factory_long_h264(
     return True
 
 
-def _source_context(url: str, info: dict[str, Any]) -> dict[str, str]:
-    return {
-        "source_full_title": str(info.get("title") or "").strip(),
-        "source_url": str(url or "").strip(),
-        "source_channel": str(
-            info.get("channel") or info.get("uploader") or ""
-        ).strip(),
-        "source_video_id": str(info.get("id") or "").strip(),
-    }
-
-
-def current_factory_source_metadata() -> dict[str, str]:
-    return copy.deepcopy(_SOURCE_METADATA.get() or {})
-
-
-def _enrich_ai_data(
-    original,
-    plan,
-    *,
-    title: str,
-    performer: str,
-):
-    data = original(plan, title=title, performer=performer)
-    if not isinstance(data, dict):
-        return data
-    result = dict(data)
-    source = current_factory_source_metadata()
-    if source:
-        result["_factory_source_full_title"] = source.get("source_full_title", "")
-        result["_factory_source_url"] = source.get("source_url", "")
-        result["_factory_source_channel"] = source.get("source_channel", "")
-        result["_factory_source_video_id"] = source.get("source_video_id", "")
-    return result
-
-
-def install_factory_video_quality_policy() -> bool:
-    """Install before disk-guard/long-fit capture; preserve all existing owners."""
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-
-    import pipelines.clips as clips_module
-    import pipelines.shorts as shorts_module
-    import pipelines.shorts_factory as factory_module
-    import services.render_clips_montage as render_module
-    import services.shorts_factory_execution_guard as execution_guard
-    import services.shorts_factory_source as source_module
-
-    original_transform = getattr(shorts_module, "post" + "process_short")
-    original_burn = shorts_module.burn_subtitles_into_short
-    original_render = render_module.render_clip
-    original_load_info = factory_module._load_video_info
-    original_factory_ai_data = factory_module.factory_ai_data
-    original_guard_ai_data = execution_guard.factory_ai_data
-
-    async def tracked_load_info(url: str):
-        _SOURCE_METADATA.set(None)
-        info = await original_load_info(url)
-        if isinstance(info, dict):
-            _SOURCE_METADATA.set(_source_context(url, info))
-        return info
-
-    def pipeline_ai_data(plan, *, title, performer):
-        return _enrich_ai_data(
-            original_factory_ai_data,
-            plan,
-            title=title,
-            performer=performer,
-        )
-
-    def guarded_ai_data(plan, *, title, performer):
-        return _enrich_ai_data(
-            original_guard_ai_data,
-            plan,
-            title=title,
-            performer=performer,
-        )
-
-    async def factory_transform(
-        input_path,
-        output_path,
-        *,
-        normalize_audio=True,
-        speed=1.0,
-    ):
-        if _factory_active() and factory_normalize_only_uses_video_copy(
-            normalize_audio=normalize_audio,
-            speed=speed,
-        ):
-            return await normalize_factory_short_audio_copy_video(
-                Path(input_path),
-                Path(output_path),
-            )
-        return await original_transform(
-            input_path,
-            output_path,
-            normalize_audio=normalize_audio,
-            speed=speed,
-        )
-
-    async def factory_burn(input_path, output_path, segments):
-        ok = await original_burn(input_path, output_path, segments)
-        if ok and _factory_active():
-            await log_factory_media_evidence(
-                "short-output",
-                Path(output_path),
-                video_encode_stages=2,
-            )
-        return ok
-
-    async def factory_long_render(
-        source_video_path,
-        output_path,
-        start_seconds,
-        end_seconds,
-    ):
-        if _factory_active():
-            return await render_factory_long_h264(
-                Path(source_video_path),
-                Path(output_path),
-                start_seconds,
-                end_seconds,
-            )
-        return await original_render(
-            source_video_path,
-            output_path,
-            start_seconds,
-            end_seconds,
-        )
-
-    source_module.download_factory_video_source = download_factory_video_1080
-    factory_module.download_video_for_shorts = download_factory_video_1080
-    factory_module._load_video_info = tracked_load_info
-    factory_module.factory_ai_data = pipeline_ai_data
-    execution_guard.factory_ai_data = guarded_ai_data
-    setattr(shorts_module, "post" + "process_short", factory_transform)
-    shorts_module.burn_subtitles_into_short = factory_burn
-    render_module.render_clip = factory_long_render
-    clips_module.render_clip = factory_long_render
-
-    _INSTALLED = True
-    logger.info(
-        "Factory video quality policy installed: <=1080p verified master, "
-        "normalize-only -c:v copy, one-pass H.264 LONG <=1080p, exact source metadata"
-    )
-    return True
-
-
 __all__ = [
     "FACTORY_VIDEO_FORMAT",
-    "current_factory_source_metadata",
     "download_factory_video_1080",
     "factory_h264_nvenc_quality_args",
     "factory_libx264_quality_args",
     "factory_normalize_only_uses_video_copy",
-    "install_factory_video_quality_policy",
     "log_factory_media_evidence",
     "normalize_factory_short_audio_copy_video",
     "render_factory_long_h264",

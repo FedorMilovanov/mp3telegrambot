@@ -14,7 +14,6 @@ from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
 _DESCRIPTION_FIELD = "_factory_publication_description"
-_INSTALLED = False
 
 # Publication prose is deliberately isolated from both the Factory's heavy
 # gemini-3.6-flash analysis route and the generic LiveDub model-fallback chain.
@@ -225,21 +224,9 @@ def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., s
     return wrapped
 
 
-def install_factory_publication_formatters(shorts_module, clips_module) -> bool:
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-    shorts_module.build_short_caption = wrap_factory_caption_builder(shorts_module.build_short_caption)
-    clips_module.build_clip_caption = wrap_factory_caption_builder(clips_module.build_clip_caption)
-    _INSTALLED = True
-    logger.info("Factory publication polish: canonical hashtags + optional Gemini 3.5/minimal descriptions")
-    return True
-
-
 __all__ = [
     "FACTORY_PUBLICATION_LIGHT_MODELS",
     "canonical_public_hashtags",
     "enrich_factory_candidates",
-    "install_factory_publication_formatters",
     "wrap_factory_caption_builder",
 ]

@@ -336,10 +336,3 @@ async def _is_static_video_confident(
         _CACHE.pop(next(iter(_CACHE)))
     _CACHE[key] = result
     return result
-
-
-def install_short_static_runtime() -> str:
-    """Compatibility validator; visual classification is imported by its owner."""
-    if not callable(_is_static_video_confident):
-        raise RuntimeError("static-video classifier is unavailable")
-    return "source-owned static-video classifier; no runtime rebinding"

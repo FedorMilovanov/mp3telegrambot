@@ -445,7 +445,7 @@ async def _find_silence_end(
 async def _is_static_video(video_path: Path, sample_start: float = 0.0,
                            probe_seconds: float = 6.0) -> bool:
     """Delegate visual classification to the explicit static-video policy owner."""
-    from services.shorts_static_runtime import _is_static_video_confident
+    from services.shorts_static_policy import _is_static_video_confident
 
     return await _is_static_video_confident(
         video_path,
