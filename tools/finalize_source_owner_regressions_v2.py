@@ -30,16 +30,25 @@ p.write_text(text, encoding="utf-8")
 remove_functions(str(p), {"test_semantic_wrapper_stable_entrypoint_exists"})
 
 # Dub Studio now requires an explicit durable TTS profile. Preserve the model
-# role assertions while using the current request contract.
+# role assertions while using the current request contract. v1 may AST-unparse
+# the file first, so handle both quote styles deterministically.
 p = Path("tests/test_gemini_translation_quality.py")
 text = p.read_text(encoding="utf-8")
-text = text.replace(
-    '        "gemini",\n    )',
-    '        "gemini",\n        dub_wizard.DEFAULT_MODEL_PROFILE_ID,\n    )',
-)
+for quote in ('"', "'"):
+    old = f"        {quote}gemini{quote},\n    )"
+    new = (
+        f"        {quote}gemini{quote},\n"
+        "        dub_wizard.DEFAULT_MODEL_PROFILE_ID,\n"
+        "    )"
+    )
+    text = text.replace(old, new)
 text = text.replace(
     'runtime.index("def validate_translation")',
     'runtime.index("def download_source")',
+)
+text = text.replace(
+    "runtime.index('def validate_translation')",
+    "runtime.index('def download_source')",
 )
 p.write_text(text, encoding="utf-8")
 
@@ -50,6 +59,10 @@ text = p.read_text(encoding="utf-8")
 text = text.replace("repair._legacy.production", "repair.production")
 text = text.replace(
     '    assert Path(repair.__file__).name == "__init__.py"\n',
+    "",
+)
+text = text.replace(
+    "    assert Path(repair.__file__).name == '__init__.py'\n",
     "",
 )
 p.write_text(text, encoding="utf-8")
