@@ -745,6 +745,9 @@ async def run_bot_async():
 
     app = builder.build()
 
+    from services.dub_studio_runtime import register_dub_studio, start_dub_studio_services
+    register_dub_studio(app)
+
     # Source-owned polling reliability: inspect every update before normal
     # handlers without replacing PTB class methods globally.
     from services.polling_reliability_runtime import (
@@ -864,6 +867,7 @@ async def run_bot_async():
     async with app:
         await app.initialize()
         await app.start()
+        start_dub_studio_services(app)
         logger.info("📡 Запускаю polling getUpdates...")
         try:
             # PTB 22.8: Updater.start_polling no longer accepts read_timeout /

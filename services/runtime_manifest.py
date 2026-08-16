@@ -302,12 +302,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.POST_MAIN,
     ),
     RuntimeFeature(
-        "dub-studio-runtime",
-        "services.dub_studio_runtime",
-        "install_dub_studio_runtime",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
         "dub-title-policy",
         "services.dub_title_policy",
         "install_dub_title_policy",
