@@ -152,8 +152,17 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         "worker-preflight": _has(
             text["preflight"],
             "def main(",
-        ) and _has(text["worker"], "class WorkerDubStore", "def execute_job(")
-          and _has(text["worker_entry"], "WORKER_RUNTIME"),
+        ) and _has(
+            text["worker"],
+            "class WorkerDubStore(DubStore):",
+            "def _execute_runner_job(",
+            "CANCELLATION_POLICY =",
+            "STORE_ROOT_POLICY =",
+            "from tools.voxcpm2 import dub_job_preflight",
+        ) and _has(
+            text["worker_entry"],
+            "from services.dub_worker import main",
+        ),
         "final-media-qa": _has(text["final_qa"], "def verify_final_outputs(")
           and bool(text["spatial_qa"])
           and bool(text["master"]),
