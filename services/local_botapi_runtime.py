@@ -1,7 +1,6 @@
-"""Windows-safe runtime hardening for :mod:`local_botapi_bootstrap`.
+"""Source-owned Local Bot API process management.
 
-The original bootstrap owns the route/getMe policy. This adapter narrows the
-process-management surface and makes documented configuration real:
+The mandatory startup policy composes these primitives explicitly. They provide:
 
 * ``LOCAL_BOT_API_AUTOSTART=0`` is respected before any process is killed;
 * only the managed PID or telegram-bot-api listener on the configured port is
@@ -9,6 +8,8 @@ process-management surface and makes documented configuration real:
 * a supported HTTP(S) ``LOCAL_BOT_API_PROXY_URL`` is passed to the binary;
 * the child PID is persisted atomically;
 * BOT_TOKEN/API hash/proxy passwords are redacted from diagnostic log tails.
+
+No imported bootstrap function is replaced at runtime and no proxy state is ambient.
 """
 
 from __future__ import annotations
@@ -22,11 +23,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from services import local_botapi_bootstrap as legacy
-
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
-_ACTIVE_PROXY_URL = ""
 
 
 def _enabled(name: str, default: bool = True) -> bool:
@@ -238,8 +236,8 @@ def _terminate_managed_server() -> list[int]:
     return killed
 
 
-def _proxy_args() -> list[str]:
-    proxy = _ACTIVE_PROXY_URL.strip()
+def _proxy_args(proxy_url: str = "") -> list[str]:
+    proxy = str(proxy_url or "").strip()
     if not proxy:
         return []
     parsed = urlparse(proxy)
@@ -248,7 +246,7 @@ def _proxy_args() -> list[str]:
     return []
 
 
-def _start_server(host: str, port: int):
+def _start_server(host: str, port: int, *, proxy_url: str = ""):
     api_id = os.getenv("TELEGRAM_API_ID", "").strip()
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
     exe = os.getenv(
@@ -274,7 +272,7 @@ def _start_server(host: str, port: int):
         f"--dir={data_dir}",
         f"--log={log_path}",
         "--verbosity=2",
-        *_proxy_args(),
+        *_proxy_args(proxy_url),
     ]
     kwargs: dict[str, object] = {
         "stdin": subprocess.DEVNULL,
@@ -304,15 +302,16 @@ def _start_server(host: str, port: int):
             handle.close()
 
 
-def _redact(text: str) -> str:
+def _redact(text: str, *, proxy_url: str = "") -> str:
     result = str(text or "")
     secrets = [
         os.getenv("BOT_TOKEN", "").strip(),
         os.getenv("TELEGRAM_API_HASH", "").strip(),
         os.getenv("LOCAL_BOT_API_PROXY_PASSWORD", "").strip(),
     ]
-    if _ACTIVE_PROXY_URL:
-        password = urlparse(_ACTIVE_PROXY_URL).password
+    proxy = str(proxy_url or "").strip()
+    if proxy:
+        password = urlparse(proxy).password
         if password:
             secrets.append(password)
     for secret in secrets:
@@ -321,59 +320,19 @@ def _redact(text: str) -> str:
     return re.sub(r"/bot\d+:[A-Za-z0-9_-]+", "/bot***", result)
 
 
-def _read_log_tail(path_text: str, max_chars: int = 2200) -> str:
+def _read_log_tail(
+    path_text: str,
+    max_chars: int = 2200,
+    *,
+    proxy_url: str = "",
+) -> str:
     try:
         path = Path(path_text)
         if not path.is_file():
             return ""
         return _redact(
-            path.read_text(encoding="utf-8", errors="replace")[-max_chars:].strip()
+            path.read_text(encoding="utf-8", errors="replace")[-max_chars:].strip(),
+            proxy_url=proxy_url,
         )
     except OSError:
         return ""
-
-
-def _cloud_available() -> bool:
-    return bool(
-        os.getenv("TELEGRAM_PROXY_URL", "").strip()
-        or os.getenv("HTTPS_PROXY", "").strip()
-        or os.getenv("HTTP_PROXY", "").strip()
-    ) and _enabled("LOCAL_BOT_API_CLOUD_FALLBACK", True)
-
-
-def prepare_local_bot_api() -> None:
-    """Run the existing policy with safe process and config primitives."""
-    global _ACTIVE_PROXY_URL
-    local_url = os.getenv("LOCAL_BOT_API_URL", "").strip()
-    token = os.getenv("BOT_TOKEN", "").strip()
-    if not local_url or not token:
-        return
-
-    if not _enabled("LOCAL_BOT_API_AUTOSTART", True):
-        getme = f"{local_url.rstrip('/')}/bot{token}/getMe"
-        ok, _detail = legacy._probe_getme(getme, 1.2)
-        if ok:
-            os.environ["MP3BOT_EFFECTIVE_BOT_API"] = "local"
-            return
-        reason = "LOCAL_BOT_API_AUTOSTART=0 и сервер не ответил на /getMe"
-        if _cloud_available():
-            legacy._select_cloud_for_this_run(reason)
-            return
-        raise RuntimeError(reason)
-
-    _ACTIVE_PROXY_URL = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
-    original_proxy = _ACTIVE_PROXY_URL
-    original_terminate = legacy._terminate_stale_server
-    original_start = legacy._start_local_server
-    original_read_tail = legacy._read_log_tail
-    try:
-        legacy._terminate_stale_server = _terminate_managed_server
-        legacy._start_local_server = _start_server
-        legacy._read_log_tail = _read_log_tail
-        legacy.prepare_local_bot_api()
-    finally:
-        legacy._terminate_stale_server = original_terminate
-        legacy._start_local_server = original_start
-        legacy._read_log_tail = original_read_tail
-        if original_proxy:
-            os.environ["LOCAL_BOT_API_PROXY_URL"] = original_proxy

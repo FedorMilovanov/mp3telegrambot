@@ -2,6 +2,8 @@
 """Delivery commands and automatic result sender for Dub Studio projects."""
 from __future__ import annotations
 
+from core.media_title_policy import canonical_delivery_filename
+
 import html
 import json
 from pathlib import Path
@@ -140,7 +142,10 @@ def _recipe_outputs(project: dict[str, Any], *, include_all_video: bool) -> list
 
 def available_outputs(project: dict[str, Any], *, include_all_video: bool = False) -> list[dict[str, Any]]:
     dynamic = _dynamic_outputs(project, include_all_video=include_all_video)
-    return dynamic if dynamic else _recipe_outputs(project, include_all_video=include_all_video)
+    rows = dynamic if dynamic else _recipe_outputs(project, include_all_video=include_all_video)
+    for row in rows:
+        row["filename"] = canonical_delivery_filename(row.get("filename") or "")
+    return rows
 
 
 async def send_project_outputs(

@@ -501,6 +501,9 @@ def sentence_case_russian_title(s: str, aggressive_title_case: bool = False) -> 
     """
     if not s or not _is_cyrillic_dominant(s):
         return s
+    if aggressive_title_case:
+        from core.media_title_policy import canonical_media_title
+        return canonical_media_title(s)
 
     def split_edges(token: str) -> tuple[str, str, str]:
         m = re.match(r"^([^А-Яа-яЁёA-Za-z0-9]*)(.*?)([^А-Яа-яЁёA-Za-z0-9]*)$", token)

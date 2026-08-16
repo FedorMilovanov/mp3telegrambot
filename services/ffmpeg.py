@@ -444,41 +444,14 @@ async def _find_silence_end(
 
 async def _is_static_video(video_path: Path, sample_start: float = 0.0,
                            probe_seconds: float = 6.0) -> bool:
-    """AUDIT R28: True если фрагмент — практически статичная картинка
-    (аудио-проповедь с обложкой-заставкой вместо реального видео).
+    """Delegate visual classification to the explicit static-video policy owner."""
+    from services.shorts_static_policy import _is_static_video_confident
 
-    Зачем: для таких кадров crop до 9:16 срезает заголовок/картинку («АНАТОМИЯ
-    ЦЕРКВИ» уезжает за край). Реальное видео проповедника (движение, жесты)
-    статичным НЕ считается — там crop работает отлично, его не трогаем.
-    Детектор — ffmpeg freezedetect (застывший кадр >= 2с). При любой ошибке
-    возвращаем False (безопасно: остаётся прежний crop-режим).
-    """
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not video_path.exists():
-        return False
-    cmd = [
-        ffmpeg, "-ss", str(max(0.0, sample_start)), "-i", str(video_path),
-        "-t", str(probe_seconds),
-        "-vf", "freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-",
-    ]
-    try:
-        proc = await run_cancellable_process(
-            cmd, timeout=30, text=True
-        )
-    except Exception:
-        return False
-    stderr = proc.stderr or ""
-    if "freeze_start" not in stderr:
-        return False
-    # AUDIT R28b: раньше ЛЮБОЙ freeze_start (даже 2-сек заставка в начале
-    # реального видео) переводил ВЕСЬ клип в letterbox-режим. Теперь статикой
-    # считаем, только если застывший кадр ДОМИНИРУЕТ в пробе: либо freeze не
-    # закончился в окне (полностью статичная картинка — freeze_duration не
-    # печатается), либо самый долгий freeze покрывает >=80% окна.
-    durs = [float(x) for x in re.findall(r"freeze_duration:\s*([\d.]+)", stderr)]
-    if not durs:
-        return True
-    return max(durs) >= 0.8 * probe_seconds
+    return await _is_static_video_confident(
+        video_path,
+        sample_start=sample_start,
+        probe_seconds=probe_seconds,
+    )
 
 
 def _crop_consensus(crop_votes: dict, sample_count: int) -> str:

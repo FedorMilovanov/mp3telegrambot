@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Install Dub Studio handlers, notifier and detached local worker.
+"""Source-owned Dub Studio composition, notifier and detached local worker.
 
-Progress delivery is intentionally part of this runtime rather than a separate
-patch layer: one Telegram status card is created per job and edited through all
-milestones. Terminal success/failure updates that card and may send one detailed
-result message.
+The production Application explicitly registers handlers and starts notification
+services. No PTB class methods are replaced at runtime.
 """
 from __future__ import annotations
+
+from core.media_title_policy import canonical_media_title
 
 import asyncio
 import html
@@ -15,16 +15,11 @@ import logging
 import os
 import subprocess
 import sys
-import threading
 from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
-_INSTALLED = False
-_LOCK = threading.Lock()
-_ORIGINAL_BUILD = None
-_ORIGINAL_START = None
 _GENERIC_RECIPE = "generic_short_v1"
 _WORKER_RUNTIME = "dub-worker-quality-v4.5"
 _PROGRESS_METADATA_KEY = "dub_progress_message_v1"
@@ -432,6 +427,8 @@ def _undelivered_notification_events(store: Any, limit: int = 20) -> list[dict[s
         except (TypeError, json.JSONDecodeError):
             payload = {}
         item["payload"] = payload if isinstance(payload, dict) else {}
+        if item.get("project_title"):
+            item["project_title"] = canonical_media_title(item["project_title"])
         result.append(item)
     return result
 
@@ -514,50 +511,48 @@ async def _notification_loop(application: Any) -> None:
         await asyncio.sleep(5)
 
 
-def install_dub_studio_runtime() -> None:
-    global _INSTALLED, _ORIGINAL_BUILD, _ORIGINAL_START
-    if _INSTALLED or not enabled():
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        from telegram.ext import Application, ApplicationBuilder
-        from handlers.dub_audio_repair import register_dub_audio_repair_handlers
-        from handlers.dub_commands import register_dub_handlers
-        from handlers.dub_delivery import register_dub_delivery_handlers
-        from handlers.dub_health import register_dub_health_handler
-        from handlers.dub_quickstart import register_dub_quickstart_handler
-        from handlers.dub_wizard import register_dub_wizard_handlers
+def register_dub_studio(application: Any) -> bool:
+    """Register Dub Studio handlers on this concrete Application instance."""
+    if not enabled():
+        return False
+    from handlers.dub_audio_repair import register_dub_audio_repair_handlers
+    from handlers.dub_commands import register_dub_handlers
+    from handlers.dub_delivery import register_dub_delivery_handlers
+    from handlers.dub_health import register_dub_health_handler
+    from handlers.dub_quickstart import register_dub_quickstart_handler
+    from handlers.dub_wizard import register_dub_wizard_handlers
+    from handlers.dub_multicommand import register_dub_multicommand_handler
 
-        _ORIGINAL_BUILD = ApplicationBuilder.build
-        _ORIGINAL_START = Application.start
-
-        def build_with_dub(self: Any) -> Any:
-            application = _ORIGINAL_BUILD(self)
-            register_dub_wizard_handlers(application)
-            register_dub_health_handler(application)
-            register_dub_handlers(application)
-            register_dub_audio_repair_handlers(application)
-            register_dub_delivery_handlers(application)
-            register_dub_quickstart_handler(application)
-            return application
-
-        async def start_with_dub(self: Any) -> None:
-            await _ORIGINAL_START(self)
-            if not self.bot_data.get("dub_studio_notification_task"):
-                task = self.create_task(
-                    _notification_loop(self),
-                    name="dub-studio-notifications",
-                )
-                self.bot_data["dub_studio_notification_task"] = task
-
-        ApplicationBuilder.build = build_with_dub
-        Application.start = start_with_dub
-        ensure_worker_running()
-        _INSTALLED = True
-        logger.info(
-            "🎙 Dub Studio runtime v4.5: direct max-quality + editable progress enabled"
-        )
+    register_dub_wizard_handlers(application)
+    register_dub_health_handler(application)
+    register_dub_handlers(application)
+    register_dub_audio_repair_handlers(application)
+    register_dub_delivery_handlers(application)
+    register_dub_quickstart_handler(application)
+    register_dub_multicommand_handler(application)
+    ensure_worker_running()
+    logger.info("🎙 Dub Studio v4.5 handlers registered on Application")
+    return True
 
 
-__all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]
+def start_dub_studio_services(application: Any) -> bool:
+    """Start the request-independent notifier after Application.start()."""
+    if not enabled():
+        return False
+    if application.bot_data.get("dub_studio_notification_task"):
+        return True
+    task = application.create_task(
+        _notification_loop(application),
+        name="dub-studio-notifications",
+    )
+    application.bot_data["dub_studio_notification_task"] = task
+    logger.info("🎙 Dub Studio notification service started")
+    return True
+
+
+__all__ = [
+    "enabled",
+    "ensure_worker_running",
+    "register_dub_studio",
+    "start_dub_studio_services",
+]

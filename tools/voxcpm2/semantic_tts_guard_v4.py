@@ -399,49 +399,7 @@ def _run_quality_master(command: Sequence[str], *args: Any, **kwargs: Any) -> An
     return _REAL_SUBPROCESS.run(rewritten, *args, **kwargs)
 
 
-class QualityV4SubprocessProxy:
-    def __init__(self, real: Any) -> None:
-        self._real = real
-
-    def run(self, command: Any, *args: Any, **kwargs: Any) -> Any:
-        if _is_named_command(command, _SYNTH_NAME):
-            return _run_quality_synth(command, *args, **kwargs)
-        if _is_named_command(command, _MASTER_NAME):
-            return _run_quality_master(command, *args, **kwargs)
-        return self._real.run(command, *args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._real, name)
-
-
-def install() -> None:
-    global _INSTALLED
-    with _LOCK:
-        if _INSTALLED:
-            return
-        proxy = QualityV4SubprocessProxy(_REAL_SUBPROCESS)
-        try:
-            import tools.voxcpm2.generic_short_production as pipeline
-
-            pipeline.subprocess = proxy
-        except Exception as exc:
-            log(f"legacy pipeline patch failed: {type(exc).__name__}: {exc}")
-
-        for module in list(sys.modules.values()):
-            if module is None:
-                continue
-            file_name = Path(str(getattr(module, "__file__", "") or "")).name.casefold()
-            if file_name not in {"generic_project_runtime.py", "generic_direct_runtime.py"}:
-                continue
-            if hasattr(module, "subprocess"):
-                setattr(module, "subprocess", proxy)
-        _INSTALLED = True
-        log("Quality v4.2 guard installed for Gemini MAX and ready SRT")
-
-
 __all__ = [
-    "QualityV4SubprocessProxy",
-    "install",
     "measure_timing_quality",
     "verify_timeline_v4",
 ]

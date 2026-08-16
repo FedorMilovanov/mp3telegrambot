@@ -3,6 +3,7 @@
 """Universal fail-fast timing, retry-scope and candidate-budget contracts."""
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import hashlib
 import json
 import math
@@ -11,10 +12,11 @@ import re
 import statistics
 import uuid
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-POLICY = "voxcpm2-direct-timing-guard-v1"
+POLICY = "voxcpm2-direct-timing-guard-v2"
 PREFLIGHT_POLICY = "voxcpm2-russian-duration-preflight-v1"
 REPORT_NAME = "timing_preflight.json"
 CONTEXT_NAME = "timing_context.json"
@@ -179,7 +181,7 @@ def write_signature_context(work_dir: Path, context: Mapping[str, Any]) -> Path:
     return path
 
 
-def load_signature_context(work_dir: Path) -> dict[str, Any]:
+def _polish_base_load_signature_context(work_dir: Path) -> dict[str, Any]:
     path = Path(work_dir).resolve() / CONTEXT_NAME
     if not path.is_file():
         return {}
@@ -227,7 +229,7 @@ def _retry_history(work_dir: Path, segment_id: int) -> list[Mapping[str, Any]]:
     return [item for item in history or [] if isinstance(item, Mapping)]
 
 
-def enforce_retry_epoch_budget(
+def _base_enforce_retry_epoch_budget(
     *, work_dir: Path, segment: Mapping[str, Any], retry_epoch: int,
     signature_context: Mapping[str, Any] | None,
 ) -> None:
@@ -302,40 +304,66 @@ def timing_block_path(work_dir: Path, segment_id: int) -> Path:
     return Path(work_dir).resolve() / "timing_blocks" / f"segment_{int(segment_id):02d}.json"
 
 
-def persist_timing_block(
-    work_dir: Path, *, segment: Mapping[str, Any],
-    signature_context: Mapping[str, Any] | None, retry_epoch: int,
+def _polish_base_persist_timing_block(
+    work_dir: Path,
+    *,
+    segment: Mapping[str, Any],
+    signature_context: Mapping[str, Any] | None,
+    retry_epoch: int,
     evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
+    segment_id = int(segment.get("id") or 0)
+    slot = _finite(segment.get("end")) - _finite(segment.get("start")) - _finite(
+        segment.get("tail_guard")
+    )
+    attempts = [item for item in evidence.get("attempts") or [] if isinstance(item, Mapping)]
+    durations = [_finite(item.get("duration")) for item in attempts if _finite(item.get("duration")) > 0]
+    max_tempo = max(0.1, _finite(evidence.get("max_tempo"), 1.36))
+    best = min(durations) if durations else 0.0
+    hard_slot = best / max_tempo if best else slot
     payload = {
         "schema_version": MARKER_SCHEMA_VERSION,
-        "policy": POLICY,
-        "segment_id": int(segment.get("id") or 0),
-        "scope": failure_scope_fingerprint(segment, signature_context=signature_context),
+        "policy": SURGICAL_GUARD_POLICY,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "segment_id": segment_id,
+        "signature": failure_scope_fingerprint(
+            segment, signature_context=signature_context
+        ),
         "text": _normalise(segment.get("text")),
-        "speech_slot": round(_speech_slot(segment), 6),
+        "speech_slot": round(slot, 6),
         "retry_epoch": int(retry_epoch),
         "evidence": dict(evidence),
+        "recommendation": {
+            "hard_minimum_speech_slot": round(max(slot, hard_slot), 3),
+            "hard_shorten_percent": int(
+                math.ceil(max(0.0, 1.0 - slot / max(slot, hard_slot)) * 20.0) * 5
+            ),
+        },
     }
-    _atomic_json(timing_block_path(work_dir, payload["segment_id"]), payload)
+    _atomic_json(timing_block_path(work_dir, segment_id), payload)
     return payload
 
 
 def format_timing_block_message(block: Mapping[str, Any], *, repeated: bool) -> str:
     evidence = block.get("evidence") if isinstance(block.get("evidence"), Mapping) else {}
     attempts = [item for item in evidence.get("attempts") or [] if isinstance(item, Mapping)]
-    tempos = [_finite(item.get("required_tempo")) for item in attempts]
+    tempos = [_finite(item.get("required_tempo")) for item in attempts if _finite(item.get("required_tempo")) > 0]
     tempo_text = f"{min(tempos):.2f}–{max(tempos):.2f}×" if tempos else "нет данных"
-    note = "Повтор одинакового входа остановлен." if repeated else "Оставшиеся seed остановлены."
+    note = (
+        "Повтор не запущен и новый retry epoch не расходуется."
+        if repeated
+        else "Оставшиеся дорогие seed остановлены."
+    )
+    recommendation = block.get("recommendation") or {}
     return (
         f"Сегмент #{int(block.get('segment_id') or 0)} не помещается естественно: "
-        f"окно={_finite(block.get('speech_slot')):.2f} сек., "
-        f"требуемое ускорение={tempo_text}. {note} "
-        "Сократите текст или расширьте окно; после изменения входа scope сбросится."
+        f"окно={_finite(block.get('speech_slot')):.2f} сек., required tempo={tempo_text}. "
+        f"{note} Сократите текст примерно на "
+        f"{int(recommendation.get('hard_shorten_percent') or 0)}% или расширьте окно."
     )
 
 
-def run_pre_model_guard(
+def _base_run_pre_model_guard(
     segments: Iterable[dict[str, Any]], *, work_dir: Path,
     max_tempo: float, signature_context: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -397,8 +425,251 @@ def run_pre_model_guard(
     return report
 
 
+
+SURGICAL_GUARD_POLICY = "voxcpm2-surgical-timing-polish-v1"
+MARKER_SCHEMA_VERSION = 2
+MAX_SCOPE_EPOCHS = 3
+MAX_MARKER_BYTES = 2 * 1024 * 1024
+MAX_ARCHIVED_MARKERS = 8
+
+
+class RetryableSynthesisFailure(RuntimeError):
+    """Early stop carrying explicit retry-state semantics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        segment: Mapping[str, Any],
+        evidence: Mapping[str, Any] | None,
+        advance_retry: bool,
+        failure_kind: str,
+    ) -> None:
+        super().__init__(str(message))
+        self.segment = dict(segment)
+        self.segment_id = int(self.segment.get("id") or 0)
+        self.evidence = dict(evidence or {})
+        self.advance_retry = bool(advance_retry)
+        self.failure_kind = str(failure_kind or "synthesis_failure")
+
+
+def _archive_timing_marker(path: Path, reason: str) -> None:
+    suffix = re.sub(r"[^a-z0-9_-]+", "-", reason.casefold()).strip("-")
+    destination = path.with_suffix(
+        path.suffix + f".stale-{suffix or 'unknown'}-{uuid.uuid4().hex[:8]}"
+    )
+    try:
+        path.replace(destination)
+    except OSError:
+        path.unlink(missing_ok=True)
+    archived = sorted(
+        path.parent.glob(path.name + ".stale-*"),
+        key=lambda item: item.stat().st_mtime if item.exists() else 0.0,
+        reverse=True,
+    )
+    for stale in archived[MAX_ARCHIVED_MARKERS:]:
+        stale.unlink(missing_ok=True)
+
+
+def _validate_segments(values: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    result = [dict(item) for item in values]
+    if not result:
+        raise RuntimeError("Timing preflight получил пустой список сегментов.")
+    seen: set[int] = set()
+    previous_end = -1.0
+    for position, segment in enumerate(result, 1):
+        segment_id = int(segment.get("id") or position)
+        start = _finite(segment.get("start"), float("nan"))
+        end = _finite(segment.get("end"), float("nan"))
+        tail = _finite(segment.get("tail_guard"), float("nan"))
+        if segment_id <= 0 or segment_id in seen:
+            raise RuntimeError(f"Некорректный или повторный ID сегмента: {segment_id}.")
+        if not all(math.isfinite(value) for value in (start, end, tail)):
+            raise RuntimeError(f"Сегмент #{segment_id}: тайминг должен быть конечным.")
+        if start < 0.0 or end <= start or tail < 0.0 or tail >= end - start:
+            raise RuntimeError(f"Сегмент #{segment_id}: некорректное речевое окно.")
+        if start < previous_end - 1e-6:
+            raise RuntimeError(f"Сегмент #{segment_id}: перекрытие или неправильный порядок.")
+        if not _normalise(segment.get("text")):
+            raise RuntimeError(f"Сегмент #{segment_id}: пустой русский текст.")
+        slot = end - start - tail
+        stored = segment.get("speech_slot")
+        if stored is not None and abs(_finite(stored, float("nan")) - slot) > 1e-6:
+            raise RuntimeError(f"Сегмент #{segment_id}: сохранённый speech_slot не совпадает.")
+        segment["id"] = segment_id
+        seen.add(segment_id)
+        previous_end = end
+    return result
+
+
+def _polish_base_run_pre_model_guard(
+    segments: Iterable[dict[str, Any]],
+    *,
+    work_dir: Path,
+    max_tempo: float,
+    signature_context: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    values = _validate_segments(segments)
+    report = _base_run_pre_model_guard(
+        values,
+        work_dir=work_dir,
+        max_tempo=max_tempo,
+        signature_context=signature_context,
+    )
+    if isinstance(report, dict):
+        report["surgical_guard_policy"] = SURGICAL_GUARD_POLICY
+        _atomic_json(Path(work_dir).resolve() / REPORT_NAME, report)
+    return report
+
+
+def enforce_retry_epoch_budget(
+    *,
+    work_dir: Path,
+    segment: Mapping[str, Any],
+    retry_epoch: int,
+    signature_context: Mapping[str, Any] | None,
+) -> None:
+    if int(retry_epoch) >= MAX_SCOPE_EPOCHS:
+        raise RuntimeError(
+            f"Сегмент #{int(segment.get('id') or 0)}: исчерпаны "
+            f"{MAX_SCOPE_EPOCHS} seed epoch для точного входа. "
+            "Измените текст, тайминг, модель, профиль или reference."
+        )
+    _base_enforce_retry_epoch_budget(
+        work_dir=work_dir,
+        segment=segment,
+        retry_epoch=retry_epoch,
+        signature_context=signature_context,
+    )
+
+
+def _prune_marker_archives(directory: Path, stem: str, *, limit: int = 8) -> None:
+    files: list[Path] = []
+    for pattern in (f"{stem}.stale-*", f"{stem}.corrupt-*", f"{stem}.oversized-*"):
+        files.extend(path for path in Path(directory).glob(pattern) if path.is_file())
+    files.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for stale in files[max(0, int(limit)):]:
+        stale.unlink(missing_ok=True)
+
+
+def load_matching_timing_block(
+    work_dir: Path,
+    *,
+    segment: Mapping[str, Any],
+    signature_context: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    clean = polish._segments([dict(segment)])[0]
+    path = polish._marker_path(work_dir, clean["id"])
+    if not path.is_file():
+        return None
+    try:
+        value = polish._read(path)
+        expected = failure_scope_fingerprint(
+            clean,
+            signature_context=signature_context,
+        )
+        slot = clean["end"] - clean["start"] - clean["tail_guard"]
+        try:
+            recommendation = value.get("recommendation")
+            valid = bool(
+                value.get("schema_version") == polish.MARKER_SCHEMA_VERSION
+                and value.get("policy") == polish.MARKER_POLICY
+                and polish._integer(value.get("segment_id"), "marker.id") == clean["id"]
+                and polish._sha(value.get("signature")) == expected
+                and 0 <= polish._integer(value.get("retry_epoch"), "marker.epoch") < polish.MAX_SCOPE_EPOCH
+                and abs(polish._number(value.get("speech_slot"), "marker.slot") - slot) <= 1e-6
+                and isinstance(value.get("evidence"), dict)
+                and isinstance(recommendation, Mapping)
+                and polish._number(
+                    recommendation.get("hard_minimum_speech_slot"),
+                    "hard_slot",
+                ) + 1e-6 >= slot
+                and 0 <= polish._integer(
+                    recommendation.get("hard_shorten_percent"),
+                    "shorten",
+                ) <= 100
+            )
+        except RuntimeError:
+            valid = False
+        if valid:
+            return value
+        polish._archive(
+            path,
+            "input-changed"
+            if value.get("signature") != expected
+            else "contract-mismatch",
+        )
+        return None
+    finally:
+        _prune_marker_archives(path.parent, path.name, limit=8)
+
+
+
+MARKER_SCHEMA_VERSION = polish.MARKER_SCHEMA_VERSION
+
+
+def run_pre_model_guard(
+    segments,
+    *,
+    work_dir,
+    max_tempo,
+    signature_context,
+):
+    return _polish_base_run_pre_model_guard(
+        polish._segments(segments),
+        work_dir=work_dir,
+        max_tempo=max_tempo,
+        signature_context=signature_context,
+    )
+
+
+def load_signature_context(work_dir: Path) -> dict[str, Any]:
+    value = dict(_polish_base_load_signature_context(work_dir))
+    value.update(polish._runtime_marker(work_dir))
+    value["surgical_polish_policy"] = polish.POLICY
+    return value
+
+
+def persist_timing_block(
+    work_dir: Path,
+    *,
+    segment: Mapping[str, Any],
+    signature_context: Mapping[str, Any] | None,
+    retry_epoch: int,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    clean = polish._segments([dict(segment)])[0]
+    value = dict(
+        _polish_base_persist_timing_block(
+            work_dir,
+            segment=clean,
+            signature_context=signature_context,
+            retry_epoch=retry_epoch,
+            evidence=evidence,
+        )
+    )
+    value.update(
+        schema_version=polish.MARKER_SCHEMA_VERSION,
+        policy=polish.MARKER_POLICY,
+        segment_id=int(clean["id"]),
+        signature=failure_scope_fingerprint(
+            clean,
+            signature_context=signature_context,
+        ),
+        speech_slot=round(
+            clean["end"] - clean["start"] - clean["tail_guard"],
+            6,
+        ),
+        retry_epoch=polish._integer(retry_epoch, "retry_epoch"),
+    )
+    polish._atomic(polish._marker_path(work_dir, clean["id"]), value)
+    return value
+
 __all__ = [
-    "CONTEXT_NAME", "POLICY", "PREFLIGHT_POLICY", "REPORT_NAME",
+    "CONTEXT_NAME", "POLICY",
+    "SURGICAL_GUARD_POLICY",
+    "RetryableSynthesisFailure",
+    "load_matching_timing_block", "PREFLIGHT_POLICY", "REPORT_NAME",
     "candidate_efficiency_plan", "enforce_retry_epoch_budget",
     "evaluate_dynamic_timing_failure", "failure_scope_fingerprint",
     "format_timing_block_message", "load_signature_context",

@@ -363,11 +363,6 @@ def main() -> None:
             f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
         )
 
-    mode = str(request.get("translation_mode") or "")
-    if mode == "direct":
-        legacy_guard.sanitize_tts_text = lambda value: str(value or "").strip()
-    semantic_tts_guard_v4.install()
-
     threads = max(1, int(request.get("threads") or 10))
     steps = max(1, int(request.get("steps") or 16))
     cfg = float(request.get("cfg") or 1.8)

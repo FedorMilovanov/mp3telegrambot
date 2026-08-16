@@ -487,8 +487,3 @@ def validate_livedub_audio_companion() -> str:
     if not callable(_cache_get) or not callable(_cache_put_variant):
         raise RuntimeError("LiveDub companion cache surface is incomplete")
     return "source-owned companion helpers; explicit coordinator delivery"
-
-
-def install_livedub_audio_companion() -> str:
-    """Deprecated compatibility name; no longer patches Bot/ExtBot methods."""
-    return validate_livedub_audio_companion()

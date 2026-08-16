@@ -9,15 +9,10 @@ production *default* because each Dub project durably pins its own profile.
 """
 from __future__ import annotations
 
-import functools
 import html
-import threading
-from types import ModuleType
 from typing import Any, Mapping
 
 OPERATOR_RUNTIME_STATUS_POLICY = "privacy-safe-operator-runtime-status-v1"
-_INSTALLED = False
-_LOCK = threading.Lock()
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -255,81 +250,8 @@ def safe_operator_runtime_status_html_lines() -> tuple[str, ...]:
         )
 
 
-class _ReplyCaptureMessage:
-    def __init__(self, original: Any) -> None:
-        self._original = original
-        self.calls: list[tuple[Any, tuple[Any, ...], dict[str, Any]]] = []
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._original, name)
-
-    async def reply_text(
-        self,
-        text: Any = None,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        if text is None and "text" in kwargs:
-            text = kwargs.pop("text")
-        self.calls.append((text, args, dict(kwargs)))
-        return None
-
-
-class _UpdateProxy:
-    def __init__(self, original: Any, message: _ReplyCaptureMessage) -> None:
-        self._original = original
-        self.message = message
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._original, name)
-
-
-def _extended_status_text(text: object) -> object:
-    value = str(text or "")
-    if not value.startswith("🩺 <b>Статус бота</b>"):
-        return text
-    lines = safe_operator_runtime_status_html_lines()
-    return value.rstrip() + "\n\n" + "\n".join(lines)
-
-
-def install_operator_runtime_status(main_module: ModuleType) -> None:
-    """Wrap the imported status handler before Telegram handlers are registered."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        original = getattr(main_module, "status_command", None)
-        if not callable(original):
-            raise RuntimeError("main.status_command отсутствует или не callable.")
-        if getattr(original, "_mp3bot_operator_runtime_status", False):
-            _INSTALLED = True
-            return
-
-        @functools.wraps(original)
-        async def status_with_runtime(update: Any, context: Any):
-            message = getattr(update, "message", None)
-            real_reply = getattr(message, "reply_text", None)
-            if not callable(real_reply):
-                return await original(update, context)
-
-            captured_message = _ReplyCaptureMessage(message)
-            proxied_update = _UpdateProxy(update, captured_message)
-            result = await original(proxied_update, context)
-            for text, args, kwargs in captured_message.calls:
-                await real_reply(_extended_status_text(text), *args, **kwargs)
-            return result
-
-        status_with_runtime._mp3bot_operator_runtime_status = True  # type: ignore[attr-defined]
-        status_with_runtime._mp3bot_original_status = original  # type: ignore[attr-defined]
-        main_module.status_command = status_with_runtime
-        _INSTALLED = True
-
-
 __all__ = [
     "OPERATOR_RUNTIME_STATUS_POLICY",
-    "install_operator_runtime_status",
     "operator_runtime_status_html_lines",
     "operator_runtime_status_payload",
     "safe_operator_runtime_status_html_lines",

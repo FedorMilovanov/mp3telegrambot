@@ -3,6 +3,7 @@
 """Lazy backend session and evidence-gated reference reuse."""
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import json
 import math
 import time
@@ -113,15 +114,30 @@ class LazyBackend:
         encode: int,
         output: int,
         log: Callable[[str], Any],
+        model_discovery_callback: Callable[[Path], Any] | None = None,
     ) -> None:
         self._backend = backend
         self._encode = int(encode)
         self._output = int(output)
         self._log = log
+        self._model_discovery_callback = model_discovery_callback
         self._session: LazySession | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._backend, name)
+
+    def set_model_discovery_callback(
+        self,
+        callback: Callable[[Path], Any] | None,
+    ) -> None:
+        self._model_discovery_callback = callback
+
+    def discover_model(self, archive_root: Path) -> Path:
+        model = Path(self._backend.discover_model(Path(archive_root))).resolve()
+        callback = self._model_discovery_callback
+        if callback is not None:
+            callback(model)
+        return model
 
     def open_session(self, config: Any) -> LazySession:
         if self._session is not None:
@@ -209,6 +225,15 @@ def enrich_reference_report(
     result["reference_cache_policy"] = _REFERENCE_CACHE_POLICY
     return result
 
+
+
+# Source-owned strengthened IO contract. The implementation is shared with the
+# pure polish policy module; no imported module is mutated.
+POLICY = polish.POLICY
+MutableAudioSpec = polish._AudioSpec
+LazySession = polish._LazySession
+cached_reference = polish._cached_reference
+enrich_reference_report = polish._enrich_reference_report
 
 __all__ = [
     "LazyBackend",

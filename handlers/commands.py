@@ -46,7 +46,7 @@ from services.telegraph_repair import (
     repair_generated_page_record, repair_generated_page_records,
     repair_telegraph_page_url, telegraph_path_from_url,
 )
-from pipelines.main_pipeline import process_single_video
+from pipelines.video_dispatch import process_single_video
 from services.shorts_video import (
     HAS_FASTER_WHISPER, burn_subtitles_into_short, download_video_for_shorts,
     transcribe_short_clip,
@@ -147,32 +147,38 @@ async def start(update, context):
         )
 
 
-async def help_command(update, context):
+async def help_command(update, context) -> None:
+    """Describe the actual source-owned LiveDub delivery contract."""
     user_id = update.effective_user.id
-    is_vip  = user_id in WHITELIST_IDS
     limit_line = (
         "👑 VIP — без ограничений"
-        if is_vip
+        if user_id in WHITELIST_IDS
         else f"📵 {DAILY_LIMIT} видео/день • 1 запрос/мин"
     )
-    await update.message.reply_text(
-        f"ℹ️ Помощь\n\n"
-        f"Отправьте ссылку на видео или плейлист → получите MP3 128kbps!\n\n"
-        f"🧠 AI:\n"
-        f"📌 Тема • ⏱ Таймкоды • 🏷 Хэштеги\n\n"
+    audio_set = "видео с переводом + чистый русский MP3 + финальный объединённый MP3"
+    text = (
+        "ℹ️ <b>Помощь</b>\n\n"
+        "Отправьте ссылку на видео или плейлист.\n\n"
+        "🇷🇺 <b>Русский режим</b>\n"
+        "MP3, тема, таймкоды, конспект и дополнительные материалы.\n\n"
+        "🇬🇧 <b>ENG Full</b>\n"
+        f"Полный анализ + {audio_set} + смысловая проверка перевода.\n\n"
+        "⚡ <b>ENG Quick</b>\n"
+        f"{audio_set}. Без конспекта и смысловой QA.\n\n"
+        "⚡🔍 <b>ENG Quick QA</b>\n"
+        f"{audio_set} + лёгкая проверка коротких роликов.\n\n"
         f"🔒 Ваши лимиты: {limit_line}\n\n"
-        f"/start — Приветствие\n"
-        f"/help  — Справка\n"
-        f"/mode — 🎛 Все режимы: анализ, LiveDub и дубляж\n"
-        f"/archive — Последние публикации\n"
-        f"/search <текст> — Поиск по архиву\n"
-        f"/cut — ✂️ Вырезать сегмент из видео\n"
-        f"/segments — 🧩 Список сегментов\n\n"
-        f"🇬🇧 ENG-режимы (для англоязычных видео):\n"
-        f"• ENG Full — анализ + видео с «Живыми голосами» Яндекса + проверка точности перевода\n"
-        f"• ENG Quick — только переведённое видео, максимально быстро\n"
-        f"🔑 Для стабильных «Живых голосов» нужен VOT_API_TOKEN (или YANDEX_OAUTH_TOKEN) в .env"
+        "/start — приветствие\n"
+        "/help — эта справка\n"
+        "/mode — выбор режима\n"
+        "/archive — последние публикации\n"
+        "/search &lt;текст&gt; — поиск по архиву\n"
+        "/segments — список сегментов\n"
+        "/cut — вырезать сегмент\n\n"
+        "🔑 Для стабильных живых голосов требуется VOT_API_TOKEN "
+        "или YANDEX_OAUTH_TOKEN в .env."
     )
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 def _extract_yt_id_from_text(text: str) -> str | None:
@@ -337,6 +343,8 @@ async def status_command(update, context):
         lines.append(f"🗄 БД: {_db_kb} КБ · бэкап: {html_mod.escape(str(_bak_info))}")
     except OSError:
         pass
+    from services.operator_runtime_status import safe_operator_runtime_status_html_lines
+    lines.extend(safe_operator_runtime_status_html_lines())
     await update.message.reply_text(_html_message_limit("\n".join(lines)), parse_mode="HTML")
 
 

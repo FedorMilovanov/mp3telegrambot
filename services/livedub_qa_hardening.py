@@ -264,18 +264,10 @@ def decorate_hardened_report(text: str, data: dict[str, Any]) -> str:
     return rendered
 
 
-def install_qa_hardening() -> str:
-    """Compatibility validator; hardening is consumed directly by QA/trust."""
-    if not callable(confirmed_result_one_to_one):
-        raise RuntimeError("strict QA confirmation policy is unavailable")
-    return "source-owned one-to-one QA hardening policy"
-
-
 __all__ = [
     "annotate_qa_availability",
     "confirmed_result_one_to_one",
     "decorate_hardened_report",
-    "install_qa_hardening",
     "issues_match_strict",
     "prepare_exact_timeline_inputs",
 ]

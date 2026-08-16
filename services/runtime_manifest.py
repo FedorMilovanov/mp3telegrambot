@@ -274,28 +274,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "shorts-visual-policy",
-        "services.shorts_static_runtime",
-        "install_short_static_runtime",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
-        "gemini-startup-diagnostics",
-        "services.gemini_startup_diagnostics",
-        "install_gemini_startup_diagnostics",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
-        "livedub-help",
-        "services.livedub_help_runtime",
-        "install_livedub_help_runtime",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
         "livedub-qa-contract",
         "services.livedub_qa",
         "validate_livedub_qa_contract",
@@ -306,39 +284,6 @@ DEFAULT_RUNTIME_FEATURES = (
         "services.livedub_delivery_coordinator",
         "validate_livedub_delivery_contract",
         RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "project-runtime-hardening",
-        "services.project_runtime_hardening",
-        "install_project_runtime_hardening",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
-    ),
-    RuntimeFeature(
-        "shorts-factory-routing-bridge",
-        "services.shorts_factory_overload_editorial_polish",
-        "install_shorts_factory_overload_editorial_polish",
-        RuntimePhase.POST_MAIN,
-        false_is_failure=True,
-    ),
-    RuntimeFeature(
-        "dub-studio-runtime",
-        "services.dub_studio_runtime",
-        "install_dub_studio_runtime",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "dub-title-policy",
-        "services.dub_title_policy",
-        "install_dub_title_policy",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "restart-state-runtime",
-        "services.restart_state_runtime",
-        "install_restart_state_runtime",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
     ),
 )
 

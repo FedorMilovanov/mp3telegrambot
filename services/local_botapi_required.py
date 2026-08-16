@@ -103,8 +103,17 @@ def _log_path() -> Path:
         return base / "TelegramBotAPI" / "botapi-server.log"
 
 
-def _failure_reason(detail: str, log_path: str | Path) -> str:
-    tail = process_runtime._read_log_tail(str(log_path), max_chars=1600)
+def _failure_reason(
+    detail: str,
+    log_path: str | Path,
+    *,
+    proxy_url: str = "",
+) -> str:
+    tail = process_runtime._read_log_tail(
+        str(log_path),
+        max_chars=1600,
+        proxy_url=proxy_url,
+    )
     tail_line = " | ".join(line.strip() for line in tail.splitlines()[-8:] if line.strip())
     reason = f"локальный /getMe не поднялся: {detail}"
     if tail_line:
@@ -156,7 +165,7 @@ def require_local_bot_api() -> None:
             _mark_local_ready(local_url)
             print(f"✅ Local Bot API готов ({detail}); лимит отправки — 2000 МБ, сжатие отключено.")
             return
-        raise LocalBotApiRequiredError(_failure_reason(detail, _log_path()))
+        raise LocalBotApiRequiredError(_failure_reason(detail, _log_path(), proxy_url=os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()))
 
     api_id = os.getenv("TELEGRAM_API_ID", "").strip()
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
@@ -166,11 +175,15 @@ def require_local_bot_api() -> None:
     print("🔌 Поднимаю Local Bot API для отправки без сжатия…")
     _cloud_logout(token, _cloud_proxy())
 
-    process_runtime._ACTIVE_PROXY_URL = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
+    proxy_url = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
     process_runtime._terminate_managed_server()
     probe_runtime._wait_until_port_closes(host, port, time.monotonic() + 3.0)
 
-    process, log_path = process_runtime._start_server(host, port)
+    process, log_path = process_runtime._start_server(
+        host,
+        port,
+        proxy_url=proxy_url,
+    )
     if process is None:
         raise LocalBotApiRequiredError(str(log_path))
 
@@ -186,6 +199,6 @@ def require_local_bot_api() -> None:
     if process.poll() is not None:
         raise LocalBotApiRequiredError(
             f"telegram-bot-api.exe завершился с кодом {process.returncode}; "
-            + _failure_reason(detail, log_path)
+            + _failure_reason(detail, log_path, proxy_url=proxy_url)
         )
-    raise LocalBotApiRequiredError(_failure_reason(detail, log_path))
+    raise LocalBotApiRequiredError(_failure_reason(detail, log_path, proxy_url=proxy_url))

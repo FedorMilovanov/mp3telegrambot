@@ -9,11 +9,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from tools.voxcpm2 import dub_quality_v4
+from tools.voxcpm2 import clean_production_core as clean
+from tools.voxcpm2 import clean_request_settings
+from tools.voxcpm2 import clean_source_download
+from tools.voxcpm2 import continuous_reference_policy
+from tools.voxcpm2 import controlled_reference_gate
+from tools.voxcpm2 import expressive_continuity
+from tools.voxcpm2 import expressive_translation
 from tools.voxcpm2 import generic_project_runtime as production
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import semantic_tts_guard as legacy_semantic_guard
-from tools.voxcpm2 import semantic_tts_guard_v4
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _NON_SPEECH_RE = re.compile(
@@ -28,8 +32,7 @@ def _require_file(path: Path, label: str) -> None:
         raise RuntimeError(f"Gemini MAX не создал обязательный результат: {label} ({path}).")
 
 
-def _disable_legacy_guard_install() -> None:
-    """Quality v4 replaces only the obsolete prompt-continuation installer."""
+
 
 
 def clean_manual_caption_line(value: str) -> str:
@@ -125,17 +128,71 @@ def validate_completed_outputs(root: Path) -> dict[str, Any]:
     return manifest
 
 
-def main() -> None:
-    # Keep the old guard importable for historical tests, but do not let its
-    # prompt-continuation wrapper replace the proven reference-only NoChew flow.
-    legacy_semantic_guard.install = _disable_legacy_guard_install
-    dub_quality_v4.install_gemini_quality(production, pipeline)
-    production.parse_manual_vtt = parse_creator_vtt_preserving_text
-    semantic_tts_guard_v4.install()
-    production.main()
-    root = production.project_root(production.current_project_id())
+
+def _clean_source_groups(cues: list[pipeline.Cue]) -> list[dict[str, Any]]:
+    groups = clean.group_source_cues(cues)
+    for group in groups:
+        group["source"] = group.pop("english")
+    return groups
+
+
+def _acquire_transcript_clean(*args: Any, **kwargs: Any) -> tuple[list[pipeline.Cue], str, str]:
+    kwargs["manual_vtt_parser"] = parse_creator_vtt_preserving_text
+    cues, caption_origin, source_language = production.acquire_transcript(*args, **kwargs)
+    metadata = kwargs.get("metadata")
+    if metadata is None and len(args) >= 4:
+        metadata = args[3]
+    if isinstance(metadata, dict):
+        language = str(source_language or "unknown")
+        metadata["language"] = language
+        metadata["source_language"] = language
+    return cues, caption_origin, source_language
+
+
+def _run_clean_speech_and_master(
+    *, root: Path, request: dict[str, Any], source: Path, cues: list[Any],
+    duration: float, segments_json: Path, final_mixed: Path, final_russian: Path,
+) -> Path:
+    extended, composite = continuous_reference_policy.build_calm_references(
+        source=source, cues=cues, duration=duration, reference_dir=root / "references"
+    )
+    planned = expressive_continuity.plan_json(
+        source=source,
+        segments_path=segments_json,
+        duration=duration,
+        report_path=root / "output" / "expressive_continuity.json",
+    )
+    _built, detail = controlled_reference_gate.build_or_keep_calm(
+        source=source, segments=planned, output=composite, identity_reference=extended
+    )
+    production.log("source-guided emotional arc prepared; Russian text preserved; " + detail)
+    return clean.render_and_master(
+        root=root, request=request, source=source, duration=duration,
+        segments_json=segments_json, extended_reference=extended,
+        composite_reference=composite, final_mixed=final_mixed,
+        final_russian=final_russian, force_fresh=True,
+    )
+
+
+def _finalize_clean_gemini(root: Path, request: dict[str, Any]) -> None:
+    clean_request_settings.repair_manifest(root, request)
     validate_completed_outputs(root)
-    production.log("=== GEMINI MAX QUALITY V4 OUTPUT CONTRACT: OK ===")
+
+
+def main() -> None:
+    route = production.ProjectRoute(
+        download_source=clean_source_download.download_source,
+        acquire_transcript=_acquire_transcript_clean,
+        group_source=_clean_source_groups,
+        translate_groups=expressive_translation.translate_groups,
+        validate_translation=production._validate_translation_payload,
+        build_render_segments=clean.build_render_segments,
+        run_speech_and_master=_run_clean_speech_and_master,
+        delay_ms=clean_request_settings.russian_delay_ms,
+        finalize=_finalize_clean_gemini,
+    )
+    production.main(route)
+    production.log("=== GEMINI MAX SOURCE-OWNED OUTPUT CONTRACT: OK ===")
 
 
 if __name__ == "__main__":

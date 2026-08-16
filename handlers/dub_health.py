@@ -17,10 +17,11 @@ from telegram.ext import CommandHandler, ContextTypes, filters
 
 from core.database import ADMIN_IDS
 from services.dub_studio import DubStore, load_recipe, studio_root, worker_is_fresh
-from tools.voxcpm2.dub_worker import build_command
+from services.dub_worker_release import WORKER_RUNTIME
+from services.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
-_WORKER_RUNTIME = "dub-worker-quality-v4.5"
+_WORKER_RUNTIME = WORKER_RUNTIME
 
 
 def _check(label: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -73,7 +74,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "reference_gate": voxcpm / "controlled_reference_gate.py",
         "numeric": voxcpm / "russian_spoken_numbers.py",
         "translation": voxcpm / "expressive_translation.py",
-        "gemini_runtime": voxcpm / "generic_short_runtime.py",
+        "gemini_runtime": voxcpm / "generic_short_production.py",
         "reference": voxcpm / "professional_audio_v45.py",
         "qa": voxcpm / "professional_audio_qa_v45.py",
         "io": voxcpm / "direct_max_quality_io.py",
@@ -85,13 +86,13 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         "media_qa": voxcpm / "final_media_qa.py",
         "stable_cli": example / "voxcpm2_cpu_shorts_production.py",
         "master": example / "master_constant_mix.py",
-        "gemini": voxcpm / "generic_clean_gemini_runtime.py",
-        "direct": voxcpm / "generic_clean_direct_runtime.py",
-        "custom": voxcpm / "generic_clean_custom_runtime.py",
+        "gemini": voxcpm / "generic_gemini_runtime.py",
+        "direct": voxcpm / "generic_direct_runtime.py",
+        "custom": voxcpm / "generic_custom_runtime.py",
         "repair": voxcpm / "generic_clean_audio_repair_runtime.py",
         "runtime": repo / "services" / "dub_studio_runtime.py",
         "worker": voxcpm / "dub_worker_hardened.py",
-        "title": repo / "services" / "dub_title_policy.py",
+        "title": repo / "core" / "media_title_policy.py",
     }
     text = {name: _read(path) for name, path in paths.items()}
     missing = [name for name, value in text.items() if not value]
@@ -136,10 +137,10 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and 'source.with_suffix(source.suffix + ".download.json")' in text["source_download"]
             and "YouTube URL и yt-dlp metadata указывают на разные ролики" in text["source_download"]
             and all(
-                "hardened.download_source = clean_source_download.download_source" in text[name]
-                and "hardened.pipeline.download_source = clean_source_download.download_source" in text[name]
-                for name in source_route_names
+                "clean_source_download.download_source" in text[name]
+                for name in ("gemini", "custom")
             )
+            and "clean_source_download.download_source(source_url, source)" in text["direct"]
         ),
         "truthful-request-settings": (
             'POLICY = "clean-request-settings-v1"' in text["request_settings"]
@@ -159,7 +160,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "Exact adjacent duplicates are the same VTT render state" in text["creator_vtt"]
             and "Do not deduplicate against the whole cue" in text["creator_vtt"]
             and "parse_creator_vtt_preserving_text" in text["creator_vtt"]
-            and "production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in text["gemini"]
+            and "parse_creator_vtt_preserving_text" in text["gemini"]
         ),
         "strict-translation-payload": (
             'POLICY = "strict-translation-payload-v1"' in text["strict_translation"]
@@ -168,12 +169,12 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "Переводчик вернул повторяющийся ID" in text["strict_translation"]
             and "strict_translation_payload.validate_full(value, groups)" in text["translation"]
             and "strict_translation_payload.validate_subset(" in text["translation"]
-            and "production._validate_translation_payload = strict_translation_payload.validate_full" in text["custom"]
+            and "validate_translation=strict_translation_payload.validate_full" in text["custom"]
             and '"source_language"' in text["translation"]
             and "с исходного языка на русский" in text["translation"]
             and "англоязычной" not in text["translation"].casefold()
             and "английской речью" not in text["translation"].casefold()
-            and "production.acquire_transcript = _acquire_transcript_with_actual_language" in text["gemini"]
+            and "acquire_transcript=_acquire_transcript_clean" in text["gemini"]
         ),
         "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
         "native-16to48": (
@@ -316,7 +317,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in text["gemini_runtime"]
             and "load_dotenv(override=False)" in text["gemini_runtime"]
             and "пробую следующий" in text["gemini_runtime"]
-            and "production.translate_groups_max = expressive_translation.translate_groups" in text["gemini"]
+            and "translate_groups=expressive_translation.translate_groups" in text["gemini"]
         ),
         "clean-entrypoints": (
             "TTS guard disabled" in text["gemini"]
@@ -366,7 +367,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
             and "status in _FINAL_JOB_STATES" in text["worker"]
             and 'return current, ""' in text["worker"]
         ),
-        "single-title-policy": "install_dub_title_policy" in text["title"],
+        "single-title-policy": ("def canonical_media_title(" in text["title"] and "def canonical_delivery_filename(" in text["title"]),
     }
     failed = [name for name, ok in contracts.items() if not ok]
     return not failed, (
@@ -384,13 +385,13 @@ def _recipe_checks() -> list[dict[str, Any]]:
         return [
             _check(
                 "Recipe: Gemini MAX",
-                "tools.voxcpm2.generic_clean_gemini_runtime" in gemini_text
+                "tools.voxcpm2.generic_gemini_runtime" in gemini_text
                 and "-Mode gemini" in gemini_text,
                 gemini_text,
             ),
             _check(
                 "Recipe: готовый SRT",
-                "tools.voxcpm2.generic_clean_direct_runtime" in direct_text
+                "tools.voxcpm2.generic_direct_runtime" in direct_text
                 and "-Mode direct" in direct_text,
                 direct_text,
             ),
@@ -414,12 +415,17 @@ def _recipe_checks() -> list[dict[str, Any]]:
 
 def collect_dub_health() -> list[dict[str, Any]]:
     checks = _recipe_checks()
-    quality_ok, quality_detail = _quality_contract(Path(__file__).resolve().parents[1])
+    repo = Path(__file__).resolve().parents[1]
+    quality_ok, quality_detail = _quality_contract(repo)
+    from core.media_title_policy import media_title_policy_contract
+    from services.dub_release_health_v64 import _v68_quality_contract
+    title_ok, title_detail = media_title_policy_contract()
+    release_ok, release_detail = _v68_quality_contract(repo)
     checks.append(
         _check(
             "Clean Expressive NoChew + независимый QA",
-            quality_ok,
-            quality_detail
+            quality_ok and title_ok and release_ok,
+            quality_detail + "; " + title_detail + "; " + release_detail
             + "; verified YouTube ID + sampled source cache; truthful 0%/0ms settings; "
             "strict unique translation IDs + creator-repeat preservation + actual source language; "
             "runtime v2 complete clean-path fingerprints; direct v3 16→48k; "

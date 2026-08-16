@@ -40,7 +40,7 @@ jobs:
           tools/voxcpm2/direct_final_audit_v3.py
           tools/voxcpm2/direct_surgical_polish_v2.py
           tools/voxcpm2/direct_max_quality_cli.py
-          tools/voxcpm2/generic_clean_direct_runtime.py
+          tools/voxcpm2/generic_direct_runtime.py
           tools/voxcpm2/clean_runtime_contract.py
 
       - name: Run isolated audit contracts

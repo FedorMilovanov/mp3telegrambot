@@ -108,15 +108,7 @@ def polling_error_callback(error: BaseException) -> None:
     )
 
 
-def install_polling_reliability_runtime() -> str:
-    """Compatibility validator; Application composition is source-owned in main.py."""
-    if not callable(accept_pending_update) or not callable(polling_error_callback):
-        raise RuntimeError("polling reliability helpers are unavailable")
-    return "source-owned Application pending-update guard; no PTB method replacement"
-
-
 __all__ = [
     "accept_pending_update",
-    "install_polling_reliability_runtime",
     "polling_error_callback",
 ]

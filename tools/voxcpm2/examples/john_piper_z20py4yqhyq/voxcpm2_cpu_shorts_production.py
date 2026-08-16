@@ -24,41 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2 import direct_max_quality_cli as _direct_cli
-from tools.voxcpm2.direct_max_quality_io import (
-    MAX_TEMPO as HARD_MAX_TEMPO,
-    PREFERRED_MAX_TEMPO,
-)
 
-_ORIGINAL_CANDIDATE_SCORE = _direct_cli.candidate_score
-
-
-def _tempo_policy_penalty(duration: float, speech_slot: float) -> float:
-    ratio = float(duration) / max(0.1, float(speech_slot))
-    if ratio <= PREFERRED_MAX_TEMPO:
-        return 0.0
-    return 90.0 + (ratio - PREFERRED_MAX_TEMPO) * 400.0
-
-
-def _fit_aware_candidate_score(
-    candidate: dict[str, Any],
-    speech_slot: float,
-    reference_voice: dict[str, Any],
-) -> float:
-    base = float(_ORIGINAL_CANDIDATE_SCORE(candidate, speech_slot, reference_voice))
-    penalty = _tempo_policy_penalty(
-        float(candidate.get("duration") or 0.0),
-        float(speech_slot),
-    )
-    candidate["tempo_preference_penalty"] = float(penalty)
-    candidate["required_tempo_estimate"] = float(candidate.get("duration") or 0.0) / max(
-        0.1,
-        float(speech_slot),
-    )
-    return base + penalty
-
-
-_direct_cli.candidate_score = _fit_aware_candidate_score
-_direct_cli.MAX_TEMPO = HARD_MAX_TEMPO
 main = _direct_cli.main
 
 MARKER_POLICY = "direct-cli-runtime-marker-v2"

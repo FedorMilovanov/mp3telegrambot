@@ -4,28 +4,22 @@
 The processing pipeline can legitimately keep an English ``real_title`` from the
 main audio analysis.  That value used to win before the lightweight title
 translator was reached, so both the LiveDub video and its MP3 companion could be
-published with an English title.  This runtime adapter adds a final, cheap title
-translation pass and keeps provider/implementation labels out of user-facing
-captions.
-
-It is intentionally installed *after* ``main`` is imported and *before* the
-LiveDub audio companion.  The companion can still recognise the original
-internal caption marker, while the actual Telegram API receives the clean
-publication caption produced here.
+published with an English title.  This module owns pure title/author and caption normalization helpers used by
+the explicit LiveDub publication path. It does not intercept Telegram methods or
+rebind pipeline functions at runtime.
 """
 from __future__ import annotations
+
+from core.media_title_policy import canonical_media_title
 
 import asyncio
 import html
 import logging
 import re
-import threading
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_INSTALL_LOCK = threading.Lock()
 _TRUE = {"1", "true", "yes", "on"}
 _TITLE_CACHE: dict[str, tuple[str, str]] = {}
 
@@ -134,64 +128,8 @@ def _has_cyrillic_title(line: str) -> bool:
 
 
 def _russian_heading_case(value: str) -> str:
-    """Preserve proper names but force Russian function words to lowercase."""
-    text = re.sub(r"\s+", " ", _plain(value, 220)).strip()
-    if not text:
-        return ""
-
-    # Uppercase the first alphabetic character only; do not title-case the rest.
-    chars = list(text)
-    for index, char in enumerate(chars):
-        if char.isalpha():
-            chars[index] = char.upper()
-            break
-    text = "".join(chars)
-
-    tokens = text.split(" ")
-    for index in range(1, len(tokens)):
-        token = tokens[index]
-        match = re.match(r"^([^A-Za-zА-Яа-яЁё]*)([A-Za-zА-Яа-яЁё]+)(.*)$", token)
-        if not match:
-            continue
-        prefix, word, suffix = match.groups()
-        if word.casefold() in _RU_SERVICE_WORDS:
-            tokens[index] = prefix + word.lower() + suffix
-    return " ".join(tokens)
-
-
-async def _translate_title_line(source_line: str) -> tuple[str, str] | None:
-    source = _plain(source_line, 300)
-    if not source:
-        return None
-    if _has_cyrillic_title(source):
-        title, author = _split_title_author(source)
-        return _russian_heading_case(title), _canonical_author(author)
-
-    cache_key = source.casefold()
-    cached = _TITLE_CACHE.get(cache_key)
-    if cached:
-        return cached
-
-    try:
-        import services.livedub_info_presentation as presentation
-
-        # Make the same canonical spelling available to its parser/translator.
-        presentation._AUTHOR_OVERRIDES.update(_AUTHOR_OVERRIDES)  # type: ignore[attr-defined]
-        translated = await presentation._translate_title_second_chance(source)  # type: ignore[attr-defined]
-    except Exception as exc:
-        logger.info("[LiveDubOutput] light title translation unavailable: %s", str(exc)[:160])
-        translated = None
-
-    if not translated:
-        return None
-    title, author = translated
-    title = _russian_heading_case(title)
-    author = _canonical_author(author)
-    if not title or not re.search(r"[А-Яа-яЁё]", title):
-        return None
-    result = (title, author)
-    _TITLE_CACHE[cache_key] = result
-    return result
+    """Apply the canonical project title policy at the output owner."""
+    return canonical_media_title(value)
 
 
 def _clean_video_caption(value: Any) -> str:
@@ -235,51 +173,6 @@ async def _ensure_html_caption_title_ru(caption: str) -> str:
     return caption[:match.start(1)] + escaped + caption[match.end(1):]
 
 
-def _patch_pipeline_title() -> None:
-    import pipelines.main_pipeline as pipeline
-
-    original = getattr(pipeline, "_translate_livedub_title_for_caption", None)
-    if original is None or getattr(original, "_mp3bot_output_policy", False):
-        return
-
-    async def wrapped(*args, **kwargs):
-        title, author = await original(*args, **kwargs)
-        current = f"{title} - {author}" if author else str(title or "")
-        if _has_cyrillic_title(current):
-            clean_title, split_author = _split_title_author(current)
-            return _russian_heading_case(clean_title), _canonical_author(author or split_author)
-
-        full_title = str(args[0] if args else kwargs.get("full_title") or "")
-        parsed_title = str(args[1] if len(args) > 1 else kwargs.get("parsed_title") or "")
-        parsed_performer = str(args[2] if len(args) > 2 else kwargs.get("parsed_performer") or "")
-        source = full_title or (
-            f"{parsed_title} - {parsed_performer}" if parsed_performer else parsed_title
-        ) or current
-        translated = await _translate_title_line(source)
-        if translated:
-            return translated
-        return title, _canonical_author(author)
-
-    wrapped._mp3bot_output_policy = True  # type: ignore[attr-defined]
-    pipeline._translate_livedub_title_for_caption = wrapped
-
-
-def _wrap_send_video(cls: type) -> None:
-    original = getattr(cls, "send_video", None)
-    if original is None or getattr(original, "_mp3bot_output_policy", False):
-        return
-
-    async def wrapped(self, *args, **kwargs):
-        caption = str(kwargs.get("caption") or "")
-        if caption:
-            caption = await _ensure_html_caption_title_ru(caption)
-            kwargs["caption"] = _clean_video_caption(caption)
-        return await original(self, *args, **kwargs)
-
-    wrapped._mp3bot_output_policy = True  # type: ignore[attr-defined]
-    setattr(cls, "send_video", wrapped)
-
-
 def _is_livedub_audio_caption(value: Any) -> bool:
     low = _plain(value, 300).casefold()
     return any(
@@ -291,81 +184,3 @@ def _is_livedub_audio_caption(value: Any) -> bool:
             "русская аудиоверсия",
         )
     )
-
-
-def _wrap_send_audio(cls: type) -> None:
-    original = getattr(cls, "send_audio", None)
-    if original is None or getattr(original, "_mp3bot_output_policy", False):
-        return
-
-    async def wrapped(self, *args, **kwargs):
-        caption = kwargs.get("caption")
-        livedub_audio = _is_livedub_audio_caption(caption)
-        if caption is not None:
-            kwargs["caption"] = _clean_audio_caption(caption)
-
-        if livedub_audio:
-            title = _plain(kwargs.get("title"), 200)
-            performer = _plain(kwargs.get("performer"), 120)
-            source = f"{title} - {performer}" if performer else title
-            translated = await _translate_title_line(source)
-            if translated:
-                kwargs["title"], translated_author = translated
-                kwargs["performer"] = translated_author or _canonical_author(performer) or None
-        return await original(self, *args, **kwargs)
-
-    wrapped._mp3bot_output_policy = True  # type: ignore[attr-defined]
-    setattr(cls, "send_audio", wrapped)
-
-
-def install_livedub_output_policy() -> None:
-    """Install title and caption publication guards once."""
-    if not _enabled():
-        return
-    with _INSTALL_LOCK:
-        _patch_pipeline_title()
-        from telegram import Bot
-
-        _wrap_send_video(Bot)
-        _wrap_send_audio(Bot)
-        try:
-            from telegram.ext import ExtBot
-
-            if ExtBot.send_video is not Bot.send_video:
-                _wrap_send_video(ExtBot)
-            if ExtBot.send_audio is not Bot.send_audio:
-                _wrap_send_audio(ExtBot)
-        except Exception as exc:
-            logger.debug("[LiveDubOutput] ExtBot patch skipped: %s", exc)
-        logger.info("🇷🇺 LiveDub output policy: Russian titles + neutral captions enabled")
-
-
-def harden_livedub_audio_dedupe() -> None:
-    """Relax the source-MP3 detector after the dedupe adapter is installed.
-
-    The old detector accepted only a narrow ASCII media-id filename pattern.
-    Any harmless naming change made ENG Full send the English source MP3 before
-    the Russian companion.  The directory itself is the reliable boundary.
-    """
-    try:
-        import services.livedub_audio_dedupe as dedupe
-        from core.globals import DOWNLOAD_DIR
-    except Exception as exc:
-        logger.info("[LiveDubOutput] audio dedupe hardening unavailable: %s", str(exc)[:160])
-        return
-
-    def is_main_source_mp3(path: Path) -> bool:
-        try:
-            candidate = Path(path)
-            if candidate.suffix.casefold() != ".mp3":
-                return False
-            if candidate.resolve().parent != Path(DOWNLOAD_DIR).resolve():
-                return False
-            low = candidate.stem.casefold()
-            excluded = ("ru-audio", "pro_dub", "livedub", "live_dub", "translation", "translated")
-            return not any(token in low for token in excluded)
-        except Exception:
-            return False
-
-    dedupe._is_main_source_mp3 = is_main_source_mp3
-    logger.info("🎧 LiveDub audio dedupe: relaxed DOWNLOAD_DIR source detector enabled")

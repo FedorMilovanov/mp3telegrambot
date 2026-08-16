@@ -14,7 +14,6 @@ import math
 import os
 import re
 import shutil
-import sys
 from pathlib import Path
 from statistics import median
 from typing import Iterable
@@ -23,7 +22,6 @@ from services.async_process import run_cancellable_process
 
 logger = logging.getLogger(__name__)
 
-_INSTALLED = False
 _CACHE: dict[tuple[str, int, int, int, int, int], bool] = {}
 _CACHE_LIMIT = 256
 
@@ -338,21 +336,3 @@ async def _is_static_video_confident(
         _CACHE.pop(next(iter(_CACHE)))
     _CACHE[key] = result
     return result
-
-
-def install_short_static_runtime() -> str:
-    """Install before shorts_video/montage import; patch old imports if present."""
-    global _INSTALLED
-    if _INSTALLED:
-        return "moving=crop_zoom; confident static slide=full_frame_blur"
-
-    from services import ffmpeg as ffmpeg_module
-
-    ffmpeg_module._is_static_video = _is_static_video_confident
-    for module_name in ("services.shorts_video", "services.render_clips_montage"):
-        module = sys.modules.get(module_name)
-        if module is not None:
-            setattr(module, "_is_static_video", _is_static_video_confident)
-
-    _INSTALLED = True
-    return "moving=crop_zoom; 2-probe static slide=full_frame_blur; errors keep crop"

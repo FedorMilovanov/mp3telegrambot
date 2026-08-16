@@ -11,7 +11,7 @@
       "kind": "render",
       "label": "Подготовить перевод и сделать финальный дубляж",
       "runner": "python_module",
-      "module": "tools.voxcpm2.generic_short_runtime",
+      "module": "tools.voxcpm2.generic_short_production",
       "parameters": {
         "SourceUrl": "https://youtube.com/shorts/tNlIoCeGyLk",
         "VideoId": "tNlIoCeGyLk",
@@ -31,37 +31,49 @@
       "path": "{work_root}/output/tNlIoCeGyLk_Russian_Dub_FINAL_UPLOAD.mp4",
       "required": true,
       "primary": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     },
     "russian_only": {
       "label": "Чистая русская версия",
       "path": "{work_root}/output/tNlIoCeGyLk_Russian_Dub_FINAL_RUSSIAN_ONLY.mp4",
       "required": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     },
     "russian_subtitles": {
       "label": "Русские субтитры",
       "path": "{work_root}/output/tNlIoCeGyLk_Russian_Dub_FINAL.srt",
       "required": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     },
     "english_subtitles": {
       "label": "Точная английская расшифровка",
       "path": "{work_root}/output/tNlIoCeGyLk_Source_English.srt",
       "required": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     },
     "translation": {
       "label": "Итоговый русский перевод",
       "path": "{work_root}/output/tNlIoCeGyLk_Russian_Translation.txt",
       "required": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     },
     "manifest": {
       "label": "Production manifest",
       "path": "{work_root}/output/tNlIoCeGyLk_FINAL.manifest.json",
       "required": true,
-      "actions": ["render"]
+      "actions": [
+        "render"
+      ]
     }
   }
 }
