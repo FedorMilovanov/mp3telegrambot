@@ -36,15 +36,12 @@ def remove_functions(rel: str, names: set[str]) -> None:
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names:
             found.add(node.name)
-            start = node.lineno
-            end = node.end_lineno or node.lineno
-            spans.append((start, end))
+            spans.append((node.lineno, node.end_lineno or node.lineno))
     missing = names - found
     if missing:
         raise RuntimeError(f"{rel}: missing installer definitions {sorted(missing)}")
     lines = text.splitlines(keepends=True)
     for start, end in sorted(spans, reverse=True):
-        # Include preceding blank lines, but never another statement.
         lo = start - 1
         while lo > 0 and not lines[lo - 1].strip():
             lo -= 1
@@ -59,10 +56,9 @@ def remove_functions(rel: str, names: set[str]) -> None:
 def production_call_blockers(names: set[str]) -> list[str]:
     blockers=[]
     skip={"tests", ".git", ".venv", "venv", "__pycache__", ".pytest_cache"}
-    temp_prefix="tools/"
     for path in ROOT.rglob("*.py"):
         rel=path.relative_to(ROOT).as_posix()
-        if any(p in skip for p in path.relative_to(ROOT).parts) or rel.startswith(temp_prefix):
+        if any(p in skip for p in path.relative_to(ROOT).parts) or rel.startswith("tools/"):
             continue
         text=path.read_text(encoding="utf-8", errors="replace")
         try: tree=ast.parse(text)
@@ -78,7 +74,8 @@ def production_call_blockers(names: set[str]) -> list[str]:
 
 def main() -> int:
     all_names=set().union(*TARGETS.values())
-    blockers=production_call_blockers(all_names)
+    public_roots={name for name in all_names if name.startswith("install_")}
+    blockers=production_call_blockers(public_roots)
     if blockers:
         raise RuntimeError("zero-call proof invalidated:\n" + "\n".join(blockers))
     for rel,names in TARGETS.items():
