@@ -909,7 +909,6 @@ def _render_main() -> None:
 
 from tools.voxcpm2 import direct_universal_runtime as universal_runtime
 from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
-from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
 from tools.voxcpm2 import direct_final_audit_v3 as final_audit
 from tools.voxcpm2.direct_failure_recovery import (
     POLICY as EARLY_STOP_RECOVERY_POLICY,
@@ -1515,7 +1514,6 @@ def _raw_failure_evidence(
         payload["surgical_runtime_policy"] = surgical_runtime.POLICY
         return payload
 
-install_global_polish()
 FINAL_AUDIT_POLICY = final_audit.POLICY
 _FINAL_AUDIT_STATE: dict[str, Any] = {
     "segments": [],

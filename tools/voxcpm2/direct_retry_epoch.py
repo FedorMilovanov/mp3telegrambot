@@ -9,6 +9,7 @@ their original epoch and remain reusable during hour-long renders.
 """
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import json
 import os
 import uuid
@@ -152,7 +153,7 @@ def advance_retry_epoch(
     return payload
 
 
-def invalidate_segment_for_retry(
+def _polish_base_invalidate_segment_for_retry(
     work_dir: Path,
     segment: dict[str, Any],
     *,
@@ -210,32 +211,7 @@ def _scope_fingerprint(evidence: Mapping[str, Any] | None) -> str:
 
 
 def _scope_epochs(payload: Mapping[str, Any]) -> dict[str, int]:
-    raw = payload.get(_SCOPE_EPOCHS_KEY)
-    result: dict[str, int] = {}
-    if isinstance(raw, Mapping):
-        for key, value in raw.items():
-            fingerprint = str(key or "").strip().lower()
-            if len(fingerprint) != 64:
-                continue
-            try:
-                epoch = int(value)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if 0 <= epoch <= MAX_SCOPE_EPOCH:
-                result[fingerprint] = epoch
-    explicit = set(result)
-    history = payload.get("history")
-    if isinstance(history, list):
-        for entry in history:
-            if not isinstance(entry, Mapping):
-                continue
-            fingerprint = _scope_fingerprint(entry.get("evidence"))
-            if fingerprint and fingerprint not in explicit:
-                result[fingerprint] = min(
-                    MAX_SCOPE_EPOCH,
-                    result.get(fingerprint, 0) + 1,
-                )
-    return result
+    return polish._scope_epochs(payload)
 
 
 def load_retry_epoch(
@@ -331,6 +307,43 @@ def advance_retry_epoch(
     }
     _atomic_write(path, payload)
     return payload
+
+
+
+def invalidate_segment_for_retry(
+    work_dir: Path,
+    segment: dict[str, Any],
+    *,
+    reason: str,
+    fitted_path: Path | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    evidence_payload = dict(evidence or {})
+    fingerprint = polish._sha(evidence_payload.get("failure_scope_fingerprint"))
+    result = dict(
+        _polish_base_invalidate_segment_for_retry(
+            work_dir,
+            segment,
+            reason=reason,
+            fitted_path=fitted_path,
+            evidence=evidence_payload,
+        )
+    )
+    result["raw_retry_epoch"] = int(result.get("retry_epoch") or 0)
+    if fingerprint:
+        epoch = load_retry_epoch(
+            work_dir,
+            segment.get("id"),
+            scope_fingerprint=fingerprint,
+        )
+        result.update(
+            retry_epoch=epoch,
+            scope_retry_epoch=epoch,
+            last_scope_epoch=epoch,
+            scope_fingerprint=fingerprint,
+            policy=polish.POLICY,
+        )
+    return result
 
 
 __all__ = [

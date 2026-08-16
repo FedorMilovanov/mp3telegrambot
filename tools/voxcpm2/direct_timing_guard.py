@@ -3,6 +3,7 @@
 """Universal fail-fast timing, retry-scope and candidate-budget contracts."""
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import hashlib
 import json
 import math
@@ -180,7 +181,7 @@ def write_signature_context(work_dir: Path, context: Mapping[str, Any]) -> Path:
     return path
 
 
-def load_signature_context(work_dir: Path) -> dict[str, Any]:
+def _polish_base_load_signature_context(work_dir: Path) -> dict[str, Any]:
     path = Path(work_dir).resolve() / CONTEXT_NAME
     if not path.is_file():
         return {}
@@ -303,7 +304,7 @@ def timing_block_path(work_dir: Path, segment_id: int) -> Path:
     return Path(work_dir).resolve() / "timing_blocks" / f"segment_{int(segment_id):02d}.json"
 
 
-def persist_timing_block(
+def _polish_base_persist_timing_block(
     work_dir: Path,
     *,
     segment: Mapping[str, Any],
@@ -501,7 +502,7 @@ def _validate_segments(values: Iterable[dict[str, Any]]) -> list[dict[str, Any]]
     return result
 
 
-def run_pre_model_guard(
+def _polish_base_run_pre_model_guard(
     segments: Iterable[dict[str, Any]],
     *,
     work_dir: Path,
@@ -550,42 +551,119 @@ def _prune_marker_archives(directory: Path, stem: str, *, limit: int = 8) -> Non
     for stale in files[max(0, int(limit)):]:
         stale.unlink(missing_ok=True)
 
+
 def load_matching_timing_block(
     work_dir: Path,
     *,
     segment: Mapping[str, Any],
     signature_context: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
-    path = timing_block_path(work_dir, int(segment.get("id") or 0))
+    clean = polish._segments([dict(segment)])[0]
+    path = polish._marker_path(work_dir, clean["id"])
     if not path.is_file():
         return None
     try:
-        if path.stat().st_size > MAX_MARKER_BYTES:
-            _archive_timing_marker(path, "oversized")
-            return None
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8-sig"))
-        except (OSError, json.JSONDecodeError):
-            _archive_timing_marker(path, "corrupt-json")
-            return None
-        if not isinstance(payload, dict) or (
-            payload.get("schema_version") != MARKER_SCHEMA_VERSION
-            or payload.get("policy") != SURGICAL_GUARD_POLICY
-            or int(payload.get("segment_id") or 0) != int(segment.get("id") or 0)
-            or not isinstance(payload.get("evidence"), dict)
-            or not isinstance(payload.get("recommendation"), dict)
-        ):
-            _archive_timing_marker(path, "contract-mismatch")
-            return None
+        value = polish._read(path)
         expected = failure_scope_fingerprint(
-            segment, signature_context=signature_context
+            clean,
+            signature_context=signature_context,
         )
-        if payload.get("signature") == expected:
-            return payload
-        _archive_timing_marker(path, "input-changed")
+        slot = clean["end"] - clean["start"] - clean["tail_guard"]
+        try:
+            recommendation = value.get("recommendation")
+            valid = bool(
+                value.get("schema_version") == polish.MARKER_SCHEMA_VERSION
+                and value.get("policy") == polish.MARKER_POLICY
+                and polish._integer(value.get("segment_id"), "marker.id") == clean["id"]
+                and polish._sha(value.get("signature")) == expected
+                and 0 <= polish._integer(value.get("retry_epoch"), "marker.epoch") < polish.MAX_SCOPE_EPOCH
+                and abs(polish._number(value.get("speech_slot"), "marker.slot") - slot) <= 1e-6
+                and isinstance(value.get("evidence"), dict)
+                and isinstance(recommendation, Mapping)
+                and polish._number(
+                    recommendation.get("hard_minimum_speech_slot"),
+                    "hard_slot",
+                ) + 1e-6 >= slot
+                and 0 <= polish._integer(
+                    recommendation.get("hard_shorten_percent"),
+                    "shorten",
+                ) <= 100
+            )
+        except RuntimeError:
+            valid = False
+        if valid:
+            return value
+        polish._archive(
+            path,
+            "input-changed"
+            if value.get("signature") != expected
+            else "contract-mismatch",
+        )
         return None
     finally:
         _prune_marker_archives(path.parent, path.name, limit=8)
+
+
+
+MARKER_SCHEMA_VERSION = polish.MARKER_SCHEMA_VERSION
+
+
+def run_pre_model_guard(
+    segments,
+    *,
+    work_dir,
+    max_tempo,
+    signature_context,
+):
+    return _polish_base_run_pre_model_guard(
+        polish._segments(segments),
+        work_dir=work_dir,
+        max_tempo=max_tempo,
+        signature_context=signature_context,
+    )
+
+
+def load_signature_context(work_dir: Path) -> dict[str, Any]:
+    value = dict(_polish_base_load_signature_context(work_dir))
+    value.update(polish._runtime_marker(work_dir))
+    value["surgical_polish_policy"] = polish.POLICY
+    return value
+
+
+def persist_timing_block(
+    work_dir: Path,
+    *,
+    segment: Mapping[str, Any],
+    signature_context: Mapping[str, Any] | None,
+    retry_epoch: int,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    clean = polish._segments([dict(segment)])[0]
+    value = dict(
+        _polish_base_persist_timing_block(
+            work_dir,
+            segment=clean,
+            signature_context=signature_context,
+            retry_epoch=retry_epoch,
+            evidence=evidence,
+        )
+    )
+    value.update(
+        schema_version=polish.MARKER_SCHEMA_VERSION,
+        policy=polish.MARKER_POLICY,
+        segment_id=int(clean["id"]),
+        signature=failure_scope_fingerprint(
+            clean,
+            signature_context=signature_context,
+        ),
+        speech_slot=round(
+            clean["end"] - clean["start"] - clean["tail_guard"],
+            6,
+        ),
+        retry_epoch=polish._integer(retry_epoch, "retry_epoch"),
+    )
+    polish._atomic(polish._marker_path(work_dir, clean["id"]), value)
+    return value
 
 __all__ = [
     "CONTEXT_NAME", "POLICY",

@@ -3,6 +3,7 @@
 """Lazy backend session and evidence-gated reference reuse."""
 from __future__ import annotations
 
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import json
 import math
 import time
@@ -224,6 +225,15 @@ def enrich_reference_report(
     result["reference_cache_policy"] = _REFERENCE_CACHE_POLICY
     return result
 
+
+
+# Source-owned strengthened IO contract. The implementation is shared with the
+# pure polish policy module; no imported module is mutated.
+POLICY = polish.POLICY
+MutableAudioSpec = polish._AudioSpec
+LazySession = polish._LazySession
+cached_reference = polish._cached_reference
+enrich_reference_report = polish._enrich_reference_report
 
 __all__ = [
     "LazyBackend",

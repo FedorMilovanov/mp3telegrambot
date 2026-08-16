@@ -10,9 +10,10 @@ from typing import Any
 
 from tools.voxcpm2 import direct_retry_epoch
 from tools.voxcpm2 import direct_surgical_io
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 from tools.voxcpm2 import direct_timing_guard as guard
 
-POLICY = "voxcpm2-surgical-runtime-v1"
+POLICY = "voxcpm2-surgical-runtime-v2"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v2"
 _RUNTIME_SCOPE_FILES = (
     "tools/voxcpm2/direct_timing_guard.py",
@@ -51,5 +52,11 @@ def _progress_value(
     fraction = (position_value - 1) + (attempt_value - 1) / attempts_value
     return max(8, min(86, 8 + round(fraction / total_value * 78)))
 
+
+
+_segments_by_id = polish._segments_by_id
+_RUNTIME_SCOPE_FILES = tuple(
+    dict.fromkeys((*_RUNTIME_SCOPE_FILES, *polish._EXTRA_SCOPE))
+)
 
 __all__ = ['POLICY']
