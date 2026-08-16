@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  service-marker-cleanup:
+  canonical-dub-health:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,20 +21,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Remove mutable function markers
-        run: python tools/remove_function_attribute_markers.py
-      - name: Compile service owners
-        run: python -m compileall -q services/livedub_info.py services/shorts_factory_publication.py
-      - name: Verify marker-free services
+      - name: Rewrite Dub release health around canonical owners
+        run: python tools/rewrite_dub_release_health.py
+      - name: Compile health and production owners
+        run: python -m compileall -q services/dub_release_health_v64.py services tools/voxcpm2 handlers core pipelines
+      - name: Verify no legacy surgery requirements
         run: |
-          ! grep -nE '_mp3bot_all_clients|_factory_publication_polish' services/livedub_info.py services/shorts_factory_publication.py
-          grep -q '_WRAPPED_CAPTION_BUILDERS' services/shorts_factory_publication.py
-      - name: Commit service marker cleanup
+          ! grep -nE 'sys\.modules|spec_from_file_location|module_from_spec|_legacy\.|/__init__\.py.*legacy|transactional-legacy-import' services/dub_release_health_v64.py
+          ! grep -nE '_v67_quality_contract|_v66_quality_contract|_v65_quality_contract|_russian_only_master_contract' services/dub_release_health_v64.py
+      - name: Execute canonical health contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from services.dub_release_health_v64 import _v68_quality_contract
+          ok, detail = _v68_quality_contract(Path('.'))
+          print(f'ok={ok}')
+          print(detail)
+          assert ok, detail
+          PY
+      - name: Commit canonical health
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Remove mutable service function markers"
+          git commit -m "Make Dub release health source-aware"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
