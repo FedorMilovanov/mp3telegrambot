@@ -35,6 +35,20 @@ CRITICAL_SURFACES = (
     "tools/voxcpm2/clean_production_core.py",
 )
 
+PRODUCTION_ENTRYPOINTS = (
+    "bot.py",
+    "bot_new.py",
+    "main.py",
+)
+
+PRODUCTION_DIRS = (
+    "core",
+    "handlers",
+    "pipelines",
+    "services",
+    "tools/voxcpm2",
+)
+
 FORBIDDEN_TEXT = (
     "sys.meta_path.insert",
     "sys.meta_path.remove",
@@ -58,10 +72,47 @@ FORBIDDEN_TEXT = (
 )
 
 TELEGRAM_METHODS = {"send_video", "send_audio", "send_message", "reply_audio"}
+SYS_MODULE_MUTATORS = {"setdefault", "update", "__setitem__"}
 
 
 def _source(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
+
+
+def _production_python_paths() -> tuple[Path, ...]:
+    paths = [ROOT / rel for rel in PRODUCTION_ENTRYPOINTS]
+    for rel in PRODUCTION_DIRS:
+        paths.extend((ROOT / rel).rglob("*.py"))
+    return tuple(
+        sorted(
+            (path for path in paths if path.is_file()),
+            key=lambda path: path.as_posix(),
+        )
+    )
+
+
+def _call_target_name(node: ast.Call) -> str:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return ""
+
+
+def _is_sys_modules(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "sys"
+        and node.attr == "modules"
+    )
+
+
+def _target_writes_sys_modules(target: ast.AST) -> bool:
+    return any(
+        isinstance(node, ast.Subscript) and _is_sys_modules(node.value)
+        for node in ast.walk(target)
+    )
 
 
 def test_critical_runtime_surfaces_have_no_import_or_assignment_surgery():
@@ -87,6 +138,50 @@ def test_critical_runtime_surfaces_do_not_setattr_telegram_delivery_methods():
             assert method not in TELEGRAM_METHODS, (
                 f"{rel} reintroduced Telegram delivery interception: {method}"
             )
+
+
+def test_production_has_zero_install_calls_and_no_module_alias_surgery():
+    install_calls: list[str] = []
+    module_aliases: list[str] = []
+    contextvar_calls: list[str] = []
+    import_hook_findings: list[str] = []
+
+    for path in _production_python_paths():
+        rel = path.relative_to(ROOT).as_posix()
+        src = path.read_text(encoding="utf-8")
+        tree = ast.parse(src, filename=rel)
+
+        if "sys.meta_path" in src or "MetaPathFinder" in src:
+            import_hook_findings.append(rel)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                target_name = _call_target_name(node)
+                if target_name.startswith("install_"):
+                    install_calls.append(f"{rel}:{node.lineno}:{target_name}")
+                if target_name == "ContextVar":
+                    contextvar_calls.append(f"{rel}:{node.lineno}")
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in SYS_MODULE_MUTATORS
+                    and _is_sys_modules(node.func.value)
+                ):
+                    module_aliases.append(
+                        f"{rel}:{node.lineno}:sys.modules.{node.func.attr}"
+                    )
+
+            targets: tuple[ast.AST, ...] = ()
+            if isinstance(node, ast.Assign):
+                targets = tuple(node.targets)
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                targets = (node.target,)
+            if any(_target_writes_sys_modules(target) for target in targets):
+                module_aliases.append(f"{rel}:{node.lineno}:sys.modules[...] assignment")
+
+    assert install_calls == [], f"ROOT_CALLS={len(install_calls)}: {install_calls}"
+    assert module_aliases == [], f"sys.modules alias surgery: {module_aliases}"
+    assert contextvar_calls == [], f"ContextVar runtime surgery: {contextvar_calls}"
+    assert import_hook_findings == [], f"import-hook surgery: {import_hook_findings}"
 
 
 def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
