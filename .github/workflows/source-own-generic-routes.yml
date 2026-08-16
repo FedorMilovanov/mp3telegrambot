@@ -21,6 +21,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Fix route migration health assertion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/source_own_generic_routes.py')
+          text = path.read_text(encoding='utf-8')
+          old = "'\"manual_vtt_parser\\\"] = parse_creator_vtt_preserving_text\" in text[\"gemini\"]'"
+          new = "'\"parse_creator_vtt_preserving_text\" in text[\"gemini\"]'"
+          if old not in text:
+              raise SystemExit('expected health assertion anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Source-own Gemini and custom routes
         run: python tools/source_own_generic_routes.py
       - name: Compile production tree
