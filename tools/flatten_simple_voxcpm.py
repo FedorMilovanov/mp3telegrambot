@@ -6,7 +6,15 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "tools" / "voxcpm2"
-TARGETS = ("clean_source_download", "direct_max_quality_analysis")
+TARGETS = (
+    "clean_production_core",
+    "direct_max_quality_render",
+    "direct_russian_cadence",
+    "direct_timeline_delivery_qa",
+    "expressive_continuity",
+    "final_media_qa",
+    "generic_clean_audio_repair_runtime",
+)
 
 
 def skip_node(node: ast.AST, text: str) -> bool:
