@@ -47,8 +47,9 @@ def replace_regex(path: str, pattern: str, replacement: str, *, flags: int = 0, 
 
 
 def remove_runtime_feature(text: str, feature_id: str) -> str:
+    quoted = r"[\"']" + re.escape(feature_id) + r"[\"']"
     pattern = re.compile(
-        r"\n    RuntimeFeature\(\n        " + re.escape(repr(feature_id)) + r",.*?\n    \),",
+        r"\n    RuntimeFeature\(\n        " + quoted + r",.*?\n    \),",
         re.DOTALL,
     )
     text2, count = pattern.subn("", text, count=1)
