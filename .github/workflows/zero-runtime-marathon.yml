@@ -24,8 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: Compile production tree
-        run: |
-          python -m compileall -q core handlers pipelines services tools converters main.py bot_new.py
+        run: python -m compileall -q core handlers pipelines services tools converters main.py bot_new.py
 
-      - name: Repo-wide runtime surgery audit
-        run: python tools/runtime_surgery_audit.py
+      - name: Runtime reference map
+        run: python tools/runtime_reference_audit.py
