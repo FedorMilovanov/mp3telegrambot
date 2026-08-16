@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from services import dub_worker as worker
 from services.dub_worker_release import WORKER_RUNTIME
-from tools.voxcpm2 import dub_worker_hardened as hardened
 
 
 class FakeStore:
@@ -52,20 +51,13 @@ def _job() -> dict[str, Any]:
     }
 
 
-def test_worker_package_exposes_current_cancellation_contract() -> None:
-    assert Path(hardened.__file__).name == "__init__.py"
-    assert hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
-    assert hardened.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v2"
-    assert hardened.DELIVERY_RESILIENCE_POLICY == "cadence-tail-fit-adaptive-resume-v1"
-    assert hardened.JOB_QUALITY_RETRY_POLICY == "worker-checkpoint-quality-restart-v1"
-    assert hardened.MAX_JOB_QUALITY_RESTARTS == 3
-    assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
-    assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
-    main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
-        encoding="utf-8"
-    )
-    assert "from . import main" in main_source
-    assert "main()" in main_source
+def test_worker_source_owner_exposes_current_contract() -> None:
+    assert worker.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
+    assert worker.STORE_ROOT_POLICY == "explicit-worker-root-propagation-v3"
+    assert worker.DELIVERY_RESILIENCE_POLICY == "cadence-tail-fit-adaptive-resume-v1"
+    assert worker.JOB_QUALITY_RETRY_POLICY == "worker-checkpoint-quality-restart-v1"
+    assert worker.MAX_JOB_QUALITY_RESTARTS == 3
+    assert worker.WORKER_RUNTIME == WORKER_RUNTIME
 
 
 def test_cancel_before_preflight_never_runs_probe_or_runner(
@@ -74,19 +66,19 @@ def test_cancel_before_preflight_never_runs_probe_or_runner(
 ) -> None:
     store = FakeStore(tmp_path, [True])
     calls: list[str] = []
-    hardened.worker._STOP.clear()
+    worker._STOP.clear()
     monkeypatch.setattr(
-        hardened.dub_job_preflight,
+        worker.dub_job_preflight,
         "run",
         lambda *_args, **_kwargs: calls.append("preflight"),
     )
     monkeypatch.setattr(
-        hardened,
-        "_ORIGINAL_EXECUTE_JOB",
+        worker,
+        "_run_with_quality_restarts",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
+    worker.execute_job(store, "worker-1", _job())
 
     assert calls == []
     assert store.finished == [
@@ -105,48 +97,51 @@ def test_cancel_during_preflight_never_starts_runner(
 ) -> None:
     store = FakeStore(tmp_path, [False, True])
     calls: list[str] = []
-    hardened.worker._STOP.clear()
+    worker._STOP.clear()
 
     def fake_preflight(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         calls.append("preflight")
         return {"passed": True, "skipped": False}
 
-    monkeypatch.setattr(hardened.dub_job_preflight, "run", fake_preflight)
+    monkeypatch.setattr(worker.dub_job_preflight, "run", fake_preflight)
     monkeypatch.setattr(
-        hardened,
-        "_ORIGINAL_EXECUTE_JOB",
+        worker,
+        "_run_with_quality_restarts",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
+    worker.execute_job(store, "worker-1", _job())
 
     assert calls == ["preflight"]
     assert store.finished[-1]["status"] == "cancelled"
     assert [item["stage"] for item in store.progress] == ["preflight"]
 
 
-def test_normal_preflight_starts_original_runner_once(
+def test_normal_preflight_passes_explicit_store_root_and_starts_runner_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     store = FakeStore(tmp_path, [False, False])
     calls: list[str] = []
-    hardened.worker._STOP.clear()
+    seen_studio: list[Path] = []
+    worker._STOP.clear()
+
+    def fake_preflight(_project: dict[str, Any], _action: str, *, studio: Path):
+        seen_studio.append(Path(studio))
+        return {"passed": True, "skipped": False}
+
+    monkeypatch.setattr(worker.dub_job_preflight, "run", fake_preflight)
     monkeypatch.setattr(
-        hardened.dub_job_preflight,
-        "run",
-        lambda *_args, **_kwargs: {"passed": True, "skipped": False},
-    )
-    monkeypatch.setattr(
-        hardened,
-        "_ORIGINAL_EXECUTE_JOB",
-        lambda _store, worker_id, job: calls.append(
+        worker,
+        "_run_with_quality_restarts",
+        lambda _store, worker_id, job, _project: calls.append(
             f"runner:{worker_id}:{job['id']}"
         ),
     )
 
-    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
+    worker.execute_job(store, "worker-1", _job())
 
+    assert seen_studio == [store.root]
     assert calls == ["runner:worker-1:17"]
     assert store.finished == []
     assert [item["stage"] for item in store.progress] == [
@@ -155,52 +150,25 @@ def test_normal_preflight_starts_original_runner_once(
     ]
 
 
-def test_store_root_is_scoped_to_preflight_and_runner(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    store = FakeStore(tmp_path, [False, False])
-    seen: list[str | None] = []
-    previous = str((tmp_path / "previous-root").resolve())
-    monkeypatch.setenv("DUB_STUDIO_ROOT", previous)
-    hardened.worker._STOP.clear()
-
-    def fake_preflight(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-        seen.append(os.environ.get("DUB_STUDIO_ROOT"))
-        return {"passed": True, "skipped": True}
-
-    monkeypatch.setattr(hardened.dub_job_preflight, "run", fake_preflight)
-    monkeypatch.setattr(
-        hardened,
-        "_ORIGINAL_EXECUTE_JOB",
-        lambda *_args, **_kwargs: seen.append(os.environ.get("DUB_STUDIO_ROOT")),
-    )
-
-    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
-
-    assert seen == [str(store.root), str(store.root)]
-    assert os.environ["DUB_STUDIO_ROOT"] == previous
-
-
 def test_real_preflight_failure_is_failed_and_logged(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     store = FakeStore(tmp_path, [False, False])
     calls: list[str] = []
-    hardened.worker._STOP.clear()
+    worker._STOP.clear()
 
     def fail(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         raise RuntimeError("IMPORT_SENTINEL")
 
-    monkeypatch.setattr(hardened.dub_job_preflight, "run", fail)
+    monkeypatch.setattr(worker.dub_job_preflight, "run", fail)
     monkeypatch.setattr(
-        hardened,
-        "_ORIGINAL_EXECUTE_JOB",
+        worker,
+        "_run_with_quality_restarts",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    hardened._execute_job_with_cancellable_preflight(store, "worker-1", _job())
+    worker.execute_job(store, "worker-1", _job())
 
     assert calls == []
     assert store.finished[-1]["status"] == "failed"
@@ -217,6 +185,11 @@ def test_quality_failure_restarts_same_job_until_success(
     store = FakeStore(tmp_path, [False])
     calls: list[int] = []
     monkeypatch.delenv("DUB_WORKER_MAX_QUALITY_RESTARTS", raising=False)
+    monkeypatch.setattr(
+        worker,
+        "_quality_failure_detail",
+        lambda _project, error: str(error or ""),
+    )
 
     def fake_runner(capture: Any, _worker_id: str, job: dict[str, Any]) -> None:
         calls.append(len(calls) + 1)
@@ -224,10 +197,7 @@ def test_quality_failure_restarts_same_job_until_success(
             capture.finish_job(
                 int(job["id"]),
                 status="failed",
-                error=(
-                    "RuntimeError: Сегмент #12: нет ни одного hard-quality "
-                    f"кандидата; следующий повтор использует seed epoch {len(calls) + 1}."
-                ),
+                error=f"hard-quality retry {len(calls)}",
             )
             return
         capture.finish_job(
@@ -236,8 +206,8 @@ def test_quality_failure_restarts_same_job_until_success(
             result={"output": "ready.mp4"},
         )
 
-    monkeypatch.setattr(hardened, "_ORIGINAL_EXECUTE_JOB", fake_runner)
-    hardened._run_with_quality_restarts(
+    monkeypatch.setattr(worker, "_execute_runner_job", fake_runner)
+    worker._run_with_quality_restarts(
         store,
         "worker-1",
         _job(),
@@ -246,26 +216,9 @@ def test_quality_failure_restarts_same_job_until_success(
 
     assert calls == [1, 2, 3]
     assert store.finished[-1]["status"] == "succeeded"
-    retries = [item["stage"] for item in store.progress if item["stage"].startswith("quality-retry:")]
+    retries = [
+        item["stage"]
+        for item in store.progress
+        if item["stage"].startswith("quality-retry:")
+    ]
     assert retries == ["quality-retry:1/3", "quality-retry:2/3"]
-
-
-def test_install_preserves_legacy_hardening_and_overrides_execute_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
-    original_execute = hardened.worker.execute_job
-    monkeypatch.setattr(
-        hardened,
-        "install_hardening",
-        lambda: calls.append("agent-hardening"),
-    )
-    try:
-        hardened.install_hardening()
-        assert calls == ["agent-hardening"]
-        assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
-        assert hardened.worker.execute_job is (
-            hardened._execute_job_with_cancellable_preflight
-        )
-    finally:
-        hardened.worker.execute_job = original_execute
