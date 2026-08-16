@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  preflight-owner:
+  preflight-protocol-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,23 +21,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Flatten Dub preflight shadow package
-        run: python tools/refactor_dub_preflight_owner.py
+      - name: Source-own backend-aware preflight protocol
+        run: python tools/source_own_preflight_protocol.py
       - name: Compile production tree
         run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py
-      - name: Verify canonical preflight owner
+      - name: Verify source-owned protocol
         run: |
           test ! -f tools/voxcpm2/dub_job_preflight/__init__.py
-          test -f tools/voxcpm2/dub_job_preflight.py
-          ! grep -nE 'spec_from_file_location|module_from_spec|exec_module|sys\.modules|_legacy|dub_job_preflight/__init__\.py' tools/voxcpm2/dub_job_preflight.py
-          grep -q 'final_media_qa.py' tools/voxcpm2/dub_job_preflight.py
-          grep -q 'generic_project_runtime._PROJECT_RE' tools/voxcpm2/dub_job_preflight.py
-      - name: Commit source-owned preflight
+          ! grep -nE 'sys\.modules|spec_from_file_location|module_from_spec|_legacy' tools/voxcpm2/dub_job_preflight.py
+          grep -q 'marked-preflight-json-transport-v2' tools/voxcpm2/dub_job_preflight.py
+          grep -q 'backend-owned-preflight-runtime-paths-v1' tools/voxcpm2/dub_job_preflight.py
+          grep -q 'get_backend' tools/voxcpm2/dub_job_preflight.py
+          grep -q '_decode_probe_payload' tools/voxcpm2/dub_job_preflight.py
+      - name: Commit source-owned preflight protocol
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Make Dub preflight source-owned"
+          git commit -m "Source-own Dub preflight protocol"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
