@@ -23,7 +23,10 @@ def test_handler_failure_propagates_and_releases_process_lock(
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="unexpected handler failure"):
-            await handler.dubfix_command(SimpleNamespace(), object())
+            await handler.dubfix_command(
+                SimpleNamespace(effective_message=None),
+                object(),
+            )
 
     asyncio.run(run())
     assert not lock_path.exists()
