@@ -74,6 +74,7 @@ def flatten(stem: str) -> None:
         segment=segment.replace('getattr(_legacy, "__all__", ())', '_BASE_ALL')
         segment=segment.replace("getattr(_legacy, '__all__', ())", '_BASE_ALL')
         segment=segment.replace("getattr(_legacy,", "globals().get(")
+        segment=segment.replace("dir(_legacy)", "_BASE_ALL")
         segment=segment.replace("_legacy.", "")
         pieces.append(segment)
     merged=base.rstrip()+"\n\n_BASE_ALL = tuple(globals().get('__all__', ()))\n\n"+"\n\n".join(pieces)+"\n"
