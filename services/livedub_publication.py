@@ -1,37 +1,23 @@
 #!/usr/bin/env python3
 """User-facing publication card for LiveDub video and MP3 results.
 
-The internal pipeline needs provider markers so the audio companion can recognise a
-successful LiveDub send. Users do not need those implementation labels. This
-adapter is installed between ``livedub_output_policy`` and the audio companion:
-
-* the outer companion still sees the private marker;
-* the Telegram API receives a Russian title and description generated on the
-  source-owned Gemini 3.6/HIGH semantic route, plus a link to the source video;
-* the MP3 caption contains the useful description/link only — never labels such
-  as ``Русская аудиоверсия`` or ``Живые голоса Яндекса``;
-* the old separate ENG Quick info card is satisfied from the same cache and
-  suppressed, so there is one polished publication block rather than duplicates.
+The explicit LiveDub delivery path calls these source-owned helpers before sending
+video and MP3 results. No Telegram methods, info-card functions or pipeline modules
+are intercepted or rebound at runtime.
 """
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import html
 import json
 import logging
 import os
 import re
-import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
-_INSTALL_LOCK = threading.Lock()
-_CURRENT_SOURCE_URL: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "mp3bot_livedub_source_url", default=""
-)
 _PUBLICATION_CACHE: dict[str, dict[str, Any]] = {}
 
 _LIVEDUB_MARKERS = (
@@ -56,7 +42,7 @@ def _plain(value: Any, limit: int = 1000) -> str:
 
 
 def _source_url(value: Any = "") -> str:
-    candidate = _plain(value or _CURRENT_SOURCE_URL.get(), 600)
+    candidate = _plain(value, 600)
     if not re.match(r"^https?://", candidate, flags=re.IGNORECASE):
         return ""
     return candidate
@@ -242,15 +228,6 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
         model = generated.get("model", "")
     else:
         title, author = original_title, original_author
-        try:
-            from services.livedub_output_policy import _translate_title_line
-
-            translated = await _translate_title_line(source_line)
-            if translated:
-                title, translated_author = translated
-                author = translated_author or author
-        except Exception as exc:
-            logger.info("[LiveDubPublication] title fallback failed: %s", str(exc)[:140])
         title = _canonical_title(title)
         author = _canonical_author(author)
         description = _fallback_description(title, author)
@@ -329,94 +306,3 @@ def format_audio_caption(card: dict[str, Any]) -> str:
         return safe_trim_caption(text, 1000)
     except Exception:
         return text[:1000]
-
-
-def _wrap_send_video(cls: type) -> None:
-    original = getattr(cls, "send_video", None)
-    if original is None or getattr(original, "_mp3bot_publication_card", False):
-        return
-
-    async def wrapped(self, *args, **kwargs):
-        caption = str(kwargs.get("caption") or "")
-        if _is_livedub_video_caption(caption):
-            source_line = _bold_title_line(caption) or "Переведённое видео"
-            card = await build_publication_card(source_line, _CURRENT_SOURCE_URL.get())
-            kwargs["caption"] = format_video_caption(card, caption)
-            kwargs["parse_mode"] = "HTML"
-        return await original(self, *args, **kwargs)
-
-    wrapped._mp3bot_publication_card = True  # type: ignore[attr-defined]
-    setattr(cls, "send_video", wrapped)
-
-
-def _wrap_send_audio(cls: type) -> None:
-    original = getattr(cls, "send_audio", None)
-    if original is None or getattr(original, "_mp3bot_publication_card", False):
-        return
-
-    async def wrapped(self, *args, **kwargs):
-        if _is_livedub_audio_caption(kwargs.get("caption")):
-            title = _plain(kwargs.get("title"), 220)
-            performer = _plain(kwargs.get("performer"), 120)
-            source_line = f"{title} - {performer}" if performer else title
-            card = await build_publication_card(source_line, _CURRENT_SOURCE_URL.get())
-            kwargs["title"] = card.get("title") or title or None
-            kwargs["performer"] = card.get("author") or _canonical_author(performer) or None
-            public_caption = format_audio_caption(card)
-            if public_caption:
-                kwargs["caption"] = public_caption
-                kwargs["parse_mode"] = "HTML"
-            else:
-                kwargs.pop("caption", None)
-                kwargs.pop("parse_mode", None)
-        return await original(self, *args, **kwargs)
-
-    wrapped._mp3bot_publication_card = True  # type: ignore[attr-defined]
-    setattr(cls, "send_audio", wrapped)
-
-
-def _reuse_and_suppress_legacy_info_card() -> None:
-    """Avoid a second AI call/message after the inline publication card."""
-    from services import livedub_info as module
-
-    original_build = module.build_livedub_info_card
-    original_format = module.format_livedub_info_message
-    if getattr(original_build, "_mp3bot_inline_publication", False):
-        return
-
-    async def build(title_line, dub_srt_path=None, *, source_url="", force=False):
-        current_url = _source_url(source_url or _CURRENT_SOURCE_URL.get())
-        key = _cache_key(str(title_line or ""), current_url)
-        cached = _PUBLICATION_CACHE.get(key)
-        if not cached and current_url:
-            cached = _PUBLICATION_CACHE.get(current_url.casefold())
-        if cached:
-            return {
-                "telegram_description": cached.get("description", ""),
-                "youtube_title": _title_line(cached),
-                "youtube_description": cached.get("description", ""),
-                "compact_subtitles": [],
-                "hashtags": [],
-                "key_theological_terms": [],
-                "scripture_references": [],
-                "source_url": current_url,
-                "source": "inline_publication_cache",
-            }
-        return await original_build(
-            title_line,
-            dub_srt_path,
-            source_url=source_url,
-            force=force,
-        )
-
-    def format_message(card: dict) -> str:
-        # During process_single_video the same information is already attached to
-        # the video and MP3. Outside that context preserve the reusable formatter.
-        if _CURRENT_SOURCE_URL.get():
-            return ""
-        return original_format(card)
-
-    build._mp3bot_inline_publication = True  # type: ignore[attr-defined]
-    format_message._mp3bot_inline_publication = True  # type: ignore[attr-defined]
-    module.build_livedub_info_card = build
-    module.format_livedub_info_message = format_message
