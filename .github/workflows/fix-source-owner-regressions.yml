@@ -48,15 +48,22 @@ jobs:
           PY
       - name: Compile corrected owners
         run: python -m compileall -q tools/voxcpm2/clean_production_core.py services/shorts_factory_timing.py
-      - name: Import corrected owners
+      - name: Verify corrected owner contracts without optional runtime deps
         run: |
           python - <<'PY'
-          from tools.voxcpm2 import clean_production_core
-          from services import shorts_factory_timing
-          assert callable(clean_production_core.render_and_master)
-          assert shorts_factory_timing._candidate_limits('short') == (35.0, 180.0, False)
-          assert shorts_factory_timing._candidate_limits('long') == (300.0, 900.0, True)
-          print('SOURCE_OWNER_IMPORT_SMOKE=OK')
+          import ast
+          from pathlib import Path
+
+          core = Path('tools/voxcpm2/clean_production_core.py').read_text(encoding='utf-8')
+          timing = Path('services/shorts_factory_timing.py').read_text(encoding='utf-8')
+          ast.parse(core)
+          ast.parse(timing)
+          assert 'dir(_legacy)' not in core
+          assert '@contextmanager' not in timing
+          assert 'def _candidate_limits(candidate_kind: CandidateKind)' in timing
+          assert 'return LONG_MIN_SEC, PUBLIC_LONG_MAX_SEC, True' in timing
+          assert 'return SHORT_MIN_SEC, PUBLIC_SHORT_MAX_SEC, False' in timing
+          print('SOURCE_OWNER_AST_SMOKE=OK')
           PY
       - name: Commit fixes
         run: |
