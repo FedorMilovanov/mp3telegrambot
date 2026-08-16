@@ -476,15 +476,11 @@ __all__ = [
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-import math
 
-from pathlib import Path
 
 import types
 
-from typing import Any
 
-import numpy as np
 
 _window_score = _window_score
 

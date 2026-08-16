@@ -249,9 +249,7 @@ __all__ = [
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-from pathlib import Path
 
-from typing import Any
 
 _legacy_download_source = download_source
 

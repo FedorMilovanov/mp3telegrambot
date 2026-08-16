@@ -483,11 +483,9 @@ __all__ = [
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-from pathlib import Path
 
 import types
 
-import numpy as np
 
 ALIGNMENT_POLICY = "russian-reference-to-mixed-alignment-v2"
 

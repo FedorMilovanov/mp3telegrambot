@@ -236,23 +236,14 @@ def _generate(
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-from pathlib import Path
 
-from typing import Any
 
-from services.speech_backends import BackendGenerationProfileRequest, default_backend
 
 from tools.voxcpm2 import direct_monolith_contract
 
-from tools.voxcpm2 import direct_timeline_delivery_qa
 
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
-    SPEECH_SLOT_POLICY,
-    atempo_chain,
-    probe_duration,
-    run_checked,
-    speech_slot_seconds,
 )
 
 ADAPTIVE_RETRY_POLICY = "stable-identity-candidate-retry-v2"

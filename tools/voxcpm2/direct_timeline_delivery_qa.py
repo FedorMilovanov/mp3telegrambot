@@ -232,17 +232,11 @@ __all__ = [
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-import json
 
-import math
 
-from pathlib import Path
 
-from typing import Any
 
-import numpy as np
 
-import soundfile as sf
 
 from tools.voxcpm2 import direct_monolith_contract
 
@@ -251,11 +245,9 @@ from tools.voxcpm2 import direct_fail_closed_identity
 
 from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
-from tools.voxcpm2.direct_retry_epoch import invalidate_segment_for_retry
 
-from tools.voxcpm2.direct_russian_cadence import classify_cadence, prosody_contour
+from tools.voxcpm2.direct_russian_cadence import classify_cadence
 
-from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
 from tools.voxcpm2.direct_timbre_analysis import spectral_envelope, spectral_similarity
 

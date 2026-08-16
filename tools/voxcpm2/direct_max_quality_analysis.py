@@ -588,11 +588,8 @@ def candidate_hard_ok(
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-import math
 
-from pathlib import Path
 
-from typing import Any
 
 from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO
 

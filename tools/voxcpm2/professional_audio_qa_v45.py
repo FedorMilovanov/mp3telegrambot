@@ -357,17 +357,12 @@ def verify_timeline_v45(
 
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
-import json
 
-from pathlib import Path
 
 import types
 
-from typing import Any
 
-import numpy as np
 
-import soundfile as sf
 
 from tools.voxcpm2 import timeline_onset_repair
 
