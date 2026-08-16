@@ -26,19 +26,38 @@ jobs:
       - name: Apply wave
         run: |
           set -euo pipefail
-          wave="$(cat .zero-runtime-trigger | tr -d '\r\n')"
-          python tools/zero_runtime_marathon.py "$wave"
+          python tools/zero_runtime_marathon.py
 
-      - name: Compile changed owners
+      - name: Compile source-owned title surfaces
         run: |
           python -m compileall -q \
+            core/media_title_policy.py \
+            core/text_utils.py \
+            services/dub_studio.py \
             services/dub_studio_runtime.py \
-            main.py
+            handlers/dub_delivery.py \
+            handlers/dub_health.py \
+            services/livedub_output_policy.py \
+            services/dub_release_health_v64.py \
+            tools/voxcpm2/generic_short_runtime.py \
+            tools/voxcpm2/generic_project_runtime.py \
+            tools/voxcpm2/_generic_clean_direct_runtime_base.py \
+            tools/voxcpm2/generic_clean_custom_runtime.py \
+            tools/voxcpm2/generic_clean_direct_runtime.py \
+            tools/voxcpm2/generic_clean_gemini_runtime.py \
+            tests/test_dub_title_policy.py
+
+      - name: Smoke canonical title policy
+        run: |
+          python - <<'PY'
+          from core.media_title_policy import canonical_media_title, canonical_delivery_filename
+          assert canonical_media_title('Сила И Достоинство Благочестивой Женщины - Джон Пайпер') == 'Сила и Достоинство Благочестивой Женщины - Джон Пайпер'
+          assert canonical_delivery_filename('Сила И Достоинство - Джон Пайпер — русский дубляж.mp4') == 'Сила и Достоинство - Джон Пайпер — русский дубляж.mp4'
+          PY
 
       - name: Commit wave
         run: |
           set -euo pipefail
-          wave="$(cat .zero-runtime-trigger | tr -d '\r\n')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -46,5 +65,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Zero-runtime marathon: ${wave}"
+          git commit -m "Zero-runtime marathon: source-owned title policy"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
