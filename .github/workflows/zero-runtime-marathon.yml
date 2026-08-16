@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  dead-release-cleanup:
+  direct-timing-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,21 +21,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Prove and delete dead release wrappers
-        run: python tools/remove_dead_release_wrappers.py
-      - name: Compile production tree
-        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
-      - name: Verify dead wrappers are gone
+      - name: Source-own direct timing guard
+        run: python tools/source_own_direct_timing_guard.py
+      - name: Compile affected production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
+      - name: Verify deleted timing patch layer
         run: |
-          test ! -f tools/voxcpm2/master_monolithic_mix.py
-          test ! -f tools/voxcpm2/preflight_json_protocol.py
-          ! grep -nE 'master_monolithic_mix\.py|preflight_json_protocol\.py' tools/voxcpm2/clean_runtime_contract.py
-      - name: Commit dead release cleanup
+          test ! -f tools/voxcpm2/direct_surgical_guard.py
+          grep -q 'class RetryableSynthesisFailure' tools/voxcpm2/direct_timing_guard.py
+          grep -q 'SURGICAL_GUARD_POLICY' tools/voxcpm2/direct_timing_guard.py
+          ! grep -RInE 'direct_surgical_guard|install_guard_contract' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_surgical_runtime.py tools/voxcpm2/generic_clean_direct_runtime.py
+          ! grep -n 'direct_surgical_guard.py' tools/voxcpm2/clean_runtime_contract.py
+      - name: Commit source-owned timing guard
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Remove dead Dub release wrappers"
+          git commit -m "Source-own direct timing guard"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
