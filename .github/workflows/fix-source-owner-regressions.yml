@@ -27,6 +27,7 @@ jobs:
           git fetch origin main
           python tools/finalize_source_owner_regressions.py
           python tools/finalize_source_owner_regressions_v2.py
+          python tools/finalize_source_owner_regressions_v3.py
       - name: Install locked test dependencies
         run: python -m pip install -r requirements-lock.txt
       - name: Compile and run restored contracts
@@ -35,19 +36,34 @@ jobs:
           python -m compileall -q services tools/voxcpm2 tests
           python -m pytest -q \
             tests/test_livedub_info_guard.py \
+            tests/test_livedub_delivery_coordinator_source_owned.py \
             tests/test_cross_language_identity_fail_closed.py \
             tests/test_factory_capacity_fast_fail.py \
+            tests/test_factory_execution_and_cut_source_policy.py \
             tests/test_generic_project_runtime.py \
+            tests/test_generic_direct_runtime.py \
+            tests/test_generic_short_production.py \
             tests/test_dub_runtime_regressions.py \
+            tests/test_dub_quality_process_entrypoints.py \
             tests/test_gemini_translation_quality.py \
             tests/test_clean_request_settings.py \
+            tests/test_clean_dub_health_contract.py \
+            tests/test_preflight_json_protocol.py \
+            tests/test_speech_backend_runtime_paths.py \
+            tests/test_direct_master_source_owner.py \
+            tests/test_direct_surgical_io.py \
+            tests/test_direct_surgical_guard.py \
+            tests/test_direct_surgical_recovery.py \
             tests/test_direct_renderer_failure_resume.py \
-            tests/test_direct_tempo_boundary_resume.py
+            tests/test_direct_tempo_boundary_resume.py \
+            tests/test_strict_translation_payload.py \
+            tests/test_audio_conversion_postcondition.py \
+            tests/test_source_owner_retired_modules.py
       - name: Record remaining collection failures
         if: always()
         run: |
           python -m pytest --collect-only -q > collection.txt 2>&1 || true
-          tail -n 220 collection.txt
+          tail -n 260 collection.txt
       - name: Commit integration cleanup
         if: success()
         run: |
