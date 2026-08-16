@@ -262,12 +262,10 @@ __all__ = [
         "globals()[",
         "spec_from_file_location",
         "module_from_spec",
-        "/__init__.py",
-        "/__main__.py",
     )
     bad = [token for token in forbidden if token in source]
     if bad:
-        raise RuntimeError(f"clean runtime surgery/stale paths survived: {bad}")
+        raise RuntimeError(f"clean runtime surgery survived: {bad}")
     parsed = ast.parse(source, filename=str(TARGET))
     if any(
         isinstance(node, ast.Assign)
@@ -275,6 +273,15 @@ __all__ = [
         for node in ast.walk(parsed)
     ):
         raise RuntimeError("clean runtime contract contains attribute assignment")
+
+    # Final contract may include legitimate package __init__.py files, but never a
+    # package-shadow path whose same import name is already owned by sibling .py.
+    for rel in (*render, *release):
+        path = ROOT / rel
+        if not path.is_file():
+            raise RuntimeError(f"fingerprint path is missing: {rel}")
+        if rel.endswith(("/__init__.py", "/__main__.py")) and path.parent.with_suffix(".py").is_file():
+            raise RuntimeError(f"fingerprint still points at shadow package: {rel}")
 
     TARGET.write_text(source, encoding="utf-8")
     BASE.unlink()
