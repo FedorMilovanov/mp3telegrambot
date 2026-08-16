@@ -93,7 +93,7 @@ jobs:
       - name: Compile production surface dynamically
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/operator_runtime_status.py services/restart_state_runtime.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/operator_runtime_status.py services/restart_state_runtime.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health.py handlers/dub_wizard.py handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
           python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Dub Studio production compile failed."
@@ -171,9 +171,8 @@ jobs:
           services/dub_worker.py
           services/dub_studio.py
           services/dub_studio_runtime.py
-          handlers/dub_health
+          handlers/dub_health.py
           handlers/dub_wizard.py
-          handlers/dub_wizard
           handlers/dub_commands.py
           handlers/dub_delivery.py
           tools/check_tts_model_catalog.py
