@@ -132,15 +132,19 @@ def _normalized_path(value: Path) -> str:
     return os.path.normcase(os.path.normpath(str(Path(value).resolve())))
 
 
-def _project_root(project: dict[str, Any]) -> Path:
+def _project_root(
+    project: dict[str, Any],
+    *,
+    studio: Path | None = None,
+) -> Path:
     if not isinstance(project, dict):
         raise RuntimeError("Preflight project должен быть JSON-объектом.")
     project_id = str(project.get("id") or "").strip().lower()
     if not generic_project_runtime._PROJECT_RE.fullmatch(project_id):
         raise RuntimeError("Preflight: некорректный Dub Studio project ID.")
 
-    studio = studio_root().resolve()
-    allowed = (studio / "projects").resolve()
+    studio_base = Path(studio).resolve() if studio is not None else studio_root().resolve()
+    allowed = (studio_base / "projects").resolve()
     expected = (allowed / project_id).resolve()
     raw = str(project.get("work_root") or "").strip()
     if not raw:
@@ -151,7 +155,7 @@ def _project_root(project: dict[str, Any]) -> Path:
         # shared studio root) until the first successful project update. It is
         # a placeholder, not the actual project directory.
         if _normalized_path(raw_root) in {
-            _normalized_path(studio),
+            _normalized_path(studio_base),
             _normalized_path(allowed),
         }:
             root = expected
@@ -177,8 +181,12 @@ def _path_setting(request: dict[str, Any], key: str, default: str) -> Path:
 
 
 
-def _runtime_paths(project: dict[str, Any]) -> dict[str, Any]:
-    root = _project_root(project)
+def _runtime_paths(
+    project: dict[str, Any],
+    *,
+    studio: Path | None = None,
+) -> dict[str, Any]:
+    root = _project_root(project, studio=studio)
     request = generic_project_runtime.load_request(root)
     repo = repo_root().resolve()
     backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
@@ -507,7 +515,12 @@ def _cache_hit(
     )
 
 
-def run(project: dict[str, Any], action: str) -> dict[str, Any]:
+def run(
+    project: dict[str, Any],
+    action: str,
+    *,
+    studio: Path | None = None,
+) -> dict[str, Any]:
     action = str(action or "").strip().lower()
     if action not in _ACTIONS or str((project or {}).get("recipe_id") or "") != "generic_short_v1":
         return {
@@ -518,7 +531,7 @@ def run(project: dict[str, Any], action: str) -> dict[str, Any]:
             "action": action,
         }
 
-    paths = _runtime_paths(project)
+    paths = _runtime_paths(project, studio=studio)
     project_id = str(project["id"]).strip().lower()
     report_path = paths["root"] / "output" / "production_preflight.json"
     with _preflight_heartbeat(project_id, action):

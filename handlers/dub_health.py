@@ -18,7 +18,7 @@ from telegram.ext import CommandHandler, ContextTypes, filters
 from core.database import ADMIN_IDS
 from services.dub_studio import DubStore, load_recipe, studio_root, worker_is_fresh
 from services.dub_worker_release import WORKER_RUNTIME
-from tools.voxcpm2.dub_worker import build_command
+from services.dub_worker import build_command
 
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _WORKER_RUNTIME = WORKER_RUNTIME
