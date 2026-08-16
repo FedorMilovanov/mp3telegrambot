@@ -53,7 +53,7 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         "backend_vox": services / "speech_backends" / "voxcpm2.py",
         "preflight": voxcpm / "dub_job_preflight.py",
         "worker": services / "dub_worker.py",
-        "worker_entry": voxcpm / "dub_worker_hardened.py",
+        "worker_entry": voxcpm / "dub_worker.py",
         "final_qa": voxcpm / "final_media_qa.py",
         "spatial_qa": voxcpm / "final_media_spatial_bed.py",
         "master": voxcpm / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py",
