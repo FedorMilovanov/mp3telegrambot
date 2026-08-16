@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  preflight-protocol-owner:
+  worker-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,24 +21,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own backend-aware preflight protocol
-        run: python tools/source_own_preflight_protocol.py
+      - name: Move Dub worker hardening into source owners
+        run: python tools/refactor_dub_worker_owner.py
       - name: Compile production tree
-        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py
-      - name: Verify source-owned protocol
+        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py
+      - name: Verify worker has no runtime surgery
         run: |
-          test ! -f tools/voxcpm2/dub_job_preflight/__init__.py
-          ! grep -nE 'sys\.modules|spec_from_file_location|module_from_spec|_legacy' tools/voxcpm2/dub_job_preflight.py
-          grep -q 'marked-preflight-json-transport-v2' tools/voxcpm2/dub_job_preflight.py
-          grep -q 'backend-owned-preflight-runtime-paths-v1' tools/voxcpm2/dub_job_preflight.py
-          grep -q 'get_backend' tools/voxcpm2/dub_job_preflight.py
-          grep -q '_decode_probe_payload' tools/voxcpm2/dub_job_preflight.py
-      - name: Commit source-owned preflight protocol
+          test ! -f tools/voxcpm2/dub_worker_hardened/__init__.py
+          test ! -f tools/voxcpm2/dub_worker_hardened/__main__.py
+          test ! -f tools/voxcpm2/_dub_worker_hardened_base.py
+          grep -q 'class WorkerDubStore(DubStore)' services/dub_worker.py
+          grep -q 'studio=store.root' services/dub_worker.py
+          grep -q 'studio: Path | None = None' tools/voxcpm2/dub_job_preflight.py
+          ! grep -nE 'sys\.modules|__class__\s*=|exec\(compile|install_hardening|install_worker_progress' services/dub_worker.py tools/voxcpm2/dub_worker.py tools/voxcpm2/dub_worker_hardened.py
+          ! grep -nE 'preflight_json_protocol.*install|install_preflight_json' tools/voxcpm2/dub_worker.py tools/voxcpm2/dub_worker_hardened.py services/dub_worker.py
+      - name: Check production worker import path
+        run: |
+          ! grep -RInE 'from tools\.voxcpm2 import dub_worker as|from tools\.voxcpm2\.dub_worker import' services handlers pipelines core --include='*.py'
+      - name: Commit source-owned worker
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Source-own Dub preflight protocol"
+          git commit -m "Make Dub worker source-owned"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
