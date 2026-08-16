@@ -1,0 +1,36 @@
+name: Direct Migration Diagnostic
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .direct-migration-diagnostic-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run migration and capture diagnostic
+        shell: bash
+        run: |
+          set +e
+          python tools/source_own_generic_direct_route.py > .direct-migration-diagnostic.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> .direct-migration-diagnostic.txt
+          exit 0
+      - name: Commit diagnostic only
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          # reset removes the diagnostic because it is untracked? recreate from temp first next revision
