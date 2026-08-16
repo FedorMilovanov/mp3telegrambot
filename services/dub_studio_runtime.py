@@ -517,6 +517,7 @@ def register_dub_studio(application: Any) -> bool:
     from handlers.dub_health import register_dub_health_handler
     from handlers.dub_quickstart import register_dub_quickstart_handler
     from handlers.dub_wizard import register_dub_wizard_handlers
+    from handlers.dub_multicommand import register_dub_multicommand_handler
 
     register_dub_wizard_handlers(application)
     register_dub_health_handler(application)
@@ -524,6 +525,7 @@ def register_dub_studio(application: Any) -> bool:
     register_dub_audio_repair_handlers(application)
     register_dub_delivery_handlers(application)
     register_dub_quickstart_handler(application)
+    register_dub_multicommand_handler(application)
     ensure_worker_running()
     logger.info("🎙 Dub Studio v4.5 handlers registered on Application")
     return True
