@@ -29,6 +29,7 @@ jobs:
           python tools/finalize_source_owner_regressions_v7.py
           python tools/finalize_source_owner_regressions_v8.py
           python tools/finalize_source_owner_regressions_v9.py
+          python tools/finalize_source_owner_regressions_v10.py
       - name: Install locked test dependencies
         run: python -m pip install -r requirements-lock.txt
       - name: Compile and run restored contracts
