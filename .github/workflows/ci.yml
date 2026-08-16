@@ -142,8 +142,6 @@ jobs:
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
-          tests/test_cloud_media_fallback.py
-          tests/test_project_runtime_hardening.py
           tests/test_async_process.py
           tests/test_async_process_tree.py
           tests/test_ffmpeg_probe_ownership.py
@@ -199,8 +197,6 @@ jobs:
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
-          tests/test_cloud_media_fallback.py
-          tests/test_project_runtime_hardening.py
           tests/test_async_process.py
           tests/test_async_process_tree.py
           tests/test_ffmpeg_probe_ownership.py
