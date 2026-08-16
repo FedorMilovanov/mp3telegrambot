@@ -21,6 +21,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Make semantic-wrapper proof follow guard cleanup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/source_own_final_voxcpm_surgery.py')
+          t=p.read_text(encoding='utf-8')
+          t=t.replace(
+              'DEAD = (\n    VOX / "examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py",',
+              'DEAD = (\n    VOX / "examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py",\n    VOX / "voxcpm2_cpu_semantic_wrapper.py",',
+              1,
+          )
+          old='''    # Prove compatibility-only files have no production consumers.\n    for path in DEAD:\n        if not path.is_file():\n            raise RuntimeError(f"dead compatibility input missing: {path}")\n        refs = _production_refs(path.stem, set(DEAD))\n        if refs:\n            raise RuntimeError(f"{path.name} still referenced: {refs}")\n\n'''
+          if old not in t:
+              raise SystemExit('pre-proof block not found')
+          t=t.replace(old,'',1)
+          anchor='''    text = remove_function(text, guard, "install")\n'''
+          extra='''    text = remove_function(text, guard, "_run_guarded_synth")\n    text = remove_function(text, guard, "_is_voxcpm_synth")\n    text = text.replace('_WRAPPER_NAME = "voxcpm2_cpu_semantic_wrapper.py"\\n', '')\n'''
+          if anchor not in t:
+              raise SystemExit('guard cleanup anchor not found')
+          t=t.replace(anchor, anchor+extra,1)
+          delete_anchor='''    # Delete proven-dead compatibility modules and remove them from fingerprints if present.\n    contract=CONTRACT.read_text(encoding="utf-8")\n'''
+          proof='''    # Prove compatibility-only files have no consumers after old guard routing is removed.\n    for path in DEAD:\n        if not path.is_file():\n            raise RuntimeError(f"dead compatibility input missing: {path}")\n        refs = _production_refs(path.stem, set(DEAD))\n        if refs:\n            raise RuntimeError(f"{path.name} still referenced after guard cleanup: {refs}")\n\n'''
+          if delete_anchor not in t:
+              raise SystemExit('delete anchor not found')
+          t=t.replace(delete_anchor, proof+delete_anchor,1)
+          p.write_text(t,encoding='utf-8')
+          PY
       - name: Source-own final VoxCPM surgery
         run: python tools/source_own_final_voxcpm_surgery.py
       - name: Compile production tree
