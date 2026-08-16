@@ -20,6 +20,54 @@ def replace_top_level_function(path: Path, name: str, replacement: str) -> None:
     raise RuntimeError(f"missing top-level function {name} in {path}")
 
 
+def add_direct_semantic_block_metadata(path: Path) -> None:
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    target_function = None
+    for node in tree.body:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "test_direct_segments_apply_420ms_delay_without_rewriting"
+        ):
+            target_function = node
+            break
+    if target_function is None:
+        raise SystemExit("generic direct semantic-block test function missing")
+
+    for node in target_function.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "groups" for target in node.targets):
+            continue
+        value = node.value
+        if not (
+            isinstance(value, ast.List)
+            and len(value.elts) == 1
+            and isinstance(value.elts[0], ast.Dict)
+        ):
+            continue
+        item = value.elts[0]
+        existing = {
+            key.value
+            for key in item.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        }
+        additions = (
+            ("semantic_block_id", ast.Constant(value=1)),
+            ("source_cue_count", ast.Constant(value=1)),
+            ("semantic_block_duration", ast.Constant(value=3.0)),
+            ("source_parts", ast.List(elts=[ast.Constant(value="Точный текст.")], ctx=ast.Load())),
+        )
+        for key, value_node in additions:
+            if key not in existing:
+                item.keys.append(ast.Constant(value=key))
+                item.values.append(value_node)
+        ast.fix_missing_locations(tree)
+        path.write_text(ast.unparse(tree).rstrip() + "\n", encoding="utf-8")
+        return
+    raise SystemExit("generic direct groups assignment missing")
+
+
 # Fingerprint the contract implementation itself so changes to validation rules
 # invalidate stale render baselines just like renderer changes do.
 contract = Path("tools/voxcpm2/clean_runtime_contract.py")
@@ -162,22 +210,7 @@ replace_top_level_function(
 # Direct runtime now consumes semantic blocks, not raw legacy groups. Supply the
 # truthful block metadata in the unit test instead of asking the owner to infer it.
 direct_test = Path("tests/test_generic_direct_runtime.py")
-text = direct_test.read_text(encoding="utf-8")
-old = 'groups = [{"id": 1, "start": 1.0, "end": 4.0, "source": "Точный текст."}]'
-new = '''groups = [{
-        "id": 1,
-        "start": 1.0,
-        "end": 4.0,
-        "source": "Точный текст.",
-        "semantic_block_id": 1,
-        "source_cue_count": 1,
-        "semantic_block_duration": 3.0,
-        "source_parts": ["Точный текст."],
-    }]'''
-if old not in text:
-    raise SystemExit("generic direct semantic-block test anchor missing")
-text = text.replace(old, new, 1)
-direct_test.write_text(text, encoding="utf-8")
+add_direct_semantic_block_metadata(direct_test)
 
 
 # The failed-probe test must reject both the existing output freshness probe and
