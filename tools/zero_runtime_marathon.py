@@ -27,49 +27,79 @@ def remove_runtime_feature(text: str, feature_id: str) -> str:
     return text2
 
 
-def wave3() -> None:
-    runtime_path = "services/dub_studio_runtime.py"
-    runtime = read(runtime_path)
-    runtime = runtime.replace(
-        '"""Install Dub Studio handlers, notifier and detached local worker.\n\nProgress delivery is intentionally part of this runtime rather than a separate\npatch layer: one Telegram status card is created per job and edited through all\nmilestones. Terminal success/failure updates that card and may send one detailed\nresult message.\n"""',
-        '"""Source-owned Dub Studio composition, notifier and detached local worker.\n\nThe production Application explicitly registers handlers and starts notification\nservices. No PTB class methods are replaced at runtime.\n"""',
-        1,
+def wave4() -> None:
+    commands_path = "handlers/commands.py"
+    commands = read(commands_path)
+    help_pattern = re.compile(
+        r"async def help_command\(update, context\):\n.*?(?=\n\ndef _extract_yt_id_from_text)",
+        re.DOTALL,
     )
-    runtime = runtime.replace("import threading\n", "")
-    runtime = runtime.replace("_INSTALLED = False\n_LOCK = threading.Lock()\n_ORIGINAL_BUILD = None\n_ORIGINAL_START = None\n", "")
+    help_new = '''async def help_command(update, context) -> None:\n    """Describe the actual source-owned LiveDub delivery contract."""\n    user_id = update.effective_user.id\n    limit_line = (\n        "👑 VIP — без ограничений"\n        if user_id in WHITELIST_IDS\n        else f"📵 {DAILY_LIMIT} видео/день • 1 запрос/мин"\n    )\n    audio_set = "видео с переводом + чистый русский MP3 + финальный объединённый MP3"\n    text = (\n        "ℹ️ <b>Помощь</b>\\n\\n"\n        "Отправьте ссылку на видео или плейлист.\\n\\n"\n        "🇷🇺 <b>Русский режим</b>\\n"\n        "MP3, тема, таймкоды, конспект и дополнительные материалы.\\n\\n"\n        "🇬🇧 <b>ENG Full</b>\\n"\n        f"Полный анализ + {audio_set} + смысловая проверка перевода.\\n\\n"\n        "⚡ <b>ENG Quick</b>\\n"\n        f"{audio_set}. Без конспекта и смысловой QA.\\n\\n"\n        "⚡🔍 <b>ENG Quick QA</b>\\n"\n        f"{audio_set} + лёгкая проверка коротких роликов.\\n\\n"\n        f"🔒 Ваши лимиты: {limit_line}\\n\\n"\n        "/start — приветствие\\n"\n        "/help — эта справка\\n"\n        "/mode — выбор режима\\n"\n        "/archive — последние публикации\\n"\n        "/search &lt;текст&gt; — поиск по архиву\\n"\n        "/segments — список сегментов\\n"\n        "/cut — вырезать сегмент\\n\\n"\n        "🔑 Для стабильных живых голосов требуется VOT_API_TOKEN "\n        "или YANDEX_OAUTH_TOKEN в .env."\n    )\n    await update.message.reply_text(text, parse_mode="HTML")\n'''
+    commands, count = help_pattern.subn(help_new, commands, count=1)
+    if count != 1:
+        raise RuntimeError("help_command anchor missing")
 
-    old = '''def install_dub_studio_runtime() -> None:\n    global _INSTALLED, _ORIGINAL_BUILD, _ORIGINAL_START\n    if _INSTALLED or not enabled():\n        return\n    with _LOCK:\n        if _INSTALLED:\n            return\n        from telegram.ext import Application, ApplicationBuilder\n        from handlers.dub_audio_repair import register_dub_audio_repair_handlers\n        from handlers.dub_commands import register_dub_handlers\n        from handlers.dub_delivery import register_dub_delivery_handlers\n        from handlers.dub_health import register_dub_health_handler\n        from handlers.dub_quickstart import register_dub_quickstart_handler\n        from handlers.dub_wizard import register_dub_wizard_handlers\n\n        _ORIGINAL_BUILD = ApplicationBuilder.build\n        _ORIGINAL_START = Application.start\n\n        def build_with_dub(self: Any) -> Any:\n            application = _ORIGINAL_BUILD(self)\n            register_dub_wizard_handlers(application)\n            register_dub_health_handler(application)\n            register_dub_handlers(application)\n            register_dub_audio_repair_handlers(application)\n            register_dub_delivery_handlers(application)\n            register_dub_quickstart_handler(application)\n            return application\n\n        async def start_with_dub(self: Any) -> None:\n            await _ORIGINAL_START(self)\n            if not self.bot_data.get("dub_studio_notification_task"):\n                task = self.create_task(\n                    _notification_loop(self),\n                    name="dub-studio-notifications",\n                )\n                self.bot_data["dub_studio_notification_task"] = task\n\n        ApplicationBuilder.build = build_with_dub\n        Application.start = start_with_dub\n        ensure_worker_running()\n        _INSTALLED = True\n        logger.info(\n            "🎙 Dub Studio runtime v4.5: direct max-quality + editable progress enabled"\n        )\n\n\n__all__ = ["enabled", "ensure_worker_running", "install_dub_studio_runtime"]'''
-    new = '''def register_dub_studio(application: Any) -> bool:\n    """Register Dub Studio handlers on this concrete Application instance."""\n    if not enabled():\n        return False\n    from handlers.dub_audio_repair import register_dub_audio_repair_handlers\n    from handlers.dub_commands import register_dub_handlers\n    from handlers.dub_delivery import register_dub_delivery_handlers\n    from handlers.dub_health import register_dub_health_handler\n    from handlers.dub_quickstart import register_dub_quickstart_handler\n    from handlers.dub_wizard import register_dub_wizard_handlers\n\n    register_dub_wizard_handlers(application)\n    register_dub_health_handler(application)\n    register_dub_handlers(application)\n    register_dub_audio_repair_handlers(application)\n    register_dub_delivery_handlers(application)\n    register_dub_quickstart_handler(application)\n    ensure_worker_running()\n    logger.info("🎙 Dub Studio v4.5 handlers registered on Application")\n    return True\n\n\ndef start_dub_studio_services(application: Any) -> bool:\n    """Start the request-independent notifier after Application.start()."""\n    if not enabled():\n        return False\n    if application.bot_data.get("dub_studio_notification_task"):\n        return True\n    task = application.create_task(\n        _notification_loop(application),\n        name="dub-studio-notifications",\n    )\n    application.bot_data["dub_studio_notification_task"] = task\n    logger.info("🎙 Dub Studio notification service started")\n    return True\n\n\n__all__ = [\n    "enabled",\n    "ensure_worker_running",\n    "register_dub_studio",\n    "start_dub_studio_services",\n]'''
-    if old not in runtime:
-        raise RuntimeError("Dub Studio installer block anchor missing")
-    runtime = runtime.replace(old, new, 1)
-    write(runtime_path, runtime)
+    status_anchor = '''    await update.message.reply_text(_html_message_limit("\\n".join(lines)), parse_mode="HTML")\n\n\nasync def metrics_command'''
+    status_new = '''    from services.operator_runtime_status import safe_operator_runtime_status_html_lines\n    lines.extend(safe_operator_runtime_status_html_lines())\n    await update.message.reply_text(_html_message_limit("\\n".join(lines)), parse_mode="HTML")\n\n\nasync def metrics_command'''
+    if status_anchor not in commands:
+        raise RuntimeError("status reply anchor missing")
+    commands = commands.replace(status_anchor, status_new, 1)
+    write(commands_path, commands)
 
-    main_path = "main.py"
-    main = read(main_path)
-    build_anchor = "    app = builder.build()\n\n"
-    build_new = '''    app = builder.build()\n\n    from services.dub_studio_runtime import register_dub_studio, start_dub_studio_services\n    register_dub_studio(app)\n\n'''
-    if build_anchor not in main:
-        raise RuntimeError("main Application build anchor missing")
-    main = main.replace(build_anchor, build_new, 1)
+    operator_path = "services/operator_runtime_status.py"
+    operator = read(operator_path)
+    operator = operator.replace("import functools\n", "")
+    operator = operator.replace("import threading\n", "")
+    operator = operator.replace("from types import ModuleType\n", "")
+    operator = operator.replace("_INSTALLED = False\n_LOCK = threading.Lock()\n", "")
+    marker = "\n\nclass _ReplyCaptureMessage:"
+    if marker not in operator:
+        raise RuntimeError("operator status runtime patch marker missing")
+    operator = operator.split(marker, 1)[0].rstrip() + '''\n\n\n__all__ = [\n    "OPERATOR_RUNTIME_STATUS_POLICY",\n    "operator_runtime_status_html_lines",\n    "operator_runtime_status_payload",\n    "safe_operator_runtime_status_html_lines",\n]\n'''
+    write(operator_path, operator)
 
-    start_anchor = '''        await app.initialize()\n        await app.start()\n        logger.info("📡 Запускаю polling getUpdates...")\n'''
-    start_new = '''        await app.initialize()\n        await app.start()\n        start_dub_studio_services(app)\n        logger.info("📡 Запускаю polling getUpdates...")\n'''
-    if start_anchor not in main:
-        raise RuntimeError("main Application start anchor missing")
-    main = main.replace(start_anchor, start_new, 1)
-    write(main_path, main)
+    restart_path = "services/restart_state_runtime.py"
+    restart = read(restart_path)
+    restart = restart.replace("import logging\n", "")
+    restart = restart.replace("import threading\n", "")
+    restart = restart.replace("from types import ModuleType\n", "")
+    restart = restart.replace("logger = logging.getLogger(__name__)\n_LOCK = threading.Lock()\n_INSTALLED = False\n\n", "")
+    install_pattern = re.compile(
+        r"\n\ndef install_restart_state_runtime\(main_module: ModuleType\) -> None:\n.*?(?=\n\n__all__ =)",
+        re.DOTALL,
+    )
+    restart, count = install_pattern.subn("", restart, count=1)
+    if count != 1:
+        raise RuntimeError("restart-state installer anchor missing")
+    restart = restart.replace('    "install_restart_state_runtime",\n', "")
+    write(restart_path, restart)
 
-    manifest = read("services/runtime_manifest.py")
-    manifest = remove_runtime_feature(manifest, "dub-studio-runtime")
-    write("services/runtime_manifest.py", manifest)
+    manifest_path = "services/runtime_manifest.py"
+    manifest = read(manifest_path)
+    for feature in (
+        "gemini-startup-diagnostics",
+        "livedub-help",
+        "restart-state-runtime",
+    ):
+        manifest = remove_runtime_feature(manifest, feature)
+    write(manifest_path, manifest)
+
+    for dead in (
+        "services/livedub_help_runtime.py",
+        "services/gemini_startup_diagnostics.py",
+    ):
+        target = ROOT / dead
+        if not target.exists():
+            raise RuntimeError(f"expected legacy runtime file missing: {dead}")
+        target.unlink()
+        print(f"deleted {dead}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("wave", choices=("wave3",))
-    args = parser.parse_args()
-    wave3()
+    parser.add_argument("wave", choices=("wave4",))
+    parser.parse_args()
+    wave4()
     return 0
 
 
