@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  direct-universal-owner:
+  direct-surgical-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +21,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own direct universal runtime
-        run: python tools/source_own_direct_universal_runtime.py
+      - name: Source-own direct surgical runtime
+        run: python tools/source_own_direct_surgical_runtime.py
       - name: Compile direct production tree
         run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify universal installer is gone
+      - name: Verify surgical installer is gone
         run: |
-          ! grep -RInE 'install_direct_runtime|namespace\["read_segments"\]|namespace\["load_retry_epoch"\]|namespace\["seed_for_attempt"\]' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_universal_runtime.py
-          grep -q 'UNIVERSAL_RUNTIME_POLICY = universal_runtime.POLICY' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'def _universal_scope' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'universal_runtime._progress_value' tools/voxcpm2/direct_max_quality_cli.py
-      - name: Commit source-owned direct universal runtime
+          ! grep -RInE 'install_surgical_runtime|namespace\[' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_surgical_runtime.py
+          grep -q 'SURGICAL_RUNTIME_POLICY = surgical_runtime.POLICY' tools/voxcpm2/direct_max_quality_cli.py
+          grep -q '_SURGICAL_RUNTIME_STATE' tools/voxcpm2/direct_max_quality_cli.py
+          grep -q 'surgical_runtime.direct_retry_epoch' tools/voxcpm2/direct_max_quality_cli.py
+          ! grep -n 'direct_max_quality_cli/__init__.py' tools/voxcpm2/direct_surgical_runtime.py
+      - name: Commit source-owned direct surgical runtime
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Source-own direct universal runtime"
+          git commit -m "Source-own direct surgical runtime"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
