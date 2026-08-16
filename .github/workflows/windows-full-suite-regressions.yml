@@ -6,7 +6,7 @@ on:
       - "core/database.py"
       - "services/ffmpeg.py"
       - "services/mp3_chapters.py"
-      - "tools/voxcpm2/dub_job_preflight/**"
+      - "tools/voxcpm2/dub_job_preflight.py"
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_livedub_qa.py"
       - "tests/test_windows_full_suite_regressions.py"
@@ -18,7 +18,7 @@ on:
       - "core/database.py"
       - "services/ffmpeg.py"
       - "services/mp3_chapters.py"
-      - "tools/voxcpm2/dub_job_preflight/**"
+      - "tools/voxcpm2/dub_job_preflight.py"
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_livedub_qa.py"
       - "tests/test_windows_full_suite_regressions.py"
@@ -34,10 +34,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -54,7 +54,7 @@ jobs:
           core/database.py
           services/ffmpeg.py
           services/mp3_chapters.py
-          tools/voxcpm2/dub_job_preflight/__init__.py
+          tools/voxcpm2/dub_job_preflight.py
           tests/test_windows_full_suite_regressions.py
 
       - name: Run Windows regression contracts
@@ -74,5 +74,5 @@ jobs:
           core/database.py
           services/ffmpeg.py
           services/mp3_chapters.py
-          tools/voxcpm2/dub_job_preflight/__init__.py
+          tools/voxcpm2/dub_job_preflight.py
           tests/test_windows_full_suite_regressions.py
