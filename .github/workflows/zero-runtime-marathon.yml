@@ -1,0 +1,73 @@
+name: Zero Runtime Marathon
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .zero-runtime-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply wave
+        run: |
+          set -euo pipefail
+          wave="$(cat .zero-runtime-trigger | tr -d '\r\n')"
+          python tools/zero_runtime_marathon.py "$wave"
+
+      - name: Compile changed owners
+        run: |
+          python -m compileall -q \
+            handlers/commands.py \
+            services/ffmpeg.py \
+            services/shorts_static_runtime.py \
+            services/runtime_manifest.py \
+            pipelines/video_dispatch.py
+
+      - name: Run focused tests when present
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          needles = (
+              'runtime_manifest',
+              'video_dispatch',
+              'shorts_static',
+              'shorts_factory_overload_editorial_polish',
+          )
+          selected = []
+          for path in sorted(Path('tests').glob('test_*.py')):
+              text = path.read_text(encoding='utf-8', errors='replace')
+              if any(needle in text or needle in path.name for needle in needles):
+                  selected.append(str(path))
+          print('focused tests:', selected)
+          if selected:
+              subprocess.check_call([sys.executable, '-m', 'pytest', '-q', *selected])
+          PY
+
+      - name: Commit wave
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Move routing and static policy to source owners"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
