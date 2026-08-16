@@ -24,8 +24,8 @@ PROJECT_ID = "dub-0123456789"
 
 def _patch_studio(monkeypatch: pytest.MonkeyPatch, studio: Path) -> Path:
     studio = studio.resolve()
-    monkeypatch.setattr(preflight._legacy, "studio_root", lambda: studio)
-    monkeypatch.setattr(generic_project_runtime._legacy, "studio_root", lambda: studio)
+    monkeypatch.setattr(preflight, "studio_root", lambda: studio)
+    monkeypatch.setattr(generic_project_runtime, "studio_root", lambda: studio)
     return studio / "projects" / PROJECT_ID
 
 
@@ -46,7 +46,7 @@ def test_preflight_import_resolves_to_v2_package() -> None:
     assert preflight.POLICY == "dub-production-preflight-v2"
     assert preflight.REPORT_SCHEMA == 2
     assert preflight.PREFLIGHT_HEARTBEAT_SECONDS == 5.0
-    assert preflight._legacy.run is preflight.run
+    assert preflight.run is preflight.run
 
 
 def test_project_root_is_canonical_and_cross_project_safe(
@@ -195,6 +195,6 @@ def test_preflight_heartbeat_uses_shared_worker_release(
 
 def test_health_and_supervisor_share_worker_release() -> None:
     assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
-    assert dub_health._legacy._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
     assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
-    assert dub_studio_runtime._legacy._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME

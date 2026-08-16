@@ -37,7 +37,7 @@ def test_wizard_writes_validated_request_inside_project_root(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        dub_wizard.generic_project_runtime._legacy,
+        dub_wizard.generic_project_runtime,
         "studio_root",
         lambda: tmp_path / "studio",
     )
@@ -83,7 +83,7 @@ def test_invalid_wizard_request_is_not_written(
     payload: dict,
 ) -> None:
     monkeypatch.setattr(
-        dub_wizard.generic_project_runtime._legacy,
+        dub_wizard.generic_project_runtime,
         "studio_root",
         lambda: tmp_path / "studio",
     )
@@ -200,9 +200,9 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
     order: list[str] = []
     store = _FakeStore(order)
     profile = default_model_profile()
-    monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
+    monkeypatch.setattr(dub_wizard, "DubStore", lambda: store)
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_extract_youtube_video_id",
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
@@ -216,9 +216,9 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
             translation_mode=mode,
         )
 
-    monkeypatch.setattr(dub_wizard._legacy, "_request_payload", build_request)
+    monkeypatch.setattr(dub_wizard, "_request_payload", build_request)
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "production_tts_profile_choice",
         lambda _value: SimpleNamespace(
             profile_id=profile.profile_id,
@@ -229,7 +229,7 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
         ),
     )
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_project_root",
         lambda _project_id: Path("/tmp/dub-project"),
     )
@@ -240,15 +240,15 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
         order.append("request")
         return path
 
-    monkeypatch.setattr(dub_wizard._legacy, "write_durable_request", write_request)
-    context = SimpleNamespace(user_data={dub_wizard._legacy._WIZARD_KEY: {"awaiting": "url"}})
+    monkeypatch.setattr(dub_wizard, "write_durable_request", write_request)
+    context = SimpleNamespace(user_data={dub_wizard._WIZARD_KEY: {"awaiting": "url"}})
 
     asyncio.run(
         dub_wizard._create_generic_project(
             _update(order),
             context,
             "https://youtu.be/AbCdEf12345",
-            dub_wizard._legacy._GEMINI_MODE,
+            dub_wizard._GEMINI_MODE,
             DEFAULT_MODEL_PROFILE_ID,
         )
     )
@@ -266,9 +266,9 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
 def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
     order: list[str] = []
     store = _FakeStore(order)
-    monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
+    monkeypatch.setattr(dub_wizard, "DubStore", lambda: store)
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_extract_youtube_video_id",
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
@@ -277,7 +277,7 @@ def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
         order.append("normalize-failed")
         raise RuntimeError("PROFILE_SENTINEL")
 
-    monkeypatch.setattr(dub_wizard._legacy, "_request_payload", fail_request)
+    monkeypatch.setattr(dub_wizard, "_request_payload", fail_request)
 
     with pytest.raises(RuntimeError, match="PROFILE_SENTINEL"):
         asyncio.run(
@@ -285,7 +285,7 @@ def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
                 _update(order),
                 SimpleNamespace(user_data={}),
                 "https://youtu.be/AbCdEf12345",
-                dub_wizard._legacy._GEMINI_MODE,
+                dub_wizard._GEMINI_MODE,
                 DEFAULT_MODEL_PROFILE_ID,
             )
         )
@@ -297,19 +297,19 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
     order: list[str] = []
     store = _FakeStore(order)
     profile = default_model_profile()
-    monkeypatch.setattr(dub_wizard._legacy, "DubStore", lambda: store)
+    monkeypatch.setattr(dub_wizard, "DubStore", lambda: store)
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_extract_youtube_video_id",
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_request_payload",
         lambda *_args: _payload(),
     )
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "production_tts_profile_choice",
         lambda _value: SimpleNamespace(
             profile_id=profile.profile_id,
@@ -320,7 +320,7 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        dub_wizard._legacy,
+        dub_wizard,
         "_project_root",
         lambda _project_id: Path("/tmp/dub-project"),
     )
@@ -329,7 +329,7 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
         order.append("request-failed")
         raise OSError("DISK_SENTINEL")
 
-    monkeypatch.setattr(dub_wizard._legacy, "write_durable_request", fail_write)
+    monkeypatch.setattr(dub_wizard, "write_durable_request", fail_write)
 
     with pytest.raises(OSError, match="DISK_SENTINEL"):
         asyncio.run(
@@ -337,7 +337,7 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
                 _update(order),
                 SimpleNamespace(user_data={}),
                 "https://youtu.be/AbCdEf12345",
-                dub_wizard._legacy._GEMINI_MODE,
+                dub_wizard._GEMINI_MODE,
                 DEFAULT_MODEL_PROFILE_ID,
             )
         )
@@ -346,13 +346,3 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
     assert not any(item.startswith("enqueue:") for item in order)
 
 
-def test_wizard_facade_is_one_way_compatibility_only() -> None:
-    assert Path(dub_wizard.__file__).name == "__init__.py"
-    assert dub_wizard._legacy._request_payload is dub_wizard._request_payload
-    assert dub_wizard._legacy._write_request is dub_wizard._write_request
-    assert dub_wizard._legacy._create_generic_project is dub_wizard._create_generic_project
-    source = Path(dub_wizard.__file__).read_text(encoding="utf-8")
-    assert "generic_project_runtime.validate_request_payload(payload)" in source
-    assert "write_durable_request(target, validated)" in source
-    assert "DUB_TTS_OPTIONS_JSON" not in source
-    assert "DUB_VOX_THREADS" not in source

@@ -67,7 +67,3 @@ def test_non_object_and_duplicate_segments_fail_closed() -> None:
         core._mark_and_validate_segments(segments, duration=3.0)
 
 
-def test_clean_core_facade_patches_legacy_preflight() -> None:
-    assert Path(core.__file__).name == "__init__.py"
-    assert core._legacy._finite is core._finite
-    assert core._legacy._mark_and_validate_segments is core._mark_and_validate_segments

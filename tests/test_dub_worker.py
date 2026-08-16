@@ -81,7 +81,7 @@ def test_hardened_worker_installs_current_release_and_store_hooks(tmp_path: Path
         )
         assert DubStore.finish_job is hardened_worker._finish_job_with_root_cause
         assert hardened_worker._RUNTIME_VERSION == WORKER_RUNTIME
-        assert hardened_worker._legacy._RUNTIME_VERSION == WORKER_RUNTIME
+        assert hardened_worker._RUNTIME_VERSION == WORKER_RUNTIME
 
         store = DubStore(tmp_path)
         store.register_worker(

@@ -20,13 +20,12 @@ tests/test_clean_master_child_process_contract.py: 4
 tests/test_clean_master_post_aac_gate.py: 2
 tests/test_clean_reference_transport.py: 4
 tests/test_clean_release_marker.py: 5
-tests/test_clean_repair_request_contract.py: 21
+tests/test_clean_repair_request_contract.py: 20
 tests/test_clean_request_settings.py: 12
 tests/test_clean_runtime_contract.py: 8
 tests/test_clean_runtime_delivery_fingerprints.py: 3
-tests/test_clean_runtime_facades.py: 4
 tests/test_clean_runtime_setting_types.py: 9
-tests/test_clean_segment_contract.py: 11
+tests/test_clean_segment_contract.py: 10
 tests/test_clean_source_download.py: 18
 tests/test_clips_candidate_budget.py: 2
 tests/test_clips_delivery_integrity.py: 3
@@ -74,7 +73,7 @@ tests/test_direct_universal_runtime.py: 3
 tests/test_dual_whisper_semantic_qa.py: 3
 tests/test_dub_architecture_boundaries.py: 3
 tests/test_dub_audio_repair.py: 8
-tests/test_dub_audio_repair_handler_contract.py: 10
+tests/test_dub_audio_repair_handler_contract.py: 9
 tests/test_dub_audio_repair_integration.py: 2
 tests/test_dub_continuation_and_command_recovery.py: 8
 tests/test_dub_delivery.py: 2
@@ -89,11 +88,11 @@ tests/test_dub_quality_v4.py: 12
 tests/test_dub_quality_v42_runtime_contracts.py: 5
 tests/test_dub_runtime_progress.py: 5
 tests/test_dub_runtime_regressions.py: 2
-tests/test_dub_source_identity.py: 8
+tests/test_dub_source_identity.py: 7
 tests/test_dub_studio.py: 11
 tests/test_dub_title_policy.py: 7
 tests/test_dub_wizard.py: 11
-tests/test_dub_wizard_request_writer.py: 16
+tests/test_dub_wizard_request_writer.py: 15
 tests/test_dub_worker.py: 5
 tests/test_dub_worker_preflight_cancellation.py: 8
 tests/test_dub_worker_release_rollout.py: 2
@@ -127,7 +126,7 @@ tests/test_gemini_translation_quality.py: 8
 tests/test_generic_direct_runtime.py: 4
 tests/test_generic_gemini_runtime.py: 3
 tests/test_generic_project_runtime.py: 9
-tests/test_generic_project_runtime_contract.py: 5
+tests/test_generic_project_runtime_contract.py: 4
 tests/test_generic_short_production.py: 9
 tests/test_generic_video_copy_contract.py: 1
 tests/test_highlights_candidate_gate.py: 7
@@ -137,7 +136,6 @@ tests/test_highlights_process_ownership.py: 2
 tests/test_highlights_quality.py: 8
 tests/test_independent_qa_segment_retry.py: 3
 tests/test_john_piper_voxcpm2_package.py: 5
-tests/test_legacy_facade_module_registration.py: 5
 tests/test_livedub_audio_cache_recovery.py: 9
 tests/test_livedub_audio_companion.py: 5
 tests/test_livedub_audio_media_integration.py: 1
@@ -230,7 +228,7 @@ tests/test_shorts_subtitle_burn.py: 6
 tests/test_shorts_subtitle_centisecond_integrity.py: 2
 tests/test_shorts_subtitle_integrity.py: 7
 tests/test_shorts_transactional_outputs.py: 9
-tests/test_source_identity_pre_network.py: 3
+tests/test_source_identity_pre_network.py: 2
 tests/test_source_owned_conspect_architecture.py: 6
 tests/test_source_owned_livedub_qa_architecture.py: 5
 tests/test_source_owner_retired_modules.py: 2

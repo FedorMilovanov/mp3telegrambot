@@ -34,7 +34,7 @@ def test_active_health_requires_repair_and_project_barriers() -> None:
 def test_active_health_requires_current_worker_release() -> None:
     assert Path(dub_worker_hardened.__file__).name == "__init__.py"
     assert dub_worker_hardened._RUNTIME_VERSION == WORKER_RUNTIME
-    assert dub_worker_hardened._legacy._RUNTIME_VERSION == WORKER_RUNTIME
+    assert dub_worker_hardened._RUNTIME_VERSION == WORKER_RUNTIME
     assert dub_worker_hardened.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
     assert dub_worker_hardened.JOB_QUALITY_RETRY_POLICY == (
         "worker-checkpoint-quality-restart-v1"

@@ -67,6 +67,12 @@ def test_full_repair_normalizer_preserves_zero_delay(monkeypatch, tmp_path: Path
     assert 'clean_request_settings.russian_delay_ms(request)' in source
     assert 'request.get("russian_delay_ms") or 420' not in source
 
+def test_repair_owner_preserves_runtime_helpers() -> None:
+    assert callable(repair._next_seed)
+    assert callable(repair._fingerprinted_baseline_ready)
+    assert callable(repair._validate_repair_request)
+    assert Path(repair.__file__).name == 'generic_clean_audio_repair_runtime.py'
+
 
 def test_repair_owner_preserves_runtime_helpers() -> None:
     assert callable(repair._next_seed)

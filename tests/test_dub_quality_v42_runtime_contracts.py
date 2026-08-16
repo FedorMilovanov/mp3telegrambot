@@ -10,9 +10,9 @@ from tools.voxcpm2.semantic_tts_guard_v4 import _GUARD_VERSION
 def test_worker_release_is_shared_while_audio_guard_remains_versioned() -> None:
     assert WORKER_RUNTIME.startswith("dub-worker-quality-v")
     assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
-    assert dub_studio_runtime._legacy._WORKER_RUNTIME == WORKER_RUNTIME
+    assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
     assert dub_worker_hardened._RUNTIME_VERSION == WORKER_RUNTIME
-    assert dub_worker_hardened._legacy._RUNTIME_VERSION == WORKER_RUNTIME
+    assert dub_worker_hardened._RUNTIME_VERSION == WORKER_RUNTIME
     assert dub_health._WORKER_RUNTIME == WORKER_RUNTIME
     assert _GUARD_VERSION == "semantic-tts-guard-v4.2"
 

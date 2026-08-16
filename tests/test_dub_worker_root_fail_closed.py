@@ -40,9 +40,9 @@ def test_rootless_worker_job_fails_before_project_or_runner(
 ) -> None:
     store = RootlessJobStore(tmp_path)
     runner_calls: list[int] = []
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda *_args, **_kwargs: runner_calls.append(1),
     )

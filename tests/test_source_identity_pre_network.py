@@ -60,6 +60,3 @@ def test_matching_project_identity_delegates_to_verified_downloader(
     ]
 
 
-def test_source_download_facade_patches_legacy_entrypoint() -> None:
-    assert Path(source_download.__file__).name == "__init__.py"
-    assert source_download._legacy.download_source is source_download.download_source

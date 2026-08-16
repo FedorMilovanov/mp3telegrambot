@@ -180,7 +180,7 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
 
 
 def test_clean_core_requires_current_marker_fingerprints() -> None:
-    source = Path(clean._legacy.__file__).read_text(encoding="utf-8")
+    source = Path(clean.__file__).read_text(encoding="utf-8")
     contract_source = (
         ROOT / "tools" / "voxcpm2" / "_clean_runtime_contract_base.py"
     ).read_text(encoding="utf-8")

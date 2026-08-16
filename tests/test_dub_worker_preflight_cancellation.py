@@ -60,7 +60,7 @@ def test_worker_package_exposes_current_cancellation_contract() -> None:
     assert hardened.JOB_QUALITY_RETRY_POLICY == "worker-checkpoint-quality-restart-v1"
     assert hardened.MAX_JOB_QUALITY_RESTARTS == 3
     assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
-    assert hardened._legacy._RUNTIME_VERSION == WORKER_RUNTIME
+    assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
     main_source = (Path(hardened.__file__).parent / "__main__.py").read_text(
         encoding="utf-8"
     )
@@ -74,14 +74,14 @@ def test_cancel_before_preflight_never_runs_probe_or_runner(
 ) -> None:
     store = FakeStore(tmp_path, [True])
     calls: list[str] = []
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
     monkeypatch.setattr(
-        hardened._legacy.dub_job_preflight,
+        hardened.dub_job_preflight,
         "run",
         lambda *_args, **_kwargs: calls.append("preflight"),
     )
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
@@ -105,15 +105,15 @@ def test_cancel_during_preflight_never_starts_runner(
 ) -> None:
     store = FakeStore(tmp_path, [False, True])
     calls: list[str] = []
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
 
     def fake_preflight(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         calls.append("preflight")
         return {"passed": True, "skipped": False}
 
-    monkeypatch.setattr(hardened._legacy.dub_job_preflight, "run", fake_preflight)
+    monkeypatch.setattr(hardened.dub_job_preflight, "run", fake_preflight)
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
@@ -131,14 +131,14 @@ def test_normal_preflight_starts_original_runner_once(
 ) -> None:
     store = FakeStore(tmp_path, [False, False])
     calls: list[str] = []
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
     monkeypatch.setattr(
-        hardened._legacy.dub_job_preflight,
+        hardened.dub_job_preflight,
         "run",
         lambda *_args, **_kwargs: {"passed": True, "skipped": False},
     )
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda _store, worker_id, job: calls.append(
             f"runner:{worker_id}:{job['id']}"
@@ -163,15 +163,15 @@ def test_store_root_is_scoped_to_preflight_and_runner(
     seen: list[str | None] = []
     previous = str((tmp_path / "previous-root").resolve())
     monkeypatch.setenv("DUB_STUDIO_ROOT", previous)
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
 
     def fake_preflight(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         seen.append(os.environ.get("DUB_STUDIO_ROOT"))
         return {"passed": True, "skipped": True}
 
-    monkeypatch.setattr(hardened._legacy.dub_job_preflight, "run", fake_preflight)
+    monkeypatch.setattr(hardened.dub_job_preflight, "run", fake_preflight)
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda *_args, **_kwargs: seen.append(os.environ.get("DUB_STUDIO_ROOT")),
     )
@@ -188,14 +188,14 @@ def test_real_preflight_failure_is_failed_and_logged(
 ) -> None:
     store = FakeStore(tmp_path, [False, False])
     calls: list[str] = []
-    hardened._legacy.worker._STOP.clear()
+    hardened.worker._STOP.clear()
 
     def fail(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         raise RuntimeError("IMPORT_SENTINEL")
 
-    monkeypatch.setattr(hardened._legacy.dub_job_preflight, "run", fail)
+    monkeypatch.setattr(hardened.dub_job_preflight, "run", fail)
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "_ORIGINAL_EXECUTE_JOB",
         lambda *_args, **_kwargs: calls.append("runner"),
     )
@@ -236,7 +236,7 @@ def test_quality_failure_restarts_same_job_until_success(
             result={"output": "ready.mp4"},
         )
 
-    monkeypatch.setattr(hardened._legacy, "_ORIGINAL_EXECUTE_JOB", fake_runner)
+    monkeypatch.setattr(hardened, "_ORIGINAL_EXECUTE_JOB", fake_runner)
     hardened._run_with_quality_restarts(
         store,
         "worker-1",
@@ -254,18 +254,18 @@ def test_install_preserves_legacy_hardening_and_overrides_execute_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    original_execute = hardened._legacy.worker.execute_job
+    original_execute = hardened.worker.execute_job
     monkeypatch.setattr(
-        hardened._legacy,
+        hardened,
         "install_hardening",
         lambda: calls.append("agent-hardening"),
     )
     try:
         hardened.install_hardening()
         assert calls == ["agent-hardening"]
-        assert hardened._legacy._RUNTIME_VERSION == WORKER_RUNTIME
-        assert hardened._legacy.worker.execute_job is (
+        assert hardened._RUNTIME_VERSION == WORKER_RUNTIME
+        assert hardened.worker.execute_job is (
             hardened._execute_job_with_cancellable_preflight
         )
     finally:
-        hardened._legacy.worker.execute_job = original_execute
+        hardened.worker.execute_job = original_execute

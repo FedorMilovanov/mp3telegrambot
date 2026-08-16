@@ -82,9 +82,9 @@ def test_master_failure_surfaces_exact_stderr_and_releases_to_caller(
 
 
 def test_subprocess_proxy_is_scoped_to_clean_legacy_module() -> None:
-    assert core._legacy.subprocess is not subprocess
+    assert core.subprocess is not subprocess
     assert subprocess.run is core._stdlib_subprocess.run
-    assert core._legacy.subprocess.run is not subprocess.run
+    assert core.subprocess.run is not subprocess.run
     assert (
         core.CHILD_PYTHON_POLICY
         == "repo-root-pythonpath-master-stderr-and-post-aac-v2"

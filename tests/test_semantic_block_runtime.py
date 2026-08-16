@@ -68,7 +68,7 @@ def test_previous_block_is_optional_prompt_context_when_backend_exposes_it(tmp_p
                 "prompt_text": prompt_text,
             }
 
-    result = direct_max_quality_render._legacy._generate(
+    result = direct_max_quality_render._generate(
         FakeModel(),
         text="Следующий блок.",
         reference=tmp_path / "anchor.wav",
