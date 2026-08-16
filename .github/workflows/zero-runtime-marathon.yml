@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  direct-final-audit-owner:
+  direct-global-polish-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +21,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own direct final audit
-        run: python tools/source_own_direct_final_audit.py
-      - name: Compile direct production tree
+      - name: Source-own direct global polish
+        run: python tools/source_own_direct_global_polish.py
+      - name: Compile direct and generic-direct production tree
         run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify final-audit installer is gone
+      - name: Verify global polish installer is gone
         run: |
-          ! grep -RInE 'install_final_audit|retry\._strict_segment_id\s*=|guard\.load_matching_timing_block\s*=|\.discover_model\s*=|namespace\[' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_final_audit_v3.py
-          grep -q 'FINAL_AUDIT_POLICY = final_audit.POLICY' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'set_model_discovery_callback' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'def _final_audit_model_discovered' tools/voxcpm2/direct_max_quality_cli.py
-      - name: Commit source-owned direct final audit
+          ! grep -RInE 'install_global_polish|guard\.run_pre_model_guard\s*=|retry\._scope_epochs\s*=|sio\.MutableAudioSpec\s*=|runtime\._segments_by_id\s*=' tools/voxcpm2/direct_surgical_polish_v2.py tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/generic_clean_direct_runtime.py
+          grep -q 'MARKER_SCHEMA_VERSION = polish.MARKER_SCHEMA_VERSION' tools/voxcpm2/direct_timing_guard.py
+          grep -q 'return polish._scope_epochs(payload)' tools/voxcpm2/direct_retry_epoch.py
+          grep -q 'MutableAudioSpec = polish._AudioSpec' tools/voxcpm2/direct_surgical_io.py
+          grep -q '_segments_by_id = polish._segments_by_id' tools/voxcpm2/direct_surgical_runtime.py
+      - name: Import-smoke pure polish and owners
+        run: |
+          python - <<'PY'
+          from tools.voxcpm2 import direct_surgical_polish_v2 as polish
+          from tools.voxcpm2 import direct_timing_guard, direct_retry_epoch, direct_surgical_io, direct_surgical_runtime
+          assert polish.POLICY == direct_surgical_io.POLICY
+          assert callable(direct_timing_guard.run_pre_model_guard)
+          assert callable(direct_retry_epoch.invalidate_segment_for_retry)
+          assert callable(direct_surgical_runtime._segments_by_id)
+          PY
+      - name: Commit source-owned global polish
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Source-own direct final audit"
+          git commit -m "Source-own direct global polish"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
