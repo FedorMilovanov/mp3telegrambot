@@ -25,6 +25,18 @@ jobs:
         run: python -m pip install -r requirements-lock.txt
       - name: Apply v12 source consolidation
         run: python tools/finalize_source_owner_regressions_v12.py
+      - name: Remove retired hook invocations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tools/voxcpm2/direct_max_quality_render.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("    _sync_legacy_hooks()\n", "")
+          text = text.replace("\n_sync_legacy_hooks()\n", "\n")
+          if "_sync_legacy_hooks" in text:
+              raise SystemExit("retired hook reference remains")
+          path.write_text(text, encoding="utf-8")
+          PY
       - name: Remove newly unused imports safely
         run: python -m ruff check . --fix --exit-zero
       - name: Compile repository
