@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  cleanup:
+  prune:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,21 +21,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Apply pure-policy cleanup
-        run: python tools/pure_policy_cleanup.py
-      - name: Compile affected source owners
-        run: |
-          python -m compileall -q \
-            services/shorts_static_policy.py \
-            services/ffmpeg.py \
-            services/shorts_factory_publication.py \
-            services/shorts_factory_video_quality.py
-      - name: Commit cleanup
+      - name: Prune zero-call service installers
+        run: python tools/prune_zero_call_installers.py
+      - name: Compile service tree
+        run: python -m compileall -q services core handlers pipelines main.py bot_new.py
+      - name: Commit prune
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Remove unreachable policy installers"
+          git commit -m "Prune zero-call service installers"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
