@@ -73,8 +73,6 @@ def install_runtime_fingerprint(namespace: MutableMapping[str, Any]) -> None:
         "tools/voxcpm2/direct_retry_epoch.py",
         "tools/voxcpm2/_direct_retry_epoch_base.py",
         "tools/voxcpm2/direct_max_quality_cli.py",
-        "tools/voxcpm2/_direct_max_quality_cli_base.py",
-        "tools/voxcpm2/direct_max_quality_cli/__init__.py",
         "tools/voxcpm2/generic_clean_direct_runtime.py",
         "tools/voxcpm2/_generic_clean_direct_runtime_base.py",
         "tools/voxcpm2/clean_production_core/__init__.py",

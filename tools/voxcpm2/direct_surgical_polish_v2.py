@@ -43,7 +43,6 @@ _REF_FILES = (
 _EXTRA_SCOPE = (
     "tools/voxcpm2/direct_surgical_polish_v2.py",
     "tools/voxcpm2/_direct_retry_epoch_base.py",
-    "tools/voxcpm2/_direct_max_quality_cli_base.py",
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
     "tools/voxcpm2/direct_max_quality_render.py",
