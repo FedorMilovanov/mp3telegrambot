@@ -19,11 +19,8 @@ from tools.voxcpm2 import direct_max_quality_render
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
-RAW_RENDER = ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py"
-RENDER_FACADE = (
-    ROOT / "tools" / "voxcpm2" / "direct_max_quality_render" / "__init__.py"
-)
+CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
+RENDER = ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py"
 
 
 def _request(attempt: int, *, cfg: float = 1.9, steps: int = 16):
@@ -140,26 +137,24 @@ def test_candidate_loop_builds_and_merges_opaque_profile_plans() -> None:
         )
 
 
-def test_legacy_profile_helpers_delegate_without_owning_retry_math() -> None:
+def test_compatibility_helper_delegates_without_owning_retry_math() -> None:
     assert direct_max_quality_render._generation_profile(1, 1.9, 16) == (1.9, 16)
     cfg, steps = direct_max_quality_render._generation_profile(5, 1.9, 16)
     assert cfg == pytest.approx(1.78)
     assert steps == 34
 
-    raw_cli_source = RAW_CLI.read_text(encoding="utf-8")
-    raw_render_source = RAW_RENDER.read_text(encoding="utf-8")
-    facade_source = RENDER_FACADE.read_text(encoding="utf-8")
+    cli_source = CLI.read_text(encoding="utf-8")
+    render_source = RENDER.read_text(encoding="utf-8")
 
-    assert "_generation_profile," not in raw_cli_source
-    assert "backend.plan_generation_profile(profile_request)" in raw_cli_source
-    assert "cfg_value, step_count" not in raw_cli_source
-    assert "cfg=cfg_value" not in raw_cli_source
-    assert "steps=step_count" not in raw_cli_source
-    assert "backend_options.update(" not in raw_cli_source
-    assert "profile_plan.backend_options" in raw_cli_source
-
-    for source in (raw_render_source, facade_source):
-        assert "if attempt == 2:" not in source
-        assert "base_cfg + 0.08" not in source
-        assert "base_steps + 18" not in source
-        assert ".plan_generation_profile(" in source
+    assert "backend.plan_generation_profile(profile_request)" in cli_source
+    assert "cfg_value, step_count" not in cli_source
+    assert "cfg=cfg_value" not in cli_source
+    assert "steps=step_count" not in cli_source
+    assert "backend_options.update(" not in cli_source
+    assert "profile_plan.backend_options" in cli_source
+    assert "if attempt == 2:" not in render_source
+    assert "base_cfg + 0.08" not in render_source
+    assert "base_steps + 18" not in render_source
+    assert ".plan_generation_profile(" in render_source
+    assert not (ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py").exists()
+    assert not (ROOT / "tools" / "voxcpm2" / "direct_max_quality_render" / "__init__.py").exists()
