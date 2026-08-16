@@ -1,35 +1,10 @@
 ===== ROOT CALL GRAPH =====
 tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py:112: _install_voxcpm_patch
-tools/voxcpm2/generic_audio_repair_runtime.py:369: semantic_tts_guard_v4.install
-tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:290: install_repair_diagnostics
-tools/voxcpm2/generic_audio_repair_runtime_v45.py:31: professional_audio_v45.install
-tools/voxcpm2/generic_audio_repair_runtime_v45.py:32: professional_audio_qa_v45.install
-tools/voxcpm2/generic_audio_repair_runtime_v45.py:33: semantic_tts_guard_v47.install
-tools/voxcpm2/generic_audio_repair_runtime_v45.py:35: bootstrap.install_repair_diagnostics
-tools/voxcpm2/generic_clean_direct_runtime.py:68: install_generic_preflight
-tools/voxcpm2/generic_direct_checked_runtime.py:82: dub_quality_v4.install_direct_quality
-tools/voxcpm2/generic_direct_checked_runtime.py:83: semantic_tts_guard_v4.install
-tools/voxcpm2/generic_direct_checked_runtime_v45.py:25: professional_segmentation_v45.install
-tools/voxcpm2/generic_direct_checked_runtime_v45.py:26: professional_audio_v45.install
-tools/voxcpm2/generic_direct_checked_runtime_v45.py:27: professional_audio_qa_v45.install
-tools/voxcpm2/generic_direct_checked_runtime_v45.py:28: semantic_tts_guard_v47.install
-tools/voxcpm2/generic_direct_runtime.py:275: hardened.install_runtime_adapters
-tools/voxcpm2/generic_gemini_runtime.py:132: dub_quality_v4.install_gemini_quality
-tools/voxcpm2/generic_gemini_runtime.py:134: semantic_tts_guard_v4.install
-tools/voxcpm2/generic_gemini_runtime_v45.py:25: professional_segmentation_v45.install
-tools/voxcpm2/generic_gemini_runtime_v45.py:26: professional_audio_v45.install
-tools/voxcpm2/generic_gemini_runtime_v45.py:27: professional_audio_qa_v45.install
-tools/voxcpm2/generic_gemini_runtime_v45.py:28: semantic_tts_guard_v47.install
-tools/voxcpm2/generic_project_runtime.py:679: hardened.install_runtime_adapters
-tools/voxcpm2/generic_short_runtime.py:385: install_runtime_adapters
-tools/voxcpm2/monolithic_runtime_install.py:169: _install_fail_closed_timeline
-tools/voxcpm2/semantic_tts_guard_v47.py:441: focused.install
-tools/voxcpm2/voxcpm2_semantic_rescue_v47.py:154: _install_semantic_patch
-ROOT_CALLS=26
+ROOT_CALLS=1
 
 ===== AST SURGERY AUDIT =====
 
-## ATTRIBUTE ASSIGNMENTS (178)
+## ATTRIBUTE ASSIGNMENTS (117)
 core/bounded_cache.py:13: self.max_entries
 core/candidate_schema.py:25: self.accepted
 core/candidate_schema.py:29: self.rejected
@@ -87,15 +62,6 @@ tools/verify_generic_video_generation_loss.py:167: render_clips._unlink_render_p
 tools/verify_generic_video_generation_loss.py:180: render_clips._get_video_encoder
 tools/verify_generic_video_generation_loss.py:181: render_clips._is_static_video
 tools/verify_generic_video_generation_loss.py:182: render_clips._unlink_render_paths
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:31: hardened.download_source
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:32: hardened.pipeline.download_source
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:33: hardened.pipeline.download_captions
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:34: hardened.pipeline.gemini_json
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:332: production.hardened.install_runtime_adapters
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:333: production.group_srt_cues
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:334: production._build_direct_segments
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:335: production._run_speech_and_master
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:338: production._run_voxcpm_and_master
 tools/voxcpm2/cuda_probation_probe.py:130: torch.backends.cuda.matmul.allow_tf32
 tools/voxcpm2/direct_surgical_io.py:28: self.encode_sample_rate
 tools/voxcpm2/direct_surgical_io.py:29: self.output_sample_rate
@@ -144,59 +110,10 @@ tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py:10
 tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py:104: model.generate
 tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py:60: _direct_cli.candidate_score
 tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py:61: _direct_cli.MAX_TEMPO
-tools/voxcpm2/generic_audio_repair_runtime.py:368: legacy_guard.sanitize_tts_text
-tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:29: self._real
-tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:30: self._log_path
-tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:278: semantic_tts_guard_v4._REAL_SUBPROCESS
 tools/voxcpm2/generic_clean_audio_repair_runtime.py:731: legacy_repair._load_segments
-tools/voxcpm2/generic_clean_custom_runtime.py:21: hardened.download_source
-tools/voxcpm2/generic_clean_custom_runtime.py:22: hardened.pipeline.download_source
-tools/voxcpm2/generic_clean_custom_runtime.py:23: hardened.pipeline.download_captions
-tools/voxcpm2/generic_clean_custom_runtime.py:24: hardened.pipeline.gemini_json
-tools/voxcpm2/generic_clean_custom_runtime.py:100: production.hardened.install_runtime_adapters
-tools/voxcpm2/generic_clean_custom_runtime.py:101: production.pipeline.group_cues
-tools/voxcpm2/generic_clean_custom_runtime.py:102: production._validate_translation_payload
-tools/voxcpm2/generic_clean_custom_runtime.py:103: production._build_render_segments
-tools/voxcpm2/generic_clean_custom_runtime.py:104: production._run_speech_and_master
-tools/voxcpm2/generic_clean_custom_runtime.py:105: production._run_voxcpm_and_master
-tools/voxcpm2/generic_clean_direct_runtime.py:26: hardened.download_source
-tools/voxcpm2/generic_clean_direct_runtime.py:27: hardened.pipeline.download_source
-tools/voxcpm2/generic_clean_gemini_runtime.py:25: hardened.download_source
-tools/voxcpm2/generic_clean_gemini_runtime.py:26: hardened.pipeline.download_source
-tools/voxcpm2/generic_clean_gemini_runtime.py:27: hardened.pipeline.download_captions
-tools/voxcpm2/generic_clean_gemini_runtime.py:28: hardened.pipeline.gemini_json
-tools/voxcpm2/generic_clean_gemini_runtime.py:121: production.hardened.install_runtime_adapters
-tools/voxcpm2/generic_clean_gemini_runtime.py:122: production.acquire_transcript
-tools/voxcpm2/generic_clean_gemini_runtime.py:123: production.pipeline.group_cues
-tools/voxcpm2/generic_clean_gemini_runtime.py:124: production.translate_groups_max
-tools/voxcpm2/generic_clean_gemini_runtime.py:125: production.parse_manual_vtt
-tools/voxcpm2/generic_clean_gemini_runtime.py:126: production._build_render_segments
-tools/voxcpm2/generic_clean_gemini_runtime.py:127: production._run_speech_and_master
-tools/voxcpm2/generic_clean_gemini_runtime.py:128: production._run_voxcpm_and_master
-tools/voxcpm2/generic_direct_checked_runtime.py:80: legacy_semantic_guard.install
-tools/voxcpm2/generic_direct_checked_runtime.py:81: legacy_semantic_guard.sanitize_tts_text
-tools/voxcpm2/generic_direct_checked_runtime.py:84: production._build_direct_segments
-tools/voxcpm2/generic_gemini_runtime.py:131: legacy_semantic_guard.install
-tools/voxcpm2/generic_gemini_runtime.py:133: production.parse_manual_vtt
-tools/voxcpm2/generic_short_runtime.py:370: pipeline.download_source
-tools/voxcpm2/generic_short_runtime.py:371: pipeline.download_captions
-tools/voxcpm2/generic_short_runtime.py:372: pipeline.gemini_json
 tools/voxcpm2/independent_qa_retry.py:255: wrapped._independent_qa_retry_policy
 tools/voxcpm2/independent_qa_retry.py:256: wrapped._independent_qa_retry_original
 tools/voxcpm2/independent_qa_retry.py:257: clean_production_core.render_and_master
-tools/voxcpm2/monolithic_runtime_install.py:154: timeline._sequence_checks
-tools/voxcpm2/monolithic_runtime_install.py:155: timeline.FAIL_CLOSED_IDENTITY_POLICY
-tools/voxcpm2/monolithic_runtime_install.py:156: timeline._FAIL_CLOSED_IDENTITY_INSTALLED
-tools/voxcpm2/monolithic_runtime_install.py:166: legacy._renderer_paths
-tools/voxcpm2/monolithic_runtime_install.py:167: clean_production_core._renderer_paths
-tools/voxcpm2/monolithic_runtime_install.py:168: clean_production_core._is_master_command
-tools/voxcpm2/professional_audio_qa_v45.py:360: semantic_tts_guard_v4.verify_timeline_v4
-tools/voxcpm2/professional_audio_v45.py:493: dub_quality_v4.build_reference_v4
-tools/voxcpm2/professional_audio_v45.py:494: dub_quality_v4.build_render_segments_v4
-tools/voxcpm2/professional_audio_v45.py:495: semantic_tts_guard_v4._QUALITY_RENDERER
-tools/voxcpm2/professional_audio_v45.py:496: semantic_tts_guard_v4._QUALITY_MASTER
-tools/voxcpm2/professional_audio_v45.py:497: semantic_tts_guard_v4.verify_timeline_v4
-tools/voxcpm2/professional_audio_v45.py:501: generic_direct_checked_runtime.build_direct_segments_safe
 tools/voxcpm2/professional_segmentation_v45.py:39: dub_quality_v4.group_cues_v4
 tools/voxcpm2/professional_segmentation_v45.py:40: dub_quality_v4.group_ready_srt_v4
 tools/voxcpm2/semantic_tts_guard.py:425: self._real
@@ -205,9 +122,6 @@ tools/voxcpm2/semantic_tts_guard_v4.py:404: self._real
 tools/voxcpm2/semantic_tts_guard_v4.py:426: pipeline.subprocess
 tools/voxcpm2/semantic_tts_guard_v46.py:520: base._run_quality_synth
 tools/voxcpm2/semantic_tts_guard_v46.py:521: repair_runtime.prepare_repair_checkpoints
-tools/voxcpm2/semantic_tts_guard_v47.py:442: base._run_quality_synth
-tools/voxcpm2/voxcpm2_semantic_rescue_v47.py:149: VoxCPM.from_pretrained
-tools/voxcpm2/voxcpm2_semantic_rescue_v47.py:142: model.generate
 
 ## SETATTR CALLS (2)
 tools/voxcpm2/semantic_tts_guard.py:453: setattr(module, "subprocess", proxy)
@@ -250,19 +164,11 @@ tools/voxcpm_collision_audit.py:11: "setattr(", "globals()[", "__class__", "._le
 
 ## CONTEXTVARS (0)
 
-## INSTALLER FUNCTIONS (13)
+## INSTALLER FUNCTIONS (5)
 services/database_migrations.py:285: install_database_migrations
 services/runtime_manifest.py:135: install_phase
-tools/voxcpm2/_generic_clean_direct_runtime_base.py:28: _install_clean_runtime_adapters
-tools/voxcpm2/direct_universal_runtime.py:49: install_generic_preflight
 tools/voxcpm2/dub_quality_v4.py:437: install_gemini_quality
 tools/voxcpm2/dub_quality_v4.py:487: install_direct_quality
 tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_semantic_wrapper.py:48: _install_voxcpm_patch
-tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:274: install_repair_diagnostics
-tools/voxcpm2/generic_clean_custom_runtime.py:19: _install_clean_runtime_adapters
-tools/voxcpm2/generic_clean_gemini_runtime.py:22: _install_clean_runtime_adapters
-tools/voxcpm2/generic_short_runtime.py:369: install_runtime_adapters
-tools/voxcpm2/monolithic_runtime_install.py:137: _install_fail_closed_timeline
-tools/voxcpm2/voxcpm2_semantic_rescue_v47.py:66: _install_semantic_patch
 
 AUDIT_DONE
