@@ -31,15 +31,17 @@ jobs:
           set -euo pipefail
           test ! -f tools/voxcpm2/generic_clean_direct_runtime.py
           test ! -f tools/voxcpm2/_generic_clean_direct_runtime_base.py
-          ! grep -RInE 'generic_clean_direct_runtime|_generic_clean_direct_runtime_base|install_generic_preflight' tools/voxcpm2 services handlers core pipelines --include='*.py'
-          grep -q 'CLEAN_DIRECT_POLICY = "generic-clean-direct-v2"' tools/voxcpm2/generic_direct_runtime.py
-          grep -q 'class RetryAwareManifest' tools/voxcpm2/generic_direct_runtime.py
+          ! grep -RInE 'generic_clean_direct_runtime|_generic_clean_direct_runtime_base|install_generic_preflight' tools/voxcpm2 services handlers core pipelines --include='*.py' --exclude='source_own_generic_direct_route_v2.py'
+          grep -q 'CLEAN_DIRECT_ROUTE_POLICY = "source-owned-clean-direct-v1"' tools/voxcpm2/generic_direct_runtime.py
+          grep -q 'semantic_block_runtime.group_ready_srt' tools/voxcpm2/generic_direct_runtime.py
+          grep -q 'semantic_block_runtime.build_direct_segments' tools/voxcpm2/generic_direct_runtime.py
           grep -q 'direct_timing_guard.run_pre_model_guard' tools/voxcpm2/generic_direct_runtime.py
+          grep -q 'clean.render_and_master(' tools/voxcpm2/generic_direct_runtime.py
           python - <<'PY'
           import json
           from pathlib import Path
           recipe = json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
-          assert recipe['actions']['render_direct']['python_module'] == 'tools.voxcpm2.generic_direct_runtime'
+          assert recipe['actions']['render_direct']['module'] == 'tools.voxcpm2.generic_direct_runtime'
           PY
       - name: Commit migration
         run: |
