@@ -1,0 +1,69 @@
+name: Fix Source Owner Regressions
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .fix-source-owner-regressions-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Fix source-owner import regressions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core = Path('tools/voxcpm2/clean_production_core.py')
+          text = core.read_text(encoding='utf-8')
+          old = 'set(name for name in dir(_legacy) if not name.startswith("__"))'
+          if old not in text:
+              raise SystemExit('clean_production_core legacy __all__ anchor missing')
+          text = text.replace(
+              old,
+              'set(name for name in globals() if not name.startswith("__") and name != "_legacy")',
+              1,
+          )
+          core.write_text(text, encoding='utf-8')
+
+          timing = Path('services/shorts_factory_timing.py')
+          text = timing.read_text(encoding='utf-8')
+          old = '@contextmanager\n\n\ndef _candidate_limits('
+          if old not in text:
+              raise SystemExit('shorts_factory_timing stray contextmanager anchor missing')
+          text = text.replace(old, 'def _candidate_limits(', 1)
+          timing.write_text(text, encoding='utf-8')
+          PY
+      - name: Compile corrected owners
+        run: python -m compileall -q tools/voxcpm2/clean_production_core.py services/shorts_factory_timing.py
+      - name: Import corrected owners
+        run: |
+          python - <<'PY'
+          from tools.voxcpm2 import clean_production_core
+          from services import shorts_factory_timing
+          assert callable(clean_production_core.render_and_master)
+          assert shorts_factory_timing._candidate_limits('short') == (35.0, 180.0, False)
+          assert shorts_factory_timing._candidate_limits('long') == (300.0, 900.0, True)
+          print('SOURCE_OWNER_IMPORT_SMOKE=OK')
+          PY
+      - name: Commit fixes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/voxcpm2/clean_production_core.py services/shorts_factory_timing.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix source-owner import regressions"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
