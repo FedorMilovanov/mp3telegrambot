@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  canonical-dub-health:
+  dead-release-cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,30 +21,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Rewrite Dub release health around canonical owners
-        run: python tools/rewrite_dub_release_health.py
-      - name: Compile health and production owners
-        run: python -m compileall -q services/dub_release_health_v64.py services tools/voxcpm2 handlers core pipelines
-      - name: Verify no legacy surgery requirements
+      - name: Prove and delete dead release wrappers
+        run: python tools/remove_dead_release_wrappers.py
+      - name: Compile production tree
+        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
+      - name: Verify dead wrappers are gone
         run: |
-          ! grep -nE 'sys\.modules|spec_from_file_location|module_from_spec|_legacy\.|/__init__\.py.*legacy|transactional-legacy-import' services/dub_release_health_v64.py
-          ! grep -nE '_v67_quality_contract|_v66_quality_contract|_v65_quality_contract|_russian_only_master_contract' services/dub_release_health_v64.py
-      - name: Execute canonical health contract
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from services.dub_release_health_v64 import _v68_quality_contract
-          ok, detail = _v68_quality_contract(Path('.'))
-          print(f'ok={ok}')
-          print(detail)
-          assert ok, detail
-          PY
-      - name: Commit canonical health
+          test ! -f tools/voxcpm2/master_monolithic_mix.py
+          test ! -f tools/voxcpm2/preflight_json_protocol.py
+          ! grep -nE 'master_monolithic_mix\.py|preflight_json_protocol\.py' tools/voxcpm2/clean_runtime_contract.py
+      - name: Commit dead release cleanup
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Make Dub release health source-aware"
+          git commit -m "Remove dead Dub release wrappers"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
