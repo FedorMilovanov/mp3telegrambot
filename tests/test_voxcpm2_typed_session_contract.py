@@ -12,7 +12,7 @@ from services.speech_backends.voxcpm2 import SESSION_CALL_POLICY
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
+CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
 
 
 class _Cache:
@@ -86,14 +86,16 @@ def test_voxcpm2_backend_accepts_only_typed_session_config(monkeypatch) -> None:
 
 
 def test_production_cli_builds_typed_session_config() -> None:
-    source = RAW_CLI.read_text(encoding="utf-8")
+    source = CLI.read_text(encoding="utf-8")
     adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(
         encoding="utf-8"
     )
 
     assert "BackendSessionConfig" in source
-    assert "session = backend.open_session(\n        BackendSessionConfig(" in source
+    assert "session = backend.open_session(" in source
+    assert "BackendSessionConfig(" in source
     assert 'options={"cache_length": cache_length}' in source
     assert "torch_module=torch" not in source
+    assert "_direct_max_quality_cli_base" not in source
     assert "config: BackendSessionConfig | Path" not in adapter
     assert "cache_length: int | None" not in adapter
