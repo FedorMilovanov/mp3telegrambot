@@ -302,13 +302,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.POST_MAIN,
     ),
     RuntimeFeature(
-        "project-runtime-hardening",
-        "services.project_runtime_hardening",
-        "install_project_runtime_hardening",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
-    ),
-    RuntimeFeature(
         "dub-studio-runtime",
         "services.dub_studio_runtime",
         "install_dub_studio_runtime",
