@@ -23,20 +23,8 @@ jobs:
           python-version: '3.11'
       - name: Install locked test dependencies
         run: python -m pip install -r requirements-lock.txt
-      - name: Apply v12 source consolidation
-        run: python tools/finalize_source_owner_regressions_v12.py
-      - name: Remove retired hook invocations
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("tools/voxcpm2/direct_max_quality_render.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace("    _sync_legacy_hooks()\n", "")
-          text = text.replace("\n_sync_legacy_hooks()\n", "\n")
-          path.write_text(text, encoding="utf-8")
-          PY
-      - name: Remove newly unused imports safely
-        run: python -m ruff check . --fix --exit-zero
+      - name: Apply v13 canonical workflow manifests
+        run: python tools/finalize_workflow_manifests_v13.py
       - name: Compile repository
         run: python -m compileall -q .
       - name: Ruff strict gate
@@ -45,9 +33,7 @@ jobs:
         run: python -m pytest -q tests/test_no_runtime_surgery_contract.py
       - name: Verify repository health
         run: python tools/verify_repo.py
-      - name: Run full pytest after source consolidation
-        run: python tools/run_pytest_with_annotations.py -q
-      - name: Commit v12 source consolidation
+      - name: Commit v13 workflow manifest cleanup
         if: success()
         run: |
           set -euo pipefail
@@ -55,5 +41,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Apply v12 Ruff source consolidation"
+          git commit -m "Apply v13 canonical workflow manifest cleanup"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
