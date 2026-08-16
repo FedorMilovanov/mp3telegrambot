@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  current-runtime-graph:
+  prune-dead-universal:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,9 +21,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile current production tree
-        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
-      - name: Current runtime root calls
-        run: python tools/remaining_runtime_call_graph.py
-      - name: Current runtime surgery AST audit
-        run: python tools/runtime_surgery_audit.py
+      - name: Prove and prune dead universal installers
+        run: python tools/prune_dead_direct_universal_installers.py
+      - name: Compile affected production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
+      - name: Verify dead universal installers are gone
+        run: |
+          ! grep -nE 'def install_worker_progress|def install_runtime_fingerprint' tools/voxcpm2/direct_universal_runtime.py
+          ! grep -nE 'install_worker_progress|install_runtime_fingerprint' tools/voxcpm2/direct_universal_runtime.py
+      - name: Commit dead universal cleanup
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Prune dead direct universal installers"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
