@@ -32,11 +32,10 @@ jobs:
       - name: Compile changed owners
         run: |
           python -m compileall -q \
-            handlers/commands.py \
-            services/ffmpeg.py \
-            services/shorts_static_runtime.py \
-            services/runtime_manifest.py \
-            pipelines/video_dispatch.py
+            pipelines/main_pipeline.py \
+            services/mp3_conversion.py \
+            core/bounded_cache.py \
+            services/runtime_manifest.py
 
       - name: Run focused tests when test runtime is available
         run: |
@@ -47,10 +46,11 @@ jobs:
               print('pytest is not installed in the temporary refactor runner; canonical PR CI owns test execution')
               raise SystemExit(0)
           needles = (
+              'project_runtime_hardening',
+              'bounded_cache',
+              'mp3_conversion',
               'runtime_manifest',
-              'video_dispatch',
-              'shorts_static',
-              'shorts_factory_overload_editorial_polish',
+              'main_pipeline',
           )
           selected = []
           for path in sorted(Path('tests').glob('test_*.py')):
@@ -65,6 +65,7 @@ jobs:
       - name: Commit wave
         run: |
           set -euo pipefail
+          wave="$(cat .zero-runtime-trigger | tr -d '\r\n')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -72,5 +73,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Move routing and static policy to source owners"
+          git commit -m "Zero-runtime marathon: ${wave}"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
