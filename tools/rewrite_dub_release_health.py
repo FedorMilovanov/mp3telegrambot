@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "services" / "dub_release_health_v64.py"
+SELF = Path(__file__).resolve()
 
 SOURCE = r'''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -252,9 +253,8 @@ __all__ = ["POLICY", "WORKER_RUNTIME", "_v68_quality_contract"]
 
 
 def main() -> int:
-    current = TARGET.read_text(encoding="utf-8")
     # Compatibility aliases were historical-only. Prove no production Python file
-    # outside this module references them before removing them.
+    # outside the target module and this branch-only migration tool references them.
     aliases = (
         "_v67_quality_contract",
         "_v66_quality_contract",
@@ -263,7 +263,7 @@ def main() -> int:
     )
     blockers: list[str] = []
     for path in ROOT.rglob("*.py"):
-        if path == TARGET or "tests" in path.parts or ".git" in path.parts:
+        if path.resolve() in {TARGET.resolve(), SELF} or "tests" in path.parts or ".git" in path.parts:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for name in aliases:
