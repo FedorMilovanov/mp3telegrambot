@@ -282,7 +282,7 @@ DUB_MIGRATIONS = (
 )
 
 
-def install_database_migrations(main_module: ModuleType | None = None) -> dict[str, object]:
+def apply_database_migrations(main_module: ModuleType | None = None) -> dict[str, object]:
     """Create legacy base tables, then enforce the strict current schema."""
     from core import database
     from services.dub_studio import DubStore
@@ -322,6 +322,6 @@ __all__ = [
     "Migration",
     "MigrationReport",
     "add_column_if_missing",
-    "install_database_migrations",
+    "apply_database_migrations",
     "run_migrations",
 ]

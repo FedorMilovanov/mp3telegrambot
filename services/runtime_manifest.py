@@ -1,8 +1,8 @@
 """Declarative, fail-closed runtime composition for the production bot.
 
 The entry point must not silently continue with an arbitrary subset of safety
-adapters. This module owns one ordered feature manifest, records installation
-evidence and stops startup when a required feature cannot be installed.
+adapters. This module owns one ordered feature manifest, records activation
+evidence and stops startup when a required feature cannot be activated.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class RuntimeFeatureState(str, Enum):
 
 
 class RuntimeBootstrapError(RuntimeError):
-    """Raised when a required runtime feature cannot be installed."""
+    """Raised when a required runtime feature cannot be activated."""
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class RuntimeFeatureResult:
 
 
 class RuntimeManifest:
-    """Install one explicit feature graph and retain auditable evidence."""
+    """Activate one explicit feature graph and retain auditable evidence."""
 
     def __init__(self, features: Iterable[RuntimeFeature]) -> None:
         ordered = tuple(features)
@@ -132,7 +132,7 @@ class RuntimeManifest:
         self._results[feature.feature_id] = result
         return result
 
-    def install_phase(
+    def activate_phase(
         self,
         phase: RuntimePhase,
         *,
@@ -291,11 +291,11 @@ _DEFAULT_MANIFEST = RuntimeManifest(DEFAULT_RUNTIME_FEATURES)
 
 
 def bootstrap_pre_main() -> tuple[RuntimeFeatureResult, ...]:
-    return _DEFAULT_MANIFEST.install_phase(RuntimePhase.PRE_MAIN)
+    return _DEFAULT_MANIFEST.activate_phase(RuntimePhase.PRE_MAIN)
 
 
 def bootstrap_post_main(main_module: ModuleType) -> tuple[RuntimeFeatureResult, ...]:
-    return _DEFAULT_MANIFEST.install_phase(
+    return _DEFAULT_MANIFEST.activate_phase(
         RuntimePhase.POST_MAIN,
         main_module=main_module,
     )

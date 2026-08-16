@@ -42,7 +42,7 @@ if not _gemini_key:
 
 from services import emit_service_bootstrap_diagnostics
 from services.bot_lifecycle import run_bot_process
-from services.database_migrations import install_database_migrations
+from services.database_migrations import apply_database_migrations
 from services.runtime_manifest import (
     RuntimeBootstrapError,
     bootstrap_post_main,
@@ -62,7 +62,7 @@ except RuntimeBootstrapError as exc:
 import main as _main_module
 
 try:
-    install_database_migrations(_main_module)
+    apply_database_migrations(_main_module)
     bootstrap_post_main(_main_module)
     require_runtime_ready()
 except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError) as exc:

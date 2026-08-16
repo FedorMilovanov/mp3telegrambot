@@ -178,10 +178,16 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
             if any(_target_writes_sys_modules(target) for target in targets):
                 module_aliases.append(f"{rel}:{node.lineno}:sys.modules[...] assignment")
 
-    assert install_calls == [], f"ROOT_CALLS={len(install_calls)}: {install_calls}"
-    assert module_aliases == [], f"sys.modules alias surgery: {module_aliases}"
-    assert contextvar_calls == [], f"ContextVar runtime surgery: {contextvar_calls}"
-    assert import_hook_findings == [], f"import-hook surgery: {import_hook_findings}"
+    findings = {
+        "ROOT_CALLS": install_calls,
+        "sys.modules": module_aliases,
+        "ContextVar": contextvar_calls,
+        "import_hooks": import_hook_findings,
+    }
+    nonempty = {key: value for key, value in findings.items() if value}
+    assert nonempty == {}, (
+        f"ROOT_CALLS={len(install_calls)}; zero-surgery findings={nonempty}"
+    )
 
 
 def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
