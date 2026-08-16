@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  clean-runtime-owner:
+  local-botapi-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,42 +21,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own clean runtime contract
-        run: python tools/source_own_clean_runtime_contract.py
-      - name: Compile VoxCPM production tree
-        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify canonical runtime contract
+      - name: Source-own Local Bot API process policy
+        run: python tools/source_own_local_botapi.py
+      - name: Compile Local Bot API owners
+        run: python -m compileall -q services/local_botapi_runtime.py services/local_botapi_required.py services/local_botapi_bootstrap.py services/runtime_manifest.py
+      - name: Verify explicit process configuration
         run: |
-          test ! -f tools/voxcpm2/_clean_runtime_contract_base.py
-          ! grep -nE 'exec\(compile|install_runtime_fingerprint|globals\(\)\[|spec_from_file_location|module_from_spec' tools/voxcpm2/clean_runtime_contract.py
-          grep -q 'def build_fingerprints' tools/voxcpm2/clean_runtime_contract.py
-          grep -q 'backend.discover_model' tools/voxcpm2/clean_runtime_contract.py
-          grep -q 'BACKEND_SELECTION_POLICY' tools/voxcpm2/clean_runtime_contract.py
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-          root = Path('.')
-          text = Path('tools/voxcpm2/clean_runtime_contract.py').read_text(encoding='utf-8')
-          tree = ast.parse(text)
-          for name in ('_RENDER_MODULES', '_RELEASE_MODULES'):
-              value = None
-              for node in tree.body:
-                  if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-                      value = ast.literal_eval(node.value)
-                      break
-              assert value, name
-              for rel in value:
-                  path = root / rel
-                  assert path.is_file(), rel
-                  if rel.endswith(('/__init__.py', '/__main__.py')):
-                      assert not path.parent.with_suffix('.py').is_file(), f'shadow path: {rel}'
-          PY
-      - name: Commit source-owned runtime contract
+          ! grep -nE '_ACTIVE_PROXY_URL|legacy\._terminate_stale_server\s*=|legacy\._start_local_server\s*=|legacy\._read_log_tail\s*=|global _ACTIVE_PROXY_URL' services/local_botapi_runtime.py services/local_botapi_required.py
+          ! grep -n 'def prepare_local_bot_api' services/local_botapi_runtime.py
+          grep -q 'def _start_server(host: str, port: int, \*, proxy_url: str = "")' services/local_botapi_runtime.py
+          grep -q 'proxy_url=proxy_url' services/local_botapi_required.py
+          grep -q '"local-bot-api"' services/runtime_manifest.py
+      - name: Commit source-owned Local Bot API
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Source-own VoxCPM runtime contract"
+          git commit -m "Source-own Local Bot API process policy"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
