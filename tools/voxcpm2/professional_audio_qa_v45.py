@@ -355,10 +355,6 @@ def verify_timeline_v45(
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return result, report
 
-
-def install() -> None:
-    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
-
 _BASE_ALL = tuple(globals().get('__all__', ()))
 
 import json

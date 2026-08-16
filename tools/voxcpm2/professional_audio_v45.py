@@ -28,10 +28,7 @@ from tools.voxcpm2 import semantic_tts_guard_v4
 from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
 POLICY = "professional-audio-v4.5"
-RENDERER = "voxcpm2_quality_v45_renderer.py"
-MASTER = "master_quality_v45.py"
 _ORIGINAL_VERIFY = semantic_tts_guard_v4.verify_timeline_v4
-_INSTALLED = False
 _SENTENCE = re.compile(r"(?<=[.!?…;:])\s+")
 
 
@@ -484,22 +481,3 @@ def verify_timeline_v45(
         encoding="utf-8",
     )
     return result, report
-
-
-def install() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    dub_quality_v4.build_reference_v4 = build_reference_v45
-    dub_quality_v4.build_render_segments_v4 = build_render_segments_v45
-    semantic_tts_guard_v4._QUALITY_RENDERER = RENDERER
-    semantic_tts_guard_v4._QUALITY_MASTER = MASTER
-    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
-    try:
-        from tools.voxcpm2 import generic_direct_checked_runtime
-
-        generic_direct_checked_runtime.build_direct_segments_safe = build_direct_segments_v45
-    except Exception as exc:
-        log(f"direct patch warning: {exc}")
-    _INSTALLED = True
-    log("installed calm references, global delay, short segments and continuity QA")
