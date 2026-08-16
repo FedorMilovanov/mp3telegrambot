@@ -28,10 +28,29 @@ jobs:
       - name: Verify canonical runtime contract
         run: |
           test ! -f tools/voxcpm2/_clean_runtime_contract_base.py
-          ! grep -nE 'exec\(compile|install_runtime_fingerprint|globals\(\)\[|spec_from_file_location|module_from_spec|/__init__\.py|/__main__\.py' tools/voxcpm2/clean_runtime_contract.py
+          ! grep -nE 'exec\(compile|install_runtime_fingerprint|globals\(\)\[|spec_from_file_location|module_from_spec' tools/voxcpm2/clean_runtime_contract.py
           grep -q 'def build_fingerprints' tools/voxcpm2/clean_runtime_contract.py
           grep -q 'backend.discover_model' tools/voxcpm2/clean_runtime_contract.py
           grep -q 'BACKEND_SELECTION_POLICY' tools/voxcpm2/clean_runtime_contract.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          root = Path('.')
+          text = Path('tools/voxcpm2/clean_runtime_contract.py').read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          for name in ('_RENDER_MODULES', '_RELEASE_MODULES'):
+              value = None
+              for node in tree.body:
+                  if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+                      value = ast.literal_eval(node.value)
+                      break
+              assert value, name
+              for rel in value:
+                  path = root / rel
+                  assert path.is_file(), rel
+                  if rel.endswith(('/__init__.py', '/__main__.py')):
+                      assert not path.parent.with_suffix('.py').is_file(), f'shadow path: {rel}'
+          PY
       - name: Commit source-owned runtime contract
         run: |
           set -euo pipefail
