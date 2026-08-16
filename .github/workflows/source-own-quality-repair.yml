@@ -1,0 +1,44 @@
+name: Source-own Quality Repair
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .source-own-quality-repair-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Remove quality and repair installers
+        run: python tools/source_own_quality_repair.py
+      - name: Compile production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py bot_new.py
+      - name: Verify active renderer path and root graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f tools/voxcpm2/generic_direct_checked_runtime.py
+          ! grep -RIn --include='*.py' --exclude-dir=tests --exclude='source_own_quality_repair.py' 'professional_audio_v45\.install\|professional_audio_qa_v45\.install\|semantic_tts_guard_v4\.install' tools/voxcpm2 services handlers core pipelines || true
+          grep -q 'backend.build_renderer_command(' tools/voxcpm2/generic_audio_repair_runtime.py
+          python tools/remaining_runtime_call_graph.py
+      - name: Commit quality repair migration
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Source-own Dub quality and audio repair"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
