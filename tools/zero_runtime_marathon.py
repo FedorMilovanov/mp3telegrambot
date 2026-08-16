@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
-"""Temporary branch-only diagnostics for zero-runtime title-policy migration."""
+"""Temporary branch-only refactor runner for the zero-runtime-surgery marathon."""
 from __future__ import annotations
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NEEDLES = (
-    "install_dub_title_policy",
-    "install_voxcpm_title_policy",
-    "install_release_health_hook",
-    "dub_release_health_v64",
-    "canonical_media_title",
-    "canonical_delivery_filename",
-    "sentence_case_russian_title",
-    "def _row_project",
-    "def _undelivered_notification_events",
-    "def available_outputs",
-    "def collect_dub_health",
-    "def _russian_heading_case",
-)
 
 
 def main() -> int:
-    for path in sorted(ROOT.rglob("*.py")):
-        rel = path.relative_to(ROOT)
-        if any(part in {".git", ".venv", "venv", "__pycache__"} for part in rel.parts):
-            continue
-        if rel.as_posix() == "tools/zero_runtime_marathon.py":
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
-        matches = [(i + 1, line) for i, line in enumerate(lines) if any(n in line for n in NEEDLES)]
-        if not matches:
-            continue
-        print(f"\n### {rel}")
-        for lineno, line in matches:
-            print(f"{lineno:05d}: {line}")
+    path = ROOT / "services" / "dub_studio_runtime.py"
+    text = path.read_text(encoding="utf-8")
+    import_anchor = "    from handlers.dub_quickstart import register_dub_quickstart_handler\n    from handlers.dub_wizard import register_dub_wizard_handlers\n"
+    import_new = (
+        "    from handlers.dub_quickstart import register_dub_quickstart_handler\n"
+        "    from handlers.dub_wizard import register_dub_wizard_handlers\n"
+        "    from handlers.dub_multicommand import register_dub_multicommand_handler\n"
+    )
+    if import_anchor not in text:
+        raise RuntimeError("Dub Studio handler import anchor missing")
+    text = text.replace(import_anchor, import_new, 1)
+    call_anchor = "    register_dub_quickstart_handler(application)\n    ensure_worker_running()\n"
+    call_new = (
+        "    register_dub_quickstart_handler(application)\n"
+        "    register_dub_multicommand_handler(application)\n"
+        "    ensure_worker_running()\n"
+    )
+    if call_anchor not in text:
+        raise RuntimeError("Dub Studio handler registration anchor missing")
+    text = text.replace(call_anchor, call_new, 1)
+    path.write_text(text, encoding="utf-8")
+
+    shadow = ROOT / "services" / "dub_studio_runtime" / "__init__.py"
+    if not shadow.is_file():
+        raise RuntimeError("Dub Studio shadow package is missing")
+    shadow.unlink()
+    print("deleted services/dub_studio_runtime/__init__.py")
+    print("registered multicommand directly in source-owned Dub Studio composition")
     return 0
 
 
