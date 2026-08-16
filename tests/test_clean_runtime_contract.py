@@ -95,8 +95,8 @@ def test_render_and_release_fingerprints_change_independently(
     monkeypatch.setattr(contract, "_RELEASE_MODULES", ("release.py",))
     monkeypatch.setattr(
         contract,
-        "_model_manifest",
-        lambda _archive: {"path": "model", "artifacts": [{"name": "x", "size": 1}]},
+        "_backend_model_manifest",
+        lambda _backend, _archive: {"path": "model", "artifacts": [{"name": "x", "size": 1}]},
     )
     monkeypatch.setattr(
         contract,
@@ -150,7 +150,7 @@ def test_sampled_hash_detects_same_size_middle_replacement(tmp_path: Path) -> No
     assert weights.stat().st_size == block * 5
 
 
-def test_render_fingerprint_covers_complete_clean_path() -> None:
+def test_render_fingerprint_covers_complete_source_owned_clean_path() -> None:
     required = {
         "tools/voxcpm2/clean_source_download.py",
         "tools/voxcpm2/clean_request_settings.py",
@@ -162,28 +162,31 @@ def test_render_fingerprint_covers_complete_clean_path() -> None:
         "tools/voxcpm2/expressive_continuity.py",
         "tools/voxcpm2/expressive_translation.py",
         "tools/voxcpm2/strict_translation_payload.py",
-        "tools/voxcpm2/generic_short_runtime.py",
         "tools/voxcpm2/generic_project_runtime.py",
         "tools/voxcpm2/generic_direct_runtime.py",
         "tools/voxcpm2/generic_gemini_runtime.py",
-        "tools/voxcpm2/generic_clean_gemini_runtime.py",
-        "tools/voxcpm2/generic_clean_direct_runtime.py",
-        "tools/voxcpm2/generic_clean_custom_runtime.py",
+        "tools/voxcpm2/generic_custom_runtime.py",
+        "tools/voxcpm2/semantic_block_runtime.py",
         "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
-        "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
-        "tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py",
         "tools/voxcpm2/direct_source_prosody.py",
         "tools/voxcpm2/direct_max_quality_cli.py",
     }
-    assert required.issubset(set(contract._RENDER_MODULES))
-    assert "tools/voxcpm2/final_media_qa/__init__.py" in contract._RELEASE_MODULES
+    render_modules = set(contract._RENDER_MODULES)
+    assert required.issubset(render_modules)
+    for retired in (
+        "tools/voxcpm2/generic_short_runtime.py",
+        "tools/voxcpm2/generic_clean_gemini_runtime.py",
+        "tools/voxcpm2/generic_clean_direct_runtime.py",
+        "tools/voxcpm2/generic_clean_custom_runtime.py",
+        "tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py",
+    ):
+        assert retired not in render_modules
+    assert "tools/voxcpm2/final_media_qa.py" in contract._RELEASE_MODULES
 
 
 def test_clean_core_requires_current_marker_fingerprints() -> None:
-    source = Path(clean._legacy.__file__).read_text(encoding="utf-8")
-    contract_source = (
-        ROOT / "tools" / "voxcpm2" / "_clean_runtime_contract_base.py"
-    ).read_text(encoding="utf-8")
+    source = Path(clean.__file__).read_text(encoding="utf-8")
+    contract_source = Path(contract.__file__).read_text(encoding="utf-8")
     assert clean.POLICY == "clean-direct-production-v2"
     assert "render_contract_sha256" in source
     assert "release_contract_sha256" in source
@@ -192,11 +195,11 @@ def test_clean_core_requires_current_marker_fingerprints() -> None:
     assert '"schema_version": 3' in source
     assert '"release_complete": False' in source
     assert "release_complete=True" in source
-    assert '"tools/voxcpm2/direct_source_prosody.py"' in contract_source
-    assert '"tools/voxcpm2/clean_source_download.py"' in contract_source
-    assert '"tools/voxcpm2/clean_request_settings.py"' in contract_source
-    assert '"tools/voxcpm2/strict_translation_payload.py"' in contract_source
-    assert '"tools/voxcpm2/legacy_segment_migration_v45.py"' in contract_source
+    assert "tools/voxcpm2/direct_source_prosody.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/clean_source_download.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/clean_request_settings.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/strict_translation_payload.py" in contract._RENDER_MODULES
+    assert "tools/voxcpm2/legacy_segment_migration_v45.py" in contract._RENDER_MODULES
     assert 'request.get("cfg") or' not in contract_source
     assert 'request.get("threads") or' not in contract_source
     assert 'request.get("steps") or' not in contract_source

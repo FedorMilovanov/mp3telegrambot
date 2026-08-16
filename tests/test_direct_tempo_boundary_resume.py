@@ -4,16 +4,14 @@ import json
 from pathlib import Path
 
 from tools.voxcpm2 import direct_max_quality_io as direct_io
-from tools.voxcpm2 import generic_clean_direct_runtime as direct_runtime
-from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
-    voxcpm2_cpu_shorts_production as entrypoint,
-)
+from tools.voxcpm2 import generic_direct_runtime as direct_runtime
+from tools.voxcpm2 import direct_max_quality_cli as entrypoint
 
 
 def test_tempo_boundary_forces_third_attempt_but_allows_tiny_final_margin() -> None:
     speech_slot = 4.32 / 1.358
     assert entrypoint.PREFERRED_MAX_TEMPO == 1.35
-    assert entrypoint.HARD_MAX_TEMPO == 1.36
+    assert entrypoint.MAX_TEMPO == 1.36
     assert entrypoint._tempo_policy_penalty(4.32, speech_slot) > 90.0
     assert entrypoint._tempo_policy_penalty(4.20, 4.0) == 0.0
 

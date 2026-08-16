@@ -74,6 +74,8 @@ from core.generated_pages import (
     timestamp_coverage_archive_fields,
 )
 from core.timestamp_quality import timestamp_coverage_ratio
+from core.bounded_cache import BoundedLRUDict
+from services.mp3_conversion import reencode_mp3_64k_atomic
 
 import asyncio
 import json
@@ -93,7 +95,31 @@ logger = logging.getLogger(__name__)
 
 # ── LiveDub caption title helpers ─────────────────────────────────
 
-_LIVEDUB_TITLE_CACHE: dict[tuple[str, str, str], tuple[str, str]] = {}
+try:
+    _LIVEDUB_TITLE_CACHE_MAX = int(
+        os.getenv("LIVEDUB_TITLE_CACHE_MAX", "256").strip() or "256"
+    )
+except ValueError:
+    _LIVEDUB_TITLE_CACHE_MAX = 256
+_LIVEDUB_TITLE_CACHE: BoundedLRUDict = BoundedLRUDict(
+    max_entries=_LIVEDUB_TITLE_CACHE_MAX
+)
+
+
+async def _run_optional_stage(name: str, awaitable, default=False):
+    """Isolate optional publication stages without changing imported bindings."""
+    try:
+        return await awaitable
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Optional stage %s failed but pipeline continues: %s",
+            name,
+            exc,
+            exc_info=True,
+        )
+        return default
 
 
 def _clean_livedub_meta_text(text: str) -> str:
@@ -1529,32 +1555,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Сжимаем если больше лимита
             if file_size_mb > get_max_file_size_mb():
                 mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-                ffmpeg = shutil.which("ffmpeg")
-                # AUDIT R39: не пере-сжимаем сам в себя (вход==выход) — потеря файла.
-                if ffmpeg and mp3_path.name != mp3_64_path.name:
-                    mp3_64_path.unlink(missing_ok=True)
-                    _recompress_proc = await run_cancellable_process(
-                        [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
-                        timeout=300,
-                    )
-                    if _recompress_proc.returncode != 0:
-                        logger.warning(
-                            "ffmpeg 64k rc=%s: %s",
-                            _recompress_proc.returncode,
-                            (_recompress_proc.stderr or b"")[-300:],
-                        )
-                    # FIX: verify re-encoded file is not empty/corrupt
-                    if (
-                        _recompress_proc.returncode == 0
-                        and mp3_64_path.exists()
-                        and mp3_64_path.stat().st_size > 10240
-                    ):
+                if mp3_path.name != mp3_64_path.name:
+                    converted = await reencode_mp3_64k_atomic(mp3_path, mp3_64_path)
+                    if converted:
                         mp3_path.unlink(missing_ok=True)
                         mp3_path = mp3_64_path
                         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
                         bitrate = "64"
-                    elif mp3_64_path.exists():
-                        mp3_64_path.unlink(missing_ok=True)
+                    else:
+                        logger.warning("Verified atomic MP3 64k conversion failed: %s", mp3_path.name)
                 if file_size_mb > get_max_file_size_mb():
                     await update.message.reply_text(f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия.")
                     # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
@@ -1917,37 +1926,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         if file_size_mb > get_max_file_size_mb():
             await set_progress(status_msg, 3, {"title": f"📝 {title}", "info": f"⚙️ Файл {file_size_mb:.1f} МБ — пересжимаю в 64 kbps..."}, prefix=_pp)
             mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-            # Re-encode existing mp3 via ffmpeg directly
-            ffmpeg = shutil.which("ffmpeg")
-            # AUDIT R39: если переиспользованный из кэша файл — УЖЕ {media_id}_64.mp3,
-            # то вход==выход: `ffmpeg -i X … X` испортит/обнулит единственный файл
-            # (а ниже unlink удалил бы оригинал → потеря аудио + краш stat()). Он и
-            # так 64 kbps — повторное сжатие бессмысленно, пропускаем к «слишком большой».
-            if ffmpeg and mp3_path.name != mp3_64_path.name:
-                mp3_64_path.unlink(missing_ok=True)
-                _recompress_proc = await run_cancellable_process(
-                    [ffmpeg, "-i", str(mp3_path), "-b:a", "64k", "-y", str(mp3_64_path)],
-                    timeout=300,
-                )
-                if _recompress_proc.returncode != 0:
-                    logger.warning(
-                        "ffmpeg 64k rc=%s: %s",
-                        _recompress_proc.returncode,
-                        (_recompress_proc.stderr or b"")[-300:],
-                    )
-                # FIX: verify re-encoded file is not empty/corrupt before
-                # deleting the good original. ffmpeg can create 0-byte output
-                # on disk errors or corrupt input.
-                if (
-                    _recompress_proc.returncode == 0
-                    and mp3_64_path.exists()
-                    and mp3_64_path.stat().st_size > 10240
-                ):
+            if mp3_path.name != mp3_64_path.name:
+                converted = await reencode_mp3_64k_atomic(mp3_path, mp3_64_path)
+                if converted:
                     mp3_path.unlink(missing_ok=True)
                     mp3_path = mp3_64_path
                     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-                elif mp3_64_path.exists():
-                    mp3_64_path.unlink(missing_ok=True)  # remove corrupt output
+                else:
+                    logger.warning("Verified atomic MP3 64k conversion failed: %s", mp3_path.name)
             if file_size_mb > get_max_file_size_mb():
                 await update.message.reply_text(
                     f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
@@ -2955,21 +2941,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.info("Shorts/Clips/Montage: using TRANSLATED video (LiveDub) for ENG renders")
         if ai_data and _feat_shorts:
             logger.info("Shorts: feature enabled, starting pipeline")
-            await process_and_send_shorts(
-                url=url,
-                media_id=media_id,
-                mp3_path=mp3_path,
-                title=title,
-                performer=performer,
-                duration=duration,
-                ai_data=ai_data,
-                update=update,
-                existing_audio_part=used_audio_part,   # ← REUSE
-                existing_client=used_client,            # ← REUSE
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                workdir=ld_work if 'ld_work' in locals() else None,
-                livedub_video_path=_shorts_livedub_path,
+            await _run_optional_stage(
+                "process_and_send_shorts",
+                process_and_send_shorts(
+                    url=url,
+                    media_id=media_id,
+                    mp3_path=mp3_path,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    ai_data=ai_data,
+                    update=update,
+                    existing_audio_part=used_audio_part,
+                    existing_client=used_client,
+                    rutube_url=rutube_url,
+                    vk_url=vk_url,
+                    workdir=ld_work if 'ld_work' in locals() else None,
+                    livedub_video_path=_shorts_livedub_path,
+                ),
+                False,
             )
         else:
             logger.info(f"Shorts: skipped (feat={_feat_shorts}, ai_data={'yes' if ai_data else 'no'})")
@@ -2978,20 +2968,24 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _feat_clips = await asettings_get("clips")
         if ai_data and _feat_clips:
             logger.info("Clips: feature enabled, starting pipeline")
-            await process_and_send_clips(
-                url=url,
-                media_id=media_id,
-                mp3_path=mp3_path,
-                title=title,
-                performer=performer,
-                duration=duration,
-                ai_data=ai_data,
-                update=update,
-                existing_audio_part=used_audio_part,   # ← REUSE
-                existing_client=used_client,            # ← REUSE
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                livedub_video_path=_shorts_livedub_path,
+            await _run_optional_stage(
+                "process_and_send_clips",
+                process_and_send_clips(
+                    url=url,
+                    media_id=media_id,
+                    mp3_path=mp3_path,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    ai_data=ai_data,
+                    update=update,
+                    existing_audio_part=used_audio_part,
+                    existing_client=used_client,
+                    rutube_url=rutube_url,
+                    vk_url=vk_url,
+                    livedub_video_path=_shorts_livedub_path,
+                ),
+                False,
             )
         else:
             logger.info(f"Clips: skipped (feat={_feat_clips}, ai_data={'yes' if ai_data else 'no'})")
@@ -3003,35 +2997,47 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         if ai_data and (_feat_montage or _feat_highlights):
             logger.info("Extras: feature enabled, requesting ONE Gemini text call for montage+highlights")
-            _prefetched_extras = await create_extras_candidates(
-                ai_data=ai_data,
-                title=title,
-                performer=performer,
-                duration=duration,
+            _prefetched_extras = await _run_optional_stage(
+                "create_extras_candidates",
+                create_extras_candidates(
+                    ai_data=ai_data,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                ),
+                {"montage_candidates": [], "highlights_candidates": []},
             )
 
         if ai_data and _feat_montage:
             logger.info("Montage: feature enabled, starting pipeline")
-            await process_and_send_montage(
-                url=url, media_id=media_id, mp3_path=mp3_path,
-                title=title, performer=performer, duration=duration,
-                ai_data=ai_data, update=update,
-                rutube_url=rutube_url, vk_url=vk_url,
-                prefetched_candidates=_prefetched_extras.get("montage_candidates", []),
-                livedub_video_path=_shorts_livedub_path,
+            await _run_optional_stage(
+                "process_and_send_montage",
+                process_and_send_montage(
+                    url=url, media_id=media_id, mp3_path=mp3_path,
+                    title=title, performer=performer, duration=duration,
+                    ai_data=ai_data, update=update,
+                    rutube_url=rutube_url, vk_url=vk_url,
+                    prefetched_candidates=_prefetched_extras.get("montage_candidates", []),
+                    livedub_video_path=_shorts_livedub_path,
+                ),
+                False,
             )
         else:
             logger.info(f"Montage: skipped (feat={_feat_montage})")
 
         if ai_data and _feat_highlights:
             logger.info("Highlights: feature enabled, starting pipeline")
-            await process_and_send_highlights(
-                url=url, media_id=media_id, mp3_path=mp3_path,
-                title=title, performer=performer, duration=duration,
-                ai_data=ai_data, update=update,
-                rutube_url=rutube_url, vk_url=vk_url,
-                prefetched_candidates=_prefetched_extras.get("highlights_candidates", []),
-                livedub_video_path=_shorts_livedub_path,
+            await _run_optional_stage(
+                "process_and_send_highlights",
+                process_and_send_highlights(
+                    url=url, media_id=media_id, mp3_path=mp3_path,
+                    title=title, performer=performer, duration=duration,
+                    ai_data=ai_data, update=update,
+                    rutube_url=rutube_url, vk_url=vk_url,
+                    prefetched_candidates=_prefetched_extras.get("highlights_candidates", []),
+                    livedub_video_path=_shorts_livedub_path,
+                ),
+                False,
             )
         else:
             logger.info(f"Highlights: skipped (feat={_feat_highlights})")

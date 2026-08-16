@@ -6,10 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tools.voxcpm2 import direct_surgical_io as io
-from tools.voxcpm2 import direct_surgical_polish_v2
 
 
-direct_surgical_polish_v2.install_global_polish()
 
 
 def digest(path: Path) -> str:

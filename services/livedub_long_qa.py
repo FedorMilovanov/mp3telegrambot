@@ -492,17 +492,9 @@ def decorate_segment_report(text: str, qa: dict[str, Any]) -> str:
         return chr(10).join(lines)[:3900]
 
 
-def install_livedub_long_qa() -> str:
-    """Compatibility validator; long QA is called by the QA owner."""
-    if not callable(run_long_translation_qa):
-        raise RuntimeError("long LiveDub QA strategy is unavailable")
-    return "source-owned segmented LiveDub QA strategy"
-
-
 __all__ = [
     "aggregate_segment_results",
     "decorate_segment_report",
-    "install_livedub_long_qa",
     "run_long_translation_qa",
     "segment_windows",
 ]

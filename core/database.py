@@ -793,6 +793,20 @@ _rate_limit_async_locks: dict[int, asyncio.Lock] = {}
 _rate_limit_locks_guard = asyncio.Lock()
 
 
+def reset_rate_limit_async_state() -> int:
+    """Reset event-loop-bound rate-limit locks after bot loop recreation.
+
+    The database module owns both the per-user lock map and its guard, so callers
+    never mutate private module state across an import boundary. Returns the number
+    of discarded per-user locks for diagnostics.
+    """
+    global _rate_limit_locks_guard
+    stale = len(_rate_limit_async_locks)
+    _rate_limit_async_locks.clear()
+    _rate_limit_locks_guard = asyncio.Lock()
+    return stale
+
+
 async def _get_rate_limit_lock(user_id: int) -> asyncio.Lock:
     async with _rate_limit_locks_guard:
         # FIX 2026-05-24: cleanup stale locks to prevent memory leak

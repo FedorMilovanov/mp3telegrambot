@@ -97,7 +97,7 @@ def _smooth(values: list[float]) -> list[float]:
     return [max(-1.65, min(1.65, value)) for value in limited]
 
 
-def _style(
+def _source_style(
     score: float,
     rate_z: float,
     text: str,
@@ -239,7 +239,7 @@ def plan_segments(
     for index, (item, score) in enumerate(zip(segments, scores, strict=True)):
         updated = dict(item)
         text = str(item.get("text") or "")
-        tier, instruction = _style(
+        tier, instruction = _source_style(
             score,
             rate_z[index],
             text,
@@ -298,35 +298,6 @@ def plan_segments(
         encoding="utf-8",
     )
     return result
-
-
-def plan_json(
-    *,
-    source: Path,
-    segments_path: Path,
-    duration: float,
-    report_path: Path,
-) -> list[dict[str, Any]]:
-    """Plan expression and atomically replace the segment JSON metadata."""
-    payload = json.loads(segments_path.read_text(encoding="utf-8-sig"))
-    if not isinstance(payload, list) or not payload:
-        raise RuntimeError("segments_ru_final.json пуст или повреждён.")
-    segments = [dict(item) for item in payload if isinstance(item, dict)]
-    if len(segments) != len(payload):
-        raise RuntimeError("segments_ru_final.json содержит повреждённые записи.")
-    planned = plan_segments(
-        source=source,
-        segments=segments,
-        duration=duration,
-        report_path=report_path,
-    )
-    temporary = segments_path.with_suffix(segments_path.suffix + ".expression.tmp")
-    temporary.write_text(
-        json.dumps(planned, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(segments_path)
-    return planned
 
 
 def _trim_active(clip: np.ndarray, sample_rate: int) -> np.ndarray:
@@ -418,6 +389,209 @@ def _expressive_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any
     return sorted(result, key=lambda item: (item["selection_score"], item["start"]))
 
 
+__all__ = [
+    "POLICY",
+    "build_controlled_expressive_reference",
+    "plan_json",
+    "plan_segments",
+]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+
+
+
+
+from tools.voxcpm2 import russian_pronunciation
+
+POLICY = "source-guided-monolithic-expression-v3"
+
+REFERENCE_POLICY = "single-calm-identity-reference-v1"
+
+ARC_POLICY = "bounded-neighbour-supported-emotion-v1"
+
+MAX_ADJACENT_SCORE_STEP = 0.26
+
+MIN_STRONG_NEIGHBOUR_SCORE = 0.20
+
+_legacy_plan_segments = plan_segments
+
+def _number(value: Any, default: float = 0.0) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return float(default)
+    return result if math.isfinite(result) else float(default)
+
+def _monolithic_scores(values: list[float]) -> list[float]:
+    if not values:
+        return []
+    current = [max(-0.72, min(0.72, _number(value))) for value in values]
+    for _ in range(2):
+        smoothed: list[float] = []
+        for index, value in enumerate(current):
+            left = current[index - 1] if index else value
+            right = current[index + 1] if index + 1 < len(current) else value
+            smoothed.append(left * 0.24 + value * 0.52 + right * 0.24)
+        limited = [smoothed[0]]
+        for value in smoothed[1:]:
+            limited.append(
+                max(
+                    limited[-1] - MAX_ADJACENT_SCORE_STEP,
+                    min(limited[-1] + MAX_ADJACENT_SCORE_STEP, value),
+                )
+            )
+        for index in range(len(limited) - 2, -1, -1):
+            limited[index] = max(
+                limited[index + 1] - MAX_ADJACENT_SCORE_STEP,
+                min(limited[index + 1] + MAX_ADJACENT_SCORE_STEP, limited[index]),
+            )
+        current = [max(-0.65, min(0.68, value)) for value in limited]
+    return current
+
+def _tier(scores: list[float], index: int) -> str:
+    score = scores[index]
+    if score <= -0.38:
+        return "reflective"
+    if score <= -0.04:
+        return "warm"
+    if score <= 0.38:
+        return "earnest"
+    neighbours: list[float] = []
+    if index:
+        neighbours.append(scores[index - 1])
+    if index + 1 < len(scores):
+        neighbours.append(scores[index + 1])
+    return (
+        "emphatic"
+        if neighbours and max(neighbours) >= MIN_STRONG_NEIGHBOUR_SCORE
+        else "earnest"
+    )
+
+def _style(tier: str, cadence: str) -> str:
+    base = {
+        "reflective": "calm reflective delivery, natural connected phrasing",
+        "warm": "warm sincere delivery, natural connected phrasing",
+        "earnest": "earnest conversational delivery, restrained natural emphasis",
+        "emphatic": "slightly firmer emphasis, controlled and conversational, never theatrical",
+    }.get(tier, "natural connected conversational delivery")
+    if cadence in {"linked", "continuation"}:
+        return base + ", carry the thought smoothly into the next phrase"
+    if cadence == "question":
+        return base + ", genuine but restrained questioning cadence"
+    if cadence in {"terminal", "firm_terminal"}:
+        return base + ", finish naturally without a sudden emotional burst"
+    return base
+
+def plan_segments(
+    *,
+    source: Path,
+    segments: list[dict[str, Any]],
+    duration: float,
+    report_path: Path,
+) -> list[dict[str, Any]]:
+    original_text = [str(item.get("text") or "") for item in segments]
+    measured = _legacy_plan_segments(
+        source=source,
+        segments=segments,
+        duration=duration,
+        report_path=report_path,
+    )
+    if len(measured) != len(original_text):
+        raise RuntimeError("Source expression analysis изменил число сегментов.")
+    scores = _monolithic_scores(
+        [_number(item.get("expression_score")) for item in measured]
+    )
+    result: list[dict[str, Any]] = []
+    report_segments: list[dict[str, Any]] = []
+    for index, item in enumerate(measured):
+        updated = dict(item)
+        tier = _tier(scores, index)
+        cadence = str(
+            updated.get("cadence_type")
+            or classify_cadence(original_text[index])
+        )
+        updated.update(
+            expression_policy=POLICY,
+            expression_arc_policy=ARC_POLICY,
+            expression_score=round(scores[index], 6),
+            expression_tier=tier,
+            reference_profile="extended",
+            identity_reference_profile="extended",
+            reference_policy=REFERENCE_POLICY,
+            style_instruction=_style(tier, cadence),
+            cadence_type=cadence,
+        )
+        updated["pronunciation"] = russian_pronunciation.prepare_segment(updated)
+        result.append(updated)
+        report_segments.append(
+            {
+                "id": int(updated.get("id") or index + 1),
+                "tier": tier,
+                "score": round(scores[index], 6),
+                "raw_score": round(_number(item.get("expression_score")), 6),
+                "reference_profile": "extended",
+                "identity_reference_profile": "extended",
+                "cadence_type": cadence,
+                "style_instruction": updated["style_instruction"],
+                "pronunciation": updated["pronunciation"],
+                "source_prosody": updated.get("source_prosody") or {},
+            }
+        )
+
+    if [str(item.get("text") or "") for item in result] != original_text:
+        raise RuntimeError("Monolithic expression plan изменил русский текст.")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(
+            {
+                "policy": POLICY,
+                "reference_policy": REFERENCE_POLICY,
+                "arc_policy": ARC_POLICY,
+                "source": str(source),
+                "segments": report_segments,
+                "notes": [
+                    "Every segment uses the same extended identity reference.",
+                    "Adjacent expression scores are low-pass filtered and step-limited.",
+                    "An isolated strong cue is downgraded unless a neighbour supports the build.",
+                    "Passionate/character-acting tiers are disabled for short-form dubbing.",
+                    "Display and ASR text remain unchanged; synthesis text is explicit metadata.",
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
+    return result
+
+def plan_json(
+    *,
+    source: Path,
+    segments_path: Path,
+    duration: float,
+    report_path: Path,
+) -> list[dict[str, Any]]:
+    payload = json.loads(segments_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError("segments_ru_final.json пуст или повреждён.")
+    if any(not isinstance(item, dict) for item in payload):
+        raise RuntimeError("segments_ru_final.json содержит повреждённые записи.")
+    planned = plan_segments(
+        source=source,
+        segments=[dict(item) for item in payload],
+        duration=duration,
+        report_path=report_path,
+    )
+    temporary = segments_path.with_suffix(segments_path.suffix + ".monolith.tmp")
+    temporary.write_text(
+        json.dumps(planned, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    temporary.replace(segments_path)
+    return planned
+
 def build_controlled_expressive_reference(
     *,
     source: Path,
@@ -425,108 +599,28 @@ def build_controlled_expressive_reference(
     output: Path,
     target_seconds: float = 7.0,
 ) -> bool:
-    """Overwrite composite with engaged source delivery while rejecting shouting."""
-    candidates = _expressive_candidates(segments)
-    if not candidates:
-        return False
+    """Keep the calm composite; expression may not replace speaker identity."""
+    return False
 
-    selected: list[dict[str, Any]] = []
-    accumulated = 0.0
-    for candidate in candidates:
-        if any(
-            min(candidate["end"], existing["end"])
-            - max(candidate["start"], existing["start"])
-            > 0.25
-            for existing in selected
-        ):
-            continue
-        selected.append(candidate)
-        accumulated += min(3.4, candidate["end"] - candidate["start"])
-        if accumulated >= max(4.8, float(target_seconds)):
-            break
-    if accumulated < 3.2:
-        return False
+POLICY = POLICY
 
-    with tempfile.TemporaryDirectory(prefix="dub-expressive-ref-") as temp_raw:
-        decoded = Path(temp_raw) / "source.wav"
-        samples, sample_rate = audio_policy._decode(source, decoded)
-        audio = np.asarray(samples, dtype=np.float32).reshape(-1)
-        sample_rate = int(sample_rate)
-        parts: list[np.ndarray] = []
-        actual_selected: list[dict[str, Any]] = []
-        total = 0.0
-        for candidate in selected:
-            if total >= float(target_seconds):
-                break
-            start = max(0.0, float(candidate["start"]))
-            end = min(float(candidate["end"]), start + 3.4)
-            clip = audio[int(start * sample_rate) : int(end * sample_rate)]
-            clip = _trim_active(clip, sample_rate)
-            remaining = int(max(0.0, float(target_seconds) - total) * sample_rate)
-            if remaining <= 0:
-                break
-            clip = clip[:remaining]
-            if len(clip) < int(sample_rate * 0.85):
-                continue
-            parts.append(clip)
-            clip_duration = len(clip) / sample_rate
-            total += clip_duration
-            actual_selected.append(
-                {
-                    "id": candidate["id"],
-                    "start": round(start, 3),
-                    "end": round(start + clip_duration, 3),
-                    "expression_score": round(candidate["expression_score"], 5),
-                    "selection_score": round(candidate["selection_score"], 5),
-                    **{
-                        key: round(_number(value), 5)
-                        for key, value in candidate["metrics"].items()
-                        if isinstance(value, (int, float))
-                    },
-                }
-            )
+plan_segments = plan_segments
 
-        if not parts or total < 3.2:
-            return False
-        combined = audio_policy.dub_quality_v4._crossfade(parts, sample_rate)
-        combined = combined[: int(float(target_seconds) * sample_rate)]
-        rms = math.sqrt(float(np.mean(combined**2)) + 1e-12)
-        peak = float(np.max(np.abs(combined))) + 1e-12
-        gain = min(
-            10 ** (-24.0 / 20.0) / max(rms, 1e-9),
-            10 ** (-3.0 / 20.0) / peak,
-            10 ** (5.0 / 20.0),
-        )
-        combined = np.clip(combined * gain, -0.999, 0.999).astype(np.float32)
-        fade = min(int(sample_rate * 0.025), len(combined) // 8)
-        if fade > 1:
-            ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
-            combined[:fade] *= ramp
-            combined[-fade:] *= ramp[::-1]
+plan_json = plan_json
 
-        output.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(output, combined, sample_rate, subtype="PCM_24")
+build_controlled_expressive_reference = build_controlled_expressive_reference
 
-    output.with_suffix(".selection.json").write_text(
-        json.dumps(
-            {
-                "policy": POLICY,
-                "profile": "controlled_expressive",
-                "purpose": "real source prosody for emphatic arc sections; shouting rejected",
-                "selected": actual_selected,
-                "duration_seconds": round(len(combined) / sample_rate, 4),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    return True
-
-
-__all__ = [
-    "POLICY",
-    "build_controlled_expressive_reference",
-    "plan_json",
-    "plan_segments",
-]
+__all__ = sorted(
+    set(_BASE_ALL)
+    | {
+        "ARC_POLICY",
+        "MAX_ADJACENT_SCORE_STEP",
+        "MIN_STRONG_NEIGHBOUR_SCORE",
+        "POLICY",
+        "REFERENCE_POLICY",
+        "_legacy_plan_segments",
+        "build_controlled_expressive_reference",
+        "plan_json",
+        "plan_segments",
+    }
+)

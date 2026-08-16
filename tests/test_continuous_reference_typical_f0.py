@@ -29,12 +29,12 @@ def test_equal_quality_windows_choose_typical_pitch_not_lowest_pitch(monkeypatch
         return {"active_ratio": 0.74, "max_internal_gap": 0.08}
 
     monkeypatch.setattr(
-        continuous_reference_policy._legacy.professional_audio_v45,
+        continuous_reference_policy.professional_audio_v45,
         "pitch_profile",
         pitch,
     )
     monkeypatch.setattr(
-        continuous_reference_policy._legacy.professional_audio_v45,
+        continuous_reference_policy.professional_audio_v45,
         "activity_stats",
         activity,
     )
@@ -72,12 +72,12 @@ def test_quality_metrics_remain_part_of_reference_ranking(monkeypatch) -> None:
         return {"active_ratio": 0.74, "max_internal_gap": 0.08}
 
     monkeypatch.setattr(
-        continuous_reference_policy._legacy.professional_audio_v45,
+        continuous_reference_policy.professional_audio_v45,
         "pitch_profile",
         pitch,
     )
     monkeypatch.setattr(
-        continuous_reference_policy._legacy.professional_audio_v45,
+        continuous_reference_policy.professional_audio_v45,
         "activity_stats",
         activity,
     )

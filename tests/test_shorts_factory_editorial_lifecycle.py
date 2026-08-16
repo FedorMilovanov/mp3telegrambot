@@ -41,10 +41,8 @@ def test_factory_pipeline_builds_editorial_pack_directly_without_handoff_bridge(
 
 def test_translation_editorial_runner_is_the_only_standalone_owner():
     dispatcher = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
-    routing_bridge = Path(
-        "services/shorts_factory_overload_editorial_polish.py"
-    ).read_text(encoding="utf-8")
+    retired_bridge = Path("services/shorts_factory_overload_editorial_polish.py")
     assert "services.translation_editorial_runner" in dispatcher
-    assert "services.translation_editorial_runner" in routing_bridge
+    assert not retired_bridge.exists()
     assert "shorts_factory_editorial_bridge" not in dispatcher
-    assert "shorts_factory_editorial_bridge" not in routing_bridge
+

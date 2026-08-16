@@ -11,7 +11,7 @@ from services import ffmpeg
 
 
 SOURCE_PATH = Path("services/ffmpeg.py")
-STATIC_RUNTIME_PATH = Path("services/shorts_static_runtime.py")
+STATIC_RUNTIME_PATH = Path("services/shorts_static_policy.py")
 PROBE_FUNCTIONS = (
     "_find_silence_end",
     "_is_static_video",
@@ -36,7 +36,7 @@ def test_async_probe_surface_uses_process_tree_owner() -> None:
     selected = "\n".join(_function_source(name) for name in PROBE_FUNCTIONS)
 
     assert "from services.async_process import run_cancellable_process" in source
-    assert selected.count("await run_cancellable_process(") == 6
+    assert selected.count("await run_cancellable_process(") == 5
     assert "run_in_executor" not in selected
     assert "from subprocess import run" not in selected
 

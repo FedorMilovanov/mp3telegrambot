@@ -59,8 +59,6 @@ def validate_livedub_audio_quality_contract() -> str:
 
 
 # Compatibility name for old diagnostics. It performs no installation.
-def install_livedub_audio_quality_guard() -> str:
-    return validate_livedub_audio_quality_contract()
 
 
 __all__ = [

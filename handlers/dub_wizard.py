@@ -17,7 +17,6 @@ from pathlib import Path
 import re
 import secrets
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -31,13 +30,16 @@ from telegram.ext import (
 
 from core.database import ADMIN_IDS
 from services.dub_studio import DubStore, studio_root
+from services.speech_backends import DEFAULT_MODEL_PROFILE_ID
 from services.tts_profile_selection import (
     ProductionTTSProfileChoice,
     normalize_new_production_tts_request,
     production_tts_profile_choice,
     production_tts_profile_choices,
+    rebind_inactive_project_tts_profile,
     write_durable_request,
 )
+from tools.voxcpm2 import clean_source_download, generic_project_runtime
 from tools.voxcpm2.generic_direct_runtime import parse_srt_text
 
 _GENERIC_RECIPE = "generic_short_v1"
@@ -68,24 +70,11 @@ def _extract_youtube_video_id(value: str) -> tuple[str, str]:
     raw = str(value or "").strip()
     if not raw.startswith(("http://", "https://")):
         raw = "https://" + raw
-    parsed = urlparse(raw)
-    host = parsed.netloc.casefold().split(":", 1)[0]
-    if host not in _YOUTUBE_HOSTS:
-        raise ValueError("Нужна ссылка YouTube или YouTube Shorts.")
-
-    video_id = ""
-    if host == "youtu.be":
-        video_id = parsed.path.strip("/").split("/", 1)[0]
-    else:
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) >= 2 and parts[0] in {"shorts", "embed", "live"}:
-            video_id = parts[1]
-        else:
-            video_id = (parse_qs(parsed.query).get("v") or [""])[0]
-
-    video_id = video_id.split("?", 1)[0].split("&", 1)[0]
-    if not _VIDEO_ID_RE.fullmatch(video_id):
-        raise ValueError("Не удалось определить YouTube video ID из ссылки.")
+    video_id = clean_source_download._url_video_id(raw)
+    if not video_id:
+        raise ValueError(
+            "Нужна каноническая ссылка на один YouTube-ролик: watch, youtu.be, Shorts, live или embed."
+        )
     return video_id, f"https://youtube.com/watch?v={video_id}"
 
 
@@ -490,12 +479,45 @@ async def dubnewvideo_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
-    text, page, page_count = _catalog_text(0)
-    await update.effective_message.reply_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=_catalog_keyboard(page, page_count),
-    )
+    args = [str(value).strip() for value in (context.args or []) if str(value).strip()]
+    if not args:
+        text, page, page_count = _catalog_text(0)
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=_catalog_keyboard(page, page_count)
+        )
+        return
+    if len(args) != 2:
+        await update.effective_message.reply_text(
+            "Использование:\n<code>/dubtts</code> — каталог моделей\n"
+            "<code>/dubtts PROJECT_ID PROFILE_ID</code> — сменить модель у draft/failed/cancelled проекта.",
+            parse_mode="HTML",
+        )
+        return
+    project_id, profile_id = args[0].casefold(), args[1]
+    try:
+        store = DubStore()
+        request_path = store.root / "projects" / project_id / "request.json"
+        result = rebind_inactive_project_tts_profile(
+            store, project_id, owner_user_id=update.effective_user.id,
+            request_path=request_path, profile_value=profile_id,
+        )
+        choice = production_tts_profile_choice(result.choice.profile_id)
+        status = "уже был закреплён" if not result.changed else "закреплён"
+        await update.effective_message.reply_text(
+            "🎙 <b>TTS-профиль проекта обновлён</b>\n\n"
+            f"Проект: <code>{html.escape(result.project_id)}</code>\n"
+            f"Профиль {status}: <code>{html.escape(choice.profile_id)}</code>\n"
+            f"Backend: <code>{html.escape(choice.backend_id)}</code>\n"
+            f"Revision: <code>{html.escape(choice.model_revision)}</code>\n"
+            f"Fingerprint: <code>{html.escape(choice.fingerprint[:12])}</code>\n\n"
+            "Изменение разрешено только без active job. Параметры TTS нового профиля сброшены к его валидированным defaults.",
+            parse_mode="HTML",
+        )
+    except Exception as exc:
+        await update.effective_message.reply_text(
+            "⚠️ TTS-профиль не изменён: " + html.escape(_short(str(exc), 1400)),
+            parse_mode="HTML",
+        )
 
 
 async def _show_projects(update: Update) -> None:
@@ -711,7 +733,8 @@ async def _create_generic_project(
     )
     project_id = str(project["id"])
     root = _project_root(project_id)
-    write_durable_request(root / "request.json", request)
+    validated_request = generic_project_runtime.validate_request_payload(request)
+    write_durable_request(root / "request.json", validated_request)
 
     model_line = (
         f"TTS: <b>{html.escape(choice.display_name)}</b> · "

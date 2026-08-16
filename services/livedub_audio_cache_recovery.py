@@ -165,8 +165,6 @@ def validate_livedub_audio_cache_backend() -> str:
 
 
 # Compatibility name for old diagnostics. It no longer installs or replaces anything.
-def install_livedub_audio_cache_recovery() -> str:
-    return validate_livedub_audio_cache_backend()
 
 
 __all__ = [

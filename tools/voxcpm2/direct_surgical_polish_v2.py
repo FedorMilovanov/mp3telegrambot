@@ -14,10 +14,6 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Callable
 
-from tools.voxcpm2 import direct_retry_epoch as retry
-from tools.voxcpm2 import direct_surgical_io as sio
-from tools.voxcpm2 import direct_surgical_runtime as runtime
-from tools.voxcpm2 import direct_timing_guard as guard
 
 POLICY = "voxcpm2-surgical-polish-v2"
 MARKER_POLICY = "voxcpm2-measured-timing-block-v3"
@@ -30,7 +26,6 @@ MAX_SEGMENTS = 10_000
 MAX_TEXT_CHARS = 20_000
 MAX_TOTAL_TEXT_CHARS = 2_000_000
 MAX_BYTES = 2 * 1024 * 1024
-_INSTALLED = False
 _REFERENCE_CONTRACT = ""
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 _REF_FILES = (
@@ -42,8 +37,6 @@ _REF_FILES = (
 )
 _EXTRA_SCOPE = (
     "tools/voxcpm2/direct_surgical_polish_v2.py",
-    "tools/voxcpm2/_direct_retry_epoch_base.py",
-    "tools/voxcpm2/_direct_max_quality_cli_base.py",
     "tools/voxcpm2/direct_max_quality_io.py",
     "tools/voxcpm2/direct_max_quality_analysis.py",
     "tools/voxcpm2/direct_max_quality_render.py",
@@ -414,120 +407,4 @@ def _archive(path: Path, reason: str) -> None:
         path.unlink(missing_ok=True)
 
 
-def install_global_polish() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    original_preflight = guard.run_pre_model_guard
-    original_persist = guard.persist_timing_block
-    original_context = guard.load_signature_context
-    original_invalidate = retry.invalidate_segment_for_retry
-
-    def preflight(segments, *, work_dir, max_tempo, signature_context):
-        return original_preflight(
-            _segments(segments),
-            work_dir=work_dir,
-            max_tempo=max_tempo,
-            signature_context=signature_context,
-        )
-
-    def context(work_dir):
-        value = dict(original_context(work_dir))
-        value.update(_runtime_marker(work_dir))
-        value["surgical_polish_policy"] = POLICY
-        return value
-
-    def persist(work_dir, *, segment, signature_context, retry_epoch, evidence):
-        clean = _segments([dict(segment)])[0]
-        value = dict(original_persist(
-            work_dir,
-            segment=clean,
-            signature_context=signature_context,
-            retry_epoch=retry_epoch,
-            evidence=evidence,
-        ))
-        value.update(
-            schema_version=MARKER_SCHEMA_VERSION,
-            policy=MARKER_POLICY,
-            segment_id=int(clean["id"]),
-            signature=guard.failure_scope_fingerprint(clean, signature_context=signature_context),
-            speech_slot=round(clean["end"] - clean["start"] - clean["tail_guard"], 6),
-            retry_epoch=_integer(retry_epoch, "retry_epoch"),
-        )
-        _atomic(_marker_path(work_dir, clean["id"]), value)
-        return value
-
-    def load_block(work_dir, *, segment, signature_context):
-        clean = _segments([dict(segment)])[0]
-        path = _marker_path(work_dir, clean["id"])
-        if not path.is_file():
-            return None
-        value = _read(path)
-        expected = guard.failure_scope_fingerprint(clean, signature_context=signature_context)
-        slot = clean["end"] - clean["start"] - clean["tail_guard"]
-        try:
-            recommendation = value.get("recommendation")
-            valid = bool(
-                value.get("schema_version") == MARKER_SCHEMA_VERSION
-                and value.get("policy") == MARKER_POLICY
-                and _integer(value.get("segment_id"), "marker.id") == clean["id"]
-                and _sha(value.get("signature")) == expected
-                and 0 <= _integer(value.get("retry_epoch"), "marker.epoch") < MAX_SCOPE_EPOCH
-                and abs(_number(value.get("speech_slot"), "marker.slot") - slot) <= 1e-6
-                and isinstance(value.get("evidence"), dict)
-                and isinstance(recommendation, Mapping)
-                and _number(recommendation.get("hard_minimum_speech_slot"), "hard_slot") + 1e-6 >= slot
-                and 0 <= _integer(recommendation.get("hard_shorten_percent"), "shorten") <= 100
-            )
-        except RuntimeError:
-            valid = False
-        if valid:
-            return value
-        _archive(path, "input-changed" if value.get("signature") != expected else "contract-mismatch")
-        return None
-
-    def invalidate(work_dir, segment, *, reason, fitted_path=None, evidence=None):
-        evidence = dict(evidence or {})
-        fingerprint = _sha(evidence.get("failure_scope_fingerprint"))
-        result = dict(original_invalidate(
-            work_dir,
-            segment,
-            reason=reason,
-            fitted_path=fitted_path,
-            evidence=evidence,
-        ))
-        result["raw_retry_epoch"] = int(result.get("retry_epoch") or 0)
-        if fingerprint:
-            epoch = retry.load_retry_epoch(
-                work_dir,
-                segment.get("id"),
-                scope_fingerprint=fingerprint,
-            )
-            result.update(
-                retry_epoch=epoch,
-                scope_retry_epoch=epoch,
-                last_scope_epoch=epoch,
-                scope_fingerprint=fingerprint,
-                policy=POLICY,
-            )
-        return result
-
-    guard.run_pre_model_guard = preflight
-    guard.load_signature_context = context
-    guard.persist_timing_block = persist
-    guard.load_matching_timing_block = load_block
-    guard.MARKER_SCHEMA_VERSION = MARKER_SCHEMA_VERSION
-    retry._scope_epochs = _scope_epochs
-    retry.invalidate_segment_for_retry = invalidate
-    sio.MutableAudioSpec = _AudioSpec
-    sio.LazySession = _LazySession
-    sio.cached_reference = _cached_reference
-    sio.enrich_reference_report = _enrich_reference_report
-    sio.POLICY = POLICY
-    runtime._segments_by_id = _segments_by_id
-    runtime._RUNTIME_SCOPE_FILES = tuple(dict.fromkeys((*runtime._RUNTIME_SCOPE_FILES, *_EXTRA_SCOPE)))
-    runtime.POLICY = "voxcpm2-surgical-runtime-v2"
-    _INSTALLED = True
-
-
-__all__ = ["MARKER_SCHEMA_VERSION", "POLICY", "install_global_polish"]
+__all__ = ["MARKER_POLICY", "MARKER_SCHEMA_VERSION", "POLICY"]

@@ -135,17 +135,7 @@ def _validate_quality_models() -> None:
         )
 
 
-def install_livedub_quality_runtime() -> str:
-    """Compatibility validator; performs no runtime function replacement."""
-    _validate_quality_models()
-    return (
-        "semantic=Gemini 3.6/HIGH/no-fallback; explicit LiveDub coordinator; "
-        "source-owned UTF-8 probes"
-    )
-
-
 __all__ = [
     "configure_gemini_network",
     "configure_gemini_policy",
-    "install_livedub_quality_runtime",
 ]

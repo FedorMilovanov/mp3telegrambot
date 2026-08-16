@@ -1,94 +1,32 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from services.speech_backends import (
-    BACKEND_CONTRACT_POLICY,
-    BACKEND_ENVIRONMENT_POLICY,
-    BACKEND_RUNTIME_PATH_POLICY,
-    default_backend,
-)
-from tools.voxcpm2 import preflight_json_protocol
+from services.speech_backends import get_backend
+from tools.voxcpm2 import dub_job_preflight
 
 
-def _request(tmp_path: Path, *, mode: str) -> dict[str, str]:
-    return {
-        "cpu_venv": str(tmp_path / "cpu-venv"),
-        "vox_archive": str(tmp_path / "archive"),
-        "translation_mode": mode,
-    }
-
-
-def test_voxcpm2_direct_backend_owns_monolithic_runtime_paths(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    request = _request(tmp_path, mode="direct")
-
-    runtime = default_backend().runtime_paths(repo, request)
-
-    expected_python = Path(request["cpu_venv"]) / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
-    example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
-    assert BACKEND_CONTRACT_POLICY.startswith("speech-backend-contract-v")
-    assert BACKEND_RUNTIME_PATH_POLICY == "speech-backend-runtime-paths-v1"
-    assert runtime.backend_id == "voxcpm2"
-    assert runtime.cpu_python == expected_python.resolve()
-    assert runtime.archive_root == Path(request["vox_archive"]).resolve()
-    assert runtime.renderer_entrypoint == (
-        example / "voxcpm2_cpu_shorts_production.py"
-    ).resolve()
-    assert runtime.master_entrypoint == (
-        repo / "tools" / "voxcpm2" / "master_monolithic_mix.py"
-    ).resolve()
-    assert runtime.renderer_module in runtime.import_modules
-    assert runtime.master_module == "tools.voxcpm2.master_monolithic_mix"
-    assert runtime.master_module in runtime.import_modules
-    assert runtime.final_qa_module in runtime.import_modules
-    assert {"voxcpm", "torch", "soundfile"}.issubset(runtime.import_modules)
-
-
-def test_voxcpm2_gemini_backend_keeps_legacy_master_path(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    runtime = default_backend().runtime_paths(
+def test_direct_backend_selects_source_owned_russian_only_master() -> None:
+    backend = get_backend("voxcpm2")
+    repo = Path(__file__).resolve().parents[1]
+    runtime = backend.runtime_paths(
         repo,
-        _request(tmp_path, mode="gemini"),
+        {
+            "translation_mode": "direct",
+            "cpu_venv": r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv",
+            "vox_archive": r"C:\AI-Archive\VoxCPM2-paused-RTX3060",
+        },
     )
-    example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
-
-    assert runtime.master_entrypoint == (example / "master_constant_mix.py").resolve()
-    assert runtime.master_module == (
-        "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
-    )
-    assert "tools.voxcpm2.master_monolithic_mix" not in runtime.import_modules
+    assert runtime.master_entrypoint.name == "master_direct_russian_only.py"
+    assert runtime.master_module == "tools.voxcpm2.master_direct_russian_only"
+    assert runtime.final_qa_module == "tools.voxcpm2.final_media_qa"
 
 
-def test_runtime_paths_report_is_json_ready(tmp_path: Path) -> None:
-    runtime = default_backend().runtime_paths(
-        tmp_path,
-        _request(tmp_path, mode="direct"),
-    )
-
-    payload = runtime.as_dict()
-
-    assert payload["backend_id"] == "voxcpm2"
-    assert payload["contract_policy"] == BACKEND_CONTRACT_POLICY
-    assert payload["runtime_path_policy"] == "speech-backend-runtime-paths-v1"
-    assert payload["environment_policy"] == BACKEND_ENVIRONMENT_POLICY
-    assert isinstance(payload["import_modules"], list)
-    assert isinstance(payload["cpu_python"], str)
-    assert payload["master_module"] == "tools.voxcpm2.master_monolithic_mix"
-
-
-def test_preflight_installer_routes_both_paths_and_probe() -> None:
-    from tools.voxcpm2 import dub_job_preflight
-
-    old_paths = dub_job_preflight._runtime_paths
-    old_probe = dub_job_preflight._probe_imports
-    try:
-        preflight_json_protocol.install()
-        assert dub_job_preflight._runtime_paths is preflight_json_protocol.runtime_paths
-        assert dub_job_preflight._probe_imports is preflight_json_protocol.probe_imports
-    finally:
-        dub_job_preflight._runtime_paths = old_paths
-        dub_job_preflight._probe_imports = old_probe
+def test_preflight_uses_backend_owned_runtime_paths_without_installers() -> None:
+    source = Path(dub_job_preflight.__file__).read_text(encoding="utf-8")
+    assert "backend.runtime_paths(repo, request)" in source
+    assert "backend.process_environment(" in source
+    assert "def _runtime_paths(" in source
+    assert "def _probe_imports(" in source
+    assert "preflight_json_protocol" not in source
+    assert "def install" not in source

@@ -1,8 +1,8 @@
 """Declarative, fail-closed runtime composition for the production bot.
 
 The entry point must not silently continue with an arbitrary subset of safety
-adapters. This module owns one ordered feature manifest, records installation
-evidence and stops startup when a required feature cannot be installed.
+adapters. This module owns one ordered feature manifest, records activation
+evidence and stops startup when a required feature cannot be activated.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class RuntimeFeatureState(str, Enum):
 
 
 class RuntimeBootstrapError(RuntimeError):
-    """Raised when a required runtime feature cannot be installed."""
+    """Raised when a required runtime feature cannot be activated."""
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class RuntimeFeatureResult:
 
 
 class RuntimeManifest:
-    """Install one explicit feature graph and retain auditable evidence."""
+    """Activate one explicit feature graph and retain auditable evidence."""
 
     def __init__(self, features: Iterable[RuntimeFeature]) -> None:
         ordered = tuple(features)
@@ -132,7 +132,7 @@ class RuntimeManifest:
         self._results[feature.feature_id] = result
         return result
 
-    def install_phase(
+    def activate_phase(
         self,
         phase: RuntimePhase,
         *,
@@ -274,28 +274,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "shorts-visual-policy",
-        "services.shorts_static_runtime",
-        "install_short_static_runtime",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
-        "gemini-startup-diagnostics",
-        "services.gemini_startup_diagnostics",
-        "install_gemini_startup_diagnostics",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
-        "livedub-help",
-        "services.livedub_help_runtime",
-        "install_livedub_help_runtime",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
         "livedub-qa-contract",
         "services.livedub_qa",
         "validate_livedub_qa_contract",
@@ -307,50 +285,17 @@ DEFAULT_RUNTIME_FEATURES = (
         "validate_livedub_delivery_contract",
         RuntimePhase.POST_MAIN,
     ),
-    RuntimeFeature(
-        "project-runtime-hardening",
-        "services.project_runtime_hardening",
-        "install_project_runtime_hardening",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
-    ),
-    RuntimeFeature(
-        "shorts-factory-routing-bridge",
-        "services.shorts_factory_overload_editorial_polish",
-        "install_shorts_factory_overload_editorial_polish",
-        RuntimePhase.POST_MAIN,
-        false_is_failure=True,
-    ),
-    RuntimeFeature(
-        "dub-studio-runtime",
-        "services.dub_studio_runtime",
-        "install_dub_studio_runtime",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "dub-title-policy",
-        "services.dub_title_policy",
-        "install_dub_title_policy",
-        RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "restart-state-runtime",
-        "services.restart_state_runtime",
-        "install_restart_state_runtime",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
-    ),
 )
 
 _DEFAULT_MANIFEST = RuntimeManifest(DEFAULT_RUNTIME_FEATURES)
 
 
 def bootstrap_pre_main() -> tuple[RuntimeFeatureResult, ...]:
-    return _DEFAULT_MANIFEST.install_phase(RuntimePhase.PRE_MAIN)
+    return _DEFAULT_MANIFEST.activate_phase(RuntimePhase.PRE_MAIN)
 
 
 def bootstrap_post_main(main_module: ModuleType) -> tuple[RuntimeFeatureResult, ...]:
-    return _DEFAULT_MANIFEST.install_phase(
+    return _DEFAULT_MANIFEST.activate_phase(
         RuntimePhase.POST_MAIN,
         main_module=main_module,
     )

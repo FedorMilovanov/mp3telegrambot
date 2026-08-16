@@ -134,21 +134,14 @@ jobs:
           tests/test_requirements_lock.py
           tests/test_speech_model_profile_manifests.py
           tests/test_services_import_diagnostics.py
-          tests/test_gemini_startup_diagnostics.py
           tests/test_operator_runtime_status.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py
-          tests/test_livedub_new_delivery_atomicity.py
-          tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py
-          tests/test_livedub_cached_delivery_atomicity.py
-          tests/test_livedub_publication_error_diagnostics.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
-          tests/test_cloud_media_fallback.py
-          tests/test_project_runtime_hardening.py
           tests/test_async_process.py
           tests/test_async_process_tree.py
           tests/test_ffmpeg_probe_ownership.py
@@ -162,8 +155,6 @@ jobs:
           tests/test_livedub_audio_companion.py
           tests/test_livedub_audio_quality_guard.py
           tests/test_livedub_audio_media_integration.py
-          tests/test_livedub_dual_audio.py
-          tests/test_livedub_help_runtime.py
           tests/test_livedub_long_qa.py
           tests/test_livedub_user_reported_fixes.py
           tests/test_livedub_publication.py
@@ -198,21 +189,14 @@ jobs:
           tests/test_requirements_lock.py
           tests/test_speech_model_profile_manifests.py
           tests/test_services_import_diagnostics.py
-          tests/test_gemini_startup_diagnostics.py
           tests/test_operator_runtime_status.py
           tests/test_restart_state_runtime.py
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py
-          tests/test_livedub_new_delivery_atomicity.py
-          tests/test_livedub_new_delivery_roles.py
           tests/test_livedub_install_order.py
-          tests/test_livedub_cached_delivery_atomicity.py
-          tests/test_livedub_publication_error_diagnostics.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
-          tests/test_cloud_media_fallback.py
-          tests/test_project_runtime_hardening.py
           tests/test_async_process.py
           tests/test_async_process_tree.py
           tests/test_ffmpeg_probe_ownership.py
@@ -226,8 +210,6 @@ jobs:
           tests/test_livedub_audio_companion.py
           tests/test_livedub_audio_quality_guard.py
           tests/test_livedub_audio_media_integration.py
-          tests/test_livedub_dual_audio.py
-          tests/test_livedub_help_runtime.py
           tests/test_livedub_long_qa.py
           tests/test_livedub_user_reported_fixes.py
           tests/test_livedub_publication.py

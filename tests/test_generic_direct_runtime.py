@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from tools.voxcpm2.generic_direct_checked_runtime import (
-    build_direct_segments_safe,
-    preserve_user_tts_text,
-)
 from tools.voxcpm2.generic_direct_runtime import (
     _build_direct_segments,
     group_srt_cues,
@@ -30,10 +26,7 @@ def test_parse_srt_preserves_user_words_and_punctuation() -> None:
 
 
 def test_normalize_overlapping_srt_keeps_all_text() -> None:
-    cues = [
-        Cue(0.0, 2.0, "Первая фраза."),
-        Cue(1.8, 3.0, "Вторая фраза."),
-    ]
+    cues = [Cue(0.0, 2.0, "Первая фраза."), Cue(1.8, 3.0, "Вторая фраза.")]
     normalized, adjustments = normalize_srt_cues(cues, 4.0)
     combined = " ".join(cue.text for cue in normalized)
     assert "Первая фраза." in combined
@@ -48,33 +41,26 @@ def test_grouping_preserves_every_word_in_order() -> None:
         Cue(4.0, 6.0, "Пять шесть."),
     ]
     groups = group_srt_cues(cues)
-    assert " ".join(group["source"] for group in groups) == (
-        "Один два. Три четыре. Пять шесть."
-    )
+    assert " ".join(group["source"] for group in groups) == "Один два. Три четыре. Пять шесть."
 
 
 def test_direct_segments_apply_420ms_delay_without_rewriting() -> None:
-    groups = [{"id": 1, "start": 1.0, "end": 4.0, "source": "Точный текст."}]
-    segments, subtitles = _build_direct_segments(groups, delay_ms=420, duration=5.0)
+    cue = Cue(1.0, 4.0, "Точный текст.")
+    blocks = [{
+        "id": 1,
+        "start": 1.0,
+        "end": 4.0,
+        "source": "Точный текст.",
+        "semantic_block_id": 1,
+        "source_cue_count": 1,
+        "semantic_block_duration": 3.0,
+        "source_parts": ["Точный текст."],
+        "source_cues": [cue],
+    }]
+    segments, subtitles = _build_direct_segments(blocks, delay_ms=420, duration=5.0)
     assert segments[0]["start_delay_ms"] == 420
     assert segments[0]["text"] == "Точный текст."
+    assert len(subtitles) == 1
     assert subtitles[0].start == 1.42
+    assert subtitles[0].end == 4.42
     assert subtitles[0].text == "Точный текст."
-
-
-def test_checked_entrypoint_expands_sub_350ms_final_cue() -> None:
-    groups = [{"id": 1, "start": 4.8, "end": 5.0, "source": "Финал."}]
-    segments, subtitles = build_direct_segments_safe(groups, delay_ms=420, duration=5.0)
-    assert segments[0]["start_delay_ms"] == 0
-    assert segments[0]["start"] == 4.65
-    assert segments[0]["end"] == 5.0
-    assert subtitles[0].start == 4.65
-    assert subtitles[0].end == 5.0
-    assert segments[0]["text"] == "Финал."
-    assert segments[0]["text_policy"] == "verbatim_user_srt"
-    assert segments[0]["timing_window_expanded"] is True
-
-
-def test_ready_srt_tts_policy_keeps_final_punctuation_verbatim() -> None:
-    source = "…Именно так… — не менять!"
-    assert preserve_user_tts_text(source) == source

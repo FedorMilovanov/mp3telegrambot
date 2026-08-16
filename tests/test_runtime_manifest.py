@@ -44,7 +44,7 @@ def test_required_feature_failure_is_fail_closed():
     )
 
     with pytest.raises(RuntimeBootstrapError, match="required"):
-        manifest.install_phase(RuntimePhase.PRE_MAIN)
+        manifest.activate_phase(RuntimePhase.PRE_MAIN)
 
     payload = manifest.as_dict()
     assert payload["policy"] == RUNTIME_MANIFEST_POLICY
@@ -84,7 +84,7 @@ def test_optional_failure_is_recorded_without_hiding_required_success():
         )
     )
 
-    manifest.install_phase(RuntimePhase.PRE_MAIN)
+    manifest.activate_phase(RuntimePhase.PRE_MAIN)
     manifest.require_ready()
 
     payload = manifest.as_dict()
@@ -127,7 +127,7 @@ def test_required_dependency_failure_stops_dependent_feature():
     )
 
     with pytest.raises(RuntimeBootstrapError, match="blocked"):
-        manifest.install_phase(RuntimePhase.PRE_MAIN)
+        manifest.activate_phase(RuntimePhase.PRE_MAIN)
 
     assert calls == []
     assert manifest.as_dict()["features"]["dependent"]["state"] == "failed"
@@ -154,7 +154,7 @@ def test_main_module_is_passed_only_to_declared_installers():
     )
     main_module = ModuleType("_test_main")
 
-    manifest.install_phase(RuntimePhase.POST_MAIN, main_module=main_module)
+    manifest.activate_phase(RuntimePhase.POST_MAIN, main_module=main_module)
     manifest.require_ready()
 
     assert received == [main_module]
@@ -176,7 +176,7 @@ def test_explicit_false_is_a_failure_for_boolean_guards():
     )
 
     with pytest.raises(RuntimeBootstrapError, match="returned False"):
-        manifest.install_phase(RuntimePhase.PRE_MAIN)
+        manifest.activate_phase(RuntimePhase.PRE_MAIN)
 
 
 def test_shorts_factory_is_source_owned_not_a_runtime_manifest_feature():

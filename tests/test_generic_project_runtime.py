@@ -13,7 +13,7 @@ from tools.voxcpm2.generic_project_runtime import (
     validate_custom_timing,
     write_translation_template,
 )
-from tools.voxcpm2.generic_short_runtime import standardize_russian_title
+from tools.voxcpm2.generic_short_production import standardize_russian_title
 
 
 def _groups() -> list[dict]:

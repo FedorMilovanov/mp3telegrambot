@@ -7,6 +7,8 @@ CPU render.
 """
 from __future__ import annotations
 
+from core.media_title_policy import canonical_media_title
+
 import json
 import os
 import re
@@ -322,6 +324,8 @@ class DubStore:
         item = dict(row)
         item["metadata"] = _json_load(item.pop("metadata_json", "{}"), {})
         item["progress"] = int(item.get("progress") or 0)
+        if item.get("title"):
+            item["title"] = canonical_media_title(item["title"])
         return item
 
     def _row_job(self, row: sqlite3.Row | None) -> dict[str, Any] | None:

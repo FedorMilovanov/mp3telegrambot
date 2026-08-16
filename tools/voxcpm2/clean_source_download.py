@@ -11,7 +11,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import generic_short_runtime as hardened
 
 POLICY = "clean-source-download-manifest-v1"
 MIN_SOURCE_BYTES = 100_000
@@ -110,7 +109,7 @@ def _metadata(url: str) -> dict[str, Any]:
         )
     process = pipeline.run_checked(
         [
-            *hardened._ytdlp_base(),
+            *pipeline._ytdlp_base(),
             "--dump-single-json",
             "--skip-download",
             "--no-playlist",
@@ -212,7 +211,7 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
     pipeline.log(f"Source cache missing or mismatched; downloading video_id={video_id}")
     pipeline.run_checked(
         [
-            *hardened._ytdlp_base(),
+            *pipeline._ytdlp_base(),
             "--no-playlist",
             "--windows-filenames",
             "-f",
@@ -247,3 +246,31 @@ __all__ = [
     "POLICY",
     "download_source",
 ]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+
+
+_legacy_download_source = download_source
+
+def download_source(url: str, source: Path) -> dict[str, Any]:
+    source = Path(source)
+    url_video_id = _url_video_id(str(url))
+    if not url_video_id:
+        raise RuntimeError(
+            "Источник должен быть канонической ссылкой на один YouTube-ролик."
+        )
+    project_video_id = _project_request_video_id(source)
+    if project_video_id and project_video_id != url_video_id:
+        raise RuntimeError(
+            "Project request и YouTube URL имеют разные video ID до yt-dlp: "
+            f"request={project_video_id}, url={url_video_id}."
+        )
+    return _legacy_download_source(str(url), source)
+
+download_source = download_source
+
+__all__ = sorted(
+    set(_BASE_ALL)
+    | {"download_source"}
+)

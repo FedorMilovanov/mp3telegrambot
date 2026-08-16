@@ -161,54 +161,36 @@ def test_speech_backend_registry_exposes_voxcpm2_as_an_adapter() -> None:
 
 
 def test_runtime_contract_fingerprints_backend_and_onset_repair_sources() -> None:
-    root = Path(__file__).resolve().parents[1]
-    source = (
-        root
-        / "tools"
-        / "voxcpm2"
-        / "clean_runtime_contract"
-        / "__init__.py"
-    ).read_text(encoding="utf-8")
+    from tools.voxcpm2 import clean_runtime_contract
+
+    names = set(clean_runtime_contract._RENDER_MODULES) | set(
+        clean_runtime_contract._RELEASE_MODULES
+    )
     for marker in (
         "services/speech_backends/base.py",
         "services/speech_backends/registry.py",
         "services/speech_backends/voxcpm2.py",
         "tools/voxcpm2/timeline_onset_repair.py",
-        "tools/voxcpm2/professional_audio_qa_v45/__init__.py",
-        "tools/voxcpm2/generic_clean_direct_runtime/__init__.py",
-        'render["speech_backend"] = backend_payload',
+        "tools/voxcpm2/professional_audio_qa_v45.py",
+        "tools/voxcpm2/generic_direct_runtime.py",
     ):
-        assert marker in source
+        assert marker in names
+
 
 
 def test_complete_retry_round_checkpoints_are_migratable_without_audio_loss() -> None:
     root = Path(__file__).resolve().parents[1]
-    facade = (
-        root
-        / "tools"
-        / "voxcpm2"
-        / "generic_clean_direct_runtime"
-        / "__init__.py"
-    ).read_text(encoding="utf-8")
-    main = (
-        root
-        / "tools"
-        / "voxcpm2"
-        / "generic_clean_direct_runtime"
-        / "__main__.py"
-    ).read_text(encoding="utf-8")
-    required = (
-        'CHECKPOINT_MIGRATION_POLICY = "signature-and-natural-tempo-checkpoint-adoption-v2"',
-        "MAX_ACCEPTED_SEED_ROUNDS = 12",
-        "accepted_ids != list(range(1, accepted_ids[-1] + 1))",
-        "accepted_ids[-1] > len(segments_payload)",
+    source = (root / "tools" / "voxcpm2" / "generic_direct_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "_legacy_checkpoint_prefix",
         "selected_raw_pitch_evidence_ok",
         "model_config_sha256",
         "reference_sha256",
-        "_legacy.clean.semantic_tts_guard_v4._retarget(",
-        "new_base_seed=base_seed",
-    )
-    for marker in required:
-        assert marker in facade
-    assert "from . import main" in main
-    assert "main()" in main
+        "accepted_ids != list(range(1, accepted_ids[-1] + 1))",
+        "checkpoint_resume_migration",
+    ):
+        assert marker in source
+    assert "generic_clean_direct_runtime" not in source
+

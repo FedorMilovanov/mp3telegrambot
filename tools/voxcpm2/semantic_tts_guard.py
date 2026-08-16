@@ -27,7 +27,6 @@ import numpy as np
 
 _GUARD_VERSION = "semantic-tts-guard-v1"
 _SYNTH_NAME = "voxcpm2_cpu_shorts_production.py"
-_WRAPPER_NAME = "voxcpm2_cpu_semantic_wrapper.py"
 _LOCK = threading.RLock()
 _WHISPER_MODELS: dict[str, Any] = {}
 _REAL_SUBPROCESS = _subprocess
@@ -57,12 +56,6 @@ def _replace_flag(command: list[str], flag: str, value: str) -> None:
             command.append(value)
         else:
             command[index + 1] = value
-
-
-def _is_voxcpm_synth(command: Any) -> bool:
-    if not isinstance(command, (list, tuple)):
-        return False
-    return any(Path(str(part)).name.casefold() == _SYNTH_NAME.casefold() for part in command)
 
 
 def sanitize_tts_text(value: str) -> str:
@@ -324,131 +317,3 @@ def _retarget_checkpoints(work_dir: Path, *, good_ids: Iterable[int], failed_ids
         for directory in ("segments_clean", "segments_fitted"):
             for path in (work_dir / directory).glob(f"{segment_id:02d}_*.wav"):
                 path.unlink(missing_ok=True)
-
-
-def _run_guarded_synth(command: Sequence[str], *args: Any, **kwargs: Any) -> Any:
-    original_command = [str(part) for part in command]
-    env = dict(kwargs.get("env") or os.environ)
-    work_dir = Path(_flag_value(original_command, "--work-dir")).resolve()
-    timeline = Path(_flag_value(original_command, "--output")).resolve()
-    segments_source = Path(_flag_value(original_command, "--segments-json")).resolve()
-    extended_source = Path(_flag_value(original_command, "--extended-reference")).resolve()
-    composite_source = Path(_flag_value(original_command, "--composite-reference")).resolve()
-    base_seed = int(_flag_value(original_command, "--base-seed"))
-
-    guard_dir = work_dir / "semantic_guard"
-    guard_dir.mkdir(parents=True, exist_ok=True)
-    guarded_segments_path = guard_dir / "segments_guarded.json"
-    segments = _prepare_guarded_segments(segments_source, guarded_segments_path)
-
-    extended = guard_dir / "extended_reference_clean.wav"
-    composite = guard_dir / "composite_reference_clean.wav"
-    _clean_reference(extended_source, extended, max_seconds=14.0)
-    _clean_reference(composite_source, composite, max_seconds=12.0)
-
-    # Exact reference transcripts prevent the English prompt audio from leaking
-    # into the Russian continuation. Whisper is also the required final QA gate.
-    extended_text, _, _ = _transcribe(extended, language="en")
-    composite_text, _, _ = _transcribe(composite, language="en")
-    if not extended_text or not composite_text:
-        raise RuntimeError("Whisper не смог распознать текст голосового референса; синтез остановлен.")
-    prompt_path = guard_dir / "reference_prompt_texts.json"
-    prompt_path.write_text(
-        json.dumps({"extended": extended_text, "composite": composite_text}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-    wrapper = Path(__file__).resolve().parent / _WRAPPER_NAME
-    if not wrapper.is_file():
-        raise RuntimeError(f"Не найден hardened VoxCPM2 wrapper: {wrapper}")
-
-    guarded_command = list(original_command)
-    for index, part in enumerate(guarded_command):
-        if Path(str(part)).name.casefold() == _SYNTH_NAME.casefold():
-            guarded_command[index] = str(wrapper)
-            break
-    _replace_flag(guarded_command, "--segments-json", str(guarded_segments_path))
-    _replace_flag(guarded_command, "--extended-reference", str(extended))
-    _replace_flag(guarded_command, "--composite-reference", str(composite))
-    env["VOXCPM_PROMPT_TEXTS_JSON"] = str(prompt_path)
-    env["VOXCPM_ORIGINAL_RENDERER"] = str(Path(original_command[1]).resolve())
-    env["VOXCPM_SEMANTIC_GUARD_VERSION"] = _GUARD_VERSION
-    kwargs["env"] = env
-
-    _invalidate_legacy_checkpoints(work_dir)
-    max_rounds = max(1, min(4, int(os.getenv("DUB_TTS_QA_MAX_ROUNDS", "3") or "3")))
-    all_ids = {int(item["id"]) for item in segments}
-    last_report: dict[str, Any] = {}
-
-    for round_index in range(max_rounds):
-        round_seed = base_seed + round_index * 100_000
-        _replace_flag(guarded_command, "--base-seed", str(round_seed))
-        log(f"синтез, раунд {round_index + 1}/{max_rounds}, base_seed={round_seed}")
-        result = _REAL_SUBPROCESS.run(guarded_command, *args, **kwargs)
-        if int(getattr(result, "returncode", 1)) != 0:
-            return result
-        report_path = timeline.with_suffix(f".semantic_qa.round{round_index + 1}.json")
-        failed, last_report = verify_timeline(timeline, segments, report_path)
-        if not failed:
-            (work_dir / "semantic_guard.marker.json").write_text(
-                json.dumps({"guard_version": _GUARD_VERSION, "base_seed": round_seed}, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            timeline.with_suffix(".semantic_qa.json").write_text(
-                json.dumps(last_report, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            log("все реплики прошли акустическую и семантическую проверку")
-            return result
-
-        log(f"не прошли реплики {failed}; перегенерирую только их с новыми seed")
-        next_seed = base_seed + (round_index + 1) * 100_000
-        _retarget_checkpoints(
-            work_dir,
-            good_ids=all_ids - set(failed),
-            failed_ids=failed,
-            new_base_seed=next_seed,
-        )
-
-    timeline.with_suffix(".semantic_qa.json").write_text(
-        json.dumps(last_report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    raise RuntimeError(
-        "VoxCPM2 не прошёл обязательную проверку произнесённого русского текста после "
-        f"{max_rounds} раундов. Не приняты сегменты: {last_report.get('failed_segment_ids', [])}."
-    )
-
-
-class GuardedSubprocessProxy:
-    """Module-like proxy that intercepts only the VoxCPM2 synthesis command."""
-
-    def __init__(self, real: Any) -> None:
-        self._real = real
-
-    def run(self, command: Any, *args: Any, **kwargs: Any) -> Any:
-        if _is_voxcpm_synth(command):
-            return _run_guarded_synth(command, *args, **kwargs)
-        return self._real.run(command, *args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._real, name)
-
-
-def install() -> None:
-    """Install into all already-loaded dubbing modules without changing flows."""
-    proxy = GuardedSubprocessProxy(_REAL_SUBPROCESS)
-    try:
-        import tools.voxcpm2.generic_short_production as pipeline
-        if not isinstance(getattr(pipeline, "subprocess", None), GuardedSubprocessProxy):
-            pipeline.subprocess = proxy
-    except Exception as exc:
-        log(f"не удалось подключить guard к legacy pipeline: {type(exc).__name__}: {exc}")
-
-    for module in list(sys.modules.values()):
-        if module is None:
-            continue
-        file_name = Path(str(getattr(module, "__file__", "") or "")).name.casefold()
-        if file_name not in {"generic_project_runtime.py", "generic_direct_runtime.py"}:
-            continue
-        if hasattr(module, "subprocess") and not isinstance(getattr(module, "subprocess"), GuardedSubprocessProxy):
-            setattr(module, "subprocess", proxy)
-    log("semantic VoxCPM2 guard активирован для Gemini MAX и готового SRT")

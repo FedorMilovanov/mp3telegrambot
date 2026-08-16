@@ -18,7 +18,7 @@ def test_verified_source_cache_reuses_only_same_video(monkeypatch, tmp_path) -> 
     metadata_calls = 0
     download_calls = 0
 
-    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
     def fake_run(command, *, capture=False, timeout=None, **_kwargs):
@@ -73,7 +73,7 @@ def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> 
     source = tmp_path / "source.mp4"
     downloads = 0
 
-    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
     def fake_run(command, *, capture=False, **_kwargs):
@@ -110,7 +110,7 @@ def test_project_request_video_id_must_match_download(monkeypatch, tmp_path) -> 
     )
     downloads = 0
 
-    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
     def fake_run(command, **_kwargs):
@@ -171,7 +171,7 @@ def test_non_single_video_urls_fail_before_ytdlp(monkeypatch, url: str) -> None:
 
 
 def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
-    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(
         source_cache.pipeline,
         "run_checked",
@@ -185,7 +185,7 @@ def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
 
 
 def test_invalid_metadata_video_id_is_rejected(monkeypatch) -> None:
-    monkeypatch.setattr(source_cache.hardened, "_ytdlp_base", lambda: ["yt-dlp"])
+    monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(
         source_cache.pipeline,
         "run_checked",
@@ -198,16 +198,3 @@ def test_invalid_metadata_video_id_is_rejected(monkeypatch) -> None:
         source_cache._metadata("https://youtu.be/AbCdEf12345")
 
 
-def test_all_clean_entrypoints_replace_the_direct_download_function() -> None:
-    for name in (
-        "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
-        "generic_clean_custom_runtime.py",
-    ):
-        source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
-        assert "from tools.voxcpm2 import clean_source_download" in source
-        assert "hardened.download_source = clean_source_download.download_source" in source
-        assert (
-            "hardened.pipeline.download_source = clean_source_download.download_source"
-            in source
-        )

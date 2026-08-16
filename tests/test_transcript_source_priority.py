@@ -11,7 +11,7 @@ from tools.voxcpm2.generic_gemini_runtime import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = ROOT / "tools" / "voxcpm2" / "generic_project_runtime.py"
-CLEAN = ROOT / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
+CLEAN = ROOT / "tools" / "voxcpm2" / "generic_gemini_runtime.py"
 
 
 def _source(path: Path) -> str:
@@ -82,4 +82,5 @@ Again
     assert clean_manual_caption_line("[Applause]") == ""
 
     clean = _source(CLEAN)
-    assert "production.parse_manual_vtt = checked.parse_creator_vtt_preserving_text" in clean
+    assert 'kwargs["manual_vtt_parser"] = parse_creator_vtt_preserving_text' in clean
+    assert "production.parse_manual_vtt =" not in clean

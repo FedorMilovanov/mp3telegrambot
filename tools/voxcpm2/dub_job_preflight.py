@@ -1,33 +1,47 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Legacy symbols retained for the active Dub preflight package facade.
+"""Source-owned fail-closed Dub production preflight.
 
-Normal imports resolve to ``tools.voxcpm2.dub_job_preflight`` package. This
-module is loaded only by that compatibility package while existing callers are
-migrated to the backend-neutral ``services.dub_preflight`` implementation.
+Canonical project/request identity, implementation/model/runtime-aware cache
+signatures, deterministic child imports, collision-safe reports and worker
+heartbeat are implemented directly here; no shadow package is involved.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+import hashlib
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
-from pathlib import Path
-from typing import Any
+import threading
+import time
+from typing import Any, Iterator
+import uuid
 
-from services.dub_preflight import run
-from services.dub_studio import repo_root, studio_root
+from services.dub_studio import DubStore, repo_root, studio_root
+from services.dub_worker_release import WORKER_RUNTIME
+from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
+from tools.voxcpm2 import clean_production_core
+from tools.voxcpm2 import clean_runtime_contract
+from tools.voxcpm2 import generic_project_runtime
 
-POLICY = "backend-neutral-dub-production-preflight-v2"
-_ACTIONS = {"render", "render_direct", "render_gemini", "render_custom", "repair_audio"}
-_MODULES = (
-    "tools.voxcpm2.final_media_qa",
-    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix",
-    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production",
-    "voxcpm",
-    "torch",
-    "soundfile",
-)
+POLICY = "dub-production-preflight-v2"
+REPORT_SCHEMA = 2
+PREFLIGHT_HEARTBEAT_SECONDS = 5.0
+PREFLIGHT_JSON_TRANSPORT_POLICY = "marked-preflight-json-transport-v2"
+PREFLIGHT_RUNTIME_PATH_POLICY = "backend-owned-preflight-runtime-paths-v1"
+PREFLIGHT_JSON_MARKER = "__DUB_PREFLIGHT_JSON_V1__="
+PREFLIGHT_MAX_DIAGNOSTIC_CHARS = 4000
+_ACTIONS = {
+    "render",
+    "render_direct",
+    "render_gemini",
+    "render_custom",
+    "repair_audio",
+}
+_MODULES = ('tools.voxcpm2.final_media_qa', 'tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix', 'tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production', 'voxcpm', 'torch', 'soundfile')
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -41,15 +55,536 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-__all__ = [
+def _sha256(path: Path) -> str:
+    path = Path(path)
+    if not path.is_file():
+        raise RuntimeError(f"Preflight fingerprint file не найден: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _payload_sha256(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise RuntimeError("Preflight report должен быть JSON-объектом.")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
+    try:
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        for attempt in range(20):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt >= 19:
+                    raise
+                time.sleep(min(0.005 * (attempt + 1), 0.05))
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _read_report(path: Path) -> dict[str, Any]:
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    try:
+        schema = clean_production_core._strict_int(
+            payload.get("schema_version"),
+            field="production_preflight.schema_version",
+            low=REPORT_SCHEMA,
+            high=REPORT_SCHEMA,
+        )
+    except RuntimeError:
+        return {}
+    return payload if schema == REPORT_SCHEMA else {}
+
+
+def _normalized_path(value: Path) -> str:
+    return os.path.normcase(os.path.normpath(str(Path(value).resolve())))
+
+
+def _project_root(
+    project: dict[str, Any],
+    *,
+    studio: Path | None = None,
+) -> Path:
+    if not isinstance(project, dict):
+        raise RuntimeError("Preflight project должен быть JSON-объектом.")
+    project_id = str(project.get("id") or "").strip().lower()
+    if not generic_project_runtime._PROJECT_RE.fullmatch(project_id):
+        raise RuntimeError("Preflight: некорректный Dub Studio project ID.")
+
+    studio_base = Path(studio).resolve() if studio is not None else studio_root().resolve()
+    allowed = (studio_base / "projects").resolve()
+    expected = (allowed / project_id).resolve()
+    raw = str(project.get("work_root") or "").strip()
+    if not raw:
+        root = expected
+    else:
+        raw_root = Path(raw).resolve()
+        # DubStore.create_project historically stores recipe.work_root (the
+        # shared studio root) until the first successful project update. It is
+        # a placeholder, not the actual project directory.
+        if _normalized_path(raw_root) in {
+            _normalized_path(studio_base),
+            _normalized_path(allowed),
+        }:
+            root = expected
+        else:
+            root = raw_root
+
+    try:
+        root.relative_to(allowed)
+    except ValueError as exc:
+        raise RuntimeError("Project root escaped Dub Studio projects directory.") from exc
+    if _normalized_path(root) != _normalized_path(expected):
+        raise RuntimeError(
+            "Preflight: work_root проекта не совпадает с его canonical project ID."
+        )
+    return root
+
+
+def _path_setting(request: dict[str, Any], key: str, default: str) -> Path:
+    value = default if key not in request or request[key] is None else request[key]
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        raise RuntimeError(f"Preflight: request.{key} должен быть непустым путём.")
+    return Path(value.strip()).expanduser().resolve()
+
+
+
+def _runtime_paths(
+    project: dict[str, Any],
+    *,
+    studio: Path | None = None,
+) -> dict[str, Any]:
+    root = _project_root(project, studio=studio)
+    request = generic_project_runtime.load_request(root)
+    repo = repo_root().resolve()
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    required = (
+        "build_renderer_command",
+        "build_master_command",
+        "process_environment",
+        "open_session",
+    )
+    missing_methods = [name for name in required if not callable(getattr(backend, name, None))]
+    if missing_methods:
+        raise RuntimeError(
+            "Preflight: выбранный speech backend не реализует production contract: "
+            + ", ".join(missing_methods)
+        )
+    missing = backend.capabilities().missing()
+    if missing:
+        raise RuntimeError(
+            f"Preflight: backend {backend.backend_id} не проходит production capability gate: "
+            f"{', '.join(missing)}."
+        )
+    runtime = backend.runtime_paths(repo, request)
+    environment_policy = backend.process_environment(
+        request,
+        base_environment=os.environ,
+    )
+    return {
+        "root": root,
+        "request": root / "request.json",
+        "repo": runtime.repo_root,
+        "cpu_python": runtime.cpu_python,
+        "archive": runtime.archive_root,
+        "renderer": runtime.renderer_entrypoint,
+        "master": runtime.master_entrypoint,
+        "speech_backend": runtime.backend_id,
+        "import_modules": tuple(runtime.import_modules),
+        "renderer_module": runtime.renderer_module,
+        "master_module": runtime.master_module,
+        "final_qa_module": runtime.final_qa_module,
+        "runtime_path_policy": PREFLIGHT_RUNTIME_PATH_POLICY,
+        "environment_policy": environment_policy.as_metadata()["environment_policy"],
+        "environment_metadata": environment_policy.as_metadata(),
+    }
+
+
+def _executable_identity(name: str) -> dict[str, Any]:
+    resolved = shutil.which(name)
+    if not resolved:
+        raise RuntimeError(f"Preflight: {name} не найден в PATH.")
+    path = Path(resolved).resolve()
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "size": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
+def _implementation_identity(repo: Path) -> dict[str, Any]:
+    names = tuple(
+        dict.fromkeys(
+            (
+                *clean_runtime_contract._RENDER_MODULES,
+                *clean_runtime_contract._RELEASE_MODULES,
+                "tools/voxcpm2/dub_job_preflight.py",
+            )
+        )
+    )
+    files = {name: _sha256(repo / name) for name in names}
+    return {"files": files, "sha256": _payload_sha256(files)}
+
+
+def _signature(paths: dict[str, Path], *, action: str) -> dict[str, Any]:
+    repo = Path(paths["repo"]).resolve()
+    cpu_python = Path(paths["cpu_python"]).resolve()
+    if not cpu_python.is_file():
+        raise RuntimeError(f"Preflight: CPU Python не найден: {cpu_python}")
+    python_stat = cpu_python.stat()
+
+    # Reuse the exact clean production model/runtime fingerprints. A cached
+    # import success must not survive replaced weights, an edited voxcpm install,
+    # or changed package versions merely because python.exe itself is unchanged.
+    model_manifest = clean_runtime_contract._model_manifest(Path(paths["archive"]).resolve())
+    voxcpm_runtime = clean_runtime_contract._voxcpm_runtime(cpu_python)
+    return {
+        "policy": POLICY,
+        "action": action,
+        "cpu_python": {
+            "path": str(cpu_python),
+            "size": int(python_stat.st_size),
+            "mtime_ns": int(python_stat.st_mtime_ns),
+        },
+        "renderer": str(paths["renderer"]),
+        "renderer_sha256": _sha256(paths["renderer"]),
+        "master": str(paths["master"]),
+        "master_sha256": _sha256(paths["master"]),
+        "model": model_manifest,
+        "voxcpm_runtime": voxcpm_runtime,
+        "implementation": _implementation_identity(repo),
+        "ffmpeg": _executable_identity("ffmpeg"),
+        "ffprobe": _executable_identity("ffprobe"),
+        "modules": list(paths.get("import_modules") or _MODULES),
+    }
+
+
+def _inside(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _signature_executable_path(name: str) -> Path:
+    value = shutil.which(name)
+    if not value:
+        raise RuntimeError(f"Preflight: {name} не найден в PATH.")
+    return Path(value).resolve()
+
+
+def _decode_probe_payload(stdout: str) -> tuple[dict[str, Any], str]:
+    lines = str(stdout or "").splitlines()
+    marker_index: int | None = None
+    payload: dict[str, Any] | None = None
+    parse_error = ""
+    for index in range(len(lines) - 1, -1, -1):
+        line = lines[index].strip().lstrip("\ufeff")
+        if not line.startswith(PREFLIGHT_JSON_MARKER):
+            continue
+        marker_index = index
+        raw = line[len(PREFLIGHT_JSON_MARKER):].strip()
+        try:
+            candidate = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            parse_error = f"{type(exc).__name__}: {exc}"
+            continue
+        if not isinstance(candidate, dict):
+            parse_error = "marked payload не является JSON-объектом"
+            continue
+        payload = candidate
+        break
+    noise_lines = [
+        line for index, line in enumerate(lines)
+        if index != marker_index and line.strip()
+    ]
+    noise = "\n".join(noise_lines)[-PREFLIGHT_MAX_DIAGNOSTIC_CHARS:]
+    if payload is None:
+        detail = f" Последняя ошибка: {parse_error}." if parse_error else ""
+        if noise:
+            detail += " stdout tail:\n" + noise
+        raise RuntimeError(
+            "Preflight: CPU runtime не вернул маркированный JSON." + detail
+        )
+    return payload, noise
+
+def _probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
+    python = Path(paths["cpu_python"]).resolve()
+    repo = Path(paths["repo"]).resolve()
+    modules = tuple(paths.get("import_modules") or _MODULES)
+    for label in ("renderer", "master"):
+        path = Path(paths[label]).resolve()
+        if not path.is_file():
+            raise RuntimeError(f"Preflight: {label} entrypoint не найден: {path}")
+
+    script = (
+        "import importlib, json, sys\n"
+        f"names = {list(modules)!r}\n"
+        "loaded = {}\n"
+        "for name in names:\n"
+        "    module = importlib.import_module(name)\n"
+        "    loaded[name] = str(getattr(module, '__file__', '') or '')\n"
+        f"print({PREFLIGHT_JSON_MARKER!r} + json.dumps({{'python': sys.executable, 'loaded': loaded}}, "
+        "ensure_ascii=False, sort_keys=True, separators=(',', ':')), flush=True)\n"
+    )
+    env = clean_production_core._child_python_env(dict(os.environ))
+    process = subprocess.run(
+        [str(python), "-c", script],
+        cwd=str(repo),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    if int(process.returncode) != 0:
+        tail = (process.stderr or process.stdout or "")[-8000:]
+        raise RuntimeError(
+            "Preflight: CPU runtime/import graph завершился с кодом "
+            f"{process.returncode}:\n{tail}"
+        )
+
+    payload, stdout_noise = _decode_probe_payload(process.stdout or "")
+    loaded = payload.get("loaded") if isinstance(payload, dict) else None
+    reported_python = str(payload.get("python") or "") if isinstance(payload, dict) else ""
+    if not isinstance(loaded, dict) or set(loaded) != set(modules):
+        raise RuntimeError("Preflight: импортирован не полный набор production-модулей.")
+    if _normalized_path(Path(reported_python)) != _normalized_path(python):
+        raise RuntimeError("Preflight: import probe запущен не тем CPU Python.")
+
+    renderer_module = str(paths.get("renderer_module") or "")
+    master_module = str(paths.get("master_module") or "")
+    final_qa_module = str(paths.get("final_qa_module") or "")
+    expected_files = {
+        master_module: Path(paths["master"]),
+        renderer_module: Path(paths["renderer"]),
+    }
+    for name, raw_path in loaded.items():
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise RuntimeError(f"Preflight: module {name} не сообщил __file__.")
+        path = Path(raw_path).resolve()
+        if not path.is_file():
+            raise RuntimeError(f"Preflight: module {name} загружен из отсутствующего файла: {path}")
+        if name.startswith("tools.") and not _inside(path, repo):
+            raise RuntimeError(f"Preflight: project module {name} загружен вне repo: {path}")
+        expected = expected_files.get(name)
+        if expected is not None and _normalized_path(path) != _normalized_path(expected):
+            raise RuntimeError(f"Preflight: module {name} загружен не из production entrypoint.")
+
+    if not final_qa_module or final_qa_module not in loaded:
+        raise RuntimeError("Preflight: backend не объявил active final QA module.")
+    final_qa = Path(loaded[final_qa_module]).resolve()
+    if final_qa_module.startswith("tools."):
+        expected_final_qa = repo / (final_qa_module.replace(".", "/") + ".py")
+        if not expected_final_qa.is_file():
+            raise RuntimeError(
+                f"Preflight: canonical final QA source owner не найден: {expected_final_qa}"
+            )
+        if _normalized_path(final_qa) != _normalized_path(expected_final_qa):
+            raise RuntimeError("Preflight: final QA загружен не из canonical source owner.")
+
+    return {
+        "python_returncode": int(process.returncode),
+        "python": reported_python,
+        "speech_backend": str(paths.get("speech_backend") or ""),
+        "runtime_path_policy": str(paths.get("runtime_path_policy") or ""),
+        "environment_policy": str(paths.get("environment_policy") or ""),
+        "environment_metadata": paths.get("environment_metadata") or {},
+        "loaded_modules": loaded,
+        "ffmpeg": str(_signature_executable_path("ffmpeg")),
+        "ffprobe": str(_signature_executable_path("ffprobe")),
+        "json_transport_policy": PREFLIGHT_JSON_TRANSPORT_POLICY,
+        "stdout_noise_detected": bool(stdout_noise),
+        "stdout_noise_tail": stdout_noise,
+    }
+
+
+def _claimed_job_context(project_id: str) -> tuple[DubStore, int, str] | None:
+    store = DubStore(studio_root())
+    with store.connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, worker_id
+            FROM dub_jobs
+            WHERE project_id=? AND status IN ('running','cancel_requested')
+            ORDER BY id DESC LIMIT 1
+            """,
+            (str(project_id),),
+        ).fetchone()
+    if row is None:
+        return None
+    worker_id = str(row["worker_id"] or "").strip()
+    if not worker_id:
+        return None
+    return store, int(row["id"]), worker_id
+
+
+@contextmanager
+def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
+    context = _claimed_job_context(project_id)
+    if context is None:
+        yield
+        return
+    store, job_id, worker_id = context
+    stopped = threading.Event()
+
+    def pulse() -> None:
+        while not stopped.is_set():
+            try:
+                store.worker_heartbeat(
+                    worker_id,
+                    status="busy",
+                    current_job_id=job_id,
+                    details={
+                        "runtime": WORKER_RUNTIME,
+                        "project_id": project_id,
+                        "action": action,
+                        "progress": 1,
+                        "stage": "preflight",
+                    },
+                )
+            except Exception:
+                pass
+            stopped.wait(max(1.0, float(PREFLIGHT_HEARTBEAT_SECONDS)))
+
+    thread = threading.Thread(
+        target=pulse,
+        name=f"dub-preflight-heartbeat-{job_id}",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        thread.join(timeout=max(2.0, float(PREFLIGHT_HEARTBEAT_SECONDS) + 1.0))
+
+
+def _cache_hit(
+    current: dict[str, Any],
+    *,
+    project_id: str,
+    action: str,
+    signature: dict[str, Any],
+) -> bool:
+    return bool(
+        current.get("passed") is True
+        and current.get("skipped") is False
+        and current.get("policy") == POLICY
+        and current.get("project_id") == project_id
+        and current.get("action") == action
+        and current.get("signature") == signature
+        and isinstance(current.get("probe"), dict)
+    )
+
+
+def run(
+    project: dict[str, Any],
+    action: str,
+    *,
+    studio: Path | None = None,
+) -> dict[str, Any]:
+    action = str(action or "").strip().lower()
+    if action not in _ACTIONS or str((project or {}).get("recipe_id") or "") != "generic_short_v1":
+        return {
+            "schema_version": REPORT_SCHEMA,
+            "policy": POLICY,
+            "passed": True,
+            "skipped": True,
+            "action": action,
+        }
+
+    paths = _runtime_paths(project, studio=studio)
+    project_id = str(project["id"]).strip().lower()
+    report_path = paths["root"] / "output" / "production_preflight.json"
+    with _preflight_heartbeat(project_id, action):
+        signature = _signature(paths, action=action)
+        current = _read_report(report_path)
+        if _cache_hit(
+            current,
+            project_id=project_id,
+            action=action,
+            signature=signature,
+        ):
+            return current
+
+        probe = _probe_imports(paths)
+        report = {
+            "schema_version": REPORT_SCHEMA,
+            "policy": POLICY,
+            "passed": True,
+            "skipped": False,
+            "project_id": project_id,
+            "action": action,
+            "signature": signature,
+            "probe": probe,
+        }
+        _atomic_json(report_path, report)
+        return report
+
+
+__all__ = sorted({
+    "_decode_probe_payload",
+    "PREFLIGHT_JSON_MARKER",
+    "PREFLIGHT_RUNTIME_PATH_POLICY",
+    "PREFLIGHT_JSON_TRANSPORT_POLICY",
     "POLICY",
+    "PREFLIGHT_HEARTBEAT_SECONDS",
+    "REPORT_SCHEMA",
     "_ACTIONS",
     "_MODULES",
+    "_atomic_json",
+    "_cache_hit",
+    "_claimed_job_context",
+    "_implementation_identity",
+    "_preflight_heartbeat",
+    "_probe_imports",
+    "_project_root",
     "_read_json",
+    "_read_report",
+    "_runtime_paths",
+    "_signature",
     "os",
     "repo_root",
     "run",
     "shutil",
     "studio_root",
     "subprocess",
-]
+})

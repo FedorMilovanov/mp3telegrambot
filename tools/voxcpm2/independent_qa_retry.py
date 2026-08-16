@@ -238,31 +238,10 @@ def _run_with_recovery(
     raise RuntimeError("Недостижимое состояние independent QA recovery.")
 
 
-def install() -> None:
-    """Install the recovery wrapper once in the ready-SRT child process."""
-    global _INSTALLED
-
-    from tools.voxcpm2 import clean_production_core
-
-    current = clean_production_core.render_and_master
-    if getattr(current, "_independent_qa_retry_policy", None) == POLICY:
-        _INSTALLED = True
-        return
-
-    def wrapped(*args: Any, **kwargs: Any) -> Any:
-        return _run_with_recovery(current, *args, **kwargs)
-
-    wrapped._independent_qa_retry_policy = POLICY  # type: ignore[attr-defined]
-    wrapped._independent_qa_retry_original = current  # type: ignore[attr-defined]
-    clean_production_core.render_and_master = wrapped
-    _INSTALLED = True
-
-
 __all__ = [
     "INTERNAL_SEED_ROUNDS_PER_CALL",
     "MAX_RECOVERY_CYCLES",
     "POLICY",
     "_retry_context",
     "_run_with_recovery",
-    "install",
 ]

@@ -45,9 +45,9 @@ def test_isolated_strong_expression_is_downgraded() -> None:
 
 def test_clean_routes_apply_expression_without_tts_wrapper() -> None:
     for name in (
-        "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
-        "generic_clean_custom_runtime.py",
+        "generic_gemini_runtime.py",
+        "generic_direct_runtime.py",
+        "generic_custom_runtime.py",
     ):
         source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
         assert "expressive_continuity.plan_json" in source
@@ -64,12 +64,12 @@ def test_clean_routes_apply_expression_without_tts_wrapper() -> None:
 
 def test_gemini_route_uses_rhetoric_preserving_translation() -> None:
     route = (
-        ROOT / "tools" / "voxcpm2" / "generic_clean_gemini_runtime.py"
+        ROOT / "tools" / "voxcpm2" / "generic_gemini_runtime.py"
     ).read_text(encoding="utf-8")
     policy = (
         ROOT / "tools" / "voxcpm2" / "expressive_translation.py"
     ).read_text(encoding="utf-8")
-    assert "production.translate_groups_max = expressive_translation.translate_groups" in route
+    assert "translate_groups=expressive_translation.translate_groups" in route
     assert "metadata: dict[str, Any] | None" in policy
     assert "намеренные повторы" in policy
     assert "риторические вопросы" in policy

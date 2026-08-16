@@ -41,7 +41,7 @@ _RENDERER_MODULE = (
 _LEGACY_MASTER_MODULE = (
     "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
 )
-_DIRECT_MASTER_MODULE = "tools.voxcpm2.master_monolithic_mix"
+_DIRECT_MASTER_MODULE = "tools.voxcpm2.master_direct_russian_only"
 _FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
 
 _BASE_MIN_LEN = 2
@@ -71,7 +71,7 @@ def _master_contract(
     mode = str(request.get("translation_mode") or "").casefold().strip()
     if mode == "direct":
         return (
-            repo / "tools" / "voxcpm2" / "master_monolithic_mix.py",
+            repo / "tools" / "voxcpm2" / "master_direct_russian_only.py",
             _DIRECT_MASTER_MODULE,
         )
     example = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"

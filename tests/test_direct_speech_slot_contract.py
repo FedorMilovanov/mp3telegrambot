@@ -111,9 +111,9 @@ def test_fitter_builds_atempo_for_real_short_slot_without_trimming_words(
     durations = iter((0.18, 0.35))
     commands: list[list[str]] = []
 
-    monkeypatch.setattr(render._legacy, "probe_duration", lambda _path: next(durations))
+    monkeypatch.setattr(render, "probe_duration", lambda _path: next(durations))
     monkeypatch.setattr(
-        render._legacy,
+        render,
         "run_checked",
         lambda command, **_kwargs: commands.append(list(command)),
     )
@@ -126,7 +126,7 @@ def test_fitter_builds_atempo_for_real_short_slot_without_trimming_words(
     filter_graph = commands[0][commands[0].index("-af") + 1]
     assert "atempo=" in filter_graph
     assert "atrim=duration=0.350000" in filter_graph
-    assert "max(1.0" not in Path(render._legacy.__file__).read_text(encoding="utf-8")
+    assert "max(1.0" not in Path(render.__file__).read_text(encoding="utf-8")
 
 
 def test_fitter_accepts_backend_owned_output_sample_rate(

@@ -23,7 +23,7 @@ def _request(**overrides):
 
 
 def test_project_root_requires_canonical_project_id(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(runtime._legacy, "studio_root", lambda: tmp_path)
+    monkeypatch.setattr(runtime, "studio_root", lambda: tmp_path)
     valid = runtime.project_root("dub-0123456789")
     assert valid == (tmp_path / "projects" / "dub-0123456789").resolve()
     assert valid.is_dir()
@@ -103,8 +103,3 @@ def test_atomic_json_rejects_nan_without_replacing_existing_file(tmp_path: Path)
     assert not list(tmp_path.glob("state.json.tmp.*"))
 
 
-def test_project_runtime_facade_patches_legacy_orchestration() -> None:
-    assert Path(runtime.__file__).name == "__init__.py"
-    assert runtime._legacy.project_root is runtime.project_root
-    assert runtime._legacy.load_request is runtime.load_request
-    assert runtime._legacy.save_json is runtime.save_json

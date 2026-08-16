@@ -15,16 +15,12 @@ def test_operator_contract_is_recorded_for_future_agents() -> None:
 
 def test_contract_validator_preserves_prompts_and_source_owns_study() -> None:
     from core import prompts
-    from services.conspect_quality_contract import (
-        build_hardened_study_prompt,
-        install_conspect_quality_contract,
-    )
+    from services.conspect_quality_contract import build_hardened_study_prompt
 
     synopsis_before = prompts.SYNOPSIS_PROMPT_V2
     qa_before = prompts.SYNOPSIS_PROMPT_QA
     study_before = prompts.STUDY_ANALYSIS_PROMPT
 
-    status = install_conspect_quality_contract()
     hardened = build_hardened_study_prompt(study_before)
 
     assert prompts.SYNOPSIS_PROMPT_V2 == synopsis_before
@@ -34,14 +30,12 @@ def test_contract_validator_preserves_prompts_and_source_owns_study() -> None:
     assert "Ключевые слова в контексте Писания" in hardened
     assert "2–5 содержательных карточек" in hardened
     assert "0–3 блока; отсутствие блока является нормальным результатом" in hardened
-    assert "no runtime patching" in status
 
     telegraph = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert (
         "from services.study_synthesis_policy import "
         "TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT"
     ) in telegraph
-
 
 
 def test_hardened_study_prompt_is_idempotent_and_keeps_pair_cards() -> None:
@@ -116,9 +110,7 @@ def test_incomplete_new_word_study_is_rejected() -> None:
 
 def test_expanded_schema_exposes_full_word_study_contract() -> None:
     from core import candidate_schema
-    from services.conspect_quality_contract import install_conspect_quality_contract
 
-    install_conspect_quality_contract()
     schema = candidate_schema.expanded_page_response_schema()
     block = schema["properties"]["sections"]["items"]["properties"]["blocks"]["items"]
 
@@ -143,9 +135,7 @@ def test_expanded_schema_exposes_full_word_study_contract() -> None:
 
 def test_audit_runtime_removes_incomplete_new_word_study() -> None:
     from core import content_audit
-    from services.conspect_audit_runtime import install_conspect_audit_runtime
 
-    install_conspect_audit_runtime()
     sections, _outline, issues = content_audit.audit_expanded_sections(
         [
             {
@@ -172,9 +162,7 @@ def test_audit_runtime_removes_incomplete_new_word_study() -> None:
 
 def test_live_typo_repair_is_anchored_and_deterministic() -> None:
     from core import text_utils
-    from services.conspect_audit_runtime import install_conspect_audit_runtime
 
-    install_conspect_audit_runtime()
     source = (
         "Слово Божьего — нструмент сохранения скелета. "
         "Систематическая проповедь Слово Божьего — единственное средство."
@@ -188,9 +176,7 @@ def test_live_typo_repair_is_anchored_and_deterministic() -> None:
 
 def test_near_boundary_inline_timestamp_reconciles_section_and_outline() -> None:
     from core import content_audit
-    from services.conspect_audit_runtime import install_conspect_audit_runtime
 
-    install_conspect_audit_runtime()
     sections, outline, issues = content_audit.audit_expanded_sections(
         [
             {
@@ -211,9 +197,7 @@ def test_near_boundary_inline_timestamp_reconciles_section_and_outline() -> None
 
 def test_large_backward_timestamp_reference_is_not_rewritten() -> None:
     from core import content_audit
-    from services.conspect_audit_runtime import install_conspect_audit_runtime
 
-    install_conspect_audit_runtime()
     sections, outline, _issues = content_audit.audit_expanded_sections(
         [
             {

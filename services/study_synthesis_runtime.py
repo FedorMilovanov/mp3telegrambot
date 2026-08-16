@@ -13,12 +13,7 @@ from services.study_synthesis_policy import (
 )
 
 
-def install_teacherly_study_runtime() -> str:
-    return validate_teacherly_study_policy()
-
-
 __all__ = [
     "TEACHERLY_STUDY_PROMPT",
-    "install_teacherly_study_runtime",
     "render_word_study_as_prose",
 ]

@@ -32,9 +32,9 @@ def _stats(
 
 def test_all_clean_entrypoints_use_continuous_reference_policy() -> None:
     names = (
-        "generic_clean_gemini_runtime.py",
-        "generic_clean_direct_runtime.py",
-        "generic_clean_custom_runtime.py",
+        "generic_gemini_runtime.py",
+        "generic_direct_runtime.py",
+        "generic_custom_runtime.py",
         "generic_clean_audio_repair_runtime.py",
     )
     for name in names:

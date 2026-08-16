@@ -18,16 +18,19 @@ def test_recipe_routes_only_to_clean_production() -> None:
         )
     )
     actions = recipe["actions"]
-    assert actions["render"]["module"] == "tools.voxcpm2.generic_clean_gemini_runtime"
-    assert actions["render_gemini"]["module"] == "tools.voxcpm2.generic_clean_gemini_runtime"
-    assert actions["render_direct"]["module"] == "tools.voxcpm2.generic_clean_direct_runtime"
+    assert actions["render"]["module"] == "tools.voxcpm2.generic_gemini_runtime"
+    assert actions["render_gemini"]["module"] == "tools.voxcpm2.generic_gemini_runtime"
+    assert actions["render_direct"]["module"] == "tools.voxcpm2.generic_direct_runtime"
     assert actions["repair_audio"]["module"] == "tools.voxcpm2.generic_clean_audio_repair_runtime"
-    assert actions["prepare_custom"]["module"] == "tools.voxcpm2.generic_clean_custom_runtime"
-    assert actions["render_custom"]["module"] == "tools.voxcpm2.generic_clean_custom_runtime"
+    assert actions["prepare_custom"]["module"] == "tools.voxcpm2.generic_custom_runtime"
+    assert actions["render_custom"]["module"] == "tools.voxcpm2.generic_custom_runtime"
     production_modules = " ".join(spec["module"] for spec in actions.values())
     assert "_v45" not in production_modules
     assert "_v46" not in production_modules
     assert "_v47" not in production_modules
+    assert "generic_clean_direct_runtime" not in production_modules
+    assert "generic_clean_gemini_runtime" not in production_modules
+    assert "generic_clean_custom_runtime" not in production_modules
 
 
 def test_clean_core_has_no_renderer_wrapper_installation() -> None:
@@ -46,20 +49,6 @@ def test_clean_core_has_no_renderer_wrapper_installation() -> None:
     assert "clean_runtime_contract.build_fingerprints" in source
     assert '"release_complete": False' in source
     assert "release_complete=True" in source
-
-
-def test_clean_entrypoints_disable_hidden_legacy_guard() -> None:
-    for name in (
-        "generic_clean_gemini_runtime.py",
-        "_generic_clean_direct_runtime_base.py",
-        "generic_clean_custom_runtime.py",
-    ):
-        source = (ROOT / "tools" / "voxcpm2" / name).read_text(encoding="utf-8")
-        assert "install_runtime_adapters = _install_clean_runtime_adapters" in source
-        assert "install_semantic_tts_guard" not in source
-        assert "semantic_tts_guard_v4.install" not in source
-        assert "semantic_tts_guard_v47" not in source
-        assert "runpy.run_path" not in source
 
 
 def test_clean_segmentation_caps_windows_at_54_seconds() -> None:

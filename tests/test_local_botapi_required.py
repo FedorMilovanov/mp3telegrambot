@@ -93,7 +93,7 @@ def test_cold_local_uses_one_logout_restart_and_real_getme(monkeypatch):
     monkeypatch.setattr(
         required.process_runtime,
         "_start_server",
-        lambda *_: (calls.append("start") or _RunningProcess(), "botapi-server.log"),
+        lambda *_, **__: (calls.append("start") or _RunningProcess(), "botapi-server.log"),
     )
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (True, "@recovered"))
 
@@ -121,7 +121,7 @@ def test_timeout_leaves_running_server_alive(monkeypatch):
     monkeypatch.setattr(
         required.process_runtime,
         "_start_server",
-        lambda *_: (running, "botapi-server.log"),
+        lambda *_, **__: (running, "botapi-server.log"),
     )
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (False, "timeout"))
     monkeypatch.setattr(
@@ -149,7 +149,7 @@ def test_exited_server_reports_exit_without_cloud_fallback(monkeypatch):
     monkeypatch.setattr(
         required.process_runtime,
         "_start_server",
-        lambda *_: (_ExitedProcess(), "botapi-server.log"),
+        lambda *_, **__: (_ExitedProcess(), "botapi-server.log"),
     )
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (False, "exited"))
     monkeypatch.setattr(

@@ -37,7 +37,7 @@ def test_real_master_entrypoint_imports_tools_from_foreign_cwd(tmp_path: Path) -
 
     direct_command = [
         sys.executable,
-        str(ROOT / "tools" / "voxcpm2" / "master_monolithic_mix.py"),
+        str(ROOT / "tools" / "voxcpm2" / "master_direct_russian_only.py"),
         "--help",
     ]
     assert core._is_master_command(direct_command) is True
@@ -81,11 +81,11 @@ def test_master_failure_surfaces_exact_stderr_and_releases_to_caller(
     assert "code 1" not in message
 
 
-def test_subprocess_proxy_is_scoped_to_clean_legacy_module() -> None:
-    assert core._legacy.subprocess is not subprocess
+def test_clean_core_uses_explicit_child_process_owner() -> None:
+    source = Path(core.__file__).read_text(encoding="utf-8")
+    assert core.subprocess is subprocess
     assert subprocess.run is core._stdlib_subprocess.run
-    assert core._legacy.subprocess.run is not subprocess.run
-    assert (
-        core.CHILD_PYTHON_POLICY
-        == "repo-root-pythonpath-master-stderr-and-post-aac-v2"
-    )
+    assert "_SubprocessProxy" not in source
+    assert "subprocess = _SubprocessProxy()" not in source
+    assert core.CHILD_PYTHON_POLICY == "repo-root-pythonpath-master-stderr-and-post-aac-v2"
+

@@ -232,3 +232,78 @@ __all__ = [
     "candidate_pitch_evidence_ok",
     "source_prosody_penalty",
 ]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+from pathlib import Path
+
+import types
+
+
+from tools.voxcpm2 import source_prosody_policy
+
+CANDIDATE_CONTINUATION_POLICY = "defer-short-continuation-to-timeline-v1"
+
+_legacy_evaluate_candidate_cadence = evaluate_candidate_cadence
+
+_legacy_source_prosody_penalty = source_prosody_penalty
+
+def _defer_short_continuation(result: dict[str, Any]) -> dict[str, Any]:
+    revised = dict(result)
+    cadence = str(revised.get("cadence") or "")
+    failures = list(revised.get("failures") or [])
+    if cadence not in {"continuation", "linked"}:
+        return revised
+    if "continuation_too_short" not in failures:
+        return revised
+
+    remaining = [item for item in failures if item != "continuation_too_short"]
+    revised.update(
+        failures=remaining,
+        hard_ok=not remaining,
+        timeline_compaction_required=True,
+        candidate_continuation_policy=CANDIDATE_CONTINUATION_POLICY,
+        deferred_candidate_failure="continuation_too_short",
+    )
+    return revised
+
+def evaluate_candidate_cadence(
+    candidate: dict[str, Any],
+    segment: dict[str, Any],
+) -> dict[str, Any]:
+    return _defer_short_continuation(
+        dict(_legacy_evaluate_candidate_cadence(candidate, segment))
+    )
+
+def source_prosody_penalty(
+    candidate: dict[str, Any],
+    segment: dict[str, Any],
+) -> float:
+    """Populate diagnostics but return zero for cross-language ranking."""
+    diagnostic = float(_legacy_source_prosody_penalty(candidate, segment))
+    match = candidate.get("source_prosody_match")
+    if not isinstance(match, dict):
+        match = {}
+        candidate["source_prosody_match"] = match
+    match["source_prosody_policy"] = source_prosody_policy.POLICY
+    match["diagnostic_penalty"] = diagnostic
+    diagnostic_only = source_prosody_policy.is_diagnostic_only(segment)
+    match["source_prosody_ranking_enabled"] = not diagnostic_only
+    return 0.0 if diagnostic_only else diagnostic
+
+evaluate_candidate_cadence = evaluate_candidate_cadence
+
+source_prosody_penalty = source_prosody_penalty
+
+candidate_pitch_evidence_ok = candidate_pitch_evidence_ok
+
+__all__ = sorted(
+    set(_BASE_ALL)
+    | {
+        "CANDIDATE_CONTINUATION_POLICY",
+        "_defer_short_continuation",
+        "candidate_pitch_evidence_ok",
+        "evaluate_candidate_cadence",
+        "source_prosody_penalty",
+    }
+)

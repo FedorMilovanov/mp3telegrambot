@@ -184,19 +184,3 @@ def test_terminal_cue_is_never_retimed() -> None:
     assert report["shifted_segment_ids"] == []
 
 
-def test_runtime_fingerprints_compaction_but_production_keeps_source_timeline() -> None:
-    contract = (
-        ROOT / "tools" / "voxcpm2" / "clean_runtime_contract" / "__init__.py"
-    ).read_text(encoding="utf-8")
-    supervisor = (
-        ROOT / "services" / "dub_studio_runtime" / "__init__.py"
-    ).read_text(encoding="utf-8")
-
-    assert '"tools/voxcpm2/direct_source_prosody/__init__.py"' in contract
-    assert '"tools/voxcpm2/direct_timeline_compaction.py"' in contract
-    assert direct_max_quality_render.TIMELINE_COMPACTION_POLICY == (
-        "no-late-shift-monolithic-assembly-v2"
-    )
-    assert callable(direct_max_quality_render.build_timeline)
-    assert "_legacy_install_dub_studio_runtime()" in supervisor
-    assert "register_dub_multicommand_handler(application)" in supervisor

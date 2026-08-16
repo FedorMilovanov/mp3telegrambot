@@ -171,54 +171,8 @@ def test_html_formatter_labels_default_profile_and_truncates_hashes() -> None:
     assert "C:/private" not in rendered
 
 
-def test_status_wrapper_appends_to_same_admin_reply(monkeypatch) -> None:
-    monkeypatch.setattr(status, "_INSTALLED", False)
-    monkeypatch.setattr(
-        status,
-        "safe_operator_runtime_status_html_lines",
-        lambda: ("🧩 Runtime fixture", "🎙 TTS fixture"),
-    )
-
-    async def original(update, context):
-        del context
-        await update.message.reply_text(
-            "🩺 <b>Статус бота</b>\n\n🔧 ✅ffmpeg",
-            parse_mode="HTML",
-        )
-        return "ok"
-
-    main = SimpleNamespace(status_command=original)
-    update = _Update()
-    status.install_operator_runtime_status(main)
-    wrapped = main.status_command
-
-    assert asyncio.run(wrapped(update, SimpleNamespace())) == "ok"
-    assert len(update.message.replies) == 1
-    text, _args, kwargs = update.message.replies[0]
-    assert text.count("🩺 <b>Статус бота</b>") == 1
-    assert "🧩 Runtime fixture" in text
-    assert "🎙 TTS fixture" in text
-    assert kwargs["parse_mode"] == "HTML"
-    assert getattr(wrapped, "_mp3bot_operator_runtime_status") is True
-
-    status.install_operator_runtime_status(main)
-    assert main.status_command is wrapped
 
 
-def test_status_wrapper_preserves_non_status_reply(monkeypatch) -> None:
-    monkeypatch.setattr(status, "_INSTALLED", False)
-
-    async def original(update, context):
-        del context
-        await update.message.reply_text("⛔ Нет доступа", parse_mode="HTML")
-
-    main = SimpleNamespace(status_command=original)
-    update = _Update(user_id=999)
-    status.install_operator_runtime_status(main)
-    asyncio.run(main.status_command(update, SimpleNamespace()))
-
-    assert len(update.message.replies) == 1
-    assert update.message.replies[0][0] == "⛔ Нет доступа"
 
 
 def test_safe_formatter_never_exposes_exception_message(monkeypatch) -> None:

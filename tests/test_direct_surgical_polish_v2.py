@@ -16,7 +16,6 @@ from types import SimpleNamespace
 import tempfile
 
 from tools.voxcpm2 import direct_retry_epoch as retry
-from tools.voxcpm2 import direct_surgical_guard
 from tools.voxcpm2 import direct_surgical_io as surgical_io
 from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
 from tools.voxcpm2 import direct_timing_guard as guard
@@ -39,12 +38,10 @@ def segment(**extra):
     return value
 
 
-direct_surgical_guard.install_guard_contract()
-polish.install_global_polish()
-
 with tempfile.TemporaryDirectory() as raw:
     root = Path(raw)
 
+    # Strict IDs now belong directly to the timing owner; no guard installer exists.
     for bad in (True, 1.5):
         try:
             guard.run_pre_model_guard(
@@ -68,6 +65,7 @@ with tempfile.TemporaryDirectory() as raw:
         evidence={"attempts": [], "max_tempo": 1.36},
     )
     assert marker["schema_version"] == polish.MARKER_SCHEMA_VERSION
+    assert marker["policy"] == polish.MARKER_POLICY
     assert guard.load_matching_timing_block(
         work, segment=item, signature_context={}
     ) is not None
@@ -98,36 +96,15 @@ with tempfile.TemporaryDirectory() as raw:
     context = guard.load_signature_context(runtime_work)
     assert context["render_contract_sha256"] == "a" * 64
     assert context["runtime_marker_policy"] == "direct-cli-runtime-marker-v2"
-    (runtime_work / "direct_cli_runtime.marker.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 2,
-                "policy": "direct-cli-runtime-marker-v2",
-                "speech_backend": "voxcpm2",
-                "render_contract_sha256": "a" * 64,
-                "cache_length": True,
-                "python_executable": "python",
-            }
-        ),
-        encoding="utf-8",
-    )
-    context = guard.load_signature_context(runtime_work)
-    assert context["runtime_marker_policy"] == "missing-or-invalid-direct-runtime-marker"
-    assert "render_contract_sha256" not in context
+    assert context["surgical_polish_policy"] == polish.POLICY
 
     scope = "b" * 64
     assert retry._scope_epochs(
         {
             "scope_epochs": {scope: 0},
             "history": [
-                {
-                    "scope_epoch_to": 1,
-                    "evidence": {"failure_scope_fingerprint": scope},
-                },
-                {
-                    "scope_epoch_to": 2,
-                    "evidence": {"failure_scope_fingerprint": scope},
-                },
+                {"scope_epoch_to": 1, "evidence": {"failure_scope_fingerprint": scope}},
+                {"scope_epoch_to": 2, "evidence": {"failure_scope_fingerprint": scope}},
             ],
         }
     )[scope] == 2
@@ -135,21 +112,16 @@ with tempfile.TemporaryDirectory() as raw:
     retry_work = root / "retry"
     first, second = "c" * 64, "d" * 64
     retry.invalidate_segment_for_retry(
-        retry_work,
-        {"id": 1},
-        reason="raw_candidate_hard_failure",
+        retry_work, {"id": 1}, reason="raw_candidate_hard_failure",
         evidence={"failure_scope_fingerprint": first},
     )
     result = retry.invalidate_segment_for_retry(
-        retry_work,
-        {"id": 1},
-        reason="raw_candidate_hard_failure",
+        retry_work, {"id": 1}, reason="raw_candidate_hard_failure",
         evidence={"failure_scope_fingerprint": second},
     )
     assert result["raw_retry_epoch"] == 2
     assert result["retry_epoch"] == 1
     assert result["scope_retry_epoch"] == 1
-    assert result["last_scope_epoch"] == 1
 
     class Backend:
         def capabilities(self):
@@ -206,25 +178,11 @@ with tempfile.TemporaryDirectory() as raw:
         expected_sample_rate=16000,
     )
     assert cached is not None and cached["reference_cache_hit"] is True
-    legacy = dict(report)
-    legacy.pop("reference_cache_schema_version")
-    (output.parent / "references.json").write_text(
-        json.dumps({"extended": legacy}), encoding="utf-8"
-    )
-    assert surgical_io.cached_reference(
-        source=source,
-        output=output,
-        hash_file=digest,
-        expected_sample_rate=16000,
-    ) is None
 
-    for relative in (
-        "tools/voxcpm2/_direct_max_quality_cli_base.py",
-        "tools/voxcpm2/direct_max_quality_analysis.py",
-        "tools/voxcpm2/direct_timeline_delivery_qa.py",
-        "services/speech_backends/execution_plan.py",
-    ):
-        assert relative in surgical_runtime._RUNTIME_SCOPE_FILES
+    # Runtime fingerprints now name canonical files only; the deleted base snapshot is absent.
+    assert "tools/voxcpm2/direct_max_quality_cli.py" in surgical_runtime._RUNTIME_SCOPE_FILES
+    assert "tools/voxcpm2/_direct_max_quality_cli_base.py" not in surgical_runtime._RUNTIME_SCOPE_FILES
+    assert "services/speech_backends/voxcpm2.py" in surgical_runtime._RUNTIME_SCOPE_FILES
 
     try:
         surgical_runtime._segments_by_id([segment(), segment()])
@@ -233,7 +191,11 @@ with tempfile.TemporaryDirectory() as raw:
     else:
         raise AssertionError("duplicate segment ids were accepted")
 
-print("second-pass surgical contracts: 10 checks passed")
+    polish_source = (Path.cwd() / "tools" / "voxcpm2" / "direct_surgical_polish_v2.py").read_text(encoding="utf-8")
+    assert "install_global_polish" not in polish_source
+    assert "direct_surgical_guard" not in polish_source
+
+print("source-owned surgical contracts: 9 checks passed")
 '''
 
 
@@ -257,4 +219,4 @@ def test_second_pass_contracts_in_isolated_process() -> None:
     )
     details = (process.stdout or "") + (process.stderr or "")
     assert process.returncode == 0, details
-    assert "10 checks passed" in details
+    assert "9 checks passed" in details

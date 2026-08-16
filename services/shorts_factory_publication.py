@@ -8,13 +8,14 @@ import html
 import json
 import logging
 import os
+import weakref
 from typing import Any, Callable
 
 from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
 _DESCRIPTION_FIELD = "_factory_publication_description"
-_INSTALLED = False
+_WRAPPED_CAPTION_BUILDERS: weakref.WeakSet[Callable[..., str]] = weakref.WeakSet()
 
 # Publication prose is deliberately isolated from both the Factory's heavy
 # gemini-3.6-flash analysis route and the generic LiveDub model-fallback chain.
@@ -213,7 +214,7 @@ def _candidate_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[
 
 def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., str]:
     """Insert only explicitly Factory-enriched prose; otherwise be a true no-op."""
-    if getattr(builder, "_factory_publication_polish", False):
+    if builder in _WRAPPED_CAPTION_BUILDERS:
         return builder
 
     def wrapped(*args, **kwargs):
@@ -221,25 +222,13 @@ def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., s
         caption = builder(*args, **kwargs)
         return _insert_description(caption, candidate.get(_DESCRIPTION_FIELD))
 
-    wrapped._factory_publication_polish = True  # type: ignore[attr-defined]
+    _WRAPPED_CAPTION_BUILDERS.add(wrapped)
     return wrapped
-
-
-def install_factory_publication_formatters(shorts_module, clips_module) -> bool:
-    global _INSTALLED
-    if _INSTALLED:
-        return True
-    shorts_module.build_short_caption = wrap_factory_caption_builder(shorts_module.build_short_caption)
-    clips_module.build_clip_caption = wrap_factory_caption_builder(clips_module.build_clip_caption)
-    _INSTALLED = True
-    logger.info("Factory publication polish: canonical hashtags + optional Gemini 3.5/minimal descriptions")
-    return True
 
 
 __all__ = [
     "FACTORY_PUBLICATION_LIGHT_MODELS",
     "canonical_public_hashtags",
     "enrich_factory_candidates",
-    "install_factory_publication_formatters",
     "wrap_factory_caption_builder",
 ]

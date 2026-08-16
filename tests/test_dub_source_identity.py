@@ -37,8 +37,3 @@ def test_wizard_rejects_non_single_video_sources(url: str) -> None:
         dub_wizard._extract_youtube_video_id(url)
 
 
-def test_wizard_facade_patches_legacy_callbacks() -> None:
-    assert Path(dub_wizard.__file__).name == "__init__.py"
-    assert dub_wizard._legacy._extract_youtube_video_id is dub_wizard._extract_youtube_video_id
-    facade = Path(dub_wizard.__file__).read_text(encoding="utf-8")
-    assert "clean_source_download._url_video_id(raw)" in facade

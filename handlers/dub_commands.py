@@ -26,6 +26,13 @@ _STATUS_ICON = {
 _MSG_ONLY = filters.UpdateType.MESSAGE
 _GENERIC_RECIPE = "generic_short_v1"
 _NOT_MODIFIED = "message is not modified"
+_PERMANENT_EDIT_ERRORS = (
+    "message to edit not found",
+    "message can't be edited",
+    "message cannot be edited",
+    "message identifier is not specified",
+    "message_id_invalid",
+)
 _LOG_TAIL_LINES = 80
 _LOG_TAIL_BYTES = 32_000
 
@@ -283,14 +290,21 @@ def _recipe_text() -> str:
 
 
 async def _safe_edit(query: Any, text: str, **kwargs: Any) -> bool:
-    """Edit a callback card without treating Telegram's no-op as an error."""
+    """Edit callback card; replace permanently stale cards with a new message."""
     try:
         await query.edit_message_text(text, **kwargs)
         return True
     except BadRequest as exc:
-        if _NOT_MODIFIED in str(exc).casefold():
+        detail = str(exc or "").casefold()
+        if _NOT_MODIFIED in detail:
             return False
-        raise
+        if not any(marker in detail for marker in _PERMANENT_EDIT_ERRORS):
+            raise
+        message = getattr(query, "message", None)
+        if message is None or not hasattr(message, "reply_text"):
+            raise
+        await message.reply_text(text, **kwargs)
+        return True
 
 
 async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

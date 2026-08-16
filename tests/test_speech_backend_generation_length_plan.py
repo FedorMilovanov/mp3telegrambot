@@ -20,8 +20,8 @@ from tools.voxcpm2 import direct_max_quality_cli
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CLI = ROOT / "tools" / "voxcpm2" / "_direct_max_quality_cli_base.py"
-FACADE = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli" / "__init__.py"
+RAW_CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
+FACADE = RAW_CLI
 
 
 def _audio_spec(seconds_per_step: float | None = 0.08) -> BackendAudioSpec:

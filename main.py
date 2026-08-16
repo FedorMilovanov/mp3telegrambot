@@ -14,6 +14,7 @@ from core.globals import (
 from core.database import (
     db_init, asettings_get,
     GEMINI_MODEL, WHITELIST_IDS, ADMIN_IDS,
+    reset_rate_limit_async_state,
     set_effective_max_file_size_mb,
 )
 from telegram import Update
@@ -148,9 +149,12 @@ async def run_bot_async():
     # per-user asyncio.Lock'и переживают пересоздание event loop и остаются
     # привязаны к мёртвому loop — каждый не-VIP запрос падал бы с
     # RuntimeError "bound to a different event loop" до ручного рестарта.
-    import core.database as _core_db
-    _core_db._rate_limit_async_locks.clear()
-    _core_db._rate_limit_locks_guard = asyncio.Lock()
+    _stale_rate_limit_locks = reset_rate_limit_async_state()
+    if _stale_rate_limit_locks:
+        logger.info(
+            "🧹 Очищено rate-limit locks от предыдущего event loop: %d",
+            _stale_rate_limit_locks,
+        )
 
     logger.info("🚀 Бот запускается...")
     # AUDIT 2026-06-10: startup-диагностика внешних инструментов.
@@ -745,6 +749,9 @@ async def run_bot_async():
 
     app = builder.build()
 
+    from services.dub_studio_runtime import register_dub_studio, start_dub_studio_services
+    register_dub_studio(app)
+
     # Source-owned polling reliability: inspect every update before normal
     # handlers without replacing PTB class methods globally.
     from services.polling_reliability_runtime import (
@@ -864,6 +871,7 @@ async def run_bot_async():
     async with app:
         await app.initialize()
         await app.start()
+        start_dub_studio_services(app)
         logger.info("📡 Запускаю polling getUpdates...")
         try:
             # PTB 22.8: Updater.start_polling no longer accepts read_timeout /
@@ -980,9 +988,12 @@ async def run_bot_async():
 
 
 def run_bot():
+    from services.restart_state_runtime import reset_cross_loop_state
+
     restart_delay = 5   # базовая задержка между перезапусками
     _net_fail_streak = 0
     while True:
+        reset_cross_loop_state()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:

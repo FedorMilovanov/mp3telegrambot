@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.voxcpm2.dub_worker import build_command
+from services.dub_worker import build_command
 from tools.voxcpm2.generic_short_production import (
     Cue,
     clean_caption_text,
@@ -17,7 +17,6 @@ from tools.voxcpm2.generic_short_production import (
     validate_translation,
     write_srt,
 )
-from tools.voxcpm2.generic_short_runtime import install_runtime_adapters
 
 
 def test_parse_timestamp_supports_vtt_and_srt() -> None:
@@ -43,7 +42,11 @@ def test_parse_vtt_uses_latest_rolling_caption_line(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     cues = parse_vtt(vtt)
-    assert [cue.text for cue in cues] == ["God is good.", "He saves sinners.", "Trust in Christ."]
+    assert [cue.text for cue in cues] == [
+        "God is good.",
+        "He saves sinners.",
+        "Trust in Christ.",
+    ]
 
 
 def test_group_cues_preserves_order_and_avoids_tiny_tail() -> None:
@@ -89,21 +92,14 @@ def test_write_srt_uses_millisecond_timestamps(tmp_path: Path) -> None:
     assert "Русский текст" in text
 
 
-def test_registered_recipe_uses_hardened_runtime_eighteen_percent_and_delay() -> None:
-    command, spec = build_command("short_tnliocegylk", "render")
-    joined = " ".join(command)
+def test_registered_recipe_routes_to_current_source_owner() -> None:
+    command, spec = build_command("generic_short_v1", "render")
     assert spec["runner"] == "python_module"
-    assert "tools.voxcpm2.generic_short_runtime" in joined
-    assert "-OriginalLevel 0.18" in joined
-    assert "-RussianDelayMs 420" in joined
-    assert "-VideoId tNlIoCeGyLk" in joined
+    assert spec["module"] == "tools.voxcpm2.generic_gemini_runtime"
+    assert command[1:3] == ["-m", "tools.voxcpm2.generic_gemini_runtime"]
+    assert command[-2:] == ["-Mode", "gemini"]
 
 
-def test_runtime_adapters_replace_network_and_translation_routes() -> None:
-    import tools.voxcpm2.generic_short_production as production
-    import tools.voxcpm2.generic_short_runtime as runtime
-
-    install_runtime_adapters()
-    assert production.download_source is runtime.download_source
-    assert production.download_captions is runtime.download_captions
-    assert production.gemini_json is runtime.gemini_json
+def test_retired_generic_short_runtime_stays_deleted() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "tools" / "voxcpm2" / "generic_short_runtime.py").exists()

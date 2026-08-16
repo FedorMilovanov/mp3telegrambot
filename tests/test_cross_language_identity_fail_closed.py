@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tools.voxcpm2 import direct_source_relative_continuity
-from tools.voxcpm2 import monolithic_runtime_install
+from tools.voxcpm2 import direct_fail_closed_identity as monolithic_runtime_install
 
 
 def _identity(f0: float, p90: float) -> dict[str, float]:

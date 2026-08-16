@@ -19,15 +19,7 @@ on:
       - 'services/operator_runtime_status.py'
       - 'services/restart_state_runtime.py'
       - 'tools/check_tts_model_catalog.py'
-      - 'tools/voxcpm2/dub_worker*.py'
-      - 'tools/voxcpm2/dub_worker*/**/*.py'
-      - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/generic_*/**/*.py'
-      - 'tools/voxcpm2/clean_*.py'
-      - 'tools/voxcpm2/clean_*/**/*.py'
-      - 'tools/voxcpm2/direct_*.py'
-      - 'tools/voxcpm2/direct_*/**/*.py'
-      - 'tools/voxcpm2/final_media_qa*/**/*.py'
+      - 'tools/voxcpm2/*.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_clean_*.py'
       - 'tests/test_dub*.py'
@@ -58,15 +50,7 @@ on:
       - 'services/operator_runtime_status.py'
       - 'services/restart_state_runtime.py'
       - 'tools/check_tts_model_catalog.py'
-      - 'tools/voxcpm2/dub_worker*.py'
-      - 'tools/voxcpm2/dub_worker*/**/*.py'
-      - 'tools/voxcpm2/generic_*.py'
-      - 'tools/voxcpm2/generic_*/**/*.py'
-      - 'tools/voxcpm2/clean_*.py'
-      - 'tools/voxcpm2/clean_*/**/*.py'
-      - 'tools/voxcpm2/direct_*.py'
-      - 'tools/voxcpm2/direct_*/**/*.py'
-      - 'tools/voxcpm2/final_media_qa*/**/*.py'
+      - 'tools/voxcpm2/*.py'
       - 'tools/voxcpm2/recipes/*.json'
       - 'tests/test_clean_*.py'
       - 'tests/test_dub*.py'
@@ -93,8 +77,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       DUB_STUDIO_ENABLED: '0'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -109,7 +93,7 @@ jobs:
       - name: Compile production surface dynamically
         shell: pwsh
         run: |
-          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/operator_runtime_status.py services/restart_state_runtime.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health handlers/dub_wizard.py handlers/dub_wizard handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
+          python -m compileall -q services/speech_backends services/tts_profile_selection.py services/operator_runtime_status.py services/restart_state_runtime.py services/dub_execution.py services/dub_worker.py services/dub_studio.py services/dub_studio_runtime.py handlers/dub_health.py handlers/dub_wizard.py handlers/dub_commands.py handlers/dub_delivery.py tools/voxcpm2
           python -m py_compile tools/check_tts_model_catalog.py
           if ($LASTEXITCODE -ne 0) {
             throw "Dub Studio production compile failed."
@@ -119,22 +103,28 @@ jobs:
         shell: pwsh
         run: |
           @'
-          from tools.voxcpm2.dub_worker import build_command
+          from services.dub_worker import build_command
 
-          gemini, gemini_spec = build_command('generic_short_v1', 'render_gemini')
-          direct, direct_spec = build_command('generic_short_v1', 'render_direct')
-          repair, repair_spec = build_command('generic_short_v1', 'repair_audio')
-
-          assert gemini_spec['module'] == 'tools.voxcpm2.generic_clean_gemini_runtime'
-          assert direct_spec['module'] == 'tools.voxcpm2.generic_clean_direct_runtime'
-          assert repair_spec['module'] == 'tools.voxcpm2.generic_clean_audio_repair_runtime'
-          assert gemini[1:3] == ['-m', gemini_spec['module']]
-          assert direct[1:3] == ['-m', direct_spec['module']]
-          assert repair[1:3] == ['-m', repair_spec['module']]
+          expected = {
+              'render': 'tools.voxcpm2.generic_gemini_runtime',
+              'render_gemini': 'tools.voxcpm2.generic_gemini_runtime',
+              'render_direct': 'tools.voxcpm2.generic_direct_runtime',
+              'repair_audio': 'tools.voxcpm2.generic_clean_audio_repair_runtime',
+              'prepare_custom': 'tools.voxcpm2.generic_custom_runtime',
+              'render_custom': 'tools.voxcpm2.generic_custom_runtime',
+          }
+          for action, module in expected.items():
+              command, spec = build_command('generic_short_v1', action)
+              assert spec['runner'] == 'python_module'
+              assert spec['module'] == module
+              assert command[1:3] == ['-m', module]
+          gemini, _ = build_command('generic_short_v1', 'render_gemini')
+          direct, _ = build_command('generic_short_v1', 'render_direct')
+          repair, _ = build_command('generic_short_v1', 'repair_audio')
           assert '-Mode gemini' in ' '.join(gemini)
           assert '-Mode direct' in ' '.join(direct)
           assert '-Mode' not in repair
-          print('Clean recipe action routing: OK')
+          print('Source-owned recipe action routing: OK')
           '@ | python -
       - name: Focused regression tests
         run: >-
@@ -153,7 +143,6 @@ jobs:
           tests/test_dub_health_supplemental_contract.py
           tests/test_dub_quality_v42_runtime_contracts.py
           tests/test_generic_project_runtime_contract.py
-          tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
           tests/test_speech_backend_generation_length_plan.py
@@ -171,7 +160,6 @@ jobs:
           tests/test_final_media_qa.py
           tests/test_dub_wizard.py
           tests/test_dub_wizard_request_writer.py
-          tests/test_dub_facade_write_through.py
       - name: Ruff configured Dub Studio checks
         run: >-
           python -m ruff check
@@ -183,9 +171,8 @@ jobs:
           services/dub_worker.py
           services/dub_studio.py
           services/dub_studio_runtime.py
-          handlers/dub_health
+          handlers/dub_health.py
           handlers/dub_wizard.py
-          handlers/dub_wizard
           handlers/dub_commands.py
           handlers/dub_delivery.py
           tools/check_tts_model_catalog.py
@@ -204,7 +191,6 @@ jobs:
           tests/test_dub_health_supplemental_contract.py
           tests/test_dub_quality_v42_runtime_contracts.py
           tests/test_generic_project_runtime_contract.py
-          tests/test_generic_project_runtime_write_through.py
           tests/test_speech_backend_command_contract.py
           tests/test_speech_backend_control_plane.py
           tests/test_speech_backend_generation_length_plan.py

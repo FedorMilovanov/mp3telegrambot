@@ -35,7 +35,7 @@ def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
         "project_id": "project-1",
         "repair_all": False,
         "segment_ids": [1],
-        "segments_sha256": repair._legacy.legacy_repair._sha256(segments_path),
+        "segments_sha256": repair.legacy_repair._sha256(segments_path),
         **request,
     }
     (root / "input" / "audio_repair.json").write_text(
@@ -48,7 +48,7 @@ def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
 def _refresh_request_hash(root: Path) -> None:
     repair_path = root / "input" / "audio_repair.json"
     payload = json.loads(repair_path.read_text(encoding="utf-8"))
-    payload["segments_sha256"] = repair._legacy.legacy_repair._sha256(
+    payload["segments_sha256"] = repair.legacy_repair._sha256(
         root / "segments_ru_final.json"
     )
     repair_path.write_text(
@@ -61,7 +61,7 @@ def test_valid_partial_and_full_repair_scopes_are_accepted(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(repair._legacy.pipeline, "ffprobe_duration", lambda _path: 3.0)
+    monkeypatch.setattr(repair.pipeline, "ffprobe_duration", lambda _path: 3.0)
     partial = _root(tmp_path / "partial", {})
     assert repair._validate_repair_request(partial, "project-1")["segment_ids"] == [1]
 
@@ -125,7 +125,7 @@ def test_stale_segment_hash_stops_before_migration(tmp_path: Path) -> None:
         segments_path.read_text(encoding="utf-8") + "\n",
         encoding="utf-8",
     )
-    assert repair._legacy.legacy_repair._sha256(segments_path) != before_request_hash
+    assert repair.legacy_repair._sha256(segments_path) != before_request_hash
     with pytest.raises(RuntimeError, match="изменился после создания repair request"):
         repair._validate_repair_request(root, "project-1")
     assert not (root / "segments_ru_final.pre_v45.json").exists()
@@ -162,21 +162,16 @@ def test_invalid_request_stops_before_legacy_main(monkeypatch, tmp_path: Path) -
     root = _root(tmp_path, {"repair_all": "false"})
     calls = 0
 
-    monkeypatch.setattr(repair._legacy.production, "current_project_id", lambda: "project-1")
-    monkeypatch.setattr(repair._legacy.production, "project_root", lambda _project_id: root)
+    monkeypatch.setattr(repair.production, "current_project_id", lambda: "project-1")
+    monkeypatch.setattr(repair.production, "project_root", lambda _project_id: root)
 
     def forbidden_main() -> None:
         nonlocal calls
         calls += 1
 
-    monkeypatch.setattr(repair._legacy, "main", forbidden_main)
+    monkeypatch.setattr(repair, "_source_main", forbidden_main)
     with pytest.raises(RuntimeError, match="repair_all должен быть bool"):
         repair.main()
     assert calls == 0
 
 
-def test_repair_facade_patches_all_legacy_validation_hooks() -> None:
-    assert repair._legacy._next_seed is repair._next_seed
-    assert repair._legacy._checkpoint_ready is repair._checkpoint_ready
-    assert repair._legacy._update_manifest is repair._update_manifest
-    assert repair._legacy.legacy_repair._load_segments is repair._load_segments

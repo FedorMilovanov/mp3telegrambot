@@ -6,9 +6,9 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from tools.voxcpm2 import direct_timing_guard
 
@@ -61,84 +61,71 @@ def _reported_epoch(payload: Mapping[str, Any]) -> Any:
     return "unknown"
 
 
-def install_main_failure_recovery(namespace: MutableMapping[str, Any]) -> None:
+def run_with_failure_recovery(
+    original: Callable[[], Any],
+    invalidate: Callable[..., Any],
+) -> Any:
     """Advance once for a new synthesis failure; never advance a blocked repeat."""
-    original = namespace.get("main")
-    invalidate = namespace.get("invalidate_segment_for_retry")
     if not callable(original) or not callable(invalidate):
-        raise RuntimeError("direct main recovery contract is incomplete.")
-
-    def main() -> Any:
-        try:
-            return original()
-        except RuntimeError as exc:
-            message = str(exc)
-            failure_type = getattr(
-                direct_timing_guard,
-                "RetryableSynthesisFailure",
-                None,
-            )
-            structured = bool(
-                isinstance(failure_type, type)
-                and isinstance(exc, failure_type)
-            )
-            if structured:
-                if not bool(exc.advance_retry):
-                    raise
-                segment = dict(exc.segment)
-                segment_id = int(exc.segment_id)
-                evidence = {
-                    **dict(exc.evidence),
-                    "policy": POLICY,
-                    "early_stop_kind": exc.failure_kind,
-                    "early_stop_message": message[:1000],
-                }
-            else:
-                if not any(marker in message for marker in _LEGACY_RECOVERABLE):
-                    raise
-                match = _SEGMENT_RE.search(message)
-                segments_value = _flag("--segments-json")
-                if match is None or not segments_value:
-                    raise
-                segment_id = int(match.group(1))
-                segment = _segment_from_json(
-                    Path(segments_value).resolve(),
-                    segment_id,
-                )
-                if not isinstance(segment, dict):
-                    raise
-                evidence = {
-                    "policy": POLICY,
-                    "early_stop_kind": "legacy_message_fallback",
-                    "early_stop_message": message[:1000],
-                }
-
-            work_value = _flag("--work-dir")
-            if not work_value:
+        raise TypeError("direct main recovery contract is incomplete.")
+    try:
+        return original()
+    except RuntimeError as exc:
+        message = str(exc)
+        failure_type = getattr(direct_timing_guard, "RetryableSynthesisFailure", None)
+        structured = bool(
+            isinstance(failure_type, type) and isinstance(exc, failure_type)
+        )
+        if structured:
+            if not bool(exc.advance_retry):
                 raise
-            work_dir = Path(work_value).resolve()
-            try:
-                result = invalidate(
-                    work_dir,
-                    segment,
-                    reason="raw_candidate_hard_failure",
-                    evidence=evidence,
-                )
-            except Exception as recovery_error:
-                raise RuntimeError(
-                    f"{message} Retry-state recovery failed: "
-                    f"{type(recovery_error).__name__}: {recovery_error}"
-                ) from exc
-            if not isinstance(result, Mapping):
-                raise RuntimeError(
-                    f"{message} Retry-state recovery returned invalid payload."
-                ) from exc
+            segment = dict(exc.segment)
+            evidence = {
+                **dict(exc.evidence),
+                "policy": POLICY,
+                "early_stop_kind": exc.failure_kind,
+                "early_stop_message": message[:1000],
+            }
+        else:
+            if not any(marker in message for marker in _LEGACY_RECOVERABLE):
+                raise
+            match = _SEGMENT_RE.search(message)
+            segments_value = _flag("--segments-json")
+            if match is None or not segments_value:
+                raise
+            segment_id = int(match.group(1))
+            segment = _segment_from_json(Path(segments_value).resolve(), segment_id)
+            if not isinstance(segment, dict):
+                raise
+            evidence = {
+                "policy": POLICY,
+                "early_stop_kind": "legacy_message_fallback",
+                "early_stop_message": message[:1000],
+            }
+
+        work_value = _flag("--work-dir")
+        if not work_value:
+            raise
+        work_dir = Path(work_value).resolve()
+        try:
+            result = invalidate(
+                work_dir,
+                segment,
+                reason="raw_candidate_hard_failure",
+                evidence=evidence,
+            )
+        except Exception as recovery_error:
             raise RuntimeError(
-                f"{message} Retry scope advanced to {_reported_epoch(result)}."
+                f"{message} Retry-state recovery failed: "
+                f"{type(recovery_error).__name__}: {recovery_error}"
             ) from exc
+        if not isinstance(result, Mapping):
+            raise RuntimeError(
+                f"{message} Retry-state recovery returned invalid payload."
+            ) from exc
+        raise RuntimeError(
+            f"{message} Retry scope advanced to {_reported_epoch(result)}."
+        ) from exc
 
-    namespace["main"] = main
-    namespace["EARLY_STOP_RECOVERY_POLICY"] = POLICY
 
-
-__all__ = ["POLICY", "install_main_failure_recovery"]
+__all__ = ["POLICY", "run_with_failure_recovery"]

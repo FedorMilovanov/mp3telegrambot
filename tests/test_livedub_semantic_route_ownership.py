@@ -6,7 +6,7 @@ def _read(path: str) -> str:
 
 
 def test_title_second_chance_directly_owns_36_high():
-    src = _read("services/livedub_info_presentation.py")
+    src = _read("services/livedub_info_presentation_policy.py")
     assert "DEFAULT_INFO_MODEL" in src
     assert 'thinking_level="high"' in src
     assert "temperature=" not in src
@@ -48,7 +48,7 @@ def test_user_visible_publication_sources_have_no_minimal_or_sampling_route():
         "services/livedub_info.py",
         "services/livedub_publication.py",
         "services/livedub_publication_core.py",
-        "services/livedub_info_presentation.py",
+        "services/livedub_info_presentation_policy.py",
     ):
         src = _read(path)
         assert 'thinking_level="minimal"' not in src, path

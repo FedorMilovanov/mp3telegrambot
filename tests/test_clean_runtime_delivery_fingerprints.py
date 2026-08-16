@@ -10,18 +10,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_render_contract_fingerprints_every_delivery_policy_module() -> None:
     required = {
-        "tools/voxcpm2/direct_max_quality_analysis/__init__.py",
-        "tools/voxcpm2/direct_max_quality_render/__init__.py",
+        "tools/voxcpm2/direct_max_quality_analysis.py",
+        "tools/voxcpm2/direct_max_quality_render.py",
         "tools/voxcpm2/direct_retry_epoch.py",
         "tools/voxcpm2/direct_russian_cadence.py",
-        "tools/voxcpm2/direct_russian_cadence/__init__.py",
         "tools/voxcpm2/direct_tail_artifact.py",
         "tools/voxcpm2/direct_source_prosody.py",
         "tools/voxcpm2/direct_timeline_delivery_qa.py",
-        "tools/voxcpm2/direct_max_quality_render.py",
     }
 
-    assert required <= set(contract._RENDER_MODULES)
+    render_modules = set(contract._RENDER_MODULES)
+    assert required <= render_modules
+    assert not any("direct_max_quality_analysis/__init__.py" in name for name in render_modules)
+    assert not any("direct_max_quality_render/__init__.py" in name for name in render_modules)
+    assert not any("direct_russian_cadence/__init__.py" in name for name in render_modules)
 
 
 def test_release_contract_fingerprints_active_final_delivery_gates() -> None:

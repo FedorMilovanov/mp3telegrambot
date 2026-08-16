@@ -174,16 +174,6 @@ def test_timing_qa_rejects_isolated_click_before_speech() -> None:
     assert result["isolated_start_artifact"] is True
 
 
-def test_quality_v4_entrypoints_disable_legacy_prompt_guard() -> None:
-    gemini = Path("tools/voxcpm2/generic_gemini_runtime.py").read_text(encoding="utf-8")
-    direct = Path("tools/voxcpm2/generic_direct_checked_runtime.py").read_text(
-        encoding="utf-8"
-    )
-    assert "legacy_semantic_guard.install = _disable_legacy_guard_install" in gemini
-    assert "legacy_semantic_guard.install = _disable_legacy_guard_install" in direct
-    assert "semantic_tts_guard_v4.install()" in gemini
-    assert "semantic_tts_guard_v4.install()" in direct
-
 
 def test_quality_v4_has_no_nested_prompt_retry_or_whole_mix_loudnorm() -> None:
     guard = Path("tools/voxcpm2/semantic_tts_guard_v4.py").read_text(encoding="utf-8")

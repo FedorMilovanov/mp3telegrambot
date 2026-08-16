@@ -1,53 +1,200 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Scope-aware durable retry epochs for universal VoxCPM2 dubbing.
+"""Durable per-segment seed epochs for deterministic VoxCPM recovery.
 
-The original implementation is kept as an immutable base snapshot. This module
-adds exact-input retry scopes so failures from an old SRT, model, profile or
-reference cannot poison a newly edited job that happens to reuse a segment ID.
+A failed segment must not regenerate the same five deterministic candidates on
+every job retry. This module advances only that segment's seed epoch after a raw,
+assembled or post-AAC delivery failure. Successful segment checkpoints keep
+their original epoch and remain reusable during hour-long renders.
 """
 from __future__ import annotations
+from collections.abc import Mapping
 
-from collections.abc import Callable, Mapping
+from tools.voxcpm2 import direct_surgical_polish_v2 as polish
+import json
+import os
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from numbers import Integral
 from typing import Any
 
-_ORIGINAL_NAME = __name__
-_BASE = Path(__file__).with_name("_direct_retry_epoch_base.py")
-if not _BASE.is_file():
-    raise RuntimeError(f"Missing direct retry base snapshot: {_BASE}")
-globals()["__name__"] = "tools.voxcpm2._direct_retry_epoch_base_exec"
-exec(compile(_BASE.read_text(encoding="utf-8-sig"), str(_BASE), "exec"), globals())
-globals()["__name__"] = _ORIGINAL_NAME
+POLICY = "failed-segment-seed-epoch-v1"
+# Epoch namespaces remain disjoint for every supported segment id. One billion
+# segment IDs is many orders of magnitude above an hour-long project while still
+# leaving a wide, explicit namespace between adjacent epochs.
+SEED_EPOCH_STRIDE = 1_000_000_000_000
+MAX_SEGMENT_ID = 1_000_000_000
+MAX_RETRY_EPOCH = 100_000
 
 
-def _required_export(name: str) -> Any:
-    value = globals().get(name)
-    if value is None:
-        raise RuntimeError(f"Direct retry base export is missing: {name}")
-    return value
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _required_callable(name: str) -> Callable[..., Any]:
-    value = _required_export(name)
-    if not callable(value):
-        raise RuntimeError(f"Direct retry base export is not callable: {name}")
-    return value
+def _strict_segment_id(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise RuntimeError(f"Некорректный segment_id: {value!r}")
+    result = int(value)
+    if not 1 <= result <= MAX_SEGMENT_ID:
+        raise RuntimeError(
+            f"segment_id должен быть в диапазоне 1..{MAX_SEGMENT_ID}: {result}."
+        )
+    return result
 
 
-BASE_POLICY = str(_required_export("POLICY"))
-MAX_RETRY_EPOCH = int(_required_export("MAX_RETRY_EPOCH"))
-MAX_SEGMENT_ID = int(_required_export("MAX_SEGMENT_ID"))
-SEED_EPOCH_STRIDE = int(_required_export("SEED_EPOCH_STRIDE"))
-_strict_segment_id = _required_callable("_strict_segment_id")
-_read_payload = _required_callable("_read_payload")
-_now = _required_callable("_now")
-_atomic_write = _required_callable("_atomic_write")
-retry_epoch_path = _required_callable("retry_epoch_path")
-seed_for_attempt = _required_callable("seed_for_attempt")
-invalidate_segment_for_retry = _required_callable("invalidate_segment_for_retry")
-_base_load_retry_epoch = _required_callable("load_retry_epoch")
-_base_advance_retry_epoch = _required_callable("advance_retry_epoch")
+def retry_epoch_path(work_dir: Path, segment_id: Any) -> Path:
+    segment = _strict_segment_id(segment_id)
+    return Path(work_dir).resolve() / "retry_epochs" / f"segment_{segment:02d}.json"
+
+
+def _read_payload(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Повреждён retry epoch: {path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Retry epoch должен быть JSON-объектом: {path}")
+    return payload
+
+
+def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
+    path = retry_epoch_path(work_dir, segment_id)
+    payload = _read_payload(path)
+    value = payload.get("epoch", 0)
+    if isinstance(value, bool):
+        raise RuntimeError(f"Retry epoch не может быть bool: {path}")
+    try:
+        epoch = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(f"Некорректный retry epoch в {path}: {value!r}") from exc
+    if not 0 <= epoch <= MAX_RETRY_EPOCH:
+        raise RuntimeError(f"Retry epoch вне диапазона 0..{MAX_RETRY_EPOCH}: {path}")
+    return epoch
+
+
+def seed_for_attempt(
+    base_seed: Any,
+    segment_id: Any,
+    attempt: Any,
+    epoch: Any,
+) -> int:
+    if isinstance(base_seed, bool) or isinstance(attempt, bool) or isinstance(epoch, bool):
+        raise RuntimeError("base_seed/attempt/epoch не могут быть bool.")
+    try:
+        base = int(base_seed)
+        attempt_value = int(attempt)
+        epoch_value = int(epoch)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("Некорректный base_seed/attempt/epoch.") from exc
+    segment = _strict_segment_id(segment_id)
+    if base < 0 or attempt_value <= 0:
+        raise RuntimeError("base_seed/attempt вне допустимого диапазона.")
+    if not 0 <= epoch_value <= MAX_RETRY_EPOCH:
+        raise RuntimeError(f"epoch вне диапазона 0..{MAX_RETRY_EPOCH}.")
+    seed = base + segment * 100 + attempt_value + epoch_value * SEED_EPOCH_STRIDE
+    if seed > 2**63 - 1:
+        raise RuntimeError("Вычисленный VoxCPM seed переполнил signed int64.")
+    return seed
+
+
+def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".{uuid.uuid4().hex}.tmp")
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def advance_retry_epoch(
+    work_dir: Path,
+    segment_id: Any,
+    *,
+    reason: str,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    segment = _strict_segment_id(segment_id)
+    path = retry_epoch_path(work_dir, segment)
+    previous = load_retry_epoch(work_dir, segment)
+    if previous >= MAX_RETRY_EPOCH:
+        raise RuntimeError(
+            f"Сегмент #{segment}: исчерпан retry epoch {MAX_RETRY_EPOCH}."
+        )
+    history_payload = _read_payload(path)
+    history = history_payload.get("history")
+    if not isinstance(history, list):
+        history = []
+    entry = {
+        "from_epoch": previous,
+        "to_epoch": previous + 1,
+        "reason": str(reason or "delivery_failure")[:240],
+        "created_at": _now(),
+        "evidence": dict(evidence or {}),
+    }
+    history = [*history[-31:], entry]
+    payload = {
+        "schema_version": 1,
+        "policy": POLICY,
+        "segment_id": segment,
+        "epoch": previous + 1,
+        "seed_stride": SEED_EPOCH_STRIDE,
+        "updated_at": entry["created_at"],
+        "last_reason": entry["reason"],
+        "history": history,
+    }
+    _atomic_write(path, payload)
+    return payload
+
+
+def _polish_base_invalidate_segment_for_retry(
+    work_dir: Path,
+    segment: dict[str, Any],
+    *,
+    reason: str,
+    fitted_path: Path | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    segment_id = _strict_segment_id(segment.get("id"))
+    root = Path(work_dir).resolve()
+    profile = str(segment.get("reference_profile") or "extended")
+    fitted = (
+        Path(fitted_path).resolve()
+        if fitted_path is not None
+        else root / "segments_fitted" / f"{segment_id:02d}_{profile}_fitted.wav"
+    )
+    checkpoint = root / "checkpoints" / f"segment_{segment_id:02d}.json"
+    clean = root / "segments_clean" / f"{segment_id:02d}_{profile}_clean.wav"
+    fitted.unlink(missing_ok=True)
+    checkpoint.unlink(missing_ok=True)
+    clean.unlink(missing_ok=True)
+    epoch = advance_retry_epoch(
+        root,
+        segment_id,
+        reason=reason,
+        evidence=evidence,
+    )
+    return {
+        "policy": POLICY,
+        "id": segment_id,
+        "fitted": str(fitted),
+        "checkpoint": str(checkpoint),
+        "clean": str(clean),
+        "retry_epoch": int(epoch["epoch"]),
+        "retry_epoch_path": str(retry_epoch_path(root, segment_id)),
+        "reason": str(reason or "delivery_failure"),
+    }
+
+BASE_POLICY = POLICY
+_base_load_retry_epoch = load_retry_epoch
+_base_advance_retry_epoch = advance_retry_epoch
 
 POLICY = "failed-segment-seed-epoch-scope-v2"
 MAX_SCOPE_EPOCH = 3
@@ -65,32 +212,7 @@ def _scope_fingerprint(evidence: Mapping[str, Any] | None) -> str:
 
 
 def _scope_epochs(payload: Mapping[str, Any]) -> dict[str, int]:
-    raw = payload.get(_SCOPE_EPOCHS_KEY)
-    result: dict[str, int] = {}
-    if isinstance(raw, Mapping):
-        for key, value in raw.items():
-            fingerprint = str(key or "").strip().lower()
-            if len(fingerprint) != 64:
-                continue
-            try:
-                epoch = int(value)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if 0 <= epoch <= MAX_SCOPE_EPOCH:
-                result[fingerprint] = epoch
-    explicit = set(result)
-    history = payload.get("history")
-    if isinstance(history, list):
-        for entry in history:
-            if not isinstance(entry, Mapping):
-                continue
-            fingerprint = _scope_fingerprint(entry.get("evidence"))
-            if fingerprint and fingerprint not in explicit:
-                result[fingerprint] = min(
-                    MAX_SCOPE_EPOCH,
-                    result.get(fingerprint, 0) + 1,
-                )
-    return result
+    return polish._scope_epochs(payload)
 
 
 def load_retry_epoch(
@@ -186,6 +308,43 @@ def advance_retry_epoch(
     }
     _atomic_write(path, payload)
     return payload
+
+
+
+def invalidate_segment_for_retry(
+    work_dir: Path,
+    segment: dict[str, Any],
+    *,
+    reason: str,
+    fitted_path: Path | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    evidence_payload = dict(evidence or {})
+    fingerprint = polish._sha(evidence_payload.get("failure_scope_fingerprint"))
+    result = dict(
+        _polish_base_invalidate_segment_for_retry(
+            work_dir,
+            segment,
+            reason=reason,
+            fitted_path=fitted_path,
+            evidence=evidence_payload,
+        )
+    )
+    result["raw_retry_epoch"] = int(result.get("retry_epoch") or 0)
+    if fingerprint:
+        epoch = load_retry_epoch(
+            work_dir,
+            segment.get("id"),
+            scope_fingerprint=fingerprint,
+        )
+        result.update(
+            retry_epoch=epoch,
+            scope_retry_epoch=epoch,
+            last_scope_epoch=epoch,
+            scope_fingerprint=fingerprint,
+            policy=polish.POLICY,
+        )
+    return result
 
 
 __all__ = [

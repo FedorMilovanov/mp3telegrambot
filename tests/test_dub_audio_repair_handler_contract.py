@@ -13,9 +13,9 @@ from handlers import dub_audio_repair as handler
 
 
 def _patch_project_paths(monkeypatch, root: Path) -> None:
-    monkeypatch.setattr(handler._legacy, "_project_root", lambda _project_id: root)
+    monkeypatch.setattr(handler, "_project_root", lambda _project_id: root)
     monkeypatch.setattr(
-        handler._legacy,
+        handler,
         "_segments_path",
         lambda _project_id: root / "segments_ru_final.json",
     )
@@ -57,7 +57,7 @@ def test_handler_writer_records_exact_segments_hash(monkeypatch, tmp_path: Path)
         json.dumps(segments, ensure_ascii=False),
         encoding="utf-8",
     )
-    monkeypatch.setattr(handler._legacy, "utc_now", lambda: "2026-07-30T00:00:00Z")
+    monkeypatch.setattr(handler, "utc_now", lambda: "2026-07-30T00:00:00Z")
 
     path = handler._write_repair_request(
         {"id": "project-1"},
@@ -71,7 +71,7 @@ def test_handler_writer_records_exact_segments_hash(monkeypatch, tmp_path: Path)
     assert payload["segment_ids"] == [1]
     assert payload["repair_all"] is True
     assert payload["requested_by"] == 123
-    assert payload["segments_sha256"] == handler._legacy.hashlib.sha256(
+    assert payload["segments_sha256"] == handler.hashlib.sha256(
         segments_path.read_bytes()
     ).hexdigest()
     assert not list((tmp_path / "input").glob("audio_repair.json.tmp.*"))
@@ -163,7 +163,7 @@ def test_concurrent_dubfix_commands_are_serialized(
         order.append(f"end-{update.name}")
         active -= 1
 
-    monkeypatch.setattr(handler, "_legacy_dubfix_command", fake_command)
+    monkeypatch.setattr(handler, "_dubfix_command_unlocked", fake_command)
 
     async def run() -> None:
         await asyncio.gather(
@@ -180,8 +180,3 @@ def test_concurrent_dubfix_commands_are_serialized(
     assert not (tmp_path / ".dubfix.request.lock").exists()
 
 
-def test_handler_facade_patches_legacy_registration_target() -> None:
-    assert Path(handler.__file__).name == "__init__.py"
-    assert handler._legacy.load_repair_segments is handler.load_repair_segments
-    assert handler._legacy._write_repair_request is handler._write_repair_request
-    assert handler._legacy.dubfix_command is handler.dubfix_command

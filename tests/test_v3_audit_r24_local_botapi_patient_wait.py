@@ -49,7 +49,8 @@ def test_warming_server_is_reused_and_cold_start_is_single_attempt():
     assert "без перезапуска" in REQUIRED
     assert REQUIRED.count("_cloud_logout(token, _cloud_proxy())") == 1
     assert REQUIRED.count("process_runtime._terminate_managed_server()") == 1
-    assert REQUIRED.count("process_runtime._start_server(host, port)") == 1
+    assert REQUIRED.count("process_runtime._start_server(") == 1
+    assert "proxy_url=proxy_url" in REQUIRED
 
 
 def test_env_documents_only_the_current_required_contract():

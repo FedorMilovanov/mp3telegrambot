@@ -119,8 +119,8 @@ class ConstantMixMediaMaster:
         repo = Path(repo_root).resolve()
         mode = str(request.get("translation_mode") or "").casefold().strip()
         if mode == "direct":
-            entrypoint = repo / "tools" / "voxcpm2" / "master_monolithic_mix.py"
-            module = "tools.voxcpm2.master_monolithic_mix"
+            entrypoint = repo / "tools" / "voxcpm2" / "master_direct_russian_only.py"
+            module = "tools.voxcpm2.master_direct_russian_only"
         else:
             entrypoint = (
                 repo
