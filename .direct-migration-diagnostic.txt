@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/runner/work/mp3telegrambot/mp3telegrambot/tools/source_own_generic_direct_route.py", line 275, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/runner/work/mp3telegrambot/mp3telegrambot/tools/source_own_generic_direct_route.py", line 187, in main
+    source = top_source(base, BASE, name, (ast.FunctionDef, ast.AsyncFunctionDef))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/mp3telegrambot/mp3telegrambot/tools/source_own_generic_direct_route.py", line 60, in top_source
+    raise RuntimeError(f"{path}: missing top-level {name}")
+RuntimeError: /home/runner/work/mp3telegrambot/mp3telegrambot/tools/voxcpm2/_generic_clean_direct_runtime_base.py: missing top-level _project_request_path
+exit_code=1
