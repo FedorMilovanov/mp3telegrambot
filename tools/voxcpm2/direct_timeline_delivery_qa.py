@@ -247,6 +247,7 @@ import soundfile as sf
 from tools.voxcpm2 import direct_monolith_contract
 
 from tools.voxcpm2 import direct_source_relative_continuity
+from tools.voxcpm2 import direct_fail_closed_identity
 
 from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
@@ -389,7 +390,7 @@ def _identity(row: dict[str, Any]) -> dict[str, Any]:
         ],
     }
 
-def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, float]:
+def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
     valid_f0 = [
         _finite(row["pitch"].get("f0_median"))
         for row in rows
@@ -521,10 +522,15 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, float]:
         current["max_connected_gap_seconds"] = MAX_CONNECTED_GAP_SECONDS
         if gap > MAX_CONNECTED_GAP_SECONDS:
             _append(current, "connected_phrase_gap")
+    direct_fail_closed_identity.enforce_fail_closed_identity(
+        rows,
+        baseline_f0=baseline_f0,
+    )
     return {
         "baseline_f0_median": baseline_f0,
         "source_baseline_f0_median": source_baseline_f0,
         "baseline_spectral_centroid_hz": baseline_centroid,
+        "fail_closed_identity_policy": direct_fail_closed_identity.FAIL_CLOSED_IDENTITY_POLICY,
     }
 
 def _invalidate_failures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from services.livedub_info_guard import sampled_srt_to_timed_text, sanitize_card
+from services.livedub_info_evidence import sampled_srt_to_timed_text, sanitize_card
 
 
 def _block(index: int, minute: int, text: str) -> str:

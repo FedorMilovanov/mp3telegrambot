@@ -27,8 +27,12 @@ from core.text_utils import (
     normalize_title_text,
     title_case_fragment,
 )
-from converters.md_telegraph import safe_trim_caption
-from services.livedub_qa import srt_to_timed_text
+from services import livedub_info_presentation_policy as presentation_policy
+from services.livedub_info_evidence import (
+    full_srt_evidence,
+    sampled_srt_to_timed_text,
+    sanitize_card,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +197,21 @@ def _gemini_clients_snapshot() -> tuple[Any, ...]:
     return tuple(GEMINI_CLIENTS)
 
 
+async def _finalize_info_card(
+    card: dict | None,
+    *,
+    title_line: str,
+    source_url: str,
+    evidence: str,
+) -> dict:
+    guarded = sanitize_card(card, str(title_line or ""), evidence)
+    return await presentation_policy.apply_card_presentation(
+        guarded,
+        str(title_line or ""),
+        source_url=source_url,
+    )
+
+
 async def build_livedub_info_card(
     title_line: str,
     dub_srt_path: Path | None = None,
@@ -205,16 +224,25 @@ async def build_livedub_info_card(
         return None
     fallback = _fallback_card(title_line, source_url)
     timed_text = ""
+    evidence = ""
     try:
         if dub_srt_path and Path(dub_srt_path).exists():
-            timed_text = srt_to_timed_text(Path(dub_srt_path), max_chars=7000)
+            srt_path = Path(dub_srt_path)
+            timed_text = sampled_srt_to_timed_text(srt_path, max_chars=7000)
+            evidence = full_srt_evidence(srt_path)
     except Exception as exc:
         logger.info("[LiveDubInfo] SRT read failed: %s", str(exc)[:120])
         timed_text = ""
+        evidence = ""
 
     clients = _gemini_clients_snapshot()
     if not clients:
-        return fallback
+        return await _finalize_info_card(
+            fallback,
+            title_line=title_line,
+            source_url=source_url,
+            evidence=evidence,
+        )
 
     prompt = f"""
 Ты готовишь короткие текстовые материалы для русскоязычной публикации переведённого видео.
@@ -273,7 +301,12 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
                 data = json.loads(raw)
                 card = _normalize_card(data, title_line, source_url)
                 card["model"] = model
-                return card
+                return await _finalize_info_card(
+                    card,
+                    title_line=title_line,
+                    source_url=source_url,
+                    evidence=evidence,
+                )
             except Exception as exc:
                 last_error = exc
                 logger.info(
@@ -288,7 +321,12 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
             "[LiveDubInfo] all clients/models failed (%s) — deterministic fallback",
             str(last_error)[:160],
         )
-    return fallback
+    return await _finalize_info_card(
+        fallback,
+        title_line=title_line,
+        source_url=source_url,
+        evidence=evidence,
+    )
 
 
 def _h(text: Any) -> str:
@@ -296,65 +334,5 @@ def _h(text: Any) -> str:
 
 
 def format_livedub_info_message(card: dict) -> str:
-    """Pretty, Telegram-safe HTML message with copy-ready publication text."""
-    if not isinstance(card, dict):
-        return ""
-    tg = _safe_text(card.get("telegram_description"), 700)
-    yt_title = _safe_text(card.get("youtube_title"), 100)
-    yt_desc = _safe_text(card.get("youtube_description"), 1800)
-    compact = card.get("compact_subtitles") or []
-    hashtags = [str(h) for h in (card.get("hashtags") or [])[:8] if str(h).strip()]
-    source_url = _safe_text(card.get("source_url"), 500)
-    scripture = card.get("scripture_references") or []
-
-    lines: list[str] = ["✨ <b>Готовое описание к переводу</b>"]
-    if tg:
-        lines += ["", "📝 <b>Кратко для Telegram</b>", f"<i>{_h(tg)}</i>"]
-    if source_url:
-        lines += [
-            f"🔗 <a href=\"{html.escape(source_url, quote=True)}\">Оригинал на YouTube</a>"
-        ]
-
-    clean_compact = [_safe_text(x, 180) for x in compact[:8] if _safe_text(x, 180)]
-    if clean_compact:
-        lines += ["", "💬 <b>Компактные тезисы / субтитры</b>"]
-        lines += ["• " + _h(x) for x in clean_compact]
-
-    terms = card.get("key_theological_terms") or []
-    if terms:
-        lines += ["", "🧠 <b>Богословские термины</b>"]
-        tags = []
-        for term in terms[:6]:
-            tag_body = "".join(word.capitalize() for word in str(term).split())
-            tags.append(f"#{tag_body}")
-        lines.append(" ".join(tags))
-
-    if scripture:
-        lines += ["", "📖 <b>Упомянутые места Писания</b>"]
-        for item in scripture[:5]:
-            if not isinstance(item, dict):
-                continue
-            ref = _h(item.get("ref", ""))
-            text = _h(item.get("text_ru", ""))
-            if ref and text:
-                lines.append(f"<b>{ref}</b>: {text}")
-            elif ref:
-                lines.append(f"<b>{ref}</b>")
-
-    if yt_title or yt_desc or hashtags:
-        yt_block_parts: list[str] = []
-        if yt_desc:
-            yt_block_parts.append(yt_desc)
-        if source_url:
-            yt_block_parts.append(f"Оригинал: {source_url}")
-        if hashtags:
-            yt_block_parts.append(" ".join(hashtags))
-        yt_block = "\n\n".join(yt_block_parts).strip()
-
-        lines += ["", "▶️ <b>Для YouTube</b>"]
-        if yt_title:
-            lines += ["<b>Название:</b>", f"<code>{_h(yt_title)}</code>"]
-        if yt_block:
-            lines += ["<b>Описание:</b>", f"<pre>{_h(yt_block)}</pre>"]
-
-    return safe_trim_caption("\n".join(lines).strip(), 3900)
+    """Render the concise source-owned LiveDub publication card."""
+    return presentation_policy.format_card_message(card)
