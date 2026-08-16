@@ -1,0 +1,63 @@
+name: Source-own Generic Routes
+
+on:
+  push:
+    branches:
+      - agent/zero-runtime-surgery-marathon
+    paths:
+      - .source-own-generic-routes-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/zero-runtime-surgery-marathon
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Source-own Gemini and custom routes
+        run: python tools/source_own_generic_routes.py
+      - name: Compile production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py bot_new.py
+      - name: Import smoke route owners
+        run: |
+          python - <<'PY'
+          from tools.voxcpm2 import generic_project_runtime as project
+          from tools.voxcpm2 import generic_gemini_runtime as gemini
+          from tools.voxcpm2 import generic_custom_runtime as custom
+          assert project.ProjectRoute
+          assert callable(gemini.main)
+          assert callable(custom.main)
+          PY
+      - name: Verify route recipe and root graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f tools/voxcpm2/generic_clean_gemini_runtime.py
+          test ! -f tools/voxcpm2/generic_clean_custom_runtime.py
+          ! grep -RIn --include='*.py' --exclude-dir=tests --exclude='source_own_generic_routes.py' 'install_gemini_quality\|semantic_tts_guard_v4\.install\|production\.[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' tools/voxcpm2/generic_gemini_runtime.py tools/voxcpm2/generic_custom_runtime.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('tools/voxcpm2/recipes/generic_short_v1.json').read_text(encoding='utf-8'))
+          assert r['actions']['render']['module']=='tools.voxcpm2.generic_gemini_runtime'
+          assert r['actions']['render_gemini']['module']=='tools.voxcpm2.generic_gemini_runtime'
+          assert r['actions']['prepare_custom']['module']=='tools.voxcpm2.generic_custom_runtime'
+          assert r['actions']['render_custom']['module']=='tools.voxcpm2.generic_custom_runtime'
+          PY
+          python tools/remaining_runtime_call_graph.py
+      - name: Commit route migration
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Source-own Gemini and custom Dub routes"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
