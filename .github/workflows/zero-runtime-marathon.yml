@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  remaining-call-graph:
+  livedub-cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile production tree
-        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
-      - name: Remaining runtime root calls
-        run: python tools/remaining_runtime_call_graph.py
+      - name: Remove dead LiveDub mutation layer
+        run: python tools/prune_dead_livedub_mutation_layer.py
+      - name: Compile LiveDub owners
+        run: python -m compileall -q services pipelines handlers core
+      - name: Verify explicit LiveDub ownership
+        run: |
+          test ! -f services/livedub_audio_dedupe.py
+          ! grep -nE 'ContextVar|_CURRENT_SOURCE_URL|setattr\(cls|_mp3bot_publication_card|_mp3bot_output_policy|livedub_audio_dedupe' services/livedub_publication.py services/livedub_output_policy.py
+          ! grep -RInE 'livedub_audio_dedupe' services pipelines handlers core --include='*.py'
+          grep -q 'class SourceAudioDeferral' services/livedub_delivery_coordinator.py
+          grep -q 'build_publication_card(_publication_source_line, url)' pipelines/main_pipeline.py
+      - name: Commit LiveDub cleanup
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove dead LiveDub interception layer"
+          git push origin HEAD:agent/zero-runtime-surgery-marathon
