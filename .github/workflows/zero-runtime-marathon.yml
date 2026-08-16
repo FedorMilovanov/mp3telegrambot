@@ -32,8 +32,9 @@ jobs:
       - name: Compile changed owners
         run: |
           python -m compileall -q \
-            main.py \
-            services/dub_studio_runtime.py \
+            handlers/commands.py \
+            services/operator_runtime_status.py \
+            services/restart_state_runtime.py \
             services/runtime_manifest.py
 
       - name: Run focused tests when test runtime is available
@@ -44,7 +45,7 @@ jobs:
           if importlib.util.find_spec('pytest') is None:
               print('pytest is not installed in the temporary refactor runner; canonical PR CI owns test execution')
               raise SystemExit(0)
-          needles = ('dub_studio_runtime', 'runtime_manifest', 'dub_studio')
+          needles = ('operator_runtime_status', 'restart_state_runtime', 'livedub_help', 'gemini_startup_diagnostics', 'runtime_manifest')
           selected = []
           for path in sorted(Path('tests').glob('test_*.py')):
               text = path.read_text(encoding='utf-8', errors='replace')
