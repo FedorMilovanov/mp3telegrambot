@@ -274,12 +274,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "shorts-visual-policy",
-        "services.shorts_static_runtime",
-        "install_short_static_runtime",
-        RuntimePhase.PRE_MAIN,
-    ),
-    RuntimeFeature(
         "gemini-startup-diagnostics",
         "services.gemini_startup_diagnostics",
         "install_gemini_startup_diagnostics",
@@ -313,13 +307,6 @@ DEFAULT_RUNTIME_FEATURES = (
         "install_project_runtime_hardening",
         RuntimePhase.POST_MAIN,
         requires_main=True,
-    ),
-    RuntimeFeature(
-        "shorts-factory-routing-bridge",
-        "services.shorts_factory_overload_editorial_polish",
-        "install_shorts_factory_overload_editorial_polish",
-        RuntimePhase.POST_MAIN,
-        false_is_failure=True,
     ),
     RuntimeFeature(
         "dub-studio-runtime",

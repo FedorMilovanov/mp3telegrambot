@@ -46,7 +46,7 @@ from services.telegraph_repair import (
     repair_generated_page_record, repair_generated_page_records,
     repair_telegraph_page_url, telegraph_path_from_url,
 )
-from pipelines.main_pipeline import process_single_video
+from pipelines.video_dispatch import process_single_video
 from services.shorts_video import (
     HAS_FASTER_WHISPER, burn_subtitles_into_short, download_video_for_shorts,
     transcribe_short_clip,
