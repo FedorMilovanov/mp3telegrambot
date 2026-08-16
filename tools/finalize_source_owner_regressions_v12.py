@@ -50,6 +50,45 @@ def remove_all_but_last_top_level(path: str, name: str) -> None:
     write(path, "".join(lines))
 
 
+def remove_first_top_level_definition(path: str, name: str) -> None:
+    """Remove an early class/function when a later assignment owns the name."""
+    text = read(path)
+    tree = ast.parse(text, filename=path)
+    node = next(
+        (
+            item
+            for item in tree.body
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and item.name == name
+        ),
+        None,
+    )
+    if node is None:
+        raise RuntimeError(f"v12 early definition missing: {path}::{name}")
+    later_owner = False
+    for item in tree.body:
+        if getattr(item, "lineno", 0) <= node.end_lineno:
+            continue
+        if isinstance(item, ast.Assign):
+            later_owner = any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in item.targets
+            )
+        elif isinstance(item, ast.AnnAssign):
+            later_owner = isinstance(item.target, ast.Name) and item.target.id == name
+        if later_owner:
+            break
+    if not later_owner:
+        raise RuntimeError(f"v12 later assignment owner missing: {path}::{name}")
+    lines = text.splitlines(keepends=True)
+    start = node.lineno - 1
+    end = node.end_lineno
+    while end < len(lines) and not lines[end].strip():
+        end += 1
+    del lines[start:end]
+    write(path, "".join(lines))
+
+
 # Retired installers must not remain in public export lists.
 replace_once(
     "services/conspect_audit_runtime.py",
@@ -144,14 +183,15 @@ del lines[start:end]
 write("tools/voxcpm2/direct_max_quality_render.py", "".join(lines))
 
 # direct_surgical_io keeps LazyBackend locally and obtains the shared IO types
-# from the pure polish owner. Remove the earlier fully-shadowed copies.
+# from the pure polish owner. Remove the earlier fully-shadowed copies while
+# preserving the final ordinary assignments to the source owner.
 for name in (
     "MutableAudioSpec",
     "LazySession",
     "cached_reference",
     "enrich_reference_report",
 ):
-    remove_all_but_last_top_level("tools/voxcpm2/direct_surgical_io.py", name)
+    remove_first_top_level_definition("tools/voxcpm2/direct_surgical_io.py", name)
 
 # Consolidated source files: the last definition is the active production
 # contract; Ruff confirms the earlier binding is unused before it is replaced.
