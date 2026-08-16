@@ -22,7 +22,7 @@ def test_main_pipeline_external_commands_use_async_process_owner() -> None:
 
     assert "from services.async_process import run_cancellable_process" in source
     assert "subprocess.run(" not in function
-    assert function.count("await run_cancellable_process(") == 7
+    assert function.count("await run_cancellable_process(") == 5
 
 
 def test_main_pipeline_thread_normalizer_remains_owned() -> None:
@@ -36,12 +36,13 @@ def test_main_pipeline_thread_normalizer_remains_owned() -> None:
     assert function.count("asyncio.to_thread(normalize_mp3_lossless") == 2
 
 
-def test_recompression_deletes_stale_output_before_each_ffmpeg_run() -> None:
-    _source, function = _process_function_source()
+def test_recompression_uses_atomic_mp3_conversion_owner() -> None:
+    source, function = _process_function_source()
 
-    assert function.count("mp3_64_path.unlink(missing_ok=True)") >= 4
-    assert function.count("_recompress_proc.returncode == 0") == 2
-    assert function.count("_recompress_proc.returncode != 0") == 2
+    assert "from services.mp3_conversion import reencode_mp3_64k_atomic" in source
+    assert function.count("await reencode_mp3_64k_atomic(mp3_path, mp3_64_path)") == 2
+    assert function.count("mp3_path.unlink(missing_ok=True)") == 2
+    assert "_recompress_proc" not in function
 
 
 def test_cached_audio_download_checks_exit_status() -> None:
