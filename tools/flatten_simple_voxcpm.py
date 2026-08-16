@@ -9,10 +9,6 @@ ROOT = Path(__file__).resolve().parents[1] / "tools" / "voxcpm2"
 TARGETS = ("clean_source_download", "direct_max_quality_analysis")
 
 
-def references_name(node: ast.AST, name: str) -> bool:
-    return any(isinstance(n, ast.Name) and n.id == name for n in ast.walk(node))
-
-
 def skip_node(node: ast.AST, text: str) -> bool:
     if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
         return True
@@ -24,7 +20,6 @@ def skip_node(node: ast.AST, text: str) -> bool:
             return True
     if isinstance(node, ast.ImportFrom) and node.module in {"importlib", "sys"}:
         return True
-    # Dynamic sibling loader plumbing.
     assigned=set()
     if isinstance(node, (ast.Assign, ast.AnnAssign)):
         targets=node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -33,7 +28,10 @@ def skip_node(node: ast.AST, text: str) -> bool:
     if assigned & {"_LEGACY_PATH", "_SPEC", "_legacy", "_previous_legacy", "_module"}:
         return True
     source=ast.get_source_segment(text,node) or ""
-    if "spec_from_file_location" in source or "module_from_spec" in source or "exec_module" in source:
+    if any(token in source for token in (
+        "spec_from_file_location", "module_from_spec", "exec_module",
+        "sys.modules[_SPEC", "sys.modules.pop(_SPEC", "sys.modules[__name__]",
+    )):
         return True
     if isinstance(node, ast.For) and "dir(_legacy)" in source:
         return True
@@ -41,7 +39,7 @@ def skip_node(node: ast.AST, text: str) -> bool:
         return True
     if isinstance(node, ast.ClassDef) and node.name == "_WriteThroughModule":
         return True
-    if "sys.modules[__name__].__class__" in source or "_module.__class__" in source:
+    if "_module.__class__" in source:
         return True
     return False
 
@@ -61,13 +59,11 @@ def flatten(stem: str) -> None:
         segment=ast.get_source_segment(pkg,node)
         if not segment:
             continue
-        # The original definitions are now in this very module.
         segment=segment.replace('getattr(_legacy, "__all__", ())', '_BASE_ALL')
         segment=segment.replace("getattr(_legacy, '__all__', ())", '_BASE_ALL')
         segment=segment.replace("_legacy.", "")
         pieces.append(segment)
     merged=base.rstrip()+"\n\n_BASE_ALL = tuple(globals().get('__all__', ()))\n\n"+"\n\n".join(pieces)+"\n"
-    # No dynamic import plumbing may survive in the flattened owner.
     forbidden=("spec_from_file_location", "module_from_spec", "exec_module", "sys.modules", "_legacy.")
     bad=[token for token in forbidden if token in merged]
     if bad:
@@ -78,7 +74,6 @@ def flatten(stem: str) -> None:
     main_file=ROOT/stem/"__main__.py"
     if main_file.is_file():
         main_text=main_file.read_text(encoding="utf-8", errors="replace")
-        # A package-only __main__ cannot remain after canonicalization.
         if stem in main_text or "from ." in main_text:
             main_file.unlink()
     print(f"flattened {stem}")
