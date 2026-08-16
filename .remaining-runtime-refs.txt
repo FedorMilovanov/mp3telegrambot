@@ -1,0 +1,164 @@
+===== generic_clean_custom_runtime =====
+handlers/dub_health.py:91:        "custom": voxcpm / "generic_clean_custom_runtime.py",
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+===== generic_clean_direct_runtime =====
+services/dub_release_health_v64.py:56:    direct_runtime = _read(voxcpm / "generic_clean_direct_runtime.py")
+handlers/dub_health.py:90:        "direct": voxcpm / "generic_clean_direct_runtime.py",
+handlers/dub_health.py:394:                "tools.voxcpm2.generic_clean_direct_runtime" in direct_text
+tools/voxcpm2/direct_universal_runtime.py:54:            "generic_clean_direct_runtime не содержит _run_clean_voxcpm_and_master."
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+===== generic_clean_gemini_runtime =====
+handlers/dub_health.py:89:        "gemini": voxcpm / "generic_clean_gemini_runtime.py",
+handlers/dub_health.py:388:                "tools.voxcpm2.generic_clean_gemini_runtime" in gemini_text
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+===== generic_gemini_runtime =====
+handlers/dub_health.py:70:        "creator_vtt": voxcpm / "generic_gemini_runtime.py",
+tools/voxcpm2/generic_gemini_runtime_v45.py:8:from tools.voxcpm2 import generic_gemini_runtime as base
+tools/voxcpm2/generic_clean_gemini_runtime.py:16:from tools.voxcpm2 import generic_gemini_runtime as checked
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+===== generic_project_runtime =====
+services/dub_release_health_v64.py:59:    project_runtime = _read(voxcpm / "generic_project_runtime" / "__init__.py")
+services/dub_release_health_v64.py:60:    project_runtime_legacy = _read(voxcpm / "generic_project_runtime.py")
+services/dub_release_health_v64.py:196:            "generic_project_runtime.validate_request_payload(payload)",
+handlers/dub_wizard.py:42:from tools.voxcpm2 import clean_source_download, generic_project_runtime
+handlers/dub_wizard.py:736:    validated_request = generic_project_runtime.validate_request_payload(request)
+tools/voxcpm2/semantic_tts_guard_v4.py:434:            if file_name not in {"generic_project_runtime.py", "generic_direct_runtime.py"}:
+tools/voxcpm2/generic_clean_audio_repair_runtime.py:21:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/repair_project_request.py:131:    from tools.voxcpm2.generic_project_runtime import load_request
+tools/voxcpm2/generic_clean_custom_runtime.py:15:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:10:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/clean_segment_normalizer.py:21:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/generic_clean_gemini_runtime.py:17:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/semantic_tts_guard.py:450:        if file_name not in {"generic_project_runtime.py", "generic_direct_runtime.py"}:
+tools/voxcpm2/generic_audio_repair_runtime.py:16:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:21:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/generic_direct_runtime.py:21:from tools.voxcpm2.generic_project_runtime import (
+tools/voxcpm2/generic_gemini_runtime.py:13:from tools.voxcpm2 import generic_project_runtime as production
+tools/voxcpm2/dub_job_preflight.py:28:from tools.voxcpm2 import generic_project_runtime
+tools/voxcpm2/dub_job_preflight.py:143:    if not generic_project_runtime._PROJECT_RE.fullmatch(project_id):
+tools/voxcpm2/dub_job_preflight.py:190:    request = generic_project_runtime.load_request(root)
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+===== generic_short_runtime =====
+handlers/dub_health.py:77:        "gemini_runtime": voxcpm / "generic_short_runtime.py",
+tools/voxcpm2/generic_project_runtime.py:26:from tools.voxcpm2 import generic_short_runtime as hardened
+tools/voxcpm2/generic_direct_runtime.py:20:from tools.voxcpm2 import generic_short_runtime as hardened
+tools/voxcpm2/clean_runtime_contract.py:24:_RENDER_MODULES = ('tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_short_runtime.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_clean_gemini_runtime.py', 'tools/voxcpm2/generic_clean_direct_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_custom_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
+tools/voxcpm2/clean_source_download.py:14:from tools.voxcpm2 import generic_short_runtime as hardened
+===== professional_audio_qa_v45 =====
+handlers/dub_health.py:79:        "qa": voxcpm / "professional_audio_qa_v45.py",
+tools/voxcpm2/clean_production_core.py:25:from tools.voxcpm2 import professional_audio_qa_v45
+tools/voxcpm2/clean_production_core.py:444:        failed, last_report = professional_audio_qa_v45.verify_timeline_v45(
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:12:from tools.voxcpm2 import professional_audio_qa_v45
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:32:    professional_audio_qa_v45.install()
+tools/voxcpm2/generic_gemini_runtime_v45.py:9:from tools.voxcpm2 import professional_audio_qa_v45
+tools/voxcpm2/generic_gemini_runtime_v45.py:27:    professional_audio_qa_v45.install()
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:9:from tools.voxcpm2 import professional_audio_qa_v45
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:27:    professional_audio_qa_v45.install()
+tools/voxcpm2/clean_runtime_contract.py:25:_RELEASE_MODULES = ('tools/voxcpm2/professional_audio_qa_v45.py', 'tools/voxcpm2/professional_audio_v45.py', 'tools/voxcpm2/semantic_tts_guard.py', 'tools/voxcpm2/semantic_tts_guard_v4.py', 'tools/voxcpm2/russian_spoken_numbers.py', 'tools/voxcpm2/final_media_qa.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py', 'tools/voxcpm2/timeline_onset_repair.py', 'tools/voxcpm2/independent_qa_retry.py', 'tools/voxcpm2/monolithic_runtime_install.py', 'tools/voxcpm2/spatial_bed_contract.py', 'tools/voxcpm2/final_media_spatial_bed.py', 'tools/voxcpm2/final_encoded_delivery_qa.py')
+===== professional_segmentation =====
+tools/voxcpm2/generic_gemini_runtime_v45.py:11:from tools.voxcpm2 import professional_segmentation_v45
+tools/voxcpm2/generic_gemini_runtime_v45.py:25:    professional_segmentation_v45.install()
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:11:from tools.voxcpm2 import professional_segmentation_v45
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:25:    professional_segmentation_v45.install()
+===== semantic_tts_guard =====
+handlers/dub_health.py:293:            and "semantic_tts_guard" not in renderer_text
+tools/voxcpm2/semantic_tts_guard_v46.py:22:from tools.voxcpm2 import semantic_tts_guard as legacy
+tools/voxcpm2/semantic_tts_guard_v46.py:23:from tools.voxcpm2 import semantic_tts_guard_v4 as base
+tools/voxcpm2/professional_audio_qa_v45.py:18:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/professional_audio_qa_v45.py:126:    normalized_heard = semantic_tts_guard_v4.legacy.normalize_asr_text(heard)
+tools/voxcpm2/professional_audio_qa_v45.py:130:        alternatives = [semantic_tts_guard_v4.legacy.normalize_asr_text(value) for value in group]
+tools/voxcpm2/professional_audio_qa_v45.py:146:    compared = semantic_tts_guard_v4.legacy.compare_spoken_text(
+tools/voxcpm2/professional_audio_qa_v45.py:178:    heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(clip, language="ru")
+tools/voxcpm2/professional_audio_qa_v45.py:179:    forced = semantic_tts_guard_v4.legacy.compare_spoken_text(target, heard, language, probability)
+tools/voxcpm2/professional_audio_qa_v45.py:303:            semantic_tts_guard_v4.legacy._extract_clip(timeline, clip, start, duration)
+tools/voxcpm2/professional_audio_qa_v45.py:304:            samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
+tools/voxcpm2/professional_audio_qa_v45.py:360:    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
+tools/voxcpm2/professional_audio_qa_v45.py:438:        timing = semantic_tts_guard_v4.measure_timing_quality(
+tools/voxcpm2/clean_production_core.py:27:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/clean_production_core.py:475:            semantic_tts_guard_v4._retarget(
+tools/voxcpm2/semantic_tts_guard_v4.py:20:from tools.voxcpm2 import semantic_tts_guard as legacy
+tools/voxcpm2/generic_clean_audio_repair_runtime.py:24:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_clean_audio_repair_runtime.py:318:        semantic_tts_guard_v4._retarget(
+tools/voxcpm2/generic_clean_direct_runtime.py:207:        clean.semantic_tts_guard_v4._retarget(
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:14:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:33:    semantic_tts_guard_v47.install()
+tools/voxcpm2/generic_gemini_runtime_v45.py:12:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_gemini_runtime_v45.py:28:    semantic_tts_guard_v47.install()
+tools/voxcpm2/semantic_tts_guard_v47.py:18:from tools.voxcpm2 import semantic_tts_guard as legacy
+tools/voxcpm2/semantic_tts_guard_v47.py:19:from tools.voxcpm2 import semantic_tts_guard_v4 as base
+tools/voxcpm2/semantic_tts_guard_v47.py:20:from tools.voxcpm2 import semantic_tts_guard_v46 as focused
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:12:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:28:    semantic_tts_guard_v47.install()
+tools/voxcpm2/generic_audio_repair_runtime.py:18:from tools.voxcpm2 import semantic_tts_guard as legacy_guard
+tools/voxcpm2/generic_audio_repair_runtime.py:19:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_audio_repair_runtime.py:76:            semantic_tts_guard_v4,
+tools/voxcpm2/generic_audio_repair_runtime.py:369:    semantic_tts_guard_v4.install()
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:22:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:276:    current = semantic_tts_guard_v4._REAL_SUBPROCESS
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:278:        semantic_tts_guard_v4._REAL_SUBPROCESS = RepairSubprocessDiagnostics(
+tools/voxcpm2/generic_gemini_runtime.py:15:from tools.voxcpm2 import semantic_tts_guard as legacy_semantic_guard
+tools/voxcpm2/generic_gemini_runtime.py:16:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_gemini_runtime.py:134:    semantic_tts_guard_v4.install()
+tools/voxcpm2/independent_qa_retry.py:56:    from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/independent_qa_retry.py:58:    semantic_tts_guard_v4._retarget(
+tools/voxcpm2/clean_runtime_contract.py:25:_RELEASE_MODULES = ('tools/voxcpm2/professional_audio_qa_v45.py', 'tools/voxcpm2/professional_audio_v45.py', 'tools/voxcpm2/semantic_tts_guard.py', 'tools/voxcpm2/semantic_tts_guard_v4.py', 'tools/voxcpm2/russian_spoken_numbers.py', 'tools/voxcpm2/final_media_qa.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py', 'tools/voxcpm2/timeline_onset_repair.py', 'tools/voxcpm2/independent_qa_retry.py', 'tools/voxcpm2/monolithic_runtime_install.py', 'tools/voxcpm2/spatial_bed_contract.py', 'tools/voxcpm2/final_media_spatial_bed.py', 'tools/voxcpm2/final_encoded_delivery_qa.py')
+tools/voxcpm2/professional_audio_v45.py:27:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/professional_audio_v45.py:33:_ORIGINAL_VERIFY = semantic_tts_guard_v4.verify_timeline_v4
+tools/voxcpm2/professional_audio_v45.py:457:            semantic_tts_guard_v4.legacy._extract_clip(
+tools/voxcpm2/professional_audio_v45.py:463:            samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
+tools/voxcpm2/professional_audio_v45.py:495:    semantic_tts_guard_v4._QUALITY_RENDERER = RENDERER
+tools/voxcpm2/professional_audio_v45.py:496:    semantic_tts_guard_v4._QUALITY_MASTER = MASTER
+tools/voxcpm2/professional_audio_v45.py:497:    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
+tools/voxcpm2/generic_direct_checked_runtime.py:11:from tools.voxcpm2 import semantic_tts_guard as legacy_semantic_guard
+tools/voxcpm2/generic_direct_checked_runtime.py:12:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_direct_checked_runtime.py:83:    semantic_tts_guard_v4.install()
+tools/voxcpm2/generic_short_runtime.py:377:    from tools.voxcpm2.semantic_tts_guard import (
+tools/voxcpm2/generic_short_runtime.py:378:        install as install_semantic_tts_guard,
+tools/voxcpm2/generic_short_runtime.py:381:    install_semantic_tts_guard()
+===== semantic_tts_guard_v4 =====
+tools/voxcpm2/semantic_tts_guard_v46.py:23:from tools.voxcpm2 import semantic_tts_guard_v4 as base
+tools/voxcpm2/professional_audio_qa_v45.py:18:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/professional_audio_qa_v45.py:126:    normalized_heard = semantic_tts_guard_v4.legacy.normalize_asr_text(heard)
+tools/voxcpm2/professional_audio_qa_v45.py:130:        alternatives = [semantic_tts_guard_v4.legacy.normalize_asr_text(value) for value in group]
+tools/voxcpm2/professional_audio_qa_v45.py:146:    compared = semantic_tts_guard_v4.legacy.compare_spoken_text(
+tools/voxcpm2/professional_audio_qa_v45.py:178:    heard, language, probability = semantic_tts_guard_v4.legacy._transcribe(clip, language="ru")
+tools/voxcpm2/professional_audio_qa_v45.py:179:    forced = semantic_tts_guard_v4.legacy.compare_spoken_text(target, heard, language, probability)
+tools/voxcpm2/professional_audio_qa_v45.py:303:            semantic_tts_guard_v4.legacy._extract_clip(timeline, clip, start, duration)
+tools/voxcpm2/professional_audio_qa_v45.py:304:            samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
+tools/voxcpm2/professional_audio_qa_v45.py:360:    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
+tools/voxcpm2/professional_audio_qa_v45.py:438:        timing = semantic_tts_guard_v4.measure_timing_quality(
+tools/voxcpm2/clean_production_core.py:27:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/clean_production_core.py:475:            semantic_tts_guard_v4._retarget(
+tools/voxcpm2/generic_clean_audio_repair_runtime.py:24:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_clean_audio_repair_runtime.py:318:        semantic_tts_guard_v4._retarget(
+tools/voxcpm2/generic_clean_direct_runtime.py:207:        clean.semantic_tts_guard_v4._retarget(
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:14:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_audio_repair_runtime_v45.py:33:    semantic_tts_guard_v47.install()
+tools/voxcpm2/generic_gemini_runtime_v45.py:12:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_gemini_runtime_v45.py:28:    semantic_tts_guard_v47.install()
+tools/voxcpm2/semantic_tts_guard_v47.py:19:from tools.voxcpm2 import semantic_tts_guard_v4 as base
+tools/voxcpm2/semantic_tts_guard_v47.py:20:from tools.voxcpm2 import semantic_tts_guard_v46 as focused
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:12:from tools.voxcpm2 import semantic_tts_guard_v47
+tools/voxcpm2/generic_direct_checked_runtime_v45.py:28:    semantic_tts_guard_v47.install()
+tools/voxcpm2/generic_audio_repair_runtime.py:19:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_audio_repair_runtime.py:76:            semantic_tts_guard_v4,
+tools/voxcpm2/generic_audio_repair_runtime.py:369:    semantic_tts_guard_v4.install()
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:22:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:276:    current = semantic_tts_guard_v4._REAL_SUBPROCESS
+tools/voxcpm2/generic_audio_repair_runtime_bootstrap.py:278:        semantic_tts_guard_v4._REAL_SUBPROCESS = RepairSubprocessDiagnostics(
+tools/voxcpm2/generic_gemini_runtime.py:16:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_gemini_runtime.py:134:    semantic_tts_guard_v4.install()
+tools/voxcpm2/independent_qa_retry.py:56:    from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/independent_qa_retry.py:58:    semantic_tts_guard_v4._retarget(
+tools/voxcpm2/clean_runtime_contract.py:25:_RELEASE_MODULES = ('tools/voxcpm2/professional_audio_qa_v45.py', 'tools/voxcpm2/professional_audio_v45.py', 'tools/voxcpm2/semantic_tts_guard.py', 'tools/voxcpm2/semantic_tts_guard_v4.py', 'tools/voxcpm2/russian_spoken_numbers.py', 'tools/voxcpm2/final_media_qa.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py', 'tools/voxcpm2/timeline_onset_repair.py', 'tools/voxcpm2/independent_qa_retry.py', 'tools/voxcpm2/monolithic_runtime_install.py', 'tools/voxcpm2/spatial_bed_contract.py', 'tools/voxcpm2/final_media_spatial_bed.py', 'tools/voxcpm2/final_encoded_delivery_qa.py')
+tools/voxcpm2/professional_audio_v45.py:27:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/professional_audio_v45.py:33:_ORIGINAL_VERIFY = semantic_tts_guard_v4.verify_timeline_v4
+tools/voxcpm2/professional_audio_v45.py:457:            semantic_tts_guard_v4.legacy._extract_clip(
+tools/voxcpm2/professional_audio_v45.py:463:            samples, sample_rate = semantic_tts_guard_v4.legacy._read_pcm_mono(clip)
+tools/voxcpm2/professional_audio_v45.py:495:    semantic_tts_guard_v4._QUALITY_RENDERER = RENDERER
+tools/voxcpm2/professional_audio_v45.py:496:    semantic_tts_guard_v4._QUALITY_MASTER = MASTER
+tools/voxcpm2/professional_audio_v45.py:497:    semantic_tts_guard_v4.verify_timeline_v4 = verify_timeline_v45
+tools/voxcpm2/generic_direct_checked_runtime.py:12:from tools.voxcpm2 import semantic_tts_guard_v4
+tools/voxcpm2/generic_direct_checked_runtime.py:83:    semantic_tts_guard_v4.install()
+===== voxcpm2_production_semantic_rescue =====
+===== voxcpm2_universal_payload =====
