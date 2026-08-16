@@ -4,10 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from services.dub_studio import DubStore
-from services.dub_worker_release import WORKER_RUNTIME
 import services.dub_worker as worker
-import tools.voxcpm2.dub_worker_hardened as hardened_worker
 
 
 def test_worker_builds_only_registered_command(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -57,5 +54,3 @@ def test_deepest_error_line_prefers_final_exception() -> None:
     assert worker._deepest_error_line(error) == (
         "ModuleNotFoundError: No module named 'broken_dependency'"
     )
-
-
