@@ -274,22 +274,6 @@ DEFAULT_RUNTIME_FEATURES = (
         RuntimePhase.PRE_MAIN,
     ),
     RuntimeFeature(
-        "gemini-startup-diagnostics",
-        "services.gemini_startup_diagnostics",
-        "install_gemini_startup_diagnostics",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
-        "livedub-help",
-        "services.livedub_help_runtime",
-        "install_livedub_help_runtime",
-        RuntimePhase.POST_MAIN,
-        required=False,
-        requires_main=True,
-    ),
-    RuntimeFeature(
         "livedub-qa-contract",
         "services.livedub_qa",
         "validate_livedub_qa_contract",
@@ -306,13 +290,6 @@ DEFAULT_RUNTIME_FEATURES = (
         "services.dub_title_policy",
         "install_dub_title_policy",
         RuntimePhase.POST_MAIN,
-    ),
-    RuntimeFeature(
-        "restart-state-runtime",
-        "services.restart_state_runtime",
-        "install_restart_state_runtime",
-        RuntimePhase.POST_MAIN,
-        requires_main=True,
     ),
 )
 

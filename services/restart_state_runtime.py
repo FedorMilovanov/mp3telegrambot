@@ -6,16 +6,9 @@ The process lifecycle calls :func:`reset_cross_loop_state` directly before
 """
 from __future__ import annotations
 
-import logging
 import tempfile
-import threading
 import time
 from pathlib import Path
-from types import ModuleType
-
-logger = logging.getLogger(__name__)
-_LOCK = threading.Lock()
-_INSTALLED = False
 
 
 def _reset_audio_coalescing() -> int:
@@ -65,23 +58,7 @@ def reset_cross_loop_state() -> dict[str, int]:
     }
 
 
-def install_restart_state_runtime(main_module: ModuleType) -> None:
-    """Bind operator status once; lifecycle reset itself is source-owned."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    with _LOCK:
-        if _INSTALLED:
-            return
-        from services.operator_runtime_status import install_operator_runtime_status
-
-        install_operator_runtime_status(main_module)
-        _INSTALLED = True
-        logger.info("Restart state: source-owned lifecycle reset enabled")
-
-
 __all__ = [
     "cleanup_orphaned_deferred_files",
-    "install_restart_state_runtime",
     "reset_cross_loop_state",
 ]
