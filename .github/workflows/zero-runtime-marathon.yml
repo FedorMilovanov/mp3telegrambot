@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  direct-surgical-owner:
+  refreshed-runtime-graph:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,23 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Source-own direct surgical runtime
-        run: python tools/source_own_direct_surgical_runtime.py
-      - name: Compile direct production tree
-        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines
-      - name: Verify surgical installer is gone
-        run: |
-          ! grep -RInE 'install_surgical_runtime|namespace\[' tools/voxcpm2/direct_max_quality_cli.py tools/voxcpm2/direct_surgical_runtime.py
-          grep -q 'SURGICAL_RUNTIME_POLICY = surgical_runtime.POLICY' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q '_SURGICAL_RUNTIME_STATE' tools/voxcpm2/direct_max_quality_cli.py
-          grep -q 'surgical_runtime.direct_retry_epoch' tools/voxcpm2/direct_max_quality_cli.py
-          ! grep -n 'direct_max_quality_cli/__init__.py' tools/voxcpm2/direct_surgical_runtime.py
-      - name: Commit source-owned direct surgical runtime
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "Source-own direct surgical runtime"
-          git push origin HEAD:agent/zero-runtime-surgery-marathon
+      - name: Compile current production tree
+        run: python -m compileall -q services tools/voxcpm2 handlers core pipelines main.py bot_new.py
+      - name: Current runtime root calls
+        run: python tools/remaining_runtime_call_graph.py
+      - name: Current runtime surgery AST audit
+        run: python tools/runtime_surgery_audit.py
