@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "tools" / "voxcpm2" / "direct_retry_epoch.py"
 BASE = ROOT / "tools" / "voxcpm2" / "_direct_retry_epoch_base.py"
+POLISH = ROOT / "tools" / "voxcpm2" / "direct_surgical_polish_v2.py"
 
 
 def strip_all(text: str, path: Path) -> str:
@@ -51,6 +52,13 @@ def main() -> int:
     ast.parse(merged, filename=str(TARGET))
     TARGET.write_text(merged, encoding="utf-8")
     BASE.unlink()
+
+    polish = POLISH.read_text(encoding="utf-8")
+    polish = polish.replace('    "tools/voxcpm2/_direct_retry_epoch_base.py",\n', "")
+    if "_direct_retry_epoch_base.py" in polish:
+        raise RuntimeError("direct surgical polish still fingerprints deleted retry base")
+    ast.parse(polish, filename=str(POLISH))
+    POLISH.write_text(polish, encoding="utf-8")
 
     blockers: list[str] = []
     for path in ROOT.rglob("*.py"):
