@@ -15,6 +15,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -193,154 +194,842 @@ def build_calm_references(
         composite,
         target_seconds=8.0,
     )
-    _validate_reference_report(extended.with_suffix(".selection.json"), "extented")
+    _validate_reference_report(extended.with_suffix(".selection.json"), "extended")
     _validate_reference_report(composite.with_suffix(".selection.json"), "composite")
     return extended, composite
 
 
-def _validate_reference_report(path: Path, label: str) -> None:
-    if not path.is_file():
-        raise RuntimeError(f"ĞĞµÑ‚ Ñ‚Ñ€ĞµĞ¹ÑĞ°Ğ±Ğ¸Ğ»Ğ¸Ñ‚Ñ‹ ÑĞµĞ»ĞµĞºÑ†Ğ¸Ğ¸ reference {label}.")
+def _number(item: dict[str, Any], key: str, default: float) -> float:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"ĞĞµĞºĞ¾Ñ€Ñ€ĞµĞºÑ‚Ğ½Ñ‹Ğ¹ reference report: {path.name}.") from exc
-    if not isinstance(payload, dict) or not payload.get("passed"):
-        raise RuntimeError(f"Reference {label} Ğ½Ğµ Ğ¿Ñ€Ğ¾ÑˆÑ‘Ğ» Ñ€ĞµĞ³Ñ€ĞµÑÑĞ¸ÑĞ½ Ñ€ĞµĞ¿Ğ¾Ñ€Ñ‚.")
+        value = float(item.get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+    return value if math.isfinite(value) else float(default)
 
 
-def _load_markers(path: Path) -> dict[str, Any]:
+def _validate_reference_report(path: Path, profile: str) -> None:
+    if not path.is_file():
+        raise RuntimeError(f"ĞĞµ ÑĞ¾Ğ·Ğ´Ğ°Ğ½ Ğ¾Ñ‚Ñ‡Ñ‘Ñ‚ Ğ¾Ñ‚Ğ±Ğ¾Ñ€Ğ° {profile} voice reference.")
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    selected = payload.get("selected") if isinstance(payload, dict) else None
+    if not isinstance(selected, list) or not selected:
+        raise RuntimeError(f"ĞĞµ Ğ²Ñ‹Ğ±Ñ€Ğ°Ğ½Ñ‹ Ğ¿Ñ€Ğ¸Ğ³Ğ¾Ğ´Ğ½Ñ‹Ğµ Ñ„Ñ€Ğ°Ğ³Ğ¼ĞµĞ½Ñ‚Ñ‹ Ğ´Ğ»Ñ {profile} voice reference.")
+    usable = [
+        item
+        for item in selected
+        if isinstance(item, dict)
+        and _number(item, "voiced_ratio", 0.0) >= 0.16
+        and _number(item, "active_ratio", 0.0) >= 0.25
+        and _number(item, "max_internal_gap", 99.0) <= 0.85
+    ]
+    if not usable:
+        raise RuntimeError(
+            f"Ğ’ÑĞµ Ğ²Ñ‹Ğ±Ñ€Ğ°Ğ½Ğ½Ñ‹Ğµ Ñ„Ñ€Ğ°Ğ³Ğ¼ĞµĞ½Ñ‚Ñ‹ {profile} voice reference ÑĞ»Ğ¸ÑˆĞºĞ¾Ğ¼ ÑˆÑƒĞ¼Ğ½Ñ‹Ğµ, "
+            "Ğ¾Ğ±Ñ€Ñ‹Ğ²Ğ¾Ñ‡Ğ½Ñ‹Ğµ Ğ¸Ğ»Ğ¸ Ğ¿Ğ¾Ñ‡Ñ‚Ğ¸ Ğ±ĞµĞ· ÑƒÑÑ‚Ğ¾Ğ¹Ñ‡Ğ¸Ğ²Ğ¾Ğ¹ Ñ€ĞµÑ‡Ğ¸."
+        )
+
+
+def _renderer_paths(
+    repo: Path,
+    request: dict[str, Any] | None = None,
+) -> tuple[Path, Path]:
+    """Resolve engine-owned entrypoints without hard-coding a TTS model in core."""
+    payload = dict(request or {})
+    payload.setdefault("speech_backend", DEFAULT_BACKEND_ID)
+    backend = get_backend(payload["speech_backend"])
+    runtime = backend.runtime_paths(Path(repo), payload)
+    renderer = runtime.renderer_entrypoint
+    master = runtime.master_entrypoint
+    if not renderer.is_file() or not master.is_file():
+        raise RuntimeError(
+            "Speech backend renderer/master Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½Ñ‹: "
+            f"backend={runtime.backend_id}; renderer={renderer}; master={master}"
+        )
+    return renderer, master
+
+
+def _cpu_python(request: dict[str, Any]) -> Path:
+    """Resolve the selected backend interpreter through its runtime adapter."""
+    backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(Path(__file__).resolve().parents[2], request)
+    python = runtime.cpu_python
+    if not python.is_file():
+        raise RuntimeError(
+            f"CPU Python Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ Ğ´Ğ»Ñ backend={backend.backend_id}: {python}"
+        )
+    return python
+
+
+def _environment(
+    threads: int,
+    *,
+    backend_id: object = DEFAULT_BACKEND_ID,
+) -> dict[str, str]:
+    """Compatibility helper delegating process policy to the selected backend."""
+    backend = get_backend(backend_id)
+    return backend.process_environment(
+        {"threads": threads},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
+
+
+def _failure_summary(report: dict[str, Any]) -> str:
+    result: list[str] = []
+    for item in report.get("segments", []):
+        if not isinstance(item, dict) or item.get("passed", True):
+            continue
+        segment_id = item.get("id")
+        parts: list[str] = []
+        semantic = item.get("semantic")
+        if isinstance(semantic, dict) and not semantic.get("passed", True):
+            heard = str(semantic.get("heard") or "").replace("\n", " ")[:80]
+            if semantic.get("numeric_anchors_passed") is False:
+                parts.append("Ğ½Ğµ ÑĞ¾Ğ²Ğ¿Ğ°Ğ»Ğ¾ Ñ‡Ğ¸ÑĞ»Ğ¾Ğ²Ğ¾Ğµ/Ğ´Ğ°Ñ‚Ğ¾Ğ²Ğ¾Ğµ Ğ·Ğ½Ğ°Ñ‡ĞµĞ½Ğ¸Ğµ")
+            parts.append(f"ASR recall={semantic.get('token_recall')}, ÑƒÑĞ»Ñ‹ÑˆĞ°Ğ½Ğ¾=Â«{heard}Â»")
+        timing = item.get("timing")
+        if isinstance(timing, dict) and not timing.get("passed", True):
+            parts.append(
+                f"ÑÑ‚Ñ‹Ğº onset={timing.get('onset_ms')}ms tail={timing.get('trailing_ms')}ms"
+            )
+        continuity = item.get("continuity_v45")
+        if isinstance(continuity, dict) and not continuity.get("passed", True):
+            parts.append(f"Ğ¿Ğ°ÑƒĞ·Ğ°={continuity.get('max_internal_gap')}s")
+        voice = item.get("voice_match_v45")
+        if isinstance(voice, dict) and not voice.get("passed", True):
+            parts.append(
+                f"Ğ³Ğ¾Ğ»Ğ¾Ñ medianÃ—{voice.get('f0_median_ratio')} p90Ã—{voice.get('f0_p90_ratio')}"
+            )
+        result.append(f"#{segment_id}: " + ", ".join(parts or ["QA failure"]))
+    return "; ".join(result)
+
+
+def _read_clean_marker(work_dir: Path) -> dict[str, Any]:
+    path = work_dir / "clean_production.marker.json"
     if not path.is_file():
         return {}
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
 
 
-def _write_markers(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _payload_digest(value: Any) -> str:
-    import hashlib
-
-    return hashlib.sha256(
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
-def _fingerprints_match(existing: Any, current: dict[str, Any]) -> bool:
-    """Accept only checkpoints built by the current render/model/runtime."""
-    if not isinstance(existing, dict):
-        return False
-    for key in ("contract_schema", "render_contract_sha256", "release_contract_sha256"):
-        if existing.get(key) != current.get(key):
-            return False
-    return existing.get("model_manifest") == current.get("model_manifest") and existing.get("runtime_manifest") == current.get("runtime_manifest")
-
-
-def _markers_cover_checkpoints(
-    markers: dict[str, Any],
-    fingerprints: dict[str, Any],
-    *,
-    require_release: bool,
-) -> bool:
-    if not _fingerprints_match(markers, fingerprints):
-        return False
-    if not markers.get("tts_complete"):
-        return False
-    if not markers.get("master_complete"):
-        return False
-    if require_release and not markers.get("release_complete"):
-        return False
-    return True
-
-
-def _segments_digest(segments: list[dict[str, Any]]) -> str:
-    return _payload_digest(
-        [
-            {
-                "id": int(item["id"]),
-                "start": round(float(item["start"]), 6)),
-                "end": round(float(item["end"]), 6)),
-                "start_delay_ms": int(item.get("start_delay_ms", 0)),
-                "text": str(item["text"]),
-            }
-            for item in segments
-        ]
+def _write_clean_marker(work_dir: Path, payload: dict[str, Any]) -> None:
+    (work_dir / "clean_production.marker.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
     )
 
 
-def _bool_flag(value: Any, default: bool) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-    raise RuntimeError(f"ĞĞµĞºĞ¾Ñ€Ñ€ĞµĞºÑ‚Ğ½Ñ‹Ğ¹ Ğ±ÑƒĞ»ĞµĞ² Ğ¿Ğ°Ğ¼ĞµÑ‚Ñ€: Ğ¿Ğ¾Ğ»ÑƒÑ‡ĞµĞ½Ğ¾ {value!r}")
+def _remove_render_state(work_dir: Path) -> None:
+    for directory_name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
+        target = work_dir / directory_name
+        if target.is_dir():
+            shutil.rmtree(target)
+    for marker in ("semantic_guard.marker.json", "clean_production.marker.json"):
+        (work_dir / marker).unlink(missing_ok=True)
 
 
 def render_and_master(
-    *
+    *,
     root: Path,
-    source_video: Path,
-    reference_dir: Path,
-    segments: list[dict[str, Any]],
-    subtitles: list[pipeline.Cue],
+    request: dict[str, Any],
+    source: Path,
     duration: float,
-    vox_archive: Path,
-    cpu_python: Path,
-    original_level: float,
-    threads: int,
-    steps: int,
-    cfg: float,
-    base_seed: int,
-    mixed_video: Path,
-    russian_only_video: Path,
+    segments_json: Path,
+    extended_reference: Path,
+    composite_reference: Path,
+    final_mixed: Path,
+    final_russian: Path,
     force_fresh: bool = False,
-    speech_backend: str = DEFAULT_BACKEND_ID,
-    speech_options: dict[str, Any] | None = None,
-    backend_config: dict[str, Any] | None = None,
-    media_master: Any = None,
-    final_validator: Any = None,
-) -> dict[str, Any]:
-    root = Path(root)
-    source_video = Path(source_video)
-    reference_dir = Path(reference_dir)
-    vox_archive = Path(vox_archive)
-    cpu_python = Path(cpu_python
-    mixed_video = Path(mixed_video)
-    russian_only_video = Path(russian_only_video)
+) -> Path:
+    """Run the direct renderer, independent QA and final verified master."""
+    repo = Path(__file__).resolve().parents[2]
+    settings = clean_runtime_contract.normalize_settings(request, duration=duration)
+    backend = get_backend(settings.get("speech_backend") or DEFAULT_BACKEND_ID)
+    runtime = backend.runtime_paths(repo, settings)
+    renderer = runtime.renderer_entrypoint
+    master = runtime.master_entrypoint
+    cpu_python = runtime.cpu_python
+    archive = runtime.archive_root
+    for label, path in (
+        ("source", source),
+        ("segments", segments_json),
+        ("extended reference", extended_reference),
+        ("composite reference", composite_reference),
+    ):
+        if not path.is_file():
+            raise RuntimeError(f"ĞĞµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ {label}: {path}")
+    fingerprints = clean_runtime_contract.build_fingerprints(
+        repo=repo,
+        archive=archive,
+        cpu_python=cpu_python,
+        backend_id=backend.backend_id,
+    )
 
-    _mark_and_validate_segments(segments, duration)
-    root = root.resolve()
-    repo_root = Path(__file__).resolve().parents[2]
-    backend = get_backend(speech_backend)
-    backend_request = {
-        "speech_backend": backend.backend_id,
-        "speech_options": dict(speech_options or {}),
-        "backend_config": dict(backend_config or {}),
+    segment_work = root / "segment_work"
+    master_work = root / "master_work"
+    audio_dir = root / "audio"
+    for directory in (segment_work, master_work, audio_dir, root / "output"):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    segments = json.loads(segments_json.read_text(encoding="utf-8-sig"))
+    if not isinstance(segments, list):
+        raise RuntimeError("segments_ru_final.json Ğ¿Ğ¾Ğ²Ñ€ĞµĞ¶Ğ´Ñ‘Ğ½.")
+    _mark_and_validate_segments(segments, settings["duration"])
+    segments_json.write_text(
+        json.dumps(segments, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+
+    existing_checkpoints = any((segment_work / "checkpoints").glob("segment_*.json"))
+    marker = _read_clean_marker(segment_work)
+    marker_current = bool(
+        marker.get("policy") == POLICY
+        and marker.get("runtime_contract_policy") == clean_runtime_contract.POLICY
+        and marker.get("render_contract_sha256")
+        == fingerprints["render_contract_sha256"]
+    )
+    if existing_checkpoints and not marker_current:
+        log(
+            "checkpoints Ğ½Ğµ ÑĞ¾Ğ¾Ñ‚Ğ²ĞµÑ‚ÑÑ‚Ğ²ÑƒÑÑ‚ renderer/model/runtime fingerprint; "
+            "Ğ²Ñ‹Ğ¿Ğ¾Ğ»Ğ½ÑÑ Ğ±ĞµĞ·Ğ¾Ğ¿Ğ°ÑĞ½Ñ‹Ğ¹ fresh render"
+        )
+        force_fresh = True
+    if force_fresh:
+        _remove_render_state(segment_work)
+
+    threads = int(settings["threads"])
+    steps = int(settings["steps"])
+    cfg = float(settings["cfg"])
+    seed = int(settings["base_seed"])
+    original_level = float(settings["original_level"])
+    timeline = audio_dir / f"{settings['video_id']}_ru_timeline.wav"
+    env = backend.process_environment(
+        {"threads": threads, "speech_backend": backend.backend_id},
+        base_environment=os.environ,
+    ).as_dict(os.environ)
+    all_ids = {int(item["id"]) for item in segments}
+    last_report: dict[str, Any] = {}
+    accepted_seed: int | None = None
+
+    for round_index in range(2):
+        round_seed = seed + round_index * clean_runtime_contract.RETRY_SEED_OFFSET
+        command = backend.build_renderer_command(
+            runtime,
+            values={
+                "extended_reference": str(extended_reference),
+                "composite_reference": str(composite_reference),
+                "segments_json": str(segments_json),
+                "segment_work": str(segment_work),
+                "timeline": str(timeline),
+                "threads": str(threads),
+                "steps": str(steps),
+                "cfg": str(cfg),
+                "cache_length": "4096",
+                "duration": f"{settings['duration']:.6f}",
+                "base_seed": str(round_seed),
+            },
+        )
+        log(
+            f"direct NoChew round {round_index + 1}/2; seed={round_seed}; "
+            "Ğ±ĞµĞ· renderer wrappers"
+        )
+        result = subprocess.run(command, cwd=str(repo), env=env, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"ĞŸÑ€ÑĞ¼Ğ¾Ğ¹ speech backend renderer Ğ·Ğ°Ğ²ĞµÑ€ÑˆĞ¸Ğ»ÑÑ Ñ ĞºĞ¾Ğ´Ğ¾Ğ¼ {result.returncode}."
+            )
+        report_path = timeline.with_suffix(f".clean_qa.round{round_index + 1}.json")
+        failed, last_report = professional_audio_qa_v45.verify_timeline_v45(
+            timeline,
+            segments,
+            report_path,
+        )
+        if not failed:
+            accepted_seed = round_seed
+            timeline.with_suffix(".clean_qa.json").write_text(
+                json.dumps(last_report, ensure_ascii=False, indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+            _write_clean_marker(
+                segment_work,
+                {
+                    "schema_version": 3,
+                    "policy": POLICY,
+                    "runtime_contract_policy": clean_runtime_contract.POLICY,
+                    "render_contract_sha256": fingerprints["render_contract_sha256"],
+                    "release_contract_sha256": fingerprints["release_contract_sha256"],
+                    "base_seed": round_seed,
+                    "renderer": str(renderer),
+                    "failed_segment_ids": [],
+                    "qa_policy": last_report.get("professional_audio_policy"),
+                    "numeric_semantic_policy": last_report.get("numeric_semantic_policy"),
+                    "segment_qa_passed": True,
+                    "release_complete": False,
+                },
+            )
+            break
+        if round_index == 0:
+            log(f"QA Ğ¾Ñ‚ĞºĞ»Ğ¾Ğ½Ğ¸Ğ» {failed}; Ğ¾Ğ´Ğ¸Ğ½ Ğ¿Ñ€ÑĞ¼Ğ¾Ğ¹ Ğ¿Ğ¾Ğ²Ñ‚Ğ¾Ñ€ Ñ‚Ğ¾Ğ»ÑŒĞºĞ¾ ÑÑ‚Ğ¸Ñ… ID")
+            semantic_tts_guard_v4._retarget(
+                segment_work,
+                good_ids=all_ids - set(failed),
+                failed_ids=failed,
+                new_base_seed=seed + clean_runtime_contract.RETRY_SEED_OFFSET,
+            )
+            continue
+        timeline.with_suffix(".clean_qa.json").write_text(
+            json.dumps(last_report, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        raise RuntimeError(
+            "Ğ§Ğ¸ÑÑ‚Ñ‹Ğ¹ direct renderer Ğ½Ğµ Ğ¿Ñ€Ğ¾ÑˆÑ‘Ğ» Ğ½ĞµĞ·Ğ°Ğ²Ğ¸ÑĞ¸Ğ¼Ñ‹Ğ¹ QA Ğ¿Ğ¾ÑĞ»Ğµ Ğ¾Ğ´Ğ½Ğ¾Ğ³Ğ¾ "
+            f"Ğ¿Ñ€Ğ¸Ñ†ĞµĞ»ÑŒĞ½Ğ¾Ğ³Ğ¾ Ğ¿Ğ¾Ğ²Ñ‚Ğ¾Ñ€Ğ°. Ğ¡ĞµĞ³Ğ¼ĞµĞ½Ñ‚Ñ‹: {failed}. "
+            f"ĞŸÑ€Ğ¸Ñ‡Ğ¸Ğ½Ñ‹: {_failure_summary(last_report)}"
+        )
+
+    if accepted_seed is None:
+        raise RuntimeError("Segment QA Ğ½Ğµ ÑĞ¾Ğ·Ğ´Ğ°Ğ» Ğ¿Ñ€Ğ¸Ğ½ÑÑ‚Ğ¾Ğ³Ğ¾ baseline.")
+
+    master_command = backend.build_master_command(
+        runtime,
+        values={
+            "source": str(source),
+            "timeline": str(timeline),
+            "master_work": str(master_work),
+            "final_mixed": str(final_mixed),
+            "final_russian": str(final_russian),
+            "original_level": f"{original_level:.6f}",
+            "target_i": f"{MASTER_I:.1f}",
+            "target_lra": f"{MASTER_LRA:.1f}",
+            "target_tp": f"{MASTER_TP:.1f}",
+        },
+    )
+    result = subprocess.run(master_command, cwd=str(repo), env=env, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ĞŸÑ€ÑĞ¼Ğ¾Ğ¹ speech backend master Ğ·Ğ°Ğ²ĞµÑ€ÑˆĞ¸Ğ»ÑÑ Ñ ĞºĞ¾Ğ´Ğ¾Ğ¼ {result.returncode}."
+        )
+
+    final_media_qa = master_work / "final_media_verification.json"
+    if not final_media_qa.is_file():
+        raise RuntimeError("Master Ğ½Ğµ ÑĞ¾Ğ·Ğ´Ğ°Ğ» final_media_verification.json.")
+    try:
+        final_verification = json.loads(final_media_qa.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("ĞĞµ Ñ‡Ğ¸Ñ‚Ğ°ĞµÑ‚ÑÑ final_media_verification.json.") from exc
+    if not isinstance(final_verification, dict) or final_verification.get("passed") is not True:
+        raise RuntimeError("Final encoded AAC media QA Ğ½Ğµ Ğ¿Ñ€Ğ¸Ğ½ÑÑ‚.")
+    release_marker = _read_clean_marker(segment_work)
+    if (
+        release_marker.get("render_contract_sha256") != fingerprints["render_contract_sha256"]
+        or release_marker.get("release_contract_sha256")
+        != fingerprints["release_contract_sha256"]
+        or release_marker.get("segment_qa_passed") is not True
+    ):
+        raise RuntimeError("Segment marker Ğ¸Ğ·Ğ¼ĞµĞ½Ğ¸Ğ»ÑÑ Ğ´Ğ¾ Ğ·Ğ°Ğ²ĞµÑ€ÑˆĞµĞ½Ğ¸Ñ master.")
+    release_marker.update(
+        release_complete=True,
+        base_seed=accepted_seed,
+        final_media_qa=str(final_media_qa),
+        mixed_video=str(final_mixed),
+        russian_only_video=str(final_russian),
+    )
+    _write_clean_marker(segment_work, release_marker)
+
+    (root / "output" / "clean_production_report.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "policy": POLICY,
+                "runtime_contract_policy": clean_runtime_contract.POLICY,
+                "render_contract_sha256": fingerprints["render_contract_sha256"],
+                "release_contract_sha256": fingerprints["release_contract_sha256"],
+                "release_complete": True,
+                "renderer": str(renderer),
+                "master": str(master),
+                "wrapper_count": 0,
+                "target_loudness_lufs": MASTER_I,
+                "true_peak_dbtp": MASTER_TP,
+                "reference_reports": [
+                    str(extended_reference.with_suffix(".selection.json")),
+                    str(composite_reference.with_suffix(".selection.json")),
+                ],
+                "qa_report": str(timeline.with_suffix(".clean_qa.json")),
+                "final_media_qa": str(final_media_qa),
+                "fingerprints": fingerprints,
+            },
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
+    return timeline
+
+
+__all__ = [
+    "POLICY",
+    "build_calm_references",
+    "build_direct_segments",
+    "build_render_segments",
+    "group_ready_srt",
+    "group_source_cues",
+    "render_and_master",
+]
+
+_BASE_ALL = tuple(globals().get('__all__', ()))
+
+import json
+
+import math
+
+import os
+
+import re
+
+import subprocess as _stdlib_subprocess
+
+from pathlib import Path
+
+from typing import Any
+
+from tools.voxcpm2 import final_encoded_delivery_qa
+
+from tools.voxcpm2 import semantic_block_runtime
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+_legacy_build_direct_segments = build_direct_segments
+
+CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"
+
+DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"
+
+MAX_AUTOMATIC_DELIVERY_RETRIES = 3
+
+MASTER_ENTRYPOINT_NAMES = frozenset({"master_constant_mix.py", "master_direct_russian_only.py"})
+
+_LAST_CHILD_STDERR = ""
+
+POLICY = POLICY
+
+MAX_SECONDS = MAX_SECONDS
+
+SEMANTIC_BLOCK_MAX_SECONDS = semantic_block_runtime.MAX_BLOCK_SECONDS
+
+log = log
+
+_RETRYABLE_DELIVERY_MARKERS = (
+    "ÑĞ»ĞµĞ´ÑƒÑÑ‰Ğ¸Ğ¹ Ğ¿Ğ¾Ğ²Ñ‚Ğ¾Ñ€ Ğ¸ÑĞ¿Ğ¾Ğ»ÑŒĞ·ÑƒĞµÑ‚ seed epoch",
+    "Ğ¿ĞµÑ€ĞµĞ²ĞµĞ´ĞµĞ½Ğ° Ğ½Ğ° Ğ½Ğ¾Ğ²Ñ‹Ğ¹ seed epoch",
+    "Ğ¿ĞµÑ€ĞµĞ²ĞµĞ´ĞµĞ½ Ğ½Ğ° Ğ½Ğ¾Ğ²Ñ‹Ğ¹ seed epoch",
+    "seed epochs",
+    "hard-quality ĞºĞ°Ğ½Ğ´Ğ¸Ğ´Ğ°Ñ‚",
+    "linked_phrase_gap",
+    "late_broadband_burst",
+    "late_broadband_tail",
+    "assembled_delivery:",
+    "post_aac_delivery:",
+    "ending/tail qa",
+)
+
+_NON_RETRYABLE_INFRASTRUCTURE_MARKERS = (
+    "modulenotfounderror",
+    "filenotfounderror",
+    "permissionerror",
+    "preflight",
+    "fingerprint",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ ffmpeg",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½Ñ‹ Ğ² path",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ cpu python",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ source",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ segments",
+    "Ğ½Ğµ Ğ½Ğ°Ğ¹Ğ´ĞµĞ½ voice reference",
+    "http 403",
+    "http 404",
+)
+
+def _child_python_env(value: Any) -> dict[str, str]:
+    """Return an isolated environment with the repository import root first."""
+    if value is None:
+        env = dict(os.environ)
+    elif isinstance(value, dict):
+        env = {str(key): str(item) for key, item in value.items()}
+    else:
+        raise RuntimeError("subprocess env Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ ÑĞ»Ğ¾Ğ²Ğ°Ñ€Ñ‘Ğ¼ Ğ¸Ğ»Ğ¸ None.")
+
+    repo = str(_REPO_ROOT)
+    existing = str(env.get("PYTHONPATH") or "")
+    parts = [item for item in existing.split(os.pathsep) if item]
+    normalized = {os.path.normcase(os.path.abspath(item)) for item in parts}
+    if os.path.normcase(os.path.abspath(repo)) not in normalized:
+        parts.insert(0, repo)
+    else:
+        parts = [repo] + [
+            item
+            for item in parts
+            if os.path.normcase(os.path.abspath(item))
+            != os.path.normcase(os.path.abspath(repo))
+        ]
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+def _is_python_script_command(command: Any) -> bool:
+    if not isinstance(command, (list, tuple)) or len(command) < 2:
+        return False
+    # A Linux CI process must still recognize the Windows commands production
+    # will run. ``Path`` only treats separators from the host OS as separators.
+    executable = re.split(r"[\\/]", str(command[0]))[-1].casefold()
+    script = re.split(r"[\\/]", str(command[1]))[-1].casefold()
+    return executable.startswith("python") and script.endswith(".py")
+
+def _is_master_command(command: Any) -> bool:
+    return bool(
+        _is_python_script_command(command)
+        and re.split(r"[\\/]", str(command[1]))[-1].casefold()
+        in MASTER_ENTRYPOINT_NAMES
+    )
+
+def _is_master_release_command(command: Any) -> bool:
+    """Distinguish a real production master from --help/import smoke tests."""
+    if not _is_master_command(command) or not isinstance(command, (list, tuple)):
+        return False
+    values = [str(item) for item in command]
+    if "--help" in values or "-h" in values:
+        return False
+    for flag in ("--work-dir", "--russian-only-video"):
+        if flag not in values:
+            return False
+        index = values.index(flag)
+        if index + 1 >= len(values) or not values[index + 1].strip():
+            return False
+    return True
+
+def _command_flag(command: Any, flag: str) -> str:
+    if not isinstance(command, (list, tuple)):
+        raise RuntimeError("Master command Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ ÑĞ¿Ğ¸ÑĞºĞ¾Ğ¼ Ğ°Ñ€Ğ³ÑƒĞ¼ĞµĞ½Ñ‚Ğ¾Ğ².")
+    values = [str(item) for item in command]
+    try:
+        index = values.index(flag)
+    except ValueError as exc:
+        raise RuntimeError(f"Master command Ğ½Ğµ ÑĞ¾Ğ´ĞµÑ€Ğ¶Ğ¸Ñ‚ {flag}.") from exc
+    if index + 1 >= len(values) or not values[index + 1].strip():
+        raise RuntimeError(f"Master command Ğ½Ğµ ÑĞ¾Ğ´ĞµÑ€Ğ¶Ğ¸Ñ‚ Ğ·Ğ½Ğ°Ñ‡ĞµĞ½Ğ¸Ğµ Ğ¿Ğ¾ÑĞ»Ğµ {flag}.")
+    return values[index + 1]
+
+def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
+    russian_only = Path(_command_flag(command, "--russian-only-video")).resolve()
+    work_dir = Path(_command_flag(command, "--work-dir")).resolve()
+    output_dir = russian_only.parent
+    if output_dir.name.casefold() != "output":
+        raise RuntimeError(
+            "Russian-only MP4 Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ½Ğ°Ñ…Ğ¾Ğ´Ğ¸Ñ‚ÑŒÑÑ Ğ² ÑÑ‚Ğ°Ğ½Ğ´Ğ°Ñ€Ñ‚Ğ½Ğ¾Ğ¹ project/output Ğ¿Ğ°Ğ¿ĞºĞµ."
+        )
+    project_root = output_dir.parent
+    return final_encoded_delivery_qa.verify_final_encoded_russian(
+        russian_only_video=russian_only,
+        segments_path=project_root / "segments_ru_final.json",
+        report_path=work_dir / "final_encoded_delivery_qa.json",
+        final_media_report_path=work_dir / "final_media_verification.json",
+    )
+
+def _run_child_process(command: Any, *args: Any, **kwargs: Any):
+    """Run child commands with deterministic imports and fail-closed release QA."""
+    global _LAST_CHILD_STDERR
+
+    is_python = _is_python_script_command(command)
+    is_master = _is_master_command(command)
+    is_master_release = _is_master_release_command(command)
+    if is_python:
+        kwargs["env"] = _child_python_env(kwargs.get("env"))
+    if is_master and kwargs.get("stderr") is None:
+        kwargs["stderr"] = _stdlib_subprocess.PIPE
+        kwargs.setdefault("text", True)
+        kwargs.setdefault("encoding", "utf-8")
+        kwargs.setdefault("errors", "replace")
+
+    result = _stdlib_subprocess.run(command, *args, **kwargs)
+    if is_master and int(getattr(result, "returncode", 0) or 0) != 0:
+        detail = str(getattr(result, "stderr", "") or "").strip()
+        if detail:
+            detail = detail[-12000:]
+        else:
+            detail = f"process exited with code {result.returncode} without stderr"
+        _LAST_CHILD_STDERR = detail
+        raise RuntimeError("ĞŸÑ€ÑĞ¼Ğ¾Ğ¹ master Ğ·Ğ°Ğ²ĞµÑ€ÑˆĞ¸Ğ»ÑÑ Ñ Ñ‚Ğ¾Ñ‡Ğ½Ğ¾Ğ¹ Ğ¿Ñ€Ğ¸Ñ‡Ğ¸Ğ½Ğ¾Ğ¹:\n" + detail)
+    if is_master_release:
+        try:
+            _verify_post_aac_master_output(command)
+        except Exception as exc:
+            _LAST_CHILD_STDERR = str(exc)
+            raise RuntimeError(
+                "ĞŸÑ€ÑĞ¼Ğ¾Ğ¹ master ÑĞ¾Ğ·Ğ´Ğ°Ğ» Ñ„Ğ°Ğ¹Ğ»Ñ‹, Ğ½Ğ¾ post-AAC ending/tail QA Ğ¸Ñ… Ğ¾Ñ‚ĞºĞ»Ğ¾Ğ½Ğ¸Ğ»:\n"
+                + str(exc)
+            ) from exc
+    return result
+
+class _SubprocessProxy:
+    """Module-like proxy scoped to the legacy clean-core module only."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_stdlib_subprocess, name)
+
+    @staticmethod
+    def run(command: Any, *args: Any, **kwargs: Any):
+        return _run_child_process(command, *args, **kwargs)
+
+def _finite(value: Any, *, field: str) -> float:
+    if isinstance(value, bool):
+        raise RuntimeError(f"{field} Ğ½Ğµ Ğ¼Ğ¾Ğ¶ĞµÑ‚ Ğ±Ñ‹Ñ‚ÑŒ bool.")
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(f"ĞĞµĞºĞ¾Ñ€Ñ€ĞµĞºÑ‚Ğ½Ğ¾Ğµ Ğ·Ğ½Ğ°Ñ‡ĞµĞ½Ğ¸Ğµ {field}: {value!r}") from exc
+    if not math.isfinite(result):
+        raise RuntimeError(f"{field} Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ ĞºĞ¾Ğ½ĞµÑ‡Ğ½Ñ‹Ğ¼ Ñ‡Ğ¸ÑĞ»Ğ¾Ğ¼.")
+    return result
+
+def _strict_int(
+    value: Any,
+    *,
+    field: str,
+    low: int,
+    high: int,
+) -> int:
+    if isinstance(value, bool):
+        raise RuntimeError(f"{field} Ğ½Ğµ Ğ¼Ğ¾Ğ¶ĞµÑ‚ Ğ±Ñ‹Ñ‚ÑŒ bool.")
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        raise RuntimeError(f"{field} Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ Ñ†ĞµĞ»Ñ‹Ğ¼ Ñ‡Ğ¸ÑĞ»Ğ¾Ğ¼.")
+    try:
+        result = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(f"ĞĞµĞºĞ¾Ñ€Ñ€ĞµĞºÑ‚Ğ½Ğ¾Ğµ Ğ·Ğ½Ğ°Ñ‡ĞµĞ½Ğ¸Ğµ {field}: {value!r}") from exc
+    if not low <= result <= high:
+        raise RuntimeError(f"{field}={result} Ğ²Ğ½Ğµ Ğ´Ğ¸Ğ°Ğ¿Ğ°Ğ·Ğ¾Ğ½Ğ° {low}..{high}.")
+    return result
+
+def _mark_and_validate_segments(
+    segments: list[dict[str, Any]],
+    duration: float,
+) -> None:
+    duration_value = _finite(duration, field="video_duration")
+    if duration_value <= 0.0:
+        raise RuntimeError("video_duration Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ > 0.")
+    if not isinstance(segments, list) or not segments:
+        raise RuntimeError("Ğ¡Ğ¿Ğ¸ÑĞ¾Ğº Ñ€ĞµĞ¿Ğ»Ğ¸Ğº Ğ¿ĞµÑ€ĞµĞ´ VoxCPM Ğ¿ÑƒÑÑ‚ Ğ¸Ğ»Ğ¸ Ğ¿Ğ¾Ğ²Ñ€ĞµĞ¶Ğ´Ñ‘Ğ½.")
+
+    previous_end = 0.0
+    previous_effective_end = 0.0
+    seen_ids: set[int] = set()
+    for position, item in enumerate(segments, start=1):
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                f"segment[{position}] Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ JSON-Ğ¾Ğ±ÑŠĞµĞºÑ‚Ğ¾Ğ¼, "
+                f"Ğ¿Ğ¾Ğ»ÑƒÑ‡ĞµĞ½Ğ¾ {type(item).__name__}."
+            )
+        segment_id = _strict_int(
+            item.get("id"),
+            field=f"segment[{position}].id",
+            low=1,
+            high=2**31 - 1,
+        )
+        if segment_id in seen_ids:
+            raise RuntimeError(f"ĞŸĞ¾Ğ²Ñ‚Ğ¾Ñ€Ğ½Ñ‹Ğ¹ ID Ñ€ĞµĞ¿Ğ»Ğ¸ĞºĞ¸: {segment_id}.")
+        seen_ids.add(segment_id)
+        item["id"] = segment_id
+        item["production_policy"] = POLICY
+
+        start = _finite(item.get("start"), field=f"segment[{segment_id}].start")
+        end = _finite(item.get("end"), field=f"segment[{segment_id}].end")
+        delay_ms = _strict_int(
+            item.get("start_delay_ms", 0),
+            field=f"segment[{segment_id}].start_delay_ms",
+            low=0,
+            high=1500,
+        )
+        item["start_delay_ms"] = delay_ms
+        delay = delay_ms / 1000.0
+        text = re.sub(r"\s+", " ", str(item.get("text") or "")).strip()
+        if start < 0.0 or not text or end <= start:
+            raise RuntimeError(f"ĞĞµĞºĞ¾Ñ€Ñ€ĞµĞºÑ‚Ğ½Ğ°Ñ Ñ€ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id}.")
+        if start < previous_end - 0.001:
+            raise RuntimeError(f"Ğ ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id} Ğ¿ĞµÑ€ĞµÑĞµĞºĞ°ĞµÑ‚ÑÑ Ñ Ğ¿Ñ€ĞµĞ´Ñ‹Ğ´ÑƒÑ‰ĞµĞ¹.")
+        effective_start = start + delay
+        effective_end = end + delay
+        if effective_start < previous_effective_end - 0.001:
+            raise RuntimeError(
+                f"Ğ ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id} Ğ¿ĞµÑ€ĞµÑĞµĞºĞ°ĞµÑ‚ÑÑ Ğ¿Ğ¾ÑĞ»Ğµ Ğ¿Ñ€Ğ¸Ğ¼ĞµĞ½ĞµĞ½Ğ¸Ñ delay."
+            )
+        if effective_end > duration_value + 0.02:
+            raise RuntimeError(f"Ğ ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id} Ğ²Ñ‹Ñ…Ğ¾Ğ´Ğ¸Ñ‚ Ğ·Ğ° ĞºĞ¾Ğ½ĞµÑ† Ğ²Ğ¸Ğ´ĞµĞ¾.")
+        segment_limit = (
+            SEMANTIC_BLOCK_MAX_SECONDS
+            if str(item.get("semantic_block_policy") or "") == semantic_block_runtime.POLICY
+            else MAX_SECONDS
+        )
+        if end - start > segment_limit + 0.30:
+            raise RuntimeError(
+                f"Ğ ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id} ÑĞ»Ğ¸ÑˆĞºĞ¾Ğ¼ Ğ´Ğ»Ğ¸Ğ½Ğ½Ğ°Ñ: {end - start:.3f} ÑĞµĞº."
+            )
+        words = len(re.findall(r"\w+", text, flags=re.UNICODE))
+        rate = words / max(0.35, end - start)
+        if rate > 6.2:
+            raise RuntimeError(
+                f"Ğ ĞµĞ¿Ğ»Ğ¸ĞºĞ° #{segment_id} Ñ„Ğ¸Ğ·Ğ¸Ñ‡ĞµÑĞºĞ¸ Ğ¿ĞµÑ€ĞµĞ³Ñ€ÑƒĞ¶ĞµĞ½Ğ°: {rate:.2f} ÑĞ»Ğ¾Ğ²Ğ°/Ñ."
+            )
+        item["start"] = start
+        item["end"] = end
+        item["text"] = text
+        previous_end = end
+        previous_effective_end = effective_end
+
+def build_direct_segments(
+    groups: list[dict[str, Any]],
+    *,
+    delay_ms: int,
+    duration: float,
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """Select the direct planning policy without exposing model internals."""
+    if any(str(item.get("semantic_block_policy") or "") == semantic_block_runtime.POLICY for item in groups):
+        return semantic_block_runtime.build_direct_segments(
+            groups,
+            delay_ms=delay_ms,
+            duration=duration,
+        )
+    return _legacy_build_direct_segments(
+        groups,
+        delay_ms=delay_ms,
+        duration=duration,
+    )
+
+build_direct_segments = build_direct_segments
+
+subprocess = _SubprocessProxy()
+
+_finite = _finite
+
+_mark_and_validate_segments = _mark_and_validate_segments
+
+_legacy_render_and_master = render_and_master
+
+def _retryable_delivery_failure(detail: str) -> bool:
+    """Accept only failures whose quality code already invalidated a checkpoint."""
+    normalized = str(detail or "").casefold().replace("Ñ‘", "Ğµ")
+    if not normalized:
+        return False
+    if any(marker in normalized for marker in _NON_RETRYABLE_INFRASTRUCTURE_MARKERS):
+        return False
+    return any(marker in normalized for marker in _RETRYABLE_DELIVERY_MARKERS)
+
+def _direct_failure_report(root: Any) -> str:
+    try:
+        path = Path(root).resolve() / "segment_work" / "direct_renderer_failure.json"
+    except (TypeError, ValueError, OSError):
+        return ""
+    if not path.is_file():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    message = str(payload.get("message") or "").strip()
+    error_type = str(payload.get("error_type") or "RuntimeError").strip()
+    return f"{error_type}: {message}" if message else ""
+
+def _delivery_failure_detail(
+    exc: RuntimeError,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> str:
+    """Recover the deepest child cause without treating an old report as current."""
+    exception_detail = str(exc).strip()
+    details: list[str] = []
+    child_detail = str(_LAST_CHILD_STDERR or "").strip()
+    if child_detail:
+        details.append(child_detail)
+
+    # The renderer deliberately streams logs instead of buffering many minutes
+    # of output. Its fresh failure JSON is authoritative only when that exact
+    # child process returned non-zero; otherwise an older report must not turn
+    # an infrastructure error into a quality retry.
+    if "ĞŸÑ€ÑĞ¼Ğ¾Ğ¹ VoxCPM2 renderer Ğ·Ğ°Ğ²ĞµÑ€ÑˆĞ¸Ğ»ÑÑ Ñ ĞºĞ¾Ğ´Ğ¾Ğ¼" in exception_detail:
+        root = kwargs.get("root")
+        if root is None and args:
+            root = args[0]
+        report_detail = _direct_failure_report(root)
+        if report_detail:
+            details.append(report_detail)
+    if exception_detail:
+        details.append(exception_detail)
+
+    unique: list[str] = []
+    for value in details:
+        if value not in unique:
+            unique.append(value)
+    return "\n".join(unique)
+
+def render_and_master(*args: Any, **kwargs: Any) -> Any:
+    """Retry quality-only failures in-place while preserving good checkpoints."""
+    global _LAST_CHILD_STDERR
+
+    try:
+        retry_limit = int(MAX_AUTOMATIC_DELIVERY_RETRIES)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("MAX_AUTOMATIC_DELIVERY_RETRIES Ğ´Ğ¾Ğ»Ğ¶ĞµĞ½ Ğ±Ñ‹Ñ‚ÑŒ Ñ†ĞµĞ»Ñ‹Ğ¼.") from exc
+    retry_limit = max(0, min(8, retry_limit))
+
+    for retry_index in range(retry_limit + 1):
+        _LAST_CHILD_STDERR = ""
+        try:
+            return _legacy_render_and_master(*args, **kwargs)
+        except RuntimeError as exc:
+            detail = _delivery_failure_detail(exc, args, kwargs)
+            if not _retryable_delivery_failure(detail):
+                if detail and detail != str(exc).strip():
+                    raise RuntimeError(detail) from exc
+                raise
+            if retry_index >= retry_limit:
+                raise RuntimeError(
+                    "ĞĞ²Ñ‚Ğ¾Ğ¼Ğ°Ñ‚Ğ¸Ñ‡ĞµÑĞºĞ¾Ğµ checkpoint-Ğ²Ğ¾ÑÑÑ‚Ğ°Ğ½Ğ¾Ğ²Ğ»ĞµĞ½Ğ¸Ğµ Ğ¸ÑÑ‡ĞµÑ€Ğ¿Ğ°Ğ½Ğ¾ "
+                    f"Ğ¿Ğ¾ÑĞ»Ğµ {retry_limit} Ğ¿Ğ¾Ğ²Ñ‚Ğ¾Ñ€Ğ¾Ğ². ĞŸĞ¾ÑĞ»ĞµĞ´Ğ½ÑÑ Ñ‚Ğ¾Ñ‡Ğ½Ğ°Ñ Ğ¿Ñ€Ğ¸Ñ‡Ğ¸Ğ½Ğ°:\n{detail}"
+                ) from exc
+            log(
+                "quality-only failure; ÑĞ¾Ñ…Ñ€Ğ°Ğ½ÑÑ ÑƒÑĞ¿ĞµÑˆĞ½Ñ‹Ğµ checkpoints Ğ¸ Ğ·Ğ°Ğ¿ÑƒÑĞºĞ°Ñ "
+                f"Ğ°Ğ²Ñ‚Ğ¾Ğ¼Ğ°Ñ‚Ğ¸Ñ‡ĞµÑĞºĞ¸Ğ¹ Ğ¿Ğ¾Ğ²Ñ‚Ğ¾Ñ€ {retry_index + 1}/{retry_limit}. "
+                f"ĞŸÑ€Ğ¸Ñ‡Ğ¸Ğ½Ğ°: {detail[:1200]}"
+            )
+
+    raise RuntimeError("ĞĞµĞ´Ğ¾ÑÑ‚Ğ¸Ğ¶Ğ¸Ğ¼Ğ¾Ğµ ÑĞ¾ÑÑ‚Ğ¾ÑĞ½Ğ¸Ğµ automatic delivery retry.")
+
+__all__ = sorted(
+    set(name for name in globals() if not name.startswith("__") and name != "_legacy")
+    | {
+        "CHILD_PYTHON_POLICY",
+        "DELIVERY_RETRY_POLICY",
+        "MAX_AUTOMATIC_DELIVERY_RETRIES",
+        "_LAST_CHILD_STDERR",
+        "_child_python_env",
+        "_command_flag",
+        "_delivery_failure_detail",
+        "_direct_failure_report",
+        "_finite",
+        "_is_master_command",
+        "_is_master_release_command",
+        "_is_python_script_command",
+        "_legacy_render_and_master",
+        "_mark_and_validate_segments",
+        "_retryable_delivery_failure",
+        "_run_child_process",
+        "_strict_int",
+        "_verify_post_aac_master_output",
+        "render_and_master",
     }
-    runtime = backend.runtime_paths(repo_root, backend_request, fallback_python=cpu_python)
-    model_root = backend.model_root(backend_request, runtime, vox_archive)
-    preflight_request = {
-        *BackendPreflightRequest(
-            repo-root=repo_root,
-            runtime=runtime,
-            model_root=model_root,
-            base_seed=base_seed,
-            speech_options=dict(speech_options or {}),
-            backend_config=dict(backend_config or {}),
-        ).as_dict()
-    }
-    backend_preflight = backend.preflight(preflight_request)
-    master_policy = media_master or _ConstantMixMaster()[²È="26%öf–ÇW&R†FWF–Â“ ¢""$66WBöæÇ’f–ÇW&W2v†÷6RVÆ—G’6öFRÇ&VG’–çfÆ–FFVB6†V6·ö–çBâ"" ¢æ÷&ÖÆ—¦VBÒ7G"†FWF–Â÷"""’æ66VföÆB‚’ç&WÆ6R‚-"Â-R"¢–bæ÷Bæ÷&ÖÆ—¦VC ¢&WGW&âfÇ6P¢–bç’†Ö&¶W"–âæ÷&ÖÆ—¦VBf÷"Ö&¶W"–âôäôåõ$UE%”$ÄUô”äe$5E%T5EU$UôÔ$´U%2“ ¢&WGW&âfÇ6P¢&WGW&âç’†Ö&¶W"–âæ÷&ÖÆ—¦VBf÷"Ö&¶W"–âõ$UE%”$ÄUôDTÄ•dU%•ôÔ$´U%2 ¦FVböF—&V7Eöf–ÇW&U÷&W÷'B‡&ö÷C¢ç’’Óâ7G# ¢G'“ ¢F‚ÒF‚‡&ö÷B’ç&W6öÇfR‚’ò'6VvÖVçE÷v÷&²"ò&F—&V7E÷&VæFW&W%öf–ÇW&Ræ§6öâ ¢W†6WB…G—TW'&÷"ÂfÇVTW'&÷"Âõ4W'&÷"“ ¢&WGW&â" ¢–bæ÷BF‚æ—5öf–ÆR‚“ ¢&WGW&â" ¢G'“ ¢–ÆöBÒ§6öâæÆöG2‡F‚ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚×6–r"’¢W†6WB„õ4W'&÷"Â§6öâä¥4ôäFV6öFTW'&÷"“ ¢&WGW&â" ¢–bæ÷B—6–ç7Fæ6R‡–ÆöBÂF–7B“ ¢&WGW&â" ¢ÖW76vRÒ7G"‡–ÆöBævWB‚&ÖW76vR"’÷"""’ç7G&—‚¢W'&÷%÷G—RÒ7G"‡–ÆöBævWB‚&W'&÷%÷G—R"’÷"%'VçF–ÖTW'&÷""’ç7G&—‚¢&WGW&âb'¶W'&÷%÷G—WÓ¢¶ÖW76vWÒ"–bÖW76vRVÇ6R"  ¦FVböFVÆ—fW'•öf–ÇW&UöFWF–Â€¢W†3¢'VçF–ÖTW'&÷"À¢&w3¢GWÆU´ç’ÂââåÒÀ¢·v&w3¢F–7E·7G"Âç•ÒÀ¢’Óâ7G# ¢""%&V6÷fW"F†RFVWW7B6†–ÆB6W6Rv—F†÷WBG&VF–ærâöÆB&W÷'B27W'&VçBâ"" ¢W†6WF–öåöFWF–ÂÒ7G"†W†2’ç7G&—‚¢FWF–Ç3¢Æ—7E·7G%ÒÒµĞ¢6†–ÆEöFWF–ÂÒ7G"…ôÄ5Eô4„”ÄEõ5DDU%"÷"""’ç7G&—‚¢–b6†–ÆEöFWF–Ã ¢FWF–Ç2æVæB†6†–ÆEöFWF–Â ¢2F†R&VæFW&W"FVÆ–&W&FVÇ’7G&V×2Æöw2–ç7FVBöb'VffW&–ærÖç’Ö–çWFW0¢2öb÷WGWBâ—G2g&W6‚f–ÇW&R¥4ôâ—2WF†÷&—FF—fRöæÇ’v†VâF†BW†7@¢26†–ÆB&ö6W72&WGW&æVBæöâ×¦W&ó²÷F†W'v—6RâöÆFW"&W÷'B×W7Bæ÷BGW&à¢2â–æg&7G'V7GW&RW'&÷"–çFòVÆ—G’&WG'’à¢–b-	ııÍí’f÷„5Ó"&VæFW&W"}-]½ò­íMíÂ"–âW†6WF–öåöFWF–Ã ¢&ö÷BÒ·v&w2ævWB‚'&ö÷B"¢–b&ö÷B—2æöæRæB&w3 ¢&ö÷BÒ&w5³Ğ¢&W÷'EöFWF–ÂÒöF—&V7Eöf–ÇW&U÷&W÷'B‡&ö÷B¢–b&W÷'EöFWF–Ã ¢FWF–Ç2æVæB‡&W÷'EöFWF–Â¢–bW†6WF–öåöFWF–Ã ¢FWF–Ç2æVæB†W†6WF–öåöFWF–Â ¢Væ—VS¢Æ—7E·7G%ÒÒµĞ¢f÷"fÇVR–âFWF–Ç3 ¢–bfÇVRæ÷B–âVæ—VS ¢Væ—VRæVæB‡fÇVR¢&WGW&â%Æâ"æ¦ö–â‡Væ—VR ¦FVb&VæFW%öæEöÖ7FW"‚¦&w3¢ç’Â¢¦·v&w3¢ç’’Óâç“ ¢""%&WG'’VÆ—G’ÖöæÇ’f–ÇW&W2–â×Æ6Rv†–ÆR&W6W'f–ærvööB6†V6·ö–çG2â"" ¢vÆö&ÂôÄ5Eô4„”ÄEõ5DDU%  ¢G'“ ¢&WG'•öÆ–Ö—BÒ–çB„Ô…ôUDôÔD”5ôDTÄ•dU%•õ$UE$”U2¢W†6WB…G—TW'&÷"ÂfÇVTW'&÷"Â÷fW&fÆ÷tW'&÷"’2W†3 ¢&—6R'VçF–ÖTW'&÷"‚$Ô…ôUDôÔD”5ôDTÄ•dU%•õ$UE$”U2Mí½m]Ò½-Âm]½½Ââ"’g&öÒW†0¢&WG'•öÆ–Ö—BÒÖ‚ƒÂÖ–âƒ‚Â&WG'•öÆ–Ö—B’ ¢f÷"&WG'•ö–æFW‚–â&ævR‡&WG'•öÆ–Ö—B²“ ¢ôÄ5Eô4„”ÄEõ5DDU%"Ò" ¢G'“ ¢&WGW&âöÆVv7•÷&VæFW%öæEöÖ7FW"‚¦&w2Â¢¦·v&w2¢W†6WB'VçF–ÖTW'&÷"2W†3 ¢FWF–ÂÒöFVÆ—fW'•öf–ÇW&UöFWF–Â†W†2Â&w2Â·v&w2¢–bæ÷B÷&WG'–&ÆUöFVÆ—fW'•öf–ÇW&R†FWF–Â“ ¢–bFWF–ÂæBFWF–ÂÒ7G"†W†2’ç7G&—‚“ ¢&—6R'VçF–ÖTW'&÷"†FWF–Â’g&öÒW†0¢&—6P¢–b&WG'•ö–æFW‚ãÒ&WG'•öÆ–Ö—C ¢&—6R'VçF–ÖTW'&÷"€¢-	--íÍ-}]­íR6†V6·ö–çBİ-í-İí-½]İR}]ıİâ ¢b-ıí½R·&WG'•öÆ–Ö—GÒıí--íí"â	ıí½]Mİıò-í}İòı}İ¥Æç¶FWF–ÇÒ ¢’g&öÒW†0¢Æör€¢'VÆ—G’ÖöæÇ’f–ÇW&S²í]İıâ=ı]İ½R6†V6·ö–çG2‚}ı=­â ¢b---íÍ-}]­’ıí--í·&WG'•ö–æFW‚²Ò÷·&WG'•öÆ–Ö—GÒâ ¢b-	ı}İ¢¶FWF–Å³£#×Ò ¢ ¢&—6R'VçF–ÖTW'&÷"‚-	İ]Mí-mÍíRí-íıİRWFöÖF–2FVÆ—fW'’&WG'’â" ¥õöÆÅõòÒ6÷'FVB€¢6WB†æÖRf÷"æÖR–âvÆö&Ç2‚’–bæ÷BæÖRç7F'G7v—F‚‚%õò"’æBæÖRÒ%öÆVv7’"¢Â°¢$4„”ÄEõ•D„ôåõôÄ”5’"À¢$DTÄ•dU%•õ$UE%•õôÄ”5’"À¢$Ô…ôUDôÔD”5ôDTÄ•dU%•õ$UE$”U2"À¢%ôÄ5Eô4„”ÄEõ5DDU%""À¢%ö6†–ÆE÷—F†öåöVçb"À¢%ö6öÖÖæEöfÆr"À¢%öFVÆ—fW'•öf–ÇW&UöFWF–Â"À¢%öF—&V7Eöf–ÇW&U÷&W÷'B"À¢%öf–æ—FR"À¢%ö—5öÖ7FW%ö6öÖÖæB"À¢%ö—5öÖ7FW%÷&VÆV6Uö6öÖÖæB"À¢%ö—5÷—F†öå÷67&—Eö6öÖÖæB"À¢%öÆVv7•÷&VæFW%öæEöÖ7FW""À¢%öÖ&µöæE÷fÆ–FFU÷6VvÖVçG2"À¢%÷&WG'–&ÆUöFVÆ—fW'•öf–ÇW&R"À¢%÷'Våö6†–ÆE÷&ö6W72"À¢%÷7G&–7Eö–çB"À¢%÷fW&–g•÷÷7Eö5öÖ7FW%ö÷WGWB"À¢'&VæFW%öæEöÖ7FW""À¢Ğ¢ 
+)
