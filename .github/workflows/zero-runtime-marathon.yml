@@ -8,10 +8,10 @@ on:
       - .zero-runtime-trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  refactor:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,48 +23,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Apply wave
+      - name: Compile production tree
         run: |
-          set -euo pipefail
-          python tools/repair_title_runner.py
-          python tools/zero_runtime_marathon.py
+          python -m compileall -q core handlers pipelines services tools converters main.py bot_new.py
 
-      - name: Compile source-owned title surfaces
-        run: |
-          python -m compileall -q \
-            core/media_title_policy.py \
-            core/text_utils.py \
-            services/dub_studio.py \
-            services/dub_studio_runtime.py \
-            handlers/dub_delivery.py \
-            handlers/dub_health.py \
-            services/livedub_output_policy.py \
-            services/dub_release_health_v64.py \
-            tools/voxcpm2/generic_short_runtime.py \
-            tools/voxcpm2/generic_project_runtime.py \
-            tools/voxcpm2/_generic_clean_direct_runtime_base.py \
-            tools/voxcpm2/generic_clean_custom_runtime.py \
-            tools/voxcpm2/generic_clean_direct_runtime.py \
-            tools/voxcpm2/generic_clean_gemini_runtime.py \
-            tests/test_dub_title_policy.py
-
-      - name: Smoke canonical title policy
-        run: |
-          python - <<'PY'
-          from core.media_title_policy import canonical_media_title, canonical_delivery_filename
-          assert canonical_media_title('Сила И Достоинство Благочестивой Женщины - Джон Пайпер') == 'Сила и Достоинство Благочестивой Женщины - Джон Пайпер'
-          assert canonical_delivery_filename('Сила И Достоинство - Джон Пайпер — русский дубляж.mp4') == 'Сила и Достоинство - Джон Пайпер — русский дубляж.mp4'
-          PY
-
-      - name: Commit wave
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "Zero-runtime marathon: source-owned title policy"
-          git push origin HEAD:agent/zero-runtime-surgery-marathon
+      - name: Repo-wide runtime surgery audit
+        run: python tools/runtime_surgery_audit.py
