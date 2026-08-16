@@ -3,16 +3,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from services import dub_studio_runtime
+from services import dub_studio_runtime, dub_worker
 from services.dub_worker_release import WORKER_RUNTIME
-from tools.voxcpm2 import dub_worker_hardened
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "services" / "dub_studio_runtime.py"
-RUNTIME_FACADE = ROOT / "services" / "dub_studio_runtime" / "__init__.py"
-WORKER = ROOT / "tools" / "voxcpm2" / "_dub_worker_hardened_base.py"
-WORKER_FACADE = ROOT / "tools" / "voxcpm2" / "dub_worker_hardened" / "__init__.py"
+WORKER = ROOT / "services" / "dub_worker.py"
+WORKER_ENTRY = ROOT / "tools" / "voxcpm2" / "dub_worker.py"
 
 
 def _source(path: Path) -> str:
@@ -60,20 +58,20 @@ def test_runtime_finalizes_progress_card_at_terminal_event() -> None:
     assert "await _finalize_progress_card(application, event, project)" in source
 
 
-def test_progress_is_integrated_with_active_supervisor_facade() -> None:
+def test_progress_is_integrated_with_source_owned_supervisor() -> None:
     bot = _source(ROOT / "bot_new.py")
     runtime = _source(RUNTIME)
-    facade = _source(RUNTIME_FACADE)
     assert "install_dub_progress_updates" not in bot
     assert "dub_progress_updates.py" not in runtime
-    assert "_WORKER_RUNTIME = WORKER_RUNTIME" in facade
-    assert "_legacy._WORKER_RUNTIME = _WORKER_RUNTIME" in facade
-    assert "class _WriteThroughModule" in facade
+    assert "from services.dub_worker_release import WORKER_RUNTIME" in runtime
+    assert "_WORKER_RUNTIME = WORKER_RUNTIME" in runtime
+    assert '"tools.voxcpm2.dub_worker"' in runtime
+    assert "_legacy" not in runtime
     assert dub_studio_runtime._WORKER_RUNTIME == WORKER_RUNTIME
 
 
 def test_worker_stage_parser_ignores_master_substrings_in_tracebacks() -> None:
-    progress, stage = dub_worker_hardened._progress_from_line_v44(
+    progress, stage = dub_worker._progress_from_line(
         '  File "clean.py", line 7, in master_constant_mix.py',
         42,
     )
@@ -81,20 +79,19 @@ def test_worker_stage_parser_ignores_master_substrings_in_tracebacks() -> None:
     assert stage == ""
 
     worker = _source(WORKER)
-    facade = _source(WORKER_FACADE)
-    assert "_RUNTIME_VERSION = WORKER_RUNTIME" in facade
-    assert "_legacy._RUNTIME_VERSION = _RUNTIME_VERSION" in facade
-    assert "def _progress_from_line_v44" in worker
+    entry = _source(WORKER_ENTRY)
+    assert "from services.dub_worker_release import WORKER_RUNTIME" in worker
+    assert "def _progress_from_line" in worker
     assert 'if "master" in text.lower()' not in worker
+    assert "from services.dub_worker import main" in entry
 
 
 def test_worker_contains_terminal_preflight_and_delivery_guards() -> None:
     worker = _source(WORKER)
-    facade = _source(WORKER_FACADE)
-    assert "_recover_abandoned_with_terminal_events" in worker
-    assert "_FINAL_JOB_STATES" in worker
+    assert "def recover_abandoned_jobs" in worker
+    assert "_FINAL_WORKER_JOB_STATES" in worker
     assert "_FINISH_LOCK = threading.RLock()" in worker
     assert "recovered_after_worker_stop" in worker
     assert "from tools.voxcpm2 import dub_job_preflight" in worker
-    assert 'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"' in facade
-    assert dub_worker_hardened._RUNTIME_VERSION == WORKER_RUNTIME
+    assert 'DELIVERY_RESILIENCE_POLICY = "cadence-tail-fit-adaptive-resume-v1"' in worker
+    assert dub_worker.WORKER_RUNTIME == WORKER_RUNTIME
