@@ -35,7 +35,7 @@ def wave4() -> None:
         re.DOTALL,
     )
     help_new = '''async def help_command(update, context) -> None:\n    """Describe the actual source-owned LiveDub delivery contract."""\n    user_id = update.effective_user.id\n    limit_line = (\n        "👑 VIP — без ограничений"\n        if user_id in WHITELIST_IDS\n        else f"📵 {DAILY_LIMIT} видео/день • 1 запрос/мин"\n    )\n    audio_set = "видео с переводом + чистый русский MP3 + финальный объединённый MP3"\n    text = (\n        "ℹ️ <b>Помощь</b>\\n\\n"\n        "Отправьте ссылку на видео или плейлист.\\n\\n"\n        "🇷🇺 <b>Русский режим</b>\\n"\n        "MP3, тема, таймкоды, конспект и дополнительные материалы.\\n\\n"\n        "🇬🇧 <b>ENG Full</b>\\n"\n        f"Полный анализ + {audio_set} + смысловая проверка перевода.\\n\\n"\n        "⚡ <b>ENG Quick</b>\\n"\n        f"{audio_set}. Без конспекта и смысловой QA.\\n\\n"\n        "⚡🔍 <b>ENG Quick QA</b>\\n"\n        f"{audio_set} + лёгкая проверка коротких роликов.\\n\\n"\n        f"🔒 Ваши лимиты: {limit_line}\\n\\n"\n        "/start — приветствие\\n"\n        "/help — эта справка\\n"\n        "/mode — выбор режима\\n"\n        "/archive — последние публикации\\n"\n        "/search &lt;текст&gt; — поиск по архиву\\n"\n        "/segments — список сегментов\\n"\n        "/cut — вырезать сегмент\\n\\n"\n        "🔑 Для стабильных живых голосов требуется VOT_API_TOKEN "\n        "или YANDEX_OAUTH_TOKEN в .env."\n    )\n    await update.message.reply_text(text, parse_mode="HTML")\n'''
-    commands, count = help_pattern.subn(help_new, commands, count=1)
+    commands, count = help_pattern.subn(lambda _match: help_new, commands, count=1)
     if count != 1:
         raise RuntimeError("help_command anchor missing")
 
