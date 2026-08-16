@@ -908,7 +908,7 @@ def _render_main() -> None:
     log(f"Report: {report_path}")
 
 from tools.voxcpm2 import direct_universal_runtime as universal_runtime
-from tools.voxcpm2.direct_surgical_runtime import install_surgical_runtime
+from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
 from tools.voxcpm2.direct_surgical_polish_v2 import install_global_polish
 from tools.voxcpm2.direct_final_audit_v3 import install_final_audit
 from tools.voxcpm2.direct_failure_recovery import (
@@ -1168,7 +1168,353 @@ def _raw_failure_evidence(
     payload["universal_runtime_policy"] = universal_runtime.POLICY
     return payload
 
-install_surgical_runtime(globals())
+SURGICAL_RUNTIME_POLICY = surgical_runtime.POLICY
+_SURGICAL_RUNTIME_STATE: dict[str, Any] = {
+    "segments": {},
+    "work_dir": None,
+    "retry_epochs": {},
+    "current_segment_id": None,
+    "runtime_context": None,
+}
+_surgical_base_log = log
+_surgical_base_get_backend = get_backend
+_surgical_base_prepare_reference = prepare_reference
+_surgical_base_read_segments = read_segments
+_surgical_base_build_generation_length_request = _build_generation_length_request
+_surgical_base_acceptable_candidates = _acceptable_candidates
+_surgical_base_raw_failure_evidence = _raw_failure_evidence
+_surgical_hash_file = sha256_file
+_surgical_max_tempo = float(MAX_TEMPO)
+_surgical_expected_encode = int(EXPECTED_ENCODE_SR)
+_surgical_expected_output = int(EXPECTED_OUTPUT_SR)
+
+def log(message: str) -> Any:
+        text = str(message)
+        if text.startswith("Модель загружена за"):
+            return _surgical_base_log(
+                "Модель работает лениво: checkpoint-only resume не открывает веса; "
+                "загрузка начнётся перед первым отсутствующим сегментом."
+            )
+        return _surgical_base_log(text)
+
+def get_backend(name: str) -> Any:
+        backend = _surgical_base_get_backend(name)
+        if str(getattr(backend, "backend_id", "")).casefold() != "voxcpm2":
+            return backend
+        return surgical_runtime.direct_surgical_io.LazyBackend(
+            backend,
+            encode=_surgical_expected_encode,
+            output=_surgical_expected_output,
+            log=_surgical_base_log,
+        )
+
+def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
+        cached = surgical_runtime.direct_surgical_io.cached_reference(
+            source=source,
+            output=output,
+            _surgical_hash_file=_surgical_hash_file,
+            expected_sample_rate=_surgical_expected_encode,
+        )
+        if cached is not None:
+            _surgical_base_log(
+                f"Reference cache hit: {Path(output).stem} "
+                f"({float(cached['duration']):.2f} сек.)"
+            )
+            return cached
+        report = dict(_surgical_base_prepare_reference(source, output, sf_module))
+        return surgical_runtime.direct_surgical_io.enrich_reference_report(
+            report,
+            source=source,
+            _surgical_hash_file=_surgical_hash_file,
+        )
+
+def read_segments(path: Path) -> list[dict[str, Any]]:
+        values = list(_surgical_base_read_segments(Path(path)))
+        _SURGICAL_RUNTIME_STATE["segments"] = surgical_runtime._segments_by_id(values)
+        return values
+
+def _segment(segment_id: Any) -> dict[str, Any] | None:
+        try:
+            return _SURGICAL_RUNTIME_STATE["segments"].get(int(segment_id))
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+def _runtime_context() -> dict[str, str]:
+        cached = _SURGICAL_RUNTIME_STATE.get("runtime_context")
+        if isinstance(cached, dict):
+            return cached
+        repo = Path(__file__).resolve().parents[2]
+        hashes: dict[str, str] = {}
+        for relative in surgical_runtime._RUNTIME_SCOPE_FILES:
+            path = repo / relative
+            if not path.is_file():
+                raise RuntimeError(f"Не найден runtime-файл для retry scope: {relative}")
+            hashes[relative] = str(_surgical_hash_file(path))
+        encoded = json.dumps(
+            hashes,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        result = {
+            "surgical_runtime_policy": surgical_runtime.POLICY,
+            "surgical_runtime_sha256": hashlib.sha256(encoded).hexdigest(),
+        }
+        _SURGICAL_RUNTIME_STATE["runtime_context"] = result
+        return result
+
+def _scope(
+        work_dir: Path,
+        segment_id: Any,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], str]:
+        segment = _segment(segment_id)
+        context = {
+            **surgical_runtime.guard.load_signature_context(work_dir),
+            **_runtime_context(),
+        }
+        if not isinstance(segment, dict):
+            return None, context, ""
+        profile = str(segment.get("reference_profile") or "extended")
+        reference = Path(work_dir).resolve() / "references_guarded" / f"{profile}.wav"
+        if reference.is_file():
+            context.update(
+                reference_profile=profile,
+                reference_sha256=str(_surgical_hash_file(reference)),
+            )
+        fingerprint = surgical_runtime.guard.failure_scope_fingerprint(
+            segment,
+            signature_context=context,
+        )
+        return segment, context, fingerprint
+
+def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
+        work = Path(work_dir).resolve()
+        _SURGICAL_RUNTIME_STATE["work_dir"] = work
+        segment, _context, scope = _scope(work, segment_id)
+        value = int(
+            surgical_runtime.direct_retry_epoch.load_retry_epoch(
+                work,
+                segment_id,
+                scope_fingerprint=scope or None,
+            )
+        )
+        key = int(segment_id)
+        _SURGICAL_RUNTIME_STATE["retry_epochs"][key] = value
+        if isinstance(segment, dict):
+            segment["retry_epoch"] = value
+        return value
+
+def invalidate_segment_for_retry(
+        work_dir: Path,
+        segment: dict[str, Any],
+        *,
+        reason: str,
+        fitted_path: Path | None = None,
+        evidence: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        _value, context, scope = _scope(work_dir, segment.get("id"))
+        enriched = dict(evidence or {})
+        enriched["failure_scope_fingerprint"] = scope or surgical_runtime.guard.failure_scope_fingerprint(
+            segment,
+            signature_context=context,
+        )
+        return surgical_runtime.direct_retry_epoch.invalidate_segment_for_retry(
+            work_dir,
+            segment,
+            reason=reason,
+            fitted_path=fitted_path,
+            evidence=enriched,
+        )
+
+def _position(segment_id: int) -> tuple[int, int]:
+        ordered = sorted(int(value) for value in _SURGICAL_RUNTIME_STATE["segments"])
+        total = max(1, len(ordered))
+        try:
+            return ordered.index(int(segment_id)) + 1, total
+        except ValueError:
+            return min(max(1, int(segment_id)), total), total
+
+def _build_generation_length_request(
+        segment: dict[str, Any],
+        *,
+        duration_budget: float,
+        attempt: int,
+        previous_output_durations: tuple[float, ...],
+    ) -> Any:
+        segment_id = int(segment.get("id") or 0)
+        _SURGICAL_RUNTIME_STATE["current_segment_id"] = segment_id
+        epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
+        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+        context: dict[str, Any] = {}
+        if work is not None:
+            _value, context, _scope_hash = _scope(Path(work), segment_id)
+            if int(attempt) == 1:
+                surgical_runtime.guard.enforce_retry_epoch_budget(
+                    work_dir=Path(work),
+                    segment=segment,
+                    retry_epoch=epoch,
+                    signature_context=context,
+                )
+                marker = surgical_runtime.guard.load_matching_timing_block(
+                    Path(work),
+                    segment=segment,
+                    signature_context=context,
+                )
+                if marker is not None:
+                    raise surgical_runtime.guard.RetryableSynthesisFailure(
+                        surgical_runtime.guard.format_timing_block_message(marker, repeated=True),
+                        segment=segment,
+                        evidence=marker.get("evidence") or {},
+                        advance_retry=False,
+                        failure_kind="unchanged_timing_block",
+                    )
+        plan = surgical_runtime.guard.candidate_efficiency_plan(
+            segment,
+            speech_slot=max(0.001, float(duration_budget)),
+            retry_epoch=epoch,
+            _surgical_max_tempo=_surgical_max_tempo,
+        )
+        position, total = _position(segment_id)
+        _surgical_base_log(
+            "DUB_PROGRESS "
+            + json.dumps(
+                {
+                    "progress": surgical_runtime._progress_value(
+                        position=position,
+                        total=total,
+                        attempt=int(attempt),
+                        max_attempts=int(plan.get("max_attempts") or 5),
+                    ),
+                    "stage": (
+                        f"voxcpm2 · сегмент {position}/{total} · "
+                        f"вариант {int(attempt)}/{int(plan.get('max_attempts') or 5)} · "
+                        f"epoch {epoch}"
+                    ),
+                    "policy": _PROGRESS_POLICY,
+                    "risk_band": plan.get("risk_band"),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return _surgical_base_build_generation_length_request(
+            segment,
+            duration_budget=duration_budget,
+            attempt=attempt,
+            previous_output_durations=previous_output_durations,
+        )
+
+def seed_for_attempt(base_seed: int, segment_id: int, attempt: int, epoch: int) -> int:
+        _SURGICAL_RUNTIME_STATE["current_segment_id"] = int(segment_id)
+        _SURGICAL_RUNTIME_STATE["retry_epochs"][int(segment_id)] = int(epoch)
+        return int(
+            surgical_runtime.direct_retry_epoch.seed_for_attempt(base_seed, segment_id, attempt, epoch)
+        )
+
+def _acceptable_candidates(
+        candidates: list[dict[str, Any]],
+        speech_slot: float,
+    ) -> list[dict[str, Any]]:
+        try:
+            acceptable = list(_surgical_base_acceptable_candidates(candidates, speech_slot))
+        except RuntimeError as exc:
+            message = str(exc)
+            if not any(
+                marker in message
+                for marker in ("адаптивный бюджет", "не помещается естественно")
+            ):
+                raise
+            acceptable = []
+            legacy_error = exc
+        else:
+            legacy_error = None
+        segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
+        if not isinstance(segment, dict) or acceptable:
+            return acceptable
+        segment_id = int(segment.get("id") or 0)
+        epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
+        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+        context = _scope(Path(work), segment_id)[1] if work is not None else {}
+        timing = surgical_runtime.guard.evaluate_dynamic_timing_failure(
+            candidates,
+            segment=segment,
+            speech_slot=float(speech_slot),
+            retry_epoch=epoch,
+            _surgical_max_tempo=_surgical_max_tempo,
+        )
+        if timing is not None and work is not None:
+            marker = surgical_runtime.guard.persist_timing_block(
+                Path(work),
+                segment=segment,
+                signature_context=context,
+                retry_epoch=epoch,
+                evidence=timing,
+            )
+            raise surgical_runtime.guard.RetryableSynthesisFailure(
+                surgical_runtime.guard.format_timing_block_message(marker, repeated=False),
+                segment=segment,
+                evidence=timing,
+                advance_retry=True,
+                failure_kind="measured_timing_failure",
+            )
+        plan = surgical_runtime.guard.candidate_efficiency_plan(
+            segment,
+            speech_slot=float(speech_slot),
+            retry_epoch=epoch,
+            _surgical_max_tempo=_surgical_max_tempo,
+        )
+        budget = int(plan.get("max_attempts") or 5)
+        if len(candidates) >= budget:
+            evidence = {
+                "kind": "adaptive-candidate-budget-exhausted",
+                "candidate_plan": plan,
+                "speech_slot": float(speech_slot),
+                "_surgical_max_tempo": _surgical_max_tempo,
+                "attempts": [
+                    {
+                        "attempt": int(item.get("attempt") or 0),
+                        "seed": int(item.get("seed") or 0),
+                        "duration": float(item.get("duration") or 0.0),
+                        "required_tempo": float(item.get("required_tempo") or 0.0),
+                        "score": float(item.get("score") or 0.0),
+                    }
+                    for item in candidates
+                ],
+            }
+            raise surgical_runtime.guard.RetryableSynthesisFailure(
+                f"Сегмент #{segment_id}: адаптивный бюджет {budget} кандидатов "
+                f"исчерпан (risk={plan.get('risk_band')}); hard-quality кандидат не найден.",
+                segment=segment,
+                evidence=evidence,
+                advance_retry=True,
+                failure_kind="adaptive_budget_exhausted",
+            )
+        if legacy_error is not None:
+            raise legacy_error
+        return []
+
+def _raw_failure_evidence(
+        candidates: list[dict[str, Any]],
+        *,
+        speech_slot: float,
+        retry_epoch: int,
+    ) -> dict[str, Any]:
+        payload = dict(
+            _surgical_base_raw_failure_evidence(
+                candidates,
+                speech_slot=speech_slot,
+                retry_epoch=retry_epoch,
+            )
+        )
+        segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
+        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+        if isinstance(segment, dict):
+            context = _scope(Path(work), segment.get("id"))[1] if work is not None else {}
+            payload["failure_scope_fingerprint"] = surgical_runtime.guard.failure_scope_fingerprint(
+                segment,
+                signature_context=context,
+            )
+        payload["surgical_runtime_policy"] = surgical_runtime.POLICY
+        return payload
+
 install_global_polish()
 install_final_audit(globals())
 
