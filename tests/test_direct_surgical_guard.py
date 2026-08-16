@@ -4,13 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from tools.voxcpm2 import direct_surgical_guard as surgical_guard
 from tools.voxcpm2 import direct_surgical_polish_v2
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-surgical_guard.install_guard_contract()
-direct_surgical_polish_v2.install_global_polish()
 
 
 def seg(text="Текст.", **extra):

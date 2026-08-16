@@ -56,322 +56,109 @@ def _worker_snapshot_with_repair() -> dict[str, Any] | None:
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
-
-
 def _quality_contract(repo: Path) -> tuple[bool, str]:
-    voxcpm = repo / "tools" / "voxcpm2"
-    example = voxcpm / "examples" / "john_piper_z20py4yqhyq"
-    paths = {
-        "core": voxcpm / "clean_production_core.py",
+    root = Path(repo)
+    voxcpm = root / "tools" / "voxcpm2"
+    required = {
         "runtime_contract": voxcpm / "clean_runtime_contract.py",
+        "core": voxcpm / "clean_production_core.py",
         "source_download": voxcpm / "clean_source_download.py",
         "request_settings": voxcpm / "clean_request_settings.py",
-        "strict_translation": voxcpm / "strict_translation_payload.py",
-        "creator_vtt": voxcpm / "generic_gemini_runtime.py",
-        "normalizer": voxcpm / "clean_segment_normalizer.py",
-        "expression": voxcpm / "expressive_continuity.py",
-        "continuous_reference": voxcpm / "continuous_reference_policy.py",
-        "reference_gate": voxcpm / "controlled_reference_gate.py",
-        "numeric": voxcpm / "russian_spoken_numbers.py",
-        "translation": voxcpm / "expressive_translation.py",
-        "gemini_runtime": voxcpm / "generic_short_production.py",
-        "reference": voxcpm / "professional_audio_v45.py",
-        "qa": voxcpm / "professional_audio_qa_v45.py",
-        "io": voxcpm / "direct_max_quality_io.py",
-        "analysis": voxcpm / "direct_max_quality_analysis.py",
-        "prosody": voxcpm / "direct_source_prosody.py",
-        "timbre": voxcpm / "direct_timbre_analysis.py",
-        "render": voxcpm / "direct_max_quality_render.py",
-        "cli": voxcpm / "direct_max_quality_cli.py",
-        "media_qa": voxcpm / "final_media_qa.py",
-        "stable_cli": example / "voxcpm2_cpu_shorts_production.py",
-        "master": example / "master_constant_mix.py",
+        "translation": voxcpm / "strict_translation_payload.py",
         "gemini": voxcpm / "generic_gemini_runtime.py",
         "direct": voxcpm / "generic_direct_runtime.py",
         "custom": voxcpm / "generic_custom_runtime.py",
         "repair": voxcpm / "generic_clean_audio_repair_runtime.py",
-        "runtime": repo / "services" / "dub_studio_runtime.py",
-        "worker": voxcpm / "dub_worker_hardened.py",
-        "title": repo / "core" / "media_title_policy.py",
+        "semantic_blocks": voxcpm / "semantic_block_runtime.py",
+        "direct_io": voxcpm / "direct_max_quality_io.py",
+        "retry_epoch": voxcpm / "direct_retry_epoch.py",
+        "direct_master": voxcpm / "master_direct_russian_only.py",
+        "preflight": voxcpm / "dub_job_preflight.py",
+        "backend": root / "services" / "speech_backends" / "voxcpm2.py",
+        "worker": root / "services" / "dub_worker.py",
     }
-    text = {name: _read(path) for name, path in paths.items()}
-    missing = [name for name, value in text.items() if not value]
+    missing = [name for name, path in required.items() if not path.is_file()]
     if missing:
-        return False, "не найдены: " + ", ".join(missing)
+        return False, "не найдены canonical owners: " + ", ".join(sorted(missing))
+    text = {name: _read(path) for name, path in required.items()}
+    failed: list[str] = []
 
-    renderer_text = "\n".join(
-        text[name]
-        for name in (
-            "io",
-            "analysis",
-            "prosody",
-            "timbre",
-            "render",
-            "cli",
-            "stable_cli",
-        )
-    )
-    route_names = ("gemini", "direct", "custom", "repair")
-    source_route_names = ("gemini", "direct", "custom")
-    contracts = {
-        "runtime-contract-v2": (
-            'POLICY = "clean-runtime-contract-v2"' in text["runtime_contract"]
-            and "def sampled_sha256_file(" in text["runtime_contract"]
-            and '"sampled-begin-middle-end-v1"' in text["runtime_contract"]
-            and 'root.rglob("*.py")' in text["runtime_contract"]
-            and "def _setting(" in text["runtime_contract"]
-            and '_setting(request, "base_seed", 2026072800)' in text["runtime_contract"]
-            and 'request.get("base_seed") or' not in text["runtime_contract"]
-            and '"tools/voxcpm2/direct_source_prosody.py"' in text["runtime_contract"]
-            and '"tools/voxcpm2/clean_source_download.py"' in text["runtime_contract"]
-            and '"tools/voxcpm2/clean_request_settings.py"' in text["runtime_contract"]
-            and '"tools/voxcpm2/strict_translation_payload.py"' in text["runtime_contract"]
-            and '"release_complete": False' in text["core"]
-            and "release_complete=True" in text["core"]
-            and "direct_cli_runtime.marker.json" in text["stable_cli"]
-        ),
-        "verified-source-cache": (
-            'POLICY = "clean-source-download-manifest-v1"' in text["source_download"]
-            and "def _url_video_id(" in text["source_download"]
-            and "def _sampled_sha256(" in text["source_download"]
-            and 'source.with_suffix(source.suffix + ".download.json")' in text["source_download"]
-            and "YouTube URL и yt-dlp metadata указывают на разные ролики" in text["source_download"]
-            and all(
-                "clean_source_download.download_source" in text[name]
-                for name in ("gemini", "custom")
-            )
-            and "clean_source_download.download_source(source_url, source)" in text["direct"]
-        ),
-        "truthful-request-settings": (
-            'POLICY = "clean-request-settings-v1"' in text["request_settings"]
-            and "def _setting(" in text["request_settings"]
-            and "original_level не может быть bool" in text["request_settings"]
-            and "russian_delay_ms не может быть bool" in text["request_settings"]
-            and "def repair_manifest(" in text["request_settings"]
-            and 'payload["settings_policy"] = POLICY' in text["request_settings"]
-            and all(
-                "clean_request_settings.russian_delay_ms(request)" in text[name]
-                and "clean_request_settings.repair_manifest(root, request)" in text[name]
-                for name in source_route_names
-            )
-        ),
-        "creator-vtt-integrity": (
-            "def _merge_creator_caption_lines(" in text["creator_vtt"]
-            and "Exact adjacent duplicates are the same VTT render state" in text["creator_vtt"]
-            and "Do not deduplicate against the whole cue" in text["creator_vtt"]
-            and "parse_creator_vtt_preserving_text" in text["creator_vtt"]
-            and "parse_creator_vtt_preserving_text" in text["gemini"]
-        ),
-        "strict-translation-payload": (
-            'POLICY = "strict-translation-payload-v1"' in text["strict_translation"]
-            and "def validate_full(" in text["strict_translation"]
-            and "def validate_subset(" in text["strict_translation"]
-            and "Переводчик вернул повторяющийся ID" in text["strict_translation"]
-            and "strict_translation_payload.validate_full(value, groups)" in text["translation"]
-            and "strict_translation_payload.validate_subset(" in text["translation"]
-            and "validate_translation=strict_translation_payload.validate_full" in text["custom"]
-            and '"source_language"' in text["translation"]
-            and "с исходного языка на русский" in text["translation"]
-            and "англоязычной" not in text["translation"].casefold()
-            and "английской речью" not in text["translation"].casefold()
-            and "acquire_transcript=_acquire_transcript_clean" in text["gemini"]
-        ),
-        "direct-v3": 'POLICY = "voxcpm2-direct-max-quality-v3"' in text["io"],
-        "native-16to48": (
-            "EXPECTED_ENCODE_SR = 16000" in text["io"]
-            and "EXPECTED_OUTPUT_SR = 48000" in text["io"]
-            and "AudioVAE:" in text["cli"]
-        ),
-        "fingerprints": (
-            '"reference_sha256"' in text["cli"]
-            and '"model_config_sha256"' in text["cli"]
-            and "render_contract_sha256" in text["core"]
-            and "release_contract_sha256" in text["core"]
-        ),
-        "retry-badcase": (
-            '"retry_badcase": True' in text["render"]
-            and '"retry_badcase_max_times": 2' in text["render"]
-        ),
-        "voice-and-timbre": (
-            "candidate_hard_ok" in text["cli"]
-            and "_finite_voice_metric" in text["analysis"]
-            and "math.isfinite(value)" in text["analysis"]
-            and "voiced_ratio" in text["analysis"]
-            and "spectral_similarity" in text["analysis"]
-            and "HARD_SIMILARITY_FLOOR = 0.30" in text["timbre"]
-            and "MAX_TIMBRE_PENALTY" in text["timbre"]
-            and "not np.isfinite(candidate).all()" in text["timbre"]
-        ),
-        "source-prosody-ranking": (
-            'POLICY = "source-prosody-candidate-ranking-v2"' in text["prosody"]
-            and "def candidate_pitch_evidence_ok(" in text["prosody"]
-            and "def source_prosody_penalty(" in text["prosody"]
-            and "def _acceptable_candidates(" in text["cli"]
-            and "and candidate_pitch_evidence_ok(item)" in text["cli"]
-            and "source_prosody_penalty(candidate, segment)" in text["cli"]
-            and '"expression": expression_signature' in text["cli"]
-            and '"selected_raw_pitch_evidence_ok": True' in text["cli"]
-            and '"selected_base_score"' in text["cli"]
-            and '"selected_source_prosody_match"' in text["cli"]
-            and '"schema_version": "5.5-direct-durable-seed-epochs"' in text["cli"]
-            and 'if candidate.get("cadence_hard_ok") is False:' in text["prosody"]
-            and "detect_late_broadband_tail(" in text["prosody"]
-            and "rawPitch=" in text["cli"]
-            and "srcF0×=" in text["cli"]
-        ),
-        "continuous-first-reference": (
-            'POLICY = "continuous-clean-reference-v2"' in text["continuous_reference"]
-            and '"single-continuous-window"' in text["continuous_reference"]
-            and '"multi-window-fallback"' in text["continuous_reference"]
-            and "MIN_SECONDS = 5.0" in text["continuous_reference"]
-            and "MAX_SECONDS = 10.0" in text["continuous_reference"]
-            and "MIN_VOICED_RATIO = 0.16" in text["continuous_reference"]
-            and "MIN_ACTIVE_RATIO = 0.25" in text["continuous_reference"]
-            and "MAX_INTERNAL_GAP = 0.85" in text["continuous_reference"]
-            and "_report_has_usable_selection" in text["continuous_reference"]
-            and all(
-                "continuous_reference_policy.build_calm_references" in text[name]
-                and "clean.build_calm_references(" not in text[name]
-                for name in route_names
-            )
-        ),
-        "transactional-reference-identity": (
-            "MIN_REFERENCE_SECONDS = 5.0" in text["reference_gate"]
-            and "MIN_IDENTITY_SPECTRAL_SIMILARITY = 0.55" in text["reference_gate"]
-            and 'IDENTITY_POLICY = "calm-and-expressive-identity-v2"' in text["reference_gate"]
-            and "def _valid_calm_reference(" in text["reference_gate"]
-            and "def _restore(" in text["reference_gate"]
-            and "identity_spectral_similarity" in text["reference_gate"]
-            and all(
-                "controlled_reference_gate.build_or_keep_calm" in text[name]
-                and "identity_reference=extended" in text[name]
-                and "expressive_continuity.build_controlled_expressive_reference(" not in text[name]
-                for name in route_names
-            )
-        ),
-        "natural-timing": (
-            "MAX_TEMPO = 1.35" in text["io"]
-            and "MAX_START_DELAY_MS = 1500" in text["io"]
-            and "def _finite_float(" in text["io"]
-            and "Эффективное пересечение" in text["io"]
-            and "MAX_SECONDS = 5.4" in text["core"]
-            and "Russian tokens preserved" in text["normalizer"]
-            and "afade=t=in" in text["render"]
-            and "afade=t=out" in text["render"]
-        ),
-        "clean-reference": (
-            "REFERENCE_TAIL_SILENCE = 0.0" in text["io"]
-            and '"denoise": False' in text["reference"]
-            and "afftdn" not in text["reference"]
-            and '"denoise": False' in text["continuous_reference"]
-            and '"spectral_filter": False' in text["continuous_reference"]
-            and "pre-model-reference-hard-floor-v1" in text["analysis"]
-        ),
-        "QA-v3": (
-            'POLICY = "clean-expression-aware-qa-v3"' in text["qa"]
-            and "_forced_russian_fallback" in text["qa"]
-            and "confident_foreign_block" in text["qa"]
-            and "continuity_v45" in text["qa"]
-            and "def _voice_limits(" in text["qa"]
-            and 'POLICY: Final = "russian-spoken-numbers-v2"' in text["numeric"]
-            and "def numeric_anchor_groups(" in text["numeric"]
-            and 'NUMERIC_SEMANTIC_POLICY = "wetext-aligned-exact-numeric-anchors-v2"' in text["qa"]
-            and "def _numeric_anchor_evidence(" in text["qa"]
-            and "numeric_anchors_passed" in text["qa"]
-        ),
-        "same-direct-cli": (
-            "from tools.voxcpm2 import direct_max_quality_cli as _direct_cli"
-            in text["stable_cli"]
-            and "main = _direct_cli.main" in text["stable_cli"]
-            and "backend.build_renderer_command(" in text["core"]
-            and "backend.build_master_command(" in text["core"]
-            and "get_backend(" in text["core"]
-        ),
-        "no-wrapper": (
-            "runpy.run_path" not in renderer_text
-            and "class _SubprocessProxy" not in renderer_text
-            and "semantic_tts_guard" not in renderer_text
-            and "controlled_reference_gate" not in renderer_text
-            and "continuous_reference_policy" not in renderer_text
-            and '"wrapper_count": 0' in text["core"]
-        ),
-        "expression": (
-            'POLICY = "source-guided-expression-v2"' in text["expression"]
-            and "def _smooth(" in text["expression"]
-            and "def plan_json(" in text["expression"]
-            and "def _expressive_candidates(" in text["expression"]
-            and "build_controlled_expressive_reference" in text["expression"]
-        ),
-        "translation-v2-bounded-gemini": (
-            'POLICY = "expressive-spoken-translation-v2"' in text["translation"]
-            and '_PROGRESS_PREFIX = "DUB_PROGRESS "' in text["translation"]
-            and "перевод 1/3" in text["translation"]
-            and "сверка 2/3" in text["translation"]
-            and "редактура 3/3" in text["translation"]
-            and "намеренные повторы" in text["translation"]
-            and "риторические вопросы" in text["translation"]
-            and "DUB_GEMINI_REQUEST_TIMEOUT_SEC" in text["gemini_runtime"]
-            and "DUB_GEMINI_PASS_TIMEOUT_SEC" in text["gemini_runtime"]
-            and "types.HttpOptions(timeout=" in text["gemini_runtime"]
-            and "time.monotonic() + pass_timeout" in text["gemini_runtime"]
-            and "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in text["gemini_runtime"]
-            and "load_dotenv(override=False)" in text["gemini_runtime"]
-            and "пробую следующий" in text["gemini_runtime"]
-            and "translate_groups=expressive_translation.translate_groups" in text["gemini"]
-        ),
-        "clean-entrypoints": (
-            "TTS guard disabled" in text["gemini"]
-            and "TTS guard disabled" in text["direct"]
-            and "TTS guard disabled" in text["custom"]
-            and "force_fresh=repair_all" in text["repair"]
-            and 'gemini_called": False' in text["repair"]
-        ),
-        "fixed-original-final-AAC-QA": (
-            "linear=true" in text["master"]
-            and "10.0 ** (float(target_tp) / 20.0)" in text["master"]
-            and "level=false:latency=true" in text["master"]
-            and "fixed-original-post-russian-master-v1" in text["master"]
-            and '"post_mix_loudnorm": False' in text["master"]
-            and '"post_mix_limiter": False' in text["master"]
-            and "calibrate_russian_gain" in text["master"]
-            and "verify_final_outputs" in text["master"]
-            and "final_media_verification.json" in text["master"]
-            and 'ORIGINAL_BED_POLICY = "post-aac-original-bed-regression-v1"' in text["media_qa"]
-            and "def estimate_original_bed(" in text["media_qa"]
-            and "def _estimate_alignment_lag(" in text["media_qa"]
-            and "alignment_lag_ms" in text["media_qa"]
-            and "local_spread_db" in text["media_qa"]
-            and '"schema_version": "dub-final-media-qa-v5"' in text["media_qa"]
-            and "Отчёт сохранён" in text["media_qa"]
-            and "container_duration_delta_seconds" in text["media_qa"]
-            and "audio_duration_delta_seconds" in text["media_qa"]
-            and "av_start_delta_seconds" in text["media_qa"]
-            and "AV_START_TOLERANCE_SECONDS = 0.05" in text["media_qa"]
-            and "TRUE_PEAK_DELIVERY_CEILING_DBTP = -1.0" in text["media_qa"]
-            and "EXPECTED_SAMPLE_RATE = 48_000" in text["media_qa"]
-            and "MASTER_I = -16.0" in text["core"]
-            and "MASTER_TP = -1.5" in text["core"]
-        ),
-        "editable-progress": (
-            "edit_message_text" in text["runtime"]
-            and "dub_progress_message_v1" in text["runtime"]
-            and "_finalize_progress_card" in text["runtime"]
-            and "dub_progress_updates" not in text["runtime"]
-        ),
-        "worker-v45": (
-            'dub-worker-quality-v4.5' in text["runtime"]
-            and 'dub-worker-quality-v4.5' in text["worker"]
-            and "_progress_from_line_v44" in text["worker"]
-            and "_recover_abandoned_with_terminal_events" in text["worker"]
-            and "_FINAL_JOB_STATES" in text["worker"]
-            and "status in _FINAL_JOB_STATES" in text["worker"]
-            and 'return current, ""' in text["worker"]
-        ),
-        "single-title-policy": ("def canonical_media_title(" in text["title"] and "def canonical_delivery_filename(" in text["title"]),
+    forbidden = ("sys.modules[", "setattr(module", "def install_runtime", "def install_preflight", "ContextVar(")
+    for name in ("gemini", "direct", "custom", "repair", "direct_master", "preflight"):
+        if any(token in text[name] for token in forbidden):
+            failed.append("runtime-safety")
+            break
+
+    expected_routes = {
+        "render": "tools.voxcpm2.generic_gemini_runtime",
+        "render_gemini": "tools.voxcpm2.generic_gemini_runtime",
+        "render_direct": "tools.voxcpm2.generic_direct_runtime",
+        "repair_audio": "tools.voxcpm2.generic_clean_audio_repair_runtime",
+        "prepare_custom": "tools.voxcpm2.generic_custom_runtime",
+        "render_custom": "tools.voxcpm2.generic_custom_runtime",
     }
-    failed = [name for name, ok in contracts.items() if not ok]
-    return not failed, (
-        "все контракты активны" if not failed else "не прошли: " + ", ".join(failed)
+    try:
+        recipe = load_recipe("generic_short_v1")
+        recipe_ok = all(
+            str(recipe.action(action).get("runner") or "") == "python_module"
+            and str(recipe.action(action).get("module") or "") == module
+            for action, module in expected_routes.items()
+        )
+    except Exception:
+        recipe_ok = False
+    if not recipe_ok:
+        failed.append("recipe-routing")
+
+    if not (
+        'POLICY = spatial_bed_contract.POLICY' in text["direct_master"]
+        and '"source_bed_applied": False' in text["direct_master"]
+        and '"applied_original_level": 0.0' in text["direct_master"]
+        and "master_monolithic_mix" not in text["direct_master"]
+        and "tools.voxcpm2.master_direct_russian_only" in text["backend"]
+        and "master_direct_russian_only.py" in text["core"]
+    ):
+        failed.append("direct-master")
+
+    if not (
+        'POLICY = "clean-runtime-contract-v2"' in text["runtime_contract"]
+        and "tools/voxcpm2/clean_runtime_contract.py" in text["runtime_contract"]
+        and "tools/voxcpm2/master_direct_russian_only.py" in text["runtime_contract"]
+        and "tools/voxcpm2/generic_project_runtime.py" in text["runtime_contract"]
+        and "tools/voxcpm2/generic_direct_runtime.py" in text["runtime_contract"]
+        and "tools/voxcpm2/generic_clean_audio_repair_runtime.py" in text["runtime_contract"]
+        and "def build_fingerprints(" in text["runtime_contract"]
+    ):
+        failed.append("fingerprints")
+
+    if not (
+        'PREFLIGHT_JSON_TRANSPORT_POLICY = "marked-preflight-json-transport-v2"' in text["preflight"]
+        and "backend.runtime_paths(repo, request)" in text["preflight"]
+        and "backend.process_environment(" in text["preflight"]
+        and "def _decode_probe_payload(" in text["preflight"]
+    ):
+        failed.append("preflight")
+
+    if not (
+        "def build_command(" in text["worker"]
+        and "from tools.voxcpm2 import dub_job_preflight" in text["worker"]
+        and "from services.dub_worker import build_command" in _read(Path(__file__))
+    ):
+        failed.append("worker")
+
+    if not (
+        'POLICY = "voxcpm2-direct-max-quality-v3"' in text["direct_io"]
+        and "from collections.abc import Mapping" in text["retry_epoch"]
+        and "semantic_block_runtime.build_direct_segments(" in text["direct"]
+        and "ProjectRoute" in text["gemini"]
+        and "ProjectRoute" in text["custom"]
+    ):
+        failed.append("direct-runtime")
+
+    if failed:
+        return False, "не прошли: " + ", ".join(failed)
+    return True, (
+        "runtime-safety; recipe-routing; direct-master Russian-only; fingerprints; "
+        "source-owned preflight; services.dub_worker; typed direct retry"
     )
 
 

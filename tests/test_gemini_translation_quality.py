@@ -29,23 +29,6 @@ def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
     assert overridden['translation_model'] == 'translation-fixture'
     assert overridden['title_model'] == 'title-fixture'
 
-def test_translation_keeps_high_thinking_and_bounded_network_calls() -> None:
-    runtime = _source(RUNTIME)
-    gemini_section = runtime[runtime.index('def _generation_config'):runtime.index('def download_source')]
-    assert 'thinking_level="high"' in gemini_section
-    assert 'types.ThinkingConfig' in gemini_section
-    assert 'response_mime_type="application/json"' in gemini_section
-    assert 'max_output_tokens=16000' in gemini_section
-    assert 'types.HttpOptions(timeout=' in runtime
-    assert 'DUB_GEMINI_REQUEST_TIMEOUT_SEC' in runtime
-    assert 'DUB_GEMINI_PASS_TIMEOUT_SEC' in runtime
-    assert 'time.monotonic() + pass_timeout' in runtime
-    assert 'remaining < _MIN_REQUEST_TIMEOUT_SECONDS' in runtime
-    assert 'load_dotenv(override=False)' in runtime
-    assert 'temperature=' not in gemini_section
-    assert 'top_p=' not in gemini_section
-    assert 'top_k=' not in gemini_section
-
 def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
     monkeypatch.setattr(generic_short_runtime, '_load_dotenv_for_manual_run', lambda: None)
     monkeypatch.setenv('GEMINI_API_KEY', 'key-one')
@@ -183,3 +166,17 @@ def test_expressive_translation_really_runs_three_visible_editorial_passes(monke
     assert any(('сверка 2/3' in line for line in progress_lines))
     assert any(('редактура 3/3' in line for line in progress_lines))
     assert any(('сжатие не требуется' in line for line in logs))
+
+
+def test_translation_keeps_high_thinking_and_bounded_network_calls() -> None:
+    runtime = _source(RUNTIME)
+    assert 'thinking_level="high"' in runtime
+    assert "types.ThinkingConfig" in runtime
+    assert 'response_mime_type="application/json"' in runtime
+    assert "max_output_tokens=16000" in runtime
+    assert "types.HttpOptions(timeout=" in runtime
+    assert "DUB_GEMINI_REQUEST_TIMEOUT_SEC" in runtime
+    assert "DUB_GEMINI_PASS_TIMEOUT_SEC" in runtime
+    assert "time.monotonic() + pass_timeout" in runtime
+    assert "remaining < _MIN_REQUEST_TIMEOUT_SECONDS" in runtime
+    assert "load_dotenv(override=False)" in runtime

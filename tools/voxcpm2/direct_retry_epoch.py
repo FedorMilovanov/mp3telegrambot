@@ -8,6 +8,7 @@ assembled or post-AAC delivery failure. Successful segment checkpoints keep
 their original epoch and remain reusable during hour-long renders.
 """
 from __future__ import annotations
+from collections.abc import Mapping
 
 from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 import json

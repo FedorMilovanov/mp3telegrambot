@@ -5,6 +5,7 @@ tests/test_async_encoder_selection.py: 3
 tests/test_async_process.py: 11
 tests/test_async_process_tree.py: 3
 tests/test_async_worker.py: 14
+tests/test_audio_conversion_postcondition.py: 2
 tests/test_backend_generation_execution_plan.py: 2
 tests/test_bot_lifecycle.py: 4
 tests/test_cache_generation_fingerprint.py: 2
@@ -13,6 +14,7 @@ tests/test_candidate_schema.py: 4
 tests/test_caption_sentence_punctuation.py: 4
 tests/test_chat_findings_delivery_contract.py: 4
 tests/test_clean_delivery_retry_orchestration.py: 6
+tests/test_clean_dub_health_contract.py: 4
 tests/test_clean_dub_production.py: 8
 tests/test_clean_master_child_process_contract.py: 4
 tests/test_clean_master_post_aac_gate.py: 2
@@ -46,6 +48,7 @@ tests/test_direct_cli_runtime_marker.py: 8
 tests/test_direct_failure_recovery.py: 2
 tests/test_direct_final_audit_v3.py: 1
 tests/test_direct_long_form_resilience.py: 7
+tests/test_direct_master_source_owner.py: 3
 tests/test_direct_max_quality_renderer.py: 8
 tests/test_direct_renderer_failure_resume.py: 1
 tests/test_direct_retry_checkpoint.py: 10
@@ -56,7 +59,10 @@ tests/test_direct_segment_input_contract.py: 10
 tests/test_direct_source_prosody.py: 7
 tests/test_direct_source_prosody_cadence.py: 2
 tests/test_direct_speech_slot_contract.py: 6
+tests/test_direct_surgical_guard.py: 3
+tests/test_direct_surgical_io.py: 2
 tests/test_direct_surgical_polish_v2.py: 1
+tests/test_direct_surgical_recovery.py: 4
 tests/test_direct_surgical_wiring.py: 3
 tests/test_direct_tail_artifact.py: 3
 tests/test_direct_tempo_boundary_resume.py: 3
@@ -67,6 +73,7 @@ tests/test_direct_timing_guard.py: 4
 tests/test_direct_universal_runtime.py: 3
 tests/test_dual_whisper_semantic_qa.py: 3
 tests/test_dub_architecture_boundaries.py: 3
+tests/test_dub_audio_repair.py: 8
 tests/test_dub_audio_repair_handler_contract.py: 10
 tests/test_dub_audio_repair_integration.py: 2
 tests/test_dub_continuation_and_command_recovery.py: 8
@@ -77,6 +84,7 @@ tests/test_dub_job_preflight_v2.py: 8
 tests/test_dub_loudness_tolerance.py: 3
 tests/test_dub_modes.py: 3
 tests/test_dub_professional_audio_v45.py: 5
+tests/test_dub_quality_process_entrypoints.py: 1
 tests/test_dub_quality_v4.py: 12
 tests/test_dub_quality_v42_runtime_contracts.py: 5
 tests/test_dub_runtime_progress.py: 5
@@ -102,6 +110,7 @@ tests/test_expressive_contour_plan.py: 1
 tests/test_expressive_dub_policy.py: 6
 tests/test_extras_speed_integrity.py: 6
 tests/test_factory_capacity_fast_fail.py: 3
+tests/test_factory_execution_and_cut_source_policy.py: 20
 tests/test_factory_explicit_render_ceiling.py: 2
 tests/test_factory_media_quality_verifier.py: 5
 tests/test_ffmpeg_probe_ownership.py: 4
@@ -115,9 +124,11 @@ tests/test_gemini_model_status.py: 7
 tests/test_gemini_proxy_fallback.py: 3
 tests/test_gemini_qa_policy.py: 7
 tests/test_gemini_translation_quality.py: 8
+tests/test_generic_direct_runtime.py: 4
 tests/test_generic_gemini_runtime.py: 3
 tests/test_generic_project_runtime.py: 9
 tests/test_generic_project_runtime_contract.py: 5
+tests/test_generic_short_production.py: 9
 tests/test_generic_video_copy_contract.py: 1
 tests/test_highlights_candidate_gate.py: 7
 tests/test_highlights_discourse_context.py: 19
@@ -133,6 +144,7 @@ tests/test_livedub_audio_media_integration.py: 1
 tests/test_livedub_audio_quality_guard.py: 6
 tests/test_livedub_audio_retry_claims.py: 3
 tests/test_livedub_deep_audit.py: 15
+tests/test_livedub_delivery_coordinator_source_owned.py: 2
 tests/test_livedub_downstream_media.py: 8
 tests/test_livedub_factory_tail_guard.py: 4
 tests/test_livedub_info_guard.py: 4
@@ -170,6 +182,7 @@ tests/test_original_bed_alignment.py: 6
 tests/test_pass3_audit_followup.py: 4
 tests/test_playlist_proxy.py: 3
 tests/test_polling_reliability_runtime.py: 7
+tests/test_preflight_json_protocol.py: 5
 tests/test_proxy_ytdlp.py: 2
 tests/test_question_quality.py: 5
 tests/test_quiz_generator.py: 13
@@ -220,6 +233,7 @@ tests/test_shorts_transactional_outputs.py: 9
 tests/test_source_identity_pre_network.py: 3
 tests/test_source_owned_conspect_architecture.py: 6
 tests/test_source_owned_livedub_qa_architecture.py: 5
+tests/test_source_owner_retired_modules.py: 2
 tests/test_spatial_bed_final_media_qa.py: 5
 tests/test_speech_backend_command_contract.py: 13
 tests/test_speech_backend_control_plane.py: 4
@@ -228,10 +242,12 @@ tests/test_speech_backend_generation_profile_plan.py: 5
 tests/test_speech_backend_model_profile_contract.py: 8
 tests/test_speech_backend_registry.py: 2
 tests/test_speech_backend_request_boundary.py: 4
+tests/test_speech_backend_runtime_paths.py: 2
 tests/test_speech_backend_selection_contract.py: 3
 tests/test_speech_model_profile_manifests.py: 7
 tests/test_speech_model_profiles.py: 6
 tests/test_start_bot_bootstrap.py: 4
+tests/test_strict_translation_payload.py: 13
 tests/test_structured_output_candidates.py: 4
 tests/test_synopsis_timestamp_reconciliation.py: 8
 tests/test_synopsis_transcript.py: 10
@@ -414,309 +430,3 @@ tests/test_ytdlp_owned_metadata.py: 2
 tests/test_zero_delay_legacy_migration.py: 2
 tests/tools/voxcpm2/test_repair_project_request.py: 2
 
-==================================== ERRORS ====================================
-________ ERROR collecting tests/test_audio_conversion_postcondition.py _________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_audio_conversion_postcondition.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_audio_conversion_postcondition.py:3: in <module>
-    from services import project_runtime_hardening as hardening
-E   ImportError: cannot import name 'project_runtime_hardening' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-___________ ERROR collecting tests/test_clean_dub_health_contract.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_clean_dub_health_contract.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_clean_dub_health_contract.py:27: in <module>
-    from tools.voxcpm2 import generic_clean_direct_runtime as direct_runtime
-E   ImportError: cannot import name 'generic_clean_direct_runtime' from 'tools.voxcpm2' (unknown location)
-_____________ ERROR collecting tests/test_direct_surgical_guard.py _____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_direct_surgical_guard.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_direct_surgical_guard.py:7: in <module>
-    from tools.voxcpm2 import direct_surgical_guard as surgical_guard
-E   ImportError: cannot import name 'direct_surgical_guard' from 'tools.voxcpm2' (unknown location)
-______________ ERROR collecting tests/test_direct_surgical_io.py _______________
-tests/test_direct_surgical_io.py:12: in <module>
-    direct_surgical_polish_v2.install_global_polish()
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E   AttributeError: module 'tools.voxcpm2.direct_surgical_polish_v2' has no attribute 'install_global_polish'
-___________ ERROR collecting tests/test_direct_surgical_recovery.py ____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_direct_surgical_recovery.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_direct_surgical_recovery.py:11: in <module>
-    from tools.voxcpm2.direct_surgical_guard import install_guard_contract
-E   ModuleNotFoundError: No module named 'tools.voxcpm2.direct_surgical_guard'
-____________ ERROR collecting tests/test_direct_surgical_runtime.py ____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_direct_surgical_runtime.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_direct_surgical_runtime.py:10: in <module>
-    from tools.voxcpm2 import direct_surgical_guard
-E   ImportError: cannot import name 'direct_surgical_guard' from 'tools.voxcpm2' (unknown location)
-_______________ ERROR collecting tests/test_dub_audio_repair.py ________________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_dub_audio_repair.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_dub_audio_repair.py:14: in <module>
-    from tools.voxcpm2.generic_audio_repair_runtime_bootstrap import (
-E   ModuleNotFoundError: No module named 'tools.voxcpm2.generic_audio_repair_runtime_bootstrap'
-___________ ERROR collecting tests/test_dub_facade_write_through.py ____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_dub_facade_write_through.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_dub_facade_write_through.py:8: in <module>
-    from services import dub_title_policy
-E   ImportError: cannot import name 'dub_title_policy' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-_______ ERROR collecting tests/test_dub_health_v60_monolithic_release.py _______
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_dub_health_v60_monolithic_release.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_dub_health_v60_monolithic_release.py:6: in <module>
-    from services import dub_title_policy
-E   ImportError: cannot import name 'dub_title_policy' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-________ ERROR collecting tests/test_dub_quality_process_entrypoints.py ________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_dub_quality_process_entrypoints.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_dub_quality_process_entrypoints.py:10: in <module>
-    from tools.voxcpm2.generic_audio_repair_runtime_bootstrap import (
-E   ModuleNotFoundError: No module named 'tools.voxcpm2.generic_audio_repair_runtime_bootstrap'
-____ ERROR collecting tests/test_factory_execution_and_cut_source_policy.py ____
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_factory_execution_and_cut_source_policy.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_factory_execution_and_cut_source_policy.py:6: in <module>
-    import services.cut_mode_source_policy as source_policy
-E   ModuleNotFoundError: No module named 'services.cut_mode_source_policy'
-__________ ERROR collecting tests/test_gemini_startup_diagnostics.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_gemini_startup_diagnostics.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_gemini_startup_diagnostics.py:7: in <module>
-    from services import gemini_startup_diagnostics as diagnostics
-E   ImportError: cannot import name 'gemini_startup_diagnostics' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-____________ ERROR collecting tests/test_generic_direct_runtime.py _____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_generic_direct_runtime.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_generic_direct_runtime.py:3: in <module>
-    from tools.voxcpm2.generic_direct_checked_runtime import (
-E   ModuleNotFoundError: No module named 'tools.voxcpm2.generic_direct_checked_runtime'
-_____ ERROR collecting tests/test_generic_project_runtime_write_through.py _____
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_generic_project_runtime_write_through.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_generic_project_runtime_write_through.py:10: in <module>
-    from tools.voxcpm2 import generic_clean_custom_runtime as custom_route
-E   ImportError: cannot import name 'generic_clean_custom_runtime' from 'tools.voxcpm2' (unknown location)
-___________ ERROR collecting tests/test_generic_short_production.py ____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_generic_short_production.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_generic_short_production.py:9: in <module>
-    from tools.voxcpm2.dub_worker import build_command
-E   ImportError: cannot import name 'build_command' from 'tools.voxcpm2.dub_worker' (/home/runner/work/mp3telegrambot/mp3telegrambot/tools/voxcpm2/dub_worker.py)
-_______ ERROR collecting tests/test_livedub_cached_delivery_atomicity.py _______
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_cached_delivery_atomicity.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_cached_delivery_atomicity.py:8: in <module>
-    from services import livedub_cached_delivery_atomicity as atomicity
-E   ImportError: cannot import name 'livedub_cached_delivery_atomicity' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-______________ ERROR collecting tests/test_livedub_dual_audio.py _______________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_dual_audio.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_dual_audio.py:10: in <module>
-    from services.livedub_delivery_hardening import (
-E   ModuleNotFoundError: No module named 'services.livedub_delivery_hardening'
-_____________ ERROR collecting tests/test_livedub_help_runtime.py ______________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_help_runtime.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_help_runtime.py:6: in <module>
-    from services import livedub_help_runtime as help_runtime
-E   ImportError: cannot import name 'livedub_help_runtime' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-________ ERROR collecting tests/test_livedub_new_delivery_atomicity.py _________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_new_delivery_atomicity.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_new_delivery_atomicity.py:9: in <module>
-    from services import livedub_new_delivery_atomicity as atomicity
-E   ImportError: cannot import name 'livedub_new_delivery_atomicity' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-__________ ERROR collecting tests/test_livedub_new_delivery_roles.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_new_delivery_roles.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_new_delivery_roles.py:8: in <module>
-    from services import livedub_new_delivery_atomicity as atomicity
-E   ImportError: cannot import name 'livedub_new_delivery_atomicity' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-_____ ERROR collecting tests/test_livedub_publication_error_diagnostics.py _____
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_livedub_publication_error_diagnostics.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_livedub_publication_error_diagnostics.py:5: in <module>
-    from services import livedub_publication_error_diagnostics as diagnostics
-E   ImportError: cannot import name 'livedub_publication_error_diagnostics' from 'services' (/home/runner/work/mp3telegrambot/mp3telegrambot/services/__init__.py)
-____________ ERROR collecting tests/test_preflight_json_protocol.py ____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_preflight_json_protocol.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_preflight_json_protocol.py:7: in <module>
-    from tools.voxcpm2 import preflight_json_protocol as protocol
-E   ImportError: cannot import name 'preflight_json_protocol' from 'tools.voxcpm2' (unknown location)
-___________ ERROR collecting tests/test_project_runtime_hardening.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_project_runtime_hardening.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_project_runtime_hardening.py:8: in <module>
-    import services.project_runtime_hardening as hardening
-E   ModuleNotFoundError: No module named 'services.project_runtime_hardening'
-__________ ERROR collecting tests/test_semantic_prompt_rescue_v47.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_semantic_prompt_rescue_v47.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_semantic_prompt_rescue_v47.py:6: in <module>
-    from tools.voxcpm2 import semantic_tts_guard_v47 as rescue
-E   ImportError: cannot import name 'semantic_tts_guard_v47' from 'tools.voxcpm2' (unknown location)
-____________ ERROR collecting tests/test_semantic_tts_guard_v46.py _____________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_semantic_tts_guard_v46.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_semantic_tts_guard_v46.py:8: in <module>
-    from tools.voxcpm2 import semantic_tts_guard_v46 as focused
-E   ImportError: cannot import name 'semantic_tts_guard_v46' from 'tools.voxcpm2' (unknown location)
-______ ERROR collecting tests/test_shorts_factory_quality_publication.py _______
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_shorts_factory_quality_publication.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_shorts_factory_quality_publication.py:7: in <module>
-    import services.shorts_factory_portable_publication as publication
-E   ModuleNotFoundError: No module named 'services.shorts_factory_portable_publication'
-_________ ERROR collecting tests/test_speech_backend_runtime_paths.py __________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_speech_backend_runtime_paths.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_speech_backend_runtime_paths.py:12: in <module>
-    from tools.voxcpm2 import preflight_json_protocol
-E   ImportError: cannot import name 'preflight_json_protocol' from 'tools.voxcpm2' (unknown location)
-__________ ERROR collecting tests/test_strict_translation_payload.py ___________
-ImportError while importing test module '/home/runner/work/mp3telegrambot/mp3telegrambot/tests/test_strict_translation_payload.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_strict_translation_payload.py:8: in <module>
-    from tools.voxcpm2 import generic_clean_gemini_runtime
-E   ImportError: cannot import name 'generic_clean_gemini_runtime' from 'tools.voxcpm2' (unknown location)
-=========================== short test summary info ============================
-ERROR tests/test_audio_conversion_postcondition.py
-ERROR tests/test_clean_dub_health_contract.py
-ERROR tests/test_direct_surgical_guard.py
-ERROR tests/test_direct_surgical_io.py - AttributeError: module 'tools.voxcpm2.direct_surgical_polish_v2' has no attribute 'install_global_polish'
-ERROR tests/test_direct_surgical_recovery.py
-ERROR tests/test_direct_surgical_runtime.py
-ERROR tests/test_dub_audio_repair.py
-ERROR tests/test_dub_facade_write_through.py
-ERROR tests/test_dub_health_v60_monolithic_release.py
-ERROR tests/test_dub_quality_process_entrypoints.py
-ERROR tests/test_factory_execution_and_cut_source_policy.py
-ERROR tests/test_gemini_startup_diagnostics.py
-ERROR tests/test_generic_direct_runtime.py
-ERROR tests/test_generic_project_runtime_write_through.py
-ERROR tests/test_generic_short_production.py
-ERROR tests/test_livedub_cached_delivery_atomicity.py
-ERROR tests/test_livedub_dual_audio.py
-ERROR tests/test_livedub_help_runtime.py
-ERROR tests/test_livedub_new_delivery_atomicity.py
-ERROR tests/test_livedub_new_delivery_roles.py
-ERROR tests/test_livedub_publication_error_diagnostics.py
-ERROR tests/test_preflight_json_protocol.py
-ERROR tests/test_project_runtime_hardening.py
-ERROR tests/test_semantic_prompt_rescue_v47.py
-ERROR tests/test_semantic_tts_guard_v46.py
-ERROR tests/test_shorts_factory_quality_publication.py
-ERROR tests/test_speech_backend_runtime_paths.py
-ERROR tests/test_strict_translation_payload.py
-!!!!!!!!!!!!!!!!!!! Interrupted: 28 errors during collection !!!!!!!!!!!!!!!!!!!

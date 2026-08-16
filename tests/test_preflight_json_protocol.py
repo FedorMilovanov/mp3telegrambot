@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tools.voxcpm2 import preflight_json_protocol as protocol
+from tools.voxcpm2 import dub_job_preflight as preflight
 
 
 def _payload() -> dict[str, object]:
@@ -14,75 +14,48 @@ def _payload() -> dict[str, object]:
     }
 
 
-def test_marked_payload_survives_import_noise_before_and_after() -> None:
-    payload = _payload()
-    stdout = "\n".join(
-        (
-            "Loading VoxCPM runtime...",
-            "warning: optional acceleration unavailable",
-            protocol.encode_payload(payload),
-            "diagnostic emitted during interpreter shutdown",
-        )
+def _encode(payload: object) -> str:
+    return preflight.PREFLIGHT_JSON_MARKER + json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
 
-    decoded, noise = protocol.decode_payload(stdout)
 
+def test_marked_payload_survives_import_noise_before_and_after() -> None:
+    payload = _payload()
+    stdout = "\n".join(("Loading VoxCPM runtime...", _encode(payload), "shutdown diagnostic"))
+    decoded, noise = preflight._decode_probe_payload(stdout)
     assert decoded == payload
     assert "Loading VoxCPM runtime" in noise
-    assert "interpreter shutdown" in noise
-    assert protocol.MARKER not in noise
+    assert "shutdown diagnostic" in noise
+    assert preflight.PREFLIGHT_JSON_MARKER not in noise
 
 
 def test_last_valid_marked_payload_wins() -> None:
-    old = {"python": "old", "loaded": {}}
     current = _payload()
-    stdout = "\n".join(
-        (
-            protocol.encode_payload(old),
-            "third-party banner",
-            protocol.encode_payload(current),
-        )
+    decoded, noise = preflight._decode_probe_payload(
+        "\n".join((_encode({"python": "old", "loaded": {}}), "banner", _encode(current)))
     )
-
-    decoded, noise = protocol.decode_payload(stdout)
-
     assert decoded == current
-    assert "third-party banner" in noise
+    assert "banner" in noise
 
 
-def test_plain_json_is_rejected_fail_closed() -> None:
-    stdout = json.dumps(_payload(), ensure_ascii=False)
-
-    with pytest.raises(RuntimeError, match="не вернул маркированный JSON"):
-        protocol.decode_payload(stdout)
-
-
-def test_corrupt_marked_json_is_rejected_with_diagnostics() -> None:
-    stdout = "banner\n" + protocol.MARKER + "{broken-json"
-
-    with pytest.raises(RuntimeError, match="не вернул маркированный JSON") as exc:
-        protocol.decode_payload(stdout)
-
+def test_plain_or_corrupt_json_is_rejected_fail_closed() -> None:
+    with pytest.raises(RuntimeError, match="маркированный JSON"):
+        preflight._decode_probe_payload(json.dumps(_payload(), ensure_ascii=False))
+    with pytest.raises(RuntimeError, match="маркированный JSON") as exc:
+        preflight._decode_probe_payload("banner\n" + preflight.PREFLIGHT_JSON_MARKER + "{broken")
     assert "banner" in str(exc.value)
 
 
 def test_payload_must_be_an_object() -> None:
-    stdout = protocol.MARKER + json.dumps(["not", "an", "object"])
-
-    with pytest.raises(RuntimeError, match="не вернул маркированный JSON"):
-        protocol.decode_payload(stdout)
+    with pytest.raises(RuntimeError, match="маркированный JSON"):
+        preflight._decode_probe_payload(_encode(["not", "an", "object"]))
 
 
-def test_worker_module_installs_protocol_before_main() -> None:
-    from pathlib import Path
-
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "tools"
-        / "voxcpm2"
-        / "dub_worker_hardened"
-        / "__main__.py"
-    ).read_text(encoding="utf-8")
-
-    assert "install_preflight_json()" in source
-    assert source.index("install_preflight_json()") < source.index("main()")
+def test_preflight_protocol_is_source_owned() -> None:
+    assert preflight.PREFLIGHT_JSON_TRANSPORT_POLICY == "marked-preflight-json-transport-v2"
+    assert callable(preflight._runtime_paths)
+    assert callable(preflight._probe_imports)
+    source = __import__("pathlib").Path(preflight.__file__).read_text(encoding="utf-8")
+    assert "def install_preflight_json" not in source
+    assert "sys.modules" not in source

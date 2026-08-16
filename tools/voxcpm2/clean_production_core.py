@@ -609,7 +609,7 @@ DELIVERY_RETRY_POLICY = "bounded-checkpointed-delivery-retry-v1"
 
 MAX_AUTOMATIC_DELIVERY_RETRIES = 3
 
-MASTER_ENTRYPOINT_NAMES = frozenset({"master_constant_mix.py", "master_monolithic_mix.py"})
+MASTER_ENTRYPOINT_NAMES = frozenset({"master_constant_mix.py", "master_direct_russian_only.py"})
 
 _LAST_CHILD_STDERR = ""
 
