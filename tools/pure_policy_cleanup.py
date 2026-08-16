@@ -6,6 +6,15 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+TEMP_TOOLS = {
+    "tools/pure_policy_cleanup.py",
+    "tools/runtime_reference_audit.py",
+    "tools/runtime_surgery_audit.py",
+    "tools/installer_call_audit.py",
+    "tools/dead_runtime_cleanup.py",
+    "tools/zero_runtime_marathon.py",
+    "tools/repair_title_runner.py",
+}
 
 
 def read(rel: str) -> str:
@@ -17,7 +26,6 @@ def write(rel: str, text: str) -> None:
 
 
 def main() -> int:
-    # Static detector becomes a plain policy module; no compatibility installer remains.
     old = ROOT / "services/shorts_static_runtime.py"
     new = ROOT / "services/shorts_static_policy.py"
     if not old.is_file() or new.exists():
@@ -40,7 +48,6 @@ def main() -> int:
         raise RuntimeError("ffmpeg static import anchor missing")
     write("services/ffmpeg.py", ffmpeg.replace(needle, "from services.shorts_static_policy import _is_static_video_confident", 1))
 
-    # Factory publication already uses wrap_factory_caption_builder directly at owners.
     rel = "services/shorts_factory_publication.py"
     text = read(rel).replace("_INSTALLED = False\n", "")
     text, count = re.subn(
@@ -55,8 +62,6 @@ def main() -> int:
     text = text.replace('    "install_factory_publication_formatters",\n', "")
     write(rel, text)
 
-    # Factory video-quality installer has no production callers. Keep reusable quality
-    # functions; remove only ambient installer machinery and its metadata ContextVar.
     rel = "services/shorts_factory_video_quality.py"
     text = read(rel)
     text = text.replace("from contextvars import ContextVar\n", "")
@@ -97,11 +102,10 @@ def main() -> int:
     text = text.replace('    "install_factory_video_quality_policy",\n', "")
     write(rel, text)
 
-    # No production source may retain the old static runtime import/name.
     blockers = []
     for path in ROOT.rglob("*.py"):
         relp = path.relative_to(ROOT).as_posix()
-        if relp.startswith("tests/") or relp == "tools/pure_policy_cleanup.py":
+        if relp.startswith("tests/") or relp in TEMP_TOOLS:
             continue
         source = path.read_text(encoding="utf-8", errors="replace")
         if "shorts_static_runtime" in source:
