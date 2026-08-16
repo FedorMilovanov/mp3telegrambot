@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  flatten:
+  preflight-owner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +21,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Flatten write-through wrappers
-        run: python tools/flatten_simple_voxcpm.py
-      - name: Compile VoxCPM tree
-        run: python -m compileall -q tools/voxcpm2
-      - name: Verify flattened owners
+      - name: Flatten Dub preflight shadow package
+        run: python tools/refactor_dub_preflight_owner.py
+      - name: Compile production tree
+        run: python -m compileall -q tools/voxcpm2 services handlers core pipelines main.py
+      - name: Verify canonical preflight owner
         run: |
-          for stem in clean_runtime_contract continuous_reference_policy direct_max_quality_cli direct_monolith_contract direct_source_prosody direct_tail_artifact dub_quality_v4 final_media_spatial_bed generic_clean_direct_runtime generic_project_runtime professional_audio_qa_v45; do
-            test ! -f "tools/voxcpm2/$stem/__init__.py"
-            ! grep -nE 'spec_from_file_location|module_from_spec|sys\.modules|_legacy\.' "tools/voxcpm2/$stem.py"
-          done
-      - name: Commit flatten
+          test ! -f tools/voxcpm2/dub_job_preflight/__init__.py
+          test -f tools/voxcpm2/dub_job_preflight.py
+          ! grep -nE 'spec_from_file_location|module_from_spec|exec_module|sys\.modules|_legacy|dub_job_preflight/__init__\.py' tools/voxcpm2/dub_job_preflight.py
+          grep -q 'final_media_qa.py' tools/voxcpm2/dub_job_preflight.py
+          grep -q 'generic_project_runtime._PROJECT_RE' tools/voxcpm2/dub_job_preflight.py
+      - name: Commit source-owned preflight
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "Flatten VoxCPM write-through wrappers"
+          git commit -m "Make Dub preflight source-owned"
           git push origin HEAD:agent/zero-runtime-surgery-marathon
