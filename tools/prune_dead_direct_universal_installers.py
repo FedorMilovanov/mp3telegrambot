@@ -61,19 +61,31 @@ def remove_functions(text: str) -> str:
     for start, end in sorted(spans, reverse=True):
         del lines[start:end]
     updated = "".join(lines)
-    updated = updated.replace(', "install_runtime_fingerprint", "install_worker_progress"', "")
-    updated = updated.replace('"install_runtime_fingerprint", "install_worker_progress", ', "")
-    updated = updated.replace('    "install_runtime_fingerprint",\n', "")
-    updated = updated.replace('    "install_worker_progress",\n', "")
-    return updated
+
+    parsed = ast.parse(updated, filename=str(TARGET))
+    lines = updated.splitlines(keepends=True)
+    for node in parsed.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            continue
+        value = ast.literal_eval(node.value)
+        if not isinstance(value, list):
+            raise RuntimeError("direct_universal_runtime.__all__ is not a literal list")
+        exports = [item for item in value if item not in NAMES]
+        lines[node.lineno - 1 : (node.end_lineno or node.lineno)] = [f"__all__ = {exports!r}\n"]
+        break
+    else:
+        raise RuntimeError("direct_universal_runtime.__all__ not found")
+    return "".join(lines)
 
 
 def main() -> int:
     prove_zero_calls()
     text = remove_functions(TARGET.read_text(encoding="utf-8"))
     for name in NAMES:
-        if f"def {name}" in text:
-            raise RuntimeError(f"dead installer survived: {name}")
+        if name in text:
+            raise RuntimeError(f"dead installer/export survived: {name}")
     ast.parse(text, filename=str(TARGET))
     TARGET.write_text(text, encoding="utf-8")
     print("pruned dead direct-universal worker/fingerprint installers")
