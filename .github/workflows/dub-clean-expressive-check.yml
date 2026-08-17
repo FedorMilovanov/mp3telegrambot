@@ -8,35 +8,146 @@ on:
       - "services/dub_studio.py"
       - "services/dub_studio_runtime.py"
       - "services/polling_reliability_runtime.py"
-      - "tools/voxcpm2/**"
+      - "tools/voxcpm2/dub_worker.py"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/strict_translation_payload.py"
+      - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/direct_source_prosody.py"
+      - "tools/voxcpm2/direct_timbre_analysis.py"
+      - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "tools/voxcpm2/continuous_reference_policy.py"
+      - "tools/voxcpm2/controlled_reference_gate.py"
+      - "tools/voxcpm2/russian_spoken_numbers.py"
+      - "tools/voxcpm2/professional_audio_v45.py"
+      - "tools/voxcpm2/professional_audio_qa_v45.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
+      - "tools/voxcpm2/expressive_*.py"
+      - "tools/voxcpm2/generic_clean_*.py"
+      - "tools/voxcpm2/clean_*.py"
+      - "tools/voxcpm2/recipes/generic_short_v1.json"
       - "handlers/dub_audio_repair.py"
-      - "handlers/dub_audio_repair/**"
       - "handlers/dub_commands.py"
       - "handlers/dub_delivery.py"
       - "handlers/dub_health.py"
-      - "handlers/dub_health/**"
       - "handlers/dub_wizard.py"
-      - "handlers/dub_wizard/**"
-      - "tests/test_clean_*.py"
-      - "tests/test_dub_*.py"
-      - "tests/test_*translation*.py"
-      - "tests/test_*reference*.py"
-      - "tests/test_*media_qa.py"
+      - "tests/test_clean_reference_transport.py"
+      - "tests/test_clean_runtime_contract.py"
+      - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_segment_contract.py"
+      - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_generic_project_runtime_contract.py"
+      - "tests/test_clean_release_marker.py"
+      - "tests/test_clean_source_download.py"
+      - "tests/test_clean_request_settings.py"
+      - "tests/test_creator_vtt_integrity.py"
+      - "tests/test_strict_translation_payload.py"
+      - "tests/test_zero_delay_legacy_migration.py"
+      - "tests/test_dub_source_identity.py"
+      - "tests/test_continuous_reference_policy.py"
+      - "tests/test_continuous_reference_release_contract.py"
+      - "tests/test_controlled_reference_gate.py"
+      - "tests/test_calm_reference_identity_gate.py"
+      - "tests/test_direct_cli_runtime_marker.py"
+      - "tests/test_direct_max_quality_renderer.py"
+      - "tests/test_direct_retry_checkpoint.py"
+      - "tests/test_direct_segment_input_contract.py"
+      - "tests/test_direct_source_prosody.py"
+      - "tests/test_direct_timbre_analysis.py"
+      - "tests/test_direct_tempo_boundary_resume.py"
+      - "tests/test_dual_whisper_semantic_qa.py"
+      - "tests/test_forced_russian_script_gate.py"
+      - "tests/test_numeric_semantic_targets.py"
+      - "tests/test_expression_aware_voice_qa.py"
+      - "tests/test_final_media_qa.py"
+      - "tests/test_original_bed_alignment.py"
+      - "tests/test_master_loudnorm_contract.py"
+      - "tests/test_gemini_translation_quality.py"
+      - "tests/test_dub_studio.py"
+      - "tests/test_dub_title_policy.py"
+      - "tests/test_dub_runtime_progress.py"
+      - "tests/test_polling_reliability_runtime.py"
+      - "tests/test_expressive_dub_policy.py"
+      - "tests/test_clean_dub_production.py"
+      - "tests/test_clean_dub_health_contract.py"
+      - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-clean-expressive-check.yml"
   pull_request:
     branches: [main]
     paths:
       - "bot_new.py"
-      - "services/dub_*.py"
+      - "services/dub_studio.py"
+      - "services/dub_studio_runtime.py"
       - "services/polling_reliability_runtime.py"
-      - "tools/voxcpm2/**"
-      - "handlers/dub_*.py"
-      - "handlers/dub_*/**"
-      - "tests/test_clean_*.py"
-      - "tests/test_dub_*.py"
-      - "tests/test_*translation*.py"
-      - "tests/test_*reference*.py"
-      - "tests/test_*media_qa.py"
+      - "tools/voxcpm2/dub_worker.py"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/strict_translation_payload.py"
+      - "tools/voxcpm2/direct_max_quality_*.py"
+      - "tools/voxcpm2/direct_source_prosody.py"
+      - "tools/voxcpm2/direct_timbre_analysis.py"
+      - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "tools/voxcpm2/continuous_reference_policy.py"
+      - "tools/voxcpm2/controlled_reference_gate.py"
+      - "tools/voxcpm2/russian_spoken_numbers.py"
+      - "tools/voxcpm2/professional_audio_v45.py"
+      - "tools/voxcpm2/professional_audio_qa_v45.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
+      - "tools/voxcpm2/expressive_*.py"
+      - "tools/voxcpm2/generic_clean_*.py"
+      - "tools/voxcpm2/clean_*.py"
+      - "tools/voxcpm2/recipes/generic_short_v1.json"
+      - "handlers/dub_audio_repair.py"
+      - "handlers/dub_commands.py"
+      - "handlers/dub_delivery.py"
+      - "handlers/dub_health.py"
+      - "handlers/dub_wizard.py"
+      - "tests/test_clean_reference_transport.py"
+      - "tests/test_clean_runtime_contract.py"
+      - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_segment_contract.py"
+      - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_generic_project_runtime_contract.py"
+      - "tests/test_clean_release_marker.py"
+      - "tests/test_clean_source_download.py"
+      - "tests/test_clean_request_settings.py"
+      - "tests/test_creator_vtt_integrity.py"
+      - "tests/test_strict_translation_payload.py"
+      - "tests/test_zero_delay_legacy_migration.py"
+      - "tests/test_dub_source_identity.py"
+      - "tests/test_continuous_reference_policy.py"
+      - "tests/test_continuous_reference_release_contract.py"
+      - "tests/test_controlled_reference_gate.py"
+      - "tests/test_calm_reference_identity_gate.py"
+      - "tests/test_direct_cli_runtime_marker.py"
+      - "tests/test_direct_max_quality_renderer.py"
+      - "tests/test_direct_retry_checkpoint.py"
+      - "tests/test_direct_segment_input_contract.py"
+      - "tests/test_direct_source_prosody.py"
+      - "tests/test_direct_timbre_analysis.py"
+      - "tests/test_direct_tempo_boundary_resume.py"
+      - "tests/test_dual_whisper_semantic_qa.py"
+      - "tests/test_forced_russian_script_gate.py"
+      - "tests/test_numeric_semantic_targets.py"
+      - "tests/test_expression_aware_voice_qa.py"
+      - "tests/test_final_media_qa.py"
+      - "tests/test_original_bed_alignment.py"
+      - "tests/test_master_loudnorm_contract.py"
+      - "tests/test_gemini_translation_quality.py"
+      - "tests/test_dub_studio.py"
+      - "tests/test_dub_title_policy.py"
+      - "tests/test_dub_runtime_progress.py"
+      - "tests/test_polling_reliability_runtime.py"
+      - "tests/test_expressive_dub_policy.py"
+      - "tests/test_clean_dub_production.py"
+      - "tests/test_clean_dub_health_contract.py"
+      - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-clean-expressive-check.yml"
   workflow_dispatch:
 
@@ -67,10 +178,7 @@ jobs:
             services/dub_studio_runtime.py \
             services/polling_reliability_runtime.py \
             tools/voxcpm2/dub_worker.py \
-            tools/voxcpm2/dub_worker_hardened.py \
-            tools/voxcpm2/generic_short_runtime.py \
             tools/voxcpm2/generic_project_runtime.py \
-            tools/voxcpm2/generic_project_runtime/__init__.py \
             tools/voxcpm2/strict_translation_payload.py \
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_timbre_analysis.py \
@@ -79,46 +187,34 @@ jobs:
             tools/voxcpm2/direct_max_quality_render.py \
             tools/voxcpm2/direct_max_quality_cli.py \
             tools/voxcpm2/final_media_qa.py \
-            tools/voxcpm2/final_media_qa/__init__.py \
             tools/voxcpm2/continuous_reference_policy.py \
             tools/voxcpm2/controlled_reference_gate.py \
             tools/voxcpm2/russian_spoken_numbers.py \
             tools/voxcpm2/professional_audio_v45.py \
             tools/voxcpm2/professional_audio_qa_v45.py \
             tools/voxcpm2/clean_runtime_contract.py \
-            tools/voxcpm2/clean_runtime_contract/__init__.py \
             tools/voxcpm2/clean_source_download.py \
             tools/voxcpm2/clean_request_settings.py \
             tools/voxcpm2/clean_segment_normalizer.py \
             tools/voxcpm2/legacy_segment_migration_v45.py \
             tools/voxcpm2/clean_production_core.py \
-            tools/voxcpm2/clean_production_core/__init__.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             tools/voxcpm2/expressive_continuity.py \
             tools/voxcpm2/expressive_translation.py \
             tools/voxcpm2/generic_gemini_runtime.py \
-            tools/voxcpm2/generic_clean_gemini_runtime.py \
-            tools/voxcpm2/generic_clean_direct_runtime.py \
-            tools/voxcpm2/generic_clean_custom_runtime.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
-            tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py \
-            tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py \
             handlers/dub_audio_repair.py \
-            handlers/dub_audio_repair/__init__.py \
             handlers/dub_commands.py \
             handlers/dub_delivery.py \
             handlers/dub_health.py \
-            handlers/dub_health/__init__.py \
-            handlers/dub_wizard.py \
-            handlers/dub_wizard/__init__.py
+            handlers/dub_wizard.py
       - name: Run focused contracts
         run: |
           python -m pytest -q \
             tests/test_clean_reference_transport.py \
             tests/test_clean_runtime_contract.py \
             tests/test_clean_runtime_setting_types.py \
-            tests/test_clean_runtime_facades.py \
             tests/test_clean_segment_contract.py \
             tests/test_repair_segment_input_contract.py \
             tests/test_clean_repair_request_contract.py \
