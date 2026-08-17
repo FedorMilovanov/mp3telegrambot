@@ -30,3 +30,4 @@ jobs:
           git add README.md core/database.py services/gemini_qa_policy.py
           git commit -m "Finish Gemini 3.7 policy cleanup"
           git push origin HEAD:agent/gemini-37-quality-routing
+# retry: anchor-based cleanup
