@@ -24,19 +24,29 @@ def replace_section(path: str, start_anchor: str, end_anchor: str, new: str, lab
     p.write_text(text[:start] + new + text[end:], encoding="utf-8")
 
 
-replace_section(
-    "core/database.py",
-    "# ─── Gemini модели",
-    'GEMINI_MODEL  = os.getenv(',
-    """# ─── Gemini deployment policy (2026-08-17) ──────────────────────────────
-# Heavy/semantic production route: gemini-3.7-flash + HIGH.
-# Utility/mechanical route: gemini-3.5-flash-lite only.
-# Semantic downgrade to 3.6/3.5/Lite is intentionally disabled; temporary
-# capacity failures use bounded retries and configured API-key/client rotation.
-# ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
-""",
-    "database policy",
-)
+def replace_database_policy() -> None:
+    p = Path("core/database.py")
+    lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
+    ga = [i for i, line in enumerate(lines) if "GA 21.07.2026" in line]
+    model = [i for i, line in enumerate(lines) if line.startswith("GEMINI_MODEL")]
+    if len(ga) != 1 or len(model) != 1:
+        raise SystemExit(f"database policy anchors invalid: ga={ga}, model={model}")
+    start = ga[0] - 2
+    end = model[0]
+    if start < 0 or end <= start or end - start > 12:
+        raise SystemExit(f"database policy bounds unsafe: start={start}, end={end}")
+    replacement = [
+        "# ─── Gemini deployment policy (2026-08-17) ──────────────────────────────\n",
+        "# Heavy/semantic production route: gemini-3.7-flash + HIGH.\n",
+        "# Utility/mechanical route: gemini-3.5-flash-lite only.\n",
+        "# Semantic downgrade to 3.6/3.5/Lite is intentionally disabled; temporary\n",
+        "# capacity failures use bounded retries and configured API-key/client rotation.\n",
+        "# ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)\n",
+    ]
+    p.write_text("".join(lines[:start] + replacement + lines[end:]), encoding="utf-8")
+
+
+replace_database_policy()
 
 replace_once(
     "services/gemini_qa_policy.py",
@@ -60,7 +70,7 @@ replace_once(
 replace_section(
     "README.md",
     "## Gemini policy\n",
-    "## LiveDub и два MP3\n",
+    "## LiveDub",
     """## Gemini policy
 
 Runtime фиксирует quality-policy до импорта AI-клиентов:
