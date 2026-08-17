@@ -66,7 +66,7 @@ def test_mp3_metadata_is_bounded_without_tiny_fragment():
     assert not result.endswith(" ")
 
 
-def test_publication_models_are_exact_36_even_with_stale_utility_env(monkeypatch):
+def test_publication_models_are_exact_37_even_with_stale_utility_env(monkeypatch):
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv(
         "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
