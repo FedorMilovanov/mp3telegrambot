@@ -25,7 +25,7 @@ from services.shorts_factory_capacity import safe_status
 logger = logging.getLogger(__name__)
 
 FACTORY_CACHE_DIR = DOWNLOAD_DIR / "factory_retry_cache"
-FACTORY_CACHE_POLICY = "lossless-analysis-retry-cache-v1"
+FACTORY_CACHE_POLICY = "lossless-analysis-retry-cache-v2-decoded-duration"
 _CACHE_LOCK = threading.RLock()
 _ACTIVE_CACHE_PATHS: dict[str, int] = {}
 
@@ -111,6 +111,20 @@ def _set_cache_path_active(path: Path, active: bool) -> None:
             _ACTIVE_CACHE_PATHS.pop(key, None)
 
 
+def _payload_duration_is_valid(payload: dict[str, Any], expected_duration: float) -> bool:
+    from services.shorts_factory_source import factory_duration_matches
+
+    try:
+        verified = float(payload.get("verified_duration_seconds") or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if verified <= 0:
+        return False
+    if expected_duration > 0 and not factory_duration_matches(verified, expected_duration):
+        return False
+    return True
+
+
 def cleanup_retry_cache() -> None:
     FACTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     now = time.time()
@@ -126,13 +140,18 @@ def cleanup_retry_cache() -> None:
             filename = Path(str(payload.get("filename") or "")).name
             media = FACTORY_CACHE_DIR / filename
             media_key = _cache_path_key(media)
+            policy_ok = payload.get("policy") == FACTORY_CACHE_POLICY
+            duration_ok = _payload_duration_is_valid(payload, 0.0)
             if media_key in protected:
                 referenced.add(filename)
-                active_valid.add(filename)
-                valid.append((created, meta, payload))
+                if policy_ok and duration_ok:
+                    active_valid.add(filename)
+                    valid.append((created, meta, payload))
                 continue
             if (
-                created <= 0
+                not policy_ok
+                or not duration_ok
+                or created <= 0
                 or now - created > cache_ttl_seconds()
                 or not media.is_file()
             ):
@@ -165,7 +184,12 @@ def cleanup_retry_cache() -> None:
             path.unlink(missing_ok=True)
 
 
-async def _cached_analysis_audio(url: str, media_id: str) -> Path | None:
+async def _cached_analysis_audio(
+    url: str,
+    media_id: str,
+    *,
+    expected_duration: float = 0.0,
+) -> Path | None:
     from services.media_delivery_probe import probe_media_async
     from services.shorts_factory_source import factory_audio_probe_is_usable
 
@@ -177,6 +201,8 @@ async def _cached_analysis_audio(url: str, media_id: str) -> Path | None:
     try:
         payload = json.loads(meta.read_text(encoding="utf-8"))
         if payload.get("policy") != FACTORY_CACHE_POLICY:
+            return None
+        if not _payload_duration_is_valid(payload, float(expected_duration or 0.0)):
             return None
         if time.time() - float(payload.get("created_at") or 0.0) > cache_ttl_seconds():
             return None
@@ -192,7 +218,12 @@ async def _cached_analysis_audio(url: str, media_id: str) -> Path | None:
             f"{media_id}_factory_retry_{uuid.uuid4().hex[:10]}{cached.suffix.lower()}"
         )
         await asyncio.to_thread(copy_or_link, cached, ephemeral)
-        logger.info("Shorts Factory retry cache hit media_id=%s file=%s", media_id, cached.name)
+        logger.info(
+            "Shorts Factory retry cache hit media_id=%s file=%s verified_duration=%.3fs",
+            media_id,
+            cached.name,
+            float(payload.get("verified_duration_seconds") or 0.0),
+        )
         return ephemeral
     except Exception as exc:
         logger.warning("Shorts Factory retry cache rejected media_id=%s: %s", media_id, exc)
@@ -203,16 +234,35 @@ async def _cached_analysis_audio(url: str, media_id: str) -> Path | None:
             cleanup_retry_cache()
 
 
-async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
+async def _store_analysis_audio(
+    url: str,
+    media_id: str,
+    source: Path,
+    *,
+    expected_duration: float = 0.0,
+) -> None:
     from services.media_delivery_probe import probe_media_async
-    from services.shorts_factory_source import factory_audio_probe_is_usable
+    from services.shorts_factory_source import (
+        factory_audio_probe_is_usable,
+        factory_duration_matches,
+        measure_factory_audio_duration,
+    )
 
     source = Path(source)
     if not source.is_file() or source.stat().st_size < 1024:
-        return
+        raise RuntimeError("Factory retry cache refused missing or empty analysis audio")
     probe = await probe_media_async(source)
     if not factory_audio_probe_is_usable(probe):
-        return
+        raise RuntimeError("Factory retry cache refused invalid analysis-audio stream")
+
+    verified_duration = await measure_factory_audio_duration(source)
+    expected = float(expected_duration or 0.0)
+    if expected > 0 and not factory_duration_matches(verified_duration, expected):
+        raise RuntimeError(
+            "Factory retry cache refused duration-mismatched analysis audio: "
+            f"expected={expected:.3f}s verified={verified_duration:.3f}s"
+        )
+
     key = _cache_key(url, media_id)
     sha = await asyncio.to_thread(_sha256_file, source)
     FACTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -231,7 +281,10 @@ async def _store_analysis_audio(url: str, media_id: str, source: Path) -> None:
             "media_id": str(media_id),
             "filename": final.name,
             "size_bytes": final.stat().st_size,
-            "duration_seconds": float(getattr(probe, "duration", 0.0) or 0.0),
+            "duration_seconds": verified_duration,
+            "verified_duration_seconds": verified_duration,
+            "expected_duration_seconds": expected,
+            "ffprobe_duration_seconds": float(getattr(probe, "duration", 0.0) or 0.0),
             "sha256": sha,
         }
         temp = _cache_meta(key).with_suffix(f".{uuid.uuid4().hex}.tmp")
@@ -253,8 +306,13 @@ async def download_factory_audio_with_retry_cache(
     *,
     original_downloader: Callable[[str, str], Awaitable[Path]],
     status_msg: Any = None,
+    expected_duration: float = 0.0,
 ) -> Path:
-    cached = await _cached_analysis_audio(url, media_id)
+    cached = await _cached_analysis_audio(
+        url,
+        media_id,
+        expected_duration=expected_duration,
+    )
     if cached is not None:
         await safe_status(
             status_msg,
@@ -263,7 +321,12 @@ async def download_factory_audio_with_retry_cache(
         )
         return cached
     prepared = Path(await original_downloader(url, media_id))
-    await _store_analysis_audio(url, media_id, prepared)
+    await _store_analysis_audio(
+        url,
+        media_id,
+        prepared,
+        expected_duration=expected_duration,
+    )
     return prepared
 
 
