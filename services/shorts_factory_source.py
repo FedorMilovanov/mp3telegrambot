@@ -87,6 +87,81 @@ def factory_audio_probe_is_usable(probe: Any) -> bool:
     )
 
 
+def factory_duration_matches(actual: float, expected: float) -> bool:
+    """Allow only small container/timeline drift for a supposedly complete source."""
+    try:
+        actual_value = float(actual)
+        expected_value = float(expected)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if actual_value <= 0 or expected_value <= 0:
+        return False
+    tolerance = max(2.0, min(15.0, expected_value * 0.002))
+    return abs(actual_value - expected_value) <= tolerance
+
+
+def _progress_duration_seconds(stdout: Any) -> float:
+    """Read the actual processed media timeline from FFmpeg -progress output."""
+    text = str(stdout or "")
+    best = 0.0
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("out_time_us="):
+            try:
+                best = max(best, int(line.split("=", 1)[1]) / 1_000_000.0)
+            except (TypeError, ValueError, OverflowError):
+                pass
+            continue
+        if not line.startswith("out_time="):
+            continue
+        value = line.split("=", 1)[1].strip()
+        parts = value.split(":")
+        if len(parts) != 3:
+            continue
+        try:
+            seconds = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        except (TypeError, ValueError, OverflowError):
+            continue
+        best = max(best, seconds)
+    return best
+
+
+async def measure_factory_audio_duration(path: Path) -> float:
+    """Decode the audio timeline instead of trusting raw AAC/ADTS duration estimates."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required to verify Factory analysis audio")
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-v",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        "-i",
+        str(Path(path)),
+        "-map",
+        "0:a:0",
+        "-f",
+        "null",
+        os.devnull,
+    ]
+    process = await run_cancellable_process(
+        command,
+        timeout=_FACTORY_MEDIA_TIMEOUT_SEC,
+        text=True,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(
+            "Factory analysis audio decode verification failed: " + _stderr_tail(process)
+        )
+    duration = _progress_duration_seconds(process.stdout)
+    if duration <= 0:
+        raise RuntimeError("Factory analysis audio decode verification returned no timeline")
+    return duration
+
+
 def _partial_media(path: Path) -> bool:
     return path.suffix.casefold() in {".part", ".ytdl", ".tmp"}
 
@@ -135,12 +210,22 @@ async def _prepare_gemini_audio(
     source_path: Path,
     source_probe: Any,
     media_id: str,
+    *,
+    expected_duration: float = 0.0,
 ) -> Path:
-    """Build the compact Gemini-only mono AAC surrogate at the source owner."""
+    """Build a compact AAC surrogate and prove its real processed duration."""
     source_path = Path(source_path)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required to prepare Factory Gemini audio")
+
+    source_duration = float(getattr(source_probe, "duration", 0.0) or 0.0)
+    expected = float(expected_duration or 0.0)
+    if expected > 0 and not factory_duration_matches(source_duration, expected):
+        raise RuntimeError(
+            "Downloaded Factory audio source duration does not match yt-dlp metadata: "
+            f"metadata={expected:.3f}s source={source_duration:.3f}s"
+        )
 
     bitrate = gemini_analysis_bitrate_kbps()
     sample_rate = gemini_analysis_sample_rate()
@@ -148,6 +233,12 @@ async def _prepare_gemini_audio(
     output_path.unlink(missing_ok=True)
     command = [
         ffmpeg,
+        "-hide_banner",
+        "-v",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-nostats",
         "-i",
         str(source_path),
         "-map",
@@ -178,24 +269,32 @@ async def _prepare_gemini_audio(
             + _stderr_tail(process)
         )
 
+    verified_duration = _progress_duration_seconds(process.stdout)
+    if verified_duration <= 0:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("FFmpeg returned no verified timeline for Factory Gemini audio")
+
     probe = await probe_media_async(output_path)
     if not factory_audio_probe_is_usable(probe):
         output_path.unlink(missing_ok=True)
         raise RuntimeError("Compact Gemini Factory audio failed its audio-stream probe")
 
-    source_duration = float(getattr(source_probe, "duration", 0.0) or 0.0)
-    final_duration = float(getattr(probe, "duration", 0.0) or 0.0)
-    if source_duration > 0 and final_duration + 2.0 < source_duration:
+    reference_duration = expected if expected > 0 else source_duration
+    if reference_duration > 0 and not factory_duration_matches(
+        verified_duration,
+        reference_duration,
+    ):
         output_path.unlink(missing_ok=True)
         raise RuntimeError(
-            "Compact Gemini Factory audio is truncated: "
-            f"source={source_duration:.3f}s final={final_duration:.3f}s"
+            "Compact Gemini Factory audio is incomplete by decoded timeline: "
+            f"expected={reference_duration:.3f}s verified={verified_duration:.3f}s"
         )
     if output_path.stat().st_size < 1024:
         output_path.unlink(missing_ok=True)
         raise RuntimeError("Compact Gemini Factory audio is empty")
 
     factory_audio_mime_type(output_path)
+    ffprobe_estimate = float(getattr(probe, "duration", 0.0) or 0.0)
     if output_path != source_path:
         try:
             source_path.unlink(missing_ok=True)
@@ -203,10 +302,11 @@ async def _prepare_gemini_audio(
             pass
     logger.info(
         "Factory Gemini analysis audio prepared: codec=AAC mono bitrate=%dk "
-        "sample_rate=%d duration=%.3fs size=%.1fMB",
+        "sample_rate=%d verified_duration=%.3fs ffprobe_estimate=%.3fs size=%.1fMB",
         bitrate,
         sample_rate,
-        final_duration,
+        verified_duration,
+        ffprobe_estimate,
         output_path.stat().st_size / (1024 * 1024),
     )
     return output_path
@@ -222,11 +322,17 @@ def _factory_quality_sort_reset() -> list[str]:
     )
 
 
-async def _download_factory_audio_fresh(url: str, media_id: str) -> Path:
+async def _download_factory_audio_fresh(
+    url: str,
+    media_id: str,
+    *,
+    expected_duration: float = 0.0,
+) -> Path:
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
     command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
+        "--abort-on-unavailable-fragments",
         "--format",
         "bestaudio/best",
         "--no-playlist",
@@ -246,7 +352,12 @@ async def _download_factory_audio_fresh(url: str, media_id: str) -> Path:
                 + _stderr_tail(process)
             )
         source_path, source_probe = await _select_audio_source(media_id)
-        return await _prepare_gemini_audio(source_path, source_probe, media_id)
+        return await _prepare_gemini_audio(
+            source_path,
+            source_probe,
+            media_id,
+            expected_duration=expected_duration,
+        )
     except (asyncio.CancelledError, Exception):
         _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
         raise
@@ -270,11 +381,19 @@ async def download_factory_audio_source(
         download_factory_audio_with_retry_cache,
     )
 
+    async def _download_verified(download_url: str, download_media_id: str) -> Path:
+        return await _download_factory_audio_fresh(
+            download_url,
+            download_media_id,
+            expected_duration=expected_duration,
+        )
+
     return await download_factory_audio_with_retry_cache(
         url,
         media_id,
-        original_downloader=_download_factory_audio_fresh,
+        original_downloader=_download_verified,
         status_msg=status_msg,
+        expected_duration=expected_duration,
     )
 
 
@@ -476,7 +595,9 @@ __all__ = [
     "download_factory_video_source",
     "factory_audio_mime_type",
     "factory_audio_probe_is_usable",
+    "factory_duration_matches",
     "gemini_analysis_bitrate_kbps",
     "gemini_analysis_sample_rate",
+    "measure_factory_audio_duration",
     "prepare_factory_translation_video",
 ]
