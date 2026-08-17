@@ -46,6 +46,17 @@ function Set-EnvValue {
     }
 }
 
+function Remove-EnvValue {
+    param([Parameter(Mandatory)] [string]$Name)
+
+    $pattern = "^\s*" + [regex]::Escape($Name) + "\s*="
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        if ($lines[$i] -match $pattern) {
+            $lines.RemoveAt($i)
+        }
+    }
+}
+
 # Project max-quality semantic route: Gemini 3.7 Flash + HIGH thinking.
 # Never silently downgrade Factory/analysis/translation QA to 3.6/3.5/Lite.
 Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.7-flash"
@@ -85,7 +96,14 @@ Set-EnvValue -Name "WHISPER_MODEL" -Value "large-v3"
 Set-EnvValue -Name "WHISPER_ENG_SUBTITLES_MODEL" -Value "large-v3"
 Set-EnvValue -Name "SHORTS_FACTORY_WHISPER_MODEL" -Value "large-v3"
 
-if (-not $NoTtsFallback) {
+# Current Local Bot API runtime owns startup wait through REQUIRED_TIMEOUT_SEC.
+Set-EnvValue -Name "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC" -Value "300"
+Remove-EnvValue -Name "LOCAL_BOT_API_GETME_TIMEOUT_SEC"
+
+# Max-quality runs should not silently downgrade live voices unless explicitly allowed.
+if ($NoTtsFallback) {
+    Set-EnvValue -Name "LIVEDUB_TTS_FALLBACK" -Value "0"
+} else {
     Set-EnvValue -Name "LIVEDUB_TTS_FALLBACK" -Value "1"
 }
 
@@ -93,10 +111,13 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllLines($EnvPath, $lines, $utf8NoBom)
 
 $tier = if ($Priority) { "priority" } else { "standard" }
+$ttsFallback = if ($NoTtsFallback) { "off (live voices only)" } else { "on" }
 Write-Host "✅ .env обновлён: Gemini 3.7 / HIGH / без semantic downgrade" -ForegroundColor Green
 Write-Host "   Heavy: gemini-3.7-flash / thinking=high"
 Write-Host "   Factory Gemini audio: AAC mono 128 kbps / 48 kHz"
 Write-Host "   Service tier: $tier"
 Write-Host "   Light utility only: gemini-3.5-flash-lite / no fallback"
 Write-Host "   Whisper: large-v3"
+Write-Host "   Local Bot API wait: 300 sec via LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC"
+Write-Host "   TTS fallback: $ttsFallback"
 Write-Host "💾 Резервная копия: $backup" -ForegroundColor Cyan
