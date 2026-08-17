@@ -18,9 +18,9 @@ from services import shorts_factory_capacity as capacity
 logger = logging.getLogger(__name__)
 
 _FACTORY_CAPACITY_PASS_ATTEMPTS = 4
-_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 3.0
-_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 20.0
-_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 2.0
+_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
+_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 120.0
+_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
@@ -107,6 +107,8 @@ async def create_factory_plan_resumable(
     from services.shorts_factory_source import (
         _strict_boundary_prompt,
         factory_audio_mime_type,
+        factory_duration_matches,
+        measure_factory_audio_duration,
     )
     from services.shorts_factory_quality_gate import (
         apply_factory_quality_gate,
@@ -116,6 +118,21 @@ async def create_factory_plan_resumable(
     audio_path = Path(audio_path)
     if not audio_path.is_file() or audio_path.stat().st_size < 1024:
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
+
+    verified_audio_duration = await measure_factory_audio_duration(audio_path)
+    if duration > 0 and not factory_duration_matches(
+        verified_audio_duration,
+        float(duration),
+    ):
+        raise RuntimeError(
+            "Factory analysis audio duration does not match yt-dlp source metadata: "
+            f"metadata={float(duration):.3f}s verified={verified_audio_duration:.3f}s"
+        )
+    logger.info(
+        "Factory analysis audio duration verified before Gemini: metadata=%.3fs decoded=%.3fs",
+        float(duration or 0),
+        verified_audio_duration,
+    )
 
     clients = capacity.factory_gemini_clients()
     if not clients or candidates.types is None:
@@ -258,12 +275,18 @@ async def create_factory_plan_resumable(
             )
             if action == "capacity":
                 capacity_overload = True
-                await capacity.safe_status(
-                    status_msg,
-                    f"⚠️ Gemini 3.7 вернула 503/high demand на ключе "
-                    f"{index}/{len(clients)} после ограниченных повторов HIGH-прохода. "
-                    "Переключаюсь на следующий ключ без понижения модели…",
-                )
+                if index < len(clients):
+                    message = (
+                        f"⚠️ Gemini 3.7 вернула 503/high demand на ключе "
+                        f"{index}/{len(clients)} после длительных повторов HIGH-прохода. "
+                        "Переключаюсь на следующий ключ без понижения модели…"
+                    )
+                else:
+                    message = (
+                        f"⚠️ Gemini 3.7 вернула 503/high demand на последнем ключе "
+                        f"{index}/{len(clients)} после длительных повторов HIGH-прохода."
+                    )
+                await capacity.safe_status(status_msg, message)
                 continue
             if action == "rotate":
                 await capacity.safe_status(
@@ -284,9 +307,10 @@ async def create_factory_plan_resumable(
     if capacity_overload:
         raise RuntimeError(
             "Gemini 3.7 сейчас перегружена (503/high demand). "
-            "Ограниченные повторы HIGH-прохода и все настроенные API-ключи/клиенты "
-            "исчерпаны. Качество не понижено: 3.6/3.5/Lite не использовались. "
-            "Analysis-аудио сохранено в retry-кэше примерно на "
+            "Длительные экспоненциальные повторы HIGH-прохода и все настроенные "
+            "API-ключи/клиенты исчерпаны. Качество не понижено: "
+            "3.6/3.5/Lite не использовались. Analysis-аудио сохранено в retry-кэше "
+            "примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — "
             "повторите Factory позже."
         ) from last_error

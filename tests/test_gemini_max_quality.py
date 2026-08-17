@@ -71,13 +71,17 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     assert '"-b:a",\n        f"{bitrate}k"' in source
     assert "_GEMINI_ANALYSIS_BITRATE_KBPS = 128" in source
     assert "_GEMINI_ANALYSIS_SAMPLE_RATE = 48000" in source
+    assert '"-progress",\n        "pipe:1"' in source
+    assert "measure_factory_audio_duration" in source
 
     assert "_FACTORY_CAPACITY_PASS_ATTEMPTS = 4" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 3.0" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 20.0" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 2.0" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 120.0" in capacity
+    assert "_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0" in capacity
     assert "Переключаюсь на следующий ключ без понижения модели" in capacity
-    assert "все настроенные API-ключи/клиенты" in capacity
+    assert "API-ключи/клиенты" in capacity
+    assert "исчерпаны" in capacity
+    assert "Factory analysis audio duration verified before Gemini" in capacity
 
     assert "def configured_gemini_service_tier()" in globals_src
     assert 'kwargs["service_tier"] = "priority"' in globals_src

@@ -76,9 +76,13 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
         commands.append(list(command))
         if command[0] == "ffmpeg":
             Path(command[-1]).write_bytes(b"a" * 4096)
-        else:
-            raw_path.write_bytes(b"o" * 4096)
-        return SimpleNamespace(returncode=0, stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="out_time_us=120000000\nprogress=end\n",
+                stderr="",
+            )
+        raw_path.write_bytes(b"o" * 4096)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     async def fake_probe(path):
         return _audio_probe("aac" if path.suffix == ".aac" else "opus")
@@ -102,6 +106,7 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
     assert result == tmp_path / "video_factory_audio_gemini.aac"
     assert result.exists()
     assert not raw_path.exists()
+    assert "--abort-on-unavailable-fragments" in yt_command
     assert "--format-sort-reset" in yt_command
     assert yt_command.index("--format-sort-reset") > yt_command.index("--format-sort")
     assert "--no-format-sort-force" in yt_command
@@ -109,6 +114,7 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
     assert yt_command[yt_command.index("--format") + 1] == "bestaudio/best"
     assert "--extract-audio" not in yt_command
     assert "--audio-format" not in yt_command
+    assert "-progress" in ffmpeg_command
     assert ffmpeg_command[ffmpeg_command.index("-c:a") + 1] == "aac"
     assert ffmpeg_command[ffmpeg_command.index("-b:a") + 1] == "128k"
     assert ffmpeg_command[ffmpeg_command.index("-ac") + 1] == "1"
@@ -128,7 +134,11 @@ async def test_factory_native_aac_is_normalized_to_analysis_contract(
     async def fake_run(command, **kwargs):
         commands.append(list(command))
         Path(command[-1]).write_bytes(b"a" * 4096)
-        return SimpleNamespace(returncode=0, stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="out_time_us=120000000\nprogress=end\n",
+            stderr="",
+        )
 
     async def fake_probe(path):
         return _audio_probe("aac")
@@ -324,6 +334,9 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
             return {"metadata": {"language": "en"}, "stage": "audit"}
         return {"metadata": {"language": "en"}, "stage": prompt}
 
+    async def fake_verified_duration(_path):
+        return 100.0
+
     def fake_validate(*args, **kwargs):
         return {
             "metadata": {"language": "en"},
@@ -347,6 +360,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
     monkeypatch.setattr(candidates, "_judge_prompt", lambda *args: "judge")
     monkeypatch.setattr(candidates, "_boundary_prompt", lambda *args: "audit")
     monkeypatch.setattr(source, "_strict_boundary_prompt", lambda prompt: prompt)
+    monkeypatch.setattr(source, "measure_factory_audio_duration", fake_verified_duration)
     monkeypatch.setattr(candidates, "validate_factory_plan", fake_validate)
 
     plan = await source.create_factory_plan_from_supported_audio(

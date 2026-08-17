@@ -29,6 +29,10 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
     import services.shorts_factory_candidates as candidates
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
+
+    async def verified_duration(_path):
+        return 120.0
+
     monkeypatch.setattr(candidates, 'types', SimpleNamespace(Part=SimpleNamespace(from_bytes=lambda *, data, mime_type: SimpleNamespace(data=data, mime_type=mime_type)), UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)))
     monkeypatch.setattr(candidates, 'shorts_factory_model', lambda: 'gemini-3.7-flash')
     monkeypatch.setattr(candidates, '_run_pass', run_pass)
@@ -39,9 +43,18 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
     monkeypatch.setattr(quality_gate, 'apply_factory_quality_gate', lambda plan: plan)
     monkeypatch.setattr(quality_gate, 'validated_factory_plan_language', lambda plan: 'ru')
     monkeypatch.setattr(source, 'factory_audio_mime_type', lambda path: 'audio/flac')
+    monkeypatch.setattr(source, 'measure_factory_audio_duration', verified_duration)
+    monkeypatch.setattr(source, 'factory_duration_matches', lambda actual, expected: abs(float(actual) - float(expected)) <= 2.0)
 
 def _disable_capacity_retry_delay(monkeypatch) -> None:
     monkeypatch.setattr(capacity_runtime, '_capacity_retry_delay', lambda attempt: 0.0)
+
+def test_capacity_backoff_is_longer_and_exponential(monkeypatch):
+    monkeypatch.setattr(capacity_runtime.random, 'uniform', lambda *_args: 0.0)
+    assert capacity_runtime._capacity_retry_delay(1) == 15.0
+    assert capacity_runtime._capacity_retry_delay(2) == 30.0
+    assert capacity_runtime._capacity_retry_delay(3) == 60.0
+    assert capacity_runtime._capacity_retry_delay(4) == 120.0
 
 def test_503_high_demand_retries_bounded_then_rotates_all_clients(monkeypatch, tmp_path):
     audio = tmp_path / 'factory.flac'
@@ -62,6 +75,21 @@ def test_503_high_demand_retries_bounded_then_rotates_all_clients(monkeypatch, t
     assert '3.6/3.5/Lite' in str(raised.value)
     assert 'все настроенные API-ключи/клиенты' in str(raised.value)
     assert 'retry-кэше' in str(raised.value)
+
+def test_duration_mismatch_fails_before_any_gemini_client(monkeypatch, tmp_path):
+    import services.shorts_factory_source as source
+
+    audio = tmp_path / 'factory.flac'
+    audio.write_bytes(b'x' * 2048)
+
+    async def wrong_duration(_path):
+        return 54.0
+
+    monkeypatch.setattr(source, 'measure_factory_audio_duration', wrong_duration)
+    monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: pytest.fail('Gemini client must not be created'))
+
+    with pytest.raises(RuntimeError, match='duration does not match'):
+        asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
 
 def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_path):
     import services.shorts_factory_candidates as candidates
