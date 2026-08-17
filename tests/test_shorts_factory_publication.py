@@ -14,7 +14,7 @@ def test_canonical_public_hashtags_follow_repository_rule():
 
 
 def test_light_model_route_is_exact_cheapest_first_and_not_env_driven(monkeypatch):
-    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.6-flash")
+    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.7-flash")
     monkeypatch.setenv(
         "GEMINI_LIGHT_FALLBACK_MODELS",
         "gemini-3.5-pro,gemini-3.1-pro-preview,gemini-2.5-flash",

@@ -21,7 +21,7 @@ def test_heavy_quality_policy_forces_36_high_and_large_v3(monkeypatch):
         "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
         "SHORTS_FACTORY_MODEL",
     ):
-        assert os.environ[name] == "gemini-3.6-flash"
+        assert os.environ[name] == "gemini-3.7-flash"
     for name in (
         "GEMINI_FORCE_THINKING_LEVEL", "LIVEDUB_QUICK_QA_THINKING",
         "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING", "LIVEDUB_INFO_THINKING",
@@ -29,12 +29,12 @@ def test_heavy_quality_policy_forces_36_high_and_large_v3(monkeypatch):
         assert os.environ[name] == "high"
     for name in ("WHISPER_MODEL", "WHISPER_ENG_SUBTITLES_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"):
         assert os.environ[name] == "large-v3"
-    assert "semantic=gemini-3.6-flash/high" in diagnostic
+    assert "semantic=gemini-3.7-flash/high" in diagnostic
 
 
 def test_model_aware_thinking_is_owned_by_core_config_helper():
     from core.globals import _effective_thinking_level
-    assert _effective_thinking_level("gemini-3.6-flash", "minimal") == "high"
+    assert _effective_thinking_level("gemini-3.7-flash", "minimal") == "high"
     assert _effective_thinking_level("gemini-3.5-flash-lite", "high") == "minimal"
     assert _effective_thinking_level("gemini-3.5-flash", "high") == "minimal"
     assert _effective_thinking_level("gemini-custom-audio-model", "medium") == "medium"
@@ -52,7 +52,7 @@ def test_utility_work_uses_35_quota_without_semantic_fallback():
 
 def test_publication_metadata_directly_owns_36_high_quality_route():
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
-    assert '_PUBLICATION_MODEL = "gemini-3.6-flash"' in publication
+    assert '_PUBLICATION_MODEL = "gemini-3.7-flash"' in publication
     assert 'thinking_level="high"' in publication
     assert "GEMINI_LIGHT_MODEL" not in publication
     assert "temperature=" not in publication
@@ -97,8 +97,8 @@ def test_pre_main_manifest_owns_quality_before_core_clients():
 
 def test_env_migration_preserves_semantic_36_utility_35_split():
     src = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
-    assert 'GEMINI_MODEL" -Value "gemini-3.6-flash"' in src
-    assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.6-flash"' in src
+    assert 'GEMINI_MODEL" -Value "gemini-3.7-flash"' in src
+    assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.7-flash"' in src
     assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
     assert 'LIVEDUB_QUICK_QA_THINKING" -Value "high"' in src
     assert 'LIVEDUB_LONG_QA_THINKING" -Value "high"' in src

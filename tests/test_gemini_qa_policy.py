@@ -41,9 +41,9 @@ def test_missing_and_weak_explicit_qa_models_are_upgraded(monkeypatch):
 
     diagnostic = policy.configure_gemini_qa_policy()
 
-    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.6-flash"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.6-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.6-flash"
+    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.7-flash"
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.7-flash"
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.7-flash"
     assert "migrated=LIVEDUB_QUICK_QA_MODEL,LIVEDUB_LONG_QA_MODEL,LIVEDUB_QA_VERIFY_MODEL" in diagnostic
 
 
@@ -53,7 +53,7 @@ def test_missing_qa_models_default_to_primary(monkeypatch):
 
     policy.configure_gemini_qa_policy()
 
-    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {"gemini-3.6-flash"}
+    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {"gemini-3.7-flash"}
 
 
 def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
@@ -64,8 +64,8 @@ def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
     policy.configure_gemini_qa_policy()
 
     assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-custom-audio-model"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.6-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.6-flash"
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.7-flash"
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.7-flash"
 
 
 def test_translation_qa_thinking_is_always_high(monkeypatch):

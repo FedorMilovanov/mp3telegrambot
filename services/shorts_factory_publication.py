@@ -18,7 +18,7 @@ _DESCRIPTION_FIELD = "_factory_publication_description"
 _WRAPPED_CAPTION_BUILDERS: weakref.WeakSet[Callable[..., str]] = weakref.WeakSet()
 
 # Publication prose is deliberately isolated from both the Factory's heavy
-# gemini-3.6-flash analysis route and the generic LiveDub model-fallback chain.
+# gemini-3.7-flash analysis route and the generic LiveDub model-fallback chain.
 # These are the only two stable light text models accepted by this cosmetic pass,
 # in cheapest-first order. Do not broaden this to a family-prefix match: a new
 # 3.5 model ID must be reviewed explicitly before it can consume publication quota.

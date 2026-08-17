@@ -30,7 +30,7 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
     monkeypatch.setattr(candidates, 'types', SimpleNamespace(Part=SimpleNamespace(from_bytes=lambda *, data, mime_type: SimpleNamespace(data=data, mime_type=mime_type)), UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)))
-    monkeypatch.setattr(candidates, 'shorts_factory_model', lambda: 'gemini-3.6-flash')
+    monkeypatch.setattr(candidates, 'shorts_factory_model', lambda: 'gemini-3.7-flash')
     monkeypatch.setattr(candidates, '_run_pass', run_pass)
     monkeypatch.setattr(candidates, '_scout_prompt', lambda *args: 'scout')
     monkeypatch.setattr(candidates, '_judge_prompt', lambda *args: 'judge')
@@ -94,7 +94,7 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     assert second_files.upload_calls == 0
     assert second_files.delete_calls == 0
     assert audio_parts and all((part is audio_parts[0] for part in audio_parts))
-    assert plan['model'] == 'gemini-3.6-flash'
+    assert plan['model'] == 'gemini-3.7-flash'
     assert plan['thinking_level'] == 'high'
     assert plan['review_passes'] == 3
     assert plan['strict_quality'] is True
@@ -115,7 +115,7 @@ def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_pa
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     plan = asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
     assert calls == ['first', 'second', 'second', 'second']
-    assert plan['model'] == 'gemini-3.6-flash'
+    assert plan['model'] == 'gemini-3.7-flash'
     assert plan['thinking_level'] == 'high'
     assert plan['review_passes'] == 3
     assert plan['strict_quality'] is True

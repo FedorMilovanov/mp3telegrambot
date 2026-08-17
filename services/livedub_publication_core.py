@@ -2,7 +2,7 @@
 """Bounded, quality-first publication-card builder for LiveDub.
 
 Publication title, author and description are user-visible semantic output.  This
-module therefore owns its production Gemini route directly: exact Gemini 3.6
+module therefore owns its production Gemini route directly: exact Gemini 3.7
 Flash with HIGH thinking and no 3.5/Lite semantic fallback.  A deterministic
 metadata fallback remains available when Gemini itself is unavailable.
 """
@@ -20,7 +20,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _INFLIGHT: dict[str, asyncio.Task] = {}
-_PUBLICATION_MODEL = "gemini-3.6-flash"
+_PUBLICATION_MODEL = "gemini-3.7-flash"
 
 _RU_LOWER_WORDS = {
     "а", "без", "близ", "бы", "в", "вместо", "вне", "во", "вокруг", "для",
@@ -210,7 +210,7 @@ def publication_models() -> list[str]:
 
 
 def _quality_config(model_name: str):
-    """Build a sampling-free Gemini 3.6/HIGH structured-output config."""
+    """Build a sampling-free Gemini 3.7/HIGH structured-output config."""
     try:
         from core.globals import make_text_config_smart
 

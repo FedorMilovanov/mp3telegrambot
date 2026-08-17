@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-_PRIMARY_MODEL = "gemini-3.6-flash"
+_PRIMARY_MODEL = "gemini-3.7-flash"
 _STRONG_FALLBACK_MODEL = "gemini-3.5-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capacity-aware Factory plan execution without quality downgrades.
 
-This keeps the Gemini 3.6/HIGH three-pass contract intact while separating
+This keeps the Gemini 3.7/HIGH three-pass contract intact while separating
 model-capacity overload from per-client transient failures. No ambient request
 state or runtime rebinding is used.
 """
@@ -83,7 +83,7 @@ async def _run_pass_with_capacity_retry(
             )
             await capacity.safe_status(
                 status_msg,
-                "⚠️ Gemini 3.6 HIGH вернула 503/high demand. "
+                "⚠️ Gemini 3.7 HIGH вернула 503/high demand. "
                 f"Повторяю текущий проход {attempt + 1}/"
                 f"{_FACTORY_CAPACITY_PASS_ATTEMPTS} на том же ключе и уже "
                 f"загруженном analysis-аудио через {delay:.1f} сек…",
@@ -120,7 +120,7 @@ async def create_factory_plan_resumable(
     clients = capacity.factory_gemini_clients()
     if not clients or candidates.types is None:
         raise RuntimeError(
-            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.6"
+            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.7"
         )
 
     model = candidates.shorts_factory_model()
@@ -135,7 +135,7 @@ async def create_factory_plan_resumable(
         try:
             await capacity.safe_status(
                 status_msg,
-                f"🧠 Gemini 3.6 MAX · ключ {index}/{len(clients)}: готовлю аудио…",
+                f"🧠 Gemini 3.7 MAX · ключ {index}/{len(clients)}: готовлю аудио…",
             )
             if file_size <= 18 * 1024 * 1024:
                 audio_part = candidates.types.Part.from_bytes(
@@ -154,7 +154,7 @@ async def create_factory_plan_resumable(
                         ),
                     ),
                     label=(
-                        f"⬆️ Gemini 3.6 · ключ {index}/{len(clients)}: "
+                        f"⬆️ Gemini 3.7 · ключ {index}/{len(clients)}: "
                         "загружаю analysis-аудио…"
                     ),
                     status_msg=status_msg,
@@ -162,7 +162,7 @@ async def create_factory_plan_resumable(
                 uploaded = await capacity.await_with_heartbeat(
                     candidates._wait_uploaded_file(client, uploaded),
                     label=(
-                        f"⏳ Gemini 3.6 · ключ {index}/{len(clients)}: "
+                        f"⏳ Gemini 3.7 · ключ {index}/{len(clients)}: "
                         "сервер обрабатывает аудио…"
                     ),
                     status_msg=status_msg,
@@ -183,7 +183,7 @@ async def create_factory_plan_resumable(
                     ),
                     max_tokens=32000,
                     label=(
-                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                        f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
                         "· проход 1/3…"
                     ),
                     status_msg=status_msg,
@@ -197,7 +197,7 @@ async def create_factory_plan_resumable(
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
                     label=(
-                        f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                        f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
                         "· проход 2/3…"
                     ),
                     status_msg=status_msg,
@@ -212,7 +212,7 @@ async def create_factory_plan_resumable(
                 ),
                 max_tokens=28000,
                 label=(
-                    f"🧠 Gemini 3.6 HIGH · ключ {index}/{len(clients)} "
+                    f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
                     "· проход 3/3…"
                 ),
                 status_msg=status_msg,
@@ -260,16 +260,15 @@ async def create_factory_plan_resumable(
                 capacity_overload = True
                 await capacity.safe_status(
                     status_msg,
-                    "⚠️ Gemini 3.6 вернула 503/high demand после ограниченных "
-                    "повторов текущего HIGH-прохода. Не загружаю то же "
-                    "analysis-аудио на остальные ключи: качество не понижаю, "
-                    "retry-кэш сохранён.",
+                    f"⚠️ Gemini 3.7 вернула 503/high demand на ключе "
+                    f"{index}/{len(clients)} после ограниченных повторов HIGH-прохода. "
+                    "Переключаюсь на следующий ключ без понижения модели…",
                 )
-                break
+                continue
             if action == "rotate":
                 await capacity.safe_status(
                     status_msg,
-                    f"⚠️ Gemini 3.6 временно недоступна на ключе "
+                    f"⚠️ Gemini 3.7 временно недоступна на ключе "
                     f"{index}/{len(clients)}. Переключаю ключ без повторения "
                     "уже завершённых проходов…",
                 )
@@ -284,11 +283,10 @@ async def create_factory_plan_resumable(
 
     if capacity_overload:
         raise RuntimeError(
-            "Gemini 3.6 сейчас перегружена (503/high demand). "
-            "Ограниченные повторы текущего HIGH-прохода исчерпаны; перебор "
-            "остальных API-ключей остановлен, чтобы не повторять дорогую "
-            "загрузку того же analysis-аудио. Качество не понижено: 3.5/2.x "
-            "не использовались. Analysis-аудио сохранено в retry-кэше примерно на "
+            "Gemini 3.7 сейчас перегружена (503/high demand). "
+            "Ограниченные повторы HIGH-прохода и все настроенные API-ключи/клиенты "
+            "исчерпаны. Качество не понижено: 3.6/3.5/Lite не использовались. "
+            "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — "
             "повторите Factory позже."
         ) from last_error

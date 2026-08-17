@@ -930,12 +930,12 @@ def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
     MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50
 # ─── Gemini модели (актуализировано 2026-08-03) ─────────────────────────
 # История: до v7 — 2.5-pro/1.5-pro (платные); v7-v8 — 3.1-pro (ПЛАТНАЯ, убрана)
-# Сейчас: gemini-3.6-flash — GA 21.07.2026, основной production-маршрут
+# Сейчас: gemini-3.7-flash — GA 21.07.2026, основной production-маршрут
 # Сильный fallback: gemini-3.5-flash; механические задачи: gemini-3.5-flash-lite.
 # gemini-3.1-flash-lite не используется проектом и имеет запланированную миграцию.
 # Preview/legacy-модели не используются как production fallback.
 # ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")

@@ -73,14 +73,14 @@ def test_publication_models_are_exact_36_even_with_stale_utility_env(monkeypatch
         "gemini-3.5-flash,gemini-3.5-flash-lite",
     )
     monkeypatch.setenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "1")
-    assert publication.publication_models() == ["gemini-3.6-flash"]
+    assert publication.publication_models() == ["gemini-3.7-flash"]
 
 
 def test_publication_strong_fallback_flag_cannot_reenable_35_semantics(monkeypatch):
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "1")
-    assert publication.publication_models() == ["gemini-3.6-flash"]
+    assert publication.publication_models() == ["gemini-3.7-flash"]
 
 
 def test_bounded_lru_publication_cache(monkeypatch):

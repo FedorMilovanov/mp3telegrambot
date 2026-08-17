@@ -410,7 +410,7 @@ def _request_payload(
         "whisper_model": os.getenv("DUB_WHISPER_MODEL", "large-v3"),
         "translation_model": os.getenv(
             "DUB_TRANSLATION_MODEL",
-            "gemini-3.6-flash",
+            "gemini-3.7-flash",
         ),
         "title_model": os.getenv("DUB_TITLE_MODEL", "gemini-3.5-flash-lite"),
     }

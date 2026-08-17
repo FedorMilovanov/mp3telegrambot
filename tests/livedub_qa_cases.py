@@ -113,7 +113,7 @@ def test_eng_fast_qa_mode_registered_and_wired():
     assert "apply_qa_audio_fixes" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
-    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash" in env
+    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.7-flash" in env
     assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env
 
 
@@ -1915,5 +1915,5 @@ def test_vot_token_is_documented_in_readme_help_and_status():
 def test_env_example_gemini_model_is_not_truncated():
     """Копирование .env.example не должно ставить несуществующую модель из-за опечатки."""
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_MODEL=gemini-3.6-flash" in env
+    assert "GEMINI_MODEL=gemini-3.7-flash" in env
     assert "gemini-3.6-flas\n" not in env

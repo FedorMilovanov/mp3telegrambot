@@ -11,7 +11,7 @@ from dataclasses import dataclass
 POLICY = "official-gemini-model-status-2026-08-03-v3"
 
 _CURRENT_GA = {
-    "gemini-3.6-flash",
+    "gemini-3.7-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
 }
@@ -23,7 +23,7 @@ _CURRENT_PREVIEW = {
     "gemini-3-flash-preview",
 }
 _LEGACY_MIGRATION = {
-    "gemini-2.5-flash": ("2026-10-16", "gemini-3.6-flash"),
+    "gemini-2.5-flash": ("2026-10-16", "gemini-3.7-flash"),
     "gemini-2.5-flash-lite": ("2026-10-16", "gemini-3.5-flash-lite"),
     "gemini-2.5-pro": ("2026-10-16", "gemini-3.1-pro-preview"),
 }
@@ -75,20 +75,20 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
             "warning",
             "GEMINI_MODEL='gemini-flash-latest' — плавающий alias может быть "
             "переключён на новую версию; для воспроизводимого production "
-            "зафиксируйте gemini-3.6-flash.",
+            "зафиксируйте gemini-3.7-flash.",
         )
     if model == "gemini-3-flash-preview":
         return GeminiModelDiagnostic(
             "warning",
             "GEMINI_MODEL='gemini-3-flash-preview' — действующая preview-модель; "
-            "для стабильного production используйте gemini-3.6-flash.",
+            "для стабильного production используйте gemini-3.7-flash.",
         )
     if model == "gemini-3.1-pro-preview":
         return GeminiModelDiagnostic(
             "warning",
             "GEMINI_MODEL='gemini-3.1-pro-preview' — действующая preview-модель Pro; "
             "стабильная Pro-версия пока не объявлена. Для задач, допускающих Flash, "
-            "используйте gemini-3.6-flash.",
+            "используйте gemini-3.7-flash.",
         )
     if model in _LEGACY_MIGRATION:
         deadline, replacement = _LEGACY_MIGRATION[model]
@@ -100,7 +100,7 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
     if model in _SHUTDOWN:
         return GeminiModelDiagnostic(
             "error",
-            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте gemini-3.6-flash.",
+            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте gemini-3.7-flash.",
         )
     if not model:
         return GeminiModelDiagnostic("error", "GEMINI_MODEL не задан.")

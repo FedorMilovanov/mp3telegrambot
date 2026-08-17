@@ -58,7 +58,7 @@ def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> N
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash")
 
-    assert get_light_model() == "gemini-3.6-flash"
+    assert get_light_model() == "gemini-3.7-flash"
     assert get_light_model_fallbacks() == []
 
 
