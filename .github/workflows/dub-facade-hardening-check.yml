@@ -165,7 +165,7 @@ jobs:
             handlers/dub_health.py
       - name: Run hardening contracts
         run: |
-          pytest -q \
+          python -m pytest -q \
             tests/test_direct_speech_slot_contract.py \
             tests/test_direct_long_form_resilience.py \
             tests/test_direct_retry_epoch.py \
