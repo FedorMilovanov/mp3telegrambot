@@ -1,0 +1,120 @@
+name: Final Gemini policy documentation cleanup
+
+on:
+  push:
+    branches:
+      - agent/gemini-37-quality-routing
+    paths:
+      - .github/workflows/final-gemini-policy-doc-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/gemini-37-quality-routing
+      - name: Clean final Gemini policy docs and naming
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          db = Path('core/database.py')
+          text = db.read_text(encoding='utf-8')
+          old = '''# ─── Gemini модели (актуализировано 2026-08-03) ─────────────────────────
+# История: до v7 — 2.5-pro/1.5-pro (платные); v7-v8 — 3.1-pro (ПЛАТНАЯ, убрана)
+# Сейчас: gemini-3.7-flash — GA 21.07.2026, основной production-маршрут
+# Сильный fallback: gemini-3.5-flash; механические задачи: gemini-3.5-flash-lite.
+# gemini-3.1-flash-lite не используется проектом и имеет запланированную миграцию.
+# Preview/legacy-модели не используются как production fallback.
+# ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
+'''
+          new = '''# ─── Gemini deployment policy (2026-08-17) ──────────────────────────────
+# Heavy/semantic production route: gemini-3.7-flash + HIGH.
+# Utility/mechanical route: gemini-3.5-flash-lite only.
+# Semantic downgrade to 3.6/3.5/Lite is intentionally disabled; temporary
+# capacity failures are handled by bounded retries and configured API-key/client rotation.
+# ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
+'''
+          if text.count(old) != 1:
+              raise SystemExit('database Gemini comment block not found exactly once')
+          db.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          qa = Path('services/gemini_qa_policy.py')
+          text = qa.read_text(encoding='utf-8')
+          replacements = {
+              '_STRONG_FALLBACK_MODEL = "gemini-3.5-flash"':
+                  '_DISALLOWED_LEGACY_QA_MODEL = "gemini-3.5-flash"',
+              '    # These are valid fallback/mechanical models, but not the approved primary\n'
+              '    # for semantic translation QA where false positives can trigger auto-muting.\n'
+              '    _STRONG_FALLBACK_MODEL,\n':
+                  '    # Lower-tier/stale models are migration inputs only, never QA fallbacks.\n'
+                  '    # False positives here can trigger auto-muting, so they are upgraded to 3.7.\n'
+                  '    _DISALLOWED_LEGACY_QA_MODEL,\n',
+          }
+          for old_s, new_s in replacements.items():
+              if text.count(old_s) != 1:
+                  raise SystemExit(f'QA policy replacement missing: {old_s!r}')
+              text = text.replace(old_s, new_s, 1)
+          qa.write_text(text, encoding='utf-8')
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          old = '''## Gemini policy
+
+Runtime выбирает модели до импорта AI-клиентов:
+
+- основной quality-маршрут: `gemini-3.6-flash`;
+- сильный fallback: `gemini-3.5-flash`;
+- лёгкие механические задачи: `gemini-3.5-flash-lite`.
+
+Рекомендуемая явная настройка:
+
+```dotenv
+GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite
+GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash
+GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1
+```
+
+Старое значение `GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite` поддерживается только как миграционный вход: startup-policy автоматически заменяет его на актуальную модель. Не используйте 3.1 Lite в новой конфигурации.
+'''
+          new = '''## Gemini policy
+
+Runtime фиксирует quality-policy до импорта AI-клиентов:
+
+- все heavy/semantic задачи: `gemini-3.7-flash` + `HIGH` thinking;
+- Shorts Factory MAX, LiveDub QA, публикационный смысловой текст и editorial review не понижаются до 3.6/3.5/Lite;
+- дешёвые механические/utility-задачи: только `gemini-3.5-flash-lite` + minimal;
+- при временной перегрузке используются bounded retry и следующие настроенные API-ключи/клиенты, а не более слабая модель.
+
+Рекомендуемая явная настройка:
+
+```dotenv
+GEMINI_MODEL=gemini-3.7-flash
+GEMINI_MAX_MODEL=gemini-3.7-flash
+GEMINI_FORCE_THINKING_LEVEL=high
+GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite
+GEMINI_LIGHT_FALLBACK_MODELS=
+GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0
+SHORTS_FACTORY_MODEL=gemini-3.7-flash
+```
+
+Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-37.ps1`.
+'''
+          if text.count(old) != 1:
+              raise SystemExit('README Gemini policy block not found exactly once')
+          readme.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          git rm .github/workflows/final-gemini-policy-doc-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md core/database.py services/gemini_qa_policy.py
+          git commit -m "Align Gemini documentation with 3.7 quality policy"
+          git push origin HEAD:agent/gemini-37-quality-routing
