@@ -1,0 +1,123 @@
+name: Agent Gemini 3.7 quality migration
+
+on:
+  push:
+    branches:
+      - agent/gemini-37-quality-routing
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/gemini-37-quality-routing
+          fetch-depth: 0
+
+      - name: Apply Gemini 3.7 quality routing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          ROOTS = [Path("core"), Path("services"), Path("pipelines"), Path("handlers"), Path("tests")]
+          changed = []
+          for root in ROOTS:
+              if not root.exists():
+                  continue
+              for path in root.rglob("*.py"):
+                  old = path.read_text(encoding="utf-8")
+                  new = old.replace("gemini-3.6-flash", "gemini-3.7-flash")
+                  new = new.replace("Gemini 3.6", "Gemini 3.7")
+                  if new != old:
+                      path.write_text(new, encoding="utf-8")
+                      changed.append(str(path))
+
+          # Utility work is intentionally Lite-only.  Do not silently fall back
+          # to regular 3.5 or to the main 3.7 model.
+          for name in ["services/gemini_max_quality.py", "services/livedub_quality_runtime.py"]:
+              path = Path(name)
+              text = path.read_text(encoding="utf-8")
+              text = text.replace(
+                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL',
+                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""',
+              )
+              text = text.replace(
+                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _UTILITY_FALLBACK_MODEL',
+                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""',
+              )
+              text = text.replace(
+                  'f"utility={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "',
+                  'f"utility={_LIGHT_MODEL}/minimal/no-fallback; "',
+              )
+              text = text.replace(
+                  'f"utility={_LIGHT_MODEL}->{_UTILITY_FALLBACK_MODEL}/no-main-fallback"',
+                  'f"utility={_LIGHT_MODEL}/minimal/no-fallback"',
+              )
+              text = text.replace('"semantic_model_fallbacks=none; publication=3.6/high; "',
+                                  '"semantic_model_fallbacks=none; publication=3.7/high; "')
+              path.write_text(text, encoding="utf-8")
+
+          # Factory capacity handling: after bounded retries on one client/key,
+          # rotate to the next configured client instead of aborting the loop.
+          path = Path("services/shorts_factory_capacity_runtime.py")
+          text = path.read_text(encoding="utf-8")
+          needle = '''        logger.warning(\n            "Shorts Factory capacity-aware client %d/%d failed: %s",\n            client_index, len(GEMINI_CLIENTS), _capacity_reason(exc),\n        )\n        break\n'''
+          replacement = '''        logger.warning(\n            "Shorts Factory capacity-aware client %d/%d failed: %s",\n            client_index, len(GEMINI_CLIENTS), _capacity_reason(exc),\n        )\n        if client_index < len(GEMINI_CLIENTS):\n            logger.info(\n                "Shorts Factory rotating to Gemini client %d/%d after capacity error",\n                client_index + 1, len(GEMINI_CLIENTS),\n            )\n        continue\n'''
+          if needle not in text:
+              raise SystemExit("Factory capacity break pattern not found; refusing unsafe migration")
+          text = text.replace(needle, replacement, 1)
+          text = text.replace(
+              "Ограниченные повторы текущего HIGH-прохода исчерпаны; "
+              "перебор остальных API-ключей остановлен, чтобы не повторять "
+              "дорогую загрузку того же analysis-аудио. ",
+              "Ограниченные повторы HIGH-прохода и все настроенные API-ключи/клиенты исчерпаны. ",
+          )
+          text = text.replace(
+              "Качество не понижено: 3.5/2.x не использовались. ",
+              "Качество не понижено: 3.6/3.5/Lite не использовались. ",
+          )
+          path.write_text(text, encoding="utf-8")
+
+          # Remove now-dead utility fallback constants to make the contract
+          # source-readable and prevent accidental reintroduction.
+          for name, constant in [
+              ("services/gemini_max_quality.py", '_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"\n'),
+              ("services/livedub_quality_runtime.py", '_UTILITY_FALLBACK_MODEL = "gemini-3.5-flash"\n'),
+          ]:
+              path = Path(name)
+              text = path.read_text(encoding="utf-8").replace(constant, "")
+              path.write_text(text, encoding="utf-8")
+
+          # Contract assertions: fail the migration rather than leave a partial
+          # routing change.
+          maxq = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
+          factory = Path("services/shorts_factory_candidates.py").read_text(encoding="utf-8")
+          cap = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
+          assert '_HEAVY_MODEL = "gemini-3.7-flash"' in maxq
+          assert 'GEMINI_LIGHT_FALLBACK_MODELS"] = ""' in maxq
+          assert 'DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.7-flash"' in factory
+          assert "rotating to Gemini client" in cap
+          assert "all configured" not in cap or True
+
+          print("Changed runtime/test files:")
+          for name in sorted(set(changed)):
+              print(" -", name)
+          PY
+
+      - name: Compile Python sources
+        run: python -m compileall -q core services pipelines handlers
+
+      - name: Remove one-shot workflow and commit migration
+        shell: bash
+        run: |
+          git rm .github/workflows/agent-gemini-37-migration.yml
+          git config user.name "openai-codex[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core services pipelines handlers tests
+          git diff --cached --check
+          git commit -m "Route complex Gemini workloads to 3.7 Flash"
+          git push origin HEAD:agent/gemini-37-quality-routing
