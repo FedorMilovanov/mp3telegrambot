@@ -17,14 +17,12 @@ logger = logging.getLogger(__name__)
 _DESCRIPTION_FIELD = "_factory_publication_description"
 _WRAPPED_CAPTION_BUILDERS: weakref.WeakSet[Callable[..., str]] = weakref.WeakSet()
 
-# Publication prose is deliberately isolated from both the Factory's heavy
+# Publication prose is deliberately isolated from the Factory's heavy
 # gemini-3.7-flash analysis route and the generic LiveDub model-fallback chain.
-# These are the only two stable light text models accepted by this cosmetic pass,
-# in cheapest-first order. Do not broaden this to a family-prefix match: a new
-# 3.5 model ID must be reviewed explicitly before it can consume publication quota.
-FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, str] = (
+# Only Flash Lite is accepted by this cosmetic pass. Capacity resilience comes
+# from trying configured Gemini clients/keys, never from changing the model.
+FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, ...] = (
     "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
 )
 
 
@@ -43,7 +41,7 @@ def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:
 
 
 def _light_models() -> list[str]:
-    """Return the fixed cheapest-first model route for optional caption prose."""
+    """Return the fixed Lite-only model route for optional caption prose."""
     return list(FACTORY_PUBLICATION_LIGHT_MODELS)
 
 
@@ -110,7 +108,7 @@ def _strip_json_fence(value: Any) -> str:
 async def _generate_descriptions(
     candidates: list[dict[str, Any]], *, args: tuple[Any, ...], kwargs: dict[str, Any], kind: str
 ) -> dict[int, str]:
-    """One batched light request; soft failure means no description, never no video."""
+    """One batched Lite request; soft failure means no description, never no video."""
     if not candidates or not _enabled():
         return {}
     try:
@@ -142,13 +140,8 @@ async def _generate_descriptions(
         f"Фрагменты: {json.dumps(fragments, ensure_ascii=False)}"
     )
 
-    models = _light_models()
-    clients = list(GEMINI_CLIENTS)
-    attempts: list[tuple[str, Any]] = [(models[0], clients[0])]
-    if len(models) > 1:
-        attempts.append((models[1], clients[1] if len(clients) > 1 else clients[0]))
-    elif len(clients) > 1:
-        attempts.append((models[0], clients[1]))
+    model = FACTORY_PUBLICATION_LIGHT_MODELS[0]
+    attempts = [(model, client) for client in list(GEMINI_CLIENTS)]
 
     for number, (model, client) in enumerate(attempts, 1):
         try:
