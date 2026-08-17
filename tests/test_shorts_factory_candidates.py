@@ -144,7 +144,7 @@ def test_factory_plan_rejects_unverified_boundaries_by_default():
     assert plan["shorts_candidates"] == []
 
 
-def test_factory_model_defaults_to_gemini_36_flash(monkeypatch):
+def test_factory_model_defaults_to_gemini_37_flash(monkeypatch):
     for name in (
         "SHORTS_FACTORY_MODEL",
         "GEMINI_PRO_MODEL",
@@ -171,7 +171,7 @@ def test_legacy_pro_env_does_not_override_factory(monkeypatch):
     assert shorts_factory_model() == "gemini-3.7-flash"
 
 
-def test_factory_model_accepts_explicit_36_flash_route(monkeypatch):
+def test_factory_model_accepts_explicit_37_flash_route(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.7-flash")
 
     assert shorts_factory_model() == "gemini-3.7-flash"
@@ -187,7 +187,7 @@ def test_factory_model_accepts_explicit_36_flash_route(monkeypatch):
         "gemini-3.6-pro",
     ],
 )
-def test_factory_model_rejects_non_36_routes(monkeypatch, model):
+def test_factory_model_rejects_non_37_routes(monkeypatch, model):
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", model)
 
     with pytest.raises(RuntimeError, match="requires gemini-3.7-flash"):
