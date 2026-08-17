@@ -77,3 +77,10 @@ def test_dub_workflows_run_on_pull_requests_and_use_current_actions() -> None:
         assert "actions/setup-python@v6" in text
         assert "actions/checkout@v4" not in text
         assert "actions/setup-python@v5" not in text
+
+
+def test_dub_workflows_run_pytest_as_python_module() -> None:
+    for workflow in WORKFLOWS:
+        text = workflow.read_text(encoding="utf-8")
+        assert "python -m pytest -q" in text, f"{workflow}: pytest must run via python -m"
+        assert "\n          pytest -q" not in text, f"{workflow}: bare pytest can lose repo import root"
