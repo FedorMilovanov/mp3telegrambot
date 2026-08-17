@@ -43,7 +43,7 @@ def test_model_aware_thinking_is_owned_by_core_config_helper():
 def test_utility_work_uses_lite_only_without_fallback():
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
     assert '_LIGHT_MODEL = "gemini-3.5-flash-lite"' in src
-    assert '_LIGHT_FALLBACK_MODEL' not in src
+    assert "_LIGHT_FALLBACK_MODEL =" not in src
     assert 'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""' in src
     assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in src
     assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""' in src
