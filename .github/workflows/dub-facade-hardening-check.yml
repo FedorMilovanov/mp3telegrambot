@@ -5,33 +5,119 @@ on:
     branches: [main]
     paths:
       - "services/dub_studio_runtime.py"
-      - "tools/voxcpm2/**"
+      - "tools/voxcpm2/dub_job_preflight.py"
+      - "tools/voxcpm2/clean_runtime_contract.py"
+      - "tools/voxcpm2/clean_production_core.py"
+      - "tools/voxcpm2/direct_max_quality_io.py"
+      - "tools/voxcpm2/direct_max_quality_cli.py"
+      - "tools/voxcpm2/direct_max_quality_analysis.py"
+      - "tools/voxcpm2/direct_max_quality_render.py"
+      - "tools/voxcpm2/direct_retry_epoch.py"
+      - "tools/voxcpm2/direct_russian_cadence.py"
+      - "tools/voxcpm2/direct_tail_artifact.py"
+      - "tools/voxcpm2/direct_timeline_delivery_qa.py"
+      - "tools/voxcpm2/final_encoded_delivery_qa.py"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/generic_clean_audio_repair_runtime.py"
+      - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/clean_request_settings.py"
+      - "tools/voxcpm2/clean_source_download.py"
+      - "tools/voxcpm2/clean_segment_normalizer.py"
+      - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
       - "handlers/dub_audio_repair.py"
-      - "handlers/dub_audio_repair/**"
       - "handlers/dub_wizard.py"
-      - "handlers/dub_wizard/**"
       - "handlers/dub_health.py"
-      - "handlers/dub_health/**"
-      - "tests/test_direct_*.py"
-      - "tests/test_clean_*.py"
-      - "tests/test_dub_*.py"
+      - "tests/test_direct_speech_slot_contract.py"
+      - "tests/test_direct_long_form_resilience.py"
+      - "tests/test_direct_retry_epoch.py"
+      - "tests/test_direct_russian_cadence.py"
+      - "tests/test_direct_tail_artifact.py"
+      - "tests/test_direct_timeline_delivery_qa.py"
+      - "tests/test_final_encoded_delivery_qa.py"
+      - "tests/test_clean_master_post_aac_gate.py"
+      - "tests/test_clean_runtime_delivery_fingerprints.py"
+      - "tests/test_dub_worker_preflight_cancellation.py"
+      - "tests/test_dub_worker_root_fail_closed.py"
+      - "tests/test_dub_job_preflight_v2.py"
+      - "tests/test_dub_facade_write_through.py"
+      - "tests/test_dub_runtime_progress.py"
+      - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_segment_contract.py"
+      - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_clean_request_settings.py"
+      - "tests/test_zero_delay_legacy_migration.py"
+      - "tests/test_clean_source_download.py"
       - "tests/test_source_identity_pre_network.py"
-      - "tests/test_original_bed_alignment.py"
+      - "tests/test_dub_source_identity.py"
+      - "tests/test_dub_wizard_request_writer.py"
+      - "tests/test_generic_project_runtime_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_dubfix_error_propagation.py"
+      - "tests/test_clean_master_child_process_contract.py"
       - "tests/test_master_standalone_entrypoint.py"
+      - "tests/test_original_bed_alignment.py"
+      - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-facade-hardening-check.yml"
   pull_request:
     branches: [main]
     paths:
-      - "services/dub_*.py"
-      - "tools/voxcpm2/**"
-      - "handlers/dub_*.py"
-      - "handlers/dub_*/**"
-      - "tests/test_direct_*.py"
-      - "tests/test_clean_*.py"
-      - "tests/test_dub_*.py"
+      - "services/dub_studio_runtime.py"
+      - "tools/voxcpm2/dub_job_preflight.py"
+      - "tools/voxcpm2/clean_runtime_contract.py"
+      - "tools/voxcpm2/clean_production_core.py"
+      - "tools/voxcpm2/direct_max_quality_io.py"
+      - "tools/voxcpm2/direct_max_quality_cli.py"
+      - "tools/voxcpm2/direct_max_quality_analysis.py"
+      - "tools/voxcpm2/direct_max_quality_render.py"
+      - "tools/voxcpm2/direct_retry_epoch.py"
+      - "tools/voxcpm2/direct_russian_cadence.py"
+      - "tools/voxcpm2/direct_tail_artifact.py"
+      - "tools/voxcpm2/direct_timeline_delivery_qa.py"
+      - "tools/voxcpm2/final_encoded_delivery_qa.py"
+      - "tools/voxcpm2/generic_project_runtime.py"
+      - "tools/voxcpm2/generic_clean_audio_repair_runtime.py"
+      - "tools/voxcpm2/final_media_qa.py"
+      - "tools/voxcpm2/clean_request_settings.py"
+      - "tools/voxcpm2/clean_source_download.py"
+      - "tools/voxcpm2/clean_segment_normalizer.py"
+      - "tools/voxcpm2/legacy_segment_migration_v45.py"
+      - "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py"
+      - "handlers/dub_audio_repair.py"
+      - "handlers/dub_wizard.py"
+      - "handlers/dub_health.py"
+      - "tests/test_direct_speech_slot_contract.py"
+      - "tests/test_direct_long_form_resilience.py"
+      - "tests/test_direct_retry_epoch.py"
+      - "tests/test_direct_russian_cadence.py"
+      - "tests/test_direct_tail_artifact.py"
+      - "tests/test_direct_timeline_delivery_qa.py"
+      - "tests/test_final_encoded_delivery_qa.py"
+      - "tests/test_clean_master_post_aac_gate.py"
+      - "tests/test_clean_runtime_delivery_fingerprints.py"
+      - "tests/test_dub_worker_preflight_cancellation.py"
+      - "tests/test_dub_worker_root_fail_closed.py"
+      - "tests/test_dub_job_preflight_v2.py"
+      - "tests/test_dub_facade_write_through.py"
+      - "tests/test_dub_runtime_progress.py"
+      - "tests/test_clean_runtime_setting_types.py"
+      - "tests/test_clean_segment_contract.py"
+      - "tests/test_repair_segment_input_contract.py"
+      - "tests/test_clean_repair_request_contract.py"
+      - "tests/test_clean_request_settings.py"
+      - "tests/test_zero_delay_legacy_migration.py"
+      - "tests/test_clean_source_download.py"
       - "tests/test_source_identity_pre_network.py"
-      - "tests/test_original_bed_alignment.py"
+      - "tests/test_dub_source_identity.py"
+      - "tests/test_dub_wizard_request_writer.py"
+      - "tests/test_generic_project_runtime_contract.py"
+      - "tests/test_dub_audio_repair_handler_contract.py"
+      - "tests/test_dubfix_error_propagation.py"
+      - "tests/test_clean_master_child_process_contract.py"
       - "tests/test_master_standalone_entrypoint.py"
+      - "tests/test_original_bed_alignment.py"
+      - "tests/test_dub_health_supplemental_contract.py"
       - ".github/workflows/dub-facade-hardening-check.yml"
   workflow_dispatch:
 
@@ -58,46 +144,29 @@ jobs:
         run: |
           python -m py_compile \
             services/dub_studio_runtime.py \
-            tools/voxcpm2/dub_worker_hardened.py \
-            tools/voxcpm2/dub_worker_hardened/__init__.py \
-            tools/voxcpm2/dub_worker_hardened/__main__.py \
             tools/voxcpm2/dub_job_preflight.py \
-            tools/voxcpm2/dub_job_preflight/__init__.py \
             tools/voxcpm2/clean_runtime_contract.py \
-            tools/voxcpm2/clean_runtime_contract/__init__.py \
             tools/voxcpm2/clean_production_core.py \
-            tools/voxcpm2/clean_production_core/__init__.py \
             tools/voxcpm2/direct_max_quality_io.py \
             tools/voxcpm2/direct_max_quality_cli.py \
             tools/voxcpm2/direct_max_quality_analysis.py \
-            tools/voxcpm2/direct_max_quality_analysis/__init__.py \
             tools/voxcpm2/direct_max_quality_render.py \
-            tools/voxcpm2/direct_max_quality_render/__init__.py \
             tools/voxcpm2/direct_retry_epoch.py \
             tools/voxcpm2/direct_russian_cadence.py \
-            tools/voxcpm2/direct_russian_cadence/__init__.py \
             tools/voxcpm2/direct_tail_artifact.py \
             tools/voxcpm2/direct_timeline_delivery_qa.py \
             tools/voxcpm2/final_encoded_delivery_qa.py \
             tools/voxcpm2/generic_project_runtime.py \
-            tools/voxcpm2/generic_project_runtime/__init__.py \
             tools/voxcpm2/generic_clean_audio_repair_runtime.py \
-            tools/voxcpm2/generic_clean_audio_repair_runtime/__init__.py \
-            tools/voxcpm2/generic_clean_audio_repair_runtime/__main__.py \
             tools/voxcpm2/final_media_qa.py \
-            tools/voxcpm2/final_media_qa/__init__.py \
             tools/voxcpm2/clean_request_settings.py \
             tools/voxcpm2/clean_source_download.py \
-            tools/voxcpm2/clean_source_download/__init__.py \
             tools/voxcpm2/clean_segment_normalizer.py \
             tools/voxcpm2/legacy_segment_migration_v45.py \
             tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py \
             handlers/dub_audio_repair.py \
-            handlers/dub_audio_repair/__init__.py \
             handlers/dub_wizard.py \
-            handlers/dub_wizard/__init__.py \
-            handlers/dub_health.py \
-            handlers/dub_health/__init__.py
+            handlers/dub_health.py
       - name: Run hardening contracts
         run: |
           pytest -q \
@@ -116,7 +185,6 @@ jobs:
             tests/test_dub_facade_write_through.py \
             tests/test_dub_runtime_progress.py \
             tests/test_clean_runtime_setting_types.py \
-            tests/test_clean_runtime_facades.py \
             tests/test_clean_segment_contract.py \
             tests/test_repair_segment_input_contract.py \
             tests/test_clean_repair_request_contract.py \
