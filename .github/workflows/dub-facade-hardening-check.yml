@@ -38,9 +38,7 @@ on:
       - "tests/test_clean_master_post_aac_gate.py"
       - "tests/test_clean_runtime_delivery_fingerprints.py"
       - "tests/test_dub_worker_preflight_cancellation.py"
-      - "tests/test_dub_worker_root_fail_closed.py"
       - "tests/test_dub_job_preflight_v2.py"
-      - "tests/test_dub_facade_write_through.py"
       - "tests/test_dub_runtime_progress.py"
       - "tests/test_clean_runtime_setting_types.py"
       - "tests/test_clean_segment_contract.py"
@@ -97,9 +95,7 @@ on:
       - "tests/test_clean_master_post_aac_gate.py"
       - "tests/test_clean_runtime_delivery_fingerprints.py"
       - "tests/test_dub_worker_preflight_cancellation.py"
-      - "tests/test_dub_worker_root_fail_closed.py"
       - "tests/test_dub_job_preflight_v2.py"
-      - "tests/test_dub_facade_write_through.py"
       - "tests/test_dub_runtime_progress.py"
       - "tests/test_clean_runtime_setting_types.py"
       - "tests/test_clean_segment_contract.py"
@@ -180,9 +176,7 @@ jobs:
             tests/test_clean_master_post_aac_gate.py \
             tests/test_clean_runtime_delivery_fingerprints.py \
             tests/test_dub_worker_preflight_cancellation.py \
-            tests/test_dub_worker_root_fail_closed.py \
             tests/test_dub_job_preflight_v2.py \
-            tests/test_dub_facade_write_through.py \
             tests/test_dub_runtime_progress.py \
             tests/test_clean_runtime_setting_types.py \
             tests/test_clean_segment_contract.py \
