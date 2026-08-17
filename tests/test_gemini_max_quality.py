@@ -99,7 +99,7 @@ def test_pre_main_manifest_owns_quality_before_core_clients():
 
 
 def test_env_migration_preserves_semantic_37_utility_lite_split():
-    src = Path("scripts/migrate-gemini-36.ps1").read_text(encoding="utf-8")
+    src = Path("scripts/migrate-gemini-37.ps1").read_text(encoding="utf-8")
     assert 'GEMINI_MODEL" -Value "gemini-3.7-flash"' in src
     assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.7-flash"' in src
     assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
