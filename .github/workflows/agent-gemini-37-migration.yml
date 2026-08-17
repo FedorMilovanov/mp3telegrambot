@@ -1,13 +1,9 @@
-name: Agent Gemini 3.7 quality migration
-
+name: Agent Gemini 3.7 migration
 on:
   push:
-    branches:
-      - agent/gemini-37-quality-routing
-
+    branches: [agent/gemini-37-quality-routing]
 permissions:
   contents: write
-
 jobs:
   migrate:
     runs-on: ubuntu-latest
@@ -16,137 +12,17 @@ jobs:
         with:
           ref: agent/gemini-37-quality-routing
           fetch-depth: 0
-
-      - name: Apply Gemini 3.7 quality routing
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          ROOTS = [Path("core"), Path("services"), Path("pipelines"), Path("handlers"), Path("tests")]
-          changed = []
-          for root in ROOTS:
-              if not root.exists():
-                  continue
-              for path in root.rglob("*.py"):
-                  old = path.read_text(encoding="utf-8")
-                  new = old.replace("gemini-3.6-flash", "gemini-3.7-flash")
-                  new = new.replace("Gemini 3.6", "Gemini 3.7")
-                  if new != old:
-                      path.write_text(new, encoding="utf-8")
-                      changed.append(str(path))
-
-          # Utility jobs are intentionally Lite-only. No ordinary 3.5 fallback
-          # and no fallback to the expensive semantic model.
-          for name in ["services/gemini_max_quality.py", "services/livedub_quality_runtime.py"]:
-              path = Path(name)
-              text = path.read_text(encoding="utf-8")
-              text = text.replace(
-                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL',
-                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""',
-              )
-              text = text.replace(
-                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _UTILITY_FALLBACK_MODEL',
-                  'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""',
-              )
-              text = text.replace(
-                  'f"utility={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "',
-                  'f"utility={_LIGHT_MODEL}/minimal/no-fallback; "',
-              )
-              text = text.replace(
-                  'f"utility={_LIGHT_MODEL}->{_UTILITY_FALLBACK_MODEL}/no-main-fallback"',
-                  'f"utility={_LIGHT_MODEL}/minimal/no-fallback"',
-              )
-              text = text.replace(
-                  '"semantic_model_fallbacks=none; publication=3.6/high; "',
-                  '"semantic_model_fallbacks=none; publication=3.7/high; "',
-              )
-              path.write_text(text, encoding="utf-8")
-
-          for name, constant in [
-              ("services/gemini_max_quality.py", '_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"\n'),
-              ("services/livedub_quality_runtime.py", '_UTILITY_FALLBACK_MODEL = "gemini-3.5-flash"\n'),
-          ]:
-              path = Path(name)
-              text = path.read_text(encoding="utf-8").replace(constant, "")
-              path.write_text(text, encoding="utf-8")
-
-          # After bounded HIGH-pass retries on one key, Factory must rotate to
-          # the next configured Gemini client. Completed scout/judge state is
-          # preserved so successful expensive passes are not repeated.
-          path = Path("services/shorts_factory_capacity_runtime.py")
-          text = path.read_text(encoding="utf-8")
-          old_block = '''            if action == "capacity":
-                capacity_overload = True
-                await capacity.safe_status(
-                    status_msg,
-                    "⚠️ Gemini 3.7 вернула 503/high demand после ограниченных "
-                    "повторов текущего HIGH-прохода. Не загружаю то же "
-                    "analysis-аудио на остальные ключи: качество не понижаю, "
-                    "retry-кэш сохранён.",
-                )
-                break
-'''
-          new_block = '''            if action == "capacity":
-                capacity_overload = True
-                await capacity.safe_status(
-                    status_msg,
-                    f"⚠️ Gemini 3.7 вернула 503/high demand на ключе "
-                    f"{index}/{len(clients)} после ограниченных повторов HIGH-прохода. "
-                    "Переключаюсь на следующий ключ без понижения модели…",
-                )
-                continue
-'''
-          if old_block not in text:
-              raise SystemExit("Factory capacity block not found; refusing unsafe migration")
-          text = text.replace(old_block, new_block, 1)
-          old_error = '''            "Ограниченные повторы текущего HIGH-прохода исчерпаны; перебор "
-            "остальных API-ключей остановлен, чтобы не повторять дорогую "
-            "загрузку того же analysis-аудио. Качество не понижено: 3.5/2.x "
-            "не использовались. Analysis-аудио сохранено в retry-кэше примерно на "
-'''
-          new_error = '''            "Ограниченные повторы HIGH-прохода и все настроенные API-ключи/клиенты "
-            "исчерпаны. Качество не понижено: 3.6/3.5/Lite не использовались. "
-            "Analysis-аудио сохранено в retry-кэше примерно на "
-'''
-          if old_error not in text:
-              raise SystemExit("Factory final capacity message not found")
-          text = text.replace(old_error, new_error, 1)
-          path.write_text(text, encoding="utf-8")
-
-          # Update source-owned tests for the Lite-only utility contract.
-          for path in Path("tests").rglob("*.py"):
-              text = path.read_text(encoding="utf-8")
-              text = text.replace(
-                  'assert os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == "gemini-3.5-flash"',
-                  'assert os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == ""',
-              )
-              text = text.replace("3.5-lite->3.5", "3.5-lite/minimal/no-fallback")
-              path.write_text(text, encoding="utf-8")
-
-          maxq = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
-          factory = Path("services/shorts_factory_candidates.py").read_text(encoding="utf-8")
-          cap = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
-          assert '_HEAVY_MODEL = "gemini-3.7-flash"' in maxq
-          assert 'GEMINI_LIGHT_FALLBACK_MODELS"] = ""' in maxq
-          assert 'DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.7-flash"' in factory
-          assert "Переключаюсь на следующий ключ без понижения модели" in cap
-          assert "все настроенные API-ключи/клиенты" in cap
-          assert "Gemini 3.6 MAX" not in cap
-
-          print("Gemini 3.7 routing migration prepared")
-          PY
-
-      - name: Compile Python sources
+      - name: Apply migration
+        run: python scripts/agent_gemini37_migrate.py
+      - name: Compile
         run: python -m compileall -q core services pipelines handlers
-
-      - name: Remove one-shot workflow and commit migration
-        shell: bash
+      - name: Commit
         run: |
-          git rm .github/workflows/agent-gemini-37-migration.yml
           git config user.name "openai-codex[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add core services pipelines handlers tests
+          git rm .github/workflows/agent-gemini-37-migration.yml scripts/agent_gemini37_migrate.py
+          rm -f .agent-gemini-37-trigger
+          git add -A
           git diff --cached --check
           git commit -m "Route complex Gemini workloads to 3.7 Flash"
           git push origin HEAD:agent/gemini-37-quality-routing
