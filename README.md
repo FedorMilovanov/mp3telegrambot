@@ -103,21 +103,26 @@ LOCAL_BOT_API_CLOUD_FALLBACK=0
 
 ## Gemini policy
 
-Runtime выбирает модели до импорта AI-клиентов:
+Runtime фиксирует quality-policy до импорта AI-клиентов:
 
-- основной quality-маршрут: `gemini-3.6-flash`;
-- сильный fallback: `gemini-3.5-flash`;
-- лёгкие механические задачи: `gemini-3.5-flash-lite`.
+- все heavy/semantic задачи: `gemini-3.7-flash` + `HIGH` thinking;
+- Shorts Factory MAX, LiveDub QA, публикационный смысловой текст и editorial review не понижаются до 3.6/3.5/Lite;
+- дешёвые механические/utility-задачи: только `gemini-3.5-flash-lite` + minimal;
+- при временной перегрузке используются bounded retry и следующие настроенные API-ключи/клиенты, а не более слабая модель.
 
 Рекомендуемая явная настройка:
 
 ```dotenv
+GEMINI_MODEL=gemini-3.7-flash
+GEMINI_MAX_MODEL=gemini-3.7-flash
+GEMINI_FORCE_THINKING_LEVEL=high
 GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite
-GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash
-GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1
+GEMINI_LIGHT_FALLBACK_MODELS=
+GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0
+SHORTS_FACTORY_MODEL=gemini-3.7-flash
 ```
 
-Старое значение `GEMINI_LIGHT_MODEL=gemini-3.1-flash-lite` поддерживается только как миграционный вход: startup-policy автоматически заменяет его на актуальную модель. Не используйте 3.1 Lite в новой конфигурации.
+Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-37.ps1`.
 
 ## LiveDub и два MP3
 
