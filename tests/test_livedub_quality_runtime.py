@@ -27,7 +27,7 @@ def test_pre_main_manifest_owns_policy_before_core_clients() -> None:
     assert "configure_gemini_network()" in owner
 
 
-def test_production_policy_keeps_semantic_work_on_36_high() -> None:
+def test_production_policy_keeps_semantic_work_on_37_high() -> None:
     runtime.configure_gemini_policy()
     for name in ("GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL", "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL"):
         assert runtime.os.environ[name] == "gemini-3.7-flash"
@@ -37,16 +37,16 @@ def test_production_policy_keeps_semantic_work_on_36_high() -> None:
     assert runtime.os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
 
 
-def test_utility_route_is_35_family_without_semantic_fallback() -> None:
+def test_utility_route_is_lite_only_without_semantic_fallback() -> None:
     runtime.configure_gemini_policy()
     assert runtime.os.environ["GEMINI_LIGHT_MODEL"] == "gemini-3.5-flash-lite"
-    assert runtime.os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == "gemini-3.5-flash"
+    assert runtime.os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == ""
     assert runtime.os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
     assert "gemini-3.1" not in _max_policy_source()
     assert "gemini-2.5" not in _max_policy_source()
 
 
-def test_user_visible_publication_uses_36_high_not_utility() -> None:
+def test_user_visible_publication_uses_37_high_not_utility() -> None:
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
     assert '_PUBLICATION_MODEL = "gemini-3.7-flash"' in publication
     assert 'thinking_level="high"' in publication
