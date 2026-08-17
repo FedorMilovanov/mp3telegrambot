@@ -107,6 +107,8 @@ async def create_factory_plan_resumable(
     from services.shorts_factory_source import (
         _strict_boundary_prompt,
         factory_audio_mime_type,
+        factory_duration_matches,
+        measure_factory_audio_duration,
     )
     from services.shorts_factory_quality_gate import (
         apply_factory_quality_gate,
@@ -116,6 +118,21 @@ async def create_factory_plan_resumable(
     audio_path = Path(audio_path)
     if not audio_path.is_file() or audio_path.stat().st_size < 1024:
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
+
+    verified_audio_duration = await measure_factory_audio_duration(audio_path)
+    if duration > 0 and not factory_duration_matches(
+        verified_audio_duration,
+        float(duration),
+    ):
+        raise RuntimeError(
+            "Factory analysis audio duration does not match yt-dlp source metadata: "
+            f"metadata={float(duration):.3f}s verified={verified_audio_duration:.3f}s"
+        )
+    logger.info(
+        "Factory analysis audio duration verified before Gemini: metadata=%.3fs decoded=%.3fs",
+        float(duration or 0),
+        verified_audio_duration,
+    )
 
     clients = capacity.factory_gemini_clients()
     if not clients or candidates.types is None:
