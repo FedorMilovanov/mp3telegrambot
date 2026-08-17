@@ -1,0 +1,51 @@
+name: Fix stale Gemini tests
+
+on:
+  push:
+    branches:
+      - agent/gemini-37-quality-routing
+    paths:
+      - .github/workflows/fix-stale-gemini-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/gemini-37-quality-routing
+      - name: Align stale LiveDub env assertions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/livedub_qa_cases.py')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env':
+                  'assert "LIVEDUB_QUICK_QA_THINKING=high" in env',
+              'assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" in env':
+                  'assert "GEMINI_LIGHT_FALLBACK_MODELS=" in env\n    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env',
+              'assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env':
+                  'assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence of {old!r}, found {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          git rm .github/workflows/fix-stale-gemini-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/livedub_qa_cases.py
+          git commit -m "Align LiveDub env tests with Gemini 3.7 policy"
+          git push origin HEAD:agent/gemini-37-quality-routing
