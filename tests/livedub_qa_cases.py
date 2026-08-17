@@ -113,8 +113,8 @@ def test_eng_fast_qa_mode_registered_and_wired():
     assert "apply_qa_audio_fixes" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
-    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.6-flash" in env
-    assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env
+    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.7-flash" in env
+    assert "LIVEDUB_QUICK_QA_THINKING=high" in env
 
 
 # ── Pro-микс и авто-правка ───────────────────────────────────────
@@ -955,14 +955,15 @@ def test_quick_modes_share_unified_publication_metadata_without_second_ai_card()
 def test_livedub_light_model_env_documented():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in env
-    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=" in env
+    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env
     # выключенные модели не должны стоять ЗНАЧЕНИЕМ fallback-цепочки
     assert "FALLBACK_MODELS=gemini-3.1-flash-lite-preview" not in env
     assert not any(
         "2.5-flash-lite" in line and line.strip().startswith("GEMINI_LIGHT_FALLBACK_MODELS")
         for line in env.splitlines()
     )
-    assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env
+    assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in readme
@@ -1915,5 +1916,5 @@ def test_vot_token_is_documented_in_readme_help_and_status():
 def test_env_example_gemini_model_is_not_truncated():
     """Копирование .env.example не должно ставить несуществующую модель из-за опечатки."""
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_MODEL=gemini-3.6-flash" in env
+    assert "GEMINI_MODEL=gemini-3.7-flash" in env
     assert "gemini-3.6-flas\n" not in env

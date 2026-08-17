@@ -88,7 +88,7 @@ def test_gemini_semantic_config_is_source_owned_high_and_sampling_free():
     legacy = _function_source(src, "make_text_config")
     smart = _function_source(src, "make_text_config_smart")
 
-    assert 'model == "gemini-3.6-flash"' in thinking
+    assert 'model == "gemini-3.7-flash"' in thinking
     assert 'return "high"' in thinking
     assert "make_text_config_smart(" in legacy
     assert "GenerateContentConfig(" not in legacy

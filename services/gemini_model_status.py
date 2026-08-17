@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-"""Current official Gemini model diagnostics for startup reporting.
+"""Gemini model diagnostics for the source-owned deployment policy.
 
-Reviewed against the official Gemini model and deprecation pages on 2026-08-03.
-The generation config itself remains adaptive in ``core.globals``.
+The production route is intentionally based on models available to this API
+project. Public model/deprecation pages can lag per-project availability, so
+startup diagnostics must not present the routing decision as a stale catalog
+claim.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-POLICY = "official-gemini-model-status-2026-08-03-v3"
+POLICY = "project-gemini-routing-2026-08-17-v4"
+_PRIMARY_MODEL = "gemini-3.7-flash"
+_PREVIOUS_PRIMARY = "gemini-3.6-flash"
+_UTILITY_MODEL = "gemini-3.5-flash-lite"
+_UNUSED_MID_MODEL = "gemini-3.5-flash"
 
-_CURRENT_GA = {
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-}
 _SCHEDULED_MIGRATION = {
-    "gemini-3.1-flash-lite": ("2027-05-07", "gemini-3.5-flash-lite"),
+    "gemini-3.1-flash-lite": ("2027-05-07", _UTILITY_MODEL),
 }
 _CURRENT_PREVIEW = {
     "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
 }
 _LEGACY_MIGRATION = {
-    "gemini-2.5-flash": ("2026-10-16", "gemini-3.6-flash"),
-    "gemini-2.5-flash-lite": ("2026-10-16", "gemini-3.5-flash-lite"),
+    "gemini-2.5-flash": ("2026-10-16", _PRIMARY_MODEL),
+    "gemini-2.5-flash-lite": ("2026-10-16", _UTILITY_MODEL),
     "gemini-2.5-pro": ("2026-10-16", "gemini-3.1-pro-preview"),
 }
 _SHUTDOWN = {
@@ -58,55 +59,64 @@ class GeminiModelDiagnostic:
 
 def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
     model = str(model_name or "").strip().lower()
-    if model in _CURRENT_GA:
+    if model == _PRIMARY_MODEL:
         return GeminiModelDiagnostic(
             "info",
-            f"GEMINI_MODEL='{model}' — актуальная production-модель Gemini API.",
+            f"GEMINI_MODEL='{model}' — max-quality production route этого API deployment.",
+        )
+    if model == _PREVIOUS_PRIMARY:
+        return GeminiModelDiagnostic(
+            "warning",
+            f"GEMINI_MODEL='{model}' — предыдущий semantic route; текущая политика требует {_PRIMARY_MODEL}.",
+        )
+    if model == _UTILITY_MODEL:
+        return GeminiModelDiagnostic(
+            "warning",
+            f"GEMINI_MODEL='{model}' — utility-only модель; для semantic/quality-sensitive задач требуется {_PRIMARY_MODEL}.",
+        )
+    if model == _UNUSED_MID_MODEL:
+        return GeminiModelDiagnostic(
+            "warning",
+            f"GEMINI_MODEL='{model}' не используется source-owned routing: heavy={_PRIMARY_MODEL}, utility={_UTILITY_MODEL}.",
         )
     if model in _SCHEDULED_MIGRATION:
         deadline, replacement = _SCHEDULED_MIGRATION[model]
         return GeminiModelDiagnostic(
             "warning",
-            f"GEMINI_MODEL='{model}' остаётся GA, но выключение запланировано не раньше {deadline}; "
-            f"перейдите на {replacement}.",
+            f"GEMINI_MODEL='{model}' имеет запланированную миграцию не позже {deadline}; перейдите на {replacement}.",
         )
     if model == "gemini-flash-latest":
         return GeminiModelDiagnostic(
             "warning",
-            "GEMINI_MODEL='gemini-flash-latest' — плавающий alias может быть "
-            "переключён на новую версию; для воспроизводимого production "
-            "зафиксируйте gemini-3.6-flash.",
+            "GEMINI_MODEL='gemini-flash-latest' — плавающий alias; для воспроизводимого production "
+            f"зафиксируйте {_PRIMARY_MODEL}.",
         )
     if model == "gemini-3-flash-preview":
         return GeminiModelDiagnostic(
             "warning",
-            "GEMINI_MODEL='gemini-3-flash-preview' — действующая preview-модель; "
-            "для стабильного production используйте gemini-3.6-flash.",
+            f"GEMINI_MODEL='{model}' — preview route; production policy этого deployment использует {_PRIMARY_MODEL}.",
         )
     if model == "gemini-3.1-pro-preview":
         return GeminiModelDiagnostic(
             "warning",
-            "GEMINI_MODEL='gemini-3.1-pro-preview' — действующая preview-модель Pro; "
-            "стабильная Pro-версия пока не объявлена. Для задач, допускающих Flash, "
-            "используйте gemini-3.6-flash.",
+            f"GEMINI_MODEL='{model}' — preview Pro route; Flash-задачи этого deployment используют {_PRIMARY_MODEL}.",
         )
     if model in _LEGACY_MIGRATION:
         deadline, replacement = _LEGACY_MIGRATION[model]
         return GeminiModelDiagnostic(
             "warning",
-            f"GEMINI_MODEL='{model}' поддерживается до {deadline}; "
-            f"запланируйте переход на {replacement}.",
+            f"GEMINI_MODEL='{model}' поддерживается до {deadline}; запланируйте переход на {replacement}.",
         )
     if model in _SHUTDOWN:
         return GeminiModelDiagnostic(
             "error",
-            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте gemini-3.6-flash.",
+            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте {_PRIMARY_MODEL}.",
         )
     if not model:
         return GeminiModelDiagnostic("error", "GEMINI_MODEL не задан.")
     return GeminiModelDiagnostic(
         "warning",
-        f"GEMINI_MODEL='{model}' не входит в проверенный официальный каталог на 2026-08-03; проверьте models.list.",
+        f"GEMINI_MODEL='{model}' не входит в проверенную routing policy этого deployment; проверьте models.list.",
     )
 
 

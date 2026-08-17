@@ -13,20 +13,14 @@ def test_canonical_public_hashtags_follow_repository_rule():
     ) == ["#Евангелие", "#Бытие", "#Искупление", "#Спроул"]
 
 
-def test_light_model_route_is_exact_cheapest_first_and_not_env_driven(monkeypatch):
-    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.6-flash")
+def test_light_model_route_is_exact_lite_only_and_not_env_driven(monkeypatch):
+    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.7-flash")
     monkeypatch.setenv(
         "GEMINI_LIGHT_FALLBACK_MODELS",
-        "gemini-3.5-pro,gemini-3.1-pro-preview,gemini-2.5-flash",
+        "gemini-3.5-flash,gemini-3.5-pro,gemini-3.1-pro-preview,gemini-2.5-flash",
     )
-    assert publication._light_models() == [
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-    ]
-    assert publication.FACTORY_PUBLICATION_LIGHT_MODELS == (
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-    )
+    assert publication._light_models() == ["gemini-3.5-flash-lite"]
+    assert publication.FACTORY_PUBLICATION_LIGHT_MODELS == ("gemini-3.5-flash-lite",)
 
 
 def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tags():
@@ -116,20 +110,24 @@ def test_enrichment_sets_only_private_factory_description_field(monkeypatch):
     assert "publication_description" not in result[0]
 
 
-def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(monkeypatch):
+def test_description_generation_retries_lite_across_clients_and_pattern_prompt(monkeypatch):
     import core.globals as globals_module
 
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
     configs: list[dict] = []
     prompts: list[str] = []
 
     class FakeModels:
+        def __init__(self, name: str, fail: bool):
+            self.name = name
+            self.fail = fail
+
         async def generate_content(self, *, model, contents, config):
             del config
-            calls.append(model)
+            calls.append((self.name, model))
             prompts.append(str(contents))
-            if model == "gemini-3.5-flash-lite":
-                raise RuntimeError("simulated light quota")
+            if self.fail:
+                raise RuntimeError("simulated Lite quota")
             return SimpleNamespace(
                 text=json.dumps(
                     {
@@ -147,13 +145,18 @@ def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(mon
                 )
             )
 
-    fake_client = SimpleNamespace(aio=SimpleNamespace(models=FakeModels()))
+    def fake_client(name: str, fail: bool):
+        return SimpleNamespace(aio=SimpleNamespace(models=FakeModels(name, fail)))
 
     def fake_config(**kwargs):
         configs.append(dict(kwargs))
         return kwargs
 
-    monkeypatch.setattr(globals_module, "GEMINI_CLIENTS", [fake_client])
+    monkeypatch.setattr(
+        globals_module,
+        "GEMINI_CLIENTS",
+        [fake_client("first", True), fake_client("second", False)],
+    )
     monkeypatch.setattr(globals_module, "make_text_config_smart", fake_config)
     monkeypatch.setattr(publication, "_timeout", lambda: 5.0)
 
@@ -172,12 +175,15 @@ def test_description_generation_uses_only_lite_then_flash_and_pattern_prompt(mon
         )
     )
 
-    assert calls == ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
-    assert [cfg["model_name"] for cfg in configs] == calls
+    assert calls == [
+        ("first", "gemini-3.5-flash-lite"),
+        ("second", "gemini-3.5-flash-lite"),
+    ]
+    assert [cfg["model_name"] for cfg in configs] == [model for _client, model in calls]
     assert all(cfg["thinking_level"] == "minimal" for cfg in configs)
     assert all("temperature" not in cfg for cfg in configs)
     assert all("top_p" not in cfg and "top_k" not in cfg for cfg in configs)
-    assert not any("3.6" in model or "3.1" in model or "2.5" in model for model in calls)
+    assert not any("3.7" in model or "3.6" in model or "3.5-flash\"" in model for _client, model in calls)
     assert all("В этом видео" not in prompt for prompt in prompts)
     assert all("В этом ролике" not in prompt for prompt in prompts)
     assert all("Автор рассматривает" not in prompt for prompt in prompts)

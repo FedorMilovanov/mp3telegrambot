@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import os
 
-_HEAVY_MODEL = "gemini-3.6-flash"
+_HEAVY_MODEL = "gemini-3.7-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
-_LIGHT_FALLBACK_MODEL = "gemini-3.5-flash"
 _REQUIRED_WHISPER_MODEL = "large-v3"
 
 
@@ -29,7 +28,7 @@ def configure_max_quality_env() -> str:
     os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
 
     os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
-    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _LIGHT_FALLBACK_MODEL
+    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""
     os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
 
     os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""
@@ -54,8 +53,8 @@ def configure_max_quality_env() -> str:
 
     return (
         f"semantic={_HEAVY_MODEL}/high; "
-        f"utility={_LIGHT_MODEL}->{_LIGHT_FALLBACK_MODEL}/minimal; "
-        "semantic_model_fallbacks=none; publication=3.6/high; "
+        f"utility={_LIGHT_MODEL}/minimal/no-fallback; "
+        "semantic_model_fallbacks=none; publication=3.7/high; "
         f"whisper={_REQUIRED_WHISPER_MODEL}"
     )
 

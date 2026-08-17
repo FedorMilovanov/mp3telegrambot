@@ -137,7 +137,7 @@ def _response_schema() -> dict[str, Any]:
 
 
 async def _generate_quality_publication(source_line: str) -> dict[str, str] | None:
-    """Translate metadata and write restrained user copy on Gemini 3.6/HIGH."""
+    """Translate metadata and write restrained user copy on Gemini 3.7/HIGH."""
     source = _plain(source_line, 320)
     if not source:
         return None

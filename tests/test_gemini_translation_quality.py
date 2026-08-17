@@ -20,7 +20,7 @@ def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
     monkeypatch.delenv('DUB_TRANSLATION_MODEL', raising=False)
     monkeypatch.delenv('DUB_TITLE_MODEL', raising=False)
     payload = dub_wizard._request_payload('AbCdEf12345', 'https://youtube.com/watch?v=AbCdEf12345', 'gemini', dub_wizard.DEFAULT_MODEL_PROFILE_ID)
-    assert payload['translation_model'] == 'gemini-3.6-flash'
+    assert payload['translation_model'] == 'gemini-3.7-flash'
     assert payload['title_model'] == 'gemini-3.5-flash-lite'
     assert payload['translation_model'] != payload['title_model']
     monkeypatch.setenv('DUB_TRANSLATION_MODEL', 'translation-fixture')
@@ -66,7 +66,7 @@ def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
     monkeypatch.setattr(generic_short_runtime, '_translation_client', fake_client)
     monkeypatch.setattr(generic_short_runtime, '_generation_config', lambda _model: object())
     monkeypatch.setattr(generic_short_runtime, 'log', logs.append)
-    result = generic_short_runtime.gemini_json('Ты — первоклассный переводчик. Верни JSON.', model_name='gemini-3.6-flash')
+    result = generic_short_runtime.gemini_json('Ты — первоклассный переводчик. Верни JSON.', model_name='gemini-3.7-flash')
     assert result == {'segments': [{'id': 1, 'russian': 'Готово'}]}
     assert [item[0] for item in created] == ['key-one', 'key-two']
     assert all((30000 <= item[1] <= 180000 for item in created))
@@ -103,7 +103,7 @@ def test_gemini_does_not_start_key_beyond_pass_budget(monkeypatch) -> None:
     monkeypatch.setattr(generic_short_runtime.time, 'monotonic', lambda: next(monotonic_values))
     monkeypatch.setattr(generic_short_runtime, 'log', lambda _line: None)
     with pytest.raises(RuntimeError, match='остаток общего лимита'):
-        generic_short_runtime.gemini_json('prompt', model_name='gemini-3.6-flash')
+        generic_short_runtime.gemini_json('prompt', model_name='gemini-3.7-flash')
     assert created == ['key-one']
     assert closed == ['key-one']
 
@@ -138,7 +138,7 @@ def test_gemini_request_requires_a_real_key(monkeypatch) -> None:
     for name in generic_short_runtime._GEMINI_KEY_NAMES:
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(RuntimeError, match='GEMINI_API_KEY'):
-        generic_short_runtime.gemini_json('prompt', model_name='gemini-3.6-flash')
+        generic_short_runtime.gemini_json('prompt', model_name='gemini-3.7-flash')
 
 def test_expressive_translation_really_runs_three_visible_editorial_passes(monkeypatch) -> None:
     source = _source(EXPRESSIVE)
@@ -157,7 +157,7 @@ def test_expressive_translation_really_runs_three_visible_editorial_passes(monke
         return {'segments': [{'id': 1, 'russian': 'Она смеётся над грядущим.'}]}
     monkeypatch.setattr(expressive_translation, '_gemini', fake_gemini)
     monkeypatch.setattr(expressive_translation.pipeline, 'log', logs.append)
-    result = expressive_translation.translate_groups([{'id': 1, 'start': 0.0, 'end': 10.0, 'english': 'She laughs at the time to come.'}], metadata={'title': 'The Strength of a Godly Woman'}, caption_origin='creator', model_name='gemini-3.6-flash')
+    result = expressive_translation.translate_groups([{'id': 1, 'start': 0.0, 'end': 10.0, 'english': 'She laughs at the time to come.'}], metadata={'title': 'The Strength of a Godly Woman'}, caption_origin='creator', model_name='gemini-3.7-flash')
     assert result == [{'id': 1, 'russian': 'Она смеётся над грядущим.'}]
     assert len(calls) == 3
     progress_lines = [line for line in logs if line.startswith('DUB_PROGRESS ')]

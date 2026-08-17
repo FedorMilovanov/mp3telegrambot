@@ -341,7 +341,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
 
     monkeypatch.setattr(capacity, "factory_gemini_clients", lambda: [SimpleNamespace()])
     monkeypatch.setattr(candidates, "types", fake_types)
-    monkeypatch.setattr(candidates, "shorts_factory_model", lambda: "gemini-3.6-flash")
+    monkeypatch.setattr(candidates, "shorts_factory_model", lambda: "gemini-3.7-flash")
     monkeypatch.setattr(candidates, "_run_pass", fake_run_pass)
     monkeypatch.setattr(candidates, "_scout_prompt", lambda *args: "scout")
     monkeypatch.setattr(candidates, "_judge_prompt", lambda *args: "judge")
@@ -358,7 +358,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
 
     assert captured_mimes == ["audio/aac"]
     assert plan["audio_mime_type"] == "audio/aac"
-    assert plan["model"] == "gemini-3.6-flash"
+    assert plan["model"] == "gemini-3.7-flash"
     assert plan["thinking_level"] == "high"
     assert plan["review_passes"] == 3
 

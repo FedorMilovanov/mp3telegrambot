@@ -5,7 +5,7 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_title_second_chance_directly_owns_36_high():
+def test_title_second_chance_directly_owns_37_high():
     src = _read("services/livedub_info_presentation_policy.py")
     assert "DEFAULT_INFO_MODEL" in src
     assert 'thinking_level="high"' in src
@@ -16,7 +16,7 @@ def test_title_second_chance_directly_owns_36_high():
 
 def test_env_example_keeps_user_copy_off_utility_lane():
     env = _read(".env.example")
-    assert "# LIVEDUB_INFO_MODEL=gemini-3.6-flash" in env
+    assert "# LIVEDUB_INFO_MODEL=gemini-3.7-flash" in env
     assert "# LIVEDUB_INFO_FALLBACK_MODELS=" in env
     assert "# LIVEDUB_PUBLICATION_FALLBACK_MODELS=" in env
     assert "# LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK=0" in env

@@ -28,7 +28,7 @@ SHORT_MAX_SEC = 177
 LONG_MIN_SEC = 300
 PUBLIC_LONG_MAX_SEC = 900
 LONG_MAX_SEC = 897
-DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.6-flash"
+DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.7-flash"
 
 _FACTORY_CANDIDATE_SCHEMA = {
     "type": "object",
@@ -84,18 +84,18 @@ FACTORY_PLAN_RESPONSE_SCHEMA = {
 
 
 def _require_factory_model(model: str, source: str) -> str:
-    """Keep Factory on the supported free-tier Gemini 3.6 Flash route."""
+    """Keep Factory on the supported free-tier Gemini 3.7 Flash route."""
     value = str(model or "").strip()
     if value.casefold() != DEFAULT_SHORTS_FACTORY_MODEL:
         raise RuntimeError(
-            "SHORTS FACTORY MAX requires gemini-3.6-flash; "
+            "SHORTS FACTORY MAX requires gemini-3.7-flash; "
             f"{source}={value!r} is not allowed"
         )
     return DEFAULT_SHORTS_FACTORY_MODEL
 
 
 def shorts_factory_model() -> str:
-    """Use Gemini 3.6 Flash with the Factory's explicit high-thinking config."""
+    """Use Gemini 3.7 Flash with the Factory's explicit high-thinking config."""
     explicit = os.getenv("SHORTS_FACTORY_MODEL", "").strip()
     if explicit:
         return _require_factory_model(explicit, "SHORTS_FACTORY_MODEL")

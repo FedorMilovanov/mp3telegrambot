@@ -119,7 +119,7 @@ def _strip_json_fence(text: str) -> str:
 
 
 async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | None:
-    """Try exact Gemini 3.6/HIGH across every client for faithful title metadata."""
+    """Try exact Gemini 3.7/HIGH across every client for faithful title metadata."""
     if not title_line or _title_has_cyrillic(title_line):
         return None
     try:

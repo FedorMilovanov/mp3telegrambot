@@ -4,7 +4,7 @@
 These fields are user-visible semantic output: Telegram/YouTube copy, compact
 meaning summaries, theological terms and Scripture references.  The module owns
 the production route directly so correctness does not depend on a later runtime
-monkey-patch or import order: Gemini 3.6 Flash with HIGH thinking, no semantic
+monkey-patch or import order: Gemini 3.7 Flash with HIGH thinking, no semantic
 3.5/Lite fallback.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ from services.livedub_info_evidence import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INFO_MODEL = "gemini-3.6-flash"
+DEFAULT_INFO_MODEL = "gemini-3.7-flash"
 # Compatibility alias for older diagnostics/tests that imported this symbol.
 DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 

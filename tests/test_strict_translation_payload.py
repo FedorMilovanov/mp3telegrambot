@@ -37,7 +37,7 @@ def test_expressive_prompts_do_not_assume_english_source(monkeypatch) -> None:
         return {'segments': [{'id': 1, 'russian': 'Она смеётся над грядущим.'}]}
     monkeypatch.setattr(expressive_translation, '_gemini', fake_gemini)
     monkeypatch.setattr(expressive_translation.pipeline, 'log', lambda _line: None)
-    result = expressive_translation.translate_groups(groups, metadata={'title': 'Die starke Frau', 'language': 'de'}, caption_origin='creator', model_name='gemini-3.6-flash')
+    result = expressive_translation.translate_groups(groups, metadata={'title': 'Die starke Frau', 'language': 'de'}, caption_origin='creator', model_name='gemini-3.7-flash')
     assert result == [{'id': 1, 'russian': 'Она смеётся над грядущим.'}]
     assert len(calls) == 3
     combined = '\n'.join(calls)

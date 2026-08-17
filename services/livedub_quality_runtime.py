@@ -11,8 +11,7 @@ import os
 import socket
 from urllib.parse import urlsplit, urlunsplit
 
-_PRIMARY_MODEL = "gemini-3.6-flash"
-_UTILITY_FALLBACK_MODEL = "gemini-3.5-flash"
+_PRIMARY_MODEL = "gemini-3.7-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
@@ -43,12 +42,12 @@ def configure_gemini_policy() -> str:
     os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"
 
     os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
-    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = _UTILITY_FALLBACK_MODEL
+    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""
     os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
 
     return (
         f"semantic={_PRIMARY_MODEL}/high/no-fallback, "
-        f"utility={_LIGHT_MODEL}->{_UTILITY_FALLBACK_MODEL}/no-main-fallback"
+        f"utility={_LIGHT_MODEL}/minimal/no-fallback"
     )
 
 

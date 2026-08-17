@@ -36,12 +36,12 @@ def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch):
         core_globals.configured_gemini_service_tier()
 
 
-def test_user_visible_publication_owner_uses_only_36_even_with_stale_env(monkeypatch):
+def test_user_visible_publication_owner_uses_only_37_even_with_stale_env(monkeypatch):
     import services.livedub_publication_core as publication
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
-    assert publication.publication_models() == ["gemini-3.6-flash"]
+    assert publication.publication_models() == ["gemini-3.7-flash"]
 
 
 def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
