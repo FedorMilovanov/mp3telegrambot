@@ -104,7 +104,11 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
         commands.append(list(command))
         output = tmp_path / "video_factory_audio_gemini.aac"
         output.write_bytes(b"aac" * 1000)
-        return SimpleNamespace(returncode=0, stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="out_time_us=3263660000\nprogress=end\n",
+            stderr="",
+        )
 
     async def fake_probe(_path):
         return final_probe
@@ -123,6 +127,7 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     assert not source_file.exists()
     assert len(commands) == 1
     command = commands[0]
+    assert "-progress" in command
     assert command[command.index("-c:a") + 1] == "aac"
     assert command[command.index("-b:a") + 1] == "128k"
     assert command[command.index("-ac") + 1] == "1"
@@ -131,10 +136,10 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     assert "flac" not in command
 
 
-def test_capacity_defaults_are_bounded_not_sdk_retry_cascade():
+def test_capacity_defaults_are_bounded_without_sdk_retry_cascade():
     import services.shorts_factory_capacity_runtime as runtime
 
     assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 4
-    assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 3.0
-    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 20.0
-    assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 2.0
+    assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
+    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 120.0
+    assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
