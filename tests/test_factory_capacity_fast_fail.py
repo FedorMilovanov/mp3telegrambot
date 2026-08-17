@@ -43,7 +43,7 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
 def _disable_capacity_retry_delay(monkeypatch) -> None:
     monkeypatch.setattr(capacity_runtime, '_capacity_retry_delay', lambda attempt: 0.0)
 
-def test_503_high_demand_retries_bounded_then_stops_before_second_client(monkeypatch, tmp_path):
+def test_503_high_demand_retries_bounded_then_rotates_all_clients(monkeypatch, tmp_path):
     audio = tmp_path / 'factory.flac'
     audio.write_bytes(b'x' * 2048)
     first = SimpleNamespace(name='first')
@@ -58,8 +58,9 @@ def test_503_high_demand_retries_bounded_then_stops_before_second_client(monkeyp
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     with pytest.raises(RuntimeError, match='503/high demand') as raised:
         asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
-    assert calls == ['first', 'first', 'first', 'first']
-    assert '3.5/2.x' in str(raised.value)
+    assert calls == ['first', 'first', 'first', 'first', 'second', 'second', 'second', 'second']
+    assert '3.6/3.5/Lite' in str(raised.value)
+    assert 'все настроенные API-ключи/клиенты' in str(raised.value)
     assert 'retry-кэше' in str(raised.value)
 
 def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_path):
