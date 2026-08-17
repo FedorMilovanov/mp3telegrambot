@@ -25,6 +25,8 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tests/test_factory_audio_duration_integrity.py"
+      - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
@@ -63,6 +65,8 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tests/test_factory_audio_duration_integrity.py"
+      - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
@@ -142,6 +146,8 @@ jobs:
       - name: Run focused regressions
         run: >-
           python tools/run_pytest_with_annotations.py -q
+          tests/test_factory_audio_duration_integrity.py
+          tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
@@ -179,6 +185,8 @@ jobs:
           pipelines/clips.py
           pipelines/montage.py
           tools/run_pytest_with_annotations.py
+          tests/test_factory_audio_duration_integrity.py
+          tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
