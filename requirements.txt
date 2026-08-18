@@ -1,7 +1,7 @@
 # Системные зависимости (не pip, установить отдельно):
 #   ffmpeg  — для пересжатия аудио в 64kbps
 #   nodejs>=22 или deno>=2.3 — для yt-dlp js-runtimes (обход YouTube n/SABR challenge)
-#   Chrome/Chromium-compatible browser — для автоматического YouTube GVS PO Token
+#   git + Node.js>=20/npm>=9 — для pinned bgutil PO-token HTTP provider
 #   Noto Sans — шрифт для субтитров Shorts (fonts.google.com/noto)
 
 # ── Telegram Bot ──────────────────────────────────────────────────────────────
@@ -13,12 +13,12 @@ python-telegram-bot[socks]>=22.5,<23.0
 # (включает mutagen, pycryptodomex, websockets — нужны для части форматов)
 # >=2026.7.4: фикс CVE-2026-55404 (command injection через --write-link).
 # YouTube с 2026-08 усилил GVS PO-token enforcement: maximum-quality потоки
-# не должны деградировать до format 18/360p. Featured provider WPC автоматически
-# mint'ит video-bound GVS token для mweb и получает proxy из yt-dlp request.
+# не должны деградировать до format 18/360p. Featured bgutil provider автоматически
+# mint'ит video-bound GVS token для mweb через локальный background HTTP service;
+# браузерный WPC intentionally не используется в production.
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
 yt-dlp[default]>=2026.7.4
-yt-dlp-getpot-wpc==1.1.2
-nodriver==0.50.3
+bgutil-ytdlp-pot-provider==1.3.1
 
 # ── HTTP-клиент ────────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована
@@ -51,8 +51,8 @@ numpy>=1.24.0
 soundfile>=0.12.1,<1.0.0
 
 # ── PDF-генератор (pdf_generator.py) ──────────────────────────────────────────
-# FIXED (#26): pdfkit и beautifulsoup4 использовались в коде, но не были
-# задекларированы (pdf_generator.py строки ~217, ~224)
+# FIXED (#26): pdfkit и beautifulsoup4 использовались в коде, но не задекларированы
+# (pdf_generator.py строки ~217, ~224)
 pdfkit>=1.0.0
 beautifulsoup4>=4.12.0
 
