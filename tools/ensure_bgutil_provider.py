@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Provision the pinned browserless BgUtils PO-token runtime for yt-dlp.
 
-The Python plugin comes from requirements-lock.txt.  Its JavaScript provider is
+The Python plugin comes from requirements-lock.txt. Its JavaScript provider is
 kept outside git under .runtime/ and is cloned/built once from the matching
-upstream release.  Subsequent starts only verify the pinned runtime marker.
+upstream release. Subsequent starts only verify the pinned runtime marker.
 """
 from __future__ import annotations
 
@@ -27,9 +27,27 @@ class ProvisionError(RuntimeError):
     """Raised when the pinned provider cannot be provisioned safely."""
 
 
+def _platform_command(command: list[str]) -> list[str]:
+    """Wrap Windows .cmd/.bat shims explicitly through cmd.exe.
+
+    npm/npx are normally installed as command scripts on Windows. Passing those
+    files directly to CreateProcess is not a stable cross-version contract, so
+    invoke the system command processor explicitly while keeping all arguments
+    controlled by this provisioner.
+    """
+    if not command:
+        raise ProvisionError("empty command")
+    suffix = Path(command[0]).suffix.lower()
+    if os.name == "nt" and suffix in {".cmd", ".bat"}:
+        comspec = os.environ.get("COMSPEC", "cmd.exe")
+        return [comspec, "/d", "/s", "/c", subprocess.list2cmdline(command)]
+    return command
+
+
 def _run(command: list[str], *, cwd: Path | None = None) -> None:
+    effective = _platform_command(command)
     proc = subprocess.run(
-        command,
+        effective,
         cwd=str(cwd) if cwd else None,
         check=False,
         text=True,
