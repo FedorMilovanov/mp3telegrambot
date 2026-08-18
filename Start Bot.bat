@@ -106,6 +106,20 @@ if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
     echo [SETUP] Dependencies are already current.
 )
 
+if not exist "tools\ensure_bgutil_provider.py" (
+    echo ERROR: tools\ensure_bgutil_provider.py not found.
+    pause
+    exit /b 1
+)
+"%VENV_PYTHON%" tools\ensure_bgutil_provider.py
+if errorlevel 1 (
+    echo.
+    echo ERROR: Browserless YouTube PO Token runtime is not ready.
+    echo Check git/npm/Node.js and the setup message above.
+    pause
+    exit /b 1
+)
+
 echo [START] Starting MP3 Telegram Bot...
 "%VENV_PYTHON%" bot_new.py
 set "BOT_EXIT_CODE=%ERRORLEVEL%"
