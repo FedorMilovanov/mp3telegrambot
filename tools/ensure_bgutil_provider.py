@@ -27,18 +27,20 @@ class ProvisionError(RuntimeError):
     """Raised when the pinned provider cannot be provisioned safely."""
 
 
-def _platform_command(command: list[str]) -> list[str]:
+def _platform_command(
+    command: list[str], *, platform_name: str | None = None
+) -> list[str]:
     """Wrap Windows .cmd/.bat shims explicitly through cmd.exe.
 
-    npm/npx are normally installed as command scripts on Windows. Passing those
-    files directly to CreateProcess is not a stable cross-version contract, so
-    invoke the system command processor explicitly while keeping all arguments
-    controlled by this provisioner.
+    ``platform_name`` exists only so the Windows branch can be unit-tested on a
+    non-Windows runner without mutating the process-wide ``os.name`` used by
+    pathlib/pytest. Production callers leave it unset.
     """
     if not command:
         raise ProvisionError("empty command")
     suffix = Path(command[0]).suffix.lower()
-    if os.name == "nt" and suffix in {".cmd", ".bat"}:
+    effective_platform = platform_name or os.name
+    if effective_platform == "nt" and suffix in {".cmd", ".bat"}:
         comspec = os.environ.get("COMSPEC", "cmd.exe")
         return [comspec, "/d", "/s", "/c", subprocess.list2cmdline(command)]
     return command
