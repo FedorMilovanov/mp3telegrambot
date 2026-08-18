@@ -9,26 +9,23 @@ import pytest
 from services import youtube_po_token_runtime as po
 
 
-def test_require_youtube_po_token_runtime_reports_versions_and_browser(
+def test_require_youtube_po_token_runtime_reports_browserless_bgutil(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    browser = tmp_path / "chrome.exe"
-    browser.write_bytes(b"browser")
-    versions = {
-        po.WPC_DISTRIBUTION: "1.1.2",
-        po.NODRIVER_DISTRIBUTION: "0.50.3",
-    }
-    monkeypatch.setattr(po.metadata, "version", lambda name: versions[name])
-    monkeypatch.setattr(po, "_require_wpc_module", lambda _version: None)
-    monkeypatch.setattr(po, "_discover_chromium_browser", lambda: browser)
+    provider_home = tmp_path / "server"
+    provider_home.mkdir()
+    monkeypatch.setattr(po.metadata, "version", lambda _name: "1.3.1")
+    monkeypatch.setattr(po, "_require_bgutil_module", lambda _version: None)
+    monkeypatch.setattr(po, "_require_provider_build", lambda: provider_home)
+    monkeypatch.setattr(po, "_require_node", lambda: "22.14.0")
 
     runtime = po.require_youtube_po_token_runtime()
 
-    assert runtime.provider_version == "1.1.2"
-    assert runtime.nodriver_version == "0.50.3"
-    assert runtime.browser_path == browser
-    assert runtime.status_text() == "WPC 1.1.2; nodriver 0.50.3; browser=chrome.exe"
+    assert runtime.provider_version == "1.3.1"
+    assert runtime.node_version == "22.14.0"
+    assert runtime.provider_home == provider_home
+    assert runtime.status_text() == "bgutil 1.3.1; node=22.14.0; browserless=on"
 
 
 def test_missing_po_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -41,31 +38,32 @@ def test_missing_po_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
         po.require_youtube_po_token_runtime()
 
 
-def test_locked_wpc_provider_imports_against_current_ytdlp() -> None:
-    provider_version = po._distribution_version(po.WPC_DISTRIBUTION)
-    po._require_wpc_module(provider_version)
+def test_locked_bgutil_provider_imports_against_current_ytdlp() -> None:
+    provider_version = po._distribution_version(po.BGUTIL_DISTRIBUTION)
+    assert provider_version == po.BGUTIL_EXPECTED_VERSION
+    po._require_bgutil_module(provider_version)
 
 
-def test_wpc_probe_uses_isolated_python_process(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bgutil_probe_uses_isolated_python_process(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run(command, **kwargs):
         captured["command"] = command
         captured["kwargs"] = kwargs
-        return SimpleNamespace(returncode=0, stdout="1.1.2\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="1.3.1\n", stderr="")
 
     monkeypatch.setattr(po.subprocess, "run", fake_run)
 
-    po._require_wpc_module("1.1.2")
+    po._require_bgutil_module("1.3.1")
 
     command = captured["command"]
     assert command[0] == po.sys.executable
     assert command[1] == "-c"
-    assert command[3:] == [po.WPC_MODULE, "1.1.2"]
+    assert command[3:] == [po.BGUTIL_MODULE, "1.3.1"]
     assert captured["kwargs"]["check"] is False
 
 
-def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bgutil_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         po.subprocess,
         "run",
@@ -77,10 +75,10 @@ def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatc
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="рассинхронизированную"):
-        po._require_wpc_module("1.1.2")
+        po._require_bgutil_module("1.3.1")
 
 
-def test_wpc_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bgutil_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         po.subprocess,
         "run",
@@ -92,30 +90,41 @@ def test_wpc_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="не импортируется"):
-        po._require_wpc_module("1.1.2")
+        po._require_bgutil_module("1.3.1")
 
 
-def test_browser_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(po.metadata, "version", lambda _name: "test")
-    monkeypatch.setattr(po, "_require_wpc_module", lambda _version: None)
+def test_missing_bgutil_build_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(tmp_path / "missing"))
 
-    def fail_browser() -> Path:
-        raise po.YouTubePoTokenRuntimeError("browser unavailable")
-
-    monkeypatch.setattr(po, "_discover_chromium_browser", fail_browser)
-
-    with pytest.raises(po.YouTubePoTokenRuntimeError, match="browser unavailable"):
-        po.require_youtube_po_token_runtime()
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="Start Bot.bat"):
+        po._require_provider_build()
 
 
-def test_ytdlp_policy_uses_mweb_provider_without_manual_token_or_cookie_conflict() -> None:
+def test_old_wpc_browser_stack_is_not_a_dependency() -> None:
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    lock = Path("requirements-lock.txt").read_text(encoding="utf-8")
+
+    assert "bgutil-ytdlp-pot-provider==1.3.1" in requirements
+    assert "bgutil-ytdlp-pot-provider==1.3.1" in lock
+    assert "yt-dlp-getpot-wpc" not in requirements
+    assert "yt-dlp-getpot-wpc" not in lock
+    assert "nodriver==" not in requirements
+    assert "nodriver==" not in lock
+
+
+def test_ytdlp_policy_uses_mweb_bgutil_without_manual_token_or_cookie_conflict() -> None:
     config = Path("yt-dlp.conf").read_text(encoding="utf-8")
     lower = config.lower()
 
     assert "youtube:player_client=mweb" in config
+    assert "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server" in config
     assert "po_token=" not in lower
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
+    assert "wpc" not in lower
 
 
 def test_mweb_config_and_cookies_file_are_composed_together(
@@ -125,7 +134,8 @@ def test_mweb_config_and_cookies_file_are_composed_together(
     import services.ffmpeg as ff
 
     (tmp_path / "yt-dlp.conf").write_text(
-        '--extractor-args "youtube:player_client=mweb"\n',
+        '--extractor-args "youtube:player_client=mweb"\n'
+        '--extractor-args "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server"\n',
         encoding="utf-8",
     )
     cookies = tmp_path / "cookies.txt"
@@ -143,14 +153,12 @@ def test_mweb_config_and_cookies_file_are_composed_together(
     assert f"--cookies {cookies}" in joined
 
 
-def test_po_provider_dependencies_are_pinned() -> None:
-    requirements = Path("requirements.txt").read_text(encoding="utf-8")
-    lock = Path("requirements-lock.txt").read_text(encoding="utf-8")
+def test_start_launcher_provisions_bgutil_before_bot() -> None:
+    launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
+    provision = launcher.index("tools\\ensure_bgutil_provider.py")
+    start = launcher.index('"%VENV_PYTHON%" bot_new.py')
 
-    assert "yt-dlp-getpot-wpc==1.1.2" in requirements
-    assert "nodriver==0.50.3" in requirements
-    assert "yt-dlp-getpot-wpc==1.1.2" in lock
-    assert "nodriver==0.50.3" in lock
+    assert provision < start
 
 
 def test_factory_max_quality_selectors_remain_fail_closed() -> None:
