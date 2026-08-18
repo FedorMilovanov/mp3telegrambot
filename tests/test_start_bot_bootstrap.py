@@ -44,3 +44,17 @@ def test_start_bot_verifies_lock_after_install():
         "ERROR: Failed to install or verify dependencies "
         "from %REQUIREMENTS_FILE%."
     ) in source
+
+
+def test_start_bot_migrates_off_browser_wpc_and_bootstraps_bgutil():
+    source = Path("Start Bot.bat").read_text(encoding="utf-8")
+
+    assert "pip show yt-dlp-getpot-wpc" in source
+    assert "pip uninstall -y yt-dlp-getpot-wpc nodriver" in source
+    assert "tools\\bootstrap_bgutil_provider.py" in source
+    assert source.index("pip uninstall -y yt-dlp-getpot-wpc nodriver") < source.index(
+        "tools\\bootstrap_bgutil_provider.py"
+    )
+    assert source.index("tools\\bootstrap_bgutil_provider.py") < source.index(
+        'echo [START] Starting MP3 Telegram Bot...'
+    )
