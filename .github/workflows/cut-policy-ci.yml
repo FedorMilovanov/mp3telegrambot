@@ -6,6 +6,8 @@ on:
     branches: ["main"]
     paths:
       - "bot_new.py"
+      - "core/globals.py"
+      - "services/gemini_capacity_runtime.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -27,6 +29,8 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tools/bootstrap_bgutil_provider.py"
+      - "tests/test_gemini_capacity_runtime.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
@@ -46,11 +50,14 @@ on:
       - "requirements.txt"
       - "requirements-lock.txt"
       - "yt-dlp.conf"
+      - "Start Bot.bat"
       - ".github/workflows/cut-policy-ci.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "bot_new.py"
+      - "core/globals.py"
+      - "services/gemini_capacity_runtime.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -72,6 +79,8 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tools/bootstrap_bgutil_provider.py"
+      - "tests/test_gemini_capacity_runtime.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
@@ -91,6 +100,7 @@ on:
       - "requirements.txt"
       - "requirements-lock.txt"
       - "yt-dlp.conf"
+      - "Start Bot.bat"
       - ".github/workflows/cut-policy-ci.yml"
 
 concurrency:
@@ -132,6 +142,8 @@ jobs:
         run: >-
           python -m py_compile
           bot_new.py
+          core/globals.py
+          services/gemini_capacity_runtime.py
           services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
@@ -153,11 +165,13 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/bootstrap_bgutil_provider.py
           tools/run_pytest_with_annotations.py
 
       - name: Run focused regressions
         run: >-
           python tools/run_pytest_with_annotations.py -q
+          tests/test_gemini_capacity_runtime.py
           tests/test_youtube_po_token_runtime.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
@@ -178,6 +192,8 @@ jobs:
         run: >-
           python -m ruff check
           bot_new.py
+          core/globals.py
+          services/gemini_capacity_runtime.py
           services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
@@ -199,7 +215,9 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/bootstrap_bgutil_provider.py
           tools/run_pytest_with_annotations.py
+          tests/test_gemini_capacity_runtime.py
           tests/test_youtube_po_token_runtime.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
