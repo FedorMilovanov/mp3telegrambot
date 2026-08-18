@@ -106,6 +106,16 @@ if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
     echo [SETUP] Dependencies are already current.
 )
 
+rem Migration cleanup: #144 temporarily used browser-based WPC. Requirements
+rem changes do not uninstall removed packages, so an existing venv would retain
+rem WPC and yt-dlp could still invoke Chrome as an alternate provider.
+"%VENV_PYTHON%" -m pip show yt-dlp-getpot-wpc >nul 2>&1
+if not errorlevel 1 (
+    echo [SETUP] Removing obsolete browser-based WPC provider...
+    "%VENV_PYTHON%" -m pip uninstall -y yt-dlp-getpot-wpc nodriver >nul
+    if errorlevel 1 goto :pip_error
+)
+
 if not exist "tools\bootstrap_bgutil_provider.py" (
     echo ERROR: tools\bootstrap_bgutil_provider.py not found.
     pause
