@@ -17,6 +17,7 @@ os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from services.gemini_capacity_runtime import wrap_gemini_client
 
 flask_app = Flask(__name__)
 
@@ -173,12 +174,15 @@ if HAS_GEMINI:
 
 
 def _make_gemini_client(api_key: str):
+    raw_client = None
     if _gemini_http_options is not None:
         try:
-            return genai.Client(api_key=api_key, http_options=_gemini_http_options)
+            raw_client = genai.Client(api_key=api_key, http_options=_gemini_http_options)
         except TypeError:
             pass
-    return genai.Client(api_key=api_key)
+    if raw_client is None:
+        raw_client = genai.Client(api_key=api_key)
+    return wrap_gemini_client(raw_client)
 
 
 if HAS_GEMINI and GEMINI_API_KEY:
