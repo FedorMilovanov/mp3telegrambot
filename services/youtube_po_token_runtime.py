@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib import metadata
+from importlib import import_module, metadata
 from pathlib import Path
 
 
 WPC_DISTRIBUTION = "yt-dlp-getpot-wpc"
+WPC_MODULE = "yt_dlp_plugins.extractor.getpot_wpc"
 NODRIVER_DISTRIBUTION = "nodriver"
 
 
@@ -36,6 +37,24 @@ def _distribution_version(name: str) -> str:
             f"{name} не установлен. Запусти 'Start Bot.bat' или установи "
             "requirements-lock.txt перед запуском bot_new.py."
         ) from exc
+
+
+def _require_wpc_module(expected_version: str) -> None:
+    try:
+        module = import_module(WPC_MODULE)
+    except Exception as exc:
+        raise YouTubePoTokenRuntimeError(
+            "WPC PO Token provider установлен, но не импортируется вместе с текущим "
+            "yt-dlp/nodriver. Переустанови requirements-lock.txt."
+        ) from exc
+
+    module_version = str(getattr(module, "__version__", "") or "").strip()
+    if module_version and module_version != expected_version:
+        raise YouTubePoTokenRuntimeError(
+            "WPC PO Token provider имеет рассинхронизированную версию: "
+            f"distribution={expected_version} module={module_version}. "
+            "Переустанови requirements-lock.txt."
+        )
 
 
 def _discover_chromium_browser() -> Path:
@@ -69,6 +88,7 @@ def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
     """Require the production mweb/GVS token provider without quality fallback."""
     provider_version = _distribution_version(WPC_DISTRIBUTION)
     nodriver_version = _distribution_version(NODRIVER_DISTRIBUTION)
+    _require_wpc_module(provider_version)
     browser_path = _discover_chromium_browser()
     return YouTubePoTokenRuntime(
         provider_version=provider_version,
