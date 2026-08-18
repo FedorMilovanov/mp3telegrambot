@@ -53,6 +53,24 @@ def test_node_version_floor(monkeypatch: pytest.MonkeyPatch) -> None:
         setup._node_executable()
 
 
+def test_windows_command_shim_is_run_through_comspec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup.os, "name", "nt")
+    monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
+
+    command = setup._platform_command([r"C:\Program Files\nodejs\npm.cmd", "ci"])
+
+    assert command[:4] == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+    ]
+    assert "npm.cmd" in command[4]
+    assert "ci" in command[4]
+
+
 def test_provisioner_is_pinned_and_browserless_by_contract() -> None:
     source = Path("tools/ensure_bgutil_provider.py").read_text(encoding="utf-8")
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
