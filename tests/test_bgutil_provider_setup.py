@@ -63,3 +63,12 @@ def test_provisioner_is_pinned_and_browserless_by_contract() -> None:
     assert "Chrome" not in source
     assert "nodriver" not in source
     assert "bgutil-ytdlp-pot-provider==1.3.1" in requirements
+
+
+def test_launcher_removes_legacy_browser_provider_before_start() -> None:
+    launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
+    cleanup = launcher.index("pip uninstall -y yt-dlp-getpot-wpc nodriver")
+    provision = launcher.index("tools\\ensure_bgutil_provider.py")
+    start = launcher.index('"%VENV_PYTHON%" bot_new.py')
+
+    assert cleanup < provision < start
