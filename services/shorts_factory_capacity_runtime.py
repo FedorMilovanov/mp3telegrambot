@@ -17,9 +17,15 @@ from services import shorts_factory_capacity as capacity
 
 logger = logging.getLogger(__name__)
 
-_FACTORY_CAPACITY_PASS_ATTEMPTS = 4
+# A 503 is backend capacity pressure, not proof that an API key/quota is
+# exhausted. Retrying the same expensive HIGH request four times per client made
+# Factory spend many minutes hammering the same overloaded route before rotating.
+# Two attempts per client still provide exponential recovery while keeping the
+# full Gemini 3.7/HIGH three-pass quality contract and trying every configured
+# client. There is no lower-model fallback here.
+_FACTORY_CAPACITY_PASS_ATTEMPTS = 2
 _FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
-_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 120.0
+_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0
 _FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0
 
 
@@ -85,7 +91,7 @@ async def _run_pass_with_capacity_retry(
                 status_msg,
                 "⚠️ Gemini 3.7 HIGH вернула 503/high demand. "
                 f"Повторяю текущий проход {attempt + 1}/"
-                f"{_FACTORY_CAPACITY_PASS_ATTEMPTS} на том же ключе и уже "
+                f"{_FACTORY_CAPACITY_PASS_ATTEMPTS} на том же клиенте и уже "
                 f"загруженном analysis-аудио через {delay:.1f} сек…",
             )
             await asyncio.sleep(delay)
@@ -152,7 +158,7 @@ async def create_factory_plan_resumable(
         try:
             await capacity.safe_status(
                 status_msg,
-                f"🧠 Gemini 3.7 MAX · ключ {index}/{len(clients)}: готовлю аудио…",
+                f"🧠 Gemini 3.7 MAX · клиент {index}/{len(clients)}: готовлю аудио…",
             )
             if file_size <= 18 * 1024 * 1024:
                 audio_part = candidates.types.Part.from_bytes(
@@ -171,7 +177,7 @@ async def create_factory_plan_resumable(
                         ),
                     ),
                     label=(
-                        f"⬆️ Gemini 3.7 · ключ {index}/{len(clients)}: "
+                        f"⬆️ Gemini 3.7 · клиент {index}/{len(clients)}: "
                         "загружаю analysis-аудио…"
                     ),
                     status_msg=status_msg,
@@ -179,7 +185,7 @@ async def create_factory_plan_resumable(
                 uploaded = await capacity.await_with_heartbeat(
                     candidates._wait_uploaded_file(client, uploaded),
                     label=(
-                        f"⏳ Gemini 3.7 · ключ {index}/{len(clients)}: "
+                        f"⏳ Gemini 3.7 · клиент {index}/{len(clients)}: "
                         "сервер обрабатывает аудио…"
                     ),
                     status_msg=status_msg,
@@ -200,7 +206,7 @@ async def create_factory_plan_resumable(
                     ),
                     max_tokens=32000,
                     label=(
-                        f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
+                        f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
                         "· проход 1/3…"
                     ),
                     status_msg=status_msg,
@@ -214,7 +220,7 @@ async def create_factory_plan_resumable(
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
                     label=(
-                        f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
+                        f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
                         "· проход 2/3…"
                     ),
                     status_msg=status_msg,
@@ -229,7 +235,7 @@ async def create_factory_plan_resumable(
                 ),
                 max_tokens=28000,
                 label=(
-                    f"🧠 Gemini 3.7 HIGH · ключ {index}/{len(clients)} "
+                    f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
                     "· проход 3/3…"
                 ),
                 status_msg=status_msg,
@@ -277,22 +283,22 @@ async def create_factory_plan_resumable(
                 capacity_overload = True
                 if index < len(clients):
                     message = (
-                        f"⚠️ Gemini 3.7 вернула 503/high demand на ключе "
-                        f"{index}/{len(clients)} после длительных повторов HIGH-прохода. "
-                        "Переключаюсь на следующий ключ без понижения модели…"
+                        f"⚠️ Gemini 3.7 вернула 503/high demand на клиенте "
+                        f"{index}/{len(clients)} после bounded HIGH-повторов. "
+                        "Переключаюсь на следующий клиент без понижения модели…"
                     )
                 else:
                     message = (
-                        f"⚠️ Gemini 3.7 вернула 503/high demand на последнем ключе "
-                        f"{index}/{len(clients)} после длительных повторов HIGH-прохода."
+                        f"⚠️ Gemini 3.7 вернула 503/high demand на последнем клиенте "
+                        f"{index}/{len(clients)} после bounded HIGH-повторов."
                     )
                 await capacity.safe_status(status_msg, message)
                 continue
             if action == "rotate":
                 await capacity.safe_status(
                     status_msg,
-                    f"⚠️ Gemini 3.7 временно недоступна на ключе "
-                    f"{index}/{len(clients)}. Переключаю ключ без повторения "
+                    f"⚠️ Gemini 3.7 временно недоступна на клиенте "
+                    f"{index}/{len(clients)}. Переключаю клиент без повторения "
                     "уже завершённых проходов…",
                 )
                 continue
@@ -307,12 +313,12 @@ async def create_factory_plan_resumable(
     if capacity_overload:
         raise RuntimeError(
             "Gemini 3.7 сейчас перегружена (503/high demand). "
-            "Длительные экспоненциальные повторы HIGH-прохода и все настроенные "
-            "API-ключи/клиенты исчерпаны. Качество не понижено: "
-            "3.6/3.5/Lite не использовались. Analysis-аудио сохранено в retry-кэше "
-            "примерно на "
-            f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — "
-            "повторите Factory позже."
+            f"Все {len(clients)} настроенных API-клиента получили 503 после bounded "
+            "экспоненциальных повторов. Это НЕ означает, что API-ключи или квота "
+            "исчерпаны: 503 — ошибка доступности backend, а quota/rate-limit обычно "
+            "возвращается как 429. Качество не понижено: 3.6/3.5/Lite не "
+            "использовались. Analysis-аудио сохранено в retry-кэше примерно на "
+            f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         ) from last_error
 
     raise RuntimeError(

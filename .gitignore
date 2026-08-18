@@ -5,6 +5,7 @@
 .env.*.local
 .venv/
 venv/
+.runtime/
 
 # =============== Python ===============
 __pycache__/
