@@ -15,6 +15,7 @@ __pycache__/
 
 # =============== Project ===============
 downloads/
+.runtime/
 bot_cache.db
 bot_cache.db.bak.*
 *.db
