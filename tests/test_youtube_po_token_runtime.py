@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib import metadata
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +20,7 @@ def test_require_youtube_po_token_runtime_reports_versions_and_browser(
         po.NODRIVER_DISTRIBUTION: "0.50.3",
     }
     monkeypatch.setattr(po.metadata, "version", lambda name: versions[name])
+    monkeypatch.setattr(po, "_require_wpc_module", lambda _version: None)
     monkeypatch.setattr(po, "_discover_chromium_browser", lambda: browser)
 
     runtime = po.require_youtube_po_token_runtime()
@@ -39,8 +41,30 @@ def test_missing_po_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
         po.require_youtube_po_token_runtime()
 
 
+def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        po,
+        "import_module",
+        lambda _name: SimpleNamespace(__version__="0.0.0"),
+    )
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="рассинхронизированную"):
+        po._require_wpc_module("1.1.2")
+
+
+def test_wpc_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken_import(_name: str) -> object:
+        raise ImportError("incompatible provider")
+
+    monkeypatch.setattr(po, "import_module", broken_import)
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="не импортируется"):
+        po._require_wpc_module("1.1.2")
+
+
 def test_browser_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(po.metadata, "version", lambda _name: "test")
+    monkeypatch.setattr(po, "_require_wpc_module", lambda _version: None)
 
     def fail_browser() -> Path:
         raise po.YouTubePoTokenRuntimeError("browser unavailable")
