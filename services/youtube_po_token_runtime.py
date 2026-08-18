@@ -50,17 +50,17 @@ def _discover_chromium_browser() -> Path:
         raw_path = find_chrome_executable()
     except Exception as exc:
         raise YouTubePoTokenRuntimeError(
-            "Chrome/Chromium-compatible browser не найден для автоматического "
-            "YouTube PO Token. Установи Chrome/Chromium/Edge/Brave в стандартное "
-            "место и перезапусти бот."
+            "Chrome/Chromium не найден для автоматического YouTube PO Token. "
+            "WPC использует Chromium-браузер для выдачи video-bound GVS token; "
+            "установи Google Chrome или Chromium и перезапусти бот."
         ) from exc
 
     path = Path(str(raw_path or "")).expanduser()
     if not raw_path or not path.is_file():
         raise YouTubePoTokenRuntimeError(
-            "Chrome/Chromium-compatible browser не найден для автоматического "
-            "YouTube PO Token. Установи Chrome/Chromium/Edge/Brave в стандартное "
-            "место и перезапусти бот."
+            "Chrome/Chromium не найден для автоматического YouTube PO Token. "
+            "WPC использует Chromium-браузер для выдачи video-bound GVS token; "
+            "установи Google Chrome или Chromium и перезапусти бот."
         )
     return path
 
