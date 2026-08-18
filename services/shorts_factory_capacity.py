@@ -2,7 +2,9 @@
 """Pure Factory Gemini capacity/retry policy.
 
 No installer, ContextVar or runtime rebinding lives here. Request-local progress
-is passed explicitly by the Factory owner.
+is passed explicitly by the Factory owner. Gemini 503 ownership is centralized
+in services.gemini_capacity_runtime; Factory-specific clients explicitly disable
+SDK HTTP retries and are wrapped by that shared controller.
 """
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ import asyncio
 import math
 import os
 from typing import Any, Awaitable
+
+from services.gemini_capacity_runtime import wrap_gemini_client
 
 FACTORY_HTTP_TIMEOUT_MS = 900_000
 
@@ -76,7 +80,7 @@ def _factory_api_keys() -> list[str]:
 
 
 def factory_gemini_clients() -> list[Any]:
-    """Create Factory clients with a 900s request timeout and SDK retries off."""
+    """Create Factory clients with SDK retries off and shared 503 control on."""
     from core import globals as core_globals
 
     if (
@@ -90,7 +94,7 @@ def factory_gemini_clients() -> list[Any]:
         retry_options=core_globals.types.HttpRetryOptions(attempts=1),
     )
     return [
-        core_globals.genai.Client(api_key=key, http_options=options)
+        wrap_gemini_client(core_globals.genai.Client(api_key=key, http_options=options))
         for key in _factory_api_keys()
     ]
 
