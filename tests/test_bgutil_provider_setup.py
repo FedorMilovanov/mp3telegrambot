@@ -56,10 +56,12 @@ def test_node_version_floor(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_windows_command_shim_is_run_through_comspec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(setup.os, "name", "nt")
     monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
 
-    command = setup._platform_command([r"C:\Program Files\nodejs\npm.cmd", "ci"])
+    command = setup._platform_command(
+        [r"C:\Program Files\nodejs\npm.cmd", "ci"],
+        platform_name="nt",
+    )
 
     assert command[:4] == [
         r"C:\Windows\System32\cmd.exe",
