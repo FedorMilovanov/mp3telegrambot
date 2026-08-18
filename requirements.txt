@@ -1,6 +1,7 @@
 # Системные зависимости (не pip, установить отдельно):
 #   ffmpeg  — для пересжатия аудио в 64kbps
 #   nodejs>=22 или deno>=2.3 — для yt-dlp js-runtimes (обход YouTube n/SABR challenge)
+#   Chrome/Chromium-compatible browser — для автоматического YouTube GVS PO Token
 #   Noto Sans — шрифт для субтитров Shorts (fonts.google.com/noto)
 
 # ── Telegram Bot ──────────────────────────────────────────────────────────────
@@ -10,11 +11,16 @@ python-telegram-bot[socks]>=22.5,<23.0
 # ── YouTube downloader ────────────────────────────────────────────────────────
 # FIXED v21 (#6): убрана верхняя граница <2026.0.0; добавлен экстра [default]
 # (включает mutagen, pycryptodomex, websockets — нужны для части форматов)
-# >=2026.7.4: фикс CVE-2026-55404 (command injection через --write-link);
+# >=2026.7.4: фикс CVE-2026-55404 (command injection через --write-link).
+# YouTube с 2026-08 усилил GVS PO-token enforcement: maximum-quality потоки
+# не должны деградировать до format 18/360p. Featured provider WPC автоматически
+# mint'ит video-bound GVS token для mweb и получает proxy из yt-dlp request.
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
 yt-dlp[default]>=2026.7.4
+yt-dlp-getpot-wpc==1.1.2
+nodriver==0.50.3
 
-# ── HTTP-клиент ───────────────────────────────────────────────────────────────
+# ── HTTP-клиент ────────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована
 requests>=2.31.0
 
@@ -27,7 +33,7 @@ Pillow>=10.0.0,<12.0.0
 # breaking changes 2.0 касаются только Interactions API, generate_content не тронут.
 google-genai>=2.0.0,<3.0.0
 
-# ── Health-check сервер ───────────────────────────────────────────────────────
+# ── Health-check сервер ────────────────────────────────────────────────────────
 flask>=3.0.0,<4.0.0
 
 # ── Production WSGI-сервер ────────────────────────────────────────────────────
@@ -44,7 +50,7 @@ faster-whisper>=1.0.0
 numpy>=1.24.0
 soundfile>=0.12.1,<1.0.0
 
-# ── PDF-генератор (pdf_generator.py) ─────────────────────────────────────────
+# ── PDF-генератор (pdf_generator.py) ──────────────────────────────────────────
 # FIXED (#26): pdfkit и beautifulsoup4 использовались в коде, но не были
 # задекларированы (pdf_generator.py строки ~217, ~224)
 pdfkit>=1.0.0
