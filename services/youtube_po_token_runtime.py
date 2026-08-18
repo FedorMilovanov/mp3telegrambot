@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Fail-closed readiness checks for YouTube maximum-quality PO-token routing."""
+"""Fail-closed readiness checks for browserless YouTube PO-token routing."""
 from __future__ import annotations
 
+import os
+import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -9,11 +12,13 @@ from importlib import metadata
 from pathlib import Path
 
 
-WPC_DISTRIBUTION = "yt-dlp-getpot-wpc"
-WPC_MODULE = "yt_dlp_plugins.extractor.getpot_wpc"
-NODRIVER_DISTRIBUTION = "nodriver"
-_WPC_PROBE_TIMEOUT_SEC = 20
-_WPC_PROBE_CODE = """\
+BGUTIL_DISTRIBUTION = "bgutil-ytdlp-pot-provider"
+BGUTIL_MODULE = "yt_dlp_plugins.extractor.getpot_bgutil"
+BGUTIL_EXPECTED_VERSION = "1.3.1"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PROVIDER_HOME = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider" / "server"
+_PROVIDER_PROBE_TIMEOUT_SEC = 20
+_PROVIDER_PROBE_CODE = """\
 import importlib
 import sys
 
@@ -31,13 +36,13 @@ class YouTubePoTokenRuntimeError(RuntimeError):
 @dataclass(frozen=True)
 class YouTubePoTokenRuntime:
     provider_version: str
-    nodriver_version: str
-    browser_path: Path
+    node_version: str
+    provider_home: Path
 
     def status_text(self) -> str:
         return (
-            f"WPC {self.provider_version}; nodriver {self.nodriver_version}; "
-            f"browser={self.browser_path.name}"
+            f"bgutil {self.provider_version}; node={self.node_version}; "
+            "browserless=on"
         )
 
 
@@ -58,20 +63,13 @@ def _probe_tail(process: object, limit: int = 900) -> str:
     return detail[-limit:]
 
 
-def _require_wpc_module(expected_version: str) -> None:
-    """Validate WPC in an isolated interpreter without polluting yt-dlp's registry.
-
-    Importing a yt-dlp extractor plugin in the bot process registers its provider
-    globally. yt-dlp's normal plugin loader then imports/registers it again and
-    raises ``PoTokenProvider WPC already registered``. Probe compatibility in a
-    child interpreter instead, leaving the production process untouched for the
-    official plugin loader.
-    """
+def _require_bgutil_module(expected_version: str) -> None:
+    """Validate the plugin in a child interpreter without polluting yt-dlp state."""
     command = [
         sys.executable,
         "-c",
-        _WPC_PROBE_CODE,
-        WPC_MODULE,
+        _PROVIDER_PROBE_CODE,
+        BGUTIL_MODULE,
         expected_version,
     ]
     try:
@@ -81,12 +79,12 @@ def _require_wpc_module(expected_version: str) -> None:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=_WPC_PROBE_TIMEOUT_SEC,
+            timeout=_PROVIDER_PROBE_TIMEOUT_SEC,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise YouTubePoTokenRuntimeError(
-            "WPC PO Token provider установлен, но его изолированная проверка "
+            "bgutil PO Token plugin установлен, но его изолированная проверка "
             "совместимости не запускается. Переустанови requirements-lock.txt."
         ) from exc
 
@@ -97,59 +95,86 @@ def _require_wpc_module(expected_version: str) -> None:
     if process.returncode == 3:
         actual_version = str(getattr(process, "stdout", "") or "").strip() or "unknown"
         raise YouTubePoTokenRuntimeError(
-            "WPC PO Token provider имеет рассинхронизированную версию: "
+            "bgutil PO Token plugin имеет рассинхронизированную версию: "
             f"distribution={expected_version} module={actual_version}. "
             "Переустанови requirements-lock.txt."
         )
 
     suffix = f" Детали: {detail}" if detail else ""
     raise YouTubePoTokenRuntimeError(
-        "WPC PO Token provider установлен, но не импортируется вместе с текущим "
-        f"yt-dlp/nodriver. Переустанови requirements-lock.txt.{suffix}"
+        "bgutil PO Token plugin установлен, но не импортируется вместе с текущим "
+        f"yt-dlp. Переустанови requirements-lock.txt.{suffix}"
     )
 
 
-def _discover_chromium_browser() -> Path:
-    try:
-        from nodriver.core.config import find_chrome_executable
-    except Exception as exc:  # pragma: no cover - dependency failure path
-        raise YouTubePoTokenRuntimeError(
-            "nodriver не импортируется; автоматический YouTube PO Token недоступен"
-        ) from exc
+def _provider_home() -> Path:
+    configured = os.getenv("BGUTIL_PROVIDER_HOME", "").strip()
+    return Path(configured).expanduser().resolve() if configured else DEFAULT_PROVIDER_HOME
 
-    try:
-        raw_path = find_chrome_executable()
-    except Exception as exc:
-        raise YouTubePoTokenRuntimeError(
-            "Chrome/Chromium не найден для автоматического YouTube PO Token. "
-            "WPC использует Chromium-браузер для выдачи video-bound GVS token; "
-            "установи Google Chrome или Chromium и перезапусти бот."
-        ) from exc
 
-    path = Path(str(raw_path or "")).expanduser()
-    if not raw_path or not path.is_file():
+def _require_provider_build() -> Path:
+    home = _provider_home()
+    generated = home / "build" / "generate_once.js"
+    if not generated.is_file():
         raise YouTubePoTokenRuntimeError(
-            "Chrome/Chromium не найден для автоматического YouTube PO Token. "
-            "WPC использует Chromium-браузер для выдачи video-bound GVS token; "
-            "установи Google Chrome или Chromium и перезапусти бот."
+            "browserless bgutil runtime не собран. Запусти 'Start Bot.bat': "
+            "он установит pinned bgutil provider в .runtime без Chrome."
         )
-    return path
+    return home
+
+
+def _require_node() -> str:
+    node = shutil.which("node")
+    if not node:
+        raise YouTubePoTokenRuntimeError(
+            "Node.js не найден; browserless bgutil требует Node.js >=20"
+        )
+    try:
+        process = subprocess.run(
+            [node, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise YouTubePoTokenRuntimeError("Не удалось запустить Node.js") from exc
+    version = (process.stdout or process.stderr or "").strip().lstrip("v")
+    match = re.match(r"(\d+)", version)
+    if process.returncode or not match:
+        raise YouTubePoTokenRuntimeError("Не удалось определить версию Node.js")
+    if int(match.group(1)) < 20:
+        raise YouTubePoTokenRuntimeError(
+            f"Node.js {version} < 20; обнови Node.js"
+        )
+    return version
 
 
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
-    """Require the production mweb/GVS token provider without quality fallback."""
-    provider_version = _distribution_version(WPC_DISTRIBUTION)
-    nodriver_version = _distribution_version(NODRIVER_DISTRIBUTION)
-    _require_wpc_module(provider_version)
-    browser_path = _discover_chromium_browser()
+    """Require mweb + automatic browserless GVS token generation, fail closed."""
+    provider_version = _distribution_version(BGUTIL_DISTRIBUTION)
+    if provider_version != BGUTIL_EXPECTED_VERSION:
+        raise YouTubePoTokenRuntimeError(
+            f"ожидался bgutil {BGUTIL_EXPECTED_VERSION}, установлен {provider_version}; "
+            "переустанови requirements-lock.txt"
+        )
+    _require_bgutil_module(provider_version)
+    provider_home = _require_provider_build()
+    node_version = _require_node()
     return YouTubePoTokenRuntime(
         provider_version=provider_version,
-        nodriver_version=nodriver_version,
-        browser_path=browser_path,
+        node_version=node_version,
+        provider_home=provider_home,
     )
 
 
 __all__ = [
+    "BGUTIL_DISTRIBUTION",
+    "BGUTIL_EXPECTED_VERSION",
+    "BGUTIL_MODULE",
+    "DEFAULT_PROVIDER_HOME",
     "YouTubePoTokenRuntime",
     "YouTubePoTokenRuntimeError",
     "require_youtube_po_token_runtime",
