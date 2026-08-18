@@ -46,11 +46,34 @@ def test_locked_wpc_provider_imports_against_current_ytdlp() -> None:
     po._require_wpc_module(provider_version)
 
 
+def test_wpc_probe_uses_isolated_python_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout="1.1.2\n", stderr="")
+
+    monkeypatch.setattr(po.subprocess, "run", fake_run)
+
+    po._require_wpc_module("1.1.2")
+
+    command = captured["command"]
+    assert command[0] == po.sys.executable
+    assert command[1] == "-c"
+    assert command[3:] == [po.WPC_MODULE, "1.1.2"]
+    assert captured["kwargs"]["check"] is False
+
+
 def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        po,
-        "import_module",
-        lambda _name: SimpleNamespace(__version__="0.0.0"),
+        po.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=3,
+            stdout="0.0.0\n",
+            stderr="",
+        ),
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="рассинхронизированную"):
@@ -58,10 +81,15 @@ def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatc
 
 
 def test_wpc_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def broken_import(_name: str) -> object:
-        raise ImportError("incompatible provider")
-
-    monkeypatch.setattr(po, "import_module", broken_import)
+    monkeypatch.setattr(
+        po.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="ImportError: incompatible provider",
+        ),
+    )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="не импортируется"):
         po._require_wpc_module("1.1.2")
