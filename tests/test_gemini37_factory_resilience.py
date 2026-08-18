@@ -136,10 +136,10 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     assert "flac" not in command
 
 
-def test_capacity_defaults_are_bounded_without_sdk_retry_cascade():
+def test_capacity_defaults_rotate_early_without_sdk_retry_cascade():
     import services.shorts_factory_capacity_runtime as runtime
 
-    assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 4
+    assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 2
     assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
-    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 120.0
+    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
     assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
