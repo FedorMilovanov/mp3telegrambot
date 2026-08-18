@@ -2,14 +2,26 @@
 """Fail-closed readiness checks for YouTube maximum-quality PO-token routing."""
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import dataclass
-from importlib import import_module, metadata
+from importlib import metadata
 from pathlib import Path
 
 
 WPC_DISTRIBUTION = "yt-dlp-getpot-wpc"
 WPC_MODULE = "yt_dlp_plugins.extractor.getpot_wpc"
 NODRIVER_DISTRIBUTION = "nodriver"
+_WPC_PROBE_TIMEOUT_SEC = 20
+_WPC_PROBE_CODE = """\
+import importlib
+import sys
+
+module = importlib.import_module(sys.argv[1])
+module_version = str(getattr(module, "__version__", "") or "").strip()
+print(module_version)
+raise SystemExit(0 if not module_version or module_version == sys.argv[2] else 3)
+"""
 
 
 class YouTubePoTokenRuntimeError(RuntimeError):
@@ -39,22 +51,62 @@ def _distribution_version(name: str) -> str:
         ) from exc
 
 
+def _probe_tail(process: object, limit: int = 900) -> str:
+    stderr = str(getattr(process, "stderr", "") or "").strip()
+    stdout = str(getattr(process, "stdout", "") or "").strip()
+    detail = stderr or stdout
+    return detail[-limit:]
+
+
 def _require_wpc_module(expected_version: str) -> None:
+    """Validate WPC in an isolated interpreter without polluting yt-dlp's registry.
+
+    Importing a yt-dlp extractor plugin in the bot process registers its provider
+    globally. yt-dlp's normal plugin loader then imports/registers it again and
+    raises ``PoTokenProvider WPC already registered``. Probe compatibility in a
+    child interpreter instead, leaving the production process untouched for the
+    official plugin loader.
+    """
+    command = [
+        sys.executable,
+        "-c",
+        _WPC_PROBE_CODE,
+        WPC_MODULE,
+        expected_version,
+    ]
     try:
-        module = import_module(WPC_MODULE)
-    except Exception as exc:
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_WPC_PROBE_TIMEOUT_SEC,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
         raise YouTubePoTokenRuntimeError(
-            "WPC PO Token provider установлен, но не импортируется вместе с текущим "
-            "yt-dlp/nodriver. Переустанови requirements-lock.txt."
+            "WPC PO Token provider установлен, но его изолированная проверка "
+            "совместимости не запускается. Переустанови requirements-lock.txt."
         ) from exc
 
-    module_version = str(getattr(module, "__version__", "") or "").strip()
-    if module_version and module_version != expected_version:
+    if process.returncode == 0:
+        return
+
+    detail = _probe_tail(process)
+    if process.returncode == 3:
+        actual_version = str(getattr(process, "stdout", "") or "").strip() or "unknown"
         raise YouTubePoTokenRuntimeError(
             "WPC PO Token provider имеет рассинхронизированную версию: "
-            f"distribution={expected_version} module={module_version}. "
+            f"distribution={expected_version} module={actual_version}. "
             "Переустанови requirements-lock.txt."
         )
+
+    suffix = f" Детали: {detail}" if detail else ""
+    raise YouTubePoTokenRuntimeError(
+        "WPC PO Token provider установлен, но не импортируется вместе с текущим "
+        f"yt-dlp/nodriver. Переустанови requirements-lock.txt.{suffix}"
+    )
 
 
 def _discover_chromium_browser() -> Path:
