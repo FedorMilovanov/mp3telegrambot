@@ -41,6 +41,11 @@ def test_missing_po_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
         po.require_youtube_po_token_runtime()
 
 
+def test_locked_wpc_provider_imports_against_current_ytdlp() -> None:
+    provider_version = po._distribution_version(po.WPC_DISTRIBUTION)
+    po._require_wpc_module(provider_version)
+
+
 def test_wpc_module_version_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         po,
@@ -83,6 +88,31 @@ def test_ytdlp_policy_uses_mweb_provider_without_manual_token_or_cookie_conflict
     assert "po_token=" not in lower
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
+
+
+def test_mweb_config_and_cookies_file_are_composed_together(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import services.ffmpeg as ff
+
+    (tmp_path / "yt-dlp.conf").write_text(
+        '--extractor-args "youtube:player_client=mweb"\n',
+        encoding="utf-8",
+    )
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ff, "COOKIES_FILE", cookies)
+    monkeypatch.setattr(ff, "_supported_js_runtimes", lambda: [])
+    monkeypatch.setattr(ff, "_proxy_for_ytdlp", lambda: "")
+
+    args = ff._build_ytdlp_base_args()
+    joined = " ".join(map(str, args))
+
+    assert "--config-location yt-dlp.conf" in joined
+    assert f"--cookies {cookies}" in joined
 
 
 def test_po_provider_dependencies_are_pinned() -> None:
