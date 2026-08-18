@@ -40,6 +40,24 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+# YouTube changed GVS authorization in 2026-08: maximum-quality media URLs may
+# require a video-bound Proof-of-Origin token. This is a production dependency,
+# not an optional quality downgrade. Validate the automatic provider before the
+# bot accepts work so direct `python bot_new.py` launches fail early and clearly.
+from services.youtube_po_token_runtime import (
+    YouTubePoTokenRuntimeError,
+    require_youtube_po_token_runtime,
+)
+
+try:
+    _youtube_po_runtime = require_youtube_po_token_runtime()
+except YouTubePoTokenRuntimeError as exc:
+    print(f"❌ YouTube maximum-quality runtime не готов: {exc}")
+    print("   Качество не понижено: format 18/360p fallback не используется.")
+    sys.exit(2)
+else:
+    print(f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}")
+
 from services import emit_service_bootstrap_diagnostics
 from services.bot_lifecycle import run_bot_process
 from services.database_migrations import apply_database_migrations

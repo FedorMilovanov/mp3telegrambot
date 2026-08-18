@@ -5,6 +5,8 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "bot_new.py"
+      - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
       - "services/shorts_factory_source.py"
@@ -25,6 +27,7 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
@@ -40,11 +43,15 @@ on:
       - "tests/test_highlights_candidate_gate.py"
       - "tests/test_segment_delivery_media.py"
       - "tools/run_pytest_with_annotations.py"
+      - "requirements.txt"
       - "requirements-lock.txt"
+      - "yt-dlp.conf"
       - ".github/workflows/cut-policy-ci.yml"
   pull_request:
     branches: ["main"]
     paths:
+      - "bot_new.py"
+      - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
       - "services/shorts_factory_source.py"
@@ -65,6 +72,7 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
@@ -80,7 +88,9 @@ on:
       - "tests/test_highlights_candidate_gate.py"
       - "tests/test_segment_delivery_media.py"
       - "tools/run_pytest_with_annotations.py"
+      - "requirements.txt"
       - "requirements-lock.txt"
+      - "yt-dlp.conf"
       - ".github/workflows/cut-policy-ci.yml"
 
 concurrency:
@@ -121,6 +131,8 @@ jobs:
       - name: Compile source-owned cut/factory surfaces
         run: >-
           python -m py_compile
+          bot_new.py
+          services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
           services/shorts_factory_source.py
@@ -146,6 +158,7 @@ jobs:
       - name: Run focused regressions
         run: >-
           python tools/run_pytest_with_annotations.py -q
+          tests/test_youtube_po_token_runtime.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
@@ -164,6 +177,8 @@ jobs:
       - name: Ruff focused owners
         run: >-
           python -m ruff check
+          bot_new.py
+          services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
           services/shorts_factory_source.py
@@ -185,6 +200,7 @@ jobs:
           pipelines/clips.py
           pipelines/montage.py
           tools/run_pytest_with_annotations.py
+          tests/test_youtube_po_token_runtime.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
