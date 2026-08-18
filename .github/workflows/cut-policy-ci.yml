@@ -6,6 +6,8 @@ on:
     branches: ["main"]
     paths:
       - "bot_new.py"
+      - "Start Bot.bat"
+      - "converters/caption.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -27,7 +29,10 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tools/ensure_bgutil_provider.py"
       - "tests/test_youtube_po_token_runtime.py"
+      - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_caption_fallback_warning.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
@@ -51,6 +56,8 @@ on:
     branches: ["main"]
     paths:
       - "bot_new.py"
+      - "Start Bot.bat"
+      - "converters/caption.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -72,7 +79,10 @@ on:
       - "pipelines/shorts.py"
       - "pipelines/clips.py"
       - "pipelines/montage.py"
+      - "tools/ensure_bgutil_provider.py"
       - "tests/test_youtube_po_token_runtime.py"
+      - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_caption_fallback_warning.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
@@ -132,6 +142,7 @@ jobs:
         run: >-
           python -m py_compile
           bot_new.py
+          converters/caption.py
           services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
@@ -153,12 +164,15 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/ensure_bgutil_provider.py
           tools/run_pytest_with_annotations.py
 
       - name: Run focused regressions
         run: >-
           python tools/run_pytest_with_annotations.py -q
           tests/test_youtube_po_token_runtime.py
+          tests/test_bgutil_provider_setup.py
+          tests/test_caption_fallback_warning.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
@@ -178,6 +192,7 @@ jobs:
         run: >-
           python -m ruff check
           bot_new.py
+          converters/caption.py
           services/youtube_po_token_runtime.py
           services/shorts_factory_execution_guard.py
           services/shorts_factory_quality_gate.py
@@ -199,8 +214,11 @@ jobs:
           pipelines/shorts.py
           pipelines/clips.py
           pipelines/montage.py
+          tools/ensure_bgutil_provider.py
           tools/run_pytest_with_annotations.py
           tests/test_youtube_po_token_runtime.py
+          tests/test_bgutil_provider_setup.py
+          tests/test_caption_fallback_warning.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
           tests/test_factory_execution_and_cut_source_policy.py
