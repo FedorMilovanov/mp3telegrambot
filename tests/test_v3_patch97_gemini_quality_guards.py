@@ -15,10 +15,15 @@ def test_audio_analysis_is_primary_model_only_even_with_legacy_lite_env(monkeypa
     ]
 
 
-def test_audio_and_text_quota_exhaustion_mark_models():
+def test_audio_quota_is_not_promoted_to_model_global_exhaustion():
+    """Gemini API limits are project-scoped, not model-global across keys."""
     audio_src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     pages_src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
-    assert "mark_model_exhausted(_current_model, last_err)" in audio_src
+
+    assert "mark_model_exhausted" not in audio_src
+    assert "limits are project-scoped" in audio_src
+    # Telegraph is the explicit remaining legacy owner tracked by issue #159;
+    # keep this assertion until that follow-up source refactor lands.
     assert "mark_model_exhausted(model_name, _client_err)" in pages_src
 
 
