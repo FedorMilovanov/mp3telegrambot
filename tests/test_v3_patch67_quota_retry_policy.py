@@ -11,6 +11,8 @@ def test_audio_quota_has_priority_over_overload_retry():
     assert "Quota is project/model-level; retrying same key only wastes time." in src
 
 
-def test_audio_second_503_circle_is_not_used_for_quota():
+def test_audio_has_no_second_full_503_circle_for_any_error_class():
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
-    assert "(not is_quota_error(last_err)) and is_overload_error(last_err)" in src
+    assert "second full re-upload circle is disabled" in src
+    assert "await asyncio.sleep(60)" not in src
+    assert "Gemini: второй круг успешен!" not in src
