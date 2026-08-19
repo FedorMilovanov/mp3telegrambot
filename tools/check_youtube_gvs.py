@@ -33,6 +33,20 @@ def _tail(text: str, limit: int = 4000) -> str:
 def _classify_failure(process: subprocess.CompletedProcess[str]) -> str:
     detail = f"{process.stdout or ''}\n{process.stderr or ''}"
     folded = detail.casefold()
+    provider_failure = any(
+        marker in folded
+        for marker in (
+            "_get_pot_via_script failed",
+            "all 3 retries failed",
+            "all 5 retries failed",
+            "failed to generate po token",
+            "po token provider rejected",
+        )
+    )
+    if provider_failure and "503" in folded:
+        return "FAIL_PO_PROVIDER_503"
+    if provider_failure:
+        return "FAIL_PO_PROVIDER"
     if "http error 403" in folded or "403: forbidden" in folded:
         return "FAIL_HTTP_403"
     if "sign in to confirm you" in folded or "login_required" in folded:
