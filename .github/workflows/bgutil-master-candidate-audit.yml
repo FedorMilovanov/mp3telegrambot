@@ -1,0 +1,63 @@
+name: Bgutil Master Candidate Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bgutil-master-candidate-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit-candidate:
+    name: Audit exact bgutil master candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Audit candidate dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_commit="a0be2352807e3bd6991f09d2cab685a0ab825b26"
+          git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git upstream-bgutil
+          git -C upstream-bgutil checkout --detach "$expected_commit"
+          actual_commit="$(git -C upstream-bgutil rev-parse HEAD)"
+          [[ "$actual_commit" == "$expected_commit" ]]
+          cd upstream-bgutil/server
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          package = json.loads(Path("package.json").read_text())
+          lock = json.loads(Path("package-lock.json").read_text())
+          print(f"PACKAGE_VERSION={package.get('version')}")
+          print(f"LOCK_ROOT_VERSION={lock.get('version')}")
+          print(f"NODE_ENGINE={package.get('engines', {}).get('node')}")
+          PY
+
+          set +e
+          npm audit --omit=dev --json > "$RUNNER_TEMP/bgutil-prod-audit.json"
+          prod_rc=$?
+          npm audit --json > "$RUNNER_TEMP/bgutil-full-audit.json"
+          full_rc=$?
+          set -e
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          def report(label, path):
+              data = json.loads(Path(path).read_text(encoding="utf-8"))
+              counts = data.get("metadata", {}).get("vulnerabilities", {})
+              print(f"{label}_COUNTS=" + json.dumps(counts, sort_keys=True))
+              for name, item in sorted((data.get("vulnerabilities", {}) or {}).items()):
+                  item = item or {}
+                  print(f"{label}_VULN package={name} severity={item.get('severity')} direct={item.get('isDirect')} range={item.get('range')} fixAvailable={item.get('fixAvailable')}")
+          report("PROD", os.environ["RUNNER_TEMP"] + "/bgutil-prod-audit.json")
+          report("FULL", os.environ["RUNNER_TEMP"] + "/bgutil-full-audit.json")
+          PY
+          echo "PROD_AUDIT_EXIT=$prod_rc"
+          echo "FULL_AUDIT_EXIT=$full_rc"
+          exit 0
