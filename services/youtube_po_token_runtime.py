@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,13 @@ BGUTIL_EXPECTED_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROVIDER_ROOT = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider"
 DEFAULT_PROVIDER_HOME = DEFAULT_PROVIDER_ROOT / "server"
+YTDLP_POLICY_FILE = PROJECT_ROOT / "yt-dlp.conf"
+EXPECTED_PLUGIN_DIR = ".runtime/bgutil-ytdlp-pot-provider"
+EXPECTED_YOUTUBE_ROUTE = "youtube:player_client=mweb"
+EXPECTED_BGUTIL_ROUTE = (
+    "youtubepot-bgutilscript:server_home="
+    ".runtime/bgutil-ytdlp-pot-provider/server"
+)
 _PROVIDER_PROBE_TIMEOUT_SEC = 20
 _PROVIDER_PROBE_CODE = """\
 import importlib
@@ -74,6 +82,110 @@ def _require_no_legacy_browser_provider() -> None:
         "yt-dlp-getpot-wpc nodriver; затем снова запусти Start Bot.bat. "
         "Chrome fallback в production запрещён."
     )
+
+
+def _parse_ytdlp_policy(path: Path) -> list[str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="strict")
+    except OSError as exc:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf отсутствует или не читается; exact-source PO Token policy "
+            "не может быть доказана"
+        ) from exc
+    try:
+        return shlex.split(text, comments=True, posix=True)
+    except ValueError as exc:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf синтаксически повреждён; exact-source PO Token policy "
+            "не может быть доказана"
+        ) from exc
+
+
+def _option_values(tokens: list[str], option: str) -> list[str]:
+    values: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == option:
+            if index + 1 >= len(tokens):
+                raise YouTubePoTokenRuntimeError(
+                    f"yt-dlp.conf: {option} задан без значения"
+                )
+            values.append(tokens[index + 1])
+            index += 2
+            continue
+        prefix = option + "="
+        if token.startswith(prefix):
+            values.append(token[len(prefix):])
+        index += 1
+    return values
+
+
+def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
+    """Prove that yt-dlp cannot fall back to global plugins or another client."""
+    tokens = _parse_ytdlp_policy(path)
+    try:
+        disable_index = tokens.index("--no-plugin-dirs")
+    except ValueError as exc:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf не отключает default/global plugin directories"
+        ) from exc
+
+    plugin_values = _option_values(tokens, "--plugin-dirs")
+    if plugin_values != [EXPECTED_PLUGIN_DIR]:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf должен разрешать ровно один pinned plugin root: "
+            f"{EXPECTED_PLUGIN_DIR}; actual={plugin_values or 'none'}"
+        )
+    plugin_token_indexes = [
+        idx
+        for idx, token in enumerate(tokens)
+        if token == "--plugin-dirs" or token.startswith("--plugin-dirs=")
+    ]
+    if not plugin_token_indexes or disable_index > plugin_token_indexes[0]:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf должен сначала отключить global plugins через "
+            "--no-plugin-dirs, затем разрешить pinned source root"
+        )
+
+    extractor_args = _option_values(tokens, "--extractor-args")
+    youtube_routes = [
+        value for value in extractor_args if value.startswith("youtube:player_client=")
+    ]
+    bgutil_routes = [
+        value
+        for value in extractor_args
+        if value.startswith("youtubepot-bgutilscript:server_home=")
+    ]
+    if youtube_routes != [EXPECTED_YOUTUBE_ROUTE]:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf должен использовать ровно youtube:player_client=mweb; "
+            f"actual={youtube_routes or 'none'}"
+        )
+    if bgutil_routes != [EXPECTED_BGUTIL_ROUTE]:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf должен направлять bgutil script provider в pinned .runtime; "
+            f"actual={bgutil_routes or 'none'}"
+        )
+
+    forbidden = (
+        "--cookies",
+        "--cookies-from-browser",
+    )
+    if any(
+        token in forbidden
+        or any(token.startswith(option + "=") for option in forbidden)
+        for token in tokens
+    ):
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf не должен владеть cookies; cookie policy принадлежит "
+            "services.ffmpeg"
+        )
+    if any("po_token=" in token.casefold() for token in tokens):
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf содержит manual po_token; production требует "
+            "автоматический video-bound provider"
+        )
 
 
 def _probe_tail(process: object, limit: int = 900) -> str:
@@ -203,6 +315,7 @@ def _require_node() -> str:
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
     """Require mweb + automatic browserless GVS token generation, fail closed."""
     _require_no_legacy_browser_provider()
+    _require_ytdlp_policy()
     provider_home = _require_provider_build()
     plugin_root = provider_home.parent / "plugin"
     provider_version = _require_bgutil_module(plugin_root, BGUTIL_EXPECTED_VERSION)
@@ -223,7 +336,11 @@ __all__ = [
     "BGUTIL_MODULE",
     "DEFAULT_PROVIDER_HOME",
     "DEFAULT_PROVIDER_ROOT",
+    "EXPECTED_BGUTIL_ROUTE",
+    "EXPECTED_PLUGIN_DIR",
+    "EXPECTED_YOUTUBE_ROUTE",
     "LEGACY_WPC_DISTRIBUTION",
+    "YTDLP_POLICY_FILE",
     "YouTubePoTokenRuntime",
     "YouTubePoTokenRuntimeError",
     "require_youtube_po_token_runtime",
