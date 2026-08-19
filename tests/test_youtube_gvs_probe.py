@@ -35,6 +35,8 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
 
 
 def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
+    import services.async_process as async_process
+
     captured: dict[str, object] = {}
 
     async def fake_runner(command, **kwargs):
@@ -42,7 +44,7 @@ def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
         captured["kwargs"] = kwargs
         return subprocess.CompletedProcess(command, 0, "ok", "")
 
-    monkeypatch.setattr(probe, "run_cancellable_process", fake_runner)
+    monkeypatch.setattr(async_process, "run_cancellable_process", fake_runner)
     monkeypatch.setattr(
         probe,
         "_production_command",
