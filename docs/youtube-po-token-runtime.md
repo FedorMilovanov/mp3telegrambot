@@ -8,39 +8,62 @@ maximum-quality format, and then receive HTTP 403 when the selected
 `googlevideo.com` URL is opened.
 
 This project does not treat a lower-resolution format as a recovery path.
-Shorts Factory MAX keeps its existing `bestaudio/best` and
-`bestvideo+bestaudio/best` contracts and fails closed when the maximum-quality
-source cannot be acquired completely.
+Shorts Factory MAX keeps `bestaudio/best` and `bestvideo+bestaudio/best` and
+fails closed when the maximum-quality source cannot be acquired completely.
 
 ## Production route
 
-The repository uses the yt-dlp PO Token Provider framework with:
+The production YouTube route is intentionally narrow:
 
 - YouTube client: `mweb`;
-- provider plugin: `bgutil-ytdlp-pot-provider==1.3.1`;
-- BgUtils JS source pinned to exact commit
-  `7608dd51ee813b48cf9a6d68c6e42cb197ce10e0`;
-- token generator: the repo-local browserless script runtime under `.runtime/`;
-- browser automation: **none**;
-- JavaScript runtime: Node.js for bgutil plus the existing Deno/Node +
-  `yt-dlp-ejs` path for YouTube JS challenges;
-- network path: the existing yt-dlp proxy selection in `services.ffmpeg`;
-- cookies: owned independently by `services.ffmpeg`; `yt-dlp.conf` contains no
-  cookie source.
+- PO provider: browserless bgutil script provider;
+- Python plugin and JavaScript generator: loaded from **one exact upstream
+  source tree**, commit `a0be2352807e3bd6991f09d2cab685a0ab825b26`;
+- source location: `.runtime/bgutil-ytdlp-pot-provider`;
+- yt-dlp plugin search: default/global plugin directories disabled with
+  `--no-plugin-dirs`; only the pinned `.runtime` source root is allowed;
+- provider server home:
+  `.runtime/bgutil-ytdlp-pot-provider/server`;
+- Node.js: >=22;
+- browser automation: none;
+- cookies and proxy: still owned by `services.ffmpeg` and are independent from
+  PO-token generation.
 
-The official yt-dlp PO Token guide lists bgutil as a featured provider. MP3Bot
-therefore does not keep WPC/nodriver in production dependencies. No visible
-Chrome window is part of normal RUS, Factory, subtitle, or metadata downloads.
-Startup also fails closed if the legacy `yt-dlp-getpot-wpc` distribution is
-manually reintroduced after migration.
+The bgutil PyPI wheel is deliberately **not** a Python dependency. Keeping the
+plugin and the JS runtime in the same exact source checkout prevents a released
+wheel from drifting away from the JS provider source.
 
 Tokens are generated automatically and are never stored in `.env`, committed
 to Git, or copied into commands manually.
 
+## Why the source pin changed
+
+The previously released bgutil `1.3.1` source at
+`7608dd51ee813b48cf9a6d68c6e42cb197ce10e0` was reproducible but its pinned npm
+lock contained security findings. An isolated 2026-08-19 audit of that exact
+source reported 9 production dependency findings (6 high) and 14 findings in
+the full graph.
+
+Upstream commit `a0be2352807e3bd6991f09d2cab685a0ab825b26` refreshed the dependency graph.
+The same isolated audit reported 0 production and 0 full-graph npm findings.
+Compatibility audits also proved that this source revision:
+
+- builds with Node 22;
+- imports its Python yt-dlp plugin against the project yt-dlp version;
+- is discovered as `bgutil:script-node-1.3.1`;
+- generates a non-empty video-bound PO token for the exact video ID used to
+  reproduce the original Factory 403.
+
+The upstream `plugin/pyproject.toml` at that revision is not directly installed
+because its README path currently points outside the plugin project directory.
+MP3Bot does not patch that packaging metadata. Instead, yt-dlp uses its native
+plugin-directory mechanism to load the upstream `yt_dlp_plugins` source in
+place. This preserves the reviewed upstream bytes and one-source-tree identity.
+
 ## Provisioning contract
 
-`Start Bot.bat` owns the JavaScript provider setup. After Python requirements
-are synchronized, it runs:
+`Start Bot.bat` owns source provisioning. After Python requirements are
+synchronized, it runs:
 
 ```powershell
 .\.venv\Scripts\python.exe tools\ensure_bgutil_provider.py
@@ -48,56 +71,63 @@ are synchronized, it runs:
 
 The provisioner:
 
-1. requires Node.js >=20 (the project already recommends Node >=22);
-2. clones bgutil release `1.3.1` into a staging directory under `.runtime/`;
-3. verifies `git rev-parse HEAD` is exactly
-   `7608dd51ee813b48cf9a6d68c6e42cb197ce10e0` before executing provider code;
-4. runs `npm ci` from the upstream lockfile;
-5. invokes only the TypeScript compiler installed by that `npm ci` from
+1. requires Node.js >=22;
+2. initializes a staging Git repository under `.runtime/`;
+3. fetches the exact reviewed bgutil commit SHA, not a moving branch or tag;
+4. verifies `git rev-parse HEAD` equals the exact expected SHA before provider
+   code is built;
+5. requires the Python plugin entry point to exist in the checkout;
+6. runs `npm ci --no-audit --no-fund` from the upstream lockfile;
+7. invokes only the TypeScript compiler installed by that `npm ci` from
    `server/node_modules/.bin/tsc` (`tsc.cmd` on Windows), never an on-demand
    `npx` download;
-6. verifies `build/generate_once.js` exists;
-7. atomically publishes the prepared runtime and records both version and exact
-   commit in `.mp3bot-bgutil-version`.
+8. verifies `server/build/generate_once.js` exists;
+9. atomically publishes the prepared source tree and writes
+   `1.3.1@a0be2352807e3bd6991f09d2cab685a0ab825b26` to the runtime marker.
 
-`.runtime/` is ignored by Git. On later starts the exact version+commit marker
-and generated script are checked, so there is no repeated clone/build cost.
-If the pinned tag ever resolves to another commit, provisioning fails instead
-of silently accepting changed upstream source.
+On later starts the marker, JS build, and Python plugin entry are checked before
+any network/build work, so a current runtime is reused.
 
-`Start Bot.bat` removes the obsolete WPC/nodriver stack once per virtual
-environment and writes `.venv/.wpc-provider-removed`. Recreating `.venv`
-naturally repeats the migration. The startup runtime check remains an
-independent guard against a manually reinstalled WPC provider.
+`Start Bot.bat` also performs two idempotent one-time migrations per virtual
+environment:
+
+- removes the obsolete WPC/nodriver browser provider;
+- removes the old `bgutil-ytdlp-pot-provider` PyPI wheel.
+
+Even before the second migration, `yt-dlp.conf` disables all default/global
+plugin directories, so a stale site-packages provider cannot be selected.
 
 ## Startup contract
 
-`bot_new.py` changes its working directory to the repository root before
-loading repo-relative configuration, then validates the PO-token runtime before
-accepting work. Startup requires:
+`bot_new.py` changes to the repository root and validates the YouTube runtime
+before accepting work. Startup requires:
 
-1. `bgutil-ytdlp-pot-provider==1.3.1` installed;
-2. no installed legacy `yt-dlp-getpot-wpc` distribution;
-3. an exact `1.3.1@7608dd51ee813b48cf9a6d68c6e42cb197ce10e0`
-   runtime marker;
-4. matching `.runtime/bgutil-ytdlp-pot-provider/server/build/generate_once.js`;
-5. Node.js >=20.
+1. no legacy `yt-dlp-getpot-wpc` distribution;
+2. `yt-dlp.conf` to contain exactly the source-only plugin restriction, mweb
+   route, and pinned bgutil server-home route;
+3. no cookie source or manual `po_token` in `yt-dlp.conf`;
+4. the exact runtime marker for `a0be2352...`;
+5. the Python plugin entry and `server/build/generate_once.js` in that same
+   source tree;
+6. an isolated child-process import proving the plugin module is loaded from
+   the pinned source directory, not site-packages;
+7. Node.js >=22.
 
-The plugin compatibility probe is executed in a child Python interpreter so it
-does not pre-register yt-dlp providers in the long-lived bot process.
+If any item is missing or has drifted, startup fails explicitly. This is
+intentional: the bot must not silently fall back to format 18 / 360p, another
+YouTube client, a global plugin, or a manually copied token.
 
-If any item is missing, startup stops with an explicit error. This is
-intentional: the bot must not silently fall back to format 18 / 360p or another
-quality downgrade.
+## Updating an existing local installation
 
-After a pull that changes runtime/dependency policy, use:
+After pulling a commit that changes this runtime, use the launcher once so the
+old wheel is removed and the new exact source is provisioned:
 
 ```powershell
 cd C:\Users\Fedor\Projects\mp3telegrambot
-& ".\Start Bot.bat"
+.\Start Bot.bat
 ```
 
-If launching manually, provision first:
+A manual direct launch is valid only after provisioning:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
@@ -107,54 +137,45 @@ If launching manually, provision first:
 
 ## Diagnostic smoke test
 
-Use a real public YouTube URL and the project virtual environment:
+For a healthy installation, verbose yt-dlp output should show only the pinned
+source plugin directory and a `bgutil:script-node-*` provider. No Chrome window
+should launch. A metadata-only success is insufficient: the final production
+acceptance is a real media acquisition through the same proxy/TUN/cookie path
+used by the bot.
 
-```powershell
-$url = "https://www.youtube.com/watch?v=REAL_VIDEO_ID"
-
-.\.venv\Scripts\python.exe -m yt_dlp -v --no-config `
-  --config-location yt-dlp.conf `
-  --js-runtimes deno `
-  --remote-components ejs:github `
-  -f "bestaudio/best" `
-  --no-playlist `
-  "$url"
-```
-
-For a healthy installation, verbose output should list a `bgutil:script-*`
-external PO Token provider instead of `PO Token Providers: none`. No Chrome
-window should be launched. The selected maximum-quality media URL must download
-successfully; metadata extraction alone is not a sufficient health check.
-
-For content that genuinely requires an authenticated YouTube session, use the
-existing cookie configuration. Cookies do not replace a required GVS PO Token.
+GitHub-hosted Azure runners cannot provide that final proof for the reproduced
+video because YouTube currently stops those runner IPs earlier with
+`LOGIN_REQUIRED / Sign in to confirm you’re not a bot`. The CI audits therefore
+prove source identity, plugin discovery, build compatibility and video-bound
+PO-token generation; the real GVS media read is verified on the production
+network path.
 
 ## Factory source-integrity contract
 
-Both Factory analysis audio and full video acquisition use
-`--abort-on-unavailable-fragments`. Source metadata duration is passed directly
-into acquisition. Analysis audio is verified from the decoded FFmpeg timeline;
-full video is probed and rejected if its duration does not match the expected
-source duration. The later render-source validator remains a second independent
-duration guard.
+Both Factory analysis audio and full video acquisition retain
+`--abort-on-unavailable-fragments`. Source metadata duration is passed into
+acquisition. Analysis audio is verified from the decoded FFmpeg timeline; full
+video is probed and rejected if its duration disagrees with expected source
+duration. The later render-source validator remains a second independent guard.
 
-Retry-cache persistence is only an optimization. A filesystem/cache write
-failure may be ignored only after the already-prepared analysis audio passes a
-fresh stream and decoded-duration verification. Media-integrity failures remain
-fail-closed.
+Retry-cache persistence is only an optimization. A cache write failure may be
+ignored only after the prepared analysis audio passes a fresh stream and
+decoded-duration verification. Media-integrity failures remain fail-closed.
 
 ## Quality invariants
 
 Do not fix future YouTube failures by:
 
-- forcing format 18 or a fixed low-resolution format;
+- forcing format 18 or another fixed low-resolution format;
 - removing `--abort-on-unavailable-fragments`;
 - accepting a partial media file after an HTTP/fragment failure;
+- enabling default/global yt-dlp plugin directories;
+- installing a second PO-provider implementation beside the pinned source tree;
 - embedding a manually copied PO Token in code, config, `.env`, CI, or logs;
 - disabling decoded-duration verification for Factory analysis audio;
 - accepting a full-video source whose duration disagrees with source metadata;
-- reintroducing browser automation into the normal downloader path without an
-  explicit, separately reviewed reason.
+- reintroducing browser automation into the normal downloader path without a
+  separately reviewed reason.
 
-If YouTube changes PO-token enforcement again, update the provider/client route
-and its tests while preserving maximum-quality selectors and integrity checks.
+If YouTube changes enforcement again, update the provider/client route and its
+tests while preserving maximum-quality selectors and integrity checks.
