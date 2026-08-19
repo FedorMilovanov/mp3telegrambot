@@ -1,0 +1,127 @@
+name: YouTube Runtime Compatibility Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/youtube-runtime-compat-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: released-bgutil__stable-ytdlp
+            provider_commit: "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+            provider_source: released
+            ytdlp_source: stable
+          - name: candidate-bgutil__stable-ytdlp
+            provider_commit: "a0be2352807e3bd6991f09d2cab685a0ab825b26"
+            provider_source: candidate
+            ytdlp_source: stable
+          - name: released-bgutil__fixed-ytdlp
+            provider_commit: "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+            provider_source: released
+            ytdlp_source: fixed
+          - name: candidate-bgutil__fixed-ytdlp
+            provider_commit: "a0be2352807e3bd6991f09d2cab685a0ab825b26"
+            provider_source: candidate
+            ytdlp_source: fixed
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install exact yt-dlp and bgutil pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+
+          if [[ "${{ matrix.ytdlp_source }}" == "stable" ]]; then
+            python -m pip install "yt-dlp[default]==2026.7.4" "yt-dlp-ejs==0.8.0"
+          else
+            python -m pip install "yt-dlp[default] @ git+https://github.com/yt-dlp/yt-dlp.git@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c"
+          fi
+
+          git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git provider
+          git -C provider checkout --detach "${{ matrix.provider_commit }}"
+          actual_provider="$(git -C provider rev-parse HEAD)"
+          [[ "$actual_provider" == "${{ matrix.provider_commit }}" ]]
+
+          if [[ "${{ matrix.provider_source }}" == "released" ]]; then
+            python -m pip install "bgutil-ytdlp-pot-provider==1.3.1"
+          else
+            python -m pip install ./provider/plugin
+          fi
+
+          pushd provider/server
+          npm ci --no-audit --no-fund
+          ./node_modules/.bin/tsc
+          test -f build/generate_once.js
+          popd
+
+          echo "=== toolchain ==="
+          python -m yt_dlp --version
+          python -m pip show bgutil-ytdlp-pot-provider | sed -n '1,12p'
+          node --version
+          npm --version
+          node provider/server/build/generate_once.js --version
+          echo "=== selected production dependency paths ==="
+          npm --prefix provider/server ls axios body-parser express path-to-regexp ws --omit=dev || true
+
+      - name: Exercise exact production mweb GVS path
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/ytdlp-probe.log"
+          out="$RUNNER_TEMP/probe.%(ext)s"
+
+          set +e
+          python -m yt_dlp \
+            --verbose \
+            --no-config \
+            --test \
+            --no-playlist \
+            --format "bestaudio/best" \
+            --js-runtimes node \
+            --remote-components ejs:github \
+            --extractor-args "youtube:player_client=mweb" \
+            --extractor-args "youtubepot-bgutilscript:server_home=$PWD/provider/server" \
+            --output "$out" \
+            "https://www.youtube.com/watch?v=-vq7fH7ANUs" \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          echo "YTDLP_EXIT=$rc"
+          echo "=== focused evidence ==="
+          grep -Ei "PO Token|bgutil|mweb|format|googlevideo|HTTP Error 403|ERROR:" "$log" || true
+
+          if grep -q "HTTP Error 403" "$log"; then
+            echo "GVS_403=1"
+            exit 43
+          fi
+          if [[ $rc -ne 0 ]]; then
+            echo "GVS_403=0 but yt-dlp failed with rc=$rc"
+            exit "$rc"
+          fi
+          echo "GVS_403=0"
