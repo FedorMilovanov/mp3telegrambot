@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/bgutil-open-fixes-matrix-audit.yml"
       - ".github/audit/forward_bgutil_pr243.py"
+      - ".github/audit/forward_bgutil_pr247.py"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ["baseline", "pr243", "forward243", "pr247", "pr243+pr247"]
+        variant: ["baseline", "forward243", "forward247", "forward243+forward247"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -40,8 +41,6 @@ jobs:
         run: |
           set -euo pipefail
           BASE=a0be2352807e3bd6991f09d2cab685a0ab825b26
-          PR243=fbe4ed47f3b63cf061f1158f18f74bcc90e54033
-          PR247=411d8d6d04a6bcb00108fd16165d2aae213d08a6
           git init provider
           git -C provider config user.email audit@example.invalid
           git -C provider config user.name audit
@@ -51,22 +50,15 @@ jobs:
           case "$VARIANT" in
             baseline)
               ;;
-            pr243)
-              git -C provider fetch --depth 2 origin "$PR243"
-              git -C provider cherry-pick FETCH_HEAD
-              ;;
             forward243)
               python .github/audit/forward_bgutil_pr243.py
               ;;
-            pr247)
-              git -C provider fetch --depth 2 origin "$PR247"
-              git -C provider cherry-pick FETCH_HEAD
+            forward247)
+              python .github/audit/forward_bgutil_pr247.py
               ;;
-            pr243+pr247)
-              git -C provider fetch --depth 2 origin "$PR243"
-              git -C provider cherry-pick FETCH_HEAD
-              git -C provider fetch --depth 2 origin "$PR247"
-              git -C provider cherry-pick FETCH_HEAD
+            forward243+forward247)
+              python .github/audit/forward_bgutil_pr243.py
+              python .github/audit/forward_bgutil_pr247.py
               ;;
             *)
               echo "unknown variant: $VARIANT" >&2
@@ -97,10 +89,8 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/pot.json"
           XDG_CACHE_HOME="$RUNNER_TEMP/cache" node provider/server/build/generate_once.js --content-binding=-vq7fH7ANUs --bypass-cache > "$out"
-          if [[ "$VARIANT" == "forward243" ]]; then
+          if [[ "$VARIANT" == "forward243" || "$VARIANT" == "forward243+forward247" ]]; then
             grep -F "Using challenge from the homepage (forward243)" "$out"
-          elif [[ "$VARIANT" == "pr243" || "$VARIANT" == "pr243+pr247" ]]; then
-            grep -F "Using challenge from the homepage (patched)" "$out"
           fi
           python -c 'import json,sys; from pathlib import Path; d=json.loads([x for x in Path(sys.argv[1]).read_text().splitlines() if x.strip()][-1]); assert d.get("poToken"); assert d.get("contentBinding")=="-vq7fH7ANUs"; print("VIDEO_BOUND_POT_OK=1 token_length="+str(len(d["poToken"])))' "$out"
       - name: Verify exact-source yt-dlp provider discovery
