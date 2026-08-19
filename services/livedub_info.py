@@ -2,10 +2,9 @@
 """Quality-first info cards for ENG Quick / LiveDub videos.
 
 These fields are user-visible semantic output: Telegram/YouTube copy, compact
-meaning summaries, theological terms and Scripture references.  The module owns
-the production route directly so correctness does not depend on a later runtime
-monkey-patch or import order: Gemini 3.7 Flash with HIGH thinking, no semantic
-3.5/Lite fallback.
+meaning summaries, theological terms and Scripture references. The module owns
+the exact Gemini 3.7/HIGH semantic route but delegates transport/retry/capacity
+to core.globals.gemini_generate, so it cannot start an independent retry storm.
 """
 from __future__ import annotations
 
@@ -18,13 +17,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.globals import GEMINI_CLIENTS, make_text_config_smart
+from core.globals import GEMINI_CLIENTS, gemini_generate, make_text_config_smart
 from core.text_utils import (
     _scrub_inline,
     _strip_meta_lines,
     normalize_common_typos,
     normalize_hashtag,
-    normalize_title_text,
     title_case_fragment,
 )
 from services import livedub_info_presentation_policy as presentation_policy
@@ -37,21 +35,16 @@ from services.livedub_info_evidence import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_INFO_MODEL = "gemini-3.7-flash"
-# Compatibility alias for older diagnostics/tests that imported this symbol.
 DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 
 
 def livedub_info_enabled() -> bool:
     return os.getenv("LIVEDUB_INFO_CARD", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
+        "0", "false", "no", "off",
     }
 
 
 def get_light_model() -> str:
-    """Return the approved semantic model (legacy helper name kept for callers)."""
     configured = (
         os.getenv("LIVEDUB_INFO_MODEL", DEFAULT_INFO_MODEL) or DEFAULT_INFO_MODEL
     ).strip()
@@ -65,7 +58,6 @@ def get_light_model() -> str:
 
 
 def get_light_model_fallbacks() -> list[str]:
-    """Never downgrade user-visible info-card semantics to the utility lane."""
     configured = os.getenv("LIVEDUB_INFO_FALLBACK_MODELS", "").strip()
     if configured:
         logger.warning(
@@ -86,8 +78,7 @@ def livedub_info_response_schema() -> dict:
             "compact_subtitles": {"type": "array", "items": {"type": "string"}},
             "hashtags": {"type": "array", "items": {"type": "string"}},
             "key_theological_terms": {
-                "type": "array",
-                "items": {"type": "string"},
+                "type": "array", "items": {"type": "string"},
             },
             "scripture_references": {
                 "type": "array",
@@ -102,12 +93,8 @@ def livedub_info_response_schema() -> dict:
             },
         },
         "required": [
-            "telegram_description",
-            "youtube_title",
-            "youtube_description",
-            "compact_subtitles",
-            "hashtags",
-            "key_theological_terms",
+            "telegram_description", "youtube_title", "youtube_description",
+            "compact_subtitles", "hashtags", "key_theological_terms",
             "scripture_references",
         ],
     }
@@ -188,12 +175,10 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         author_tag = normalize_hashtag(author_part)
         if author_tag and author_tag not in out["hashtags"]:
             out["hashtags"].insert(0, author_tag)
-
     return out
 
 
 def _gemini_clients_snapshot() -> tuple[Any, ...]:
-    """Return a request-local client order without mutating the shared registry."""
     return tuple(GEMINI_CLIENTS)
 
 
@@ -219,7 +204,6 @@ async def build_livedub_info_card(
     source_url: str = "",
     force: bool = False,
 ) -> dict | None:
-    """Build a quality-first reusable description pack for translated LiveDub."""
     if not (force or livedub_info_enabled()):
         return None
     fallback = _fallback_card(title_line, source_url)
@@ -232,16 +216,11 @@ async def build_livedub_info_card(
             evidence = full_srt_evidence(srt_path)
     except Exception as exc:
         logger.info("[LiveDubInfo] SRT read failed: %s", str(exc)[:120])
-        timed_text = ""
-        evidence = ""
 
     clients = _gemini_clients_snapshot()
     if not clients:
         return await _finalize_info_card(
-            fallback,
-            title_line=title_line,
-            source_url=source_url,
-            evidence=evidence,
+            fallback, title_line=title_line, source_url=source_url, evidence=evidence
         )
 
     prompt = f"""
@@ -268,65 +247,47 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
   "compact_subtitles": ["4-6 коротких тезисов/субтитров по смыслу, до 100-120 символов"],
   "hashtags": ["до 6 русских/английских хэштегов без пробелов"],
   "key_theological_terms": ["3-5 ключевых богословских терминов из видео на русском"],
-  "scripture_references": [
-    {{
-      "ref": "ссылка на Писание (например, Иоанна 3:16)",
-      "text_ru": "текст стиха на РУССКОМ языке (Синодальный перевод)"
-    }}
-  ]
+  "scripture_references": [{{"ref":"Иоанна 3:16","text_ru":"текст стиха на русском"}}]
 }}
 """.strip()
 
-    models = [get_light_model(), *get_light_model_fallbacks()]
-    last_error: Exception | None = None
-    for client_index, client in enumerate(clients, start=1):
-        for model in models:
-            try:
-                cfg = make_text_config_smart(
-                    max_output_tokens=1200,
-                    model_name=model,
-                    thinking_level="high",
-                    response_mime_type="application/json",
-                    response_schema=livedub_info_response_schema(),
-                )
-                resp = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                        config=cfg,
-                    ),
-                    timeout=90.0,
-                )
-                raw = _strip_json_fence(getattr(resp, "text", "") or "")
-                data = json.loads(raw)
-                card = _normalize_card(data, title_line, source_url)
-                card["model"] = model
-                return await _finalize_info_card(
-                    card,
-                    title_line=title_line,
-                    source_url=source_url,
-                    evidence=evidence,
-                )
-            except Exception as exc:
-                last_error = exc
-                logger.info(
-                    "[LiveDubInfo] client %d model %s failed: %s",
-                    client_index,
-                    model,
-                    str(exc)[:120],
-                )
-
-    if last_error:
-        logger.info(
-            "[LiveDubInfo] all clients/models failed (%s) — deterministic fallback",
-            str(last_error)[:160],
-        )
-    return await _finalize_info_card(
-        fallback,
-        title_line=title_line,
-        source_url=source_url,
-        evidence=evidence,
+    model = get_light_model()
+    cfg = make_text_config_smart(
+        max_output_tokens=1200,
+        model_name=model,
+        thinking_level="high",
+        response_mime_type="application/json",
+        response_schema=livedub_info_response_schema(),
     )
+
+    async def _call(client):
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=90.0,
+        )
+
+    try:
+        resp = await gemini_generate(list(clients), _call, model_name=model)
+        raw = _strip_json_fence(getattr(resp, "text", "") or "")
+        data = json.loads(raw)
+        card = _normalize_card(data, title_line, source_url)
+        card["model"] = model
+        return await _finalize_info_card(
+            card, title_line=title_line, source_url=source_url, evidence=evidence
+        )
+    except Exception as exc:
+        logger.info(
+            "[LiveDubInfo] shared Gemini route failed (%s: %s) — deterministic fallback",
+            type(exc).__name__,
+            str(exc)[:160],
+        )
+        return await _finalize_info_card(
+            fallback, title_line=title_line, source_url=source_url, evidence=evidence
+        )
 
 
 def _h(text: Any) -> str:
@@ -334,5 +295,4 @@ def _h(text: Any) -> str:
 
 
 def format_livedub_info_message(card: dict) -> str:
-    """Render the concise source-owned LiveDub publication card."""
     return presentation_policy.format_card_message(card)
