@@ -21,7 +21,7 @@ jobs:
   apply-audit-hardening:
     name: Apply audited hardening once
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/audit-hardening-no-quality-downgrade' }}
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 10
     permissions:
       contents: write
@@ -36,21 +36,26 @@ jobs:
         with:
           python-version: "3.13"
       - name: Apply exact audited transforms once
-        shell: bash
+        shell: pwsh
         run: |
-          if [[ -f .audit-hardening-applied ]]; then
-            echo "Audit hardening already applied on this branch."
+          if (Test-Path ".audit-hardening-applied") {
+            Write-Host "Audit hardening already applied on this branch."
             exit 0
-          fi
+          }
           python tools/apply_audit_hardening_once.py
+          if ($LASTEXITCODE -ne 0) { throw "Audited transform failed." }
           python -m compileall -q core services pipelines handlers tests tools bot_new.py
-          touch .audit-hardening-applied
+          if ($LASTEXITCODE -ne 0) { throw "Patched Python compile failed." }
+          New-Item -Path ".audit-hardening-applied" -ItemType File -Force | Out-Null
           git diff --check
+          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed." }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Apply audited hardening without quality downgrade [audit-patched]"
+          if ($LASTEXITCODE -ne 0) { throw "Patch commit failed." }
           git push origin HEAD:agent/audit-hardening-no-quality-downgrade
+          if ($LASTEXITCODE -ne 0) { throw "Patch push failed." }
 
   test:
     name: Python ${{ matrix.python-version }} safety checks
