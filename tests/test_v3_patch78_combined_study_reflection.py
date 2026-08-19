@@ -1,5 +1,6 @@
 """Regression tests for v3 patch 78 — optional combined Study+Reflection path."""
 
+import ast
 import inspect
 from pathlib import Path
 
@@ -69,9 +70,22 @@ def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
         "allow_model_fallback"
     ]
     assert parameter.default is False
+
+    function_source = inspect.getsource(_gemini_text_request)
+    tree = ast.parse(function_source)
+    executable_strings = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+
+    # Historical comments may name retired models, but executable policy must not.
+    assert not any("gemini-3.1-flash-lite" in value for value in executable_strings)
+    assert "_models = [GEMINI_MODEL]" in function_source
+    assert "_models.append" not in function_source
+    assert "strict semantic quality policy" in function_source
+
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
-    assert "gemini-3.1-flash-lite" not in src
-    assert "strict semantic quality policy" in src
     assert "allow_model_fallback=False" in src
 
 
