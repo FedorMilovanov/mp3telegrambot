@@ -1,0 +1,56 @@
+name: Bgutil Exact SHA Fetch Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bgutil-exact-fetch-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-fetch-build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Fetch exact source SHA and build provider
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expected = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
+          $repo = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
+          New-Item -ItemType Directory -Path provider | Out-Null
+          git -C provider init
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+          git -C provider remote add origin $repo
+          if ($LASTEXITCODE -ne 0) { throw "git remote add failed" }
+          git -C provider fetch --depth 1 origin $expected
+          if ($LASTEXITCODE -ne 0) { throw "exact SHA fetch failed" }
+          git -C provider checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "checkout FETCH_HEAD failed" }
+          $actual = (git -C provider rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "PIN_MISMATCH expected=$expected actual=$actual" }
+          Push-Location provider/server
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          if ($IsWindows) {
+            & .\node_modules\.bin\tsc.cmd
+          } else {
+            & ./node_modules/.bin/tsc
+          }
+          if ($LASTEXITCODE -ne 0) { throw "tsc failed" }
+          Pop-Location
+          if (-not (Test-Path provider/server/build/generate_once.js)) { throw "generate_once.js missing" }
+          if (-not (Test-Path provider/plugin/yt_dlp_plugins/extractor/getpot_bgutil.py)) { throw "plugin source missing" }
+          Write-Host "EXACT_FETCH_BUILD_OK=$actual"
