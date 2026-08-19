@@ -8,8 +8,13 @@ on:
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
+      - "yt-dlp.conf"
+      - "services/youtube_po_token_runtime.py"
+      - "tools/ensure_bgutil_provider.py"
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
+      - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_youtube_po_token_runtime.py"
       - ".github/workflows/windows-bootstrap-ci.yml"
   pull_request:
     branches: ["main"]
@@ -17,8 +22,13 @@ on:
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
+      - "yt-dlp.conf"
+      - "services/youtube_po_token_runtime.py"
+      - "tools/ensure_bgutil_provider.py"
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
+      - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_youtube_po_token_runtime.py"
       - ".github/workflows/windows-bootstrap-ci.yml"
 
 concurrency:
@@ -32,18 +42,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Install test runner
         run: python -m pip install pytest
 
-      - name: Compile bootstrap tests
-        run: python -m py_compile tests/test_start_bot_bootstrap.py tools/check_requirements_lock.py
+      - name: Compile bootstrap and YouTube runtime contracts
+        run: >-
+          python -m py_compile
+          tests/test_start_bot_bootstrap.py
+          tests/test_bgutil_provider_setup.py
+          tests/test_youtube_po_token_runtime.py
+          tools/check_requirements_lock.py
+          tools/ensure_bgutil_provider.py
+          services/youtube_po_token_runtime.py
 
-      - name: Validate BAT bootstrap contract
-        run: python -m pytest -q tests/test_start_bot_bootstrap.py
+      - name: Validate Windows bootstrap and exact-source YouTube contracts
+        run: >-
+          python -m pytest -q
+          tests/test_start_bot_bootstrap.py
+          tests/test_bgutil_provider_setup.py
+          tests/test_youtube_po_token_runtime.py
