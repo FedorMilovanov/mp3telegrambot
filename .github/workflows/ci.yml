@@ -38,12 +38,14 @@ jobs:
       - name: Apply exact audited transforms and remove temporary machinery
         shell: pwsh
         run: |
+          python tools/fix_audit_patcher_indent.py
+          if ($LASTEXITCODE -ne 0) { throw "Codemod correction failed." }
           python tools/apply_audit_hardening_once.py
           if ($LASTEXITCODE -ne 0) { throw "Audited transform failed." }
           python -m compileall -q core services pipelines handlers tests tools bot_new.py
           if ($LASTEXITCODE -ne 0) { throw "Patched Python compile failed." }
           git checkout origin/main -- .github/workflows/ci.yml
-          git rm -f .github/workflows/audit-hardening-apply.yml tools/apply_audit_hardening_once.py .audit-hardening-trigger
+          git rm -f .github/workflows/audit-hardening-apply.yml tools/apply_audit_hardening_once.py tools/fix_audit_patcher_indent.py .audit-hardening-trigger
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw "git diff --check failed." }
           git config user.name "github-actions[bot]"
