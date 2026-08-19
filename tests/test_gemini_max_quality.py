@@ -33,8 +33,15 @@ def test_heavy_quality_policy_forces_37_high_and_large_v3(monkeypatch):
     assert "semantic=gemini-3.7-flash/high" in diagnostic
 
 
-def test_model_aware_thinking_is_owned_by_core_config_helper():
+def test_model_aware_thinking_preserves_supported_37_recovery_levels():
     from core.globals import _effective_thinking_level
+
+    # 3.7 supports low/medium/high. Production defaults remain HIGH, but an
+    # explicit LOW recovery must stay LOW instead of being silently promoted.
+    assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
+    assert _effective_thinking_level("gemini-3.7-flash", "medium") == "medium"
+    assert _effective_thinking_level("gemini-3.7-flash", "high") == "high"
+    # 3.7 does not support minimal; fail safely back to the production default.
     assert _effective_thinking_level("gemini-3.7-flash", "minimal") == "high"
     assert _effective_thinking_level("gemini-3.5-flash-lite", "high") == "minimal"
     assert _effective_thinking_level("gemini-3.5-flash", "high") == "minimal"
@@ -84,6 +91,7 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     assert "def configured_gemini_service_tier()" in globals_src
     assert 'kwargs["service_tier"] = "priority"' in globals_src
     assert globals_src.count("_apply_gemini_service_tier(kwargs)") >= 2
+    assert "HttpRetryOptions(attempts=1)" in globals_src
     assert "sys.modules" not in globals_src
 
 
