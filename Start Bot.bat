@@ -7,6 +7,7 @@ set "VENV_DIR=.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "SETUP_MARKER=%VENV_DIR%\.setup-complete"
 set "WPC_MIGRATION_MARKER=%VENV_DIR%\.wpc-provider-removed"
+set "BGUTIL_WHEEL_MIGRATION_MARKER=%VENV_DIR%\.bgutil-wheel-removed"
 set "REQ_HASH_FILE=%VENV_DIR%\.requirements-hash.tmp"
 
 if not exist "bot_new.py" (
@@ -117,6 +118,19 @@ if not exist "%WPC_MIGRATION_MARKER%" (
         exit /b 1
     )
     >"%WPC_MIGRATION_MARKER%" echo browser-provider-removed-v1
+)
+
+rem One-time migration from the released bgutil wheel to one exact source tree.
+rem yt-dlp.conf already disables default/global plugin dirs, but remove the stale
+rem wheel as well so the venv contains no redundant provider implementation.
+if not exist "%BGUTIL_WHEEL_MIGRATION_MARKER%" (
+    "%VENV_PYTHON%" -m pip uninstall -y bgutil-ytdlp-pot-provider >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Failed to remove the obsolete bgutil Python provider wheel.
+        pause
+        exit /b 1
+    )
+    >"%BGUTIL_WHEEL_MIGRATION_MARKER%" echo exact-source-provider-v1
 )
 
 if not exist "tools\ensure_bgutil_provider.py" (
