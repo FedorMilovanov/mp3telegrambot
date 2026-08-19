@@ -7,7 +7,7 @@ Analytics, Questions, Terms, Study Analysis, Reflection.
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS, gemini_generate,   # FIX telegraph_pages
-    is_overload_error, is_quota_error, is_model_exhausted, mark_model_exhausted, make_text_config_smart,  # ULTIMATE FIX 3.5-FLASH
+    is_overload_error, is_quota_error, make_text_config_smart,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph_pages
 from core.text_utils import (
@@ -47,6 +47,7 @@ from core.content_audit import audit_expanded_sections, format_content_audit_iss
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.generated_pages import aget_related_materials, extract_scripture_refs
 from converters.md_telegraph import _build_related_materials_nodes
+from services import gemini_capacity_control as capacity_control
 
 import asyncio
 from typing import Optional, List, Tuple
@@ -534,15 +535,16 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 response_mime_type: str | None = None,
                                 response_schema=None,
                                 allow_model_fallback: bool = False) -> str | None:
-    """Strict-primary semantic Gemini request with bounded service retries.
+    """Strict-primary semantic Gemini request on the shared transport.
 
-    Model downgrade is forbidden: an unavailable primary model causes the
-    optional section to be omitted instead of being published from Lite.
+    Telegraph owns prompt/config/schema compatibility only. Client rotation,
+    timeout/503 recovery and the initial+2 transient budget are owned by
+    core.globals.gemini_generate; API-key count therefore cannot multiply one
+    transient failure. Model downgrade and model-global quota blacklists are
+    forbidden on this semantic route.
     """
     if not GEMINI_CLIENTS:
         return None
-
-    # Quality policy: this semantic route never downgrades models.
 
     _compacted = compact_prompt_for_generation(prompt)
     if _compacted.saved_chars:
@@ -551,29 +553,13 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             task, _compacted.original_chars, _compacted.compacted_chars, _compacted.removed_lines,
         )
     prompt = _compacted.text
-
-    # QUOTA-SMART FIX: умный 429 handling + time-budget
-    #
-    # При 429 (quota exhausted) — сразу к следующей модели.
-    # Ключи делят квоту проекта, поэтому при 429 на одном ключе
-    # все остальные ключи того же проекта тоже дадут 429.
-    # Не тратим время на бесполезный перебор ключей.
-    #
-    # При 503/500 (overload) — retry с короткой паузой, может пройти.
-    #
-    # КАЧЕСТВО: ВСЕ задачи на gemini-3.5-flash (GEMINI_MODEL).
-    # MODEL MIGRATION 2026-07: 2.5-flash-lite выключается ~22.07.2026 —
-    # резерв теперь GA gemini-3.1-flash-lite.
-    #
-    # Time-budget 180с — защита от зависания.
     _start_time = time.time()
-    _TIME_BUDGET = 180  # секунд
+    _TIME_BUDGET = 180
+    model_name = GEMINI_MODEL
 
     def _duration_ms() -> int:
         return int((time.time() - _start_time) * 1000)
 
-    # Semantic pages use only the configured production model (3.7 Flash).
-    _models = [GEMINI_MODEL]
     if allow_model_fallback:
         logger.warning(
             "_gemini_text_request[%s]: model fallback requested but ignored by "
@@ -581,186 +567,139 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             task,
         )
 
-    def _is_internal_error(e: Exception) -> bool:
+    def _is_internal_error(e: BaseException) -> bool:
         s = str(e)
         return "500" in s or "INTERNAL" in s.upper()
 
-    # Импортируем напрямую чтобы не идти через gemini_generate
-    from core.globals import GEMINI_CLIENTS as _CLIENTS
+    async def _request_on_client(client):
+        elapsed = time.time() - _start_time
+        if elapsed >= _TIME_BUDGET:
+            raise asyncio.TimeoutError(
+                f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)"
+            )
+        timeout = min(600.0, max(1.0, _TIME_BUDGET - elapsed))
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=make_text_config_smart(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                        model_name=model_name,
+                        thinking_level=thinking_level,
+                        response_mime_type=response_mime_type,
+                        response_schema=response_schema,
+                    ),
+                ),
+                timeout=timeout,
+            )
+        except Exception as _schema_err:
+            # Only a genuine schema/SDK compatibility error may spend one
+            # schema-less request. 429/500/503/timeout must go to the shared
+            # transport and consume its one global transient budget instead.
+            if (
+                response_schema is None
+                or is_quota_error(_schema_err)
+                or is_overload_error(_schema_err)
+                or _is_internal_error(_schema_err)
+                or capacity_control.is_timeout_error(_schema_err)
+            ):
+                raise
+            logger.warning(
+                "_gemini_text_request[%s]: structured output failed (%s: %s) — "
+                "retry legacy JSON config once on the same client",
+                model_name, type(_schema_err).__name__, str(_schema_err)[:180],
+            )
+            elapsed = time.time() - _start_time
+            if elapsed >= _TIME_BUDGET:
+                raise asyncio.TimeoutError(
+                    f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)"
+                )
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=make_text_config_smart(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                        model_name=model_name,
+                        thinking_level=thinking_level,
+                    ),
+                ),
+                timeout=min(600.0, max(1.0, _TIME_BUDGET - elapsed)),
+            )
+
+        try:
+            result = resp.text or ""
+        except (ValueError, AttributeError):
+            result = ""
+            if resp.candidates:
+                for part in resp.candidates[0].content.parts:
+                    if not getattr(part, "thought", False) and getattr(part, "text", None):
+                        result = part.text
+                        break
+        if result:
+            _meta = getattr(resp, 'usage_metadata', None)
+            _fr = str(resp.candidates[0].finish_reason) if getattr(resp, "candidates", None) else "?"
+            if _meta:
+                logger.info(
+                    "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s finish=%s",
+                    model_name,
+                    getattr(_meta, 'prompt_token_count', '?'),
+                    getattr(_meta, 'thoughts_token_count', '?'),
+                    getattr(_meta, 'candidates_token_count', '?'),
+                    _fr,
+                )
+            if "MAX_TOKENS" in _fr.upper():
+                logger.warning(
+                    "_gemini_text_request[%s]: ответ ОБРЕЗАН по max_tokens=%s "
+                    "(thinking съел бюджет) — хвост JSON потерян, поднимите профильный бюджет",
+                    model_name, max_tokens,
+                )
+            await alog_gemini_response(
+                response=resp,
+                task=task,
+                video_id=video_id,
+                model=model_name,
+                thinking_level=thinking_level,
+                duration_ms=_duration_ms(),
+                retry_num=0,
+                is_fallback=False,
+                json_valid=True,
+            )
+            return result
+        logger.warning(
+            "_gemini_text_request[%s]: пустой ответ (finish=%s)",
+            model_name,
+            resp.candidates[0].finish_reason if resp.candidates else "?",
+        )
+        return ""
 
     last_err = None
-    for model_idx, model_name in enumerate(_models):
-        if is_model_exhausted(model_name):
-            logger.warning("_gemini_text_request: пропускаю модель %s — quota exhausted in-memory", model_name)
-            continue
-        # Time-budget check
-        if time.time() - _start_time > _TIME_BUDGET:
-            logger.warning(
-                "_gemini_text_request: TIME-BUDGET (%ds) исчерпан — fallback",
-                _TIME_BUDGET,
-            )
-            break
-
-        if model_idx > 0:
-            raise AssertionError("semantic model fallback is disabled")
-
-        # 2 попытки на модель — fast fail
-        _max_attempts = 2
-        _all_keys_quota = True  # True = все ключи дали 429
-
-        for attempt in range(_max_attempts):
-            # Time-budget check
-            if time.time() - _start_time > _TIME_BUDGET:
-                break
-
-            _client_err = None
-            _got_response = False
-
-            for i, client in enumerate(_CLIENTS):
-                try:
-                    try:
-                        resp = await asyncio.wait_for(
-                            client.aio.models.generate_content(
-                                model=model_name,
-                                contents=prompt,
-                                config=make_text_config_smart(
-                                    temperature=temperature,
-                                    max_output_tokens=max_tokens,
-                                    model_name=model_name,
-                                    thinking_level=thinking_level,
-                                    response_mime_type=response_mime_type,
-                                    response_schema=response_schema,
-                                ),
-                            ),
-                            timeout=600.0,
-                        )
-                    except Exception as _schema_err:
-                        # Schema support can vary by SDK/model. Quota/overload/internal
-                        # must keep existing fallback semantics; schema-incompatibility
-                        # retries once with legacy JSON config on the same client.
-                        if response_schema is None or is_quota_error(_schema_err) or is_overload_error(_schema_err) or _is_internal_error(_schema_err):
-                            raise
-                        logger.warning(
-                            "_gemini_text_request[%s]: structured output failed (%s: %s) — retry legacy JSON config",
-                            model_name, type(_schema_err).__name__, str(_schema_err)[:180],
-                        )
-                        resp = await asyncio.wait_for(
-                            client.aio.models.generate_content(
-                                model=model_name,
-                                contents=prompt,
-                                config=make_text_config_smart(
-                                    temperature=temperature,
-                                    max_output_tokens=max_tokens,
-                                    model_name=model_name,
-                                    thinking_level=thinking_level,
-                                ),
-                            ),
-                            timeout=600.0,
-                        )
-                    try:
-                        result = resp.text or ""
-                    except (ValueError, AttributeError):
-                        result = ""
-                        if resp.candidates:
-                            for part in resp.candidates[0].content.parts:
-                                if not getattr(part, "thought", False) and getattr(part, "text", None):
-                                    result = part.text
-                                    break
-                    if result:
-                        # PATCH v2: thinking tokens logging
-                        _meta = getattr(resp, 'usage_metadata', None)
-                        _fr = str(resp.candidates[0].finish_reason) if getattr(resp, "candidates", None) else "?"
-                        if _meta:
-                            logger.info(
-                                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s finish=%s",
-                                model_name,
-                                getattr(_meta, 'prompt_token_count', '?'),
-                                getattr(_meta, 'thoughts_token_count', '?'),
-                                getattr(_meta, 'candidates_token_count', '?'),
-                                _fr,
-                            )
-                        # AUDIT R10 (лог 2026-07-06): Reflection упёрся в потолок
-                        # (thoughts+output == max_tokens) и JSON пришлось чинить
-                        # из обрезка. Обрезание должно быть ВИДНО в логе сразу.
-                        if "MAX_TOKENS" in _fr.upper():
-                            logger.warning(
-                                "_gemini_text_request[%s]: ответ ОБРЕЗАН по max_tokens=%s "
-                                "(thinking съел бюджет) — хвост JSON потерян, поднимите профильный бюджет",
-                                model_name, max_tokens,
-                            )
-                        await alog_gemini_response(
-                            response=resp,
-                            task=task,
-                            video_id=video_id,
-                            model=model_name,
-                            thinking_level=thinking_level,
-                            duration_ms=_duration_ms(),
-                            retry_num=attempt,
-                            is_fallback=model_idx > 0,
-                            json_valid=True,
-                        )
-                        return result
-                    logger.warning(
-                        "_gemini_text_request[%s]: пустой ответ (finish=%s)",
-                        model_name,
-                        resp.candidates[0].finish_reason if resp.candidates else "?",
-                    )
-                    _got_response = True
-                    _all_keys_quota = False
-                    break
-                except Exception as e:
-                    _client_err = e
-                    if is_quota_error(e):
-                        # ВАЖНО: При 429 переходим к следующему ключу!
-                        # Цикл ключей здесь ВНУТРИ цикла попыток, поэтому нужен continue, а не break.
-                        # Флаг _all_keys_quota не трогаем (остается True). Если все ключи дадут 429,
-                        # мы без лишних пауз перейдем к fallback-модели.
-                        _client_err = e
-                        continue
-                    # 503/500 или другая ошибка
-                    _all_keys_quota = False
-                    if _is_internal_error(e) or is_overload_error(e):
-                        continue
-                    raise
-
-            if _got_response:
-                break  # пустой ответ — следующая модель
-
-            # ГЛАВНЫЙ ФИКС: все ключи дали 429 — модель исчерпана,
-            # ретраить бесполезно, идём к следующей модели сразу
-            if _all_keys_quota:
-                mark_model_exhausted(model_name, _client_err)
-                logger.warning(
-                    "_gemini_text_request[%s]: квота 429 на всех ключах — помечаю модель exhausted и иду дальше",
-                    model_name,
-                )
-                last_err = _client_err
-                break
-
-            # 503/500 — пауза и retry
-            last_err = _client_err
-            if attempt < _max_attempts - 1:
-                wait = 15
-                logger.warning(
-                    "_gemini_text_request[%s]: 503/500 (попытка %d/%d), жду %dс...",
-                    model_name, attempt + 1, _max_attempts, wait,
-                )
-                await asyncio.sleep(wait)
-
-    if last_err:
-        elapsed = time.time() - _start_time
-        logger.warning(
-            "_gemini_text_request: все модели исчерпаны (за %.1fs), последняя ошибка: %s",
-            elapsed, str(last_err)[:200],
+    try:
+        result = await gemini_generate(
+            GEMINI_CLIENTS,
+            _request_on_client,
+            model_name=model_name,
         )
+        if result:
+            return result
+    except Exception as e:
+        last_err = e
+        logger.warning(
+            "_gemini_text_request[%s]: shared transport exhausted after %.1fs: %s",
+            task, time.time() - _start_time, str(e)[:200],
+        )
+
     await alog_gemini_run(
         task=task,
         video_id=video_id,
-        model=_models[-1] if _models else GEMINI_MODEL,
+        model=model_name,
         thinking_level=thinking_level,
         duration_ms=_duration_ms(),
-        retry_num=_max_attempts - 1 if '_max_attempts' in locals() else 0,
-        is_fallback=len(_models) > 1,
+        retry_num=max(0, capacity_control.transient_attempt_limit() - 1),
+        is_fallback=False,
         json_valid=False,
         error=(str(last_err)[:300] if last_err else "empty_response"),
     )
@@ -1556,9 +1495,6 @@ async def create_telegraph_study_reflection_combined(
     if not combined_study_reflection_enabled():
         return None
     if not GEMINI_CLIENTS:
-        return None
-    if is_model_exhausted(GEMINI_MODEL):
-        logger.warning("Combined Study+Reflection: primary model %s exhausted; using separate quality-first calls", GEMINI_MODEL)
         return None
 
     _ai = ai_data or {}
