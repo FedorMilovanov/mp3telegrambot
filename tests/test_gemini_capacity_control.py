@@ -83,16 +83,8 @@ def test_overload_cooldown_delays_following_heavy_call(monkeypatch):
         loop = asyncio.get_running_loop()
         started = loop.time()
         control.note_overload(0.03)
-        await control.run_heavy_gemini_call(asyncio.sleep)
-        return loop.time() - started
-
-    # run_heavy_gemini_call invokes call() without arguments; use a tiny wrapper.
-    async def corrected():
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        control.note_overload(0.03)
         await control.run_heavy_gemini_call(lambda: asyncio.sleep(0))
         return loop.time() - started
 
-    elapsed = asyncio.run(corrected())
+    elapsed = asyncio.run(scenario())
     assert elapsed >= 0.02
