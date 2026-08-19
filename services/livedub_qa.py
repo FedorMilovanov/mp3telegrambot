@@ -75,7 +75,6 @@ def _mean_volume_db(
     start: float = 0.0,
     dur: float = 120.0,
 ) -> Optional[float]:
-    """Средняя громкость выборки дорожки, дБ."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
@@ -107,7 +106,6 @@ def _mean_volume_db(
 
 
 def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
-    """Быстрые проверки целостности переведённого видео."""
     warnings: list[str] = []
     info = _ffprobe_json(dub_path)
     if info is None:
@@ -229,7 +227,6 @@ problem, should_be. Английские слова допускаются то�
 
 
 def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Optional[Path]:
-    """Извлекает аудио из переведённого видео в компактный mp3 для Gemini."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
@@ -279,7 +276,6 @@ async def _upload_and_wait(
     display_name: str,
     budget: capacity_control.GeminiRetryBudget,
 ):
-    """One bounded Files API upload attempt; clean remote handle on poll failure."""
     budget.claim()
     uf = None
     try:
@@ -290,7 +286,8 @@ async def _upload_and_wait(
                     mime_type="audio/mpeg",
                     display_name=display_name,
                 ),
-            )
+            ),
+            domain="files",
         )
         loop = asyncio.get_running_loop()
         start = loop.time()
@@ -301,7 +298,8 @@ async def _upload_and_wait(
                 )
             await asyncio.sleep(3)
             uf = await capacity_control.run_heavy_gemini_call(
-                lambda _name=uf.name: client.aio.files.get(name=_name)
+                lambda _name=uf.name: client.aio.files.get(name=_name),
+                domain="files",
             )
         if uf.state == "FAILED":
             raise RuntimeError("Gemini file processing FAILED")
@@ -309,7 +307,8 @@ async def _upload_and_wait(
     except Exception as exc:
         if is_overload_error(exc):
             capacity_control.note_overload(
-                capacity_control.transient_retry_delay(budget.used)
+                capacity_control.transient_retry_delay(budget.used),
+                domain="files",
             )
         if uf is not None and getattr(uf, "name", ""):
             try:
@@ -320,7 +319,6 @@ async def _upload_and_wait(
 
 
 def srt_to_timed_text(srt_path: Path, max_chars: int = 12000) -> str:
-    """SRT → компактный текст «[MM:SS] реплика» для Gemini."""
     try:
         raw = Path(srt_path).read_text(encoding="utf-8", errors="replace")
     except Exception:
@@ -357,7 +355,6 @@ def srt_to_timed_text(srt_path: Path, max_chars: int = 12000) -> str:
 
 
 def _parse_qa_json(text: str) -> Optional[dict]:
-    """Достаёт JSON из ответа модели (терпимо к ```json-обёрткам)."""
     if not text:
         return None
     cleaned = re.sub(
@@ -391,7 +388,6 @@ async def _run_translation_qa_base(
     existing_client=None,
     thinking_level: str = "high",
 ) -> Optional[dict]:
-    """Смысловая проверка дубляжа через Gemini; никогда не бросает наружу."""
     if not (HAS_GEMINI and GEMINI_CLIENTS and types is not None):
         logger.info("[LiveDubQA] Gemini недоступен — смысловая проверка пропущена")
         return None
@@ -399,6 +395,14 @@ async def _run_translation_qa_base(
         from core.database import GEMINI_MODEL
 
         model_name = GEMINI_MODEL
+
+    # Do not extract/re-upload any media while the inference circuit is already
+    # open from an exhausted previous segment/request.
+    try:
+        capacity_control.require_domain_available("inference")
+    except capacity_control.GeminiCapacityCircuitOpen as exc:
+        logger.warning("[LiveDubQA] %s", exc)
+        return None
 
     qa_audio = dub_video_path.parent / f"{dub_video_path.stem}_qa.mp3"
     uploaded: list = []
@@ -516,10 +520,7 @@ async def _run_translation_qa_base(
             nonlocal client_used, temp_original_audio
             client_used = client
             parts = []
-            if (
-                existing_original_active
-                and existing_client is client
-            ):
+            if existing_original_active and existing_client is client:
                 logger.info(
                     "[LiveDubQA] реюз audio_part основного анализа "
                     "(без повторной заливки)"
@@ -642,11 +643,6 @@ async def _run_translation_qa_base(
             clients_order.remove(existing_client)
             clients_order.insert(0, existing_client)
 
-        # A Files handle belongs to the client/key that created it. If that
-        # handle is the only available original reference, rotating to another
-        # key would silently drop the English evidence while the prompt still
-        # claimed it was attached. Retry the same owner instead, bounded by the
-        # same initial+2 inference budget.
         if existing_original_active and not original_path_available:
             if existing_client not in clients_order:
                 logger.warning(
@@ -765,7 +761,6 @@ async def run_translation_qa(
     existing_client=None,
     thinking_level: str = "high",
 ) -> Optional[dict]:
-    """Source-owned QA pipeline: evidence -> coverage -> confirmation."""
     from services.livedub_long_qa import run_long_translation_qa
     from services.livedub_qa_hardening import (
         annotate_qa_availability,
@@ -807,7 +802,6 @@ async def run_translation_qa(
 
 
 def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
-    """Собирает HTML-сообщение с результатом проверки перевода."""
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
     issues = [
@@ -904,7 +898,6 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
 
 
 def format_qa_report(qa: dict, video_url: str = "") -> str:
-    """Render one truthful report through pure source-owned decorators."""
     from services.livedub_long_qa import decorate_segment_report
     from services.livedub_qa_hardening import decorate_hardened_report
     from services.livedub_qa_trust import decorate_trust_report
@@ -922,7 +915,6 @@ def format_qa_report(qa: dict, video_url: str = "") -> str:
 
 
 def validate_livedub_qa_contract() -> str:
-    """Startup invariant for the direct QA pipeline."""
     from services.livedub_long_qa import run_long_translation_qa
     from services.livedub_qa_hardening import confirmed_result_one_to_one
     from services.livedub_qa_trust import apply_audio_trust
