@@ -67,8 +67,6 @@ def _domain(value: str) -> str:
 
 def _blocking_domains(domain: str) -> tuple[str, ...]:
     domain = _domain(domain)
-    # Files are preparatory to inference in this application. Avoid uploading
-    # media that cannot be consumed while inference is in an open circuit.
     return ("files", "inference") if domain == "files" else ("inference",)
 
 
@@ -90,6 +88,21 @@ def transient_attempt_limit() -> int:
     )
 
 
+def _retry_max_seconds() -> float:
+    base = _env_float(
+        "GEMINI_RETRY_BASE_SECONDS",
+        _DEFAULT_RETRY_BASE_SECONDS,
+        1.0,
+        120.0,
+    )
+    return _env_float(
+        "GEMINI_RETRY_MAX_SECONDS",
+        _DEFAULT_RETRY_MAX_SECONDS,
+        base,
+        300.0,
+    )
+
+
 def overload_circuit_seconds() -> float:
     return _env_float(
         "GEMINI_OVERLOAD_CIRCUIT_SECONDS",
@@ -106,12 +119,7 @@ def transient_retry_delay(failure_number: int) -> float:
         1.0,
         120.0,
     )
-    maximum = _env_float(
-        "GEMINI_RETRY_MAX_SECONDS",
-        _DEFAULT_RETRY_MAX_SECONDS,
-        base,
-        300.0,
-    )
+    maximum = _retry_max_seconds()
     jitter = _env_float(
         "GEMINI_RETRY_JITTER_SECONDS",
         _DEFAULT_RETRY_JITTER_SECONDS,
@@ -212,9 +220,6 @@ async def _respect_capacity_state(state: _LoopState, domain: str) -> None:
 async def heavy_gemini_slot(domain: str = "inference"):
     domain = _domain(domain)
     state = _loop_state()
-    # Fail a known-open circuit before joining the semaphore queue. This keeps
-    # long segmented workflows from spending minutes queueing work that is known
-    # to be unavailable.
     require_domain_available(domain)
     await state.semaphore.acquire()
     try:
@@ -231,20 +236,6 @@ async def run_heavy_gemini_call(
 ) -> _T:
     async with heavy_gemini_slot(domain=domain):
         return await call()
-
-
-def note_overload(delay_seconds: float, *, domain: str = "inference") -> None:
-    try:
-        state = _loop_state()
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    domain = _domain(domain)
-    delay = max(0.0, float(delay_seconds or 0.0))
-    state.cooldown_until[domain] = max(
-        state.cooldown_until.get(domain, 0.0),
-        loop.time() + delay,
-    )
 
 
 def trip_overload_circuit(
@@ -267,6 +258,26 @@ def trip_overload_circuit(
         state.cooldown_until.get(domain, 0.0),
         loop.time() + hold,
     )
+
+
+def note_overload(delay_seconds: float, *, domain: str = "inference") -> None:
+    """Publish cooldown and open a circuit once backoff reaches its ceiling."""
+    try:
+        state = _loop_state()
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    domain = _domain(domain)
+    delay = max(0.0, float(delay_seconds or 0.0))
+    state.cooldown_until[domain] = max(
+        state.cooldown_until.get(domain, 0.0),
+        loop.time() + delay,
+    )
+    # With the default 15/30/60 schedule, the third overload reaches the retry
+    # ceiling. Opening the circuit there prevents segmented/parallel workflows
+    # from treating the exhausted event as a fresh request storm.
+    if delay >= _retry_max_seconds():
+        trip_overload_circuit(domain=domain)
 
 
 __all__ = [
