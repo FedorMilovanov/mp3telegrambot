@@ -28,6 +28,24 @@ def test_generic_503_is_capped_at_three_calls_across_four_clients(monkeypatch):
     assert calls == ["c1", "c1", "c2"]
 
 
+def test_generic_timeout_is_capped_and_reuses_then_rotates(monkeypatch):
+    clients = [SimpleNamespace(name=f"c{i}") for i in range(1, 5)]
+    calls: list[str] = []
+
+    async def invoke(client):
+        calls.append(client.name)
+        raise asyncio.TimeoutError("request timed out")
+
+    monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "3")
+    monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
+    monkeypatch.setattr(core_globals, "_current_client_idx", 0)
+
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(core_globals.gemini_generate(clients, invoke, "gemini-3.7-flash"))
+
+    assert calls == ["c1", "c1", "c2"]
+
+
 def test_generic_429_rotates_but_cannot_expand_past_global_budget(monkeypatch):
     clients = [SimpleNamespace(name=f"c{i}") for i in range(1, 5)]
     calls: list[str] = []
