@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from tools import check_youtube_gvs as probe
@@ -31,6 +32,48 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
     assert "--no-playlist" in command
     assert " 18 " not in f" {joined} "
     assert "--test" not in command
+
+
+def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    async def fake_runner(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, "ok", "")
+
+    monkeypatch.setattr(probe, "run_cancellable_process", fake_runner)
+    monkeypatch.setattr(
+        probe,
+        "_production_command",
+        lambda _url, _root: ["python", "-m", "yt_dlp", "example"],
+    )
+
+    process = probe._run_download("https://youtu.be/example", tmp_path)
+
+    assert process.returncode == 0
+    assert captured["command"] == ["python", "-m", "yt_dlp", "example"]
+    assert captured["kwargs"] == {
+        "cwd": probe.PROJECT_ROOT,
+        "timeout": 1800,
+        "text": True,
+    }
+
+
+def test_direct_cli_help_can_import_repo_owned_services():
+    process = subprocess.run(
+        [sys.executable, "tools/check_youtube_gvs.py", "--help"],
+        cwd=probe.PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+
+    assert process.returncode == 0, process.stderr
+    assert "bestaudio/best" in process.stdout
 
 
 def test_failure_classifier_distinguishes_gvs_403_and_login():
