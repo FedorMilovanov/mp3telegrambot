@@ -16,7 +16,7 @@ Gemini Audio Analyzer — анализ аудио через Gemini API.
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
     GEMINI_CLIENTS,
-    is_quota_error, is_overload_error, is_model_exhausted,
+    is_quota_error, is_overload_error,
     make_audio_config,
 )
 from core.database import GEMINI_MODEL
@@ -147,7 +147,8 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
                     ),
                 ),
                 timeout=float(os.getenv("AUDIO_TIMESTAMP_REPAIR_TIMEOUT", "240")),
-            )
+            ),
+            domain="inference",
         )
         raw = (resp.text or "").strip()
         import json as _json
@@ -169,7 +170,9 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         )
     except Exception as exc:
         if is_overload_error(exc):
-            capacity_control.note_overload(capacity_control.transient_retry_delay(1))
+            capacity_control.note_overload(
+                capacity_control.transient_retry_delay(1), domain="inference"
+            )
         logger.warning("Timestamp coverage repair failed non-fatally: %s: %s", type(exc).__name__, str(exc)[:180])
         await alog_gemini_run(
             task="audio_timestamp_repair", video_id=video_id, model=model_name,
@@ -277,6 +280,10 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         upload_budget = capacity_control.GeminiRetryBudget()
         inference_budget = capacity_control.GeminiRetryBudget()
 
+        # If a prior semantic operation already exhausted the shared inference
+        # circuit, do not upload another large file that cannot be consumed.
+        capacity_control.require_domain_available("inference")
+
         async def upload_to_client(client):
             """One Files API upload attempt under the shared upload budget."""
             if file_size_mb <= 0:
@@ -284,6 +291,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             if upload_budget.exhausted:
                 raise RuntimeError("Gemini Files upload retry budget exhausted")
             upload_budget.claim()
+            uf = None
+            remote_name = ""
             try:
                 uf = await capacity_control.run_heavy_gemini_call(
                     lambda: client.aio.files.upload(
@@ -292,8 +301,10 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             mime_type="audio/mpeg",
                             display_name=f"{performer} - {title}",
                         ),
-                    )
+                    ),
+                    domain="files",
                 )
+                remote_name = str(getattr(uf, "name", "") or "")
                 _loop = asyncio.get_running_loop()
                 _poll_start = _loop.time()
                 while uf.state == "PROCESSING":
@@ -304,7 +315,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     await set_progress(status_msg, 4, {"info": "🧠 Gemini обрабатывает аудио... ⏳"})
                     await asyncio.sleep(3)
                     uf = await capacity_control.run_heavy_gemini_call(
-                        lambda _name=uf.name: client.aio.files.get(name=_name)
+                        lambda _name=uf.name: client.aio.files.get(name=_name),
+                        domain="files",
                     )
                 if uf.state == "FAILED":
                     raise RuntimeError("Gemini File processing failed")
@@ -312,7 +324,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             except Exception as exc:
                 if is_overload_error(exc):
                     delay = capacity_control.transient_retry_delay(upload_budget.used)
-                    capacity_control.note_overload(delay)
+                    capacity_control.note_overload(delay, domain="files")
+                if remote_name:
+                    await _safe_delete_gemini_file(client, remote_name)
                 raise
 
         await set_progress(status_msg, 4, {"info": "🧠 AI анализирует материал..."})
@@ -364,7 +378,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                 ),
                             ),
                             timeout=_audio_structured_timeout(),
-                        )
+                        ),
+                        domain="inference",
                     )
                 except Exception as schema_err:
                     if (
@@ -388,13 +403,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         ),
                     ),
                     timeout=960.0,
-                )
+                ),
+                domain="inference",
             )
 
         for _model_idx, _current_model in enumerate(_models_to_try):
-            if is_model_exhausted(_current_model):
-                logger.warning("Gemini пропускаю модель %s: quota exhausted in-memory", _current_model)
-                continue
+            # 429/rate-limit state is project-scoped, not a model-global fact.
+            # Do not skip this semantic model for independent configured clients.
             if success:
                 break
             _obs_model = _current_model
@@ -404,7 +419,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             success = False
 
             for client_index, client in enumerate(GEMINI_CLIENTS, 1):
-                if success or inference_budget.exhausted:
+                if success or inference_budget.exhausted or upload_budget.exhausted:
                     break
                 audio_part = None
 
@@ -466,7 +481,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
                         if _is_overload:
                             delay = capacity_control.transient_retry_delay(inference_budget.used)
-                            capacity_control.note_overload(delay)
+                            capacity_control.note_overload(delay, domain="inference")
                         elif _is_timeout:
                             delay = capacity_control.transient_retry_delay(inference_budget.used)
                         else:
@@ -475,9 +490,6 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         if inference_budget.exhausted:
                             break
 
-                        # One retry may reuse the existing uploaded file on this
-                        # client. A second transient rotates the final remaining
-                        # global attempt instead of starting another retry stack.
                         if same_client_transients == 1 and not _is_quota:
                             logger.info(
                                 "Gemini transient recovery: %.1fs then same client/upload; global attempt %d/%d",
@@ -499,7 +511,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
             if response is None and last_err is not None and is_quota_error(last_err):
                 logger.warning(
-                    "Gemini audio quota/rate-limit budget exhausted; model is not globally banned because limits are project-scoped"
+                    "Gemini audio quota/rate-limit budget exhausted; limits are project-scoped, so the model is not globally banned"
                 )
 
             if (
@@ -581,12 +593,14 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                             config=_cfg,
                         ),
                         timeout=960.0,
-                    )
+                    ),
+                    domain="inference",
                 )
             except Exception as _rl_err:
                 if is_overload_error(_rl_err):
                     capacity_control.note_overload(
-                        capacity_control.transient_retry_delay(1)
+                        capacity_control.transient_retry_delay(1),
+                        domain="inference",
                     )
                 logger.warning("low-thinking retry failed: %s", str(_rl_err)[:200])
                 return None
