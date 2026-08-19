@@ -1,0 +1,78 @@
+name: Bgutil Supply Chain Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bgutil-npm-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit-pinned-bgutil:
+    name: Audit pinned bgutil npm graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v6
+
+      - name: Audit exact pinned upstream dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_commit="7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+          git clone --depth 1 --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git upstream-bgutil
+          actual_commit="$(git -C upstream-bgutil rev-parse HEAD)"
+          if [[ "$actual_commit" != "$expected_commit" ]]; then
+            echo "PIN_MISMATCH expected=$expected_commit actual=$actual_commit"
+            exit 2
+          fi
+
+          cd upstream-bgutil/server
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          package = json.loads(Path("package.json").read_text())
+          lock = json.loads(Path("package-lock.json").read_text())
+          print(f"PACKAGE_VERSION={package.get('version')}")
+          print(f"LOCK_ROOT_VERSION={lock.get('version')}")
+          print(f"LOCKFILE_VERSION={lock.get('lockfileVersion')}")
+          PY
+
+          set +e
+          npm audit --omit=dev --json > "$RUNNER_TEMP/bgutil-prod-audit.json"
+          prod_rc=$?
+          npm audit --json > "$RUNNER_TEMP/bgutil-full-audit.json"
+          full_rc=$?
+          set -e
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def report(label: str, path: str) -> None:
+              p = Path(path)
+              data = json.loads(p.read_text(encoding="utf-8"))
+              counts = data.get("metadata", {}).get("vulnerabilities", {})
+              print(f"{label}_COUNTS=" + json.dumps(counts, sort_keys=True))
+              vulns = data.get("vulnerabilities", {}) or {}
+              for name in sorted(vulns):
+                  item = vulns[name] or {}
+                  print(
+                      f"{label}_VULN package={name} severity={item.get('severity')} "
+                      f"direct={item.get('isDirect')} range={item.get('range')} "
+                      f"fixAvailable={item.get('fixAvailable')}"
+                  )
+
+          report("PROD", os.environ["RUNNER_TEMP"] + "/bgutil-prod-audit.json")
+          report("FULL", os.environ["RUNNER_TEMP"] + "/bgutil-full-audit.json")
+          PY
+
+          echo "PROD_AUDIT_EXIT=$prod_rc"
+          echo "FULL_AUDIT_EXIT=$full_rc"
+          # Audit-only workflow: preserve evidence even when npm correctly returns
+          # non-zero for findings. Production policy decisions are made after review.
+          exit 0
