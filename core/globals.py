@@ -164,12 +164,20 @@ gemini_client_2 = None
 gemini_client_3 = None
 gemini_client_4 = None
 
+# The application owns retry semantics.  Keep the SDK at one network attempt so
+# future SDK defaults cannot silently multiply our bounded retry/rotation policy.
 _gemini_http_options = None
 if HAS_GEMINI:
     try:
-        _gemini_http_options = types.HttpOptions(timeout=900_000)
-    except Exception:
-        pass
+        _gemini_http_options = types.HttpOptions(
+            timeout=900_000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        )
+    except (AttributeError, TypeError):
+        try:
+            _gemini_http_options = types.HttpOptions(timeout=900_000)
+        except Exception:
+            pass
 
 
 def _make_gemini_client(api_key: str):
@@ -229,11 +237,15 @@ def _build_thinking_config(level: str = "high"):
 
 def _effective_thinking_level(model_name: str, requested: str) -> str:
     model = str(model_name or "").strip().casefold()
+    level = str(requested or "high").strip().lower() or "high"
     if model == "gemini-3.7-flash":
-        return "high"
+        # Gemini 3.7 supports low/medium/high and rejects minimal. Preserve the
+        # HIGH production default, but do not silently turn an explicit LOW
+        # recovery request back into HIGH (the old behavior defeated recovery).
+        return level if level in {"low", "medium", "high"} else "high"
     if model in {"gemini-3.5-flash-lite", "gemini-3.5-flash"}:
         return "minimal"
-    return str(requested or "high").strip().lower() or "high"
+    return level
 
 
 def _apply_gemini_service_tier(kwargs: dict) -> None:
@@ -464,41 +476,66 @@ _current_client_idx = 0
 
 
 async def gemini_generate(client_list, fn, model_name: str = ""):
+    """Run one Gemini operation with one global transient budget across keys."""
     global _current_client_idx
+    from services import gemini_capacity_control as capacity_control
+
     last_err = None
     if not client_list:
         raise RuntimeError("No Gemini clients available")
     if model_name and is_model_exhausted(model_name):
         raise RuntimeError(f"Gemini model quota exhausted in-memory: {model_name}")
 
+    budget = capacity_control.GeminiRetryBudget()
     start_idx = _current_client_idx
     for i in range(len(client_list)):
+        if budget.exhausted:
+            break
         idx = (start_idx + i) % len(client_list)
         client = client_list[idx]
         _current_client_idx = (idx + 1) % len(client_list)
-        for attempt in range(3):
+        same_client_overloads = 0
+
+        while not budget.exhausted:
+            budget.claim()
             try:
-                return await fn(client)
+                return await capacity_control.run_heavy_gemini_call(
+                    lambda _client=client: fn(_client)
+                )
             except Exception as e:
                 if is_quota_error(e):
                     logging.getLogger(__name__).warning(
-                        "Gemini квота на ключе %s; перехожу к следующему ключу...",
+                        "Gemini квота/429 на клиенте %s; вращаю ключ в пределах общего budget %s/%s",
                         idx,
+                        budget.used,
+                        budget.limit,
                     )
                     last_err = e
                     break
                 if is_overload_error(e):
-                    wait = 10 * (attempt + 1)
-                    logging.getLogger(__name__).warning(
-                        "Gemini перегружен (500/503), жду %sс... (попытка %s/3)",
-                        wait,
-                        attempt + 1,
-                    )
-                    await asyncio.sleep(wait)
                     last_err = e
-                    continue
+                    same_client_overloads += 1
+                    delay = capacity_control.transient_retry_delay(budget.used)
+                    capacity_control.note_overload(delay)
+                    logging.getLogger(__name__).warning(
+                        "Gemini перегружен (500/503), global attempt %s/%s; cooldown %.1fс",
+                        budget.used,
+                        budget.limit,
+                        delay,
+                    )
+                    if budget.exhausted:
+                        break
+                    # One retry may reuse the same client; a second overload moves
+                    # the final remaining attempt to another configured client.
+                    if same_client_overloads == 1:
+                        await asyncio.sleep(delay)
+                        continue
+                    break
                 raise
-    raise last_err or RuntimeError("Все Gemini-клиенты недоступны или список пуст")
+
+    raise last_err or RuntimeError(
+        "Gemini transient retry budget exhausted or no configured client succeeded"
+    )
 
 
 logging.basicConfig(
