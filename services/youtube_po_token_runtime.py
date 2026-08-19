@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 BGUTIL_DISTRIBUTION = "bgutil-ytdlp-pot-provider"
+LEGACY_WPC_DISTRIBUTION = "yt-dlp-getpot-wpc"
 BGUTIL_MODULE = "yt_dlp_plugins.extractor.getpot_bgutil"
 BGUTIL_EXPECTED_VERSION = "1.3.1"
 BGUTIL_EXPECTED_COMMIT = "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
@@ -46,6 +47,18 @@ class YouTubePoTokenRuntime:
             f"bgutil {self.provider_version}@{self.provider_commit[:8]}; "
             f"node={self.node_version}; browserless=on"
         )
+
+
+def _require_no_legacy_browser_provider() -> None:
+    try:
+        legacy_version = metadata.version(LEGACY_WPC_DISTRIBUTION)
+    except metadata.PackageNotFoundError:
+        return
+    raise YouTubePoTokenRuntimeError(
+        "Обнаружен устаревший browser-based PO Token provider "
+        f"{LEGACY_WPC_DISTRIBUTION} {legacy_version}. Запусти Start Bot.bat: "
+        "он удалит WPC/nodriver; Chrome fallback в production запрещён."
+    )
 
 
 def _distribution_version(name: str) -> str:
@@ -170,6 +183,7 @@ def _require_node() -> str:
 
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
     """Require mweb + automatic browserless GVS token generation, fail closed."""
+    _require_no_legacy_browser_provider()
     provider_version = _distribution_version(BGUTIL_DISTRIBUTION)
     if provider_version != BGUTIL_EXPECTED_VERSION:
         raise YouTubePoTokenRuntimeError(
@@ -193,6 +207,7 @@ __all__ = [
     "BGUTIL_EXPECTED_COMMIT",
     "BGUTIL_MODULE",
     "DEFAULT_PROVIDER_HOME",
+    "LEGACY_WPC_DISTRIBUTION",
     "YouTubePoTokenRuntime",
     "YouTubePoTokenRuntimeError",
     "require_youtube_po_token_runtime",

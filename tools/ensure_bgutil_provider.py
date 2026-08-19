@@ -146,10 +146,13 @@ def ensure_bgutil_provider() -> Path:
 
         server = staging / "server"
         _run([npm, "ci"], cwd=server)
-        npx = shutil.which("npx") or shutil.which("npx.cmd")
-        if not npx:
-            raise ProvisionError("npx не найден после установки Node.js/npm")
-        _run([npx, "tsc"], cwd=server)
+        tsc_name = "tsc.cmd" if os.name == "nt" else "tsc"
+        tsc = server / "node_modules" / ".bin" / tsc_name
+        if not tsc.is_file():
+            raise ProvisionError(
+                "bgutil npm ci не установил pinned local TypeScript compiler"
+            )
+        _run([str(tsc)], cwd=server)
         generated = server / "build" / "generate_once.js"
         if not generated.is_file():
             raise ProvisionError("bgutil build завершился без build/generate_once.js")

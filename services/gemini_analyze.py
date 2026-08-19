@@ -286,15 +286,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     if not GEMINI_CLIENTS:
         return None, None, None
 
-    # AUDIT FIX MULTI-MODEL: fallback по качеству (для редких но мощных запросов)
-    # Юзкейс: 1-5 видео/день, главное — качество анализа
     _user_model = GEMINI_MODEL
     _models_to_try = _audio_fallback_models(_user_model)
-    logger.info(
-        "Gemini audio models (quality-first; AUDIO_ANALYSIS_FALLBACK_MODE=%s): %s",
-        (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict"),
-        _models_to_try,
-    )
+    logger.info("Gemini audio model (strict no-downgrade): %s", _models_to_try)
 
     used_client = None
     used_audio_part = None
@@ -368,7 +362,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             _audio_tokens_est // 1000,
         )
 
-        # AUDIT FIX MULTI-MODEL: внешний цикл по моделям-кандидатам
+        # Single-model loop retained only for uniform observability/control flow.
         last_err = None
         response = None
         success = False
@@ -381,12 +375,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             if success:
                 break
             _obs_model = _current_model
-            _obs_is_fallback = _model_idx > 0
-            if _model_idx > 0:
-                logger.warning(
-                    f"Gemini переключаюсь на резервную модель: {_current_model} "
-                    f"(модель #{_model_idx+1}/{len(_models_to_try)})"
-                )
+            _obs_is_fallback = False
             # Для каждого клиента загружаем файл отдельно (файлы не переносятся между ключами)
             last_err = None
             response = None
@@ -423,8 +412,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                         timeout=_audio_structured_timeout(),
                                     )
                                 except Exception as _schema_err:
-                                    # Quota/overload are not schema problems; let outer fallback
-                                    # rotate keys/models normally. For SDK/model schema incompatibility,
+                                    # Quota/overload are not schema problems; let the outer
+                                    # client-rotation policy handle them. For schema incompatibility,
                                     # retry the same call with legacy JSON config.
                                     if is_quota_error(_schema_err) or is_overload_error(_schema_err):
                                         raise
@@ -456,9 +445,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         ) and not _is_quota
                         _is_overload = is_overload_error(e) and not _is_quota
                         if _is_quota or _is_overload or _is_timeout:
+                            if _is_overload and attempt < 2:
+                                _retry_action = "повторяю тот же ключ и тот же upload"
+                            else:
+                                _retry_action = "переключаюсь на следующий ключ"
                             logger.warning(
                                 f"Gemini {'квота' if _is_quota else ('timeout' if _is_timeout else '503/disconnect')}: "
-                                f"{type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ..."
+                                f"{type(e).__name__}: {str(e)[:200]} -- {_retry_action}"
                             )
                             last_err = e
                             # Quota is project/model-level; retrying same key only wastes time.

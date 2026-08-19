@@ -330,7 +330,7 @@ async def download_factory_audio_with_retry_cache(
         )
     except asyncio.CancelledError:
         raise
-    except (OSError, RuntimeError, ValueError) as exc:
+    except OSError as exc:
         from services.media_delivery_probe import probe_media_async
         from services.shorts_factory_source import (
             factory_audio_probe_is_usable,

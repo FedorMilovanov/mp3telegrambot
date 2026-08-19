@@ -268,6 +268,7 @@ async def process_shorts_factory(
             url,
             media_id,
             status_msg=status_msg,
+            expected_duration=float(duration),
         )
 
         await _safe_status(
@@ -302,7 +303,12 @@ async def process_shorts_factory(
             )
         else:
             source_task = asyncio.create_task(
-                download_video_for_shorts(url, media_id, workdir=workdir),
+                download_video_for_shorts(
+                    url,
+                    media_id,
+                    workdir=workdir,
+                    expected_duration=float(duration),
+                ),
                 name=f"shorts-factory-source-{media_id}",
             )
 

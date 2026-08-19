@@ -65,12 +65,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Backward-compatible marker consumed by main_pipeline. Semantic Telegraph
-# generation is now strict-primary, so this remains False: an unavailable
-# primary model omits the optional section instead of downgrading to Lite.
-_gemini_last_was_fallback: bool = False
-
-
 @dataclass(frozen=True)
 class CombinedStudyReflectionResult:
     study_url: str | None = None
@@ -540,11 +534,10 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 response_mime_type: str | None = None,
                                 response_schema=None,
                                 allow_model_fallback: bool = False) -> str | None:
-    """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
+    """Strict-primary semantic Gemini request with bounded service retries.
 
-    v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
-    gemini-3.1-pro ПЛАТНАЯ — убрана из цепочки.
-    На каждой модели: до 2 попыток с паузой при 503/overload. Time-budget 180s.
+    Model downgrade is forbidden: an unavailable primary model causes the
+    optional section to be omitted instead of being published from Lite.
     """
     if not GEMINI_CLIENTS:
         return None
