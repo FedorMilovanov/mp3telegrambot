@@ -151,7 +151,7 @@ async def create_factory_plan_resumable(
     file_size = audio_path.stat().st_size
     scout = judged = None
     last_error: BaseException | None = None
-    capacity_overload = False
+    client_outcomes: list[str] = []
 
     for index, client in enumerate(clients, 1):
         uploaded_name = ""
@@ -272,6 +272,7 @@ async def create_factory_plan_resumable(
         except Exception as exc:
             last_error = exc
             action = factory_client_retry_action(exc)
+            client_outcomes.append(action)
             logger.warning(
                 "Shorts Factory capacity-aware client %d/%d failed: %s: %s",
                 index,
@@ -280,7 +281,6 @@ async def create_factory_plan_resumable(
                 str(exc)[:500],
             )
             if action == "capacity":
-                capacity_overload = True
                 if index < len(clients):
                     message = (
                         f"⚠️ Gemini 3.7 вернула 503/high demand на клиенте "
@@ -310,7 +310,14 @@ async def create_factory_plan_resumable(
                 except Exception:
                     pass
 
-    if capacity_overload:
+    capacity_failures = sum(
+        1 for outcome in client_outcomes if outcome == "capacity"
+    )
+    if (
+        client_outcomes
+        and len(client_outcomes) == len(clients)
+        and capacity_failures == len(clients)
+    ):
         raise RuntimeError(
             "Gemini 3.7 сейчас перегружена (503/high demand). "
             f"Все {len(clients)} настроенных API-клиента получили 503 после bounded "
@@ -319,6 +326,16 @@ async def create_factory_plan_resumable(
             "возвращается как 429. Качество не понижено: 3.6/3.5/Lite не "
             "использовались. Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
+        ) from last_error
+
+    if capacity_failures:
+        other_failures = len(client_outcomes) - capacity_failures
+        raise RuntimeError(
+            "Gemini 3.7 strict Factory review failed across configured clients: "
+            f"{capacity_failures}/{len(clients)} client(s) returned 503/high demand; "
+            f"{other_failures} client(s) failed for other reasons. "
+            "503 is backend availability, not proof of exhausted keys/quota. "
+            "Качество не понижено: 3.6/3.5/Lite не использовались."
         ) from last_error
 
     raise RuntimeError(

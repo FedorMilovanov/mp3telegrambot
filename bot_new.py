@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 
 def _configure_stdio() -> None:
@@ -18,6 +19,8 @@ def _configure_stdio() -> None:
 
 
 _configure_stdio()
+_PROJECT_ROOT = Path(__file__).resolve().parent
+os.chdir(_PROJECT_ROOT)
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 if sys.version_info < (3, 11):

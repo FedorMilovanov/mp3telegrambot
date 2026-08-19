@@ -18,46 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-audit-hardening:
-    name: Apply audited hardening once
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/audit-hardening-no-quality-downgrade' }}
-    runs-on: windows-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repair branch
-        uses: actions/checkout@v6
-        with:
-          ref: agent/audit-hardening-no-quality-downgrade
-          fetch-depth: 0
-      - name: Setup Python 3.13
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - name: Apply exact audited transforms and remove temporary machinery
-        shell: pwsh
-        run: |
-          python tools/fix_audit_patcher_indent.py
-          if ($LASTEXITCODE -ne 0) { throw "Codemod correction failed." }
-          python tools/apply_audit_hardening_once.py
-          if ($LASTEXITCODE -ne 0) { throw "Audited transform failed." }
-          python -m compileall -q core services pipelines handlers tests tools bot_new.py
-          if ($LASTEXITCODE -ne 0) { throw "Patched Python compile failed." }
-          git checkout origin/main -- .github/workflows/ci.yml
-          git rm -f .github/workflows/audit-hardening-apply.yml tools/apply_audit_hardening_once.py tools/fix_audit_patcher_indent.py .audit-hardening-trigger
-          git diff --check
-          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed." }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Apply audited hardening without quality downgrade"
-          if ($LASTEXITCODE -ne 0) { throw "Patch commit failed." }
-          git push origin HEAD:agent/audit-hardening-no-quality-downgrade
-          if ($LASTEXITCODE -ne 0) { throw "Patch push failed." }
-
   test:
-    if: ${{ github.event.pull_request.head.ref != 'agent/audit-hardening-no-quality-downgrade' }}
     name: Python ${{ matrix.python-version }} safety checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -123,7 +84,6 @@ jobs:
         run: python tools/verify_repo.py
 
   windows-runtime:
-    if: ${{ github.event.pull_request.head.ref != 'agent/audit-hardening-no-quality-downgrade' }}
     name: Windows runtime safety checks
     runs-on: windows-latest
     timeout-minutes: 20

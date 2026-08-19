@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 BGUTIL_VERSION = "1.3.1"
+BGUTIL_COMMIT = "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
 BGUTIL_REPOSITORY = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = PROJECT_ROOT / ".runtime"
@@ -92,7 +93,8 @@ def _runtime_is_current() -> bool:
         marker = VERSION_MARKER.read_text(encoding="utf-8").strip()
     except OSError:
         return False
-    return marker == BGUTIL_VERSION and GENERATE_SCRIPT.is_file()
+    expected = f"{BGUTIL_VERSION}@{BGUTIL_COMMIT}"
+    return marker == expected and GENERATE_SCRIPT.is_file()
 
 
 def ensure_bgutil_provider() -> Path:
@@ -125,6 +127,23 @@ def ensure_bgutil_provider() -> Path:
             BGUTIL_REPOSITORY,
             str(staging),
         ])
+        head_process = subprocess.run(
+            [git, "rev-parse", "HEAD"],
+            cwd=str(staging),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+        head = (head_process.stdout or "").strip().lower()
+        if head_process.returncode != 0 or head != BGUTIL_COMMIT:
+            raise ProvisionError(
+                "Pinned bgutil tag resolved to an unexpected commit: "
+                f"expected={BGUTIL_COMMIT} actual={head or 'unknown'}"
+            )
+
         server = staging / "server"
         _run([npm, "ci"], cwd=server)
         npx = shutil.which("npx") or shutil.which("npx.cmd")
@@ -136,7 +155,7 @@ def ensure_bgutil_provider() -> Path:
             raise ProvisionError("bgutil build завершился без build/generate_once.js")
 
         (staging / ".mp3bot-bgutil-version").write_text(
-            BGUTIL_VERSION + "\n", encoding="utf-8"
+            f"{BGUTIL_VERSION}@{BGUTIL_COMMIT}\n", encoding="utf-8"
         )
         if PROVIDER_ROOT.exists():
             shutil.rmtree(PROVIDER_ROOT)
@@ -145,7 +164,10 @@ def ensure_bgutil_provider() -> Path:
         shutil.rmtree(staging, ignore_errors=True)
         raise
 
-    print(f"[SETUP] bgutil {BGUTIL_VERSION} installed: {SERVER_ROOT}")
+    print(
+        f"[SETUP] bgutil {BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]} installed: "
+        f"{SERVER_ROOT}"
+    )
     return SERVER_ROOT
 
 

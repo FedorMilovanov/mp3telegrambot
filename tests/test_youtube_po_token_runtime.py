@@ -23,9 +23,13 @@ def test_require_youtube_po_token_runtime_reports_browserless_bgutil(
     runtime = po.require_youtube_po_token_runtime()
 
     assert runtime.provider_version == "1.3.1"
+    assert runtime.provider_commit == po.BGUTIL_EXPECTED_COMMIT
     assert runtime.node_version == "22.14.0"
     assert runtime.provider_home == provider_home
-    assert runtime.status_text() == "bgutil 1.3.1; node=22.14.0; browserless=on"
+    assert runtime.status_text() == (
+        f"bgutil 1.3.1@{po.BGUTIL_EXPECTED_COMMIT[:8]}; "
+        "node=22.14.0; browserless=on"
+    )
 
 
 def test_missing_po_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,6 +104,19 @@ def test_missing_bgutil_build_fails_closed(
     monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(tmp_path / "missing"))
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="Start Bot.bat"):
+        po._require_provider_build()
+
+
+def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):
+    server = tmp_path / "provider" / "server"
+    (server / "build").mkdir(parents=True)
+    (server / "build" / "generate_once.js").write_text("// ok", encoding="utf-8")
+    (server.parent / ".mp3bot-bgutil-version").write_text(
+        "1.3.1@wrong-commit\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(server))
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="pinned commit"):
         po._require_provider_build()
 
 
