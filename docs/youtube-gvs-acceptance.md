@@ -59,6 +59,8 @@ The last status line is machine-readable:
   provider;
 - `GVS_ACCEPTANCE=FAIL_RUNTIME` — source-only provider/startup contract failed
   before the download;
+- `GVS_ACCEPTANCE=FAIL_TIMEOUT` — the complete yt-dlp transfer did not finish
+  inside the probe's fail-closed timeout;
 - `GVS_ACCEPTANCE=FAIL_NO_MEDIA` / `FAIL_FFPROBE` — yt-dlp returned success but
   the expected complete readable media postcondition was not met;
 - `GVS_ACCEPTANCE=FAIL_YTDLP` — another yt-dlp failure occurred; the command
