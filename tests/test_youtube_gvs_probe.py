@@ -30,6 +30,8 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
     assert "--abort-on-unavailable-fragments" in command
     assert "bestaudio/best" in command
     assert "--no-playlist" in command
+    assert "--print" in command
+    assert "GVS_EXPECTED_DURATION=%(duration)s" in joined
     assert " 18 " not in f" {joined} "
     assert "--test" not in command
 
@@ -78,6 +80,15 @@ def test_direct_cli_help_can_import_repo_owned_services():
     assert "bestaudio/best" in process.stdout
 
 
+def test_duration_parser_and_factory_tolerance_contract():
+    stdout = "noise\nGVS_EXPECTED_DURATION=1000.0\n"
+    assert probe._expected_duration_from_output(stdout) == 1000.0
+    assert probe._duration_matches(1002.0, 1000.0)
+    assert not probe._duration_matches(1002.1, 1000.0)
+    assert probe._duration_matches(10014.9, 10000.0)
+    assert not probe._duration_matches(10015.1, 10000.0)
+
+
 def test_failure_classifier_distinguishes_gvs_403_and_login():
     forbidden = subprocess.CompletedProcess(
         args=["yt-dlp"],
@@ -96,13 +107,16 @@ def test_failure_classifier_distinguishes_gvs_403_and_login():
     assert probe._classify_failure(login) == "FAIL_LOGIN_REQUIRED"
 
 
-def test_success_requires_complete_media_and_ffprobe(monkeypatch, capsys):
+def test_success_requires_complete_media_and_matching_duration(monkeypatch, capsys):
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
     monkeypatch.setattr(
         probe,
         "_run_download",
         lambda _url, _root: subprocess.CompletedProcess(
-            args=["yt-dlp"], returncode=0, stdout="", stderr=""
+            args=["yt-dlp"],
+            returncode=0,
+            stdout="GVS_EXPECTED_DURATION=123.0\n",
+            stderr="",
         ),
     )
 
@@ -117,7 +131,47 @@ def test_success_requires_complete_media_and_ffprobe(monkeypatch, capsys):
     assert probe.main(["https://youtu.be/example"]) == 0
     output = capsys.readouterr().out
     assert "GVS_ACCEPTANCE=PASS" in output
-    assert "duration=123.456s" in output
+    assert "metadata=123.000s" in output
+    assert "ffprobe=123.456s" in output
+
+
+def test_success_without_metadata_duration_fails_closed(monkeypatch, capsys):
+    monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
+    monkeypatch.setattr(
+        probe,
+        "_run_download",
+        lambda _url, _root: subprocess.CompletedProcess(
+            args=["yt-dlp"], returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    assert probe.main(["https://youtu.be/example"]) == 7
+    assert "GVS_ACCEPTANCE=FAIL_METADATA_DURATION" in capsys.readouterr().out
+
+
+def test_duration_mismatch_is_fail_closed(monkeypatch, capsys):
+    monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
+    monkeypatch.setattr(
+        probe,
+        "_run_download",
+        lambda _url, _root: subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=0,
+            stdout="GVS_EXPECTED_DURATION=100.0\n",
+            stderr="",
+        ),
+    )
+
+    def fake_media(root: Path) -> Path:
+        path = root / "gvs_probe.webm"
+        path.write_bytes(b"probe-media")
+        return path
+
+    monkeypatch.setattr(probe, "_find_downloaded_media", fake_media)
+    monkeypatch.setattr(probe, "_ffprobe_duration", lambda _path: 80.0)
+
+    assert probe.main(["https://youtu.be/example"]) == 9
+    assert "GVS_ACCEPTANCE=FAIL_DURATION_MISMATCH" in capsys.readouterr().out
 
 
 def test_http_403_is_fail_closed(monkeypatch, capsys):
