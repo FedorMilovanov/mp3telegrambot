@@ -147,7 +147,11 @@ def test_livedub_files_poll_failure_cleans_remote_handle(monkeypatch, tmp_path):
         "types",
         SimpleNamespace(UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)),
     )
-    monkeypatch.setattr(qa.asyncio, "sleep", lambda _delay: asyncio.sleep(0))
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(qa.asyncio, "sleep", no_sleep)
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
     monkeypatch.setattr(control, "note_overload", lambda _delay: None)
 
