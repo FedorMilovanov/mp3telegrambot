@@ -30,6 +30,7 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
     assert "--abort-on-unavailable-fragments" in command
     assert "bestaudio/best" in command
     assert "--no-playlist" in command
+    assert "--no-simulate" in command
     assert "--print" in command
     assert "GVS_EXPECTED_DURATION=%(duration)s" in joined
     assert " 18 " not in f" {joined} "
