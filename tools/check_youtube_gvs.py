@@ -21,8 +21,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.async_process import run_cancellable_process
-
 DEFAULT_PROBE_URL = "https://www.youtube.com/watch?v=-vq7fH7ANUs"
 
 
@@ -117,6 +115,8 @@ async def _run_download_async(
     url: str,
     workdir: Path,
 ) -> subprocess.CompletedProcess[str]:
+    from services.async_process import run_cancellable_process
+
     return await run_cancellable_process(
         _production_command(url, workdir),
         cwd=PROJECT_ROOT,
