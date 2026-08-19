@@ -21,10 +21,9 @@ def _install_common(monkeypatch, tmp_path):
     monkeypatch.setenv("GEMINI_HEAVY_MAX_CONCURRENCY", "1")
     monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "3")
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
-    monkeypatch.setattr(control, "note_overload", lambda _delay: None)
+    monkeypatch.setattr(control, "note_overload", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(analyze, "set_progress", _noop_progress)
     monkeypatch.setattr(analyze, "GEMINI_MODEL", "gemini-3.7-flash")
-    monkeypatch.setattr(analyze, "is_model_exhausted", lambda _model: False)
     monkeypatch.setattr(analyze, "build_audio_analysis_prompt", lambda **_kwargs: "prompt")
     monkeypatch.setattr(
         analyze,
@@ -130,6 +129,42 @@ def test_audio_files_503_is_capped_at_three_uploads_and_never_reaches_inference(
     assert result == (None, None, None)
     assert upload_calls == ["k1", "k2", "k3"]
     assert model_calls == []
+
+
+def test_audio_poll_503_cleans_remote_handle(monkeypatch, tmp_path):
+    audio = _install_common(monkeypatch, tmp_path)
+    deleted: list[str] = []
+
+    class Files:
+        async def upload(self, **_kwargs):
+            return SimpleNamespace(name="files/created", state="PROCESSING")
+
+        async def get(self, **_kwargs):
+            raise _ServiceError("503 Files API polling overloaded")
+
+        async def delete(self, *, name):
+            deleted.append(name)
+
+    class Models:
+        async def generate_content(self, **_kwargs):
+            raise AssertionError("poll failure must not reach inference")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(analyze.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        analyze,
+        "GEMINI_CLIENTS",
+        [SimpleNamespace(aio=SimpleNamespace(files=Files(), models=Models()))],
+    )
+
+    result = asyncio.run(
+        analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None)
+    )
+
+    assert result == (None, None, None)
+    assert deleted == ["files/created"]
 
 
 def test_audio_low_thinking_recovery_is_not_silently_promoted_to_high():
