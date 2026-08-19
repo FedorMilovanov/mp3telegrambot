@@ -318,13 +318,13 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
             used += 1
             try:
                 response = await capacity_control.run_heavy_gemini_call(
-                    lambda _client=client: asyncio.wait_for(
+                    lambda _client=client, _model=model, _config=config, _remaining=remaining: asyncio.wait_for(
                         _client.aio.models.generate_content(
-                            model=model,
+                            model=_model,
                             contents=prompt,
-                            config=config,
+                            config=_config,
                         ),
-                        timeout=min(float(per_timeout), remaining),
+                        timeout=min(float(per_timeout), _remaining),
                     ),
                     domain="inference",
                 )
