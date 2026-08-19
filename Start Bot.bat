@@ -116,9 +116,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem bot_new.py owns exact-source bgutil provisioning as well as readiness checks.
-rem Keeping that ownership in the Python entrypoint makes BAT and direct launches
-rem behave identically after git pull.
+rem Pre-provision here for an explicit setup diagnostic. bot_new.py invokes the
+rem same idempotent provisioner again, so direct and BAT launches share the same
+rem self-healing runtime contract after git pull.
+if not exist "tools\ensure_bgutil_provider.py" (
+    echo ERROR: tools\ensure_bgutil_provider.py not found.
+    pause
+    exit /b 1
+)
+"%VENV_PYTHON%" tools\ensure_bgutil_provider.py
+if errorlevel 1 (
+    echo.
+    echo ERROR: Browserless YouTube PO Token runtime is not ready.
+    echo Check git/npm/Node.js and the setup message above.
+    pause
+    exit /b 1
+)
+
 echo [START] Starting MP3 Telegram Bot...
 "%VENV_PYTHON%" bot_new.py
 set "BOT_EXIT_CODE=%ERRORLEVEL%"
