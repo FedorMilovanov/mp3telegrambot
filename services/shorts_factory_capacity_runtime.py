@@ -2,8 +2,8 @@
 """Capacity-aware Factory plan execution without quality downgrades.
 
 This keeps the Gemini 3.7/HIGH three-pass contract intact while separating
-model-capacity overload from per-client transient failures. No ambient request
-state or runtime rebinding is used.
+Files API capacity from model-inference capacity. No ambient request state or
+runtime rebinding is used.
 """
 from __future__ import annotations
 
@@ -17,10 +17,9 @@ from services import shorts_factory_capacity as capacity
 
 logger = logging.getLogger(__name__)
 
-# Google recommends retrying one transient inference event no more than twice.
-# Keep at most two attempts on one client, but share a three-network-call budget
-# (initial + two retries) across API-key rotation so N keys can never turn one
-# backend overload into 2*N or 3*N expensive HIGH requests.
+# Keep at most two attempts on one inference client, but share a three-network-
+# call budget (initial + two retries) across API-key rotation so N keys can never
+# turn one backend overload into 2*N or 3*N expensive HIGH requests.
 _FACTORY_CAPACITY_PASS_ATTEMPTS = 2
 _FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
 _FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0
@@ -82,9 +81,6 @@ async def _run_pass_with_capacity_retry(
             if not capacity.factory_overload_error(exc):
                 raise
 
-            # Publish the cooldown process-wide before this coroutine sleeps or
-            # rotates. Other heavy Gemini requests therefore cannot stampede the
-            # same overloaded backend during our backoff window.
             delay = _capacity_retry_delay(retry_budget.used)
             capacity_control.note_overload(delay)
             if client_attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
@@ -165,20 +161,34 @@ async def create_factory_plan_resumable(
     last_error: BaseException | None = None
     client_outcomes: list[str] = []
     capacity_budget_exhausted = False
+    exhausted_stage = ""
 
-    # Each semantic pass is a distinct inference event and therefore gets its
-    # own initial+2 retry budget. Completed passes are still preserved while a
-    # later pass rotates clients.
+    # Files API has its own failure domain, so remote upload gets a separate
+    # initial+2 budget. Each semantic pass then gets an independent inference
+    # budget; completed passes remain reusable when a later pass rotates client.
+    upload_budget = capacity_control.GeminiRetryBudget()
     scout_budget = capacity_control.GeminiRetryBudget()
     judge_budget = capacity_control.GeminiRetryBudget()
     audit_budget = capacity_control.GeminiRetryBudget()
+    upload_in_progress = False
 
     def active_budget() -> capacity_control.GeminiRetryBudget:
+        if upload_in_progress:
+            return upload_budget
         if scout is None:
             return scout_budget
         if judged is None:
             return judge_budget
         return audit_budget
+
+    def active_stage() -> str:
+        if upload_in_progress:
+            return "Gemini Files upload"
+        if scout is None:
+            return "Factory HIGH pass 1/3"
+        if judged is None:
+            return "Factory HIGH pass 2/3"
+        return "Factory HIGH pass 3/3"
 
     for index, client in enumerate(clients, 1):
         uploaded_name = ""
@@ -188,37 +198,45 @@ async def create_factory_plan_resumable(
                 f"🧠 Gemini 3.7 MAX · клиент {index}/{len(clients)}: готовлю аудио…",
             )
             if file_size <= 18 * 1024 * 1024:
+                upload_in_progress = False
                 audio_part = candidates.types.Part.from_bytes(
                     data=audio_path.read_bytes(),
                     mime_type=mime_type,
                 )
             else:
-                uploaded = await capacity.await_with_heartbeat(
-                    client.aio.files.upload(
-                        file=audio_path,
-                        config=candidates.types.UploadFileConfig(
-                            mime_type=mime_type,
-                            display_name=(
-                                f"Shorts Factory MAX — {performer} — {title}"
-                            )[:500],
+                upload_in_progress = True
+                if upload_budget.exhausted:
+                    raise RuntimeError("Gemini Files upload retry budget exhausted")
+                upload_budget.claim()
+                uploaded = await capacity_control.run_heavy_gemini_call(
+                    lambda: capacity.await_with_heartbeat(
+                        client.aio.files.upload(
+                            file=audio_path,
+                            config=candidates.types.UploadFileConfig(
+                                mime_type=mime_type,
+                                display_name=(
+                                    f"Shorts Factory MAX — {performer} — {title}"
+                                )[:500],
+                            ),
                         ),
-                    ),
-                    label=(
-                        f"⬆️ Gemini 3.7 · клиент {index}/{len(clients)}: "
-                        "загружаю analysis-аудио…"
-                    ),
-                    status_msg=status_msg,
+                        label=(
+                            f"⬆️ Gemini Files · клиент {index}/{len(clients)}: "
+                            "загружаю analysis-аудио…"
+                        ),
+                        status_msg=status_msg,
+                    )
                 )
                 uploaded = await capacity.await_with_heartbeat(
                     candidates._wait_uploaded_file(client, uploaded),
                     label=(
-                        f"⏳ Gemini 3.7 · клиент {index}/{len(clients)}: "
+                        f"⏳ Gemini Files · клиент {index}/{len(clients)}: "
                         "сервер обрабатывает аудио…"
                     ),
                     status_msg=status_msg,
                 )
                 audio_part = uploaded
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
+                upload_in_progress = False
 
             if scout is None:
                 scout = await _run_pass_with_capacity_retry(
@@ -302,48 +320,53 @@ async def create_factory_plan_resumable(
         except Exception as exc:
             last_error = exc
             action = factory_client_retry_action(exc)
+            budget = active_budget()
+            stage = active_stage()
             client_outcomes.append(action)
             logger.warning(
-                "Shorts Factory capacity-aware client %d/%d failed: %s: %s",
+                "Shorts Factory capacity-aware client %d/%d failed at %s: %s: %s",
                 index,
                 len(clients),
+                stage,
                 type(exc).__name__,
                 str(exc)[:500],
             )
             if action == "capacity":
-                budget = active_budget()
+                delay = _capacity_retry_delay(max(1, budget.used))
+                capacity_control.note_overload(delay)
                 if budget.exhausted:
                     capacity_budget_exhausted = True
+                    exhausted_stage = stage
                     await capacity.safe_status(
                         status_msg,
-                        "⚠️ Gemini 3.7 всё ещё перегружена: исчерпаны initial + 2 "
-                        "retry для текущего HIGH-прохода. Новые ключи не будут "
-                        "умножать тот же 503 storm.",
+                        f"⚠️ {stage}: исчерпаны initial + 2 retry. Новые ключи "
+                        "не будут умножать тот же 503 storm.",
                     )
                     break
                 if index < len(clients):
                     await capacity.safe_status(
                         status_msg,
-                        f"⚠️ Gemini 3.7 вернула 503/high demand на клиенте "
-                        f"{index}/{len(clients)}. Переключаю клиент в пределах "
-                        f"единого budget {budget.used + 1}/{budget.limit}, без "
-                        "понижения модели…",
+                        f"⚠️ {stage} вернул 503/high demand на клиенте "
+                        f"{index}/{len(clients)}. Переключаю клиент через "
+                        f"{delay:.1f} сек в пределах единого budget "
+                        f"{budget.used + 1}/{budget.limit}…",
                     )
+                    await asyncio.sleep(delay)
                     continue
                 break
             if action == "rotate":
-                budget = active_budget()
                 if budget.exhausted:
                     break
                 await capacity.safe_status(
                     status_msg,
-                    f"⚠️ Gemini 3.7 временно недоступна на клиенте "
+                    f"⚠️ {stage} временно недоступен на клиенте "
                     f"{index}/{len(clients)}. Переключаю клиент без повторения "
                     "уже завершённых проходов…",
                 )
                 continue
             scout = judged = None
         finally:
+            upload_in_progress = False
             if uploaded_name:
                 try:
                     await client.aio.files.delete(name=uploaded_name)
@@ -355,8 +378,8 @@ async def create_factory_plan_resumable(
     )
     if capacity_budget_exhausted and last_error is not None:
         raise RuntimeError(
-            "Gemini 3.7 сейчас перегружена (503/high demand). "
-            f"Для текущего Factory HIGH-прохода исчерпан единый лимит "
+            "Gemini сейчас перегружен (503/high demand). "
+            f"Для этапа {exhausted_stage or 'Factory'} исчерпан единый лимит "
             f"{capacity_control.transient_attempt_limit()} сетевых попыток "
             "(initial + максимум 2 retry) независимо от количества API-ключей. "
             "Это НЕ означает, что API-ключи или квота исчерпаны: 503 — ошибка "
@@ -369,7 +392,7 @@ async def create_factory_plan_resumable(
     if capacity_failures:
         other_failures = len(client_outcomes) - capacity_failures
         raise RuntimeError(
-            "Gemini 3.7 strict Factory review failed across attempted clients: "
+            "Gemini strict Factory review failed across attempted clients: "
             f"{capacity_failures} capacity failure(s), {other_failures} other failure(s). "
             "503 is backend availability, not proof of exhausted keys/quota. "
             "Качество не понижено: 3.6/3.5/Lite не использовались."
