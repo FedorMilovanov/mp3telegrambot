@@ -82,14 +82,20 @@ def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
     assert "refusing a partial auto-fix" in fix
 
 
-def test_gemini_semantic_config_is_source_owned_high_and_sampling_free():
+def test_gemini_semantic_config_preserves_37_quality_and_explicit_recovery_levels():
+    from core.globals import _effective_thinking_level
+
+    # Production semantic callers still explicitly request HIGH. Gemini 3.7
+    # also supports LOW/MEDIUM, so bounded recovery must not be silently
+    # promoted back to HIGH.
+    assert _effective_thinking_level("gemini-3.7-flash", "high") == "high"
+    assert _effective_thinking_level("gemini-3.7-flash", "medium") == "medium"
+    assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
+    assert _effective_thinking_level("gemini-3.7-flash", "minimal") == "high"
+
     src = _source("core/globals.py")
-    thinking = _function_source(src, "_effective_thinking_level")
     legacy = _function_source(src, "make_text_config")
     smart = _function_source(src, "make_text_config_smart")
-
-    assert 'model == "gemini-3.7-flash"' in thinking
-    assert 'return "high"' in thinking
     assert "make_text_config_smart(" in legacy
     assert "GenerateContentConfig(" not in legacy
     assert 'kwargs["temperature"] = temperature' in smart
