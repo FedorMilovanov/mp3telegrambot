@@ -7,7 +7,7 @@ end_marker = "# 8) Fix the brittle canonical CI assertion"
 start = text.index(start_marker)
 end = text.index(end_marker)
 
-replacement = r'''# Reuse one uploaded Gemini file for the proven 15/30s 503 retries on a client.
+replacement = r"""# Reuse one uploaded Gemini file for the proven 15/30s 503 retries on a client.
 sub_once(
     "services/gemini_analyze.py",
     r'''(?m)^(?P<indent>\s*)for client in GEMINI_CLIENTS:\n(?P=indent)    if success:\n(?P=indent)        break\n(?P=indent)    for attempt in range\(3\):$''',
@@ -44,7 +44,7 @@ sub_once(
     '''            if (\n                response is None\n                and last_err is not None\n                and not is_quota_error(last_err)\n                and is_overload_error(last_err)\n            ):\n                logger.warning(\n                    "Gemini 503 recovery exhausted across configured clients; "\n                    "second full re-upload circle is disabled"\n                )\n''',
 )
 
-'''
+"""
 
 path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
 print("AUDIT_PATCHER_GEMINI_SECTION_FIXED")
