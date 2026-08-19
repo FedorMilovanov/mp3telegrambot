@@ -84,6 +84,20 @@ def _require_no_legacy_browser_provider() -> None:
     )
 
 
+def _require_no_installed_bgutil_wheel() -> None:
+    try:
+        wheel_version = metadata.version(BGUTIL_DISTRIBUTION)
+    except metadata.PackageNotFoundError:
+        return
+    raise YouTubePoTokenRuntimeError(
+        "Обнаружен лишний установленный bgutil provider wheel "
+        f"{BGUTIL_DISTRIBUTION} {wheel_version}. Production использует только "
+        "pinned .runtime source tree. Удали wheel: "
+        ".\\.venv\\Scripts\\python.exe -m pip uninstall -y "
+        "bgutil-ytdlp-pot-provider; затем снова запусти Start Bot.bat."
+    )
+
+
 def _parse_ytdlp_policy(path: Path) -> list[str]:
     try:
         text = Path(path).read_text(encoding="utf-8", errors="strict")
@@ -124,12 +138,12 @@ def _option_values(tokens: list[str], option: str) -> list[str]:
 def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
     """Prove that yt-dlp cannot fall back to global plugins or another client."""
     tokens = _parse_ytdlp_policy(path)
-    try:
-        disable_index = tokens.index("--no-plugin-dirs")
-    except ValueError as exc:
+    if tokens.count("--no-plugin-dirs") != 1:
         raise YouTubePoTokenRuntimeError(
-            "yt-dlp.conf не отключает default/global plugin directories"
-        ) from exc
+            "yt-dlp.conf должен ровно один раз отключать default/global plugin "
+            "directories через --no-plugin-dirs"
+        )
+    disable_index = tokens.index("--no-plugin-dirs")
 
     plugin_values = _option_values(tokens, "--plugin-dirs")
     if plugin_values != [EXPECTED_PLUGIN_DIR]:
@@ -168,10 +182,7 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
             f"actual={bgutil_routes or 'none'}"
         )
 
-    forbidden = (
-        "--cookies",
-        "--cookies-from-browser",
-    )
+    forbidden = ("--cookies", "--cookies-from-browser")
     if any(
         token in forbidden
         or any(token.startswith(option + "=") for option in forbidden)
@@ -315,6 +326,7 @@ def _require_node() -> str:
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
     """Require mweb + automatic browserless GVS token generation, fail closed."""
     _require_no_legacy_browser_provider()
+    _require_no_installed_bgutil_wheel()
     _require_ytdlp_policy()
     provider_home = _require_provider_build()
     plugin_root = provider_home.parent / "plugin"
