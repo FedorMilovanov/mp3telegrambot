@@ -56,8 +56,10 @@ def _require_no_legacy_browser_provider() -> None:
         return
     raise YouTubePoTokenRuntimeError(
         "Обнаружен устаревший browser-based PO Token provider "
-        f"{LEGACY_WPC_DISTRIBUTION} {legacy_version}. Запусти Start Bot.bat: "
-        "он удалит WPC/nodriver; Chrome fallback в production запрещён."
+        f"{LEGACY_WPC_DISTRIBUTION} {legacy_version}. Удали его из project venv: "
+        ".\\.venv\\Scripts\\python.exe -m pip uninstall -y "
+        "yt-dlp-getpot-wpc nodriver; затем снова запусти Start Bot.bat. "
+        "Chrome fallback в production запрещён."
     )
 
 
