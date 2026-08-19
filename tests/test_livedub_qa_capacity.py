@@ -63,7 +63,7 @@ def _install_common(monkeypatch, clients):
         SimpleNamespace(UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)),
     )
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
-    monkeypatch.setattr(control, "note_overload", lambda _delay: None)
+    monkeypatch.setattr(control, "note_overload", lambda *_args, **_kwargs: None)
 
     import core.globals as core_globals
 
@@ -180,7 +180,7 @@ def test_livedub_files_poll_failure_cleans_remote_handle(monkeypatch, tmp_path):
 
     monkeypatch.setattr(qa.asyncio, "sleep", no_sleep)
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
-    monkeypatch.setattr(control, "note_overload", lambda _delay: None)
+    monkeypatch.setattr(control, "note_overload", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeError, match="503"):
         asyncio.run(qa._upload_and_wait(client, path, "qa", budget))
