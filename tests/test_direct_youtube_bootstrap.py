@@ -32,3 +32,11 @@ def test_direct_entrypoint_keeps_provider_path_identical_to_ytdlp_policy() -> No
 def test_provisioner_and_readiness_share_exact_provider_identity() -> None:
     assert runtime.BGUTIL_EXPECTED_VERSION == provisioner.BGUTIL_VERSION
     assert runtime.BGUTIL_EXPECTED_COMMIT == provisioner.BGUTIL_COMMIT
+
+
+def test_provisioner_enforces_upstream_node_and_npm_floors() -> None:
+    source = Path("tools/ensure_bgutil_provider.py").read_text(encoding="utf-8")
+
+    assert "if major < 22" in source
+    assert "if major < 9" in source
+    assert "_npm_executable()" in source
