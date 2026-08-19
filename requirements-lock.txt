@@ -1,12 +1,11 @@
 # Fully resolved from the green Python 3.11 CI environment on 2026-08-01.
-# YouTube PO-token repair refreshed the provider-specific additions on 2026-08-19.
+# YouTube PO-token source runtime is pinned outside pip by tools/ensure_bgutil_provider.py.
 # Regenerate intentionally through a dependency-update PR and rerun all smoke checks.
 Pillow==11.3.0
 annotated-types==0.8.0
 anyio==4.14.2
 av==18.0.0
 beautifulsoup4==4.15.0
-bgutil-ytdlp-pot-provider==1.3.1
 blinker==1.9.0
 brotli==1.2.0
 certifi==2026.7.22
