@@ -3,7 +3,8 @@ from __future__ import annotations
 from converters.caption import build_caption
 
 
-def test_fallback_warning_does_not_claim_entire_analysis_used_reserve_model() -> None:
+def test_legacy_fallback_marker_does_not_publish_reserve_model_warning() -> None:
+    """Semantic model downgrade is forbidden, so stale ambient flags are inert."""
     caption = build_caption(
         "Автор",
         "Название",
@@ -16,6 +17,7 @@ def test_fallback_warning_does_not_claim_entire_analysis_used_reserve_model() ->
         },
     )
 
-    assert "Один из дополнительных разделов создан на резервной модели" in caption
-    assert "Разбор создан на резервной модели" not in caption
-    assert "основной разбор и таймкоды могли быть созданы основной моделью" in caption
+    assert "резервной модели" not in caption
+    assert "Основной разбор" not in caption
+    assert "Название" in caption
+    assert "Автор" in caption

@@ -65,12 +65,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# PATCH-FIX: lightweight per-process tracking of whether the last
-# _gemini_text_request call fell back to a non-primary model.
-# Used by the pipeline to surface lite-model warnings in the caption.
-_gemini_last_was_fallback: bool = False
-
-
 @dataclass(frozen=True)
 class CombinedStudyReflectionResult:
     study_url: str | None = None
@@ -539,19 +533,16 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 video_id: str = "", thinking_level: str = "high",
                                 response_mime_type: str | None = None,
                                 response_schema=None,
-                                allow_model_fallback: bool = True) -> str | None:
-    """Текстовый Gemini-запрос с multi-model fallback + thinking_level=high.
+                                allow_model_fallback: bool = False) -> str | None:
+    """Strict-primary semantic Gemini request with bounded service retries.
 
-    v10 (3.5-flash era): GEMINI_MODEL=gemini-3.5-flash → fallback gemini-2.5-flash-lite.
-    gemini-3.1-pro ПЛАТНАЯ — убрана из цепочки.
-    На каждой модели: до 2 попыток с паузой при 503/overload. Time-budget 180s.
+    Model downgrade is forbidden: an unavailable primary model causes the
+    optional section to be omitted instead of being published from Lite.
     """
     if not GEMINI_CLIENTS:
         return None
 
-    # PATCH-FIX: reset fallback flag at the start of each call
-    global _gemini_last_was_fallback
-    _gemini_last_was_fallback = False
+    # Quality policy: this semantic route never downgrades models.
 
     _compacted = compact_prompt_for_generation(prompt)
     if _compacted.saved_chars:
@@ -581,10 +572,14 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
     def _duration_ms() -> int:
         return int((time.time() - _start_time) * 1000)
 
-    # ВСЕ на максимальном качестве — 3.5-flash
+    # Semantic pages use only the configured production model (3.7 Flash).
     _models = [GEMINI_MODEL]
-    if allow_model_fallback and GEMINI_MODEL != "gemini-3.1-flash-lite":
-        _models.append("gemini-3.1-flash-lite")
+    if allow_model_fallback:
+        logger.warning(
+            "_gemini_text_request[%s]: model fallback requested but ignored by "
+            "strict semantic quality policy",
+            task,
+        )
 
     def _is_internal_error(e: Exception) -> bool:
         s = str(e)
@@ -607,12 +602,7 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             break
 
         if model_idx > 0:
-            logger.warning(
-                "_gemini_text_request: переключаюсь на модель %s (#%d/%d)",
-                model_name, model_idx + 1, len(_models),
-            )
-            # PATCH-FIX: track fallback for downstream visibility
-            _gemini_last_was_fallback = True
+            raise AssertionError("semantic model fallback is disabled")
 
         # 2 попытки на модель — fast fail
         _max_attempts = 2

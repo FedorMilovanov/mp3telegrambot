@@ -85,6 +85,32 @@ def test_503_high_demand_retries_once_then_rotates_all_clients(monkeypatch, tmp_
     assert 'retry-кэше' in str(raised.value)
 
 
+def test_mixed_client_failures_do_not_claim_every_key_got_503(monkeypatch, tmp_path):
+    audio = tmp_path / "factory.flac"
+    audio.write_bytes(b"x" * 2048)
+    first = SimpleNamespace(name="first")
+    second = SimpleNamespace(name="second")
+
+    async def run_pass(client, **kwargs):
+        if client is first:
+            raise _ServiceError(503, "UNAVAILABLE: high demand")
+        raise _ServiceError(429, "RESOURCE_EXHAUSTED")
+
+    _install_fake_factory_modules(monkeypatch, run_pass)
+    _disable_capacity_retry_delay(monkeypatch)
+    monkeypatch.setattr(capacity, "factory_gemini_clients", lambda: [first, second])
+
+    with pytest.raises(RuntimeError) as raised:
+        asyncio.run(
+            capacity_runtime.create_factory_plan_resumable(
+                audio, title="Title", performer="Author", duration=120
+            )
+        )
+    message = str(raised.value)
+    assert "1/2 client(s) returned 503" in message
+    assert "Все 2 настроенных API-клиента получили 503" not in message
+
+
 def test_duration_mismatch_fails_before_any_gemini_client(monkeypatch, tmp_path):
     import services.shorts_factory_source as source
 

@@ -6,6 +6,7 @@ cd /d "%~dp0"
 set "VENV_DIR=.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "SETUP_MARKER=%VENV_DIR%\.setup-complete"
+set "WPC_MIGRATION_MARKER=%VENV_DIR%\.wpc-provider-removed"
 set "REQ_HASH_FILE=%VENV_DIR%\.requirements-hash.tmp"
 
 if not exist "bot_new.py" (
@@ -106,15 +107,16 @@ if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
     echo [SETUP] Dependencies are already current.
 )
 
-rem Migration from the old WPC/nodriver browser provider. pip install -r does
-rem not remove packages that disappeared from the lock, so explicitly remove
-rem the obsolete direct dependencies to guarantee Chrome cannot remain a
-rem hidden yt-dlp PO-token fallback in an upgraded existing .venv.
-"%VENV_PYTHON%" -m pip uninstall -y yt-dlp-getpot-wpc nodriver >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Failed to remove the obsolete browser-based YouTube PO Token runtime.
-    pause
-    exit /b 1
+rem One-time migration from the old WPC/nodriver browser provider.
+rem Keep it idempotent without paying a pip subprocess cost on every bot start.
+if not exist "%WPC_MIGRATION_MARKER%" (
+    "%VENV_PYTHON%" -m pip uninstall -y yt-dlp-getpot-wpc nodriver >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Failed to remove the obsolete browser-based YouTube PO Token runtime.
+        pause
+        exit /b 1
+    )
+    >"%WPC_MIGRATION_MARKER%" echo browser-provider-removed-v1
 )
 
 if not exist "tools\ensure_bgutil_provider.py" (

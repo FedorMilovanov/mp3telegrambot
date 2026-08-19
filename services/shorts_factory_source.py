@@ -416,6 +416,7 @@ async def download_factory_video_source(
     _remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
     command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
+        "--abort-on-unavailable-fragments",
         "--format",
         "bestvideo+bestaudio/best",
         "--merge-output-format",
@@ -448,6 +449,19 @@ async def download_factory_video_source(
         for path in candidates:
             probe = await probe_media_async(path)
             if media_probe_is_deliverable(probe):
+                actual_duration = float(getattr(probe, "duration", 0.0) or 0.0)
+                if expected_duration > 0 and not factory_duration_matches(
+                    actual_duration,
+                    float(expected_duration),
+                ):
+                    logger.warning(
+                        "Factory rejected incomplete maximum-quality video source: "
+                        "expected=%.3fs actual=%.3fs file=%s",
+                        float(expected_duration),
+                        actual_duration,
+                        path.name,
+                    )
+                    continue
                 logger.info(
                     "Factory maximum-quality video source: %s %sx%s %.3fs %.1fMB",
                     path.name,

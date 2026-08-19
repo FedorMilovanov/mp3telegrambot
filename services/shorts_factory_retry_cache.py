@@ -321,12 +321,41 @@ async def download_factory_audio_with_retry_cache(
         )
         return cached
     prepared = Path(await original_downloader(url, media_id))
-    await _store_analysis_audio(
-        url,
-        media_id,
-        prepared,
-        expected_duration=expected_duration,
-    )
+    try:
+        await _store_analysis_audio(
+            url,
+            media_id,
+            prepared,
+            expected_duration=expected_duration,
+        )
+    except asyncio.CancelledError:
+        raise
+    except OSError as exc:
+        from services.media_delivery_probe import probe_media_async
+        from services.shorts_factory_source import (
+            factory_audio_probe_is_usable,
+            factory_duration_matches,
+            measure_factory_audio_duration,
+        )
+
+        probe = await probe_media_async(prepared)
+        verified_duration = await measure_factory_audio_duration(prepared)
+        expected = float(expected_duration or 0.0)
+        integrity_ok = factory_audio_probe_is_usable(probe) and (
+            expected <= 0
+            or factory_duration_matches(verified_duration, expected)
+        )
+        if not integrity_ok:
+            raise RuntimeError(
+                "Factory retry-cache write failed and prepared analysis audio "
+                "did not pass mandatory re-verification"
+            ) from exc
+        logger.warning(
+            "Factory retry-cache storage failed after media re-verification; "
+            "continuing with verified analysis audio: %s: %s",
+            type(exc).__name__,
+            str(exc)[:400],
+        )
     return prepared
 
 

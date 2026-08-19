@@ -56,10 +56,6 @@ from services.telegraph_pages import (
     create_telegraph_reflection_application, create_telegraph_study_reflection_combined,
     combined_study_reflection_enabled,
 )
-# AUDIT R39: импортируем МОДУЛЬ, а не значение флага — иначе имя связывалось с
-# False на момент импорта и переустановки telegraph_pages._gemini_last_was_fallback
-# его не меняли (маркер lite-модели в подписи был мёртвым кодом).
-import services.telegraph_pages as _tp_module
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
@@ -2526,10 +2522,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 media_id, _pub_status.status, ",".join(_pub_status.missing),
             )
             _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
-
-        # PATCH-FIX: surface lite-model fallback in caption so user knows quality may be reduced
-        if _tp_module._gemini_last_was_fallback:   # AUDIT R39: живое значение из модуля
-            _ai_caption_base = {**(_ai_caption_base or ai_data), "_gemini_was_fallback": True}
 
         def _build(data, **kw):
             return build_caption(performer, title, duration, file_size_mb,

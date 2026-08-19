@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from services import gemini_max_quality as quality
+from services import shorts_factory_capacity_runtime as capacity_runtime
 
 
 def test_heavy_quality_policy_forces_37_high_and_large_v3(monkeypatch):
@@ -62,7 +63,6 @@ def test_publication_metadata_directly_owns_37_high_quality_route():
 
 def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
-    capacity = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
     globals_src = Path("core/globals.py").read_text(encoding="utf-8")
 
     assert not Path("services/gemini36_factory_resilience.py").exists()
@@ -74,14 +74,12 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     assert '"-progress",\n        "pipe:1"' in source
     assert "measure_factory_audio_duration" in source
 
-    assert "_FACTORY_CAPACITY_PASS_ATTEMPTS = 2" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0" in capacity
-    assert "_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0" in capacity
-    assert "Переключаюсь на следующий клиент без понижения модели" in capacity
-    assert "НЕ означает, что API-ключи или квота исчерпаны" in capacity
-    assert "3.6/3.5/Lite не" in capacity
-    assert "Factory analysis audio duration verified before Gemini" in capacity
+    assert capacity_runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 2
+    assert capacity_runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
+    assert capacity_runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
+    assert capacity_runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
+    # User-facing 503/quota semantics are asserted behaviorally in
+    # tests/test_factory_capacity_fast_fail.py rather than by grepping source text.
 
     assert "def configured_gemini_service_tier()" in globals_src
     assert 'kwargs["service_tier"] = "priority"' in globals_src

@@ -55,31 +55,9 @@ def _audio_structured_output_enabled() -> bool:
 
 
 def _audio_fallback_models(primary_model: str) -> list[str]:
-    """Quality-first model list for audio analysis.
-
-    Deep audio analysis is the root artifact for every downstream page. In live
-    runs, lite-model fallbacks under quota pressure produced MAX_TOKENS and
-    shallow/incorrect metadata, after which the pipeline published misleading
-    Study/Reflection pages. Default is therefore strict: use the configured
-    primary model (normally gemini-3.5-flash) only. Operators may explicitly
-    opt into emergency lite fallbacks with AUDIO_ANALYSIS_FALLBACK_MODE=lite.
-    """
+    """Return the single production audio model; semantic downgrade is forbidden."""
     primary = str(primary_model or "").strip()
-    mode = (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict").strip().lower()
-    if mode in {"lite", "all", "legacy"}:
-        # MODEL MIGRATION 2026-07: 2.5-flash-lite выключается ~22.07.2026 —
-        # остаётся только GA gemini-3.1-flash-lite (audio поддерживает).
-        candidates = [primary, "gemini-3.1-flash-lite"]
-    else:
-        candidates = [primary]
-    out: list[str] = []
-    seen: set[str] = set()
-    for model in candidates:
-        model = str(model or "").strip()
-        if model and model not in seen:
-            seen.add(model)
-            out.append(model)
-    return out
+    return [primary] if primary else []
 
 
 def _audio_structured_timeout() -> float:
@@ -308,15 +286,9 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     if not GEMINI_CLIENTS:
         return None, None, None
 
-    # AUDIT FIX MULTI-MODEL: fallback по качеству (для редких но мощных запросов)
-    # Юзкейс: 1-5 видео/день, главное — качество анализа
     _user_model = GEMINI_MODEL
     _models_to_try = _audio_fallback_models(_user_model)
-    logger.info(
-        "Gemini audio models (quality-first; AUDIO_ANALYSIS_FALLBACK_MODE=%s): %s",
-        (os.getenv("AUDIO_ANALYSIS_FALLBACK_MODE", "strict") or "strict"),
-        _models_to_try,
-    )
+    logger.info("Gemini audio model (strict no-downgrade): %s", _models_to_try)
 
     used_client = None
     used_audio_part = None
@@ -390,7 +362,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             _audio_tokens_est // 1000,
         )
 
-        # AUDIT FIX MULTI-MODEL: внешний цикл по моделям-кандидатам
+        # Single-model loop retained only for uniform observability/control flow.
         last_err = None
         response = None
         success = False
@@ -403,12 +375,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             if success:
                 break
             _obs_model = _current_model
-            _obs_is_fallback = _model_idx > 0
-            if _model_idx > 0:
-                logger.warning(
-                    f"Gemini переключаюсь на резервную модель: {_current_model} "
-                    f"(модель #{_model_idx+1}/{len(_models_to_try)})"
-                )
+            _obs_is_fallback = False
             # Для каждого клиента загружаем файл отдельно (файлы не переносятся между ключами)
             last_err = None
             response = None
@@ -416,12 +383,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             for client in GEMINI_CLIENTS:
                 if success:
                     break
+                audio_part = None
                 for attempt in range(3):
                     try:
                         _obs_retry_num = attempt
-                        audio_part = None  # инициализируем до upload, чтобы except не поймал NameError
-                        audio_part, used_client = await upload_to_client(client)
-                        used_audio_part = audio_part
+                        if audio_part is None:
+                            audio_part, used_client = await upload_to_client(client)
+                            used_audio_part = audio_part
 
                         # BUG-B09: единый retry через _gemini_call_with_retry
                         # Используем default-args чтобы зафиксировать текущие client/audio_part
@@ -444,8 +412,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                         timeout=_audio_structured_timeout(),
                                     )
                                 except Exception as _schema_err:
-                                    # Quota/overload are not schema problems; let outer fallback
-                                    # rotate keys/models normally. For SDK/model schema incompatibility,
+                                    # Quota/overload are not schema problems; let the outer
+                                    # client-rotation policy handle them. For schema incompatibility,
                                     # retry the same call with legacy JSON config.
                                     if is_quota_error(_schema_err) or is_overload_error(_schema_err):
                                         raise
@@ -477,29 +445,37 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         ) and not _is_quota
                         _is_overload = is_overload_error(e) and not _is_quota
                         if _is_quota or _is_overload or _is_timeout:
+                            if _is_overload and attempt < 2:
+                                _retry_action = "повторяю тот же ключ и тот же upload"
+                            else:
+                                _retry_action = "переключаюсь на следующий ключ"
                             logger.warning(
                                 f"Gemini {'квота' if _is_quota else ('timeout' if _is_timeout else '503/disconnect')}: "
-                                f"{type(e).__name__}: {str(e)[:200]} -- пробую следующий ключ..."
+                                f"{type(e).__name__}: {str(e)[:200]} -- {_retry_action}"
                             )
-                            # FIX: удаляем загруженный временный файл при ротации
-                            # ключа независимо от размера. Раньше порог >20MB оставлял
-                            # файлы 0–20MB висеть в Gemini Files API при каждой смене ключа.
-                            if audio_part is not None and hasattr(audio_part, 'name'):
-                                _spawn_safe_delete(client, audio_part.name)
                             last_err = e
                             # Quota is project/model-level; retrying same key only wastes time.
                             if _is_quota:
                                 # Не баним модель глобально (ключи в разных проектах имеют свои квоты)
+                                if audio_part is not None and hasattr(audio_part, "name"):
+                                    _spawn_safe_delete(client, audio_part.name)
                                 break
                             if _is_timeout:
-                                break  # 3 ретрая на этом ключе уже были — следующий клиент
-                            # AUDIT FIX 503-RETRY: на первых попытках ждём и повторяем тем же ключом
+                                if audio_part is not None and hasattr(audio_part, "name"):
+                                    _spawn_safe_delete(client, audio_part.name)
+                                break  # ReadTimeout helper already exhausted this client
+                            # Bounded recovery keeps the same uploaded audio on this client.
                             if _is_overload and attempt < 2:
                                 _wait_503 = 15 * (attempt + 1)  # 15s, 30s
-                                logger.info(f"Gemini 503: жду {_wait_503}s и повторяю тем же ключом (попытка {attempt+2}/3)...")
+                                logger.info(
+                                    f"Gemini 503: жду {_wait_503}s и повторяю тем же ключом "
+                                    f"на уже загруженном аудио (попытка {attempt+2}/3)..."
+                                )
                                 await asyncio.sleep(_wait_503)
-                                continue  # следующая попытка на ЭТОМ же ключе
-                            break  # все попытки на ключе исчерпаны — следующий клиент
+                                continue
+                            if audio_part is not None and hasattr(audio_part, "name"):
+                                _spawn_safe_delete(client, audio_part.name)
+                            break  # bounded 503 recovery exhausted — next client
                         raise  # неизвестная ошибка — пробрасываем
 
             if response is None and last_err is not None and is_quota_error(last_err):
@@ -509,38 +485,16 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     _current_model,
                 )
 
-            # AUDIT FIX 503-RETRY: если все ключи упали с 503, ждём 60s и второй круг
-            if response is None and last_err is not None and (not is_quota_error(last_err)) and is_overload_error(last_err):
-                logger.warning("Gemini 503 на всех ключах — жду 60s и пробую ещё раз весь круг...")
-                await asyncio.sleep(60)
-                for client in GEMINI_CLIENTS:
-                    audio_part = None
-                    try:
-                        _obs_retry_num = 3
-                        audio_part, used_client = await upload_to_client(client)
-                        response = await asyncio.wait_for(
-                            client.aio.models.generate_content(
-                                model=_current_model,
-                                contents=[audio_part, prompt],
-                                config=make_audio_config(max_output_tokens=65536, model_name=_current_model),
-                            ),
-                            timeout=960.0,
-                        )
-                        used_audio_part = audio_part
-                        # FIX AUDIT R4: без success=True следующая итерация цикла
-                        # моделей обнуляла response (строки сброса в начале итерации)
-                        # и выбрасывала успешный ответ второго круга.
-                        success = True
-                        logger.info("Gemini: второй круг успешен!")
-                        break
-                    except Exception as e2:
-                        logger.warning(f"Gemini второй круг: {type(e2).__name__}: {str(e2)[:150]}")
-                        # FIX AUDIT R4: зеркалим очистку первого круга — иначе каждый
-                        # неудачный клиент второго круга оставляет ~50MB файл в Files API.
-                        if audio_part is not None and hasattr(audio_part, 'name'):
-                            _spawn_safe_delete(client, audio_part.name)
-                        last_err = e2
-                        continue
+            if (
+                response is None
+                and last_err is not None
+                and not is_quota_error(last_err)
+                and is_overload_error(last_err)
+            ):
+                logger.warning(
+                    "Gemini 503 recovery exhausted across configured clients; "
+                    "second full re-upload circle is disabled"
+                )
 
         if response is None:
             _err = last_err or RuntimeError("Все Gemini-клиенты недоступны")
