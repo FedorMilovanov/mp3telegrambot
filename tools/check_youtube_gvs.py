@@ -22,6 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 DEFAULT_PROBE_URL = "https://www.youtube.com/watch?v=-vq7fH7ANUs"
+_EXPECTED_DURATION_PREFIX = "GVS_EXPECTED_DURATION="
 
 
 def _tail(text: str, limit: int = 4000) -> str:
@@ -39,6 +40,33 @@ def _classify_failure(process: subprocess.CompletedProcess[str]) -> str:
     if "po token providers: none" in folded:
         return "FAIL_NO_PO_PROVIDER"
     return "FAIL_YTDLP"
+
+
+def _expected_duration_from_output(stdout: str) -> float:
+    for raw_line in reversed(str(stdout or "").splitlines()):
+        line = raw_line.strip()
+        if not line.startswith(_EXPECTED_DURATION_PREFIX):
+            continue
+        raw_value = line[len(_EXPECTED_DURATION_PREFIX) :].strip()
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError, OverflowError):
+            return 0.0
+        return value if value > 0 else 0.0
+    return 0.0
+
+
+def _duration_matches(actual: float, expected: float) -> bool:
+    """Match the Factory complete-source tolerance exactly."""
+    try:
+        actual_value = float(actual)
+        expected_value = float(expected)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if actual_value <= 0 or expected_value <= 0:
+        return False
+    tolerance = max(2.0, min(15.0, expected_value * 0.002))
+    return abs(actual_value - expected_value) <= tolerance
 
 
 def _find_downloaded_media(workdir: Path) -> Path | None:
@@ -105,6 +133,8 @@ def _production_command(url: str, workdir: Path) -> list[str]:
         "--format",
         "bestaudio/best",
         "--no-playlist",
+        "--print",
+        f"before_dl:{_EXPECTED_DURATION_PREFIX}%(duration)s",
         "--output",
         str(output_template),
         url,
@@ -179,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             print(f"GVS_ACCEPTANCE=FAIL_YTDLP\n{exc}")
             return 3
+        except RuntimeError as exc:
+            print(f"GVS_ACCEPTANCE=FAIL_PROCESS_OWNERSHIP\n{exc}")
+            return 8
 
         if process.returncode:
             classification = _classify_failure(process)
@@ -187,6 +220,11 @@ def main(argv: list[str] | None = None) -> int:
             if detail:
                 print(detail)
             return 3
+
+        expected_duration = _expected_duration_from_output(process.stdout)
+        if expected_duration <= 0:
+            print("GVS_ACCEPTANCE=FAIL_METADATA_DURATION")
+            return 7
 
         media_path = _find_downloaded_media(temp_root)
         if media_path is None or media_path.stat().st_size <= 0:
@@ -199,9 +237,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"GVS_ACCEPTANCE=FAIL_FFPROBE\n{exc}")
             return 5
 
+        if not _duration_matches(duration, expected_duration):
+            print(
+                "GVS_ACCEPTANCE=FAIL_DURATION_MISMATCH "
+                f"metadata={expected_duration:.3f}s ffprobe={duration:.3f}s"
+            )
+            return 9
+
         print(
             "GVS_ACCEPTANCE=PASS "
-            f"bytes={media_path.stat().st_size} duration={duration:.3f}s"
+            f"bytes={media_path.stat().st_size} "
+            f"metadata={expected_duration:.3f}s ffprobe={duration:.3f}s"
         )
         if args.keep:
             print(f"Probe file kept at: {media_path}")
