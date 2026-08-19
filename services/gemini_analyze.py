@@ -381,16 +381,14 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         ),
                         domain="inference",
                     )
-                except Exception as schema_err:
-                    if (
-                        is_quota_error(schema_err)
-                        or is_overload_error(schema_err)
-                        or _is_timeout_error(schema_err)
-                    ):
+                except Exception as _schema_err:
+                    if is_quota_error(_schema_err) or is_overload_error(_schema_err):
+                        raise
+                    if _is_timeout_error(_schema_err):
                         raise
                     logger.warning(
                         "audio_analysis structured output failed (%s: %s) — retry legacy JSON config",
-                        type(schema_err).__name__, str(schema_err)[:180],
+                        type(_schema_err).__name__, str(_schema_err)[:180],
                     )
             return await capacity_control.run_heavy_gemini_call(
                 lambda: asyncio.wait_for(
@@ -421,36 +419,37 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             for client_index, client in enumerate(GEMINI_CLIENTS, 1):
                 if success or inference_budget.exhausted or upload_budget.exhausted:
                     break
-                audio_part = None
+                audio_part = used_audio_part if used_client is client else None
 
-                try:
-                    audio_part, used_client = await upload_to_client(client)
-                    used_audio_part = audio_part
-                except Exception as upload_err:
-                    last_err = upload_err
-                    transient_upload = (
-                        is_quota_error(upload_err)
-                        or is_overload_error(upload_err)
-                        or _is_timeout_error(upload_err)
-                    )
-                    if not transient_upload:
-                        raise
-                    logger.warning(
-                        "Gemini Files upload transient failure client %d/%d, budget=%d/%d: %s: %s",
-                        client_index,
-                        len(GEMINI_CLIENTS),
-                        upload_budget.used,
-                        upload_budget.limit,
-                        type(upload_err).__name__,
-                        str(upload_err)[:200],
-                    )
-                    if upload_budget.exhausted:
-                        break
-                    if is_overload_error(upload_err):
-                        await asyncio.sleep(
-                            capacity_control.transient_retry_delay(upload_budget.used)
+                if audio_part is None:
+                    try:
+                        audio_part, used_client = await upload_to_client(client)
+                        used_audio_part = audio_part
+                    except Exception as upload_err:
+                        last_err = upload_err
+                        transient_upload = (
+                            is_quota_error(upload_err)
+                            or is_overload_error(upload_err)
+                            or _is_timeout_error(upload_err)
                         )
-                    continue
+                        if not transient_upload:
+                            raise
+                        logger.warning(
+                            "Gemini Files upload transient failure client %d/%d, budget=%d/%d: %s: %s",
+                            client_index,
+                            len(GEMINI_CLIENTS),
+                            upload_budget.used,
+                            upload_budget.limit,
+                            type(upload_err).__name__,
+                            str(upload_err)[:200],
+                        )
+                        if upload_budget.exhausted:
+                            break
+                        if is_overload_error(upload_err):
+                            await asyncio.sleep(
+                                capacity_control.transient_retry_delay(upload_budget.used)
+                            )
+                        continue
 
                 same_client_transients = 0
                 while not inference_budget.exhausted and same_client_transients < 2:
@@ -469,7 +468,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
                         last_err = e
                         same_client_transients += 1
-                        kind = "квота/429" if _is_quota else ("timeout" if _is_timeout else "503/disconnect")
+                        if _is_quota:
+                            # Quota is project/model-level; retrying same key only wastes time.
+                            kind = "квота/429"
+                        elif _is_timeout:
+                            kind = "timeout"
+                        else:
+                            kind = "503/disconnect"
                         logger.warning(
                             "Gemini %s: %s: %s — inference budget=%d/%d",
                             kind,
@@ -492,7 +497,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
                         if same_client_transients == 1 and not _is_quota:
                             logger.info(
-                                "Gemini transient recovery: %.1fs then same client/upload; global attempt %d/%d",
+                                "Gemini transient recovery: %.1fs then retry на уже загруженном аудио; global attempt %d/%d",
                                 delay,
                                 inference_budget.used + 1,
                                 inference_budget.limit,
@@ -520,6 +525,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                 and not is_quota_error(last_err)
                 and is_overload_error(last_err)
             ):
+                # second full re-upload circle is disabled for every transient class.
                 logger.warning(
                     "Gemini 503 recovery exhausted at global initial+2 budget; "
                     "additional API keys and second full re-upload circle are disabled"
