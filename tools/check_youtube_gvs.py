@@ -133,6 +133,7 @@ def _production_command(url: str, workdir: Path) -> list[str]:
         "--format",
         "bestaudio/best",
         "--no-playlist",
+        "--no-simulate",
         "--print",
         f"before_dl:{_EXPECTED_DURATION_PREFIX}%(duration)s",
         "--output",
