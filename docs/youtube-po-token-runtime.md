@@ -62,78 +62,99 @@ place. This preserves the reviewed upstream bytes and one-source-tree identity.
 
 ## Provisioning contract
 
-`Start Bot.bat` owns source provisioning. After Python requirements are
-synchronized, it runs:
-
-```powershell
-.\.venv\Scripts\python.exe tools\ensure_bgutil_provider.py
-```
+`tools/ensure_bgutil_provider.py` owns exact-source provisioning. Both the
+managed Windows launcher and the canonical Python entrypoint call the same
+idempotent provisioner, so `Start Bot.bat` and direct `python bot_new.py`
+launches no longer have different YouTube-repair semantics after `git pull`.
 
 The provisioner:
 
 1. requires Node.js >=22;
-2. initializes a staging Git repository under `.runtime/`;
-3. fetches the exact reviewed bgutil commit SHA, not a moving branch or tag;
-4. verifies `git rev-parse HEAD` equals the exact expected SHA before provider
+2. reuses an existing runtime only when the exact marker, Python plugin,
+   compiled JS and `node_modules` are all present;
+3. executes `node server/build/generate_once.js --version` as an offline smoke
+   test, proving the compiled script and installed dependency graph actually
+   load and report the expected provider version;
+4. serializes rebuilds with a repo-local provision lock and uses a unique
+   staging path per process;
+5. initializes a staging Git repository under `.runtime/`;
+6. fetches the exact reviewed bgutil commit SHA, not a moving branch or tag;
+7. verifies `git rev-parse HEAD` equals the exact expected SHA before provider
    code is built;
-5. requires the Python plugin entry point to exist in the checkout;
-6. runs `npm ci --no-audit --no-fund` from the upstream lockfile;
-7. invokes only the TypeScript compiler installed by that `npm ci` from
-   `server/node_modules/.bin/tsc` (`tsc.cmd` on Windows), never an on-demand
-   `npx` download;
-8. verifies `server/build/generate_once.js` exists;
-9. atomically publishes the prepared source tree and writes
-   `1.3.1@a0be2352807e3bd6991f09d2cab685a0ab825b26` to the runtime marker.
+8. requires the Python plugin entry point to exist in the checkout;
+9. runs `npm ci --no-audit --no-fund` from the upstream lockfile with a bounded
+   timeout;
+10. invokes only the TypeScript compiler installed by that `npm ci` from
+    `server/node_modules/.bin/tsc` (`tsc.cmd` on Windows), never an on-demand
+    `npx` download;
+11. verifies `server/build/generate_once.js` exists and passes the same offline
+    `--version` smoke test before publication;
+12. writes `1.3.1@a0be2352807e3bd6991f09d2cab685a0ab825b26` to the runtime marker;
+13. publishes through backup -> promote -> rollback semantics, so a failed
+    directory promotion does not intentionally delete the previously prepared
+    runtime first.
 
-On later starts the marker, JS build, and Python plugin entry are checked before
-any network/build work, so a current runtime is reused.
+Git, npm and TypeScript operations are bounded by explicit timeouts. A damaged
+or partial existing runtime is rebuilt instead of being trusted because its
+marker happens to exist.
 
-`Start Bot.bat` also performs two idempotent one-time migrations per virtual
-environment:
+`Start Bot.bat` additionally reconciles the obsolete WPC/nodriver browser
+provider and the old `bgutil-ytdlp-pot-provider` wheel on every managed launch.
+This cleanup is deliberately not marker-gated: if an obsolete provider is
+reinstalled later, the launcher remains a repair path.
 
-- removes the obsolete WPC/nodriver browser provider;
-- removes the old `bgutil-ytdlp-pot-provider` PyPI wheel.
-
-Even before the second migration, `yt-dlp.conf` disables all default/global
-plugin directories, so a stale site-packages provider cannot be selected.
+Even before cleanup, `yt-dlp.conf` disables all default/global plugin
+directories, so a stale site-packages provider cannot be selected by the
+production yt-dlp route.
 
 ## Startup contract
 
-`bot_new.py` changes to the repository root and validates the YouTube runtime
-before accepting work. Startup requires:
+`bot_new.py` changes to the repository root and, after basic environment checks,
+invokes the exact-source provisioner before validating YouTube readiness. A
+healthy local runtime is reused; a missing or damaged runtime is rebuilt. The
+entrypoint then independently validates the fail-closed routing policy before
+accepting work.
+
+Startup requires:
 
 1. no legacy `yt-dlp-getpot-wpc` distribution;
-2. `yt-dlp.conf` to contain exactly the source-only plugin restriction, mweb
+2. no redundant installed `bgutil-ytdlp-pot-provider` wheel;
+3. `yt-dlp.conf` to contain exactly the source-only plugin restriction, mweb
    route, and pinned bgutil server-home route;
-3. no cookie source or manual `po_token` in `yt-dlp.conf`;
-4. the exact runtime marker for `a0be2352...`;
-5. the Python plugin entry and `server/build/generate_once.js` in that same
+4. no cookie source or manual `po_token` in `yt-dlp.conf`;
+5. the exact runtime marker for `a0be2352...`;
+6. the Python plugin entry and `server/build/generate_once.js` in that same
    source tree;
-6. an isolated child-process import proving the plugin module is loaded from
+7. an isolated child-process import proving the plugin module is loaded from
    the pinned source directory, not site-packages;
-7. Node.js >=22.
+8. Node.js >=22.
 
-If any item is missing or has drifted, startup fails explicitly. This is
-intentional: the bot must not silently fall back to format 18 / 360p, another
-YouTube client, a global plugin, or a manually copied token.
+If repair cannot complete or any independent validation item has drifted,
+startup fails explicitly. This is intentional: the bot must not silently fall
+back to format 18 / 360p, another YouTube client, a global plugin, or a manually
+copied token.
 
 ## Updating an existing local installation
 
-After pulling a commit that changes this runtime, use the launcher once so the
-old wheel is removed and the new exact source is provisioned:
+The managed path remains the recommended way to synchronize Python dependencies
+and remove obsolete packages:
 
 ```powershell
 cd C:\Users\Fedor\Projects\mp3telegrambot
 .\Start Bot.bat
 ```
 
-A manual direct launch is valid only after provisioning:
+If the required Python packages are already installed in the interpreter you
+are using, a direct launch is also self-healing for the repo-local bgutil
+runtime:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
-.\.venv\Scripts\python.exe tools\ensure_bgutil_provider.py
-.\.venv\Scripts\python.exe bot_new.py
+python bot_new.py
 ```
+
+The direct entrypoint will reuse or provision `.runtime` itself. It still does
+not install the project's Python requirements into an arbitrary interpreter;
+`Start Bot.bat` remains the managed dependency/bootstrap path for `.venv`.
 
 ## Diagnostic smoke test
 
