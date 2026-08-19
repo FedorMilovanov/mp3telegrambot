@@ -42,6 +42,81 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
     )
 
 
+def _write_valid_policy(path: Path) -> None:
+    path.write_text(
+        "--no-plugin-dirs\n"
+        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
+        f'--extractor-args "{po.EXPECTED_YOUTUBE_ROUTE}"\n'
+        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        encoding="utf-8",
+    )
+
+
+def test_ytdlp_policy_accepts_only_exact_source_route(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    _write_valid_policy(policy)
+    po._require_ytdlp_policy(policy)
+
+
+def test_ytdlp_policy_rejects_extra_plugin_root(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    _write_valid_policy(policy)
+    policy.write_text(
+        policy.read_text(encoding="utf-8") + "--plugin-dirs /tmp/unreviewed\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="ровно один pinned"):
+        po._require_ytdlp_policy(policy)
+
+
+def test_ytdlp_policy_rejects_global_plugin_enablement(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    policy.write_text(
+        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
+        f'--extractor-args "{po.EXPECTED_YOUTUBE_ROUTE}"\n'
+        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="global plugin"):
+        po._require_ytdlp_policy(policy)
+
+
+def test_ytdlp_policy_rejects_wrong_youtube_client(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    policy.write_text(
+        "--no-plugin-dirs\n"
+        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
+        '--extractor-args "youtube:player_client=android_vr"\n'
+        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="player_client=mweb"):
+        po._require_ytdlp_policy(policy)
+
+
+def test_ytdlp_policy_rejects_manual_token_or_cookie_source(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    _write_valid_policy(policy)
+    policy.write_text(
+        policy.read_text(encoding="utf-8") + "--cookies cookies.txt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="не должен владеть cookies"):
+        po._require_ytdlp_policy(policy)
+
+    _write_valid_policy(policy)
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        + '--extractor-args "youtube:po_token=mweb.gvs+manual"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="manual po_token"):
+        po._require_ytdlp_policy(policy)
+
+
 def test_missing_exact_source_provider_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -189,6 +264,7 @@ def test_ytdlp_policy_restricts_plugins_to_exact_source_mweb_route() -> None:
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
     assert "wpc" not in lower
+    po._require_ytdlp_policy(Path("yt-dlp.conf"))
 
 
 def test_mweb_config_and_cookies_file_are_composed_together(
