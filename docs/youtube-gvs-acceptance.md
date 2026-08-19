@@ -35,6 +35,8 @@ Factory-relevant acceptance constraints:
 - `bestaudio/best`;
 - `--abort-on-unavailable-fragments`;
 - `--no-playlist`;
+- explicit `--no-simulate` so the metadata print hook cannot turn the probe
+  into a simulation;
 - one yt-dlp `before_dl` print containing only source metadata duration;
 - a unique temporary output path.
 
@@ -60,7 +62,12 @@ The last status line is machine-readable:
 
 - `GVS_ACCEPTANCE=PASS` — complete best-audio media transfer succeeded, the
   final file is readable by ffprobe, and its duration matches source metadata;
-- `GVS_ACCEPTANCE=FAIL_HTTP_403` — the production path still hits GVS 403;
+- `GVS_ACCEPTANCE=FAIL_HTTP_403` — provider returned a token but the downstream
+  media/GVS path still hit HTTP 403;
+- `GVS_ACCEPTANCE=FAIL_PO_PROVIDER_503` — the bgutil script itself failed its
+  retry loop with HTTP 503 before a usable PO token was returned;
+- `GVS_ACCEPTANCE=FAIL_PO_PROVIDER` — another explicit bgutil script/provider
+  failure occurred before the media transfer;
 - `GVS_ACCEPTANCE=FAIL_LOGIN_REQUIRED` — YouTube blocked the session/IP earlier
   at player access;
 - `GVS_ACCEPTANCE=FAIL_NO_PO_PROVIDER` — yt-dlp did not expose an automatic PO
@@ -79,6 +86,11 @@ The last status line is machine-readable:
   the expected complete readable media postcondition was not met;
 - `GVS_ACCEPTANCE=FAIL_YTDLP` — another yt-dlp failure occurred; the command
   prints the diagnostic tail.
+
+This distinction matters for the current upstream investigation: a downstream
+`FAIL_HTTP_403` is evidence for the WebPO homepage/`EVENT_ID` class, while a
+provider-side `FAIL_PO_PROVIDER_503` points at the separate proxy transport
+class. Neither should be hidden by a low-quality format fallback.
 
 A PASS is the missing production-network proof that hosted CI cannot supply.
 GitHub-hosted Azure IPs are currently stopped by YouTube earlier with a
