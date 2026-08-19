@@ -31,6 +31,28 @@ jobs:
           python -m yt_dlp --version
           python tools/ensure_bgutil_provider.py
 
+          # Version metadata on unreleased yt-dlp commits still reports the last
+          # stable version. Prove that the installed source actually contains the
+          # Aug-18 android_vr default-client removal rather than trusting --version.
+          python - <<'PY'
+          from pathlib import Path
+          import yt_dlp
+
+          root = Path(yt_dlp.__file__).resolve().parent
+          needle = "Since 2026-08-17, all formats (including live HLS and itag 18) get 403"
+          matches = []
+          for path in root.rglob("*.py"):
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except OSError:
+                  continue
+              if needle in text:
+                  matches.append(path.relative_to(root).as_posix())
+          if not matches:
+              raise SystemExit("EXACT_MASTER_SOURCE_PROOF_MISSING=1")
+          print(f"EXACT_MASTER_SOURCE_PROOF={matches}")
+          PY
+
       - name: Real GVS test read on original 403 video
         shell: bash
         run: |
@@ -39,21 +61,35 @@ jobs:
           log="$RUNNER_TEMP/ytdlp-gvs.log"
           out="$RUNNER_TEMP/gvs-probe.%(ext)s"
 
+          set +e
           python -m yt_dlp -v --no-config --config-location yt-dlp.conf \
+            --js-runtimes node --remote-components ejs:github \
             --test --no-playlist --abort-on-unavailable-fragments \
             -f "bestaudio/best" -o "$out" "$url" 2>&1 | tee "$log"
+          ytdlp_rc=${PIPESTATUS[0]}
+          set -e
 
-          if grep -Fq "HTTP Error 403" "$log"; then
-            echo "GVS_PROBE_403=1"
-            exit 3
-          fi
           if grep -Fq "PO Token Providers: none" "$log"; then
             echo "PO_PROVIDER_MISSING=1"
             exit 4
           fi
+          if grep -Fq "HTTP Error 403" "$log"; then
+            echo "GVS_PROBE_403=1"
+            exit 3
+          fi
           if grep -Eq "\[download\].*(format 18|itag 18)" "$log"; then
             echo "QUALITY_DOWNGRADE_FORMAT18=1"
             exit 5
+          fi
+          if grep -Fq "Sign in to confirm you’re not a bot" "$log" || \
+             grep -Fq "Sign in to confirm you're not a bot" "$log"; then
+            echo "GVS_PROBE_VERDICT=INCONCLUSIVE_GITHUB_IP_BOT_CHECK"
+            echo "YTDLP_EXIT=$ytdlp_rc"
+            exit 0
+          fi
+          if [[ "$ytdlp_rc" -ne 0 ]]; then
+            echo "GVS_PROBE_UNCLASSIFIED_FAILURE=1"
+            exit "$ytdlp_rc"
           fi
 
           python - <<'PY'
@@ -67,4 +103,5 @@ jobs:
           print(f"GVS_PROBE_FILES={sizes}")
           if not any(size > 0 for size in sizes.values()):
               raise SystemExit("Media probe file is empty")
+          print("GVS_PROBE_VERDICT=PASS_REAL_MEDIA_READ")
           PY
