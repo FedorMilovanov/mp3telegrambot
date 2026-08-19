@@ -396,8 +396,6 @@ async def _run_translation_qa_base(
 
         model_name = GEMINI_MODEL
 
-    # Do not extract/re-upload any media while the inference circuit is already
-    # open from an exhausted previous segment/request.
     try:
         capacity_control.require_domain_available("inference")
     except capacity_control.GeminiCapacityCircuitOpen as exc:
@@ -445,8 +443,7 @@ async def _run_translation_qa_base(
             original_audio_path and Path(original_audio_path).exists()
         )
         existing_original_active = bool(
-            existing_audio_part is not None
-            and existing_client is not None
+            existing_audio_part is not None and existing_client is not None
             and "ACTIVE" in str(getattr(existing_audio_part, "state", ""))
         )
         _will_attach_original = original_path_available or existing_original_active
@@ -512,9 +509,7 @@ async def _run_translation_qa_base(
                 "Сравнивай их напрямую."
             )
 
-        prompt = _QA_PROMPT.format(
-            reference_block=reference_block + dub_text_block
-        )
+        prompt = _QA_PROMPT.format(reference_block=reference_block + dub_text_block)
 
         async def _attempt(client):
             nonlocal client_used, _temp_original_audio
@@ -534,9 +529,7 @@ async def _run_translation_qa_base(
                 orig_path = Path(original_audio_path)
                 upload_orig = orig_path
                 if orig_path.suffix.lower() not in {".mp3", ".mpeg", ".mpga"}:
-                    tmp_path = (
-                        orig_path.parent / f"{orig_path.stem}_qa_original.mp3"
-                    )
+                    tmp_path = orig_path.parent / f"{orig_path.stem}_qa_original.mp3"
                     extracted = await asyncio.get_running_loop().run_in_executor(
                         None,
                         lambda: _extract_audio_for_qa(orig_path, tmp_path),
@@ -559,9 +552,7 @@ async def _run_translation_qa_base(
 
             if dub_audio is not None:
                 if dub_upload_budget.exhausted:
-                    raise RuntimeError(
-                        "LiveDub QA dub Files retry budget exhausted"
-                    )
+                    raise RuntimeError("LiveDub QA dub Files retry budget exhausted")
                 uf_dub = await _upload_and_wait(
                     client,
                     dub_audio,
@@ -599,9 +590,7 @@ async def _run_translation_qa_base(
             except Exception as first_error:
                 if is_overload_error(first_error):
                     capacity_control.note_overload(
-                        capacity_control.transient_retry_delay(
-                            inference_budget.used
-                        )
+                        capacity_control.transient_retry_delay(inference_budget.used)
                     )
                 if _transient_gemini_error(first_error):
                     raise
@@ -640,27 +629,25 @@ async def _run_translation_qa_base(
 
         last_err = None
         _qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
-        clients_order = list(GEMINI_CLIENTS)
-        if existing_client is not None and existing_client in clients_order:
-            clients_order.remove(existing_client)
-            clients_order.insert(0, existing_client)
+        _clients_order = list(GEMINI_CLIENTS)
+        if existing_client is not None and existing_client in _clients_order:
+            _clients_order.remove(existing_client)
+            _clients_order.insert(0, existing_client)
 
         if existing_original_active and not original_path_available:
-            if existing_client not in clients_order:
+            if existing_client not in _clients_order:
                 logger.warning(
                     "[LiveDubQA] key-bound original handle owner is unavailable"
                 )
                 return None
-            clients_order = [existing_client] * inference_budget.limit
+            _clients_order = [existing_client] * inference_budget.limit
 
-        for client in clients_order:
+        for client in _clients_order:
             if inference_budget.exhausted:
                 break
             if (
                 original_path_available
-                and not (
-                    existing_original_active and existing_client is client
-                )
+                and not (existing_original_active and existing_client is client)
                 and original_upload_budget.exhausted
             ):
                 break
@@ -716,9 +703,7 @@ async def _run_translation_qa_base(
 
             if last_err is not None and is_overload_error(last_err):
                 capacity_control.note_overload(
-                    capacity_control.transient_retry_delay(
-                        max(1, inference_budget.used)
-                    )
+                    capacity_control.transient_retry_delay(max(1, inference_budget.used))
                 )
 
         logger.warning(
@@ -764,10 +749,7 @@ async def run_translation_qa(
         annotate_qa_availability,
         prepare_exact_timeline_inputs,
     )
-    from services.livedub_qa_trust import (
-        apply_audio_trust,
-        audio_trust_enabled,
-    )
+    from services.livedub_qa_trust import apply_audio_trust, audio_trust_enabled
 
     options = dict(
         dub_video_path=Path(dub_video_path),
@@ -803,9 +785,7 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
     issues = [
-        issue
-        for issue in (qa.get("issues") or [])
-        if isinstance(issue, dict)
+        issue for issue in (qa.get("issues") or []) if isinstance(issue, dict)
     ]
 
     if isinstance(score, (int, float)) and score >= 95 and not issues:
@@ -824,16 +804,8 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
     if verdict:
         lines.append(html_mod.escape(verdict[:600]))
 
-    majors = [
-        issue
-        for issue in issues
-        if str(issue.get("severity")) == "major"
-    ]
-    minors = [
-        issue
-        for issue in issues
-        if str(issue.get("severity")) != "major"
-    ]
+    majors = [issue for issue in issues if str(issue.get("severity")) == "major"]
+    minors = [issue for issue in issues if str(issue.get("severity")) != "major"]
 
     def _ts_link(raw_time: str) -> str:
         escaped = html_mod.escape(raw_time)
@@ -872,9 +844,7 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
         lines.append("<b>Мелкие неточности:</b>")
         lines.extend(_fmt(issue, "🟡") for issue in minors[:5])
     if not issues:
-        lines.append(
-            "Искажений смысла не найдено — перевод можно публиковать."
-        )
+        lines.append("Искажений смысла не найдено — перевод можно публиковать.")
 
     limit = 4000
     tail = "\n… часть отчёта не поместилась"
