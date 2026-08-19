@@ -227,8 +227,8 @@ async def create_factory_plan_resumable(
                     break
                 upload_budget.claim()
                 uploaded = await capacity_control.run_heavy_gemini_call(
-                    lambda: capacity.await_with_heartbeat(
-                        client.aio.files.upload(
+                    lambda _client=client, _index=index: capacity.await_with_heartbeat(
+                        _client.aio.files.upload(
                             file=audio_path,
                             config=candidates.types.UploadFileConfig(
                                 mime_type=mime_type,
@@ -238,7 +238,7 @@ async def create_factory_plan_resumable(
                             ),
                         ),
                         label=(
-                            f"⬆️ Gemini Files · клиент {index}/{len(clients)}: "
+                            f"⬆️ Gemini Files · клиент {_index}/{len(clients)}: "
                             "загружаю analysis-аудио…"
                         ),
                         status_msg=status_msg,
