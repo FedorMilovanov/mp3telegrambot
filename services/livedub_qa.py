@@ -407,7 +407,7 @@ async def _run_translation_qa_base(
     qa_audio = dub_video_path.parent / f"{dub_video_path.stem}_qa.mp3"
     uploaded: list = []
     client_used = None
-    temp_original_audio: Path | None = None
+    _temp_original_audio: Path | None = None
     original_upload_budget = capacity_control.GeminiRetryBudget()
     dub_upload_budget = capacity_control.GeminiRetryBudget()
     inference_budget = capacity_control.GeminiRetryBudget()
@@ -420,9 +420,9 @@ async def _run_translation_qa_base(
                 logger.warning(
                     "[LiveDubQA] SRT перевода пустой/битый — перехожу на аудио дубляжа"
                 )
-        have_srt = bool(dub_timed_text)
+        _have_srt = bool(dub_timed_text)
         dub_audio = None
-        if not have_srt:
+        if not _have_srt:
             if dub_audio_path and Path(dub_audio_path).exists():
                 dub_audio = Path(dub_audio_path)
                 logger.info(
@@ -438,7 +438,7 @@ async def _run_translation_qa_base(
                 return None
         else:
             logger.info(
-                "[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом"
+                "[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом без извлечения дубляжа"
             )
 
         original_path_available = bool(
@@ -449,8 +449,8 @@ async def _run_translation_qa_base(
             and existing_client is not None
             and "ACTIVE" in str(getattr(existing_audio_part, "state", ""))
         )
-        will_attach_original = original_path_available or existing_original_active
-        if will_attach_original:
+        _will_attach_original = original_path_available or existing_original_active
+        if _will_attach_original:
             reference_block = ""
         else:
             ref_lines: list[str] = []
@@ -462,7 +462,7 @@ async def _run_translation_qa_base(
                     ref_lines.extend(str(item) for item in timestamps[:40])
                 elif isinstance(timestamps, str):
                     ref_lines.append(timestamps[:4000])
-            if not ref_lines and not have_srt:
+            if not ref_lines and not _have_srt:
                 logger.info(
                     "[LiveDubQA] нет ни оригинала, ни анализа — проверка невозможна"
                 )
@@ -477,7 +477,7 @@ async def _run_translation_qa_base(
             )
 
         dub_text_block = ""
-        if have_srt:
+        if _have_srt:
             dub_text_block = (
                 "\n\nТОЧНЫЙ ТЕКСТ русского дубляжа (официальные субтитры "
                 "перевода Яндекса с таймкодами — цитируй поле heard ИЗ НЕГО, "
@@ -490,7 +490,7 @@ async def _run_translation_qa_base(
             )
 
         if reference_block:
-            if have_srt:
+            if _have_srt:
                 reference_block += (
                     "\n\nАудиофайлы НЕ приложены: сравнивай конспект оригинала "
                     "с текстом дубляжа ниже."
@@ -500,7 +500,7 @@ async def _run_translation_qa_base(
                     "\n\nЕдинственный приложенный аудиофайл — русский ДУБЛЯЖ "
                     "(озвучка перевода)."
                 )
-        elif have_srt:
+        elif _have_srt:
             reference_block = (
                 "Приложен ОДИН аудиофайл — английский ОРИГИНАЛ. Русский дубляж "
                 "дан НИЖЕ ТОЛЬКО ТЕКСТОМ (официальные субтитры перевода) — "
@@ -517,7 +517,7 @@ async def _run_translation_qa_base(
         )
 
         async def _attempt(client):
-            nonlocal client_used, temp_original_audio
+            nonlocal client_used, _temp_original_audio
             client_used = client
             parts = []
             if existing_original_active and existing_client is client:
@@ -526,7 +526,7 @@ async def _run_translation_qa_base(
                     "(без повторной заливки)"
                 )
                 parts.append(existing_audio_part)
-            elif original_path_available:
+            elif original_audio_path and original_path_available:
                 if original_upload_budget.exhausted:
                     raise RuntimeError(
                         "LiveDub QA original Files retry budget exhausted"
@@ -546,8 +546,8 @@ async def _run_translation_qa_base(
                             "[LiveDubQA] не удалось извлечь оригинальное аудио для QA"
                         )
                         return None
-                    temp_original_audio = Path(extracted)
-                    upload_orig = temp_original_audio
+                    _temp_original_audio = Path(extracted)
+                    upload_orig = _temp_original_audio
                 uf_orig = await _upload_and_wait(
                     client,
                     upload_orig,
@@ -573,6 +573,8 @@ async def _run_translation_qa_base(
 
             from core.globals import make_audio_config
 
+            # audio_timestamp is intentionally omitted: google-genai rejects
+            # that GenerateContentConfig field; timestamps come from SRT/audio.
             cfg = make_audio_config(
                 max_output_tokens=49152,
                 model_name=model_name,
@@ -637,7 +639,7 @@ async def _run_translation_qa_base(
                     raise
 
         last_err = None
-        qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
+        _qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
         clients_order = list(GEMINI_CLIENTS)
         if existing_client is not None and existing_client in clients_order:
             clients_order.remove(existing_client)
@@ -665,7 +667,7 @@ async def _run_translation_qa_base(
             if dub_audio is not None and dub_upload_budget.exhausted:
                 break
 
-            left = qa_deadline - asyncio.get_running_loop().time()
+            left = _qa_deadline - asyncio.get_running_loop().time()
             if left < 45:
                 logger.warning(
                     "[LiveDubQA] общий бюджет времени исчерпан — стоп ротации ключей"
@@ -676,12 +678,10 @@ async def _run_translation_qa_base(
                 raw_text = getattr(resp, "text", "") or ""
                 result = _parse_qa_json(raw_text)
                 if isinstance(result, dict) and (
-                    "issues" in result
-                    or "score" in result
-                    or "verdict" in result
+                    "issues" in result or "score" in result or "verdict" in result
                 ):
                     result.setdefault("issues", [])
-                    if not will_attach_original:
+                    if not _will_attach_original:
                         result.setdefault("_low_confidence", True)
                     return result
 
@@ -699,9 +699,7 @@ async def _run_translation_qa_base(
                     )
                 except Exception:
                     pass
-                last_err = RuntimeError(
-                    "ответ модели не распарсился в QA-JSON"
-                )
+                last_err = RuntimeError("ответ модели не распарсился в QA-JSON")
             except Exception as exc:
                 last_err = exc
                 logger.warning(
@@ -742,9 +740,9 @@ async def _run_translation_qa_base(
             qa_audio.unlink(missing_ok=True)
         except Exception:
             pass
-        if temp_original_audio is not None:
+        if _temp_original_audio is not None:
             try:
-                temp_original_audio.unlink(missing_ok=True)
+                _temp_original_audio.unlink(missing_ok=True)
             except Exception:
                 pass
 
