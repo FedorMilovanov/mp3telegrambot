@@ -164,7 +164,7 @@ gemini_client_2 = None
 gemini_client_3 = None
 gemini_client_4 = None
 
-# The application owns retry semantics.  Keep the SDK at one network attempt so
+# The application owns retry semantics. Keep the SDK at one network attempt so
 # future SDK defaults cannot silently multiply our bounded retry/rotation policy.
 _gemini_http_options = None
 if HAS_GEMINI:
@@ -395,6 +395,9 @@ def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None
             _video_lock_meta[video_id] = time.time()
 
 
+# Legacy compatibility helpers remain temporarily importable for old modules,
+# but active transport must not use model-global quota state: Gemini quotas are
+# scoped to a project/request context, not globally to a model name.
 _EXHAUSTED_MODELS: dict[str, float] = {}
 
 
@@ -476,15 +479,19 @@ _current_client_idx = 0
 
 
 async def gemini_generate(client_list, fn, model_name: str = ""):
-    """Run one Gemini operation with one global transient budget across keys."""
+    """Run one Gemini operation with one global transient budget across keys.
+
+    Quota/429 rotates immediately because retrying the same project-bound client
+    cannot create capacity. Overload and transport timeout may reuse one client
+    once, then rotate, while the global budget remains initial + at most two
+    retries. Only confirmed overload publishes the overload circuit.
+    """
     global _current_client_idx
     from services import gemini_capacity_control as capacity_control
 
     last_err = None
     if not client_list:
         raise RuntimeError("No Gemini clients available")
-    if model_name and is_model_exhausted(model_name):
-        raise RuntimeError(f"Gemini model quota exhausted in-memory: {model_name}")
 
     budget = capacity_control.GeminiRetryBudget()
     start_idx = _current_client_idx
@@ -494,7 +501,7 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
         idx = (start_idx + i) % len(client_list)
         client = client_list[idx]
         _current_client_idx = (idx + 1) % len(client_list)
-        same_client_overloads = 0
+        same_client_transients = 0
 
         while not budget.exhausted:
             budget.claim()
@@ -505,29 +512,36 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
             except Exception as e:
                 if is_quota_error(e):
                     logging.getLogger(__name__).warning(
-                        "Gemini квота/429 на клиенте %s; вращаю ключ в пределах общего budget %s/%s",
+                        "Gemini квота/429 на клиенте %s; вращаю клиент в пределах общего budget %s/%s",
                         idx,
                         budget.used,
                         budget.limit,
                     )
                     last_err = e
                     break
-                if is_overload_error(e):
+
+                overloaded = is_overload_error(e)
+                timed_out = capacity_control.is_timeout_error(e)
+                if overloaded or timed_out:
                     last_err = e
-                    same_client_overloads += 1
+                    same_client_transients += 1
                     delay = capacity_control.transient_retry_delay(budget.used)
-                    capacity_control.note_overload(delay)
+                    if overloaded:
+                        capacity_control.note_overload(delay)
+                    kind = "500/503 overload" if overloaded else "timeout"
                     logging.getLogger(__name__).warning(
-                        "Gemini перегружен (500/503), global attempt %s/%s; cooldown %.1fс",
+                        "Gemini transient %s, global attempt %s/%s; backoff %.1fс",
+                        kind,
                         budget.used,
                         budget.limit,
                         delay,
                     )
                     if budget.exhausted:
                         break
-                    # One retry may reuse the same client; a second overload moves
-                    # the final remaining attempt to another configured client.
-                    if same_client_overloads == 1:
+                    # One retry may reuse the same client; a second transient
+                    # moves the final remaining attempt to another configured
+                    # client. Key count can never expand the global budget.
+                    if same_client_transients == 1:
                         await asyncio.sleep(delay)
                         continue
                     break
