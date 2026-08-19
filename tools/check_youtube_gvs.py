@@ -9,13 +9,20 @@ would add latency and unnecessary anti-bot pressure.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from services.async_process import run_cancellable_process
+
 DEFAULT_PROBE_URL = "https://www.youtube.com/watch?v=-vq7fH7ANUs"
 
 
@@ -106,17 +113,22 @@ def _production_command(url: str, workdir: Path) -> list[str]:
     ]
 
 
-def _run_download(url: str, workdir: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+async def _run_download_async(
+    url: str,
+    workdir: Path,
+) -> subprocess.CompletedProcess[str]:
+    return await run_cancellable_process(
         _production_command(url, workdir),
         cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         timeout=1800,
-        check=False,
+        text=True,
     )
+
+
+def _run_download(url: str, workdir: Path) -> subprocess.CompletedProcess[str]:
+    # This tool is a synchronous CLI. The repo-owned async runner isolates the
+    # child process group and tears down yt-dlp + Node descendants on timeout.
+    return asyncio.run(_run_download_async(url, workdir))
 
 
 def _prepare_runtime() -> str:
