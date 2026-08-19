@@ -40,6 +40,22 @@ class GeminiCapacityCircuitOpen(RuntimeError):
     """Raised before network I/O while a known-overloaded domain is open."""
 
 
+def is_timeout_error(exc: BaseException) -> bool:
+    """Classify transport timeouts consistently without calling them overloads.
+
+    Timeouts are transient and consume the same bounded retry budget, but they
+    do not trip the provider-overload circuit by themselves because a network
+    timeout is not proof that Gemini's backend is overloaded.
+    """
+    text = str(exc).casefold()
+    name = type(exc).__name__.casefold()
+    return (
+        isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+        or "timeout" in name
+        or "timed out" in text
+    )
+
+
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     try:
         value = int(str(os.getenv(name, "") or default).strip())
@@ -286,6 +302,7 @@ __all__ = [
     "domain_circuit_open",
     "heavy_concurrency",
     "heavy_gemini_slot",
+    "is_timeout_error",
     "note_overload",
     "overload_circuit_seconds",
     "require_domain_available",
