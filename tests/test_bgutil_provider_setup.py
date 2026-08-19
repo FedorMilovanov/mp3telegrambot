@@ -227,14 +227,14 @@ def test_provisioner_is_exact_source_and_browserless_by_contract() -> None:
     assert "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider" in config
 
 
-def test_launcher_reconciles_legacy_providers_on_every_managed_start() -> None:
+def test_launcher_reconciles_legacy_providers_before_shared_provisioner() -> None:
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
     cleanup = launcher.index(
         "pip uninstall -y yt-dlp-getpot-wpc nodriver bgutil-ytdlp-pot-provider"
     )
+    provision = launcher.index("tools\\ensure_bgutil_provider.py")
     start = launcher.index('"%VENV_PYTHON%" bot_new.py')
 
-    assert cleanup < start
+    assert cleanup < provision < start
     assert ".wpc-provider-removed" not in launcher
     assert ".bgutil-wheel-removed" not in launcher
-    assert "tools\\ensure_bgutil_provider.py" not in launcher
