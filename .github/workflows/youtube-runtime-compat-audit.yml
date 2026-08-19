@@ -72,14 +72,7 @@ jobs:
           if [[ "${{ matrix.provider_source }}" == "released" ]]; then
             python -m pip install "bgutil-ytdlp-pot-provider==1.3.1"
           else
-            # Upstream master currently cannot be built directly from plugin/
-            # because its pyproject readme points outside that project directory.
-            # For audit only, copy the exact namespace package without rewriting it.
-            site_dir="$(python - <<'PY'
-import site
-print(site.getsitepackages()[0])
-PY
-)"
+            site_dir="$(python -c 'import site; print(site.getsitepackages()[0])')"
             cp -R provider/plugin/yt_dlp_plugins "$site_dir/"
           fi
 
@@ -93,10 +86,7 @@ PY
           echo "YTDLP_SOURCE=${YTDLP_SOURCE:-unknown}"
           echo "BGUTIL_SOURCE=${{ matrix.provider_commit }}"
           python -m yt_dlp --version
-          python - <<'PY'
-from yt_dlp_plugins.extractor.getpot_bgutil import __version__
-print(f"BGUTIL_PLUGIN_IMPORT_OK version={__version__}")
-PY
+          python -c 'from yt_dlp_plugins.extractor.getpot_bgutil import __version__; print(f"BGUTIL_PLUGIN_IMPORT_OK version={__version__}")'
           node --version
           npm --version
           node provider/server/build/generate_once.js --version
@@ -110,11 +100,7 @@ PY
           stdout="$RUNNER_TEMP/pot.stdout"
           stderr="$RUNNER_TEMP/pot.stderr"
           set +e
-          XDG_CACHE_HOME="$RUNNER_TEMP/pot-cache" \
-            node provider/server/build/generate_once.js \
-              --content-binding=-vq7fH7ANUs \
-              --bypass-cache \
-              >"$stdout" 2>"$stderr"
+          XDG_CACHE_HOME="$RUNNER_TEMP/pot-cache" node provider/server/build/generate_once.js --content-binding=-vq7fH7ANUs --bypass-cache >"$stdout" 2>"$stderr"
           rc=$?
           set -e
           echo "POT_EXIT=$rc"
@@ -124,22 +110,7 @@ PY
           if [[ $rc -ne 0 ]]; then
             exit "$rc"
           fi
-          python - "$stdout" <<'PY'
-import json
-import sys
-from pathlib import Path
-lines = [line.strip() for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if line.strip()]
-if not lines:
-    raise SystemExit("provider produced no JSON output")
-data = json.loads(lines[-1])
-token = str(data.get("poToken") or "")
-binding = str(data.get("contentBinding") or "")
-if not token:
-    raise SystemExit("provider returned no poToken")
-if binding != "-vq7fH7ANUs":
-    raise SystemExit(f"unexpected contentBinding={binding!r}")
-print(f"POT_OK content_binding={binding} token_length={len(token)} expires_at={data.get('expiresAt')}")
-PY
+          python -c 'import json,sys; from pathlib import Path; lines=[x.strip() for x in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if x.strip()]; data=json.loads(lines[-1]) if lines else {}; token=str(data.get("poToken") or ""); binding=str(data.get("contentBinding") or ""); assert token, "provider returned no poToken"; assert binding == "-vq7fH7ANUs", f"unexpected contentBinding={binding!r}"; print(f"POT_OK content_binding={binding} token_length={len(token)} expires_at={data.get('"'"'expiresAt'"'"')}")' "$stdout"
 
       - name: Verify yt-dlp discovers the provider on production mweb route
         shell: bash
@@ -165,7 +136,7 @@ PY
           echo "YTDLP_DISCOVERY_EXIT=$rc"
           if grep -q "HTTP Error 403" "$log"; then
             echo "GVS_403_REACHED=1"
-          elif grep -q "Sign in to confirm you.re not a bot" "$log"; then
+          elif grep -Eq "Sign in to confirm you.?re not a bot" "$log"; then
             echo "GVS_403_REACHED=0 runner_blocked_at_player_api=1"
           else
             echo "GVS_403_REACHED=0 runner_blocked_at_player_api=0"
