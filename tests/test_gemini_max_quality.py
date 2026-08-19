@@ -63,7 +63,6 @@ def test_publication_metadata_directly_owns_37_high_quality_route():
 
 def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
-    capacity = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
     globals_src = Path("core/globals.py").read_text(encoding="utf-8")
 
     assert not Path("services/gemini36_factory_resilience.py").exists()
