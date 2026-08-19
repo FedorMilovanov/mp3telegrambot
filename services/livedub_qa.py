@@ -191,18 +191,23 @@ legalism (законничество), seeker-sensitive (ориентирова�
 КРАСНЫЕ ФЛАГИ (severity=major всегда):
 - перевод склеил две соседние мысли так, что появился новый грех/обвинение,
   которого в оригинале нет;
-- любые теологические искажения, меняющие смысл Писания или доктрины;
-- ошибки в ссылках на Писание — это major.
+- любые теологические искажения, меняющие смысл Писания или доктрины
+  (например, замена «ответственности» на «очевидность», «веры» на «чувства»,
+  «оправдания» на «улучшение»);
+- ошибки в ссылках на Писание (например, если в оригинале «стих 15», а в переводе
+  «стих 50» или «глава 15») — это major.
 
 {reference_block}
 
 ВАЖНО: если ты не уверен, что искажение реально есть — НЕ включай его.
-Ложная тревога хуже пропуска.
+Ложная тревога хуже пропуска: пользователь получит «исправление» хорошего места.
 
 Ответь СТРОГО в формате JSON без пояснений вокруг.
 ПИШИ ВСЕ текстовые поля JSON НА РУССКОМ ЯЗЫКЕ: reasoning, verdict, heard,
-problem, should_be. Английские слова допускаются только как цитата термина.
-Поле reasoning заполняй ПЕРВЫМ:
+problem, should_be. Английские слова допускаются только как цитата термина
+(например seeker-sensitive) или если они звучат в оригинале.
+Поле reasoning заполняй ПЕРВЫМ — сначала рассуждение (укажи, какие именно
+теологические термины или ссылки на Писание ты проверял), потом оценка:
 {{
   "reasoning": "<2-4 предложения: как ты сравнивал, что заметил в целом>",
   "score": <целое 0-100, общая точность перевода>,
@@ -432,15 +437,15 @@ async def _run_translation_qa_base(
                 "[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом"
             )
 
-        will_attach_original = bool(
-            (original_audio_path and Path(original_audio_path).exists())
-            or (
-                existing_audio_part is not None
-                and existing_client is not None
-                and "ACTIVE"
-                in str(getattr(existing_audio_part, "state", ""))
-            )
+        original_path_available = bool(
+            original_audio_path and Path(original_audio_path).exists()
         )
+        existing_original_active = bool(
+            existing_audio_part is not None
+            and existing_client is not None
+            and "ACTIVE" in str(getattr(existing_audio_part, "state", ""))
+        )
+        will_attach_original = original_path_available or existing_original_active
         if will_attach_original:
             reference_block = ""
         else:
@@ -512,17 +517,15 @@ async def _run_translation_qa_base(
             client_used = client
             parts = []
             if (
-                existing_audio_part is not None
+                existing_original_active
                 and existing_client is client
-                and "ACTIVE"
-                in str(getattr(existing_audio_part, "state", ""))
             ):
                 logger.info(
                     "[LiveDubQA] реюз audio_part основного анализа "
                     "(без повторной заливки)"
                 )
                 parts.append(existing_audio_part)
-            elif original_audio_path and Path(original_audio_path).exists():
+            elif original_path_available:
                 if original_upload_budget.exhausted:
                     raise RuntimeError(
                         "LiveDub QA original Files retry budget exhausted"
@@ -597,8 +600,6 @@ async def _run_translation_qa_base(
                             inference_budget.used
                         )
                     )
-                # A capacity/quota/timeout failure must never trigger an
-                # immediate second generation through schema/text fallback.
                 if _transient_gemini_error(first_error):
                     raise
                 if inference_budget.exhausted:
@@ -641,17 +642,26 @@ async def _run_translation_qa_base(
             clients_order.remove(existing_client)
             clients_order.insert(0, existing_client)
 
+        # A Files handle belongs to the client/key that created it. If that
+        # handle is the only available original reference, rotating to another
+        # key would silently drop the English evidence while the prompt still
+        # claimed it was attached. Retry the same owner instead, bounded by the
+        # same initial+2 inference budget.
+        if existing_original_active and not original_path_available:
+            if existing_client not in clients_order:
+                logger.warning(
+                    "[LiveDubQA] key-bound original handle owner is unavailable"
+                )
+                return None
+            clients_order = [existing_client] * inference_budget.limit
+
         for client in clients_order:
             if inference_budget.exhausted:
                 break
             if (
-                original_audio_path
-                and Path(original_audio_path).exists()
+                original_path_available
                 and not (
-                    existing_audio_part is not None
-                    and existing_client is client
-                    and "ACTIVE"
-                    in str(getattr(existing_audio_part, "state", ""))
+                    existing_original_active and existing_client is client
                 )
                 and original_upload_budget.exhausted
             ):
@@ -703,9 +713,6 @@ async def _run_translation_qa_base(
                     str(exc)[:200],
                 )
             finally:
-                # Each client's remote files belong to that client's API key.
-                # Clean them before any rotation; reused main-analysis handles
-                # were never appended and remain owned by the outer pipeline.
                 for uploaded_file in uploaded:
                     try:
                         await client.aio.files.delete(name=uploaded_file.name)
