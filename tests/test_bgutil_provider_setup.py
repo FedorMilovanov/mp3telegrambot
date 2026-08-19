@@ -18,7 +18,10 @@ def test_current_runtime_skips_network_and_build(
     generated.parent.mkdir(parents=True)
     generated.write_text("// ready\n", encoding="utf-8")
     marker = provider / ".mp3bot-bgutil-version"
-    marker.write_text(setup.BGUTIL_VERSION + "\n", encoding="utf-8")
+    marker.write_text(
+        f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(setup, "PROVIDER_ROOT", provider)
     monkeypatch.setattr(setup, "SERVER_ROOT", server)
@@ -32,6 +35,23 @@ def test_current_runtime_skips_network_and_build(
     )
 
     assert setup.ensure_bgutil_provider() == server
+
+
+def test_version_only_marker_is_not_current(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider = tmp_path / "provider"
+    generated = provider / "server" / "build" / "generate_once.js"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("// ready\n", encoding="utf-8")
+    marker = provider / ".mp3bot-bgutil-version"
+    marker.write_text(setup.BGUTIL_VERSION + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(setup, "GENERATE_SCRIPT", generated)
+    monkeypatch.setattr(setup, "VERSION_MARKER", marker)
+
+    assert setup._runtime_is_current() is False
 
 
 def test_missing_node_fails_before_clone(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,8 +98,10 @@ def test_provisioner_is_pinned_and_browserless_by_contract() -> None:
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
 
     assert 'BGUTIL_VERSION = "1.3.1"' in source
-    assert '"--branch",' in source
-    assert "npm" in source and "tsc" in source
+    assert setup.BGUTIL_COMMIT == "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+    assert '"rev-parse", "HEAD"' in source
+    assert '"node_modules" / ".bin"' in source
+    assert "npx" not in source
     assert "Chrome" not in source
     assert "nodriver" not in source
     assert "bgutil-ytdlp-pot-provider==1.3.1" in requirements
@@ -87,8 +109,9 @@ def test_provisioner_is_pinned_and_browserless_by_contract() -> None:
 
 def test_launcher_removes_legacy_browser_provider_before_start() -> None:
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
+    migration_guard = launcher.index('if not exist "%WPC_MIGRATION_MARKER%"')
     cleanup = launcher.index("pip uninstall -y yt-dlp-getpot-wpc nodriver")
     provision = launcher.index("tools\\ensure_bgutil_provider.py")
     start = launcher.index('"%VENV_PYTHON%" bot_new.py')
 
-    assert cleanup < provision < start
+    assert migration_guard < cleanup < provision < start
