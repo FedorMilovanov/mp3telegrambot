@@ -82,15 +82,22 @@ jobs:
           npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
           node -e 'const fs=require("fs"); const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const t=(a.metadata&&a.metadata.vulnerabilities&&a.metadata.vulnerabilities.total)||0; console.log("NPM_AUDIT_TOTAL="+t); if(t!==0) process.exit(41)' "$RUNNER_TEMP/npm-audit.json"
           ./node_modules/.bin/tsc
-          npm run lint
+          ./node_modules/.bin/eslint --max-warnings=0 src/
           ./node_modules/.bin/prettier --check 'src/**/*.{js,ts}'
           test -f build/generate_once.js
       - name: Mint video-bound token without exposing it
         shell: bash
+        env:
+          VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/pot.json"
           XDG_CACHE_HOME="$RUNNER_TEMP/cache" node provider/server/build/generate_once.js --content-binding=-vq7fH7ANUs --bypass-cache > "$out"
+          if [[ "$VARIANT" == "forward243" ]]; then
+            grep -F "Using challenge from the homepage (forward243)" "$out"
+          elif [[ "$VARIANT" == "pr243" || "$VARIANT" == "pr243+pr247" ]]; then
+            grep -F "Using challenge from the homepage (patched)" "$out"
+          fi
           python -c 'import json,sys; from pathlib import Path; d=json.loads([x for x in Path(sys.argv[1]).read_text().splitlines() if x.strip()][-1]); assert d.get("poToken"); assert d.get("contentBinding")=="-vq7fH7ANUs"; print("VIDEO_BOUND_POT_OK=1 token_length="+str(len(d["poToken"])))' "$out"
       - name: Verify exact-source yt-dlp provider discovery
         shell: bash
