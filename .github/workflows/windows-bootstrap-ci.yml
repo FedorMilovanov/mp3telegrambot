@@ -5,6 +5,7 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "bot_new.py"
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
@@ -20,6 +21,7 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "bot_new.py"
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
@@ -57,6 +59,7 @@ jobs:
       - name: Compile bootstrap and YouTube runtime contracts
         run: >-
           python -m py_compile
+          bot_new.py
           tests/test_start_bot_bootstrap.py
           tests/test_bgutil_provider_setup.py
           tests/test_youtube_po_token_runtime.py
