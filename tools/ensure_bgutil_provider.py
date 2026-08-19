@@ -114,6 +114,31 @@ def _node_executable() -> str:
     return node
 
 
+def _npm_executable() -> str:
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm:
+        raise ProvisionError("npm не найден; установи Node.js с npm")
+    try:
+        process = subprocess.run(
+            _platform_command([npm, "--version"]),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+        version = (process.stdout or process.stderr or "").strip()
+        major = int(version.split(".", 1)[0])
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+        raise ProvisionError("Не удалось определить версию npm") from exc
+    if process.returncode:
+        raise ProvisionError("Не удалось запустить npm")
+    if major < 9:
+        raise ProvisionError(f"npm {version} < 9; обнови npm/Node.js")
+    return npm
+
+
 def _runtime_files_current() -> bool:
     try:
         marker = VERSION_MARKER.read_text(encoding="utf-8").strip()
@@ -201,9 +226,16 @@ def _provision_lock():
         else:
             try:
                 os.write(fd, f"pid={os.getpid()}\n".encode("ascii", errors="strict"))
-            finally:
+            except OSError as exc:
                 os.close(fd)
-            acquired = True
+                try:
+                    PROVISION_LOCK.unlink()
+                except OSError:
+                    pass
+                raise ProvisionError("Не удалось записать bgutil provision lock") from exc
+            else:
+                os.close(fd)
+                acquired = True
 
     try:
         yield
@@ -280,11 +312,9 @@ def ensure_bgutil_provider() -> Path:
         return SERVER_ROOT
 
     git = shutil.which("git")
-    npm = shutil.which("npm") or shutil.which("npm.cmd")
     if not git:
         raise ProvisionError("git не найден; он нужен для pinned bgutil runtime")
-    if not npm:
-        raise ProvisionError("npm не найден; установи Node.js с npm")
+    npm = _npm_executable()
 
     with _provision_lock():
         # Another process may have completed provisioning while we waited.
