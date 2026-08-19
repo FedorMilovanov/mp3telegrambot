@@ -13,11 +13,11 @@ python-telegram-bot[socks]>=22.5,<23.0
 # (включает mutagen, pycryptodomex, websockets — нужны для части форматов)
 # >=2026.7.4: фикс CVE-2026-55404 (command injection через --write-link).
 # YouTube с 2026-08 усилил GVS PO-token enforcement: maximum-quality потоки
-# не должны деградировать до format 18/360p. Основной featured provider bgutil
-# автоматически mint'ит video-bound GVS token для mweb без запуска Chrome.
+# не должны деградировать до format 18/360p. Browserless bgutil Python plugin
+# и JS generator берутся ИЗ ОДНОГО exact source checkout, pinned в
+# tools/ensure_bgutil_provider.py; отдельный PyPI provider wheel не используется.
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
 yt-dlp[default]>=2026.7.4
-bgutil-ytdlp-pot-provider==1.3.1
 
 # ── HTTP-клиент ────────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована
