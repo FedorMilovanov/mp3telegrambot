@@ -44,7 +44,7 @@ concurrency:
 jobs:
   bootstrap-contract:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -55,8 +55,17 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install test runner
-        run: python -m pip install pytest
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install focused Python runtime
+        run: >-
+          python -m pip install
+          pytest==8.4.2
+          yt-dlp==2026.7.4
+          yt-dlp-ejs==0.8.0
 
       - name: Compile bootstrap and YouTube runtime contracts
         run: >-
@@ -79,3 +88,12 @@ jobs:
           tests/test_direct_youtube_bootstrap.py
           tests/test_youtube_po_token_runtime.py
           tests/test_youtube_po_wheel_guard.py
+
+      - name: Provision real exact-source bgutil runtime on Windows
+        run: python tools/ensure_bgutil_provider.py
+
+      - name: Prove reuse and production readiness offline
+        shell: pwsh
+        run: |
+          python tools/ensure_bgutil_provider.py
+          python -c "from services.youtube_po_token_runtime import require_youtube_po_token_runtime; runtime=require_youtube_po_token_runtime(); print(runtime.status_text())"
