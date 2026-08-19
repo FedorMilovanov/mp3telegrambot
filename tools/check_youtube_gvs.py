@@ -52,25 +52,28 @@ def _ffprobe_duration(media_path: Path) -> float:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         raise RuntimeError("ffprobe не найден в PATH")
-    process = subprocess.run(
-        [
-            ffprobe,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(media_path),
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=60,
-        check=False,
-    )
+    try:
+        process = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(media_path),
+            ],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"ffprobe не завершился штатно: {exc}") from exc
     if process.returncode:
         raise RuntimeError(
             "ffprobe не смог прочитать скачанный файл: "
@@ -156,7 +159,15 @@ def main(argv: list[str] | None = None) -> int:
     temp_root = Path(tempfile.mkdtemp(prefix="mp3bot-youtube-gvs-"))
     try:
         print("GVS probe: downloading complete bestaudio/best with production policy...")
-        process = _run_download(args.url, temp_root)
+        try:
+            process = _run_download(args.url, temp_root)
+        except subprocess.TimeoutExpired as exc:
+            print(f"GVS_ACCEPTANCE=FAIL_TIMEOUT\n{exc}")
+            return 6
+        except OSError as exc:
+            print(f"GVS_ACCEPTANCE=FAIL_YTDLP\n{exc}")
+            return 3
+
         if process.returncode:
             classification = _classify_failure(process)
             detail = _tail(process.stderr) or _tail(process.stdout)
