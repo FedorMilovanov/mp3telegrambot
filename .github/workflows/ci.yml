@@ -40,11 +40,13 @@ jobs:
         run: |
           python tools/apply_remaining_audit_hardening.py
           if ($LASTEXITCODE -ne 0) { throw "Remaining audited transform failed." }
+          python tools/tighten_cache_failopen.py
+          if ($LASTEXITCODE -ne 0) { throw "Cache fail-open boundary hardening failed." }
           git rm -f tools/extend_audit_patcher.py
           python -m compileall -q core services pipelines handlers converters tests tools bot_new.py
           if ($LASTEXITCODE -ne 0) { throw "Patched Python compile failed." }
           git checkout origin/main -- .github/workflows/ci.yml
-          git rm -f tools/apply_remaining_audit_hardening.py
+          git rm -f tools/apply_remaining_audit_hardening.py tools/tighten_cache_failopen.py
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw "git diff --check failed." }
           git config user.name "github-actions[bot]"
