@@ -42,7 +42,7 @@ jobs:
             --verbose \
             --no-config \
             --no-plugin-dirs \
-            --plugin-dirs "$PWD/provider/plugin" \
+            --plugin-dirs "$PWD/provider" \
             --simulate \
             --js-runtimes node \
             --remote-components ejs:github \
@@ -52,7 +52,7 @@ jobs:
             2>&1 | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
-          grep -F "Plugin directories: $PWD/provider/plugin/yt_dlp_plugins" "$log"
+          grep -F "$PWD/provider/plugin/yt_dlp_plugins" "$log"
           grep -E "PO Token Providers:.*bgutil:script-node-1\.3\.1" "$log"
           if grep -q "site-packages/yt_dlp_plugins" "$log"; then
             echo "UNEXPECTED_GLOBAL_PLUGIN_DIR=1"
