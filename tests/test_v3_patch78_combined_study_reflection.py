@@ -1,9 +1,14 @@
 """Regression tests for v3 patch 78 — optional combined Study+Reflection path."""
 
+import inspect
 from pathlib import Path
 
 from core.candidate_schema import combined_expanded_pages_response_schema
-from services.telegraph_pages import _parse_combined_expanded_json, combined_study_reflection_enabled
+from services.telegraph_pages import (
+    _gemini_text_request,
+    _parse_combined_expanded_json,
+    combined_study_reflection_enabled,
+)
 
 
 def test_combined_expanded_pages_schema_keeps_two_independent_pages():
@@ -59,12 +64,15 @@ def test_main_pipeline_combined_path_is_feature_flagged_and_fallbacks_to_separat
     assert "if not reflection_application_tg" in src
 
 
-def test_combined_path_disables_model_fallback_for_quality():
+def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
+    parameter = inspect.signature(_gemini_text_request).parameters[
+        "allow_model_fallback"
+    ]
+    assert parameter.default is False
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
-    assert "allow_model_fallback: bool = True" in src
-    assert "if allow_model_fallback and GEMINI_MODEL !=" in src
+    assert "gemini-3.1-flash-lite" not in src
+    assert "strict semantic quality policy" in src
     assert "allow_model_fallback=False" in src
-    assert "primary model" in src and "separate quality-first calls" in src
 
 
 def test_combined_result_is_typed_dataclass_not_bare_tuple():
