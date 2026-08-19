@@ -15,6 +15,7 @@ def test_require_youtube_po_token_runtime_reports_browserless_bgutil(
 ) -> None:
     provider_home = tmp_path / "server"
     provider_home.mkdir()
+
     def installed_version(name: str) -> str:
         if name == po.BGUTIL_DISTRIBUTION:
             return "1.3.1"
@@ -125,7 +126,7 @@ def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):
         po._require_provider_build()
 
 
-def test_runtime_rejects_reintroduced_wpc_provider(monkeypatch):
+def test_runtime_rejects_reintroduced_wpc_provider_with_exact_recovery(monkeypatch):
     real_version = po.metadata.version
 
     def fake_version(name: str):
@@ -134,8 +135,16 @@ def test_runtime_rejects_reintroduced_wpc_provider(monkeypatch):
         return real_version(name)
 
     monkeypatch.setattr(po.metadata, "version", fake_version)
-    with pytest.raises(po.YouTubePoTokenRuntimeError, match="browser-based"):
+    with pytest.raises(po.YouTubePoTokenRuntimeError) as caught:
         po._require_no_legacy_browser_provider()
+
+    message = str(caught.value)
+    assert "browser-based" in message
+    assert (
+        ".\\.venv\\Scripts\\python.exe -m pip uninstall -y "
+        "yt-dlp-getpot-wpc nodriver"
+    ) in message
+    assert "Start Bot.bat" in message
 
 
 def test_old_wpc_browser_stack_is_not_a_dependency() -> None:
