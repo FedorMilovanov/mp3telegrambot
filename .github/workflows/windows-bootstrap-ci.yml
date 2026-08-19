@@ -11,11 +11,13 @@ on:
       - "yt-dlp.conf"
       - "services/youtube_po_token_runtime.py"
       - "tools/ensure_bgutil_provider.py"
+      - "tools/check_youtube_gvs.py"
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bgutil_provider_setup.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_youtube_po_wheel_guard.py"
+      - "tests/test_youtube_gvs_probe.py"
       - ".github/workflows/windows-bootstrap-ci.yml"
   pull_request:
     branches: ["main"]
@@ -26,11 +28,13 @@ on:
       - "yt-dlp.conf"
       - "services/youtube_po_token_runtime.py"
       - "tools/ensure_bgutil_provider.py"
+      - "tools/check_youtube_gvs.py"
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bgutil_provider_setup.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_youtube_po_wheel_guard.py"
+      - "tests/test_youtube_gvs_probe.py"
       - ".github/workflows/windows-bootstrap-ci.yml"
 
 concurrency:
@@ -61,8 +65,10 @@ jobs:
           tests/test_bgutil_provider_setup.py
           tests/test_youtube_po_token_runtime.py
           tests/test_youtube_po_wheel_guard.py
+          tests/test_youtube_gvs_probe.py
           tools/check_requirements_lock.py
           tools/ensure_bgutil_provider.py
+          tools/check_youtube_gvs.py
           services/youtube_po_token_runtime.py
 
       - name: Validate Windows bootstrap and exact-source YouTube contracts
@@ -72,3 +78,4 @@ jobs:
           tests/test_bgutil_provider_setup.py
           tests/test_youtube_po_token_runtime.py
           tests/test_youtube_po_wheel_guard.py
+          tests/test_youtube_gvs_probe.py
