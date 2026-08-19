@@ -17,6 +17,9 @@ def test_current_runtime_skips_network_and_build(
     generated = server / "build" / "generate_once.js"
     generated.parent.mkdir(parents=True)
     generated.write_text("// ready\n", encoding="utf-8")
+    plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("__version__ = '1.3.1'\n", encoding="utf-8")
     marker = provider / ".mp3bot-bgutil-version"
     marker.write_text(
         f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n",
@@ -26,6 +29,7 @@ def test_current_runtime_skips_network_and_build(
     monkeypatch.setattr(setup, "PROVIDER_ROOT", provider)
     monkeypatch.setattr(setup, "SERVER_ROOT", server)
     monkeypatch.setattr(setup, "GENERATE_SCRIPT", generated)
+    monkeypatch.setattr(setup, "PLUGIN_ENTRY", plugin)
     monkeypatch.setattr(setup, "VERSION_MARKER", marker)
     monkeypatch.setattr(setup, "_node_executable", lambda: "node")
     monkeypatch.setattr(
@@ -54,6 +58,28 @@ def test_version_only_marker_is_not_current(
     assert setup._runtime_is_current() is False
 
 
+def test_current_marker_without_python_plugin_is_not_current(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider = tmp_path / "provider"
+    generated = provider / "server" / "build" / "generate_once.js"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("// ready\n", encoding="utf-8")
+    marker = provider / ".mp3bot-bgutil-version"
+    marker.write_text(
+        f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n",
+        encoding="utf-8",
+    )
+    missing_plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
+
+    monkeypatch.setattr(setup, "GENERATE_SCRIPT", generated)
+    monkeypatch.setattr(setup, "PLUGIN_ENTRY", missing_plugin)
+    monkeypatch.setattr(setup, "VERSION_MARKER", marker)
+
+    assert setup._runtime_is_current() is False
+
+
 def test_missing_node_fails_before_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup.shutil, "which", lambda _name: None)
 
@@ -66,10 +92,10 @@ def test_node_version_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup.subprocess,
         "run",
-        lambda *_args, **_kwargs: SimpleNamespace(stdout="v18.20.0\n"),
+        lambda *_args, **_kwargs: SimpleNamespace(stdout="v21.7.0\n"),
     )
 
-    with pytest.raises(setup.ProvisionError, match="< 20"):
+    with pytest.raises(setup.ProvisionError, match="< 22"):
         setup._node_executable()
 
 
@@ -93,25 +119,52 @@ def test_windows_command_shim_is_run_through_comspec(
     assert "ci" in command[4]
 
 
-def test_provisioner_is_pinned_and_browserless_by_contract() -> None:
+def test_exact_checkout_fetches_reviewed_commit(monkeypatch, tmp_path):
+    commands: list[tuple[list[str], Path | None]] = []
+
+    def fake_run(command, *, cwd=None):
+        commands.append((command, cwd))
+
+    monkeypatch.setattr(setup, "_run", fake_run)
+    staging = tmp_path / "source"
+    setup._checkout_exact_source("git", staging)
+
+    assert staging.is_dir()
+    assert (["git", "init"], staging) in commands
+    assert (
+        ["git", "fetch", "--depth", "1", "origin", setup.BGUTIL_COMMIT],
+        staging,
+    ) in commands
+    assert (["git", "checkout", "--detach", "FETCH_HEAD"], staging) in commands
+
+
+def test_provisioner_is_exact_source_and_browserless_by_contract() -> None:
     source = Path("tools/ensure_bgutil_provider.py").read_text(encoding="utf-8")
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    lock = Path("requirements-lock.txt").read_text(encoding="utf-8")
+    config = Path("yt-dlp.conf").read_text(encoding="utf-8")
 
     assert 'BGUTIL_VERSION = "1.3.1"' in source
-    assert setup.BGUTIL_COMMIT == "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
-    assert '"rev-parse", "HEAD"' in source
+    assert setup.BGUTIL_COMMIT == "a0be2352807e3bd6991f09d2cab685a0ab825b26"
+    assert '"fetch", "--depth", "1", "origin", BGUTIL_COMMIT' in source
     assert '"node_modules" / ".bin"' in source
+    assert '"ci", "--no-audit", "--no-fund"' in source
     assert "npx" not in source
     assert "Chrome" not in source
     assert "nodriver" not in source
-    assert "bgutil-ytdlp-pot-provider==1.3.1" in requirements
+    assert "bgutil-ytdlp-pot-provider==" not in requirements
+    assert "bgutil-ytdlp-pot-provider==" not in lock
+    assert "--no-plugin-dirs" in config
+    assert "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider" in config
 
 
-def test_launcher_removes_legacy_browser_provider_before_start() -> None:
+def test_launcher_removes_legacy_providers_before_exact_source_start() -> None:
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
-    migration_guard = launcher.index('if not exist "%WPC_MIGRATION_MARKER%"')
-    cleanup = launcher.index("pip uninstall -y yt-dlp-getpot-wpc nodriver")
+    wpc_guard = launcher.index('if not exist "%WPC_MIGRATION_MARKER%"')
+    wpc_cleanup = launcher.index("pip uninstall -y yt-dlp-getpot-wpc nodriver")
+    wheel_guard = launcher.index('if not exist "%BGUTIL_WHEEL_MIGRATION_MARKER%"')
+    wheel_cleanup = launcher.index("pip uninstall -y bgutil-ytdlp-pot-provider")
     provision = launcher.index("tools\\ensure_bgutil_provider.py")
     start = launcher.index('"%VENV_PYTHON%" bot_new.py')
 
-    assert migration_guard < cleanup < provision < start
+    assert wpc_guard < wpc_cleanup < wheel_guard < wheel_cleanup < provision < start
