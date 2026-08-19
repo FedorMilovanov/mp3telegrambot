@@ -1,0 +1,74 @@
+name: Bgutil Exact Source Plugin Dir Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bgutil-plugin-dir-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Build exact candidate source without installing its Python package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "yt-dlp[default]==2026.7.4" "yt-dlp-ejs==0.8.0" "bgutil-ytdlp-pot-provider==1.3.1"
+          git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git provider
+          git -C provider checkout --detach a0be2352807e3bd6991f09d2cab685a0ab825b26
+          [[ "$(git -C provider rev-parse HEAD)" == "a0be2352807e3bd6991f09d2cab685a0ab825b26" ]]
+          (cd provider/server && npm ci --no-audit --no-fund && ./node_modules/.bin/tsc)
+          test -f provider/server/build/generate_once.js
+      - name: Restrict yt-dlp to exact source plugin directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/plugin-dir.log"
+          set +e
+          python -m yt_dlp \
+            --verbose \
+            --no-config \
+            --no-plugin-dirs \
+            --plugin-dirs "$PWD/provider/plugin" \
+            --simulate \
+            --js-runtimes node \
+            --remote-components ejs:github \
+            --extractor-args "youtube:player_client=mweb" \
+            --extractor-args "youtubepot-bgutilscript:server_home=$PWD/provider/server" \
+            "https://www.youtube.com/watch?v=-vq7fH7ANUs" \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          grep -F "Plugin directories: $PWD/provider/plugin/yt_dlp_plugins" "$log"
+          grep -E "PO Token Providers:.*bgutil:script-node-1\.3\.1" "$log"
+          if grep -q "site-packages/yt_dlp_plugins" "$log"; then
+            echo "UNEXPECTED_GLOBAL_PLUGIN_DIR=1"
+            exit 44
+          fi
+          if grep -q "HTTP Error 403" "$log"; then
+            echo "GVS_403_REACHED=1"
+          elif grep -Eq "Sign in to confirm you.?re not a bot" "$log"; then
+            echo "RUNNER_BLOCKED_AT_PLAYER_API=1"
+          else
+            echo "YTDLP_EXIT=$rc"
+          fi
+      - name: Direct candidate POT generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pot.json"
+          XDG_CACHE_HOME="$RUNNER_TEMP/cache" node provider/server/build/generate_once.js --content-binding=-vq7fH7ANUs --bypass-cache > "$out"
+          python -c 'import json,sys; from pathlib import Path; d=json.loads([x for x in Path(sys.argv[1]).read_text().splitlines() if x.strip()][-1]); assert d.get("poToken"); assert d.get("contentBinding")=="-vq7fH7ANUs"; print("EXACT_SOURCE_POT_OK=1 token_length="+str(len(d["poToken"])))' "$out"
