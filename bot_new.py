@@ -43,6 +43,26 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+# The production yt-dlp policy has one canonical repo-local provider path.
+# Reject a stale/experimental override that would make readiness validate one
+# tree while yt-dlp.conf later executes another.
+_canonical_provider_home = (
+    _PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider" / "server"
+).resolve()
+_provider_home_override = os.getenv("BGUTIL_PROVIDER_HOME", "").strip()
+if _provider_home_override:
+    try:
+        _resolved_provider_override = Path(_provider_home_override).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        print(f"❌ BGUTIL_PROVIDER_HOME некорректен: {exc}")
+        sys.exit(2)
+    if _resolved_provider_override != _canonical_provider_home:
+        print("❌ BGUTIL_PROVIDER_HOME конфликтует с production yt-dlp.conf.")
+        print(f"   Ожидается: {_canonical_provider_home}")
+        print(f"   Задано:    {_resolved_provider_override}")
+        print("   Удали BGUTIL_PROVIDER_HOME из .env/окружения и запусти снова.")
+        sys.exit(2)
+
 # Source provisioning belongs to the Python entrypoint, not only to the BAT
 # wrapper. This keeps `Start Bot.bat` and direct `python bot_new.py` launches on
 # one deterministic runtime path after `git pull`. A healthy runtime is reused;
