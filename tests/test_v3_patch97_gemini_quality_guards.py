@@ -1,16 +1,17 @@
 from pathlib import Path
 
 
-def test_audio_analysis_default_is_primary_model_only(monkeypatch):
+def test_audio_analysis_is_primary_model_only_even_with_legacy_lite_env(monkeypatch):
     from services import gemini_analyze
 
     monkeypatch.delenv("AUDIO_ANALYSIS_FALLBACK_MODE", raising=False)
-    assert gemini_analyze._audio_fallback_models("gemini-3.5-flash") == ["gemini-3.5-flash"]
+    assert gemini_analyze._audio_fallback_models("gemini-3.7-flash") == [
+        "gemini-3.7-flash"
+    ]
 
     monkeypatch.setenv("AUDIO_ANALYSIS_FALLBACK_MODE", "lite")
-    assert gemini_analyze._audio_fallback_models("gemini-3.5-flash") == [
-        "gemini-3.5-flash",
-        "gemini-3.1-flash-lite",
+    assert gemini_analyze._audio_fallback_models("gemini-3.7-flash") == [
+        "gemini-3.7-flash"
     ]
 
 
