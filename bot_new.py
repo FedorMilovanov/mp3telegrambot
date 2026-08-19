@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validated, fail-closed entry point for MP3Bot. Run this file instead of main.py."""
+"""Validated, self-healing entry point for MP3Bot. Run this file instead of main.py."""
 
 from __future__ import annotations
 
@@ -43,10 +43,24 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+# Source provisioning belongs to the Python entrypoint, not only to the BAT
+# wrapper. This keeps `Start Bot.bat` and direct `python bot_new.py` launches on
+# one deterministic runtime path after `git pull`. A healthy runtime is reused;
+# a missing or damaged one is rebuilt from the exact reviewed upstream commit.
+from tools.ensure_bgutil_provider import ProvisionError, ensure_bgutil_provider
+
+try:
+    _youtube_provider_home = ensure_bgutil_provider()
+except ProvisionError as exc:
+    print(f"❌ YouTube maximum-quality runtime не удалось подготовить: {exc}")
+    print("   Нужны Git, npm и Node.js >=22; quality fallback не используется.")
+    sys.exit(2)
+
 # YouTube changed GVS authorization in 2026-08: maximum-quality media URLs may
 # require a video-bound Proof-of-Origin token. This is a production dependency,
 # not an optional quality downgrade. Validate the automatic provider before the
-# bot accepts work so direct `python bot_new.py` launches fail early and clearly.
+# bot accepts work. Provisioning above repairs missing/partial local source; the
+# checks below independently reject config/provider drift.
 from services.youtube_po_token_runtime import (
     YouTubePoTokenRuntimeError,
     require_youtube_po_token_runtime,
