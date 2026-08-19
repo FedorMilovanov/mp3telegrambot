@@ -6,8 +6,6 @@ cd /d "%~dp0"
 set "VENV_DIR=.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "SETUP_MARKER=%VENV_DIR%\.setup-complete"
-set "WPC_MIGRATION_MARKER=%VENV_DIR%\.wpc-provider-removed"
-set "BGUTIL_WHEEL_MIGRATION_MARKER=%VENV_DIR%\.bgutil-wheel-removed"
 set "REQ_HASH_FILE=%VENV_DIR%\.requirements-hash.tmp"
 
 if not exist "bot_new.py" (
@@ -108,45 +106,19 @@ if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
     echo [SETUP] Dependencies are already current.
 )
 
-rem One-time migration from the old WPC/nodriver browser provider.
-rem Keep it idempotent without paying a pip subprocess cost on every bot start.
-if not exist "%WPC_MIGRATION_MARKER%" (
-    "%VENV_PYTHON%" -m pip uninstall -y yt-dlp-getpot-wpc nodriver >nul 2>&1
-    if errorlevel 1 (
-        echo ERROR: Failed to remove the obsolete browser-based YouTube PO Token runtime.
-        pause
-        exit /b 1
-    )
-    >"%WPC_MIGRATION_MARKER%" echo browser-provider-removed-v1
-)
-
-rem One-time migration from the released bgutil wheel to one exact source tree.
-rem yt-dlp.conf already disables default/global plugin dirs, but remove the stale
-rem wheel as well so the venv contains no redundant provider implementation.
-if not exist "%BGUTIL_WHEEL_MIGRATION_MARKER%" (
-    "%VENV_PYTHON%" -m pip uninstall -y bgutil-ytdlp-pot-provider >nul 2>&1
-    if errorlevel 1 (
-        echo ERROR: Failed to remove the obsolete bgutil Python provider wheel.
-        pause
-        exit /b 1
-    )
-    >"%BGUTIL_WHEEL_MIGRATION_MARKER%" echo exact-source-provider-v1
-)
-
-if not exist "tools\ensure_bgutil_provider.py" (
-    echo ERROR: tools\ensure_bgutil_provider.py not found.
-    pause
-    exit /b 1
-)
-"%VENV_PYTHON%" tools\ensure_bgutil_provider.py
+rem Reconcile obsolete PO-token packages on every managed launcher run.
+rem This is deliberately not marker-gated: if an old provider is reinstalled
+rem after migration, Start Bot.bat must remain a real repair path.
+"%VENV_PYTHON%" -m pip uninstall -y yt-dlp-getpot-wpc nodriver bgutil-ytdlp-pot-provider >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo ERROR: Browserless YouTube PO Token runtime is not ready.
-    echo Check git/npm/Node.js and the setup message above.
+    echo ERROR: Failed to remove obsolete YouTube PO Token provider packages.
     pause
     exit /b 1
 )
 
+rem bot_new.py owns exact-source bgutil provisioning as well as readiness checks.
+rem Keeping that ownership in the Python entrypoint makes BAT and direct launches
+rem behave identically after git pull.
 echo [START] Starting MP3 Telegram Bot...
 "%VENV_PYTHON%" bot_new.py
 set "BOT_EXIT_CODE=%ERRORLEVEL%"
