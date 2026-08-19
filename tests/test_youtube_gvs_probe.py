@@ -12,7 +12,14 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
     monkeypatch.setattr(
         ff,
         "_build_ytdlp_base_args",
-        lambda: ["python", "-m", "yt_dlp", "--no-config", "--config-location", "yt-dlp.conf"],
+        lambda: [
+            "python",
+            "-m",
+            "yt_dlp",
+            "--no-config",
+            "--config-location",
+            "yt-dlp.conf",
+        ],
     )
 
     command = probe._production_command("https://youtu.be/example", tmp_path)
@@ -83,3 +90,15 @@ def test_http_403_is_fail_closed(monkeypatch, capsys):
 
     assert probe.main(["https://youtu.be/example"]) == 3
     assert "GVS_ACCEPTANCE=FAIL_HTTP_403" in capsys.readouterr().out
+
+
+def test_download_timeout_is_fail_closed(monkeypatch, capsys):
+    monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
+
+    def timeout(_url, _root):
+        raise subprocess.TimeoutExpired(cmd=["yt-dlp"], timeout=1800)
+
+    monkeypatch.setattr(probe, "_run_download", timeout)
+
+    assert probe.main(["https://youtu.be/example"]) == 6
+    assert "GVS_ACCEPTANCE=FAIL_TIMEOUT" in capsys.readouterr().out
