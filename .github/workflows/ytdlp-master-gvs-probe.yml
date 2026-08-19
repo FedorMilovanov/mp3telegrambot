@@ -1,0 +1,70 @@
+name: yt-dlp Master GVS Probe
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/ytdlp-master-gvs-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-master-gvs:
+    name: Exact yt-dlp master + production bgutil GVS read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install exact yt-dlp master and production provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip
+          python -m pip install "yt-dlp[default] @ git+https://github.com/yt-dlp/yt-dlp.git@0d1e029d14058ddfb986fdafb07c00869c89105a"
+          python -m pip install "bgutil-ytdlp-pot-provider==1.3.1"
+          python -m yt_dlp --version
+          python tools/ensure_bgutil_provider.py
+
+      - name: Real GVS test read on original 403 video
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://www.youtube.com/watch?v=-vq7fH7ANUs"
+          log="$RUNNER_TEMP/ytdlp-gvs.log"
+          out="$RUNNER_TEMP/gvs-probe.%(ext)s"
+
+          python -m yt_dlp -v --no-config --config-location yt-dlp.conf \
+            --test --no-playlist --abort-on-unavailable-fragments \
+            -f "bestaudio/best" -o "$out" "$url" 2>&1 | tee "$log"
+
+          if grep -Fq "HTTP Error 403" "$log"; then
+            echo "GVS_PROBE_403=1"
+            exit 3
+          fi
+          if grep -Fq "PO Token Providers: none" "$log"; then
+            echo "PO_PROVIDER_MISSING=1"
+            exit 4
+          fi
+          if grep -Eq "\[download\].*(format 18|itag 18)" "$log"; then
+            echo "QUALITY_DOWNGRADE_FORMAT18=1"
+            exit 5
+          fi
+
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          files = [p for p in root.glob("gvs-probe.*") if p.is_file()]
+          if not files:
+              raise SystemExit("No media probe file produced")
+          sizes = {p.name: p.stat().st_size for p in files}
+          print(f"GVS_PROBE_FILES={sizes}")
+          if not any(size > 0 for size in sizes.values()):
+              raise SystemExit("Media probe file is empty")
+          PY
