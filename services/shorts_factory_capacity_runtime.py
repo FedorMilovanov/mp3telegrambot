@@ -24,6 +24,7 @@ _FACTORY_CAPACITY_PASS_ATTEMPTS = 2
 _FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
 _FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0
 _FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0
+_FACTORY_UPLOAD_WAIT_SECONDS = 600.0
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
@@ -36,6 +37,25 @@ def factory_client_retry_action(exc: BaseException) -> str:
 
 def _capacity_retry_delay(attempt: int) -> float:
     return capacity_control.transient_retry_delay(attempt)
+
+
+async def _wait_factory_upload(client: Any, uploaded: Any) -> Any:
+    """Poll one Factory remote file under the Files failure domain."""
+    started = asyncio.get_running_loop().time()
+    current = uploaded
+    while str(getattr(current, "state", "")).upper().endswith("PROCESSING"):
+        if asyncio.get_running_loop().time() - started > _FACTORY_UPLOAD_WAIT_SECONDS:
+            raise TimeoutError(
+                "Gemini Factory audio processing exceeded 600 seconds"
+            )
+        await asyncio.sleep(3)
+        current = await capacity_control.run_heavy_gemini_call(
+            lambda _name=current.name: client.aio.files.get(name=_name),
+            domain="files",
+        )
+    if str(getattr(current, "state", "")).upper().endswith("FAILED"):
+        raise RuntimeError("Gemini Factory audio processing FAILED")
+    return current
 
 
 async def _run_pass_with_capacity_retry(
@@ -72,7 +92,8 @@ async def _run_pass_with_capacity_retry(
                     ),
                     label=label,
                     status_msg=status_msg,
-                )
+                ),
+                domain="inference",
             )
         except asyncio.CancelledError:
             raise
@@ -82,7 +103,7 @@ async def _run_pass_with_capacity_retry(
                 raise
 
             delay = _capacity_retry_delay(retry_budget.used)
-            capacity_control.note_overload(delay)
+            capacity_control.note_overload(delay, domain="inference")
             if client_attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
                 raise
 
@@ -163,9 +184,6 @@ async def create_factory_plan_resumable(
     capacity_budget_exhausted = False
     exhausted_stage = ""
 
-    # Files API has its own failure domain, so remote upload gets a separate
-    # initial+2 budget. Each semantic pass then gets an independent inference
-    # budget; completed passes remain reusable when a later pass rotates client.
     upload_budget = capacity_control.GeminiRetryBudget()
     scout_budget = capacity_control.GeminiRetryBudget()
     judge_budget = capacity_control.GeminiRetryBudget()
@@ -206,7 +224,7 @@ async def create_factory_plan_resumable(
             else:
                 upload_in_progress = True
                 if upload_budget.exhausted:
-                    raise RuntimeError("Gemini Files upload retry budget exhausted")
+                    break
                 upload_budget.claim()
                 uploaded = await capacity_control.run_heavy_gemini_call(
                     lambda: capacity.await_with_heartbeat(
@@ -224,10 +242,14 @@ async def create_factory_plan_resumable(
                             "загружаю analysis-аудио…"
                         ),
                         status_msg=status_msg,
-                    )
+                    ),
+                    domain="files",
                 )
+                # Capture ownership immediately. If PROCESSING polling fails,
+                # finally can still delete the server-side handle before rotate.
+                uploaded_name = str(getattr(uploaded, "name", "") or "")
                 uploaded = await capacity.await_with_heartbeat(
-                    candidates._wait_uploaded_file(client, uploaded),
+                    _wait_factory_upload(client, uploaded),
                     label=(
                         f"⏳ Gemini Files · клиент {index}/{len(clients)}: "
                         "сервер обрабатывает аудио…"
@@ -235,7 +257,6 @@ async def create_factory_plan_resumable(
                     status_msg=status_msg,
                 )
                 audio_part = uploaded
-                uploaded_name = str(getattr(uploaded, "name", "") or "")
                 upload_in_progress = False
 
             if scout is None:
@@ -322,6 +343,7 @@ async def create_factory_plan_resumable(
             action = factory_client_retry_action(exc)
             budget = active_budget()
             stage = active_stage()
+            domain = "files" if upload_in_progress else "inference"
             client_outcomes.append(action)
             logger.warning(
                 "Shorts Factory capacity-aware client %d/%d failed at %s: %s: %s",
@@ -333,7 +355,7 @@ async def create_factory_plan_resumable(
             )
             if action == "capacity":
                 delay = _capacity_retry_delay(max(1, budget.used))
-                capacity_control.note_overload(delay)
+                capacity_control.note_overload(delay, domain=domain)
                 if budget.exhausted:
                     capacity_budget_exhausted = True
                     exhausted_stage = stage
