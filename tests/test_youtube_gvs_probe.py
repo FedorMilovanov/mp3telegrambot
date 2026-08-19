@@ -65,7 +65,7 @@ def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
     }
 
 
-def test_direct_cli_help_can_import_repo_owned_services():
+def test_direct_cli_help_runs_from_tools_path():
     process = subprocess.run(
         [sys.executable, "tools/check_youtube_gvs.py", "--help"],
         cwd=probe.PROJECT_ROOT,
@@ -90,12 +90,27 @@ def test_duration_parser_and_factory_tolerance_contract():
     assert not probe._duration_matches(10015.1, 10000.0)
 
 
-def test_failure_classifier_distinguishes_gvs_403_and_login():
+def test_failure_classifier_distinguishes_media_provider_and_login_layers():
     forbidden = subprocess.CompletedProcess(
         args=["yt-dlp"],
         returncode=1,
         stdout="",
         stderr="ERROR: unable to download video data: HTTP Error 403: Forbidden",
+    )
+    provider_503 = subprocess.CompletedProcess(
+        args=["yt-dlp"],
+        returncode=1,
+        stdout="",
+        stderr=(
+            "_get_pot_via_script failed: All 3 retries failed. "
+            "AxiosError: Request failed with status code 503"
+        ),
+    )
+    provider_other = subprocess.CompletedProcess(
+        args=["yt-dlp"],
+        returncode=1,
+        stdout="",
+        stderr="_get_pot_via_script failed: provider exited with returncode 1",
     )
     login = subprocess.CompletedProcess(
         args=["yt-dlp"],
@@ -105,6 +120,8 @@ def test_failure_classifier_distinguishes_gvs_403_and_login():
     )
 
     assert probe._classify_failure(forbidden) == "FAIL_HTTP_403"
+    assert probe._classify_failure(provider_503) == "FAIL_PO_PROVIDER_503"
+    assert probe._classify_failure(provider_other) == "FAIL_PO_PROVIDER"
     assert probe._classify_failure(login) == "FAIL_LOGIN_REQUIRED"
 
 
