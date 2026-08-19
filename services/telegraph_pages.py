@@ -6,29 +6,32 @@ Analytics, Questions, Terms, Study Analysis, Reflection.
 """
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
-    GEMINI_CLIENTS, gemini_generate,
-    is_overload_error, is_quota_error, make_text_config_smart,
+    GEMINI_CLIENTS, gemini_generate,   # FIX telegraph_pages
+    is_overload_error, is_quota_error, is_model_exhausted, mark_model_exhausted, make_text_config_smart,  # ULTIMATE FIX 3.5-FLASH
 )
-from core.database import GEMINI_MODEL
+from core.database import GEMINI_MODEL      # FIX telegraph_pages
 from core.text_utils import (
     _scrub_inline, normalize_author_name,
-    _clean_field, _clean_meta_line,
-    _strip_meta_lines, is_meta_garbage,
-    normalize_title_text, title_case_fragment,
-    join_title_author,
+    _clean_field, _clean_meta_line,    # FIX telegraph_pages
+    _strip_meta_lines, is_meta_garbage, # FIX telegraph_pages
+    normalize_title_text, title_case_fragment,  # FIX telegraph_pages
+    join_title_author,                 # R49: не дублировать имя автора в заголовке
 )
 from converters.md_telegraph import (
     _build_toc_nodes_v2, _build_nav_nodes_v2,
-    _section_to_nodes_v2,
-    _create_telegraph_page_single,
-    _edit_telegraph_page,
-    _estimate_nodes_v2,
+    _section_to_nodes_v2,              # FIX telegraph_pages
+    _create_telegraph_page_single,     # FIX telegraph_pages
+    _edit_telegraph_page,              # FIX telegraph_pages
+    _estimate_nodes_v2,                # FIX telegraph_pages
 )
 from services.telegraph import _telegraph_post
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline
-from core.json_parser import time_to_seconds
-from core.url_utils import get_youtube_timestamp_url
-from core.utils import format_timestamp
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # AUDIT-V2-MDPARSE
+from core.json_parser import (
+    # _try_parse_synopsis_json,  # FIX 2026-05-21 #13: dead import — используется локальный в telegraph.py
+    time_to_seconds,                   # FIX telegraph_pages
+)
+from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
+from core.utils import format_timestamp               # FIX telegraph_pages
 from core.prompts import REFLECTION_APPLICATION_PROMPT
 from services.study_synthesis_policy import TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT
 from core.observability import alog_gemini_response, alog_gemini_run
@@ -44,17 +47,17 @@ from core.content_audit import audit_expanded_sections, format_content_audit_iss
 from core.content_audit import get_content_audit_mode, should_abort_for_content_audit
 from core.generated_pages import aget_related_materials, extract_scripture_refs
 from converters.md_telegraph import _build_related_materials_nodes
-from services import gemini_capacity_control as capacity_control
 
 import asyncio
 from typing import Optional, List, Tuple
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass      # FIX telegraph_pages
 import logging
 import re
 import time
 import os
 
+# types — из google.genai
 try:
     from google.genai import types
 except ImportError:
@@ -103,12 +106,14 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
 
     if analysis_summary and not is_meta_garbage(analysis_summary):
         nodes.append({"tag": "h3", "children": ["🧠 Аналитика"]})
+        # AUDIT-V2-MDPARSE: прогоняем через _md_parse_inline → **bold** рендерится в Telegraph
         nodes.append({"tag": "p", "children": _md_parse_inline(analysis_summary)})
 
     if argument_arc:
         if nodes:
             nodes.append({"tag": "hr"})
         nodes.append({"tag": "h3", "children": ["📈 Ход аргументации"]})
+        # AUDIT-V2-MDPARSE: argument_arc через _md_parse_inline
         nodes.append({"tag": "p", "children": _md_parse_inline(argument_arc)})
 
     if key_categories:
@@ -119,6 +124,7 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
             item = _scrub_inline(_strip_meta_lines(_clean_field(str(item))))
             if not item:
                 continue
+            # Разбиваем "Понятие — объяснение" на bold + plain
             if " — " in item:
                 term, _, expl = item.partition(" — ")
                 nodes.append({"tag": "p", "children": [
@@ -132,7 +138,12 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str,
 
 
 def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[str]:
-    """Normalize generated reflection questions before publishing/reusing them."""
+    """Normalize generated reflection questions before publishing/reusing them.
+
+    Keeps only useful, deduplicated open questions. Preserves the 🟢/🔵 marker
+    contract, defaulting to 🟢 when Gemini omitted a marker. This prevents weak
+    duplicate/generic questions from becoming a whole Reflection page scaffold.
+    """
     if not isinstance(questions, list):
         return []
     out: list[str] = []
@@ -158,7 +169,10 @@ def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[s
 
 
 async def create_telegraph_questions(questions: list, title: str, author: str) -> str | None:
-    """Публикует вопросы для обсуждения в Telegraph."""
+    """Публикует вопросы для обсуждения в Telegraph.
+    v9: однофазная публикация — createPage сразу с финальным контентом и заголовком.
+    Экономит 1 API-запрос на каждую публикацию.
+    """
     author = _clean_meta_line(author) or "Автор не указан"
     title  = _clean_meta_line(title)  or "Без названия"
 
@@ -168,15 +182,22 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
 
     green = [q for q in questions if str(q).startswith("🟢")]
     blue  = [q for q in questions if str(q).startswith("🔵")]
+
     if not green and not blue:
         return None
+
     loop = asyncio.get_running_loop()
 
+    # BUG-C01: объединяем строки одного вопроса перед нумерацией,
+    # чтобы многострочный вопрос не получал несколько "1." подряд.
     def _join_question_lines(raw: str) -> str:
+        """Объединяет все строки одного вопроса в одну строку."""
         parts = [chunk.strip() for chunk in raw.splitlines() if chunk.strip()]
         return " ".join(parts)
 
+    # ── Однофазная публикация (v9): сразу финальный контент ───────
     final_nodes: list = []
+
     if green:
         final_nodes.append({"tag": "h3", "children": ["Вопросы для размышления"]})
         for i, q in enumerate(green, 1):
@@ -206,11 +227,14 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
     if not page_url:
         logger.warning(f"Questions createPage failed: {err}")
         return None
+
     return page_url
 
 
 async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_url: str = "") -> str | None:
-    """Публикует блок «Термины» в Telegraph."""
+    """Публикует блок «Термины» в Telegraph.
+    terms_data — плоские массивы строк с разделителем ||.
+    """
     author = _clean_meta_line(author or "") or "Автор не указан"
     title = _clean_meta_line(title or "") or "Без названия"
 
@@ -232,10 +256,12 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
         parts = [t.strip() for t in re.split(r"[,\s•]+", times_str) if t.strip()]
         if not parts:
             return []
+        # Лимит: максимум 3 таймкода на запись (начало темы + ключевой момент)
+        # Валидация: пропускаем обрезанные/невалидные ("5", "41" без ":")
         valid_parts = []
         for t in parts:
             if ":" not in t:
-                continue
+                continue  # обрезанный или невалидный таймкод
             if time_to_seconds(t) is None:
                 continue
             valid_parts.append(t)
@@ -265,12 +291,15 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
         s = _scrub_inline(_strip_meta_lines(_clean_field(s)))
         s = re.sub(r"[•·]", ", ", s)
         s = re.sub(r"\s*,\s*", ", ", s)
+        # Убираем пробел между таймкодом и пунктуацией: "12:10 ." → "12:10."
         s = re.sub(r'(\d{1,2}:\d{2}(?::\d{2})?)\s+([.,!?\)])', r'\1\2', s)
         s = s.strip()
         if re.search(r'[\u0590-\u05FF\u0600-\u06FF]', s):
             s = _fix_rtl_in_text(s)
         return s
 
+    # #74: для lexicon_notes НЕ вызываем _clean_field (P0-баг #3 — добавляет точки к таймкодам).
+    # Используем str().strip() вместо _clean_field.
     def _clean_text_safe(s: str) -> str:
         s = _scrub_inline(_strip_meta_lines(str(s).strip()))
         s = re.sub(r"[•·]", ", ", s)
@@ -290,6 +319,9 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
         first_section = False
         nodes.append({"tag": "h3", "children": [label]})
 
+    # ── 🧩 Понятия ─────────────────────────────────────────────
+    # Формат:
+    # Термин || Объяснение || Почему важно: ... || Таймкоды: 5:09, 11:40
     if concepts:
         _section_header("🧩 Понятия")
         for raw in concepts:
@@ -297,20 +329,28 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             term = _clean_text(term)
             explanation = _clean_text(explanation)
             why = _clean_text(why)
-            times_str = _clean_text_safe(times_str)
+            times_str = _clean_text_safe(times_str)  # #3: _clean_field добавлял точку к "1:23" → "1:23." → не кликабельно
+
             if not term:
                 continue
+
             nodes.append({"tag": "p", "children": [{"tag": "b", "children": [term]}]})
+
+            # explanation и why — отдельными параграфами для читаемости
             if explanation:
                 nodes.append({"tag": "p", "children": [explanation]})
             if why:
                 why_clean = re.sub(r"^Почему важно:\s*", "", why, flags=re.IGNORECASE).strip()
                 if why_clean:
                     nodes.append({"tag": "p", "children": [{"tag": "i", "children": [why_clean]}]})
+
             ts = _ts_nodes(times_str)
             if ts:
                 nodes.append({"tag": "p", "children": ts})
 
+    # ── 📖 Писание ─────────────────────────────────────────────
+    # Формат:
+    # Ссылка || Как используется || Ключевая фраза: ... || Таймкоды: ...
     if scripture:
         _section_header("📖 Писание")
         for raw in scripture:
@@ -318,22 +358,30 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             ref = _clean_text(ref)
             use = _clean_text(use)
             phrase = _clean_text(phrase)
-            times_str = _clean_text_safe(times_str)
+            times_str = _clean_text_safe(times_str)  # #3: таймкоды не должны получать точку
+
             if not ref:
                 continue
+
             nodes.append({"tag": "p", "children": [{"tag": "b", "children": [ref]}]})
+
             if use:
                 nodes.append({"tag": "p", "children": [use]})
+
             if phrase:
                 phrase = re.sub(r"^Ключевая фраза:\s*", "", phrase, flags=re.IGNORECASE).strip()
                 if phrase:
                     if not phrase.startswith("«"):
                         phrase = f"«{phrase}»"
                     nodes.append({"tag": "p", "children": [{"tag": "i", "children": [phrase]}]})
+
             ts = _ts_nodes(times_str)
             if ts:
                 nodes.append({"tag": "p", "children": ts})
 
+    # ── 🌍 Переводы ────────────────────────────────────────────
+    # Формат:
+    # Ссылка || ключевое слово/фраза || Русские переводы || Английские переводы || Наблюдение || Таймкоды
     if translations:
         _section_header("🌍 Переводы")
         for raw in translations:
@@ -343,31 +391,44 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             ru_raw = _clean_text(ru_raw)
             en_raw = _clean_text(en_raw)
             observation = _clean_text(observation)
-            times_str = _clean_text_safe(times_str)
+            times_str = _clean_text_safe(times_str)  # #3: таймкоды не должны получать точку
+
             if not ref:
                 continue
+
             header = ref
             if focus:
                 header += f" — «{focus}»"
             nodes.append({"tag": "p", "children": [{"tag": "b", "children": [header]}]})
+
             if ru_raw:
-                for variant in [v.strip() for v in ru_raw.split(";") if v.strip()]:
+                ru_variants = [v.strip() for v in ru_raw.split(";") if v.strip()]
+                for variant in ru_variants:
                     nodes.append({"tag": "p", "children": [variant]})
+
             if en_raw:
-                for variant in [v.strip() for v in en_raw.split(";") if v.strip()]:
+                en_variants = [v.strip() for v in en_raw.split(";") if v.strip()]
+                for variant in en_variants:
                     nodes.append({"tag": "p", "children": [{"tag": "i", "children": [variant]}]})
+
             if observation:
                 observation = re.sub(r"^Наблюдение:\s*", "", observation, flags=re.IGNORECASE).strip()
                 if observation:
                     nodes.append({"tag": "p", "children": [observation]})
+
             ts = _ts_nodes(times_str)
             if ts:
                 nodes.append({"tag": "p", "children": ts})
 
+    # ── 🔤 Словарные заметки ───────────────────────────────────
+    # Новый формат:
+    # Ссылка на текст || русское ключевое слово/фраза || оригинальное слово || источник оригинала
+    # || словарное пояснение || почему это важно здесь || таймкоды
     if lexicon_notes:
         _section_header("🔤 Словарные заметки")
         for raw in lexicon_notes:
             ref, ru_key, original_word, source_label, note, why, times_str, context_mention = _parse_line(raw, 8)
+            # #74: используем _clean_text_safe (без _clean_field) для всех полей lexicon_notes
             ref = _clean_text_safe(ref)
             ru_key = _clean_text_safe(ru_key)
             original_word = _clean_text_safe(original_word)
@@ -376,53 +437,96 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             why = _clean_text_safe(why)
             times_str = _clean_text_safe(times_str)
             context_mention = _clean_text_safe(context_mention)
+
             if not ref and not original_word:
                 continue
+
+            # Заголовок
             header_parts = []
             if ref:
                 header_parts.append(ref)
             if ru_key:
                 header_parts.append(f"«{ru_key}»")
             header = " — ".join(header_parts) if header_parts else ""
+
             if header:
                 nodes.append({"tag": "p", "children": [{"tag": "b", "children": [header]}]})
+
+            # Оригинал и источник
+            # dir="ltr" — принудительное выравнивание по левому краю для строк с ивритом/греческим,
+            # чтобы браузер не переключался в RTL-режим из-за наличия RTL-символов
+            # Расшифровка аббревиатур словарей для русскоязычного читателя
             _DICT_ABBREVS = {
-                "HALOT": "HALOT (евр. словарь ВЗ)", "BDAG": "BDAG (греч. словарь НЗ)",
-                "BDB": "BDB (евр. словарь ВЗ)", "TWOT": "TWOT (богосл. словарь ВЗ)",
-                "TDNT": "TDNT (богосл. словарь НЗ)", "NIDNTT": "NIDNTT (богосл. словарь НЗ)",
-                "NIDOTTE": "NIDOTTE (богосл. словарь ВЗ)", "LXX": "LXX (Септуагинта)",
-                "NA28": "NA28 (греч. текст НЗ)", "BHS": "BHS (евр. текст ВЗ)",
+                "HALOT": "HALOT (евр. словарь ВЗ)",
+                "BDAG":  "BDAG (греч. словарь НЗ)",
+                "BDB":   "BDB (евр. словарь ВЗ)",
+                "TWOT":  "TWOT (богосл. словарь ВЗ)",
+                "TDNT":  "TDNT (богосл. словарь НЗ)",
+                "NIDNTT": "NIDNTT (богосл. словарь НЗ)",
+                "NIDOTTE": "NIDOTTE (богосл. словарь ВЗ)",
+                "LXX":   "LXX (Септуагинта)",
+                "NA28":  "NA28 (греч. текст НЗ)",
+                "BHS":   "BHS (евр. текст ВЗ)",
             }
             def _expand_source(sl: str, _abbrevs=_DICT_ABBREVS) -> str:
+                """Расшифровывает аббревиатуры словарей в source_label."""
                 if not sl:
                     return sl
                 for abbr, full in _abbrevs.items():
                     sl = re.sub(r'\b' + abbr + r'\b', full, sl)
                 return sl
+
             if original_word:
                 _source_display = _expand_source(source_label)
                 if _source_display:
-                    nodes.append({"tag": "p", "attrs": {"dir": "ltr"}, "children": [
-                        {"tag": "b", "children": [original_word]}, f" — {_source_display}"]})
+                    nodes.append({
+                        "tag": "p",
+                        "attrs": {"dir": "ltr"},
+                        "children": [
+                            {"tag": "b", "children": [original_word]},
+                            f" — {_source_display}",
+                        ],
+                    })
                 else:
-                    nodes.append({"tag": "p", "attrs": {"dir": "ltr"}, "children": [
-                        {"tag": "b", "children": [original_word]}]})
+                    nodes.append({
+                        "tag": "p",
+                        "attrs": {"dir": "ltr"},
+                        "children": [{"tag": "b", "children": [original_word]}],
+                    })
+
+            # Словарное пояснение
             if note:
                 nodes.append({"tag": "p", "children": [note]})
+
+            # Почему важно
             if why:
                 why = re.sub(r"^Почему важно:\s*", "", why, flags=re.IGNORECASE).strip()
                 if why:
                     nodes.append({"tag": "p", "children": [{"tag": "i", "children": [why]}]})
+
+            # Контраст / применение (поле 8) — без штампа «В материале:»
             if context_mention:
-                nodes.append({"tag": "p", "children": [context_mention]})
+                nodes.append({
+                    "tag": "p",
+                    "children": [context_mention],
+                })
+
+            # Таймкоды
             ts = _ts_nodes(times_str)
             if ts:
                 nodes.append({"tag": "p", "children": ts})
 
     if not nodes:
         return None
+
     return await _telegraph_post(f"Термины: {title}", author, nodes, loop)
 
+
+# ════════════════════════════════════════════════════════════════════════════
+# ARTICLE-LIKE СТРАНИЦЫ: Разбор материала + Размышление и применение
+# ════════════════════════════════════════════════════════════════════════════
+
+# ─── Helper: единый Gemini text-only запрос (без аудио) ──────────────────
 
 async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 max_tokens: int = 8000, task: str = "telegraph_text",
@@ -430,16 +534,15 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
                                 response_mime_type: str | None = None,
                                 response_schema=None,
                                 allow_model_fallback: bool = False) -> str | None:
-    """Run Telegraph semantic generation through the shared Gemini transport.
+    """Strict-primary semantic Gemini request with bounded service retries.
 
-    There is no local key loop and no model-global quota blacklist. The generic
-    transport owns the initial+2 transient budget across all configured clients.
-    Structured-output fallback is compatibility-only: quota, overload, internal
-    errors and timeouts are re-raised so they consume the shared transient budget
-    instead of causing an immediate second GenerateContent request.
+    Model downgrade is forbidden: an unavailable primary model causes the
+    optional section to be omitted instead of being published from Lite.
     """
     if not GEMINI_CLIENTS:
         return None
+
+    # Quality policy: this semantic route never downgrades models.
 
     _compacted = compact_prompt_for_generation(prompt)
     if _compacted.saved_chars:
@@ -448,142 +551,216 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
             task, _compacted.original_chars, _compacted.compacted_chars, _compacted.removed_lines,
         )
     prompt = _compacted.text
-    _start_time = time.time()
-    _TIME_BUDGET = 180
-    model_name = GEMINI_MODEL
 
-    if allow_model_fallback:
-        logger.warning(
-            "_gemini_text_request[%s]: model fallback requested but ignored by strict semantic quality policy",
-            task,
-        )
+    # QUOTA-SMART FIX: умный 429 handling + time-budget
+    #
+    # При 429 (quota exhausted) — сразу к следующей модели.
+    # Ключи делят квоту проекта, поэтому при 429 на одном ключе
+    # все остальные ключи того же проекта тоже дадут 429.
+    # Не тратим время на бесполезный перебор ключей.
+    #
+    # При 503/500 (overload) — retry с короткой паузой, может пройти.
+    #
+    # КАЧЕСТВО: ВСЕ задачи на gemini-3.5-flash (GEMINI_MODEL).
+    # MODEL MIGRATION 2026-07: 2.5-flash-lite выключается ~22.07.2026 —
+    # резерв теперь GA gemini-3.1-flash-lite.
+    #
+    # Time-budget 180с — защита от зависания.
+    _start_time = time.time()
+    _TIME_BUDGET = 180  # секунд
 
     def _duration_ms() -> int:
         return int((time.time() - _start_time) * 1000)
 
-    def _is_internal_error(exc: BaseException) -> bool:
-        text = str(exc)
-        return "500" in text or "INTERNAL" in text.upper()
-
-    async def _one_client_request(client):
-        if time.time() - _start_time > _TIME_BUDGET:
-            raise asyncio.TimeoutError(
-                f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)"
-            )
-        config = make_text_config_smart(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            model_name=model_name,
-            thinking_level=thinking_level,
-            response_mime_type=response_mime_type,
-            response_schema=response_schema,
+    # Semantic pages use only the configured production model (3.7 Flash).
+    _models = [GEMINI_MODEL]
+    if allow_model_fallback:
+        logger.warning(
+            "_gemini_text_request[%s]: model fallback requested but ignored by "
+            "strict semantic quality policy",
+            task,
         )
-        try:
-            resp = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=config,
-                ),
-                timeout=min(600.0, max(1.0, _TIME_BUDGET - (time.time() - _start_time))),
-            )
-        except Exception as schema_err:
-            if (
-                response_schema is None
-                or is_quota_error(schema_err)
-                or is_overload_error(schema_err)
-                or _is_internal_error(schema_err)
-                or capacity_control.is_timeout_error(schema_err)
-            ):
-                raise
-            logger.warning(
-                "_gemini_text_request[%s]: structured output failed (%s: %s) — one compatibility retry without schema",
-                model_name, type(schema_err).__name__, str(schema_err)[:180],
-            )
-            resp = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=make_text_config_smart(
-                        temperature=temperature,
-                        max_output_tokens=max_tokens,
-                        model_name=model_name,
-                        thinking_level=thinking_level,
-                    ),
-                ),
-                timeout=min(600.0, max(1.0, _TIME_BUDGET - (time.time() - _start_time))),
-            )
 
-        try:
-            result = resp.text or ""
-        except (ValueError, AttributeError):
-            result = ""
-            if getattr(resp, "candidates", None):
-                for part in resp.candidates[0].content.parts:
-                    if not getattr(part, "thought", False) and getattr(part, "text", None):
-                        result = part.text
-                        break
-        if not result:
-            logger.warning(
-                "_gemini_text_request[%s]: пустой ответ (finish=%s)",
-                model_name,
-                resp.candidates[0].finish_reason if getattr(resp, "candidates", None) else "?",
-            )
-            return ""
+    def _is_internal_error(e: Exception) -> bool:
+        s = str(e)
+        return "500" in s or "INTERNAL" in s.upper()
 
-        meta = getattr(resp, "usage_metadata", None)
-        finish_reason = str(resp.candidates[0].finish_reason) if getattr(resp, "candidates", None) else "?"
-        if meta:
-            logger.info(
-                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s finish=%s",
-                model_name,
-                getattr(meta, "prompt_token_count", "?"),
-                getattr(meta, "thoughts_token_count", "?"),
-                getattr(meta, "candidates_token_count", "?"),
-                finish_reason,
-            )
-        if "MAX_TOKENS" in finish_reason.upper():
-            logger.warning(
-                "_gemini_text_request[%s]: ответ ОБРЕЗАН по max_tokens=%s (thinking съел бюджет)",
-                model_name, max_tokens,
-            )
-        await alog_gemini_response(
-            response=resp,
-            task=task,
-            video_id=video_id,
-            model=model_name,
-            thinking_level=thinking_level,
-            duration_ms=_duration_ms(),
-            retry_num=0,
-            is_fallback=False,
-            json_valid=True,
-        )
-        return result
+    # Импортируем напрямую чтобы не идти через gemini_generate
+    from core.globals import GEMINI_CLIENTS as _CLIENTS
 
     last_err = None
-    try:
-        result = await gemini_generate(
-            GEMINI_CLIENTS,
-            _one_client_request,
-            model_name=model_name,
-        )
-        if result:
-            return result
-    except Exception as exc:
-        last_err = exc
-        logger.warning(
-            "_gemini_text_request[%s]: shared transport exhausted after %.1fs: %s: %s",
-            task, time.time() - _start_time, type(exc).__name__, str(exc)[:200],
-        )
+    for model_idx, model_name in enumerate(_models):
+        if is_model_exhausted(model_name):
+            logger.warning("_gemini_text_request: пропускаю модель %s — quota exhausted in-memory", model_name)
+            continue
+        # Time-budget check
+        if time.time() - _start_time > _TIME_BUDGET:
+            logger.warning(
+                "_gemini_text_request: TIME-BUDGET (%ds) исчерпан — fallback",
+                _TIME_BUDGET,
+            )
+            break
 
+        if model_idx > 0:
+            raise AssertionError("semantic model fallback is disabled")
+
+        # 2 попытки на модель — fast fail
+        _max_attempts = 2
+        _all_keys_quota = True  # True = все ключи дали 429
+
+        for attempt in range(_max_attempts):
+            # Time-budget check
+            if time.time() - _start_time > _TIME_BUDGET:
+                break
+
+            _client_err = None
+            _got_response = False
+
+            for i, client in enumerate(_CLIENTS):
+                try:
+                    try:
+                        resp = await asyncio.wait_for(
+                            client.aio.models.generate_content(
+                                model=model_name,
+                                contents=prompt,
+                                config=make_text_config_smart(
+                                    temperature=temperature,
+                                    max_output_tokens=max_tokens,
+                                    model_name=model_name,
+                                    thinking_level=thinking_level,
+                                    response_mime_type=response_mime_type,
+                                    response_schema=response_schema,
+                                ),
+                            ),
+                            timeout=600.0,
+                        )
+                    except Exception as _schema_err:
+                        # Schema support can vary by SDK/model. Quota/overload/internal
+                        # must keep existing fallback semantics; schema-incompatibility
+                        # retries once with legacy JSON config on the same client.
+                        if response_schema is None or is_quota_error(_schema_err) or is_overload_error(_schema_err) or _is_internal_error(_schema_err):
+                            raise
+                        logger.warning(
+                            "_gemini_text_request[%s]: structured output failed (%s: %s) — retry legacy JSON config",
+                            model_name, type(_schema_err).__name__, str(_schema_err)[:180],
+                        )
+                        resp = await asyncio.wait_for(
+                            client.aio.models.generate_content(
+                                model=model_name,
+                                contents=prompt,
+                                config=make_text_config_smart(
+                                    temperature=temperature,
+                                    max_output_tokens=max_tokens,
+                                    model_name=model_name,
+                                    thinking_level=thinking_level,
+                                ),
+                            ),
+                            timeout=600.0,
+                        )
+                    try:
+                        result = resp.text or ""
+                    except (ValueError, AttributeError):
+                        result = ""
+                        if resp.candidates:
+                            for part in resp.candidates[0].content.parts:
+                                if not getattr(part, "thought", False) and getattr(part, "text", None):
+                                    result = part.text
+                                    break
+                    if result:
+                        # PATCH v2: thinking tokens logging
+                        _meta = getattr(resp, 'usage_metadata', None)
+                        _fr = str(resp.candidates[0].finish_reason) if getattr(resp, "candidates", None) else "?"
+                        if _meta:
+                            logger.info(
+                                "Gemini[%s] tokens: prompt=%s thoughts=%s output=%s finish=%s",
+                                model_name,
+                                getattr(_meta, 'prompt_token_count', '?'),
+                                getattr(_meta, 'thoughts_token_count', '?'),
+                                getattr(_meta, 'candidates_token_count', '?'),
+                                _fr,
+                            )
+                        # AUDIT R10 (лог 2026-07-06): Reflection упёрся в потолок
+                        # (thoughts+output == max_tokens) и JSON пришлось чинить
+                        # из обрезка. Обрезание должно быть ВИДНО в логе сразу.
+                        if "MAX_TOKENS" in _fr.upper():
+                            logger.warning(
+                                "_gemini_text_request[%s]: ответ ОБРЕЗАН по max_tokens=%s "
+                                "(thinking съел бюджет) — хвост JSON потерян, поднимите профильный бюджет",
+                                model_name, max_tokens,
+                            )
+                        await alog_gemini_response(
+                            response=resp,
+                            task=task,
+                            video_id=video_id,
+                            model=model_name,
+                            thinking_level=thinking_level,
+                            duration_ms=_duration_ms(),
+                            retry_num=attempt,
+                            is_fallback=model_idx > 0,
+                            json_valid=True,
+                        )
+                        return result
+                    logger.warning(
+                        "_gemini_text_request[%s]: пустой ответ (finish=%s)",
+                        model_name,
+                        resp.candidates[0].finish_reason if resp.candidates else "?",
+                    )
+                    _got_response = True
+                    _all_keys_quota = False
+                    break
+                except Exception as e:
+                    _client_err = e
+                    if is_quota_error(e):
+                        # ВАЖНО: При 429 переходим к следующему ключу!
+                        # Цикл ключей здесь ВНУТРИ цикла попыток, поэтому нужен continue, а не break.
+                        # Флаг _all_keys_quota не трогаем (остается True). Если все ключи дадут 429,
+                        # мы без лишних пауз перейдем к fallback-модели.
+                        _client_err = e
+                        continue
+                    # 503/500 или другая ошибка
+                    _all_keys_quota = False
+                    if _is_internal_error(e) or is_overload_error(e):
+                        continue
+                    raise
+
+            if _got_response:
+                break  # пустой ответ — следующая модель
+
+            # ГЛАВНЫЙ ФИКС: все ключи дали 429 — модель исчерпана,
+            # ретраить бесполезно, идём к следующей модели сразу
+            if _all_keys_quota:
+                mark_model_exhausted(model_name, _client_err)
+                logger.warning(
+                    "_gemini_text_request[%s]: квота 429 на всех ключах — помечаю модель exhausted и иду дальше",
+                    model_name,
+                )
+                last_err = _client_err
+                break
+
+            # 503/500 — пауза и retry
+            last_err = _client_err
+            if attempt < _max_attempts - 1:
+                wait = 15
+                logger.warning(
+                    "_gemini_text_request[%s]: 503/500 (попытка %d/%d), жду %dс...",
+                    model_name, attempt + 1, _max_attempts, wait,
+                )
+                await asyncio.sleep(wait)
+
+    if last_err:
+        elapsed = time.time() - _start_time
+        logger.warning(
+            "_gemini_text_request: все модели исчерпаны (за %.1fs), последняя ошибка: %s",
+            elapsed, str(last_err)[:200],
+        )
     await alog_gemini_run(
         task=task,
         video_id=video_id,
-        model=model_name,
+        model=_models[-1] if _models else GEMINI_MODEL,
         thinking_level=thinking_level,
         duration_ms=_duration_ms(),
-        retry_num=max(0, capacity_control.transient_attempt_limit() - 1),
-        is_fallback=False,
+        retry_num=_max_attempts - 1 if '_max_attempts' in locals() else 0,
+        is_fallback=len(_models) > 1,
         json_valid=False,
         error=(str(last_err)[:300] if last_err else "empty_response"),
     )
@@ -591,17 +768,27 @@ async def _gemini_text_request(prompt: str, temperature: float = 0.4,
 
 
 def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 500_000) -> tuple[list, list] | None:
-    """Парсит JSON {outline, sections} из ответа Gemini. Возвращает (outline, sections) или None."""
+    """Парсит JSON {outline, sections} из ответа Gemini. Возвращает (outline, sections) или None.
+    Поддерживает восстановление обрезанного JSON (max_tokens hit).
+
+    BUG-C03: защита от зависания — max_depth и max_iterations.
+    """
     text = text.strip()
+    # Убираем Unicode bidi-изоляторы которые Gemini иногда вставляет вокруг иврита/арабского
+    # PATCH: keep \u200e/\u200f for RTL
     text = re.sub(r'[\u2066-\u2069\u202a-\u202e]', '', text)
     if text.startswith("```"):
         text = re.sub(r"^```[a-z]*\n?", "", text)
         text = re.sub(r"\n?```$", "", text.strip())
+
+    # Попытка 1: чистый JSON
     try:
         data = json.loads(text)
         return data.get("outline", []), data.get("sections", [])
     except json.JSONDecodeError:
         pass
+
+    # Попытка 2: найти первый { ... }
     s = text.find("{")
     e = text.rfind("}")
     if s != -1 and e > s:
@@ -609,6 +796,8 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
             data = json.loads(text[s:e+1])
             return data.get("outline", []), data.get("sections", [])
         except json.JSONDecodeError:
+            # FIX 2026-05-21 #3 P1: Gemini иногда вставляет сырые \n внутри JSON-строк.
+            # Экранируем их, как это делает _fix_json_newlines в telegraph.py.
             def _fix_json_newlines(s_in: str) -> str:
                 out, in_str, i = [], False, 0
                 while i < len(s_in):
@@ -630,6 +819,9 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
                 return data.get("outline", []), data.get("sections", [])
             except json.JSONDecodeError:
                 pass
+
+    # Попытка 3: Gemini обрезал JSON на полуслове (max_tokens) —
+    # восстанавливаем sections до последнего полного объекта.
     if s != -1:
         chunk = text[s:]
         last_complete = -1
@@ -638,9 +830,12 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
         escape = False
         iterations = 0
         for idx, ch in enumerate(chunk):
+            # BUG-C03: лимит итераций — защита от зависания на больших входах
             iterations += 1
             if iterations > max_iterations:
-                logger.warning(f"_parse_expanded_json: превышен лимит итераций ({max_iterations}), прерываем.")
+                logger.warning(
+                    f"_parse_expanded_json: превышен лимит итераций ({max_iterations}), прерываем."
+                )
                 break
             if escape:
                 escape = False
@@ -655,14 +850,18 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
                 continue
             if ch == "{":
                 depth += 1
+                # BUG-C03: лимит глубины вложенности
                 if depth > max_depth:
-                    logger.warning(f"_parse_expanded_json: превышена максимальная глубина ({max_depth}), прерываем.")
+                    logger.warning(
+                        f"_parse_expanded_json: превышена максимальная глубина ({max_depth}), прерываем."
+                    )
                     break
             elif ch == "}":
                 depth -= 1
-                if depth == 1:
+                if depth == 1:  # закрыли один section (внутри sections-массива)
                     last_complete = idx
         if last_complete > 0:
+            # Обрезаем до последнего полного section и закрываем массив + объект
             fixed = chunk[:last_complete+1] + "\n  ]\n}"
             try:
                 data = json.loads(fixed)
@@ -672,10 +871,14 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
                         {"title": s.get("title", ""), "time": s.get("time") or ""}
                         for s in sections
                     ])
-                    logger.info(f"_parse_expanded_json: восстановлен обрезанный JSON, sections={len(sections)}")
+                    logger.info(
+                        f"_parse_expanded_json: восстановлен обрезанный JSON, "
+                        f"sections={len(sections)}"
+                    )
                     return outline, sections
             except json.JSONDecodeError:
                 pass
+
     return None
 
 
@@ -690,16 +893,20 @@ async def _publish_expanded_page(
     rutube_url: str = "",
     vk_url: str = "",
     duration: int = 0,
-    plain_scripture: bool = False,
-    ai_data: dict | None = None,
+    plain_scripture: bool = False,  # FIXED #127: пробрасывается в _section_to_nodes_v2
+    ai_data: dict | None = None,     # FEATURE 2026-06-11: для блока «Читать также»
     video_id: str = "",
 ) -> str | None:
+    """Публикует article-like страницу по модели Конспекта (createPage + editPage).
+    Использует рекурсивное дробление при CONTENT_TOO_BIG — аналогично Synopsis."""
     loop = asyncio.get_running_loop()
+
     published_parts: list[tuple[list, str]] = []
 
     async def _publish_recursive(secs: list, depth: int = 0) -> bool:
         if not secs:
             return True
+
         body_nodes: list = []
         for sec_idx, sec in enumerate(secs):
             if sec_idx > 0:
@@ -708,32 +915,56 @@ async def _publish_expanded_page(
                                                     rutube_url=rutube_url, vk_url=vk_url,
                                                     duration=duration,
                                                     plain_scripture=plain_scripture))
+
         sec_offset = sum(len(p[0]) for p in published_parts)
         sec_range  = f"sections[{sec_offset}..{sec_offset + len(secs) - 1}]"
-        logger.info("Expanded publish depth=%d: %s (%d secs, %d nodes) — публикую...",
-                    depth, sec_range, len(secs), len(body_nodes))
+        logger.info(
+            "Expanded publish depth=%d: %s (%d secs, %d nodes) — публикую...",
+            depth, sec_range, len(secs), len(body_nodes),
+        )
+
+        # FIX 2026-05-21 P0 #14: Telegraph path генерируется из title ОДИН РАЗ при createPage
+        # и editPage НЕ меняет URL. Старая логика создавала с " [draft]" → URL навсегда содержал
+        # "-draft-DD-MM-N" (комментарий #93 был ошибочный — editPage не перезаписывает path).
+        # Теперь сразу даём финальный title — URL будет чистым.
         page_url, err = await _create_telegraph_page_single(tg_title, author, body_nodes, loop)
+
         if page_url:
             logger.info("Expanded publish depth=%d: %s → OK %s", depth, sec_range, page_url)
             published_parts.append((secs, page_url))
             return True
+
         if err != "CONTENT_TOO_BIG":
             logger.warning("Expanded publish depth=%d: %s ошибка '%s' — fail", depth, sec_range, err)
             return False
+
         if len(secs) == 1:
             sec = secs[0]
             paragraphs = [p for p in sec.get('content', '').split('\n\n') if p.strip()]
             if len(paragraphs) > 5:
                 mid_p = len(paragraphs) // 2
-                s1 = {**sec, 'content': '\n\n'.join(paragraphs[:mid_p]), 'title': sec.get('title', '') + ' (ч.\u200b1)'}
-                s2 = {**sec, 'content': '\n\n'.join(paragraphs[mid_p:]), 'title': sec.get('title', '') + ' (ч.\u200b2)'}
+                s1 = {**sec, 'content': '\n\n'.join(paragraphs[:mid_p]),
+                      'title': sec.get('title', '') + ' (ч.\u200b1)'}
+                s2 = {**sec, 'content': '\n\n'.join(paragraphs[mid_p:]),
+                      'title': sec.get('title', '') + ' (ч.\u200b2)'}
+                logger.info(
+                    "Expanded publish depth=%d: auto-split 1 section into 2 chunks",
+                    depth,
+                )
                 if not await _publish_recursive([s1], depth + 1):
                     return False
                 return await _publish_recursive([s2], depth + 1)
-            logger.warning("Expanded publish depth=%d: %s один section (%d nodes) нельзя разбить — fail",
-                           depth, sec_range, len(body_nodes))
+            logger.warning(
+                "Expanded publish depth=%d: %s один section (%d nodes) нельзя разбить — fail",
+                depth, sec_range, len(body_nodes),
+            )
             return False
+
         mid = max(1, len(secs) // 2)
+        logger.info(
+            "Expanded publish depth=%d: %s CONTENT_TOO_BIG (%d nodes) → делю [%d]+[%d]",
+            depth, sec_range, len(body_nodes), mid, len(secs) - mid,
+        )
         if not await _publish_recursive(secs[:mid], depth + 1):
             return False
         return await _publish_recursive(secs[mid:], depth + 1)
@@ -741,18 +972,26 @@ async def _publish_expanded_page(
     success = await _publish_recursive(sections)
     if not success or not published_parts:
         return None
-    parts = [p[0] for p in published_parts]
-    parts_urls = [p[1] for p in published_parts]
-    total = len(parts)
 
+    parts      = [p[0] for p in published_parts]
+    parts_urls = [p[1] for p in published_parts]
+    total      = len(parts)
+
+    # AUDIT R19b (лог 2026-07-09/10, то же семейство бага что и в Synopsis
+    # R19): вынесено в хелпер, чтобы одну и ту же сборку final_nodes можно
+    # было ПОВТОРНО вызвать после сжатия части при CONTENT_TOO_BIG, вместо
+    # того чтобы сразу выбрасывать оглавление насовсем (старый Edge-A).
     async def _build_expanded_part_nodes(i: int, part_secs: list, part_title: str,
                                           *, include_outline: bool = True) -> list:
         _nodes: list = []
         if include_outline and i == 0:
             _nodes.extend(_build_toc_nodes_v2(outline, yt_url=yt_url, parts=parts, duration=duration))
+
+        # Nav вверху для частей 2+ (не для первой — там TOC)
         if total > 1 and i > 0:
             _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls, leading_hr=False))
             _nodes.append({"tag": "hr"})
+
         for sec_idx, sec in enumerate(part_secs):
             if sec_idx > 0:
                 _nodes.append({"tag": "hr"})
@@ -760,8 +999,12 @@ async def _publish_expanded_page(
                                                 rutube_url=rutube_url, vk_url=vk_url,
                                                 page_title=part_title, duration=duration,
                                                 plain_scripture=plain_scripture))
+
         if total > 1:
+            # _build_nav_nodes_v2 already includes its own leading <hr> — do NOT add extra one
             _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
+
+        # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
         if i == total - 1 and ai_data:
             try:
                 _scripture_refs = extract_scripture_refs(ai_data)
@@ -778,35 +1021,65 @@ async def _publish_expanded_page(
         return _nodes
 
     for i, (page_url, part_secs) in enumerate(zip(parts_urls, parts)):
-        part_num = i + 1
+        part_num   = i + 1
+        # FIX AUDIT R4: суффикс части не должен выталкивать заголовок за 256.
         if total > 1:
             _sfx = f" (часть {part_num}/{total})"
             part_title = str(page_title)[:256 - len(_sfx)] + _sfx
         else:
             part_title = page_title
+
         final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title)
-        if i == 0:
+
+        # V3-P16: пауза перед editPage — Telegraph rate limit при >50 nodes.
+        if i == 0:  # пауза только перед первым editPage
             await asyncio.sleep(2)
         ok = False
         for retry_attempt in range(3):
             ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
             if ok:
                 break
-            _backoff = 3 * (2 ** retry_attempt)
-            logger.warning("Expanded publish: editPage часть %d/%d попытка %d/3 failed для %s, жду %dс...",
-                           part_num, total, retry_attempt + 1, page_url, _backoff)
+            # Exponential backoff: 3s, 6s, 12s — даём Telegraph API время восстановиться
+            _backoff = 3 * (2 ** retry_attempt)  # 3, 6, 12
+            logger.warning(
+                "Expanded publish: editPage часть %d/%d попытка %d/3 failed для %s, жду %dс...",
+                part_num, total, retry_attempt + 1, page_url, _backoff,
+            )
             await asyncio.sleep(_backoff)
+
+        # AUDIT R19b: TOC/nav добавляются ПОСЛЕ size-проверки create-фазы. Если
+        # часть оказалась впритык к лимиту Telegraph, editPage с TOC может
+        # упасть с CONTENT_TOO_BIG. Раньше (Edge-A) мы СРАЗУ выбрасывали
+        # оглавление насовсем. Теперь сначала пробуем СЖАТЬ часть 1, перенеся
+        # её последнюю секцию в начало части 2 (решение снова принимает сам
+        # Telegraph через editPage, не догадка по числу нод) — оглавление
+        # остаётся. Выбрасываем его только если сжимать больше некуда (1
+        # секция осталась) или физически некуда (это единственная часть).
+        # AUDIT R39: editPage с TOC может упасть с CONTENT_TOO_BIG, если часть
+        # впритык к лимиту. РАНЬШЕ (R19b) мы переносили последнюю секцию части в
+        # следующую — но это могло ПОТЕРЯТЬ секцию: если следующая часть затем
+        # тоже не влезала (её editPage падал, а fallback был только для i==0),
+        # перенесённая секция не попадала НИ на одну страницу, а пайплайн
+        # рапортовал успех. Теперь для ЛЮБОЙ части просто пере-издаём БЕЗ
+        # оглавления: контент уже опубликован на create-фазе и точно влезает —
+        # жертвуем максимум оглавлением этой части, но не теряем ни секции.
         if not ok and include_toc:
-            logger.warning("Expanded publish: editPage часть %d/%d упала с оглавлением — повтор без него (контент сохраняем)",
-                           part_num, total)
+            logger.warning(
+                "Expanded publish: editPage часть %d/%d упала с оглавлением — повтор без него (контент сохраняем)",
+                part_num, total,
+            )
             await asyncio.sleep(2)
             final_nodes = await _build_expanded_part_nodes(i, part_secs, part_title, include_outline=False)
             ok = await _edit_telegraph_page(page_url, part_title, author, final_nodes, loop)
+
         if ok:
             logger.info("Expanded publish: editPage часть %d/%d -> %s", part_num, total, page_url)
         else:
-            logger.warning("Expanded publish: editPage часть %d/%d окончательно failed, page content may stay outdated: %s",
-                           part_num, total, page_url)
+            logger.warning(
+                "Expanded publish: editPage часть %d/%d окончательно failed, page content may stay outdated: %s",
+                part_num, total, page_url,
+            )
+
     return parts_urls[0]
 
 
@@ -822,10 +1095,23 @@ def _audit_warning_count(issues) -> int:
 
 
 async def _retry_expanded_sections_for_content_audit(
-    *, label: str, original_prompt: str, outline: list, sections: list,
-    issues: list, max_tokens: int, thinking_level: str, response_schema,
+    *,
+    label: str,
+    original_prompt: str,
+    outline: list,
+    sections: list,
+    issues: list,
+    max_tokens: int,
+    thinking_level: str,
+    response_schema,
     expected_author: str,
 ) -> tuple[list, list, list] | None:
+    """One Gemini repair pass for unresolved content-audit warnings.
+
+    This is not a regex cleanup. It asks the primary quality model to repair the
+    concrete JSON sections that failed audit (scripture role, source relevance,
+    third-person wrapper, thin application/lexicon) before publication.
+    """
     if not _content_audit_retry_enabled() or not issues or not has_content_audit_warnings(issues):
         return None
     issue_summary = format_content_audit_issues(issues, limit=10)
@@ -848,12 +1134,14 @@ async def _retry_expanded_sections_for_content_audit(
     )
     logger.warning("%s: content audit retry requested: %s", label, issue_summary[:400])
     raw = await _gemini_text_request(
-        repair_prompt, temperature=0.25,
+        repair_prompt,
+        temperature=0.25,
         max_tokens=min(max(max_tokens * 2, 16000), 65000),
         task=f"telegraph_{label.lower()}_content_audit_retry",
         thinking_level=thinking_level,
         response_mime_type=("application/json" if response_schema else None),
-        response_schema=response_schema, allow_model_fallback=False,
+        response_schema=response_schema,
+        allow_model_fallback=False,
     )
     if not raw:
         logger.warning("%s: content audit retry returned empty response", label)
@@ -865,35 +1153,57 @@ async def _retry_expanded_sections_for_content_audit(
     retry_outline, retry_sections = parsed
     retry_sections = [s for s in retry_sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
     if not retry_sections:
+        logger.warning("%s: content audit retry returned empty sections", label)
         return None
     retry_sections, retry_outline, retry_issues = audit_expanded_sections(
         retry_sections, retry_outline if isinstance(retry_outline, list) else [], label=label, expected_author=expected_author
     )
     before_warnings = _audit_warning_count(issues)
     after_warnings = _audit_warning_count(retry_issues)
-    if after_warnings < before_warnings or (label != "StudyAnalysis" and after_warnings == before_warnings):
-        logger.info("%s: content audit retry accepted warnings %d -> %d", label, before_warnings, after_warnings)
+    improved = after_warnings < before_warnings
+    non_study_no_worse = label != "StudyAnalysis" and after_warnings == before_warnings
+    if improved or non_study_no_worse:
+        logger.info(
+            "%s: content audit retry accepted warnings %d -> %d",
+            label, before_warnings, after_warnings,
+        )
         return retry_sections, retry_outline, retry_issues
-    logger.warning("%s: content audit retry rejected: warnings would increase %d -> %d",
-                   label, before_warnings, after_warnings)
+    logger.warning(
+        "%s: content audit retry rejected: warnings would increase %d -> %d",
+        label, _audit_warning_count(issues), _audit_warning_count(retry_issues),
+    )
     return None
 
 
 async def _run_expanded_pipeline(
-    label: str, prompt: str, page_prefix: str, tg_title: str, author: str,
-    yt_url: str = "", include_toc: bool = True, fallback_fn=None,
-    max_tokens: int = 8000, rutube_url: str = "", vk_url: str = "",
-    duration: int = 0, plain_scripture: bool = False,
-    thinking_level: str = "high", ai_data: dict | None = None,
+    label: str,
+    prompt: str,
+    page_prefix: str,
+    tg_title: str,
+    author: str,
+    yt_url: str = "",
+    include_toc: bool = True,
+    fallback_fn=None,
+    max_tokens: int = 8000,
+    rutube_url: str = "",
+    vk_url: str = "",
+    duration: int = 0,
+    plain_scripture: bool = False,  # FIXED #127: пробрасывается в _publish_expanded_page
+    thinking_level: str = "high",  # V3-P14: настраивается по типу задачи
+    ai_data: dict | None = None,     # FEATURE 2026-06-11: для блока «Читать также»
     video_id: str = "",
 ) -> str | None:
+    """Универсальный runner для article-like pages: Gemini -> парсинг -> публикация -> fallback."""
+
     try:
         logger.info("%s: запрос к Gemini", label)
-        _task_name = f"telegraph_{label.lower()}"
+        _task_name = f"telegraph_{label.lower()}"  # task=f"telegraph_{label.lower()}"
         _adaptive = get_adaptive_text_generation_params(_task_name, 0.4, max_tokens)
         if _adaptive.reason != "baseline":
-            logger.warning("%s: adaptive generation params: temperature=%.2f max_tokens=%d (%s)",
-                           label, _adaptive.temperature, _adaptive.max_tokens, _adaptive.reason)
+            logger.warning(
+                "%s: adaptive generation params: temperature=%.2f max_tokens=%d (%s)",
+                label, _adaptive.temperature, _adaptive.max_tokens, _adaptive.reason,
+            )
         _structured_schema = expanded_page_response_schema() if _expanded_structured_output_enabled() else None
         raw = await _gemini_text_request(
             prompt, temperature=_adaptive.temperature, max_tokens=_adaptive.max_tokens,
@@ -904,15 +1214,18 @@ async def _run_expanded_pipeline(
         if not raw:
             logger.warning("%s: Gemini вернул пустой ответ -- fallback", label)
             return await fallback_fn() if fallback_fn else None
+
         parsed = _parse_expanded_json(raw)
+
         if parsed is None:
             logger.warning("%s: сломанный JSON -- retry. Начало ответа: %.500s", label, raw)
             await asyncio.sleep(5)
             retry_prompt = (
-                "Твой предыдущий ответ содержал сломанный JSON. Повтори строго: только валидный JSON {outline, sections}, "
+                "Твой предыдущий ответ содержал сломанный JSON. "
+                "Повтори строго: только валидный JSON {outline, sections}, "
                 "без ```json, без текста до/после.\n\n" + prompt
             )
-            _retry_tokens = min(max(_adaptive.max_tokens * 2, max_tokens * 2), 65000)
+            _retry_tokens = min(max(_adaptive.max_tokens * 2, max_tokens * 2), 65000)  # adaptive retry escalate
             raw2 = await _gemini_text_request(
                 retry_prompt, max_tokens=_retry_tokens,
                 task=f"telegraph_{label.lower()}_retry", thinking_level=thinking_level,
@@ -922,97 +1235,216 @@ async def _run_expanded_pipeline(
             if raw2:
                 parsed = _parse_expanded_json(raw2)
             if parsed is None:
+                logger.warning("%s: retry тоже дал сломанный JSON -- fallback", label)
                 return await fallback_fn() if fallback_fn else None
+            logger.info("%s: retry успешен", label)
+
         outline, sections = parsed
+
         if not isinstance(sections, list):
-            return await fallback_fn() if fallback_fn else None
-        sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
-        if not sections:
-            return await fallback_fn() if fallback_fn else None
-        _all_empty = all(not ((s.get("content") or "").strip() or s.get("blocks")) for s in sections if isinstance(s, dict))
-        if _all_empty:
+            logger.warning("%s: sections не список -- fallback", label)
             return await fallback_fn() if fallback_fn else None
 
+        sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
+        if not sections:
+            logger.warning("%s: sections пуст после валидации -- fallback", label)
+            return await fallback_fn() if fallback_fn else None
+
+        # Quality guard: проверка, не прислала ли Gemini пустой контент везде
+        _all_empty = all(
+            not ((s.get("content") or "").strip() or s.get("blocks"))
+            for s in sections if isinstance(s, dict)
+        )
+        if _all_empty:
+            logger.warning("%s: все sections пусты (Gemini broken output) — fallback", label)
+            return await fallback_fn() if fallback_fn else None
+
+
+        # VISUAL FIX 2026-06-10: раньше сюда вставлялась болванка
+        # «Подтверждает основной тезис раздела.» — на live-странице Study она
+        # повторялась 3 раза подряд (видно в визуальном аудите). Карточка
+        # ref+quote без пояснения лучше, чем штампованная фраза; недостаток
+        # покрывается warning-ом content audit (scripture_role_missing).
+
         sections, outline, _content_audit = audit_expanded_sections(
-            sections, outline if isinstance(outline, list) else [], label=label, expected_author=author)
+            sections,
+            outline if isinstance(outline, list) else [],
+            label=label,
+            expected_author=author,
+        )
         _audit_mode = get_content_audit_mode()
         if _content_audit and _audit_mode != "off":
             _log_audit = logger.warning if has_content_audit_warnings(_content_audit) else logger.info
-            _log_audit("%s: content audit before publish: %s", label, format_content_audit_issues(_content_audit))
+            _log_audit(
+                "%s: content audit before publish: %s",
+                label,
+                format_content_audit_issues(_content_audit),
+            )
         _retry_result = await _retry_expanded_sections_for_content_audit(
-            label=label, original_prompt=prompt,
-            outline=outline if isinstance(outline, list) else [], sections=sections,
-            issues=_content_audit, max_tokens=_adaptive.max_tokens,
-            thinking_level=thinking_level, response_schema=_structured_schema,
+            label=label,
+            original_prompt=prompt,
+            outline=outline if isinstance(outline, list) else [],
+            sections=sections,
+            issues=_content_audit,
+            max_tokens=_adaptive.max_tokens,
+            thinking_level=thinking_level,
+            response_schema=_structured_schema,
             expected_author=author,
         )
         if _retry_result is not None:
             sections, outline, _content_audit = _retry_result
+            if _content_audit and _audit_mode != "off":
+                _log_audit = logger.warning if has_content_audit_warnings(_content_audit) else logger.info
+                _log_audit(
+                    "%s: content audit after retry: %s",
+                    label,
+                    format_content_audit_issues(_content_audit),
+                )
         if _content_audit and should_abort_for_content_audit(_content_audit):
+            logger.warning("%s: content audit strict abort -- fallback", label)
             return await fallback_fn() if fallback_fn else None
-        if isinstance(outline, list) and outline and len(outline) == len(sections) and all(isinstance(oi, dict) for oi in outline):
-            outline = [{"title": s.get("title", ""), "time": (oi.get("time") or s.get("time") or "")} for s, oi in zip(sections, outline)]
+
+        if (
+            isinstance(outline, list)
+            and outline
+            and len(outline) == len(sections)
+            and all(isinstance(oi, dict) for oi in outline)
+        ):
+            outline = [
+                {"title": s.get("title", ""), "time": (oi.get("time") or s.get("time") or "")}
+                for s, oi in zip(sections, outline)
+            ]
         else:
-            outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
+            outline = [
+                {"title": s.get("title", ""), "time": s.get("time") or ""}
+                for s in sections
+            ]
+
         try:
-            est = _estimate_nodes_v2(sections, yt_url, rutube_url=rutube_url, vk_url=vk_url, duration=duration)
+            est = _estimate_nodes_v2(sections, yt_url,
+                                     rutube_url=rutube_url, vk_url=vk_url,
+                                     duration=duration)
         except Exception:
             est = -1
-        logger.info("%s: sections=%d outline=%d nodes_estimate=%d", label, len(sections), len(outline), est)
+
+        logger.info(
+            "%s: sections=%d outline=%d nodes_estimate=%d",
+            label, len(sections), len(outline), est,
+        )
+
         if " — " in tg_title:
             _sep = ": "
         elif ":" in tg_title:
             _sep = " — "
         else:
             _sep = ": "
+
+        # FIX AUDIT R4: [:256] ПОСЛЕ добавления префикса — иначе итоговый
+        # заголовок createPage превышал лимит Telegraph и страница молча
+        # деградировала в compact-fallback.
         _full_title = f"{page_prefix}{_sep}{tg_title}"[:256]
         url = await _publish_expanded_page(
-            sections=sections, outline=outline, page_title=_full_title, tg_title=_full_title,
-            author=author, yt_url=yt_url, include_toc=include_toc,
-            rutube_url=rutube_url, vk_url=vk_url, duration=duration,
-            plain_scripture=plain_scripture, ai_data=ai_data, video_id=video_id,
+            sections=sections,
+            outline=outline,
+            page_title=_full_title,
+            tg_title=_full_title,
+            author=author,
+            yt_url=yt_url,
+            include_toc=include_toc,
+            rutube_url=rutube_url,
+            vk_url=vk_url,
+            duration=duration,
+            plain_scripture=plain_scripture,
+            ai_data=ai_data,
+            video_id=video_id,
         )
+
         if url:
             return url
+
+        logger.warning("%s: publish failed -- fallback", label)
         return await fallback_fn() if fallback_fn else None
+
     except Exception as e:
-        logger.error("%s: ❌ UNEXPECTED ERROR (%s: %s) — переключаюсь на COMPACT-FALLBACK.",
-                     label, type(e).__name__, str(e)[:200])
+        # FALLBACK-DIAG: явно показываем, что мы СВАЛИЛИСЬ на compact-страницу.
+        # Раньше юзер видел в Telegram '📖 Разбор материала', не подозревая что
+        # это короткая Аналитика-fallback. Теперь это видно в логах громко.
+        logger.error(
+            "%s: ❌ UNEXPECTED ERROR (%s: %s) — переключаюсь на COMPACT-FALLBACK. "
+            "Это значит, что в Telegram пользователь увидит УРЕЗАННУЮ версию страницы. "
+            "Чините ошибку выше.",
+            label, type(e).__name__, str(e)[:200],
+        )
         logger.exception("%s: traceback ↓", label)
         return await fallback_fn() if fallback_fn else None
 
 
+
+
+# Большие article-like промпты импортируются из prompts.py.
+# Локальные дубликаты удалены, чтобы не было расхождения версий.
+
+# ФУНКЦИЯ: create_telegraph_study_analysis
+# ════════════════════════════════════════════════════════════════════════════
+
 async def create_telegraph_study_analysis(
-    ai_data: dict | None, title: str, author: str, yt_url: str = "",
-    compact_fn=None, rutube_url: str = "", vk_url: str = "",
-    synopsis_outline: list | None = None, duration: float = 0,
-    video_id: str = "",
+    ai_data: dict | None,
+    title: str,
+    author: str,
+    yt_url: str = "",
+    compact_fn=None,
+    rutube_url: str = "",
+    vk_url: str = "",
+    synopsis_outline: list | None = None,
+    duration: float = 0,
+    video_id: str = "", # FEATURE 2026-06-11
 ) -> str | None:
+    """
+    «Разбор материала» -- большая article-like страница.
+    Объединяет и усиливает: аналитику, термины, Писание, богословскую глубину.
+    compact_fn -- callable() без аргументов, fallback (напр. create_telegraph_analytics).
+    """
     if not GEMINI_CLIENTS:
         logger.info("StudyAnalysis: нет GEMINI_CLIENTS -- fallback")
         return await compact_fn() if compact_fn else None
+
     _ai = ai_data or {}
     author_clean = _clean_meta_line(author or "") or "Автор не указан"
-    title_clean  = _clean_meta_line(title or "") or "Без названия"
-    real_author = normalize_author_name(_ai.get("real_author") or author) or author_clean
-    prompt_title = title_case_fragment(normalize_title_text(_ai.get("real_title") or "") or title_clean)
+    title_clean  = _clean_meta_line(title  or "") or "Без названия"
+
+    real_author  = normalize_author_name(_ai.get("real_author") or author) or author_clean
+    prompt_title = normalize_title_text(_ai.get("real_title") or "") or title_clean
+    prompt_title = title_case_fragment(prompt_title)
+    # v10 FIX #18 (P3): нормализация пунктуации заголовка после Gemini.
+    # «Свидетельство. Трус» → «Свидетельство: Трус»,  « - » → « — »
     prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
     prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
+
     _fmt = _ai.get("format", "other") or "other"
+
+    # BUG-C02: единый источник duration — ai_data.duration приоритетен,
+    # fallback на аргумент duration. Оба источника больше не расходятся.
+    _duration_raw = _ai.get("duration") or 0
     try:
-        _duration_from_ai = float(_ai.get("duration") or 0)
+        _duration_from_ai = float(_duration_raw)
     except (ValueError, TypeError):
         _duration_from_ai = 0
     effective_duration = _duration_from_ai or float(duration or 0)
-    _key_cats = _ai.get("key_categories", []) or []
+
+    _key_cats    = _ai.get("key_categories", []) or []
     key_cats_str = "\n".join(f"- {c}" for c in _key_cats[:12]) if _key_cats else "не указаны"
-    _td = _ai.get("terms_data") or {}
-    concepts = _td.get("concepts", []) or []
-    scripture = _td.get("scripture", []) or []
-    translations = _td.get("translations", []) or []
-    lexicon_notes = _td.get("lexicon_notes", []) or []
+
+    _td           = _ai.get("terms_data") or {}
+    concepts      = _td.get("concepts", [])      or []
+    scripture     = _td.get("scripture", [])      or []
+    translations  = _td.get("translations", [])   or []
+    lexicon_notes = _td.get("lexicon_notes", [])  or []
+
     def _fmt_block(items, max_n=12):
-        return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n]) if items else "не указаны"
+        if not items:
+            return "не указаны"
+        return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n])
+
     def _fmt_scripture(items, max_n=12):
         if not items:
             return "не указаны"
@@ -1023,66 +1455,124 @@ async def create_telegraph_study_analysis(
             use = fields[1].strip() if len(fields) > 1 else ""
             parts.append(f"- {ref}: {use}" if use else f"- {ref}")
         return "\n".join(parts)
+
     _hm_study = _ai.get("hermeneutic_method") or "mixed"
+
     if synopsis_outline is not None:
-        _outline_lines = "\n".join(f"  {i+1}. {s.get('title', '')} [{s.get('time', '')}]" for i, s in enumerate(synopsis_outline))
+        _outline_lines = "\n".join(
+            f"  {i+1}. {s.get('title', '')} [{s.get('time', '')}]"
+            for i, s in enumerate(synopsis_outline)
+        )
         _synopsis_context = (
             f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
-            "НЕ ПОВТОРЯЙ содержание этих разделов. Твоя задача — дать то, чего в конспекте нет: "
-            "исследовательскую глубину, богословский анализ, разбор терминов и Писания."
+            f"НЕ ПОВТОРЯЙ содержание этих разделов. Твоя задача — дать то, "
+            f"чего в конспекте нет: исследовательскую глубину, богословский анализ, "
+            f"разбор терминов и Писания."
         )
     else:
         _synopsis_context = ""
+
+    # AUDIT R5 GROUNDING: verbatim-стенограмма конспекта — главный источник
+    # формулировок и цитат автора для text-only Study-вызова.
     _steno = str(_ai.get("_synopsis_grounding") or "").strip()
     if _steno:
-        _synopsis_context = ((_synopsis_context + "\n\n" if _synopsis_context else "") +
-            "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (главный источник формулировок: "
-            "когда передаёшь мысль или слова автора — опирайся на этот текст, НЕ изобретай цитат):\n" + _steno)
+        _synopsis_context = (
+            (_synopsis_context + "\n\n" if _synopsis_context else "")
+            + "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (главный источник "
+              "формулировок: когда передаёшь мысль или слова автора — опирайся "
+              "на этот текст, НЕ изобретай цитат):\n"
+            + _steno
+        )
+
+    # V3 SOURCE_PACKS: тематический пакет источников по key_categories
     _source_pack = get_source_pack_for_ai_data(_ai)
     _study_profile = get_expanded_analysis_profile(effective_duration, page_kind="study")
     _profile_block = build_reasoning_first_block("study") + "\n\n" + _study_profile.prompt_block("study")
-    _synopsis_context_for_prompt = _profile_block + ("\n\n" + _synopsis_context if _synopsis_context else "")
+    _synopsis_context_for_prompt = (
+        _profile_block + "\n\n" + _synopsis_context if _synopsis_context else _profile_block
+    )
+
     prompt = STUDY_ANALYSIS_PROMPT.format(
-        title=prompt_title, author=real_author,
+        title=prompt_title,
+        author=real_author,
         duration=format_timestamp(effective_duration) if effective_duration else "не указана",
-        format_name=_fmt, hermeneutic_method=_hm_study,
-        main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
+        format_name=_fmt,
+        hermeneutic_method=_hm_study,
+        main_topic=(_ai.get("main_topic") or "").strip()[:800]        or "не указана",
         analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указано",
-        argument_arc=(_ai.get("argument_arc") or "").strip()[:800] or "не указан",
+        argument_arc=(_ai.get("argument_arc") or "").strip()[:800]    or "не указан",
         key_categories=key_cats_str,
-        timestamps=(_ai.get("timestamps") or "").strip()[:800] or "не указаны",
-        concepts=_fmt_block(concepts, 12), scripture=_fmt_scripture(scripture, 12),
-        translations=_fmt_block(translations, 8), lexicon_notes=_fmt_block(lexicon_notes, 8),
-        synopsis_context=_synopsis_context_for_prompt, source_pack=_source_pack,
+        timestamps=(_ai.get("timestamps") or "").strip()[:800]        or "не указаны",
+        concepts=_fmt_block(concepts, 12),
+        scripture=_fmt_scripture(scripture, 12),
+        translations=_fmt_block(translations, 8),
+        lexicon_notes=_fmt_block(lexicon_notes, 8),
+        synopsis_context=_synopsis_context_for_prompt,
+        source_pack=_source_pack,
     )
-    tg_title = join_title_author(prompt_title, real_author)[:256]
+
+    tg_title = join_title_author(prompt_title, real_author)
+    tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
+
     return await _run_expanded_pipeline(
-        label="StudyAnalysis", prompt=prompt, page_prefix="📖 Разбор материала",
-        tg_title=tg_title, author=author_clean, yt_url=yt_url, include_toc=True,
-        fallback_fn=compact_fn, max_tokens=_study_profile.max_tokens,
-        rutube_url=rutube_url, vk_url=vk_url,
+        label="StudyAnalysis",
+        prompt=prompt,
+        page_prefix="📖 Разбор материала",
+        tg_title=tg_title,
+        author=author_clean,
+        yt_url=yt_url,
+        include_toc=True,
+        fallback_fn=compact_fn,
+        max_tokens=_study_profile.max_tokens,   # V3-P27: duration-aware
+        rutube_url=rutube_url,
+        vk_url=vk_url,
         duration=int(effective_duration) if effective_duration else 0,
-        ai_data=_ai, video_id=video_id,
+        ai_data=_ai,
+        video_id=video_id,
     )
+
+
 
 
 async def create_telegraph_study_reflection_combined(
-    ai_data: dict | None, questions: list, title: str, author: str,
-    yt_url: str = "", study_compact_fn=None, reflection_compact_fn=None,
-    rutube_url: str = "", vk_url: str = "", synopsis_outline: list | None = None,
+    ai_data: dict | None,
+    questions: list,
+    title: str,
+    author: str,
+    yt_url: str = "",
+    study_compact_fn=None,
+    reflection_compact_fn=None,
+    rutube_url: str = "",
+    vk_url: str = "",
+    synopsis_outline: list | None = None,
     duration: float = 0,
 ) -> CombinedStudyReflectionResult | None:
-    if not combined_study_reflection_enabled() or not GEMINI_CLIENTS:
+    """Optional one-call Study+Reflection generator.
+
+    Disabled by default in the pipeline. It is intended for controlled quota/A-B
+    experiments; quality-first runs should keep separate calls unless the owner
+    explicitly enables COMBINE_STUDY_REFLECTION=1.
+    """
+    if not combined_study_reflection_enabled():
         return None
+    if not GEMINI_CLIENTS:
+        return None
+    if is_model_exhausted(GEMINI_MODEL):
+        logger.warning("Combined Study+Reflection: primary model %s exhausted; using separate quality-first calls", GEMINI_MODEL)
+        return None
+
     _ai = ai_data or {}
     if not questions:
+        logger.info("Combined Study+Reflection: questions missing — skip combined path")
         return None
+
     author_clean = _clean_meta_line(author or "") or "Автор не указан"
     title_clean = _clean_meta_line(title or "") or "Без названия"
     real_author = normalize_author_name(_ai.get("real_author") or author) or author_clean
     prompt_title = title_case_fragment(normalize_title_text(_ai.get("real_title") or "") or title_clean)
     prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
     prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
+
     try:
         effective_duration = float(_ai.get("duration") or duration or 0)
     except (TypeError, ValueError):
@@ -1090,11 +1580,16 @@ async def create_telegraph_study_reflection_combined(
     duration_str = format_timestamp(effective_duration) if effective_duration else "не указана"
     _fmt = _ai.get("format", "other") or "other"
     _hm = _ai.get("hermeneutic_method") or "mixed"
+
     _key_cats = _ai.get("key_categories", []) or []
     key_cats_str = "\n".join(f"- {c}" for c in _key_cats[:12]) if _key_cats else "не указаны"
     _td = _ai.get("terms_data") or {}
+
     def _fmt_block(items, max_n=12):
-        return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n]) if items else "не указаны"
+        if not items:
+            return "не указаны"
+        return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n])
+
     def _fmt_scripture(items, max_n=12):
         if not items:
             return "не указаны"
@@ -1105,12 +1600,26 @@ async def create_telegraph_study_reflection_combined(
             use = fields[1].strip() if len(fields) > 1 else ""
             parts.append(f"- {ref}: {use}" if use else f"- {ref}")
         return "\n".join(parts)
+
     if synopsis_outline is not None:
-        _outline_lines = "\n".join(f"  {i + 1}. {sec.get('title', '')} [{sec.get('time', '')}]" for i, sec in enumerate(synopsis_outline))
-        study_synopsis_context = f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\nНЕ ПОВТОРЯЙ содержание этих разделов. Дай исследовательскую глубину, богословский анализ, разбор терминов и Писания."
-        reflection_synopsis_context = f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\nНЕ ПОВТОРЯЙ содержание этих разделов. Дай пасторское применение, самоиспытание, молитвенный отклик и личные вопросы."
+        _outline_lines = "\n".join(
+            f"  {i + 1}. {sec.get('title', '')} [{sec.get('time', '')}]"
+            for i, sec in enumerate(synopsis_outline)
+        )
+        study_synopsis_context = (
+            f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
+            "НЕ ПОВТОРЯЙ содержание этих разделов. Дай исследовательскую глубину, "
+            "богословский анализ, разбор терминов и Писания."
+        )
+        reflection_synopsis_context = (
+            f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
+            "НЕ ПОВТОРЯЙ содержание этих разделов. Дай пасторское применение, "
+            "самоиспытание, молитвенный отклик и личные вопросы."
+        )
     else:
-        study_synopsis_context = reflection_synopsis_context = ""
+        study_synopsis_context = ""
+        reflection_synopsis_context = ""
+
     _source_pack = get_source_pack_for_ai_data(_ai)
     study_profile = get_expanded_analysis_profile(effective_duration, page_kind="study")
     reflection_profile = get_expanded_analysis_profile(effective_duration, page_kind="reflection")
@@ -1120,8 +1629,12 @@ async def create_telegraph_study_reflection_combined(
         study_context += "\n\n" + study_synopsis_context
     if reflection_synopsis_context:
         reflection_context += "\n\n" + reflection_synopsis_context
+
     study_prompt = STUDY_ANALYSIS_PROMPT.format(
-        title=prompt_title, author=real_author, duration=duration_str, format_name=_fmt,
+        title=prompt_title,
+        author=real_author,
+        duration=duration_str,
+        format_name=_fmt,
         hermeneutic_method=_hm,
         main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
         analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указано",
@@ -1132,46 +1645,74 @@ async def create_telegraph_study_reflection_combined(
         scripture=_fmt_scripture(_td.get("scripture", []) or [], 12),
         translations=_fmt_block(_td.get("translations", []) or [], 8),
         lexicon_notes=_fmt_block(_td.get("lexicon_notes", []) or [], 8),
-        synopsis_context=study_context, source_pack=_source_pack,
+        synopsis_context=study_context,
+        source_pack=_source_pack,
     )
-    _normalized_questions = _normalize_question_items(questions, max_items=15)
-    green = [q for q in _normalized_questions if str(q).startswith("🟢")]
-    blue = [q for q in _normalized_questions if str(q).startswith("🔵")]
-    merged_questions = (green + blue)[:15]
-    _question_marker_re = re.compile(r"^[🟢🔵]\s*")
+
+    merged_questions = []
+    if isinstance(questions, list):
+        _normalized_questions = _normalize_question_items(questions, max_items=15)
+        green = [q for q in _normalized_questions if str(q).startswith("\U0001f7e2")]
+        blue = [q for q in _normalized_questions if str(q).startswith("\U0001f535")]
+        merged_questions = (green + blue)[:15]
+    _question_marker_re = re.compile(r"^[\U0001f7e2\U0001f535]\s*")
     questions_block = "\n".join(f"- {_question_marker_re.sub('', str(q)).strip()}" for q in merged_questions)
     timestamps_block = "\n".join(f"- {line.strip()}" for line in str(_ai.get("timestamps") or "").splitlines() if line.strip()) or "не указаны"
+
     reflection_prompt = REFLECTION_APPLICATION_PROMPT.format(
-        title=prompt_title, author=real_author, duration=duration_str,
+        title=prompt_title,
+        author=real_author,
+        duration=duration_str,
         hermeneutic_method=_hm,
         main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
         analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указана",
         argument_arc=(_ai.get("argument_arc") or "").strip()[:800] or "не указан",
-        key_categories=key_cats_str, questions_block=questions_block,
-        timestamps_block=timestamps_block, synopsis_context=reflection_context,
+        key_categories=key_cats_str,
+        questions_block=questions_block,
+        timestamps_block=timestamps_block,
+        synopsis_context=reflection_context,
     )
+
     combined_prompt = (
-        "QUALITY-FIRST EXPERIMENT: выполни ДВЕ независимые страницы за один вызов. Не сокращай глубину ради краткости. "
-        "Верни только JSON вида {\"study\":{\"outline\":[],\"sections\":[]},\"reflection\":{\"outline\":[],\"sections\":[]}}. "
+        "QUALITY-FIRST EXPERIMENT: выполни ДВЕ независимые страницы за один вызов. "
+        "Не сокращай глубину ради краткости. Верни только JSON вида "
+        "{\"study\":{\"outline\":[],\"sections\":[]},"
+        "\"reflection\":{\"outline\":[],\"sections\":[]}}. "
         "Каждая страница должна соответствовать своему заданию полностью.\n\n"
-        "=== STUDY_ANALYSIS TASK ===\n" + study_prompt + "\n\n=== REFLECTION_APPLICATION TASK ===\n" + reflection_prompt
+        "=== STUDY_ANALYSIS TASK ===\n" + study_prompt + "\n\n"
+        "=== REFLECTION_APPLICATION TASK ===\n" + reflection_prompt
     )
+
     _max_prompt_chars = int(os.getenv("COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS", "90000"))
     if len(combined_prompt) > _max_prompt_chars:
+        logger.warning(
+            "Combined Study+Reflection: prompt too large for quality-first mode (%d > %d); falling back to separate calls",
+            len(combined_prompt), _max_prompt_chars,
+        )
         return None
+
     schema = combined_expanded_pages_response_schema() if _expanded_structured_output_enabled() else None
     max_tokens = min(max(study_profile.max_tokens + reflection_profile.max_tokens, 32000), 65000)
+    combined_thinking_level = "high"
     raw = await _gemini_text_request(
-        combined_prompt, temperature=0.35, max_tokens=max_tokens,
-        task="telegraph_studyreflection_combined", thinking_level="high",
+        combined_prompt,
+        temperature=0.35,
+        max_tokens=max_tokens,
+        task="telegraph_studyreflection_combined",
+        thinking_level=combined_thinking_level,
         response_mime_type=("application/json" if schema else None),
-        response_schema=schema, allow_model_fallback=False,
+        response_schema=schema,
+        allow_model_fallback=False,
     )
     if not raw:
+        logger.warning("Combined Study+Reflection: empty Gemini response")
         return None
+
     parsed = _parse_combined_expanded_json(raw)
     if parsed is None:
+        logger.warning("Combined Study+Reflection: broken JSON; falling back to separate calls")
         return None
+
     results: dict[str, str | None] = {"study": None, "reflection": None}
     for key, label, page_prefix, plain_scripture in [
         ("study", "StudyAnalysisCombined", "📖 Разбор материала", False),
@@ -1179,34 +1720,71 @@ async def create_telegraph_study_reflection_combined(
     ]:
         outline, sections = parsed.get(key, ([], []))
         sections = [s for s in sections if isinstance(s, dict) and (s.get("title") or s.get("content") or s.get("blocks"))]
-        if not sections or not _combined_relevance_ok(sections, _ai, label=label):
+        if not sections:
+            logger.warning("%s: sections empty in combined response", label)
             continue
+        if not _combined_relevance_ok(sections, _ai, label=label):
+            continue
+        # VISUAL FIX 2026-06-10: раньше сюда вставлялась болванка
+        # «Подтверждает основной тезис раздела.» — на live-странице Study она
+        # повторялась 3 раза подряд (видно в визуальном аудите). Карточка
+        # ref+quote без пояснения лучше, чем штампованная фраза; недостаток
+        # покрывается warning-ом content audit (scripture_role_missing).
+
         sections, outline, issues = audit_expanded_sections(sections, outline if isinstance(outline, list) else [], label=label, expected_author=author_clean)
+        if issues:
+            _log_audit = logger.warning if has_content_audit_warnings(issues) else logger.info
+            _log_audit("%s: content audit before publish: %s", label, format_content_audit_issues(issues))
         if issues and should_abort_for_content_audit(issues):
+            logger.warning("%s: strict content audit abort in combined response", label)
             continue
         if not outline or len(outline) != len(sections):
             outline = [{"title": s.get("title", ""), "time": s.get("time") or ""} for s in sections]
         tg_title = join_title_author(prompt_title, real_author)
-        _sep = ": " if " — " in tg_title or ":" not in tg_title else " — "
+        if " — " in tg_title:
+            _sep = ": "
+        elif ":" in tg_title:
+            _sep = " — "
+        else:
+            _sep = ": "
         full_page_title = f"{page_prefix}{_sep}{tg_title}"[:256]
         results[key] = await _publish_expanded_page(
-            sections, outline, full_page_title, full_page_title, author_clean,
-            yt_url=yt_url, include_toc=True, rutube_url=rutube_url, vk_url=vk_url,
+            sections,
+            outline,
+            full_page_title,
+            full_page_title,
+            author_clean,
+            yt_url=yt_url,
+            include_toc=True,
+            rutube_url=rutube_url,
+            vk_url=vk_url,
             duration=int(effective_duration) if effective_duration else 0,
             plain_scripture=plain_scripture,
         )
+
     if not (results["study"] and results["reflection"]):
+        logger.warning("Combined Study+Reflection: incomplete result; falling back to separate calls")
         return None
-    return CombinedStudyReflectionResult(study_url=results["study"], reflection_url=results["reflection"])
+    return CombinedStudyReflectionResult(
+        study_url=results["study"],
+        reflection_url=results["reflection"],
+    )
+
 
 
 def _combined_relevance_ok(sections: list[dict], ai_data: dict | None, *, label: str = "combined") -> bool:
+    """Reject obvious cross-run/application contamination in combined mode."""
     def terms(text: str) -> set[str]:
         stop = {"когда", "котор", "чтобы", "этот", "такой", "через", "вопрос", "ответ", "применение"}
         return {w for w in re.findall(r"[А-Яа-яЁёA-Za-z]{5,}", str(text or "").lower().replace("ё", "е")) if w not in stop}
+
     ai = ai_data or {}
-    source = " ".join([str(ai.get("real_title") or ""), str(ai.get("main_topic") or ""),
-                       " ".join(str(x) for x in (ai.get("key_categories") or [])), str(ai.get("timestamps") or "")])
+    source = " ".join([
+        str(ai.get("real_title") or ""),
+        str(ai.get("main_topic") or ""),
+        " ".join(str(x) for x in (ai.get("key_categories") or [])),
+        str(ai.get("timestamps") or ""),
+    ])
     source_terms = terms(source)
     if len(source_terms) < 4:
         return True
@@ -1221,8 +1799,8 @@ def _combined_relevance_ok(sections: list[dict], ai_data: dict | None, *, label:
         return False
     return True
 
-
 def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | None:
+    """Parse {study:{outline,sections}, reflection:{outline,sections}}."""
     raw = str(text or "").strip()
     raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
     raw = re.sub(r"\s*```\s*$", "", raw).strip()
@@ -1247,68 +1825,137 @@ def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | N
     return out
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# ФУНКЦИЯ: create_telegraph_reflection_application
+# ════════════════════════════════════════════════════════════════════════════
+
 async def create_telegraph_reflection_application(
-    questions: list, title: str, author: str, ai_data: dict | None = None,
-    duration: int = 0, yt_url: str = "", compact_fn=None,
-    rutube_url: str = "", vk_url: str = "", synopsis_outline: list | None = None,
-    video_id: str = "",
+    questions: list,
+    title: str,
+    author: str,
+    ai_data: dict | None = None,
+    duration: int = 0,
+    yt_url: str = "",
+    compact_fn=None,
+    rutube_url: str = "",
+    vk_url: str = "",
+    synopsis_outline: list | None = None,
+    video_id: str = "", # FEATURE 2026-06-11
 ) -> str | None:
+    """
+    «Размышление и применение» -- большая пасторская article-like страница.
+    Объединяет и усиливает: вопросы, применение, самоиспытание, молитву.
+    compact_fn -- callable() без аргументов, fallback (напр. create_telegraph_questions).
+    """
     if not GEMINI_CLIENTS:
         logger.info("ReflectionApplication: нет GEMINI_CLIENTS -- fallback")
         return await compact_fn() if compact_fn else None
-    _ai = ai_data or {}
+
+    _ai          = ai_data or {}
     author_clean = _clean_meta_line(author or "") or "Автор не указан"
-    title_clean = _clean_meta_line(title or "") or "Без названия"
-    real_author = normalize_author_name(_ai.get("real_author") or author) or author_clean
-    prompt_title = title_case_fragment(normalize_title_text(_ai.get("real_title") or "") or title_clean)
+    title_clean  = _clean_meta_line(title  or "") or "Без названия"
+    real_author  = normalize_author_name(_ai.get("real_author") or author) or author_clean
+    prompt_title = normalize_title_text(_ai.get("real_title") or "") or title_clean
+    prompt_title = title_case_fragment(prompt_title)  # единый стиль капитализации
+    # v10 FIX #18 (P3): нормализация пунктуации (зеркало fix в create_telegraph_study_analysis)
     prompt_title = re.sub(r'(?<=\w)\.\s+(?=[А-ЯA-Z])', ': ', prompt_title)
     prompt_title = re.sub(r'\s+-\s+', ' — ', prompt_title)
-    _ts = (_ai.get("timestamps") or "").strip()
-    _ts_block = "\n".join(f"- {l.strip()}" for l in _ts.splitlines() if l.strip()) or "не указаны"
+
+    _ts       = (_ai.get("timestamps") or "").strip()
+    _ts_block = "\n".join(
+        f"- {l.strip()}" for l in _ts.splitlines() if l.strip()
+    ) or "не указаны"
     duration_str = format_timestamp(duration) if duration else "не указана"
+
     if isinstance(questions, list) and questions:
         _normalized_questions = _normalize_question_items(questions, max_items=15)
-        green = [q for q in _normalized_questions if str(q).startswith("🟢")]
-        blue = [q for q in _normalized_questions if str(q).startswith("🔵")]
+        green  = [q for q in _normalized_questions if str(q).startswith("\U0001f7e2")]
+        blue   = [q for q in _normalized_questions if str(q).startswith("\U0001f535")]
         merged = (green + blue)[:15]
     else:
         merged = []
+
     if not merged:
+        logger.info("ReflectionApplication: нет вопросов -- fallback")
         return await compact_fn() if compact_fn else None
+
     def _strip_marker(q: str) -> str:
-        return re.sub(r"^[🟢🔵]\s*", "", str(q)).strip()
+        return re.sub(r"^[\U0001f7e2\U0001f535]\s*", "", str(q)).strip()
+
     questions_block = "\n".join(f"- {_strip_marker(q)}" for q in merged)
-    _key_cats_list = _ai.get("key_categories") or []
-    _key_cats_str = "\n".join(f"- {c}" for c in _key_cats_list[:12]) if _key_cats_list else "не указаны"
-    _hm = (_ai.get("hermeneutic_method") or "mixed") or "mixed"
+
+    _key_cats_list = (_ai.get("key_categories") or [])
+    _key_cats_str  = "\n".join(f"- {c}" for c in _key_cats_list[:12]) if _key_cats_list else "не указаны"
+    _hm            = (_ai.get("hermeneutic_method") or "mixed") or "mixed"
+
+    # Формируем контекст конспекта для Reflection — чтобы не повторять его содержание
     if synopsis_outline is not None:
-        _outline_lines = "\n".join(f"  {i+1}. {s.get('title', '')} [{s.get('time', '')}]" for i, s in enumerate(synopsis_outline))
-        _synopsis_context = f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\nНЕ ПОВТОРЯЙ содержание этих разделов. Твоя задача — дать то, чего в конспекте нет: пасторское применение, самоиспытание, молитвенный отклик и личные вопросы к читателю."
+        _outline_lines = "\n".join(
+            f"  {i+1}. {s.get('title', '')} [{s.get('time', '')}]"
+            for i, s in enumerate(synopsis_outline)
+        )
+        _synopsis_context = (
+            f"Конспект уже создан со следующими разделами:\n{_outline_lines}\n\n"
+            f"НЕ ПОВТОРЯЙ содержание этих разделов. Твоя задача — дать то, "
+            f"чего в конспекте нет: пасторское применение, самоиспытание, "
+            f"молитвенный отклик и личные вопросы к читателю."
+        )
     else:
         _synopsis_context = ""
+
+    # AUDIT R5 GROUNDING: стенограмма конспекта — применения и молитва должны
+    # брать язык и образы именно этой проповеди, а не универсальную мораль.
     _steno_r = str(_ai.get("_synopsis_grounding") or "").strip()
     if _steno_r:
-        _synopsis_context = ((_synopsis_context + "\n\n" if _synopsis_context else "") +
-            "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (бери язык, образы и формулировки применений отсюда; цитаты автора — только из этого текста):\n" + _steno_r)
+        _synopsis_context = (
+            (_synopsis_context + "\n\n" if _synopsis_context else "")
+            + "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ РЕЧИ АВТОРА (бери язык, образы и "
+              "формулировки применений отсюда; цитаты автора — только из этого текста):\n"
+            + _steno_r
+        )
+
     _reflection_profile = get_expanded_analysis_profile(duration, page_kind="reflection")
     _profile_block = build_reasoning_first_block("reflection") + "\n\n" + _reflection_profile.prompt_block("reflection")
-    _synopsis_context_for_prompt = _profile_block + ("\n\n" + _synopsis_context if _synopsis_context else "")
+    _synopsis_context_for_prompt = (
+        _profile_block + "\n\n" + _synopsis_context if _synopsis_context else _profile_block
+    )
+
     prompt = REFLECTION_APPLICATION_PROMPT.format(
-        title=prompt_title, author=real_author, duration=duration_str,
+        title=prompt_title,
+        author=real_author,
+        duration=duration_str,
         hermeneutic_method=_hm,
-        main_topic=(_ai.get("main_topic") or "").strip()[:800] or "не указана",
+        main_topic=(_ai.get("main_topic") or "").strip()[:800]              or "не указана",
         analysis_summary=(_ai.get("analysis_summary") or "").strip()[:1000] or "не указана",
-        argument_arc=(_ai.get("argument_arc") or "").strip()[:800] or "не указан",
-        key_categories=_key_cats_str, questions_block=questions_block,
-        timestamps_block=_ts_block, synopsis_context=_synopsis_context_for_prompt,
+        argument_arc=(_ai.get("argument_arc") or "").strip()[:800]          or "не указан",
+        key_categories=_key_cats_str,
+        questions_block=questions_block,
+        timestamps_block=_ts_block,
+        synopsis_context=_synopsis_context_for_prompt,
     )
-    tg_title = join_title_author(prompt_title, real_author)[:256]
+
+    tg_title = join_title_author(prompt_title, real_author)
+    tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
+
     return await _run_expanded_pipeline(
-        label="ReflectionApplication", prompt=prompt,
-        page_prefix="🙏 Размышление и применение", tg_title=tg_title,
-        author=author_clean, yt_url=yt_url, include_toc=True,
-        fallback_fn=compact_fn, max_tokens=_reflection_profile.max_tokens,
-        rutube_url=rutube_url, vk_url=vk_url,
-        duration=int(duration) if duration else 0, plain_scripture=True,
-        ai_data=_ai, video_id=video_id,
+        label="ReflectionApplication",
+        prompt=prompt,
+        page_prefix="🙏 Размышление и применение",
+        tg_title=tg_title,
+        author=author_clean,
+        yt_url=yt_url,
+        include_toc=True,
+        fallback_fn=compact_fn,
+        max_tokens=_reflection_profile.max_tokens,   # V3-P27: duration-aware
+        rutube_url=rutube_url,
+        vk_url=vk_url,
+        duration=int(duration) if duration else 0,
+        plain_scripture=True,  # FIXED #127: REFLECTION требует plain text для Scripture refs в скобках
+        # AUDIT R5: V3-P15/17 постановили quality-first (default high), но
+        # override medium вернулся ниже окна проверки теста. Директива
+        # оператора: максимум качества на 3.5-flash — используем default high.
+        ai_data=_ai,
+        video_id=video_id,
     )
+
+
