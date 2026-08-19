@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Provision the pinned browserless BgUtils PO-token runtime for yt-dlp.
+"""Provision one exact browserless bgutil source tree for yt-dlp.
 
-The Python plugin comes from requirements-lock.txt. Its JavaScript provider is
-kept outside git under .runtime/ and is cloned/built once from the matching
-upstream release. Subsequent starts only verify the pinned runtime marker.
+The Python plugin and JavaScript token generator are both loaded from the same
+repo-local source checkout under .runtime/. Nothing from the bgutil PyPI wheel is
+required at runtime, which prevents plugin/server drift and keeps one immutable
+upstream commit as the supply-chain identity.
 """
 from __future__ import annotations
 
@@ -14,12 +15,14 @@ import sys
 from pathlib import Path
 
 BGUTIL_VERSION = "1.3.1"
-BGUTIL_COMMIT = "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+BGUTIL_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
 BGUTIL_REPOSITORY = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = PROJECT_ROOT / ".runtime"
 PROVIDER_ROOT = RUNTIME_ROOT / "bgutil-ytdlp-pot-provider"
 SERVER_ROOT = PROVIDER_ROOT / "server"
+PLUGIN_ROOT = PROVIDER_ROOT / "plugin"
+PLUGIN_ENTRY = PLUGIN_ROOT / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
 GENERATE_SCRIPT = SERVER_ROOT / "build" / "generate_once.js"
 VERSION_MARKER = PROVIDER_ROOT / ".mp3bot-bgutil-version"
 
@@ -31,12 +34,7 @@ class ProvisionError(RuntimeError):
 def _platform_command(
     command: list[str], *, platform_name: str | None = None
 ) -> list[str]:
-    """Wrap Windows .cmd/.bat shims explicitly through cmd.exe.
-
-    ``platform_name`` exists only so the Windows branch can be unit-tested on a
-    non-Windows runner without mutating the process-wide ``os.name`` used by
-    pathlib/pytest. Production callers leave it unset.
-    """
+    """Wrap Windows .cmd/.bat shims explicitly through cmd.exe."""
     if not command:
         raise ProvisionError("empty command")
     suffix = Path(command[0]).suffix.lower()
@@ -67,8 +65,8 @@ def _node_executable() -> str:
     node = shutil.which("node")
     if not node:
         raise ProvisionError(
-            "Node.js не найден. Для browserless YouTube PO Token нужен Node.js >=20 "
-            "(проект уже рекомендует Node >=22 для yt-dlp/VOT)."
+            "Node.js не найден. Exact-source YouTube PO Token runtime требует "
+            "Node.js >=22."
         )
     try:
         version = subprocess.run(
@@ -83,8 +81,8 @@ def _node_executable() -> str:
         major = int(version.split(".", 1)[0])
     except (OSError, ValueError, IndexError) as exc:
         raise ProvisionError("Не удалось определить версию Node.js") from exc
-    if major < 20:
-        raise ProvisionError(f"Node.js {version} < 20; обнови Node.js")
+    if major < 22:
+        raise ProvisionError(f"Node.js {version} < 22; обнови Node.js")
     return node
 
 
@@ -94,7 +92,20 @@ def _runtime_is_current() -> bool:
     except OSError:
         return False
     expected = f"{BGUTIL_VERSION}@{BGUTIL_COMMIT}"
-    return marker == expected and GENERATE_SCRIPT.is_file()
+    return (
+        marker == expected
+        and GENERATE_SCRIPT.is_file()
+        and PLUGIN_ENTRY.is_file()
+    )
+
+
+def _checkout_exact_source(git: str, staging: Path) -> None:
+    """Fetch exactly the reviewed commit instead of trusting a moving branch/tag."""
+    staging.mkdir(parents=True, exist_ok=False)
+    _run([git, "init"], cwd=staging)
+    _run([git, "remote", "add", "origin", BGUTIL_REPOSITORY], cwd=staging)
+    _run([git, "fetch", "--depth", "1", "origin", BGUTIL_COMMIT], cwd=staging)
+    _run([git, "checkout", "--detach", "FETCH_HEAD"], cwd=staging)
 
 
 def ensure_bgutil_provider() -> Path:
@@ -111,22 +122,16 @@ def ensure_bgutil_provider() -> Path:
         raise ProvisionError("npm не найден; установи Node.js с npm")
 
     RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
-    staging = RUNTIME_ROOT / f".bgutil-{BGUTIL_VERSION}.tmp"
+    staging = RUNTIME_ROOT / f".bgutil-{BGUTIL_COMMIT[:12]}.tmp"
     if staging.exists():
         shutil.rmtree(staging, ignore_errors=True)
 
-    print(f"[SETUP] Installing browserless YouTube PO Token provider bgutil {BGUTIL_VERSION}...")
+    print(
+        "[SETUP] Installing exact-source browserless YouTube PO Token runtime "
+        f"{BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]}..."
+    )
     try:
-        _run([
-            git,
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            BGUTIL_VERSION,
-            BGUTIL_REPOSITORY,
-            str(staging),
-        ])
+        _checkout_exact_source(git, staging)
         head_process = subprocess.run(
             [git, "rev-parse", "HEAD"],
             cwd=str(staging),
@@ -140,12 +145,15 @@ def ensure_bgutil_provider() -> Path:
         head = (head_process.stdout or "").strip().lower()
         if head_process.returncode != 0 or head != BGUTIL_COMMIT:
             raise ProvisionError(
-                "Pinned bgutil tag resolved to an unexpected commit: "
+                "Fetched bgutil source does not match the reviewed commit: "
                 f"expected={BGUTIL_COMMIT} actual={head or 'unknown'}"
             )
 
+        if not (staging / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py").is_file():
+            raise ProvisionError("bgutil source checkout does not contain the yt-dlp plugin")
+
         server = staging / "server"
-        _run([npm, "ci"], cwd=server)
+        _run([npm, "ci", "--no-audit", "--no-fund"], cwd=server)
         tsc_name = "tsc.cmd" if os.name == "nt" else "tsc"
         tsc = server / "node_modules" / ".bin" / tsc_name
         if not tsc.is_file():
@@ -168,7 +176,7 @@ def ensure_bgutil_provider() -> Path:
         raise
 
     print(
-        f"[SETUP] bgutil {BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]} installed: "
+        f"[SETUP] Exact-source bgutil {BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]} ready: "
         f"{SERVER_ROOT}"
     )
     return SERVER_ROOT
