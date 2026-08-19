@@ -6,10 +6,12 @@ path = Path("provider/server/src/session_manager.ts")
 source = path.read_text(encoding="utf-8")
 
 old_import = 'import { buildURL, getHeaders, USER_AGENT } from "bgutils-js/utils";'
-new_import = (
-    'import { buildURL, getHeaders, parseLooseJSON, USER_AGENT } '
-    'from "bgutils-js/utils";'
-)
+new_import = '''import {
+    buildURL,
+    getHeaders,
+    parseLooseJSON,
+    USER_AGENT,
+} from "bgutils-js/utils";'''
 if source.count(old_import) != 1:
     raise SystemExit("FORWARD243_IMPORT_ANCHOR_DRIFT")
 source = source.replace(old_import, new_import, 1)
@@ -51,7 +53,7 @@ homepage_method = r'''    private async getChallengeFromHomepage(
             const ytObj = { config_: JSON.parse(ytcfgMatch[1] as string) };
             const globalObj = potCtx.globalObj as typeof globalThis & {
                 yt?: typeof ytObj;
-                window?: Window & typeof globalThis & { yt?: typeof ytObj };
+                window?: { yt?: typeof ytObj };
             };
             globalObj.yt = ytObj;
             if (globalObj.window) globalObj.window.yt = ytObj;
