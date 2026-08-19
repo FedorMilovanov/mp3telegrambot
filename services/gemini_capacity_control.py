@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """Shared in-process capacity control for expensive Gemini requests.
 
-Google documents 429/5xx as transient capacity/service failures and recommends
-exponential backoff with jitter while avoiding traffic spikes.  This module is
-the single source owner for the local side of that contract:
+The application owns three local guarantees:
 
-* heavy Gemini inference is serialized by default (configurable up to four);
-* a 503 establishes a process-wide cooldown so another coroutine cannot
-  immediately hammer the same backend while the failing request sleeps;
-* one transient event gets at most three network attempts total (initial call
-  plus two retries), independent of how many API keys are configured.
+* heavy work is smoothed through one process-wide semaphore;
+* Files API and model inference keep independent cooldown/circuit state;
+* one transient event gets at most initial + two retries, regardless of key count.
 
-The gate does not downgrade models or thinking quality.  It only controls when
-requests are allowed to reach the service.
+An inference circuit also blocks preparatory Files uploads while inference is
+known unavailable. The reverse is intentionally false: a Files outage must not
+block text-only GenerateContent, because the two Google surfaces can fail
+independently.
 """
 from __future__ import annotations
 
@@ -34,6 +32,12 @@ _MAX_TRANSIENT_ATTEMPTS = 3
 _DEFAULT_RETRY_BASE_SECONDS = 15.0
 _DEFAULT_RETRY_MAX_SECONDS = 60.0
 _DEFAULT_RETRY_JITTER_SECONDS = 5.0
+_DEFAULT_OVERLOAD_CIRCUIT_SECONDS = 120.0
+_VALID_DOMAINS = {"inference", "files"}
+
+
+class GeminiCapacityCircuitOpen(RuntimeError):
+    """Raised before network I/O while a known-overloaded domain is open."""
 
 
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -54,8 +58,21 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     return max(minimum, min(value, maximum))
 
 
+def _domain(value: str) -> str:
+    domain = str(value or "inference").strip().lower() or "inference"
+    if domain not in _VALID_DOMAINS:
+        raise ValueError(f"Unsupported Gemini capacity domain: {domain!r}")
+    return domain
+
+
+def _blocking_domains(domain: str) -> tuple[str, ...]:
+    domain = _domain(domain)
+    # Files are preparatory to inference in this application. Avoid uploading
+    # media that cannot be consumed while inference is in an open circuit.
+    return ("files", "inference") if domain == "files" else ("inference",)
+
+
 def heavy_concurrency() -> int:
-    """Maximum simultaneous expensive Gemini inference calls in this process."""
     return _env_int(
         "GEMINI_HEAVY_MAX_CONCURRENCY",
         _DEFAULT_HEAVY_CONCURRENCY,
@@ -65,7 +82,6 @@ def heavy_concurrency() -> int:
 
 
 def transient_attempt_limit() -> int:
-    """Initial request + at most two retries, never multiplied by API-key count."""
     return _env_int(
         "GEMINI_TRANSIENT_MAX_ATTEMPTS",
         _DEFAULT_TRANSIENT_ATTEMPTS,
@@ -74,8 +90,16 @@ def transient_attempt_limit() -> int:
     )
 
 
+def overload_circuit_seconds() -> float:
+    return _env_float(
+        "GEMINI_OVERLOAD_CIRCUIT_SECONDS",
+        _DEFAULT_OVERLOAD_CIRCUIT_SECONDS,
+        30.0,
+        600.0,
+    )
+
+
 def transient_retry_delay(failure_number: int) -> float:
-    """Exponential backoff with jitter for the Nth transient failure."""
     base = _env_float(
         "GEMINI_RETRY_BASE_SECONDS",
         _DEFAULT_RETRY_BASE_SECONDS,
@@ -100,8 +124,6 @@ def transient_retry_delay(failure_number: int) -> float:
 
 @dataclass
 class GeminiRetryBudget:
-    """Request-attempt budget shared across API-key rotation for one operation."""
-
     limit: int = field(default_factory=transient_attempt_limit)
     used: int = 0
 
@@ -125,7 +147,8 @@ class GeminiRetryBudget:
 @dataclass
 class _LoopState:
     semaphore: asyncio.Semaphore
-    cooldown_until: float = 0.0
+    cooldown_until: dict[str, float] = field(default_factory=dict)
+    circuit_until: dict[str, float] = field(default_factory=dict)
 
 
 _LOOP_STATES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = (
@@ -142,48 +165,121 @@ def _loop_state() -> _LoopState:
     return state
 
 
-async def _respect_cooldown(state: _LoopState) -> None:
+def _circuit_remaining(state: _LoopState, domain: str) -> float:
     loop = asyncio.get_running_loop()
-    delay = state.cooldown_until - loop.time()
+    return max(
+        0.0,
+        *(
+            state.circuit_until.get(item, 0.0) - loop.time()
+            for item in _blocking_domains(domain)
+        ),
+    )
+
+
+def domain_circuit_open(domain: str = "inference") -> bool:
+    try:
+        return _circuit_remaining(_loop_state(), domain) > 0
+    except RuntimeError:
+        return False
+
+
+def require_domain_available(domain: str = "inference") -> None:
+    state = _loop_state()
+    remaining = _circuit_remaining(state, domain)
+    if remaining > 0:
+        raise GeminiCapacityCircuitOpen(
+            f"Gemini {_domain(domain)} 503 overload circuit open; "
+            f"retry after about {remaining:.1f}s"
+        )
+
+
+async def _respect_capacity_state(state: _LoopState, domain: str) -> None:
+    require_domain_available(domain)
+    loop = asyncio.get_running_loop()
+    delay = max(
+        0.0,
+        *(
+            state.cooldown_until.get(item, 0.0) - loop.time()
+            for item in _blocking_domains(domain)
+        ),
+    )
     if delay > 0:
         await asyncio.sleep(delay)
+    require_domain_available(domain)
 
 
 @asynccontextmanager
-async def heavy_gemini_slot():
-    """Serialize/smooth expensive Gemini calls without holding a slot while queued."""
+async def heavy_gemini_slot(domain: str = "inference"):
+    domain = _domain(domain)
     state = _loop_state()
+    # Fail a known-open circuit before joining the semaphore queue. This keeps
+    # long segmented workflows from spending minutes queueing work that is known
+    # to be unavailable.
+    require_domain_available(domain)
     await state.semaphore.acquire()
     try:
-        await _respect_cooldown(state)
+        await _respect_capacity_state(state, domain)
         yield
     finally:
         state.semaphore.release()
 
 
-async def run_heavy_gemini_call(call: Callable[[], Awaitable[_T]]) -> _T:
-    """Execute one expensive network call under the shared capacity gate."""
-    async with heavy_gemini_slot():
+async def run_heavy_gemini_call(
+    call: Callable[[], Awaitable[_T]],
+    *,
+    domain: str = "inference",
+) -> _T:
+    async with heavy_gemini_slot(domain=domain):
         return await call()
 
 
-def note_overload(delay_seconds: float) -> None:
-    """Publish a cooldown to all heavy calls running on the same event loop."""
+def note_overload(delay_seconds: float, *, domain: str = "inference") -> None:
     try:
         state = _loop_state()
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
+    domain = _domain(domain)
     delay = max(0.0, float(delay_seconds or 0.0))
-    state.cooldown_until = max(state.cooldown_until, loop.time() + delay)
+    state.cooldown_until[domain] = max(
+        state.cooldown_until.get(domain, 0.0),
+        loop.time() + delay,
+    )
+
+
+def trip_overload_circuit(
+    *,
+    domain: str = "inference",
+    seconds: float | None = None,
+) -> None:
+    try:
+        state = _loop_state()
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    domain = _domain(domain)
+    hold = overload_circuit_seconds() if seconds is None else max(0.0, float(seconds))
+    state.circuit_until[domain] = max(
+        state.circuit_until.get(domain, 0.0),
+        loop.time() + hold,
+    )
+    state.cooldown_until[domain] = max(
+        state.cooldown_until.get(domain, 0.0),
+        loop.time() + hold,
+    )
 
 
 __all__ = [
+    "GeminiCapacityCircuitOpen",
     "GeminiRetryBudget",
+    "domain_circuit_open",
     "heavy_concurrency",
     "heavy_gemini_slot",
     "note_overload",
+    "overload_circuit_seconds",
+    "require_domain_available",
     "run_heavy_gemini_call",
     "transient_attempt_limit",
     "transient_retry_delay",
+    "trip_overload_circuit",
 ]
