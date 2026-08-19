@@ -88,3 +88,44 @@ def test_overload_cooldown_delays_following_heavy_call(monkeypatch):
 
     elapsed = asyncio.run(scenario())
     assert elapsed >= 0.02
+
+
+def test_files_overload_does_not_block_text_inference(monkeypatch):
+    async def scenario():
+        control.trip_overload_circuit(domain="files", seconds=30)
+        assert control.domain_circuit_open("files") is True
+        assert control.domain_circuit_open("inference") is False
+        return await control.run_heavy_gemini_call(
+            lambda: asyncio.sleep(0, result="ok"),
+            domain="inference",
+        )
+
+    assert asyncio.run(scenario()) == "ok"
+
+
+def test_inference_circuit_blocks_inference_and_preparatory_files():
+    async def scenario():
+        control.trip_overload_circuit(domain="inference", seconds=30)
+        with pytest.raises(control.GeminiCapacityCircuitOpen):
+            await control.run_heavy_gemini_call(
+                lambda: asyncio.sleep(0),
+                domain="inference",
+            )
+        with pytest.raises(control.GeminiCapacityCircuitOpen):
+            await control.run_heavy_gemini_call(
+                lambda: asyncio.sleep(0),
+                domain="files",
+            )
+
+    asyncio.run(scenario())
+
+
+def test_retry_ceiling_opens_circuit(monkeypatch):
+    monkeypatch.setenv("GEMINI_RETRY_MAX_SECONDS", "60")
+    monkeypatch.setenv("GEMINI_OVERLOAD_CIRCUIT_SECONDS", "30")
+
+    async def scenario():
+        control.note_overload(60.0, domain="inference")
+        assert control.domain_circuit_open("inference") is True
+
+    asyncio.run(scenario())
