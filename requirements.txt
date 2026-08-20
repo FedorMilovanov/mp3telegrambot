@@ -17,7 +17,7 @@ python-telegram-bot[socks]>=22.5,<23.0
 # и JS generator берутся ИЗ ОДНОГО exact source checkout, pinned в
 # tools/ensure_bgutil_provider.py; отдельный PyPI provider wheel не используется.
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
-yt-dlp[default]>=2026.7.4
+yt-dlp[default]>=2026.8.19
 
 # ── HTTP-клиент ────────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована

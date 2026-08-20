@@ -29,7 +29,6 @@ DEFAULT_PROVIDER_ROOT = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider"
 DEFAULT_PROVIDER_HOME = DEFAULT_PROVIDER_ROOT / "server"
 YTDLP_POLICY_FILE = PROJECT_ROOT / "yt-dlp.conf"
 EXPECTED_PLUGIN_DIR = ".runtime/bgutil-ytdlp-pot-provider"
-EXPECTED_YOUTUBE_ROUTE = "youtube:player_client=mweb"
 EXPECTED_BGUTIL_ROUTE = f"youtubepot-bgutilhttp:base_url={BGUTIL_HTTP_BASE_URL}"
 _PROVIDER_PROBE_TIMEOUT_SEC = 20
 _PROVIDER_PROBE_CODE = """\
@@ -166,7 +165,7 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
         )
 
     extractor_args = _option_values(tokens, "--extractor-args")
-    youtube_routes = [
+    youtube_client_routes = [
         value for value in extractor_args if value.startswith("youtube:player_client=")
     ]
     bgutil_routes = [
@@ -177,10 +176,17 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
     script_routes = [
         value for value in extractor_args if value.startswith("youtubepot-bgutilscript:")
     ]
-    if youtube_routes != [EXPECTED_YOUTUBE_ROUTE]:
+    if youtube_client_routes:
+        # 2026-08: YouTube GVS rejects the mweb client's media URLs even with a
+        # valid video-bound PO Token (HTTP 403 at googlevideo.com). yt-dlp's
+        # maintained default clients (e.g. visionos) need no GVS token and return
+        # the same bestaudio (itag 251). Production must NOT pin a player_client.
         raise YouTubePoTokenRuntimeError(
-            "yt-dlp.conf должен использовать ровно youtube:player_client=mweb; "
-            f"actual={youtube_routes or 'none'}"
+            "yt-dlp.conf не должен пинить youtube:player_client. В 2026-08 "
+            "mweb-маррут отвергается YouTube GVS (валидный video-bound токен всё "
+            "равно даёт media HTTP 403). Production использует поддерживаемые "
+            "yt-dlp default-клиенты (visionos и др.), которые не требуют GVS "
+            f"PO-token и дают тот же bestaudio (itag 251). actual={youtube_client_routes}"
         )
     if bgutil_routes != [EXPECTED_BGUTIL_ROUTE]:
         raise YouTubePoTokenRuntimeError(
@@ -334,7 +340,7 @@ def _require_node() -> str:
 
 
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
-    """Require mweb + a live automatic browserless GVS provider, fail closed."""
+    """Require yt-dlp default clients + a live browserless GVS provider, fail closed."""
     _require_no_legacy_browser_provider()
     _require_no_installed_bgutil_wheel()
     _require_ytdlp_policy()
@@ -376,7 +382,6 @@ __all__ = [
     "DEFAULT_PROVIDER_ROOT",
     "EXPECTED_BGUTIL_ROUTE",
     "EXPECTED_PLUGIN_DIR",
-    "EXPECTED_YOUTUBE_ROUTE",
     "LEGACY_WPC_DISTRIBUTION",
     "YTDLP_POLICY_FILE",
     "YouTubePoTokenRuntime",
