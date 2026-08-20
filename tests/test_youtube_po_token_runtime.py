@@ -52,6 +52,21 @@ def _write_valid_policy(path: Path) -> None:
     )
 
 
+def _write_provider_tree(provider: Path, *, marker: str | None = None) -> Path:
+    server = provider / "server"
+    (server / "build").mkdir(parents=True)
+    (server / "build" / "generate_once.js").write_text("// ok", encoding="utf-8")
+    plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor"
+    plugin.mkdir(parents=True)
+    (plugin / "getpot_bgutil.py").write_text("# ok", encoding="utf-8")
+    (provider / ".mp3bot-bgutil-version").write_text(
+        marker
+        or f"{po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT}\n",
+        encoding="utf-8",
+    )
+    return server
+
+
 def test_ytdlp_policy_accepts_only_exact_source_route(tmp_path: Path) -> None:
     policy = tmp_path / "yt-dlp.conf"
     _write_valid_policy(policy)
@@ -121,10 +136,24 @@ def test_missing_exact_source_provider_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(tmp_path / "missing" / "server"))
+    monkeypatch.setattr(po, "DEFAULT_PROVIDER_HOME", tmp_path / "missing" / "server")
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="exact-source runtime"):
         po._require_provider_build()
+
+
+def test_provider_build_ignores_legacy_env_override_and_uses_policy_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canonical_server = _write_provider_tree(tmp_path / "canonical")
+    monkeypatch.setattr(po, "DEFAULT_PROVIDER_HOME", canonical_server)
+    monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(tmp_path / "wrong" / "server"))
+
+    assert po._require_provider_build() == canonical_server.resolve()
+    source = Path("services/youtube_po_token_runtime.py").read_text(encoding="utf-8")
+    assert "os.getenv(\"BGUTIL_PROVIDER_HOME\"" not in source
+    assert "def _provider_home" not in source
 
 
 def test_bgutil_probe_uses_exact_source_plugin_path(
@@ -203,17 +232,11 @@ def test_bgutil_import_failure_fails_closed(monkeypatch, tmp_path):
 
 
 def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):
-    provider = tmp_path / "provider"
-    server = provider / "server"
-    (server / "build").mkdir(parents=True)
-    (server / "build" / "generate_once.js").write_text("// ok", encoding="utf-8")
-    plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor"
-    plugin.mkdir(parents=True)
-    (plugin / "getpot_bgutil.py").write_text("# ok", encoding="utf-8")
-    (provider / ".mp3bot-bgutil-version").write_text(
-        "1.3.1@wrong-commit\n", encoding="utf-8"
+    server = _write_provider_tree(
+        tmp_path / "provider",
+        marker="1.3.1@wrong-commit\n",
     )
-    monkeypatch.setenv("BGUTIL_PROVIDER_HOME", str(server))
+    monkeypatch.setattr(po, "DEFAULT_PROVIDER_HOME", server)
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="pinned commit"):
         po._require_provider_build()

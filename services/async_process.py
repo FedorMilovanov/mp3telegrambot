@@ -247,6 +247,7 @@ async def run_cancellable_process(
     env: Mapping[str, str] | None = None,
     text: bool = False,
     grace_seconds: float = 3.0,
+    capture_output: bool = True,
 ) -> subprocess.CompletedProcess[Any]:
     """Run one command and retain ownership through timeout or cancellation.
 
@@ -254,6 +255,10 @@ async def run_cancellable_process(
     cannot release a semaphore or remove temporary files while yt-dlp, FFmpeg,
     or another descendant keeps running. The isolated process tree is stopped
     and its direct child is reaped first.
+
+    ``capture_output=False`` keeps the same process-tree ownership while letting
+    bootstrap/build commands inherit the parent's stdout/stderr. This avoids a
+    second process-killer implementation just to preserve live setup logs.
     """
     deadline = _finite_seconds(timeout, name="timeout")
     cleanup_grace = _finite_seconds(grace_seconds, name="grace_seconds")
@@ -261,13 +266,15 @@ async def run_cancellable_process(
     if not argv:
         raise ValueError("command must not be empty")
 
+    stdout_target = asyncio.subprocess.PIPE if capture_output else None
+    stderr_target = asyncio.subprocess.PIPE if capture_output else None
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=os.fspath(Path(cwd)) if cwd is not None else None,
         env=dict(env) if env is not None else None,
         stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=stdout_target,
+        stderr=stderr_target,
         **_spawn_group_kwargs(),
     )
     try:
@@ -288,9 +295,12 @@ async def run_cancellable_process(
         )
         raise
 
-    if text:
-        stdout_value: Any = (stdout or b"").decode("utf-8", errors="replace")
-        stderr_value: Any = (stderr or b"").decode("utf-8", errors="replace")
+    if not capture_output:
+        stdout_value: Any = None
+        stderr_value: Any = None
+    elif text:
+        stdout_value = (stdout or b"").decode("utf-8", errors="replace")
+        stderr_value = (stderr or b"").decode("utf-8", errors="replace")
     else:
         stdout_value = stdout
         stderr_value = stderr
