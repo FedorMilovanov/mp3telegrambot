@@ -141,28 +141,43 @@ def _probe_js_runtime_version(exe: str, args: list[str]) -> tuple[int, ...]:
 
 
 def _supported_js_runtimes() -> list[str]:
-    """yt-dlp 2026.06.09 поднял минимальные версии JS-runtime.
+    """Return the one JS runtime that production bgutil actually validates.
 
-    Если передать неподдерживаемый runtime через --js-runtimes, yt-dlp может
-    считать, что JS-runtime задан, но затем не сможет выполнить YouTube n/SABR
-    JS. Поэтому фильтруем не только по наличию бинаря, но и по версии.
+    yt-dlp enables Deno by default and prefers it over Node. The pinned bgutil
+    provider mirrors that preference (Deno=20, Node=10). When both runtimes were
+    enabled, startup validated the compiled Node ``build/generate_once.js`` but
+    the real PO-token request selected Deno and executed
+    ``src/generate_once.ts --version`` with upstream's hard 15-second timeout.
+    That made the readiness check prove a different execution path than
+    production.
+
+    MP3Bot provisions, syntax-checks and requires Node >=22 for the exact-source
+    bgutil runtime. Keep yt-dlp on that same Node path. A separately installed
+    Deno may still exist on the machine, but it is intentionally not enabled for
+    this production command.
     """
-    runtimes: list[str] = []
-    deno = shutil.which("deno")
-    if deno:
-        vt = _probe_js_runtime_version(deno, ["--version"])
-        if vt >= (2, 3, 0):
-            runtimes.append("deno")
-        else:
-            logger.warning("⚠️ Deno найден, но версия %s < 2.3.0 — не передаю в yt-dlp --js-runtimes", vt or "unknown")
     node = shutil.which("node")
-    if node:
-        vt = _probe_js_runtime_version(node, ["--version"])
-        if vt >= (22, 0, 0):
-            runtimes.append("node")
-        else:
-            logger.warning("⚠️ Node.js найден, но версия %s < 22.0.0 — не передаю в yt-dlp --js-runtimes", vt or "unknown")
-    return runtimes
+    if not node:
+        logger.warning(
+            "⚠️ Node.js не найден — production yt-dlp JS runtime отключён; "
+            "bgutil startup должен завершиться fail-closed"
+        )
+        return []
+
+    vt = _probe_js_runtime_version(node, ["--version"])
+    if vt < (22, 0, 0):
+        logger.warning(
+            "⚠️ Node.js найден, но версия %s < 22.0.0 — не передаю в yt-dlp --js-runtimes",
+            vt or "unknown",
+        )
+        return []
+
+    if shutil.which("deno"):
+        logger.debug(
+            "Deno установлен, но намеренно не включён в production yt-dlp: "
+            "bgutil/preflight закреплены на Node >=22"
+        )
+    return ["node"]
 
 def _proxy_for_ytdlp() -> str:
     """Proxy URL for yt-dlp.
@@ -249,16 +264,17 @@ def _build_ytdlp_base_args() -> list:
     if _proxy:
         args += ["--proxy", _proxy]
 
-    # JS runtime для решения YouTube n challenge
-    # FIXED #33: deno первым — по документации yt-dlp первый в списке приоритетен;
-    # deno быстрее для YouTube. node — fallback при отсутствии deno.
+    # One deterministic JS runtime. yt-dlp enables Deno by default, so merely
+    # appending --js-runtimes node is NOT enough: clear all defaults first.
+    # This keeps real bgutil execution on the exact Node path proven at startup.
     js_runtimes = _supported_js_runtimes()
     if js_runtimes:
+        args += ["--no-js-runtimes"]
         for runtime in js_runtimes:
             args += ["--js-runtimes", runtime]
         args += ["--remote-components", "ejs:github"]
     else:
-        logger.warning("⚠️ Node.js/Deno не найдены — js-runtimes отключён")
+        logger.warning("⚠️ Node.js >=22 не найден — js-runtimes отключён")
     # PERF 2026-06-10: многопоточная загрузка фрагментов (DASH/HLS) —
     # нативная опция yt-dlp, заметно быстрее на длинных видео.
     # aria2c дал бы ещё больше, но это внешний процесс с краевыми
