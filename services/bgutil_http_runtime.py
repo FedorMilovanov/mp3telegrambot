@@ -10,7 +10,8 @@ has much higher yt-dlp provider preference.
 This module does not download or patch bgutil. Provisioning remains owned by
 ``tools/ensure_bgutil_provider.py`` and the exact commit marker remains the
 supply-chain identity. We only start ``server/build/main.js`` and prove its
-``/ping`` version before production continues.
+``/ping`` version before production continues. A server that was not spawned by
+this Python process is never trusted merely because it reports the same version.
 """
 from __future__ import annotations
 
@@ -138,13 +139,19 @@ def ensure_bgutil_http_runtime(
     base_url: str = DEFAULT_BASE_URL,
     startup_timeout: float = _STARTUP_TIMEOUT_SEC,
 ) -> str:
-    """Start/reuse one version-matched HTTP provider and return its base URL."""
+    """Start or reuse only this process's exact-source HTTP provider."""
     global _OWNED_PROCESS
 
     existing = _ping(base_url)
     if existing is not None:
         _require_ping_version(existing, expected_version=expected_version)
-        return base_url
+        if _OWNED_PROCESS is not None and _OWNED_PROCESS.poll() is None:
+            return base_url
+        raise BgutilHttpRuntimeError(
+            "Порт bgutil HTTP provider уже занят неуправляемым процессом. "
+            "Совпадения version недостаточно для доказательства pinned source identity; "
+            "останови старый процесс/бот и запусти Start Bot.bat снова."
+        )
 
     server_home = Path(server_home).resolve()
     main_script = server_home / "build" / "main.js"
@@ -156,7 +163,7 @@ def ensure_bgutil_http_runtime(
 
     if _OWNED_PROCESS is not None and _OWNED_PROCESS.poll() is None:
         raise BgutilHttpRuntimeError(
-            "Ранее запущенный bgutil HTTP provider перестал отвечать на /ping"
+            "Ранее запущенный управляемый bgutil HTTP provider перестал отвечать на /ping"
         )
 
     try:
