@@ -20,12 +20,15 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from services.async_process import run_cancellable_process
 
 BGUTIL_VERSION = "1.3.1"
 BGUTIL_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
 BGUTIL_REPOSITORY = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = PROJECT_ROOT / ".runtime"
 PROVIDER_ROOT = RUNTIME_ROOT / "bgutil-ytdlp-pot-provider"
 SERVER_ROOT = PROVIDER_ROOT / "server"
