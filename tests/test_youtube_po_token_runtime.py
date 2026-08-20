@@ -55,10 +55,12 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
 
 
 def _write_valid_policy(path: Path) -> None:
+    # Production policy pins no youtube:player_client (2026-08: mweb media is
+    # rejected by YouTube GVS even with a valid token; yt-dlp's maintained
+    # default clients like visionos need no token and yield the same bestaudio).
     path.write_text(
         "--no-plugin-dirs\n"
         f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
-        f'--extractor-args "{po.EXPECTED_YOUTUBE_ROUTE}"\n'
         f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
         encoding="utf-8",
     )
@@ -102,7 +104,6 @@ def test_ytdlp_policy_rejects_global_plugin_enablement(tmp_path: Path) -> None:
     policy = tmp_path / "yt-dlp.conf"
     policy.write_text(
         f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
-        f'--extractor-args "{po.EXPECTED_YOUTUBE_ROUTE}"\n'
         f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
         encoding="utf-8",
     )
@@ -111,7 +112,9 @@ def test_ytdlp_policy_rejects_global_plugin_enablement(tmp_path: Path) -> None:
         po._require_ytdlp_policy(policy)
 
 
-def test_ytdlp_policy_rejects_wrong_youtube_client(tmp_path: Path) -> None:
+def test_ytdlp_policy_rejects_any_pinned_player_client(tmp_path: Path) -> None:
+    # 2026-08: pinning a player_client (mweb/android_vr/...) is forbidden —
+    # production relies on yt-dlp's maintained default clients.
     policy = tmp_path / "yt-dlp.conf"
     policy.write_text(
         "--no-plugin-dirs\n"
@@ -121,7 +124,18 @@ def test_ytdlp_policy_rejects_wrong_youtube_client(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(po.YouTubePoTokenRuntimeError, match="player_client=mweb"):
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="не должен пинить youtube:player_client"):
+        po._require_ytdlp_policy(policy)
+
+    # mweb specifically must also be rejected (the known-broken route).
+    policy.write_text(
+        "--no-plugin-dirs\n"
+        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
+        '--extractor-args "youtube:player_client=mweb"\n'
+        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="не должен пинить youtube:player_client"):
         po._require_ytdlp_policy(policy)
 
 
@@ -312,23 +326,26 @@ def test_python_lock_has_no_po_provider_wheel() -> None:
     assert "nodriver==" not in lock
 
 
-def test_ytdlp_policy_restricts_plugins_to_exact_source_mweb_route() -> None:
+def test_ytdlp_policy_uses_no_pinned_player_client_and_exact_source_provider() -> None:
     config = Path("yt-dlp.conf").read_text(encoding="utf-8")
     lower = config.lower()
 
     assert "--no-plugin-dirs" in config
     assert "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider" in config
-    assert "youtube:player_client=mweb" in config
+    # No ACTIVE player_client extractor-arg (comments may mention it).
+    assert '--extractor-args "youtube:player_client=' not in config
     assert f"youtubepot-bgutilhttp:base_url={po.BGUTIL_HTTP_BASE_URL}" in config
     assert "youtubepot-bgutilscript:" not in lower
     assert "po_token=" not in lower
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
     assert "wpc" not in lower
+    # The parser strips comments, so the comment that names the forbidden knob
+    # must not trip the validator.
     po._require_ytdlp_policy(Path("yt-dlp.conf"))
 
 
-def test_mweb_config_and_cookies_file_are_composed_together(
+def test_default_client_config_and_cookies_file_are_composed_together(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -337,7 +354,6 @@ def test_mweb_config_and_cookies_file_are_composed_together(
     (tmp_path / "yt-dlp.conf").write_text(
         "--no-plugin-dirs\n"
         "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider\n"
-        '--extractor-args "youtube:player_client=mweb"\n'
         f'--extractor-args "youtubepot-bgutilhttp:base_url={po.BGUTIL_HTTP_BASE_URL}"\n',
         encoding="utf-8",
     )
