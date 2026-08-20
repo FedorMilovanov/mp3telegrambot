@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +17,44 @@ def _write_ready_runtime(provider: Path) -> tuple[Path, Path, Path, Path]:
     generated = server / "build" / "generate_once.js"
     generated.parent.mkdir(parents=True)
     generated.write_text("// ready\n", encoding="utf-8")
-    (server / "node_modules").mkdir()
+    node_modules = server / "node_modules"
+    node_modules.mkdir()
+    package = {
+        "name": "bgutil-ytdlp-pot-provider",
+        "version": setup.BGUTIL_VERSION,
+        "dependencies": {"commander": "^15.0.0"},
+    }
+    (server / "package.json").write_text(json.dumps(package), encoding="utf-8")
+    (server / "package-lock.json").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {
+                        "name": "bgutil-ytdlp-pot-provider",
+                        "version": setup.BGUTIL_VERSION,
+                        "dependencies": package["dependencies"],
+                    },
+                    "node_modules/commander": {"version": "15.0.0"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    commander = node_modules / "commander"
+    commander.mkdir()
+    (commander / "package.json").write_text(
+        json.dumps({"name": "commander", "version": "15.0.0"}), encoding="utf-8"
+    )
+    (node_modules / ".package-lock.json").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {"node_modules/commander": {"version": "15.0.0"}},
+            }
+        ),
+        encoding="utf-8",
+    )
     plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
     plugin.parent.mkdir(parents=True)
     plugin.write_text("__version__ = '1.3.1'\n", encoding="utf-8")
@@ -99,8 +138,9 @@ def test_current_marker_without_node_modules_is_not_current(
 ) -> None:
     provider = tmp_path / "provider"
     server, generated, plugin, marker = _write_ready_runtime(provider)
-    (server / "node_modules").rmdir()
+    shutil.rmtree(server / "node_modules")
 
+    monkeypatch.setattr(setup, "SERVER_ROOT", server)
     monkeypatch.setattr(setup, "GENERATE_SCRIPT", generated)
     monkeypatch.setattr(setup, "PLUGIN_ENTRY", plugin)
     monkeypatch.setattr(setup, "NODE_MODULES", server / "node_modules")
@@ -150,10 +190,10 @@ def test_compiled_script_offline_smoke_requires_exact_version(
         setup,
         "_owned_run",
         lambda *_args, **_kwargs: SimpleNamespace(
-            stdout="", stderr="ERR_MODULE_NOT_FOUND commander", returncode=1
+            stdout="", stderr="syntax error", returncode=1
         ),
     )
-    with pytest.raises(setup.ProvisionError, match="offline smoke test"):
+    with pytest.raises(setup.ProvisionError, match="offline syntax check"):
         setup._require_script_version("node", script=script, cwd=tmp_path)
 
 
@@ -298,7 +338,7 @@ def test_provisioner_is_exact_source_and_browserless_by_contract() -> None:
     assert '"fetch", "--depth", "1", "origin", BGUTIL_COMMIT' in source
     assert '"node_modules" / ".bin"' in source
     assert '"ci", "--no-audit", "--no-fund"' in source
-    assert "--version" in source
+    assert "--check" in source
     assert "PROVISION_LOCK" in source
     assert "run_cancellable_process" in source
     assert "uuid.uuid4" in source
