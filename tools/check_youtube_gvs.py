@@ -196,6 +196,66 @@ def _prepare_runtime() -> str:
     return require_youtube_po_token_runtime().status_text()
 
 
+def _print_egress_diagnostics() -> None:
+    """Print the resolved yt-dlp proxy, cookies state and bgutil log path.
+
+    These three facts resolve the GVS 403 audit: (1) which egress IP the media
+    download uses, (2) whether the run is authenticated, (3) where bgutil logged
+    ``Using proxy:`` — the only on-host proof of whether the PO token was minted
+    from the same IP as the download.
+    """
+    from services.bgutil_http_runtime import bgutil_http_log_path
+    from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp
+
+    proxy = _proxy_for_ytdlp()
+    print(f"GVS egress: yt-dlp --proxy = {proxy or '(none — direct egress)'}")
+    print(
+        f"GVS auth: cookies.txt = "
+        f"{'present' if COOKIES_FILE.exists() else 'MISSING (unauthenticated)'}"
+    )
+    log_path = bgutil_http_log_path()
+    if log_path is not None:
+        print(f"GVS bgutil log: {log_path} (grep 'Using proxy' after the run)")
+    else:
+        print("GVS bgutil log: silenced (BGUTIL_HTTP_LOG=none)")
+
+
+def _http_403_hint() -> str:
+    """Actionable, state-aware explanation for a GVS media 403.
+
+    The token layer is proven good (see docs/AUDIT_YOUTUBE_GVS_403.md), so a 403
+    here is an auth/egress outcome: YouTube refuses the media download because
+    the request is unauthenticated and/or from a flagged (datacenter) IP. Tell
+    the operator the two real fixes instead of leaving a bare 'FAIL'.
+    """
+    from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp
+
+    proxy = _proxy_for_ytdlp()
+    has_cookies = COOKIES_FILE.exists()
+    egress = proxy or "direct (residential)"
+    lines = [
+        "GVS_403_HINT: token is valid and IP-consistent; this is an auth/egress refusal.",
+        "  egress = " + egress + ("  (datacenter-class IPs are routinely refused)" if proxy else "  (if still 403, the client/account is the issue)"),
+    ]
+    if not has_cookies:
+        lines.append(
+            "  FIX auth: export a logged-in YouTube session to cookies.txt in the project root"
+            " (browser extension 'Get cookies.txt LOCALLY'). A Premium session bypasses GVS"
+            " PO-token entirely. Then rerun this probe."
+        )
+    else:
+        lines.append(
+            "  auth: cookies.txt IS present — if still 403, the session is logged-out / non-Premium"
+            " or this exit is hard-blocked; try a residential egress."
+        )
+    if proxy:
+        lines.append(
+            "  FIX egress: set YTDLP_PROXY_URL to a residential/clean proxy for YouTube only"
+            " (it is independent of the Gemini/Telegram proxy), or run '--direct' to test residential."
+        )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -214,9 +274,31 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Не удалять скачанный probe-файл после проверки.",
     )
+    parser.add_argument(
+        "--direct",
+        action="store_true",
+        help=(
+            "Принудительно пустить yt-dlp напрямую (residential), очистив proxy "
+            "env vars в этом процессе. Перекрывает .env/system proxy — иначе "
+            "TELEGRAM_PROXY_URL/YTDLP_PROXY_URL молча возвращают трафик в прокси "
+            "и тест 'direct' оказывается недействительным."
+        ),
+    )
     args = parser.parse_args(argv)
 
     os.chdir(PROJECT_ROOT)
+    if args.direct:
+        # Must run before load_dotenv() in _prepare_runtime() and before
+        # _build_ytdlp_base_args(). yt-dlp's request_proxy is derived from
+        # self._downloader.proxies, which includes ambient HTTP(S)_PROXY — so
+        # clearing these in-process is the only way to make a real direct run.
+        for _key in (
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+            "http_proxy", "https_proxy", "all_proxy",
+            "YTDLP_PROXY_URL", "TELEGRAM_PROXY_URL", "LOCAL_BOT_API_PROXY_URL",
+        ):
+            os.environ.pop(_key, None)
+        print("GVS egress: --direct forced (proxy env cleared in-process)")
     try:
         runtime_status = _prepare_runtime()
     except Exception as exc:
@@ -224,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(f"YouTube runtime: {runtime_status}")
+    _print_egress_diagnostics()
     temp_root = Path(tempfile.mkdtemp(prefix="mp3bot-youtube-gvs-"))
     try:
         print("GVS probe: downloading complete bestaudio/best with production policy...")
@@ -243,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
             classification = _classify_failure(process)
             detail = _tail(process.stderr) or _tail(process.stdout)
             print(f"GVS_ACCEPTANCE={classification}")
+            if classification == "FAIL_HTTP_403":
+                print(_http_403_hint())
             if detail:
                 print(detail)
             return 3

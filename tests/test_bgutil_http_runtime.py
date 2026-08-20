@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from services import bgutil_http_runtime as http_runtime
@@ -133,3 +135,15 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
 
 def test_upstream_http_route_is_loopback_for_ytdlp_even_if_server_bind_is_broad():
     assert http_runtime.DEFAULT_BASE_URL == "http://127.0.0.1:4416"
+
+
+def test_bgutil_http_log_path_defaults_to_file_and_respects_sentinels(monkeypatch, tmp_path):
+    monkeypatch.delenv("BGUTIL_HTTP_LOG", raising=False)
+    assert http_runtime.bgutil_http_log_path() == http_runtime.DEFAULT_BGUTIL_HTTP_LOG
+    for sentinel in ("none", "devnull", "off", "0", "-"):
+        monkeypatch.setenv("BGUTIL_HTTP_LOG", sentinel)
+        assert http_runtime.bgutil_http_log_path() is None
+    custom = tmp_path / "custom-bgutil.log"
+    monkeypatch.setenv("BGUTIL_HTTP_LOG", str(custom))
+    # Compare as Path objects so the test is backslash/slash agnostic on Windows.
+    assert http_runtime.bgutil_http_log_path() == custom

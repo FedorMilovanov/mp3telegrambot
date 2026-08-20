@@ -194,6 +194,23 @@ def _proxy_for_ytdlp() -> str:
         or os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
     )
     if not raw:
+        # AUDIT 2026-08-21 (YouTube GVS 403): if the proxy is only present as an
+        # ambient HTTP(S)_PROXY env var (v2rayN/sing-box set system-wide), yt-dlp
+        # still proxies the *download* through it — but the bgutil HTTP PO-token
+        # plugin forwards `request_proxy` only from an *explicit* --proxy, not
+        # from env. That mints the token from the machine's direct IP while the
+        # media downloads via the proxy: token-IP != download-IP -> GVS 403. Fall
+        # back to the ambient proxy so --proxy is always explicit and the token
+        # is generated from the same egress IP as the download.
+        raw = (
+            os.getenv("HTTPS_PROXY", "").strip()
+            or os.getenv("https_proxy", "").strip()
+            or os.getenv("HTTP_PROXY", "").strip()
+            or os.getenv("http_proxy", "").strip()
+            or os.getenv("ALL_PROXY", "").strip()
+            or os.getenv("all_proxy", "").strip()
+        )
+    if not raw:
         return ""
     u = urlparse(raw)
     scheme = (u.scheme or "").lower()
