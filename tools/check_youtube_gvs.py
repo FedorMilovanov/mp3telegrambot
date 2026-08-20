@@ -17,6 +17,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def _configure_stdio() -> None:
+    """Keep Russian diagnostics/help printable in Windows legacy consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, OSError):
+            pass
+
+
+_configure_stdio()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
