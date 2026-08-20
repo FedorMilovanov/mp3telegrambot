@@ -7,9 +7,12 @@ import math
 import os
 import signal
 import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+from services.latency_trace import record_latency
 
 
 _WINDOWS_CREATE_NEW_PROCESS_GROUP = getattr(
@@ -239,6 +242,31 @@ async def _stop_before_returning(
         raise cancellation
 
 
+def _latency_stage(argv: Sequence[str]) -> str:
+    """Classify only the external tools that can dominate user-visible latency."""
+    lowered = [str(value).casefold() for value in argv]
+    # Do not use pathlib here. Some cross-platform ownership tests temporarily
+    # emulate os.name='nt' on Linux; pathlib.Path would then try to instantiate
+    # WindowsPath on a POSIX runner just for an observability label.
+    executable = (
+        str(argv[0]).replace("\\", "/").rsplit("/", 1)[-1].casefold()
+        if argv
+        else ""
+    )
+    joined = " ".join(lowered)
+    if "yt-dlp" in joined or "yt_dlp" in joined:
+        return "process_yt_dlp"
+    if "ffprobe" in executable:
+        return "process_ffprobe"
+    if "ffmpeg" in executable:
+        return "process_ffmpeg"
+    if executable in {"node", "node.exe"}:
+        return "process_node"
+    if executable in {"deno", "deno.exe"}:
+        return "process_deno"
+    return "process_other"
+
+
 async def run_cancellable_process(
     command: Sequence[str | os.PathLike[str]],
     *,
@@ -266,50 +294,55 @@ async def run_cancellable_process(
     if not argv:
         raise ValueError("command must not be empty")
 
-    stdout_target = asyncio.subprocess.PIPE if capture_output else None
-    stderr_target = asyncio.subprocess.PIPE if capture_output else None
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=os.fspath(Path(cwd)) if cwd is not None else None,
-        env=dict(env) if env is not None else None,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=stdout_target,
-        stderr=stderr_target,
-        **_spawn_group_kwargs(),
-    )
+    latency_started = time.perf_counter()
+    latency_stage = _latency_stage(argv)
     try:
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=deadline,
+        stdout_target = asyncio.subprocess.PIPE if capture_output else None
+        stderr_target = asyncio.subprocess.PIPE if capture_output else None
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=os.fspath(Path(cwd)) if cwd is not None else None,
+            env=dict(env) if env is not None else None,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=stdout_target,
+            stderr=stderr_target,
+            **_spawn_group_kwargs(),
         )
-    except asyncio.TimeoutError as exc:
-        await _stop_before_returning(
-            process,
-            grace_seconds=cleanup_grace,
-        )
-        raise subprocess.TimeoutExpired(argv, timeout=deadline) from exc
-    except asyncio.CancelledError:
-        await _stop_before_returning(
-            process,
-            grace_seconds=cleanup_grace,
-        )
-        raise
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=deadline,
+            )
+        except asyncio.TimeoutError as exc:
+            await _stop_before_returning(
+                process,
+                grace_seconds=cleanup_grace,
+            )
+            raise subprocess.TimeoutExpired(argv, timeout=deadline) from exc
+        except asyncio.CancelledError:
+            await _stop_before_returning(
+                process,
+                grace_seconds=cleanup_grace,
+            )
+            raise
 
-    if not capture_output:
-        stdout_value: Any = None
-        stderr_value: Any = None
-    elif text:
-        stdout_value = (stdout or b"").decode("utf-8", errors="replace")
-        stderr_value = (stderr or b"").decode("utf-8", errors="replace")
-    else:
-        stdout_value = stdout
-        stderr_value = stderr
-    return subprocess.CompletedProcess(
-        argv,
-        int(process.returncode or 0),
-        stdout_value,
-        stderr_value,
-    )
+        if not capture_output:
+            stdout_value: Any = None
+            stderr_value: Any = None
+        elif text:
+            stdout_value = (stdout or b"").decode("utf-8", errors="replace")
+            stderr_value = (stderr or b"").decode("utf-8", errors="replace")
+        else:
+            stdout_value = stdout
+            stderr_value = stderr
+        return subprocess.CompletedProcess(
+            argv,
+            int(process.returncode or 0),
+            stdout_value,
+            stderr_value,
+        )
+    finally:
+        record_latency(latency_stage, time.perf_counter() - latency_started)
 
 
 __all__ = ["run_cancellable_process"]

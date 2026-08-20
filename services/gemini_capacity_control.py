@@ -18,10 +18,13 @@ import asyncio
 import math
 import os
 import random
+import time
 import weakref
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, TypeVar
+
+from services.latency_trace import note_latency_event, record_latency
 
 _T = TypeVar("_T")
 
@@ -211,6 +214,7 @@ def require_domain_available(domain: str = "inference") -> None:
     state = _loop_state()
     remaining = _circuit_remaining(state, domain)
     if remaining > 0:
+        note_latency_event(f"gemini_{_domain(domain)}_circuit_open")
         raise GeminiCapacityCircuitOpen(
             f"Gemini {_domain(domain)} 503 overload circuit open; "
             f"retry after about {remaining:.1f}s"
@@ -228,7 +232,12 @@ async def _respect_capacity_state(state: _LoopState, domain: str) -> None:
         ),
     )
     if delay > 0:
+        started = time.perf_counter()
         await asyncio.sleep(delay)
+        record_latency(
+            f"gemini_{_domain(domain)}_cooldown_wait",
+            time.perf_counter() - started,
+        )
     require_domain_available(domain)
 
 
@@ -237,7 +246,12 @@ async def heavy_gemini_slot(domain: str = "inference"):
     domain = _domain(domain)
     state = _loop_state()
     require_domain_available(domain)
+    queue_started = time.perf_counter()
     await state.semaphore.acquire()
+    record_latency(
+        f"gemini_{domain}_semaphore_wait",
+        time.perf_counter() - queue_started,
+    )
     try:
         await _respect_capacity_state(state, domain)
         yield
@@ -250,8 +264,16 @@ async def run_heavy_gemini_call(
     *,
     domain: str = "inference",
 ) -> _T:
+    domain = _domain(domain)
     async with heavy_gemini_slot(domain=domain):
-        return await call()
+        started = time.perf_counter()
+        try:
+            return await call()
+        finally:
+            record_latency(
+                f"gemini_{domain}_roundtrip",
+                time.perf_counter() - started,
+            )
 
 
 def trip_overload_circuit(
@@ -274,6 +296,7 @@ def trip_overload_circuit(
         state.cooldown_until.get(domain, 0.0),
         loop.time() + hold,
     )
+    note_latency_event(f"gemini_{domain}_circuit_trip")
 
 
 def note_overload(delay_seconds: float, *, domain: str = "inference") -> None:
@@ -289,6 +312,7 @@ def note_overload(delay_seconds: float, *, domain: str = "inference") -> None:
         state.cooldown_until.get(domain, 0.0),
         loop.time() + delay,
     )
+    note_latency_event(f"gemini_{domain}_overload")
     # With the default 15/30/60 schedule, the third overload reaches the retry
     # ceiling. Opening the circuit there prevents segmented/parallel workflows
     # from treating the exhausted event as a fresh request storm.
