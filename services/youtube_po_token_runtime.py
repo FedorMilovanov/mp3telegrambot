@@ -11,6 +11,11 @@ from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 
+from services.bgutil_http_runtime import (
+    BgutilHttpRuntimeError,
+    DEFAULT_BASE_URL as BGUTIL_HTTP_BASE_URL,
+    ensure_bgutil_http_runtime,
+)
 
 # Kept as an explicit migration identity; production no longer imports this
 # distribution. yt-dlp is restricted to the exact source plugin directory.
@@ -25,10 +30,7 @@ DEFAULT_PROVIDER_HOME = DEFAULT_PROVIDER_ROOT / "server"
 YTDLP_POLICY_FILE = PROJECT_ROOT / "yt-dlp.conf"
 EXPECTED_PLUGIN_DIR = ".runtime/bgutil-ytdlp-pot-provider"
 EXPECTED_YOUTUBE_ROUTE = "youtube:player_client=mweb"
-EXPECTED_BGUTIL_ROUTE = (
-    "youtubepot-bgutilscript:server_home="
-    ".runtime/bgutil-ytdlp-pot-provider/server"
-)
+EXPECTED_BGUTIL_ROUTE = f"youtubepot-bgutilhttp:base_url={BGUTIL_HTTP_BASE_URL}"
 _PROVIDER_PROBE_TIMEOUT_SEC = 20
 _PROVIDER_PROBE_CODE = """\
 import importlib
@@ -61,11 +63,13 @@ class YouTubePoTokenRuntime:
     node_version: str
     provider_home: Path
     plugin_root: Path
+    http_base_url: str
 
     def status_text(self) -> str:
         return (
             f"bgutil {self.provider_version}@{self.provider_commit[:8]}; "
-            f"node={self.node_version}; browserless=on; source-only=on"
+            f"node={self.node_version}; http={self.http_base_url}; "
+            "browserless=on; source-only=on"
         )
 
 
@@ -168,7 +172,10 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
     bgutil_routes = [
         value
         for value in extractor_args
-        if value.startswith("youtubepot-bgutilscript:server_home=")
+        if value.startswith("youtubepot-bgutilhttp:base_url=")
+    ]
+    script_routes = [
+        value for value in extractor_args if value.startswith("youtubepot-bgutilscript:")
     ]
     if youtube_routes != [EXPECTED_YOUTUBE_ROUTE]:
         raise YouTubePoTokenRuntimeError(
@@ -177,8 +184,13 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
         )
     if bgutil_routes != [EXPECTED_BGUTIL_ROUTE]:
         raise YouTubePoTokenRuntimeError(
-            "yt-dlp.conf должен направлять bgutil script provider в pinned .runtime; "
-            f"actual={bgutil_routes or 'none'}"
+            "yt-dlp.conf должен направлять bgutil HTTP provider только в локальный "
+            f"pinned runtime {BGUTIL_HTTP_BASE_URL}; actual={bgutil_routes or 'none'}"
+        )
+    if script_routes:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf не должен конфигурировать bgutil script provider: "
+            "production владеет persistent HTTP provider"
         )
 
     forbidden = ("--cookies", "--cookies-from-browser")
@@ -264,13 +276,16 @@ def _require_provider_build() -> Path:
     """Validate exactly the provider tree referenced by production yt-dlp.conf."""
     home = DEFAULT_PROVIDER_HOME.resolve()
     provider_root = home.parent
-    generated = home / "build" / "generate_once.js"
-    plugin_entry = provider_root / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
-    if not generated.is_file() or not plugin_entry.is_file():
+    generate_script = home / "build" / "generate_once.js"
+    http_script = home / "build" / "main.js"
+    plugin_entry = (
+        provider_root / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
+    )
+    if not generate_script.is_file() or not http_script.is_file() or not plugin_entry.is_file():
         raise YouTubePoTokenRuntimeError(
-            "browserless bgutil exact-source runtime не собран полностью. "
-            "Запусти 'Start Bot.bat': он установит pinned source tree в .runtime "
-            "без Chrome и без PyPI provider wheel."
+            "browserless bgutil exact-source runtime не собран полностью "
+            "(нужны build/main.js, build/generate_once.js и plugin). "
+            "Запусти 'Start Bot.bat' для безопасной пересборки runtime."
         )
     marker = provider_root / ".mp3bot-bgutil-version"
     try:
@@ -319,7 +334,7 @@ def _require_node() -> str:
 
 
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
-    """Require mweb + automatic browserless GVS token generation, fail closed."""
+    """Require mweb + a live automatic browserless GVS provider, fail closed."""
     _require_no_legacy_browser_provider()
     _require_no_installed_bgutil_wheel()
     _require_ytdlp_policy()
@@ -327,12 +342,27 @@ def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
     plugin_root = provider_home.parent / "plugin"
     provider_version = _require_bgutil_module(plugin_root, BGUTIL_EXPECTED_VERSION)
     node_version = _require_node()
+    node_executable = shutil.which("node")
+    if not node_executable:
+        raise YouTubePoTokenRuntimeError("Node.js исчез после startup-проверки")
+    try:
+        http_base_url = ensure_bgutil_http_runtime(
+            node_executable=node_executable,
+            server_home=provider_home,
+            expected_version=BGUTIL_EXPECTED_VERSION,
+            base_url=BGUTIL_HTTP_BASE_URL,
+        )
+    except BgutilHttpRuntimeError as exc:
+        raise YouTubePoTokenRuntimeError(
+            f"persistent bgutil HTTP provider не готов: {exc}"
+        ) from exc
     return YouTubePoTokenRuntime(
         provider_version=provider_version,
         provider_commit=BGUTIL_EXPECTED_COMMIT,
         node_version=node_version,
         provider_home=provider_home,
         plugin_root=plugin_root,
+        http_base_url=http_base_url,
     )
 
 
@@ -340,6 +370,7 @@ __all__ = [
     "BGUTIL_DISTRIBUTION",
     "BGUTIL_EXPECTED_VERSION",
     "BGUTIL_EXPECTED_COMMIT",
+    "BGUTIL_HTTP_BASE_URL",
     "BGUTIL_MODULE",
     "DEFAULT_PROVIDER_HOME",
     "DEFAULT_PROVIDER_ROOT",
