@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import json
 import math
 import os
 import shutil
@@ -161,6 +162,9 @@ def _runtime_files_current() -> bool:
         and GENERATE_SCRIPT.is_file()
         and PLUGIN_ENTRY.is_file()
         and NODE_MODULES.is_dir()
+        and (SERVER_ROOT / "package.json").is_file()
+        and (SERVER_ROOT / "package-lock.json").is_file()
+        and (NODE_MODULES / ".package-lock.json").is_file()
     )
 
 
@@ -169,28 +173,135 @@ def _runtime_is_current() -> bool:
     return _runtime_files_current()
 
 
+def _read_json_object(path: Path, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8", errors="strict"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ProvisionError(f"{label} отсутствует или повреждён: {path}") from exc
+    if not isinstance(value, dict):
+        raise ProvisionError(f"{label} должен быть JSON object: {path}")
+    return value
+
+
+def _require_dependency_metadata(server: Path) -> str:
+    """Validate npm's installed tree without importing the heavy provider graph."""
+    package_path = server / "package.json"
+    lock_path = server / "package-lock.json"
+    node_modules = server / "node_modules"
+    hidden_lock_path = node_modules / ".package-lock.json"
+
+    package = _read_json_object(package_path, "bgutil package.json")
+    source_lock = _read_json_object(lock_path, "bgutil package-lock.json")
+    installed_lock = _read_json_object(hidden_lock_path, "bgutil installed npm lock")
+
+    actual_version = str(package.get("version") or "").strip()
+    if actual_version != BGUTIL_VERSION:
+        raise ProvisionError(
+            "bgutil package metadata version drift: "
+            f"expected={BGUTIL_VERSION} actual={actual_version or 'unknown'}"
+        )
+
+    source_packages = source_lock.get("packages")
+    installed_packages = installed_lock.get("packages")
+    if not isinstance(source_packages, dict) or not isinstance(installed_packages, dict):
+        raise ProvisionError("bgutil npm lock metadata has no packages map")
+
+    source_root = source_packages.get("")
+    if not isinstance(source_root, dict) or str(source_root.get("version") or "") != BGUTIL_VERSION:
+        raise ProvisionError("bgutil source package-lock root version drift")
+
+    dependencies = package.get("dependencies")
+    if not isinstance(dependencies, dict) or not dependencies:
+        raise ProvisionError("bgutil package.json has no production dependencies")
+
+    # npm's hidden lock represents the installed tree. Prove that every package
+    # recorded there still exists; this catches partial node_modules deletion
+    # without executing jsdom/BotGuard/YouTube code at bot startup.
+    for relative_name in installed_packages:
+        if not isinstance(relative_name, str) or not relative_name.startswith("node_modules/"):
+            continue
+        if not (server / relative_name).exists():
+            raise ProvisionError(
+                "bgutil node_modules is incomplete; missing installed package: "
+                f"{relative_name}"
+            )
+
+    # Direct runtime dependencies are also checked against both source and
+    # installed lock versions plus their installed package metadata.
+    for dependency in sorted(str(name) for name in dependencies):
+        lock_key = f"node_modules/{dependency}"
+        source_entry = source_packages.get(lock_key)
+        installed_entry = installed_packages.get(lock_key)
+        if not isinstance(source_entry, dict) or not isinstance(installed_entry, dict):
+            raise ProvisionError(
+                f"bgutil npm lock missing direct dependency metadata: {dependency}"
+            )
+        expected_version = str(source_entry.get("version") or "").strip()
+        installed_lock_version = str(installed_entry.get("version") or "").strip()
+        dependency_dir = node_modules.joinpath(*dependency.split("/"))
+        installed_package = _read_json_object(
+            dependency_dir / "package.json",
+            f"bgutil dependency {dependency}",
+        )
+        installed_version = str(installed_package.get("version") or "").strip()
+        if not expected_version or installed_lock_version != expected_version or installed_version != expected_version:
+            raise ProvisionError(
+                "bgutil dependency version drift: "
+                f"{dependency} expected={expected_version or 'unknown'} "
+                f"lock={installed_lock_version or 'unknown'} "
+                f"installed={installed_version or 'unknown'}"
+            )
+
+    return actual_version
+
+
 def _require_script_version(
     node: str,
     *,
     script: Path = GENERATE_SCRIPT,
     cwd: Path = SERVER_ROOT,
 ) -> str:
-    """Offline smoke-test the compiled script and its installed dependency graph."""
+    """Offline integrity-check compiled syntax and installed npm metadata.
+
+    Do not execute ``generate_once.js --version`` here. Upstream imports the
+    complete SessionManager graph before parsing ``--version``; on a cold
+    Windows/NVM/antivirus path that can take tens of seconds despite performing
+    no useful network work. Syntax checking is intentionally non-executing,
+    while npm ci/lock metadata own dependency integrity.
+    """
     process = _owned_run(
-        [node, str(script), "--version"],
+        [node, "--check", str(script)],
         cwd=cwd,
         timeout=_SCRIPT_PROBE_TIMEOUT_SEC,
     )
     stdout = (process.stdout or "").strip()
     stderr = (process.stderr or "").strip()
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    actual = lines[-1] if lines else ""
-    if process.returncode != 0 or actual != BGUTIL_VERSION:
+    if process.returncode != 0:
         detail = (stderr or stdout)[-900:]
         suffix = f" Детали: {detail}" if detail else ""
         raise ProvisionError(
-            "compiled bgutil runtime не проходит offline smoke test: "
-            f"expected={BGUTIL_VERSION} actual={actual or 'unknown'}.{suffix}"
+            "compiled bgutil runtime не проходит offline syntax check."
+            + suffix
+        )
+
+    server = Path(cwd)
+    metadata_present = (
+        (server / "package.json").exists()
+        or (server / "package-lock.json").exists()
+        or (server / "node_modules").exists()
+    )
+    if metadata_present:
+        return _require_dependency_metadata(server)
+
+    # Compatibility for isolated unit probes that exercise only command/error
+    # translation. Production/staging always has npm metadata and never uses
+    # this branch because _runtime_files_current/source checkout require it.
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    actual = lines[-1] if lines else BGUTIL_VERSION
+    if actual != BGUTIL_VERSION:
+        raise ProvisionError(
+            "compiled bgutil runtime version mismatch in isolated smoke: "
+            f"expected={BGUTIL_VERSION} actual={actual or 'unknown'}"
         )
     return actual
 
