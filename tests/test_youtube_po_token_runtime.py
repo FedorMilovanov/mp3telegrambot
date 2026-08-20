@@ -38,7 +38,7 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
     assert runtime.plugin_root == plugin_root
     assert runtime.status_text() == (
         f"bgutil 1.3.1@{po.BGUTIL_EXPECTED_COMMIT[:8]}; "
-        "node=22.14.0; browserless=on; source-only=on"
+        "node=22.14.0; browserless=http-loopback; source-only=on"
     )
 
 
@@ -282,7 +282,8 @@ def test_ytdlp_policy_restricts_plugins_to_exact_source_mweb_route() -> None:
     assert "--no-plugin-dirs" in config
     assert "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider" in config
     assert "youtube:player_client=mweb" in config
-    assert "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server" in config
+    assert po.EXPECTED_BGUTIL_ROUTE in config
+    assert '--extractor-args "youtubepot-bgutilscript:' not in config
     assert "po_token=" not in lower
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
@@ -300,7 +301,7 @@ def test_mweb_config_and_cookies_file_are_composed_together(
         "--no-plugin-dirs\n"
         "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider\n"
         '--extractor-args "youtube:player_client=mweb"\n'
-        '--extractor-args "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server"\n',
+        '--extractor-args "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4417"\n',
         encoding="utf-8",
     )
     cookies = tmp_path / "cookies.txt"
