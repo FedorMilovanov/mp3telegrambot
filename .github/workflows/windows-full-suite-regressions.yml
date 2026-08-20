@@ -10,6 +10,7 @@ on:
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_livedub_qa.py"
       - "tests/test_windows_full_suite_regressions.py"
+      - "tests/test_ytdlp_node_runtime_parity.py"
       - ".github/workflows/windows-full-suite-regressions.yml"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "tests/test_dub_job_preflight_v2.py"
       - "tests/test_livedub_qa.py"
       - "tests/test_windows_full_suite_regressions.py"
+      - "tests/test_ytdlp_node_runtime_parity.py"
       - ".github/workflows/windows-full-suite-regressions.yml"
 
 permissions:
@@ -56,11 +58,13 @@ jobs:
           services/mp3_chapters.py
           tools/voxcpm2/dub_job_preflight.py
           tests/test_windows_full_suite_regressions.py
+          tests/test_ytdlp_node_runtime_parity.py
 
       - name: Run Windows regression contracts
         run: >-
           python -m pytest -q
           tests/test_windows_full_suite_regressions.py
+          tests/test_ytdlp_node_runtime_parity.py
           tests/test_dub_job_preflight_v2.py::test_atomic_preflight_reports_do_not_share_temp_names
           tests/test_livedub_qa.py::test_ytdlp_env_browser_cookie_source_can_override_dead_config
           tests/test_livedub_qa.py::test_video_force_cpu_explicit_only
@@ -76,3 +80,4 @@ jobs:
           services/mp3_chapters.py
           tools/voxcpm2/dub_job_preflight.py
           tests/test_windows_full_suite_regressions.py
+          tests/test_ytdlp_node_runtime_parity.py
