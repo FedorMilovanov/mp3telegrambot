@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Low-overhead request latency aggregation for production diagnosis.
 
-The trace is intentionally log-only and request-scoped. It does not change
-timeouts, retries, model selection, prompts, media quality or persistence.
-Async child tasks inherit the ContextVar, so shared yt-dlp/FFmpeg and Gemini
-owners can attribute elapsed time to the active Telegram request without
-threading trace IDs through every pipeline signature.
+The trace is intentionally log-only and bound to the explicit asyncio Task that
+owns one dispatched video request. It does not change timeouts, retries, model
+selection, prompts, media quality or persistence, and it deliberately avoids
+ContextVar/ambient request state.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
+import threading
 import time
 import uuid
-from contextvars import ContextVar
+import weakref
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -28,27 +29,52 @@ class _LatencyTrace:
     counts: dict[str, int] = field(default_factory=dict)
 
 
-_CURRENT_TRACE: ContextVar[_LatencyTrace | None] = ContextVar(
-    "mp3bot_latency_trace",
-    default=None,
-)
+@dataclass
+class _TraceHandle:
+    task: asyncio.Task
+    trace: _LatencyTrace
+    previous: _LatencyTrace | None
 
 
-def begin_latency_trace(mode: str):
-    """Start one request trace and return the ContextVar reset token."""
+_TRACE_BY_TASK: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_TRACE_LOCK = threading.RLock()
+
+
+def _current_task() -> asyncio.Task | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
+def _current_trace() -> _LatencyTrace | None:
+    task = _current_task()
+    if task is None:
+        return None
+    with _TRACE_LOCK:
+        return _TRACE_BY_TASK.get(task)
+
+
+def begin_latency_trace(mode: str) -> _TraceHandle | None:
+    """Bind one request trace to the current asyncio Task."""
+    task = _current_task()
+    if task is None:
+        return None
     trace = _LatencyTrace(
         trace_id=uuid.uuid4().hex[:10],
         mode=str(mode or "unknown").strip() or "unknown",
         started=time.perf_counter(),
     )
-    token = _CURRENT_TRACE.set(trace)
+    with _TRACE_LOCK:
+        previous = _TRACE_BY_TASK.get(task)
+        _TRACE_BY_TASK[task] = trace
     logger.info("[LATENCY] trace=%s mode=%s start", trace.trace_id, trace.mode)
-    return token
+    return _TraceHandle(task=task, trace=trace, previous=previous)
 
 
 def record_latency(stage: str, elapsed_seconds: float, *, count: int = 1) -> None:
-    """Aggregate one measured elapsed interval into the active request trace."""
-    trace = _CURRENT_TRACE.get()
+    """Aggregate one measured elapsed interval into the current task trace."""
+    trace = _current_trace()
     if trace is None:
         return
     name = str(stage or "unknown").strip().replace(" ", "_")[:80] or "unknown"
@@ -65,7 +91,7 @@ def record_latency(stage: str, elapsed_seconds: float, *, count: int = 1) -> Non
 
 def note_latency_event(stage: str, *, count: int = 1) -> None:
     """Count a diagnostic event without pretending it consumed elapsed time."""
-    trace = _CURRENT_TRACE.get()
+    trace = _current_trace()
     if trace is None:
         return
     name = str(stage or "unknown").strip().replace(" ", "_")[:80] or "unknown"
@@ -74,39 +100,43 @@ def note_latency_event(stage: str, *, count: int = 1) -> None:
 
 
 def current_latency_trace_id() -> str:
-    trace = _CURRENT_TRACE.get()
+    trace = _current_trace()
     return trace.trace_id if trace is not None else ""
 
 
-def finish_latency_trace(token, *, outcome: str) -> str:
-    """Log one compact aggregate line and restore the previous trace context."""
-    trace = _CURRENT_TRACE.get()
-    summary = ""
-    try:
-        if trace is None:
-            return ""
-        total_ms = max(0, int(round((time.perf_counter() - trace.started) * 1000.0)))
-        stage_parts: list[str] = []
-        for stage in sorted(
-            trace.totals_ms,
-            key=lambda name: (-trace.totals_ms[name], name),
-        ):
-            elapsed_ms = trace.totals_ms[stage]
-            calls = trace.counts.get(stage, 0)
-            if elapsed_ms:
-                stage_parts.append(f"{stage}={elapsed_ms / 1000.0:.2f}s/{calls}")
+def finish_latency_trace(handle: _TraceHandle | None, *, outcome: str) -> str:
+    """Log one compact aggregate line and restore any enclosing task trace."""
+    if handle is None:
+        return ""
+    trace = handle.trace
+    total_ms = max(0, int(round((time.perf_counter() - trace.started) * 1000.0)))
+    stage_parts: list[str] = []
+    for stage in sorted(
+        trace.totals_ms,
+        key=lambda name: (-trace.totals_ms[name], name),
+    ):
+        elapsed_ms = trace.totals_ms[stage]
+        calls = trace.counts.get(stage, 0)
+        if elapsed_ms:
+            stage_parts.append(f"{stage}={elapsed_ms / 1000.0:.2f}s/{calls}")
+        else:
+            stage_parts.append(f"{stage}=count:{calls}")
+    stages = ",".join(stage_parts) if stage_parts else "none"
+    summary = (
+        f"[LATENCY] trace={trace.trace_id} mode={trace.mode} "
+        f"outcome={str(outcome or 'unknown')[:80]} total={total_ms / 1000.0:.2f}s "
+        f"stages={stages}"
+    )
+    logger.info(summary)
+
+    with _TRACE_LOCK:
+        current = _TRACE_BY_TASK.get(handle.task)
+        if current is trace:
+            if handle.previous is None:
+                _TRACE_BY_TASK.pop(handle.task, None)
             else:
-                stage_parts.append(f"{stage}=count:{calls}")
-        stages = ",".join(stage_parts) if stage_parts else "none"
-        summary = (
-            f"[LATENCY] trace={trace.trace_id} mode={trace.mode} "
-            f"outcome={str(outcome or 'unknown')[:80]} total={total_ms / 1000.0:.2f}s "
-            f"stages={stages}"
-        )
-        logger.info(summary)
-        return summary
-    finally:
-        _CURRENT_TRACE.reset(token)
+                _TRACE_BY_TASK[handle.task] = handle.previous
+    return summary
 
 
 __all__ = [
