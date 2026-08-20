@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -22,8 +21,8 @@ def test_repo_ytdlp_policy_is_http_only_and_fail_closed() -> None:
     po_runtime._require_ytdlp_policy()
     config = Path("yt-dlp.conf").read_text(encoding="utf-8")
     assert po_runtime.EXPECTED_BGUTIL_ROUTE in config
-    assert "youtubepot-bgutilscript:" not in config
-    assert "server_home=" not in config
+    assert '--extractor-args "youtubepot-bgutilscript:' not in config
+    assert '--extractor-args "youtubepot-bgutilhttp:' in config
 
 
 def test_policy_rejects_script_fallback_even_with_http_route(tmp_path: Path) -> None:
