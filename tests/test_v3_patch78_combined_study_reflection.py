@@ -81,7 +81,9 @@ def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
 
     # Historical comments may name retired models, but executable policy must not.
     assert not any("gemini-3.1-flash-lite" in value for value in executable_strings)
-    assert "_models = [GEMINI_MODEL]" in function_source
+    assert "model_name = GEMINI_MODEL" in function_source
+    assert "gemini_generate(" in function_source
+    assert "model_name=model_name" in function_source
     assert "_models.append" not in function_source
     assert "strict semantic quality policy" in function_source
 

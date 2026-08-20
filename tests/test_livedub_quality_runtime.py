@@ -61,7 +61,7 @@ def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
     assert info.get_light_model_fallbacks() == []
 
 
-def test_info_card_tries_clients_without_mutating_registry(monkeypatch) -> None:
+def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monkeypatch) -> None:
     import services.livedub_info as info
     calls = []
     class Models:
@@ -79,7 +79,11 @@ def test_info_card_tries_clients_without_mutating_registry(monkeypatch) -> None:
     monkeypatch.setattr(info, "get_light_model_fallbacks", lambda: [])
     monkeypatch.setattr(info, "make_text_config_smart", lambda **kwargs: kwargs)
     card = asyncio.run(info.build_livedub_info_card("Title", force=True))
-    assert card and calls == [("first", "gemini-3.7-flash", "high"), ("second", "gemini-3.7-flash", "high")]
+    assert card and calls == [
+        ("first", "gemini-3.7-flash", "high"),
+        ("first", "gemini-3.7-flash", "high"),
+        ("second", "gemini-3.7-flash", "high"),
+    ]
     assert info.GEMINI_CLIENTS is clients
 
 

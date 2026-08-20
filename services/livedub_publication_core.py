@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Bounded, quality-first publication-card builder for LiveDub.
 
-Publication title, author and description are user-visible semantic output.  This
-module therefore owns its production Gemini route directly: exact Gemini 3.7
-Flash with HIGH thinking and no 3.5/Lite semantic fallback.  A deterministic
-metadata fallback remains available when Gemini itself is unavailable.
+Publication title, author and description are user-visible semantic output. This
+module therefore owns its exact Gemini 3.7 Flash/HIGH semantic contract while
+delegating transport capacity to the shared Gemini capacity owner. A
+deterministic metadata fallback remains available when Gemini is unavailable.
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ import os
 import re
 from collections import OrderedDict
 from typing import Any
+
+from services import gemini_capacity_control as capacity_control
 
 logger = logging.getLogger(__name__)
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -258,11 +260,16 @@ def fallback_description(title: str, author: str) -> str:
 
 async def _generate_quality(source_line: str) -> dict[str, str] | None:
     try:
-        from core.globals import GEMINI_CLIENTS
+        from core.globals import GEMINI_CLIENTS, is_overload_error
     except Exception:
         return None
     if not GEMINI_CLIENTS:
         return None
+    try:
+        capacity_control.require_domain_available("inference")
+    except capacity_control.GeminiCapacityCircuitOpen:
+        return None
+
     source = plain(source_line, 340)
     if not source:
         return None
@@ -284,7 +291,10 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
 
 Исходная строка: {source}
 """.strip()
-    attempts = _env_int("LIVEDUB_PUBLICATION_MAX_ATTEMPTS", 2, 1, 8)
+    attempts = min(
+        _env_int("LIVEDUB_PUBLICATION_MAX_ATTEMPTS", 2, 1, 8),
+        capacity_control.transient_attempt_limit(),
+    )
     per_timeout = _env_int("LIVEDUB_PUBLICATION_ATTEMPT_TIMEOUT_SEC", 45, 10, 90)
     total_timeout = _env_int("LIVEDUB_PUBLICATION_TOTAL_TIMEOUT_SEC", 90, 20, 180)
     loop = asyncio.get_running_loop()
@@ -307,13 +317,16 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
                 return None
             used += 1
             try:
-                response = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                        config=config,
+                response = await capacity_control.run_heavy_gemini_call(
+                    lambda _client=client, _model=model, _config=config, _remaining=remaining: asyncio.wait_for(
+                        _client.aio.models.generate_content(
+                            model=_model,
+                            contents=prompt,
+                            config=_config,
+                        ),
+                        timeout=min(float(per_timeout), _remaining),
                     ),
-                    timeout=min(float(per_timeout), remaining),
+                    domain="inference",
                 )
                 raw = str(getattr(response, "text", "") or "").strip()
                 raw = re.sub(
@@ -331,6 +344,11 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
                         "model": model,
                     }
             except Exception as exc:
+                if is_overload_error(exc):
+                    capacity_control.note_overload(
+                        capacity_control.transient_retry_delay(used),
+                        domain="inference",
+                    )
                 logger.info(
                     "[LiveDubPublicationCore] model=%s client=%d failed: %s",
                     model,

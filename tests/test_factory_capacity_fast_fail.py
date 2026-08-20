@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 import pytest
+from services import gemini_capacity_control as capacity_control
 from services import shorts_factory_capacity as capacity
 from services import shorts_factory_capacity_runtime as capacity_runtime
 
@@ -55,14 +56,16 @@ def _disable_capacity_retry_delay(monkeypatch) -> None:
 
 
 def test_capacity_backoff_is_exponential_and_capped(monkeypatch):
-    monkeypatch.setattr(capacity_runtime.random, 'uniform', lambda *_args: 0.0)
+    monkeypatch.setattr(capacity_control.random, 'uniform', lambda *_args: 0.0)
+    monkeypatch.delenv('GEMINI_RETRY_BASE_SECONDS', raising=False)
+    monkeypatch.delenv('GEMINI_RETRY_MAX_SECONDS', raising=False)
     assert capacity_runtime._capacity_retry_delay(1) == 15.0
     assert capacity_runtime._capacity_retry_delay(2) == 30.0
     assert capacity_runtime._capacity_retry_delay(3) == 60.0
     assert capacity_runtime._capacity_retry_delay(4) == 60.0
 
 
-def test_503_high_demand_retries_once_then_rotates_all_clients(monkeypatch, tmp_path):
+def test_503_high_demand_has_one_global_initial_plus_two_retry_budget(monkeypatch, tmp_path):
     audio = tmp_path / 'factory.flac'
     audio.write_bytes(b'x' * 2048)
     first = SimpleNamespace(name='first')
@@ -78,11 +81,14 @@ def test_503_high_demand_retries_once_then_rotates_all_clients(monkeypatch, tmp_
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     with pytest.raises(RuntimeError, match='503/high demand') as raised:
         asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
-    assert calls == ['first', 'first', 'second', 'second']
-    assert '3.6/3.5/Lite' in str(raised.value)
-    assert 'Все 2 настроенных API-клиента получили 503' in str(raised.value)
-    assert 'НЕ означает, что API-ключи или квота исчерпаны' in str(raised.value)
-    assert 'retry-кэше' in str(raised.value)
+    # Two attempts may reuse the first client; only the final global attempt may
+    # rotate. More API keys must not multiply the backend overload event.
+    assert calls == ['first', 'first', 'second']
+    message = str(raised.value)
+    assert 'единый лимит 3 сетевых попыток' in message
+    assert '3.6/3.5/Lite' in message
+    assert 'НЕ означает, что API-ключи или квота исчерпаны' in message
+    assert 'retry-кэше' in message
 
 
 def test_mixed_client_failures_do_not_claim_every_key_got_503(monkeypatch, tmp_path):
@@ -107,7 +113,8 @@ def test_mixed_client_failures_do_not_claim_every_key_got_503(monkeypatch, tmp_p
             )
         )
     message = str(raised.value)
-    assert "1/2 client(s) returned 503" in message
+    assert "1 capacity failure(s)" in message
+    assert "1 other failure(s)" in message
     assert "Все 2 настроенных API-клиента получили 503" not in message
 
 
@@ -166,7 +173,7 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     assert plan['strict_quality'] is True
 
 
-def test_429_still_rotates_and_keeps_three_pass_high_quality(monkeypatch, tmp_path):
+def test_429_still_rotates_within_global_budget_and_keeps_three_pass_high_quality(monkeypatch, tmp_path):
     audio = tmp_path / 'factory.flac'
     audio.write_bytes(b'x' * 2048)
     first = SimpleNamespace(name='first')
