@@ -60,9 +60,10 @@ except ProvisionError as exc:
 
 # YouTube changed GVS authorization in 2026-08: maximum-quality media URLs may
 # require a video-bound Proof-of-Origin token. This is a production dependency,
-# not an optional quality downgrade. Validate the automatic provider before the
-# bot accepts work. Provisioning above repairs missing/partial local source; the
-# checks below independently reject config/provider drift.
+# not an optional quality downgrade. Validate exact-source/plugin/config drift
+# before importing the application. The live loopback HTTP provider itself is
+# started only after all other bootstrap checks pass and immediately before the
+# bot accepts work, so lifecycle cleanup remains explicit.
 from services.youtube_po_token_runtime import (
     YouTubePoTokenRuntimeError,
     require_youtube_po_token_runtime,
@@ -74,10 +75,12 @@ except YouTubePoTokenRuntimeError as exc:
     print(f"❌ YouTube maximum-quality runtime не готов: {exc}")
     print("   Качество не понижено: format 18/360p fallback не используется.")
     sys.exit(2)
-else:
-    print(f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}")
 
 from services import emit_service_bootstrap_diagnostics
+from services.bgutil_http_provider import (
+    BgutilHttpProviderError,
+    start_bgutil_http_provider,
+)
 from services.bot_lifecycle import run_bot_process
 from services.database_migrations import apply_database_migrations
 from services.runtime_manifest import (
@@ -109,5 +112,24 @@ except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError)
 
 emit_service_bootstrap_diagnostics()
 
+
+def _run_managed_bot() -> int:
+    try:
+        provider_session = start_bgutil_http_provider()
+    except BgutilHttpProviderError as exc:
+        print(f"❌ YouTube PO Token HTTP provider не готов: {exc}")
+        print("   Script fallback отключён; бот не принимает maximum-quality работу.")
+        return 2
+
+    print(
+        "✅ YouTube PO Token: "
+        f"{_youtube_po_runtime.status_text()}; {provider_session.status_text}"
+    )
+    try:
+        return run_bot_process(_main_module)
+    finally:
+        provider_session.close()
+
+
 if __name__ == "__main__":
-    raise SystemExit(run_bot_process(_main_module))
+    raise SystemExit(_run_managed_bot())
