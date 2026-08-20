@@ -6,7 +6,10 @@ installer rebinding is required to route Factory or translation-editorial jobs.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+
+from services.latency_trace import begin_latency_trace, finish_latency_trace
 
 
 def _effective_user_id(update: Any) -> int:
@@ -41,48 +44,62 @@ async def process_single_video(
 
     user_id = _effective_user_id(update)
     mode = await get_user_mode(user_id) if user_id else "rus"
+    trace_token = begin_latency_trace(mode)
+    outcome = "error"
 
-    if mode == "shorts_max":
-        from services.shorts_video import HAS_FASTER_WHISPER
+    try:
+        if mode == "shorts_max":
+            from services.shorts_video import HAS_FASTER_WHISPER
 
-        if not HAS_FASTER_WHISPER:
-            await _reply_factory_requirement(update, silent_errors=silent_errors)
-            return False
-        from pipelines.shorts_factory import process_shorts_factory
+            if not HAS_FASTER_WHISPER:
+                await _reply_factory_requirement(update, silent_errors=silent_errors)
+                outcome = "rejected:no_whisper"
+                return False
+            from pipelines.shorts_factory import process_shorts_factory
 
-        return await process_shorts_factory(
-            url,
-            update,
-            status_msg=status_msg,
-            progress_prefix=progress_prefix,
-            context=context,
-            silent_errors=silent_errors,
-        )
+            result = await process_shorts_factory(
+                url,
+                update,
+                status_msg=status_msg,
+                progress_prefix=progress_prefix,
+                context=context,
+                silent_errors=silent_errors,
+            )
+        elif mode == EDITORIAL_MODE:
+            from services.translation_editorial_runner import (
+                process_translation_editorial_only,
+            )
 
-    if mode == EDITORIAL_MODE:
-        from services.translation_editorial_runner import (
-            process_translation_editorial_only,
-        )
+            result = await process_translation_editorial_only(
+                url,
+                update,
+                status_msg=status_msg,
+                progress_prefix=progress_prefix,
+                context=context,
+                silent_errors=silent_errors,
+            )
+        else:
+            from pipelines.main_pipeline import process_single_video as process_main_video
 
-        return await process_translation_editorial_only(
-            url,
-            update,
-            status_msg=status_msg,
-            progress_prefix=progress_prefix,
-            context=context,
-            silent_errors=silent_errors,
-        )
+            result = await process_main_video(
+                url,
+                update,
+                status_msg=status_msg,
+                progress_prefix=progress_prefix,
+                context=context,
+                silent_errors=silent_errors,
+            )
 
-    from pipelines.main_pipeline import process_single_video as process_main_video
-
-    return await process_main_video(
-        url,
-        update,
-        status_msg=status_msg,
-        progress_prefix=progress_prefix,
-        context=context,
-        silent_errors=silent_errors,
-    )
+        outcome = "ok" if result is not False else "failed"
+        return result
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
+    except Exception as exc:
+        outcome = f"error:{type(exc).__name__}"
+        raise
+    finally:
+        finish_latency_trace(trace_token, outcome=outcome)
 
 
 __all__ = ["process_single_video"]
