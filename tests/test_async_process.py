@@ -284,3 +284,31 @@ async def test_success_returns_completed_process_and_closes_stdin(monkeypatch) -
     assert result.stderr == "err"
     assert process.terminated == 0
     assert captured_kwargs["stdin"] is asyncio.subprocess.DEVNULL
+    assert captured_kwargs["stdout"] is asyncio.subprocess.PIPE
+    assert captured_kwargs["stderr"] is asyncio.subprocess.PIPE
+
+
+@pytest.mark.asyncio
+async def test_inherited_stdio_keeps_tree_ownership_without_capture(monkeypatch) -> None:
+    process = _FakeProcess()
+    process.release_communicate.set()
+    captured_kwargs = {}
+
+    async def fake_create(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return process
+
+    monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
+    result = await async_process.run_cancellable_process(
+        ["npm", "ci"],
+        timeout=60,
+        text=True,
+        capture_output=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout is None
+    assert result.stderr is None
+    assert captured_kwargs["stdin"] is asyncio.subprocess.DEVNULL
+    assert captured_kwargs["stdout"] is None
+    assert captured_kwargs["stderr"] is None

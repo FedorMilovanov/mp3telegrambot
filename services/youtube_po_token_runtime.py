@@ -2,7 +2,6 @@
 """Fail-closed readiness checks for browserless YouTube PO-token routing."""
 from __future__ import annotations
 
-import os
 import re
 import shlex
 import shutil
@@ -261,13 +260,9 @@ def _require_bgutil_module(plugin_root: Path, expected_version: str) -> str:
     )
 
 
-def _provider_home() -> Path:
-    configured = os.getenv("BGUTIL_PROVIDER_HOME", "").strip()
-    return Path(configured).expanduser().resolve() if configured else DEFAULT_PROVIDER_HOME
-
-
 def _require_provider_build() -> Path:
-    home = _provider_home()
+    """Validate exactly the provider tree referenced by production yt-dlp.conf."""
+    home = DEFAULT_PROVIDER_HOME.resolve()
     provider_root = home.parent
     generated = home / "build" / "generate_once.js"
     plugin_entry = provider_root / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
