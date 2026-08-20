@@ -220,6 +220,42 @@ def _print_egress_diagnostics() -> None:
         print("GVS bgutil log: silenced (BGUTIL_HTTP_LOG=none)")
 
 
+def _http_403_hint() -> str:
+    """Actionable, state-aware explanation for a GVS media 403.
+
+    The token layer is proven good (see docs/AUDIT_YOUTUBE_GVS_403.md), so a 403
+    here is an auth/egress outcome: YouTube refuses the media download because
+    the request is unauthenticated and/or from a flagged (datacenter) IP. Tell
+    the operator the two real fixes instead of leaving a bare 'FAIL'.
+    """
+    from services.ffmpeg import COOKIES_FILE, _proxy_for_ytdlp
+
+    proxy = _proxy_for_ytdlp()
+    has_cookies = COOKIES_FILE.exists()
+    egress = proxy or "direct (residential)"
+    lines = [
+        "GVS_403_HINT: token is valid and IP-consistent; this is an auth/egress refusal.",
+        "  egress = " + egress + ("  (datacenter-class IPs are routinely refused)" if proxy else "  (if still 403, the client/account is the issue)"),
+    ]
+    if not has_cookies:
+        lines.append(
+            "  FIX auth: export a logged-in YouTube session to cookies.txt in the project root"
+            " (browser extension 'Get cookies.txt LOCALLY'). A Premium session bypasses GVS"
+            " PO-token entirely. Then rerun this probe."
+        )
+    else:
+        lines.append(
+            "  auth: cookies.txt IS present — if still 403, the session is logged-out / non-Premium"
+            " or this exit is hard-blocked; try a residential egress."
+        )
+    if proxy:
+        lines.append(
+            "  FIX egress: set YTDLP_PROXY_URL to a residential/clean proxy for YouTube only"
+            " (it is independent of the Gemini/Telegram proxy), or run '--direct' to test residential."
+        )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -290,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
             classification = _classify_failure(process)
             detail = _tail(process.stderr) or _tail(process.stdout)
             print(f"GVS_ACCEPTANCE={classification}")
+            if classification == "FAIL_HTTP_403":
+                print(_http_403_hint())
             if detail:
                 print(detail)
             return 3
