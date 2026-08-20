@@ -12,8 +12,26 @@ acquisition starts failing.
 
 ## Run on the production Windows machine
 
-Pull current `main`, provision through the normal launcher once if dependencies
-or the provider pin changed, keep the normal TUN/proxy route enabled, then run:
+Pull current `main`, keep the normal TUN/proxy route enabled, and provision once
+through the managed launcher before running the probe. In PowerShell the BAT
+filename contains a space, so use the call operator explicitly:
+
+```powershell
+cd C:\Users\Fedor\Projects\mp3telegrambot
+git switch main
+git pull --ff-only
+& ".\Start Bot.bat"
+```
+
+Do **not** use `.\Start Bot.bat` unquoted in PowerShell: it is parsed as a
+command named `.\Start` and the launcher never runs. This matters after the
+2026-08 PO-token migration because the managed launcher removes obsolete
+`yt-dlp-getpot-wpc`/`nodriver` packages and provisions the pinned browserless
+bgutil source runtime. If the launcher did not actually execute, the acceptance
+probe is expected to fail closed with `GVS_ACCEPTANCE=FAIL_RUNTIME` rather than
+silently falling back to Chrome/WPC.
+
+Keep the bot/launcher terminal open. In a second PowerShell window run:
 
 ```powershell
 cd C:\Users\Fedor\Projects\mp3telegrambot
