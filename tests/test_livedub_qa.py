@@ -3,7 +3,8 @@
 The historical suite is kept in ``livedub_qa_cases.py`` so its large body stays
 byte-for-byte stable. This collector replaces only obsolete assertions whose
 production contract intentionally changed: the old mode registry, old semantic
-fallbacks, and the retired verbose LiveDub info presentation.
+fallbacks, the retired verbose LiveDub info presentation, and the retired
+Deno-first yt-dlp runtime policy.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ _REPLACED_CASES = {
     "test_livedub_info_message_escapes_html",
     "test_livedub_info_message_uses_safe_html_trim",
     "test_vot_token_is_documented_in_readme_help_and_status",
+    "test_ytdlp_js_runtime_version_filter",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
