@@ -395,64 +395,6 @@ def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None
             _video_lock_meta[video_id] = time.time()
 
 
-# Legacy compatibility helpers remain temporarily importable for old modules,
-# but active transport must not use model-global quota state: Gemini quotas are
-# scoped to a project/request context, not globally to a model name.
-_EXHAUSTED_MODELS: dict[str, float] = {}
-
-
-def _quota_retry_delay_seconds(e, default: int = 3600) -> int:
-    m = re.search(
-        r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)s",
-        str(e),
-        re.IGNORECASE,
-    )
-    if not m:
-        m = re.search(
-            r"retry in\s+([0-9]+(?:\.[0-9]+)?)s",
-            str(e),
-            re.IGNORECASE,
-        )
-    if m:
-        try:
-            return max(60, min(int(float(m.group(1))) + 5, 24 * 3600))
-        except (TypeError, ValueError):
-            pass
-    return default
-
-
-def mark_model_exhausted(
-    model_name: str,
-    err=None,
-    *,
-    seconds: int | None = None,
-) -> None:
-    model = str(model_name or "").strip()
-    if not model:
-        m = re.search(
-            r"model['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_.-]+)",
-            str(err),
-            re.IGNORECASE,
-        )
-        model = m.group(1) if m else ""
-    if not model:
-        return
-    ttl = int(seconds if seconds is not None else _quota_retry_delay_seconds(err))
-    _EXHAUSTED_MODELS[model] = time.time() + max(60, ttl)
-
-
-def is_model_exhausted(model_name: str) -> bool:
-    model = str(model_name or "").strip()
-    if not model:
-        return False
-    until = _EXHAUSTED_MODELS.get(model, 0)
-    if until and until > time.time():
-        return True
-    if until:
-        _EXHAUSTED_MODELS.pop(model, None)
-    return False
-
-
 def is_quota_error(e) -> bool:
     s = str(e).lower()
     return "quota" in s or "429" in s or "resource_exhausted" in s
