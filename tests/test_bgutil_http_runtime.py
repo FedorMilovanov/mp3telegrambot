@@ -11,7 +11,13 @@ def _reset_owned_process(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(http_runtime, "_CLEANUP_REGISTERED", False)
 
 
-def test_reuses_version_matched_existing_http_provider(monkeypatch, tmp_path):
+def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
+    class OwnedProcess:
+        def poll(self):
+            return None
+
+    owned = OwnedProcess()
+    monkeypatch.setattr(http_runtime, "_OWNED_PROCESS", owned)
     monkeypatch.setattr(
         http_runtime,
         "_ping",
@@ -19,7 +25,7 @@ def test_reuses_version_matched_existing_http_provider(monkeypatch, tmp_path):
     )
 
     def unexpected_popen(*_args, **_kwargs):
-        raise AssertionError("matching live provider must be reused")
+        raise AssertionError("matching owned provider must be reused")
 
     monkeypatch.setattr(http_runtime.subprocess, "Popen", unexpected_popen)
     result = http_runtime.ensure_bgutil_http_runtime(
@@ -28,6 +34,20 @@ def test_reuses_version_matched_existing_http_provider(monkeypatch, tmp_path):
         expected_version="1.3.1",
     )
     assert result == http_runtime.DEFAULT_BASE_URL
+
+
+def test_matching_but_unowned_http_provider_fails_closed(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        http_runtime,
+        "_ping",
+        lambda *_args, **_kwargs: {"version": "1.3.1", "server_uptime": 12},
+    )
+    with pytest.raises(http_runtime.BgutilHttpRuntimeError, match="неуправляемым процессом"):
+        http_runtime.ensure_bgutil_http_runtime(
+            node_executable="node",
+            server_home=tmp_path,
+            expected_version="1.3.1",
+        )
 
 
 def test_existing_wrong_version_fails_closed(monkeypatch, tmp_path):
