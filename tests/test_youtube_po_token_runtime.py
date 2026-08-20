@@ -28,6 +28,16 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
 
     monkeypatch.setattr(po, "_require_bgutil_module", require_module)
     monkeypatch.setattr(po, "_require_node", lambda: "22.14.0")
+    monkeypatch.setattr(po.shutil, "which", lambda name: "node" if name == "node" else None)
+
+    def ensure_http(**kwargs) -> str:
+        assert kwargs["node_executable"] == "node"
+        assert kwargs["server_home"] == provider_home
+        assert kwargs["expected_version"] == po.BGUTIL_EXPECTED_VERSION
+        assert kwargs["base_url"] == po.BGUTIL_HTTP_BASE_URL
+        return po.BGUTIL_HTTP_BASE_URL
+
+    monkeypatch.setattr(po, "ensure_bgutil_http_runtime", ensure_http)
 
     runtime = po.require_youtube_po_token_runtime()
 
@@ -36,9 +46,11 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
     assert runtime.node_version == "22.14.0"
     assert runtime.provider_home == provider_home
     assert runtime.plugin_root == plugin_root
+    assert runtime.http_base_url == po.BGUTIL_HTTP_BASE_URL
     assert runtime.status_text() == (
         f"bgutil 1.3.1@{po.BGUTIL_EXPECTED_COMMIT[:8]}; "
-        "node=22.14.0; browserless=on; source-only=on"
+        f"node=22.14.0; http={po.BGUTIL_HTTP_BASE_URL}; "
+        "browserless=on; source-only=on"
     )
 
 
@@ -56,6 +68,7 @@ def _write_provider_tree(provider: Path, *, marker: str | None = None) -> Path:
     server = provider / "server"
     (server / "build").mkdir(parents=True)
     (server / "build" / "generate_once.js").write_text("// ok", encoding="utf-8")
+    (server / "build" / "main.js").write_text("// ok", encoding="utf-8")
     plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor"
     plugin.mkdir(parents=True)
     (plugin / "getpot_bgutil.py").write_text("# ok", encoding="utf-8")
@@ -112,6 +125,18 @@ def test_ytdlp_policy_rejects_wrong_youtube_client(tmp_path: Path) -> None:
         po._require_ytdlp_policy(policy)
 
 
+def test_ytdlp_policy_rejects_script_provider_route(tmp_path: Path) -> None:
+    policy = tmp_path / "yt-dlp.conf"
+    _write_valid_policy(policy)
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        + '--extractor-args "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="script provider"):
+        po._require_ytdlp_policy(policy)
+
+
 def test_ytdlp_policy_rejects_manual_token_or_cookie_source(tmp_path: Path) -> None:
     policy = tmp_path / "yt-dlp.conf"
     _write_valid_policy(policy)
@@ -139,6 +164,18 @@ def test_missing_exact_source_provider_fails_closed(
     monkeypatch.setattr(po, "DEFAULT_PROVIDER_HOME", tmp_path / "missing" / "server")
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="exact-source runtime"):
+        po._require_provider_build()
+
+
+def test_provider_build_requires_http_server_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    server = _write_provider_tree(tmp_path / "provider")
+    (server / "build" / "main.js").unlink()
+    monkeypatch.setattr(po, "DEFAULT_PROVIDER_HOME", server)
+
+    with pytest.raises(po.YouTubePoTokenRuntimeError, match="build/main.js"):
         po._require_provider_build()
 
 
@@ -282,7 +319,8 @@ def test_ytdlp_policy_restricts_plugins_to_exact_source_mweb_route() -> None:
     assert "--no-plugin-dirs" in config
     assert "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider" in config
     assert "youtube:player_client=mweb" in config
-    assert "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server" in config
+    assert f"youtubepot-bgutilhttp:base_url={po.BGUTIL_HTTP_BASE_URL}" in config
+    assert "youtubepot-bgutilscript:" not in lower
     assert "po_token=" not in lower
     assert "--cookies" not in lower
     assert "--cookies-from-browser" not in lower
@@ -300,7 +338,7 @@ def test_mweb_config_and_cookies_file_are_composed_together(
         "--no-plugin-dirs\n"
         "--plugin-dirs .runtime/bgutil-ytdlp-pot-provider\n"
         '--extractor-args "youtube:player_client=mweb"\n'
-        '--extractor-args "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server"\n',
+        f'--extractor-args "youtubepot-bgutilhttp:base_url={po.BGUTIL_HTTP_BASE_URL}"\n',
         encoding="utf-8",
     )
     cookies = tmp_path / "cookies.txt"
