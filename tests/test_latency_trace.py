@@ -10,9 +10,10 @@ import services.latency_trace as latency_trace
 from services.async_process import _latency_stage
 
 
-def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
+@pytest.mark.asyncio
+async def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
     caplog.set_level(logging.INFO, logger="services.latency_trace")
-    token = latency_trace.begin_latency_trace("rus")
+    handle = latency_trace.begin_latency_trace("rus")
     try:
         latency_trace.record_latency("gemini_inference_roundtrip", 1.25)
         latency_trace.record_latency("gemini_inference_roundtrip", 0.75)
@@ -20,7 +21,7 @@ def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
         trace_id = latency_trace.current_latency_trace_id()
         assert trace_id
     finally:
-        summary = latency_trace.finish_latency_trace(token, outcome="ok")
+        summary = latency_trace.finish_latency_trace(handle, outcome="ok")
 
     assert "mode=rus" in summary
     assert "outcome=ok" in summary
@@ -31,21 +32,25 @@ def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
 
 
 @pytest.mark.asyncio
-async def test_latency_trace_context_flows_into_child_task() -> None:
-    token = latency_trace.begin_latency_trace("shorts_max")
+async def test_latency_trace_does_not_leak_into_child_task() -> None:
+    handle = latency_trace.begin_latency_trace("shorts_max")
 
-    async def child() -> None:
+    async def child() -> str:
         await asyncio.sleep(0)
         latency_trace.record_latency("process_ffmpeg", 0.125)
+        return latency_trace.current_latency_trace_id()
 
     try:
-        await asyncio.create_task(child())
-        summary = latency_trace.finish_latency_trace(token, outcome="ok")
+        child_trace_id = await asyncio.create_task(child())
+        latency_trace.record_latency("process_yt_dlp", 0.25)
+        summary = latency_trace.finish_latency_trace(handle, outcome="ok")
     except Exception:
-        latency_trace.finish_latency_trace(token, outcome="error")
+        latency_trace.finish_latency_trace(handle, outcome="error")
         raise
 
-    assert "process_ffmpeg=0.12s/1" in summary or "process_ffmpeg=0.13s/1" in summary
+    assert child_trace_id == ""
+    assert "process_ffmpeg" not in summary
+    assert "process_yt_dlp=0.25s/1" in summary
 
 
 @pytest.mark.asyncio
