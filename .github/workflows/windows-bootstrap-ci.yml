@@ -5,6 +5,7 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "bot_new.py"
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
@@ -15,6 +16,7 @@ on:
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_direct_youtube_bootstrap.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_youtube_po_wheel_guard.py"
       - "tests/test_youtube_gvs_probe.py"
@@ -22,6 +24,7 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "bot_new.py"
       - "Start Bot.bat"
       - "requirements.txt"
       - "requirements-lock.txt"
@@ -32,6 +35,7 @@ on:
       - "tools/check_requirements_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bgutil_provider_setup.py"
+      - "tests/test_direct_youtube_bootstrap.py"
       - "tests/test_youtube_po_token_runtime.py"
       - "tests/test_youtube_po_wheel_guard.py"
       - "tests/test_youtube_gvs_probe.py"
@@ -44,7 +48,7 @@ concurrency:
 jobs:
   bootstrap-contract:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -55,14 +59,25 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install test runner
-        run: python -m pip install pytest
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install focused Python runtime
+        run: >-
+          python -m pip install
+          pytest==8.4.2
+          yt-dlp==2026.7.4
+          yt-dlp-ejs==0.8.0
 
       - name: Compile bootstrap and YouTube runtime contracts
         run: >-
           python -m py_compile
+          bot_new.py
           tests/test_start_bot_bootstrap.py
           tests/test_bgutil_provider_setup.py
+          tests/test_direct_youtube_bootstrap.py
           tests/test_youtube_po_token_runtime.py
           tests/test_youtube_po_wheel_guard.py
           tests/test_youtube_gvs_probe.py
@@ -76,6 +91,16 @@ jobs:
           python -m pytest -q
           tests/test_start_bot_bootstrap.py
           tests/test_bgutil_provider_setup.py
+          tests/test_direct_youtube_bootstrap.py
           tests/test_youtube_po_token_runtime.py
           tests/test_youtube_po_wheel_guard.py
           tests/test_youtube_gvs_probe.py
+
+      - name: Provision real exact-source bgutil runtime on Windows
+        run: python tools/ensure_bgutil_provider.py
+
+      - name: Prove reuse and production readiness offline
+        shell: pwsh
+        run: |
+          python tools/ensure_bgutil_provider.py
+          python -c "from services.youtube_po_token_runtime import require_youtube_po_token_runtime; runtime=require_youtube_po_token_runtime(); print(runtime.status_text())"
