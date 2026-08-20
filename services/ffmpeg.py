@@ -327,7 +327,7 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
             timeout=600, **kwargs,
         )
         if proc.returncode == 0:
-            logger.info("MP3 нормализован lossless (mp3gain, цель %.0f dB) ✅", target_db)
+            logger.info("MP3 нормализован lossless (mp3gain, цель %.0f dB)", target_db)
             return True
         logger.warning("mp3gain rc=%s: %s", proc.returncode, (proc.stderr or "")[-200:])
     except Exception as e:
