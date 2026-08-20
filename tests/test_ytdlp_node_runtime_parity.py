@@ -43,6 +43,22 @@ def test_ytdlp_base_args_clear_default_deno_before_enabling_node(
     assert "deno" not in args
 
 
+def test_ytdlp_parser_sees_only_node_after_runtime_reset() -> None:
+    from yt_dlp.options import parseOpts
+
+    _parser, opts, _urls = parseOpts(
+        overrideArguments=[
+            "--no-config",
+            "--no-js-runtimes",
+            "--js-runtimes",
+            "node",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        ]
+    )
+
+    assert opts.js_runtimes == ["node"]
+
+
 def test_invalid_node_does_not_fall_back_to_unvalidated_deno(monkeypatch) -> None:
     def _which(name: str):
         return {
