@@ -245,7 +245,14 @@ async def _stop_before_returning(
 def _latency_stage(argv: Sequence[str]) -> str:
     """Classify only the external tools that can dominate user-visible latency."""
     lowered = [str(value).casefold() for value in argv]
-    executable = Path(str(argv[0])).name.casefold() if argv else ""
+    # Do not use pathlib here. Some cross-platform ownership tests temporarily
+    # emulate os.name='nt' on Linux; pathlib.Path would then try to instantiate
+    # WindowsPath on a POSIX runner just for an observability label.
+    executable = (
+        str(argv[0]).replace("\\", "/").rsplit("/", 1)[-1].casefold()
+        if argv
+        else ""
+    )
     joined = " ".join(lowered)
     if "yt-dlp" in joined or "yt_dlp" in joined:
         return "process_yt_dlp"
