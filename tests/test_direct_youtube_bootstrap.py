@@ -23,10 +23,9 @@ def test_provisioner_readiness_and_ytdlp_policy_share_one_provider_identity() ->
 
     assert runtime.DEFAULT_PROVIDER_ROOT.resolve() == provisioner.PROVIDER_ROOT.resolve()
     assert runtime.DEFAULT_PROVIDER_HOME.resolve() == provisioner.SERVER_ROOT.resolve()
-    assert (
-        "youtubepot-bgutilscript:server_home=.runtime/bgutil-ytdlp-pot-provider/server"
-        in config
-    )
+    assert runtime.EXPECTED_BGUTIL_ROUTE in config
+    assert "youtubepot-bgutilscript:" not in config
+    assert runtime.BGUTIL_HTTP_BASE_URL == "http://127.0.0.1:4416"
 
 
 def test_provisioner_and_readiness_share_exact_provider_identity() -> None:
