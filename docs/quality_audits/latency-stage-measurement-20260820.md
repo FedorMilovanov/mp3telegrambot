@@ -8,9 +8,9 @@ This audit adds measurement only. It does not change model choice, thinking leve
 
 ## Measurements
 
-One request-scoped trace is started by the source-owned video dispatcher and inherited by async child tasks through `ContextVar`.
+One request-scoped trace is started by the source-owned video dispatcher and explicitly bound to that dispatcher `asyncio.Task` through a weak registry. The tracer deliberately does not use `ContextVar` or other inherited ambient request state; child tasks are not silently attributed to the parent trace.
 
-The final log line reports total wall time and aggregates only these shared-owner stages:
+The final log line reports total wall time and aggregates only these shared-owner stages when they execute in the owning request task:
 
 - `gemini_inference_roundtrip`: time inside an awaited GenerateContent-like SDK call owned by the capacity controller;
 - `gemini_files_roundtrip`: time inside an awaited Gemini Files API call;
@@ -22,9 +22,13 @@ The final log line reports total wall time and aggregates only these shared-owne
 
 The existing `gemini_runs` observability remains the source for model, thinking level, token usage, retry count, errors and per-Gemini-task duration. No duplicate telemetry database is added.
 
-## Important limit
+## Important limits
 
 The production calls use non-streaming `generate_content`. Therefore `gemini_inference_roundtrip` truthfully measures request start to complete response, but it cannot split Google's internal queue / time-to-first-token / generation phases. Switching to streaming just for measurement would change production behavior and is intentionally rejected.
+
+Because child tasks are not silently inherited, stage totals can intentionally under-account work that was spawned away from the owning dispatcher task. That is useful evidence rather than a reason to reintroduce ambient context: if total wall time is materially larger than measured stages, inspect the specific remaining owner and add one explicit timer there only if necessary.
+
+Stage elapsed totals are diagnostic aggregates, not a critical-path decomposition; if future explicitly bound stages overlap concurrently, their sum may exceed wall time.
 
 ## Reading one real RUS + one Factory run
 
