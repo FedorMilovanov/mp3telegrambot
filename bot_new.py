@@ -67,15 +67,23 @@ from services.youtube_po_token_runtime import (
     YouTubePoTokenRuntimeError,
     require_youtube_po_token_runtime,
 )
+from services.youtube_po_token_warmup import (
+    YouTubePoTokenWarmupError,
+    warm_youtube_po_token_provider,
+)
 
 try:
     _youtube_po_runtime = require_youtube_po_token_runtime()
-except YouTubePoTokenRuntimeError as exc:
+    _youtube_po_warmup = warm_youtube_po_token_provider(_youtube_po_runtime)
+except (YouTubePoTokenRuntimeError, YouTubePoTokenWarmupError) as exc:
     print(f"❌ YouTube maximum-quality runtime не готов: {exc}")
     print("   Качество не понижено: format 18/360p fallback не используется.")
     sys.exit(2)
 else:
-    print(f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}")
+    print(
+        f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}; "
+        f"{_youtube_po_warmup.status_text()}"
+    )
 
 from services import emit_service_bootstrap_diagnostics
 from services.bot_lifecycle import run_bot_process
