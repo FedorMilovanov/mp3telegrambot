@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-
 import pytest
 
 from services import bgutil_http_runtime as http_runtime
