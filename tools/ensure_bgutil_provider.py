@@ -8,6 +8,9 @@ upstream commit as the supply-chain identity.
 """
 from __future__ import annotations
 
+import asyncio
+import errno
+import math
 import os
 import shutil
 import subprocess
@@ -16,6 +19,8 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+
+from services.async_process import run_cancellable_process
 
 BGUTIL_VERSION = "1.3.1"
 BGUTIL_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
@@ -35,8 +40,8 @@ _GIT_TIMEOUT_SEC = 120
 _NPM_TIMEOUT_SEC = 360
 _BUILD_TIMEOUT_SEC = 180
 _SCRIPT_PROBE_TIMEOUT_SEC = 20
-_LOCK_WAIT_SEC = 90
-_LOCK_STALE_SEC = 900
+_LOCK_WAIT_SEC = 90.0
+_LOCK_POLL_SEC = 0.25
 
 
 class ProvisionError(RuntimeError):
@@ -57,29 +62,48 @@ def _platform_command(
     return command
 
 
+def _owned_run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout: float,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run one provisioning command while owning its complete process tree."""
+    effective = _platform_command(command)
+    try:
+        return asyncio.run(
+            run_cancellable_process(
+                effective,
+                cwd=cwd,
+                timeout=timeout,
+                text=True,
+                capture_output=capture_output,
+            )
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ProvisionError(
+            f"command timed out after {timeout:g}s: {' '.join(command)}"
+        ) from exc
+    except (OSError, RuntimeError) as exc:
+        raise ProvisionError(
+            f"command process tree could not be owned safely: {' '.join(command)}"
+        ) from exc
+
+
 def _run(
     command: list[str],
     *,
     cwd: Path | None = None,
     timeout: int = _BUILD_TIMEOUT_SEC,
 ) -> None:
-    effective = _platform_command(command)
-    try:
-        proc = subprocess.run(
-            effective,
-            cwd=str(cwd) if cwd else None,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ProvisionError(
-            f"command timed out after {timeout}s: {' '.join(command)}"
-        ) from exc
-    except OSError as exc:
-        raise ProvisionError(f"command could not start: {' '.join(command)}") from exc
+    """Run a build command with live stdio and complete process-tree ownership."""
+    proc = _owned_run(
+        command,
+        cwd=cwd,
+        timeout=timeout,
+        capture_output=False,
+    )
     if proc.returncode:
         raise ProvisionError(
             f"command failed ({proc.returncode}): {' '.join(command)}"
@@ -93,19 +117,11 @@ def _node_executable() -> str:
             "Node.js не найден. Exact-source YouTube PO Token runtime требует "
             "Node.js >=22."
         )
+    process = _owned_run([node, "--version"], timeout=5)
+    version = (process.stdout or process.stderr or "").strip().lstrip("v")
     try:
-        process = subprocess.run(
-            [node, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-            check=False,
-        )
-        version = (process.stdout or process.stderr or "").strip().lstrip("v")
         major = int(version.split(".", 1)[0])
-    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+    except (ValueError, IndexError) as exc:
         raise ProvisionError("Не удалось определить версию Node.js") from exc
     if process.returncode:
         raise ProvisionError("Не удалось запустить Node.js")
@@ -118,19 +134,11 @@ def _npm_executable() -> str:
     npm = shutil.which("npm") or shutil.which("npm.cmd")
     if not npm:
         raise ProvisionError("npm не найден; установи Node.js с npm")
+    process = _owned_run([npm, "--version"], timeout=10)
+    version = (process.stdout or process.stderr or "").strip()
     try:
-        process = subprocess.run(
-            _platform_command([npm, "--version"]),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-            check=False,
-        )
-        version = (process.stdout or process.stderr or "").strip()
         major = int(version.split(".", 1)[0])
-    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+    except (ValueError, IndexError) as exc:
         raise ProvisionError("Не удалось определить версию npm") from exc
     if process.returncode:
         raise ProvisionError("Не удалось запустить npm")
@@ -165,22 +173,11 @@ def _require_script_version(
     cwd: Path = SERVER_ROOT,
 ) -> str:
     """Offline smoke-test the compiled script and its installed dependency graph."""
-    try:
-        process = subprocess.run(
-            [node, str(script), "--version"],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=_SCRIPT_PROBE_TIMEOUT_SEC,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ProvisionError("bgutil runtime --version smoke test timed out") from exc
-    except OSError as exc:
-        raise ProvisionError("Не удалось запустить compiled bgutil runtime") from exc
-
+    process = _owned_run(
+        [node, str(script), "--version"],
+        cwd=cwd,
+        timeout=_SCRIPT_PROBE_TIMEOUT_SEC,
+    )
     stdout = (process.stdout or "").strip()
     stderr = (process.stderr or "").strip()
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
@@ -195,53 +192,109 @@ def _require_script_version(
     return actual
 
 
-@contextmanager
-def _provision_lock():
-    """Serialize rebuilds so two launchers cannot delete each other's staging tree."""
-    RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + _LOCK_WAIT_SEC
-    acquired = False
-    while not acquired:
+def _lock_contention_errno(exc: OSError) -> bool:
+    busy_codes = {
+        errno.EACCES,
+        errno.EAGAIN,
+        getattr(errno, "EDEADLK", errno.EACCES),
+    }
+    return exc.errno in busy_codes
+
+
+def _prepare_lock_file(fd: int) -> None:
+    """Ensure Windows has one byte available for its mandatory region lock."""
+    if os.fstat(fd).st_size == 0:
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, b"\0")
+    os.lseek(fd, 0, os.SEEK_SET)
+
+
+def _try_acquire_lock(fd: int) -> bool:
+    """Acquire one non-blocking kernel lock without stale-file heuristics."""
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
         try:
-            fd = os.open(str(PROVISION_LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            try:
-                age = time.time() - PROVISION_LOCK.stat().st_mtime
-            except OSError:
-                age = 0
-            if age > _LOCK_STALE_SEC:
-                try:
-                    PROVISION_LOCK.unlink()
-                except OSError:
-                    pass
-                continue
-            if time.monotonic() >= deadline:
-                raise ProvisionError(
-                    "Другая установка bgutil runtime не завершилась за 90 секунд"
-                )
-            time.sleep(0.25)
-            continue
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
         except OSError as exc:
-            raise ProvisionError("Не удалось создать bgutil provision lock") from exc
-        else:
-            try:
-                os.write(fd, f"pid={os.getpid()}\n".encode("ascii", errors="strict"))
-            except OSError as exc:
-                os.close(fd)
-                try:
-                    PROVISION_LOCK.unlink()
-                except OSError:
-                    pass
-                raise ProvisionError("Не удалось записать bgutil provision lock") from exc
-            else:
-                os.close(fd)
-                acquired = True
+            if _lock_contention_errno(exc):
+                return False
+            raise
+        return True
+
+    import fcntl
 
     try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if _lock_contention_errno(exc):
+            return False
+        raise
+    return True
+
+
+def _release_lock(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@contextmanager
+def _provision_lock(*, wait_seconds: float = _LOCK_WAIT_SEC):
+    """Serialize rebuilds with an OS-owned lock released on process death."""
+    try:
+        wait = float(wait_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ProvisionError("bgutil provision lock wait must be finite") from exc
+    if not math.isfinite(wait) or wait <= 0:
+        raise ProvisionError("bgutil provision lock wait must be finite and positive")
+
+    RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(PROVISION_LOCK), os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as exc:
+        raise ProvisionError("Не удалось открыть bgutil provision lock") from exc
+
+    acquired = False
+    try:
+        try:
+            _prepare_lock_file(fd)
+        except OSError as exc:
+            raise ProvisionError("Не удалось подготовить bgutil provision lock") from exc
+
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                acquired = _try_acquire_lock(fd)
+            except OSError as exc:
+                raise ProvisionError("Не удалось захватить bgutil provision lock") from exc
+            if acquired:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProvisionError(
+                    f"Другая установка bgutil runtime не завершилась за {wait:g} секунд"
+                )
+            time.sleep(min(_LOCK_POLL_SEC, remaining))
+
         yield
     finally:
+        if acquired:
+            try:
+                _release_lock(fd)
+            except OSError:
+                # Closing the descriptor below also releases an OS-held lock.
+                pass
         try:
-            PROVISION_LOCK.unlink()
+            os.close(fd)
         except OSError:
             pass
 
@@ -330,15 +383,10 @@ def ensure_bgutil_provider() -> Path:
         )
         try:
             _checkout_exact_source(git, staging)
-            head_process = subprocess.run(
+            head_process = _owned_run(
                 [git, "rev-parse", "HEAD"],
-                cwd=str(staging),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                cwd=staging,
                 timeout=15,
-                check=False,
             )
             head = (head_process.stdout or "").strip().lower()
             if head_process.returncode != 0 or head != BGUTIL_COMMIT:
