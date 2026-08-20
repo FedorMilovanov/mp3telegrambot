@@ -60,30 +60,23 @@ except ProvisionError as exc:
 
 # YouTube changed GVS authorization in 2026-08: maximum-quality media URLs may
 # require a video-bound Proof-of-Origin token. This is a production dependency,
-# not an optional quality downgrade. Validate the automatic provider before the
-# bot accepts work. Provisioning above repairs missing/partial local source; the
-# checks below independently reject config/provider drift.
+# not an optional quality downgrade. Validate the exact-source plugin and start
+# its persistent local HTTP provider before the bot accepts work. The old script
+# cold-path warmup is deliberately absent: production no longer executes the
+# per-yt-dlp generate_once.js provider route.
 from services.youtube_po_token_runtime import (
     YouTubePoTokenRuntimeError,
     require_youtube_po_token_runtime,
 )
-from services.youtube_po_token_warmup import (
-    YouTubePoTokenWarmupError,
-    warm_youtube_po_token_provider,
-)
 
 try:
     _youtube_po_runtime = require_youtube_po_token_runtime()
-    _youtube_po_warmup = warm_youtube_po_token_provider(_youtube_po_runtime)
-except (YouTubePoTokenRuntimeError, YouTubePoTokenWarmupError) as exc:
+except YouTubePoTokenRuntimeError as exc:
     print(f"❌ YouTube maximum-quality runtime не готов: {exc}")
     print("   Качество не понижено: format 18/360p fallback не используется.")
     sys.exit(2)
 else:
-    print(
-        f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}; "
-        f"{_youtube_po_warmup.status_text()}"
-    )
+    print(f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}")
 
 from services import emit_service_bootstrap_diagnostics
 from services.bot_lifecycle import run_bot_process
