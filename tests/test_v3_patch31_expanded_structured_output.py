@@ -43,11 +43,11 @@ def test_telegraph_pages_wires_expanded_structured_output_with_legacy_fallback()
     assert "retry legacy JSON config" in src
 
 
-def test_expanded_structured_output_preserves_quota_overload_fallback_semantics():
+def test_expanded_structured_output_routes_all_transients_to_shared_transport():
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "is_quota_error(_schema_err)" in src
     assert "is_overload_error(_schema_err)" in src
     assert "_is_internal_error(_schema_err)" in src
-    start = src.find("if response_schema is None or is_quota_error(_schema_err)")
-    end = src.find("logger.warning", start)
-    assert "raise" in src[start:end]
+    assert "capacity_control.is_timeout_error(_schema_err)" in src
+    transient_guard = src[src.find("except Exception as _schema_err:"):src.find("logger.warning", src.find("except Exception as _schema_err:"))]
+    assert "raise" in transient_guard
