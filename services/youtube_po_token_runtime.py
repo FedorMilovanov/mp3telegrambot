@@ -25,10 +25,7 @@ DEFAULT_PROVIDER_HOME = DEFAULT_PROVIDER_ROOT / "server"
 YTDLP_POLICY_FILE = PROJECT_ROOT / "yt-dlp.conf"
 EXPECTED_PLUGIN_DIR = ".runtime/bgutil-ytdlp-pot-provider"
 EXPECTED_YOUTUBE_ROUTE = "youtube:player_client=mweb"
-EXPECTED_BGUTIL_ROUTE = (
-    "youtubepot-bgutilscript:server_home="
-    ".runtime/bgutil-ytdlp-pot-provider/server"
-)
+EXPECTED_BGUTIL_ROUTE = "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4417"
 _PROVIDER_PROBE_TIMEOUT_SEC = 20
 _PROVIDER_PROBE_CODE = """\
 import importlib
@@ -65,7 +62,7 @@ class YouTubePoTokenRuntime:
     def status_text(self) -> str:
         return (
             f"bgutil {self.provider_version}@{self.provider_commit[:8]}; "
-            f"node={self.node_version}; browserless=on; source-only=on"
+            f"node={self.node_version}; browserless=http-loopback; source-only=on"
         )
 
 
@@ -135,7 +132,7 @@ def _option_values(tokens: list[str], option: str) -> list[str]:
 
 
 def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
-    """Prove that yt-dlp cannot fall back to global plugins or another client."""
+    """Prove that yt-dlp cannot fall back to global plugins or script mode."""
     tokens = _parse_ytdlp_policy(path)
     if tokens.count("--no-plugin-dirs") != 1:
         raise YouTubePoTokenRuntimeError(
@@ -165,20 +162,31 @@ def _require_ytdlp_policy(path: Path = YTDLP_POLICY_FILE) -> None:
     youtube_routes = [
         value for value in extractor_args if value.startswith("youtube:player_client=")
     ]
-    bgutil_routes = [
+    bgutil_http_routes = [
         value
         for value in extractor_args
-        if value.startswith("youtubepot-bgutilscript:server_home=")
+        if value.startswith("youtubepot-bgutilhttp:base_url=")
+    ]
+    bgutil_script_routes = [
+        value
+        for value in extractor_args
+        if value.startswith("youtubepot-bgutilscript:") or "server_home=" in value
     ]
     if youtube_routes != [EXPECTED_YOUTUBE_ROUTE]:
         raise YouTubePoTokenRuntimeError(
             "yt-dlp.conf должен использовать ровно youtube:player_client=mweb; "
             f"actual={youtube_routes or 'none'}"
         )
-    if bgutil_routes != [EXPECTED_BGUTIL_ROUTE]:
+    if bgutil_http_routes != [EXPECTED_BGUTIL_ROUTE]:
         raise YouTubePoTokenRuntimeError(
-            "yt-dlp.conf должен направлять bgutil script provider в pinned .runtime; "
-            f"actual={bgutil_routes or 'none'}"
+            "yt-dlp.conf должен направлять bgutil HTTP provider только в "
+            "repo-owned loopback endpoint; "
+            f"actual={bgutil_http_routes or 'none'}"
+        )
+    if bgutil_script_routes:
+        raise YouTubePoTokenRuntimeError(
+            "yt-dlp.conf не должен включать bgutil script/server_home fallback; "
+            "production PO Token route fail-closed через loopback HTTP provider"
         )
 
     forbidden = ("--cookies", "--cookies-from-browser")
@@ -319,7 +327,7 @@ def _require_node() -> str:
 
 
 def require_youtube_po_token_runtime() -> YouTubePoTokenRuntime:
-    """Require mweb + automatic browserless GVS token generation, fail closed."""
+    """Require mweb + exact-source HTTP provider policy before accepting work."""
     _require_no_legacy_browser_provider()
     _require_no_installed_bgutil_wheel()
     _require_ytdlp_policy()
