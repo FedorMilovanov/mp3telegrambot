@@ -8,15 +8,14 @@ more verbatim structured Russian transcript.
 """
 from __future__ import annotations
 
-import asyncio
 import html
 import logging
 import os
 import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional
+
+from services.async_process import run_cancellable_process
 
 logger = logging.getLogger(__name__)
 
@@ -213,17 +212,13 @@ async def download_youtube_transcript_text(
 
     Manual captions are attempted first. Auto captions are a fallback because
     they often contain rolling duplicates and ASR mistakes. Returns empty string
-    on any failure; never raises into the main pipeline.
+    on ordinary acquisition/parse failure; task cancellation still propagates.
     """
     if not _env_enabled("SYNOPSIS_YT_TRANSCRIPT", True):
         return ""
-    yt_dlp = shutil.which("yt-dlp")
-    if not yt_dlp:
-        # YTDLP_BASE_ARGS normally invokes module via python -m yt_dlp, so this
-        # branch is not fatal; import below still supplies the command.
-        pass
     try:
         from services.ffmpeg import YTDLP_BASE_ARGS
+
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
         for old in workdir.glob("yt_transcript*.vtt"):
@@ -246,19 +241,15 @@ async def download_youtube_transcript_text(
                 *YTDLP_BASE_ARGS,
                 "--skip-download",
                 "--write-auto-subs" if auto else "--write-subs",
-                "--sub-langs", sub_langs,
-                "--sub-format", "vtt/best",
-                "--output", str(stem) + ".%(ext)s",
+                "--sub-langs",
+                sub_langs,
+                "--sub-format",
+                "vtt/best",
+                "--output",
+                str(stem) + ".%(ext)s",
                 video_url,
             ]
 
-        def _run(cmd: list[str]):
-            kwargs = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
-            if os.name == "nt":
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            return subprocess.run(cmd, timeout=240, **kwargs)
-
-        loop = asyncio.get_running_loop()
         last_proc = None
         candidates: list[Path] = []
         source_kind = "manual"
@@ -269,23 +260,38 @@ async def download_youtube_transcript_text(
                 except OSError:
                     pass
             source_kind = "auto" if auto else "manual"
-            logger.info("[SynopsisTranscript] yt-dlp %s subtitles: langs=%s", source_kind, sub_langs)
-            last_proc = await loop.run_in_executor(None, lambda a=auto: _run(_cmd(auto=a)))
-            candidates = sorted(workdir.glob("yt_transcript*.vtt"), key=lambda p: p.stat().st_size, reverse=True)
+            logger.info(
+                "[SynopsisTranscript] yt-dlp %s subtitles: langs=%s",
+                source_kind,
+                sub_langs,
+            )
+            last_proc = await run_cancellable_process(
+                _cmd(auto=auto),
+                timeout=240,
+                text=True,
+            )
+            candidates = sorted(
+                workdir.glob("yt_transcript*.vtt"),
+                key=lambda p: p.stat().st_size,
+                reverse=True,
+            )
             if candidates:
                 break
 
         if not candidates:
             logger.info(
                 "[SynopsisTranscript] subtitles unavailable rc=%s: %s",
-                getattr(last_proc, "returncode", "?"), (getattr(last_proc, "stderr", "") or "")[-240:],
+                getattr(last_proc, "returncode", "?"),
+                (getattr(last_proc, "stderr", "") or "")[-240:],
             )
             return ""
         raw = candidates[0].read_text(encoding="utf-8", errors="replace")
         timed = vtt_to_timed_text(raw, max_chars=max_chars)
         if timed and expected_duration and expected_duration >= 600:
             try:
-                min_cov = float(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70")
+                min_cov = float(
+                    os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70"
+                )
             except ValueError:
                 min_cov = 0.70
             last_ts = timed_text_last_second(timed)
@@ -293,13 +299,19 @@ async def download_youtube_transcript_text(
             if coverage < max(0.1, min(min_cov, 0.98)):
                 logger.info(
                     "[SynopsisTranscript] rejected: coverage %.0f%% < %.0f%% (last=%ss duration=%ss)",
-                    coverage * 100, min_cov * 100, last_ts, int(expected_duration),
+                    coverage * 100,
+                    min_cov * 100,
+                    last_ts,
+                    int(expected_duration),
                 )
                 return ""
         if timed:
             logger.info(
                 "[SynopsisTranscript] transcript ready: %s lines, %s chars (%s, %s)",
-                timed.count("\n") + 1, len(timed), candidates[0].name, source_kind,
+                timed.count("\n") + 1,
+                len(timed),
+                candidates[0].name,
+                source_kind,
             )
         return timed
     except Exception as e:
