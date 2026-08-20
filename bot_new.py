@@ -28,6 +28,23 @@ if sys.version_info < (3, 11):
     print(f"   Текущая версия: {sys.version}")
     sys.exit(1)
 
+# requirements-lock.txt is the production Python dependency authority. Validate
+# the active interpreter before importing dotenv or any other third-party code,
+# so `python bot_new.py` cannot silently run against a stale/global environment
+# while Start Bot.bat uses the reviewed .venv lock.
+from services.python_runtime_lock import PythonRuntimeLockError, require_python_runtime_lock
+
+try:
+    require_python_runtime_lock()
+except PythonRuntimeLockError as exc:
+    print(f"❌ Python runtime не соответствует requirements-lock.txt: {exc}")
+    if os.name == "nt":
+        print('   Рекомендуемый запуск: & ".\\Start Bot.bat"')
+        print("   Прямой managed запуск: .\\.venv\\Scripts\\python.exe bot_new.py")
+    else:
+        print("   Установи requirements-lock.txt в активное окружение перед запуском.")
+    sys.exit(4)
+
 from dotenv import load_dotenv
 
 load_dotenv()
