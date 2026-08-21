@@ -84,3 +84,7 @@ node_modules/
 # Generated audit/repair machine reports (history is kept in docs/*.md)
 /docs/telegraph_dom_audit.json
 /docs/telegraph_repair_run.json
+
+# =============== .env backups (contain secrets) ===============
+.env.backup*
+.env.*.backup*
