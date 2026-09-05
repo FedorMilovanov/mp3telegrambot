@@ -3,8 +3,8 @@
 The historical suite is kept in ``livedub_qa_cases.py`` so its large body stays
 byte-for-byte stable. This collector replaces only obsolete assertions whose
 production contract intentionally changed: the old mode registry, old semantic
-fallbacks, the retired verbose LiveDub info presentation, and the retired
-Deno-first yt-dlp runtime policy.
+fallbacks, the retired verbose LiveDub info presentation, retired Gemini model
+contracts, and the retired Deno-first yt-dlp runtime policy.
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from handlers.mode_command import (
 
 _REPLACED_CASES = {
     "test_three_modes_defined",
+    "test_eng_fast_qa_mode_registered_and_wired",
+    "test_env_example_gemini_model_is_not_truncated",
     "test_livedub_light_model_default_fallbacks_are_alive_models",
     "test_livedub_info_card_module_contract",
     "test_livedub_info_youtube_description_contains_original_link",
@@ -52,6 +54,29 @@ def test_all_modes_defined() -> None:
         assert mode in MODE_DESCRIPTIONS
 
 
+def test_eng_fast_qa_mode_registered_and_wired_for_gemini_38() -> None:
+    mode = Path("handlers/mode_command.py").read_text(encoding="utf-8")
+    assert "eng_fast_qa" in mode
+    assert "⚡🔍 ENG Quick QA" in mode
+    pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "LIVEDUB_QUICK_QA_MAX_DURATION" in pipe
+    assert "LIVEDUB_QUICK_QA_MODEL" in pipe
+    assert "LIVEDUB_QUICK_QA_THINKING" in pipe
+    assert "LiveDubQuickQA" in pipe
+    assert "apply_qa_audio_fixes" in pipe
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
+    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.8-flash" in env
+    assert "LIVEDUB_QUICK_QA_THINKING=high" in env
+
+
+def test_env_example_gemini_38_model_is_not_truncated() -> None:
+    """Copying .env.example must select the exact production Gemini 3.8 ID."""
+    env = Path(".env.example").read_text(encoding="utf-8")
+    assert "GEMINI_MODEL=gemini-3.8-flash" in env
+    assert "gemini-3.8-flas\n" not in env
+
+
 def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> None:
     from services.livedub_info import get_light_model, get_light_model_fallbacks
 
@@ -60,7 +85,7 @@ def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> N
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash")
 
-    assert get_light_model() == "gemini-3.7-flash"
+    assert get_light_model() == "gemini-3.8-flash"
     assert get_light_model_fallbacks() == []
 
 
