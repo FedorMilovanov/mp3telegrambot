@@ -350,7 +350,7 @@ async def _run_long_qa(
             long_model = GEMINI_MODEL
         except Exception:
             long_model = model_name
-    long_thinking = os.getenv("LIVEDUB_LONG_QA_THINKING", "low").strip() or "low"
+    long_thinking = os.getenv("LIVEDUB_LONG_QA_THINKING", "high").strip() or "high"
     russian_source = Path(dub_audio_path) if dub_audio_path and Path(dub_audio_path).is_file() else Path(dub_video_path)
     srt_source = Path(dub_srt_path) if dub_srt_path and Path(dub_srt_path).is_file() else None
 

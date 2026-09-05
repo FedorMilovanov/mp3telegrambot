@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import os
+import runpy
+
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 """
 bot.py — совместимый launcher для MP3Bot.
@@ -12,18 +14,19 @@ bot.py — совместимый launcher для MP3Bot.
 
 Что делает этот файл:
     1. Печатает короткий баннер, чтобы было видно, какая версия запускается.
-    2. Импортирует и вызывает `main()` из `bot_new.py`, где уже выполнены:
-         • проверка версии Python;
-         • ранняя загрузка `.env` (load_dotenv) ДО тяжёлых импортов;
-         • ранняя валидация BOT_TOKEN / GEMINI_API_KEY с понятной ошибкой
-           вместо длинного traceback;
-         • запуск всей цепочки: core → services → handlers → pipelines.
+    2. Выполняет `bot_new.py` как `__main__`, сохраняя тот же bootstrap и lifecycle,
+       что и при прямом запуске `python bot_new.py`.
 
 Если хочется полностью убрать прослойку, можно запускать напрямую:
         python bot_new.py        # Linux / macOS
         py -3.13 bot_new.py      # Windows
 
 История исправлений (этот rev):
+    • FIX compatibility launcher: `bot_new.py` intentionally owns startup at
+      module scope and does not expose `main()`. The old wrapper imported a
+      non-existent `bot_new.main`, so `python bot.py` failed after performing
+      part of the startup bootstrap. The wrapper now executes `bot_new` with
+      `run_name="__main__"`, which is equivalent to the supported direct entry.
     • FIX VK-поиск: ранее обработка items была ошибочно завёрнута в
       `if len(items) == 0:`, поэтому видео, найденное в VK (items=1+),
       молча превращалось в None. Видно по логам:
@@ -42,8 +45,6 @@ bot.py — совместимый launcher для MP3Bot.
       _SCRIPTURE_CHAIN_RE на уровне модуля.
       См. converters/md_telegraph.py.
 """
-
-
 
 
 _BANNER = (
@@ -67,12 +68,9 @@ def _print_banner() -> None:
 
 
 def main() -> None:
-    """Тонкая обёртка: делегирует запуск в bot_new.main()."""
+    """Execute the supported bot_new entrypoint with direct-launch semantics."""
     _print_banner()
-    # Импорт здесь, а не на уровне модуля: если кто-то делает
-    # `from bot import main` — баннер не должен печататься повторно.
-    from bot_new import main as _entry
-    _entry()
+    runpy.run_module("bot_new", run_name="__main__")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ on:
     branches: ["main"]
     paths:
       - ".env.example"
+      - "bot.py"
       - "core/database.py"
       - "core/globals.py"
       - "scripts/migrate-gemini-38.ps1"
@@ -15,18 +16,26 @@ on:
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
       - "services/livedub_info.py"
+      - "services/livedub_long_qa.py"
       - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
+      - "services/shorts_factory_candidates.py"
+      - "services/shorts_factory_capacity_runtime.py"
+      - "tests/test_bot_compat_launcher.py"
+      - "tests/test_gemini_38_env_contract.py"
       - "tests/test_gemini_max_quality.py"
       - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
+      - "tests/test_livedub_long_qa.py"
       - "tests/test_livedub_quality_runtime.py"
+      - "tests/test_shorts_factory_candidates.py"
       - ".github/workflows/gemini-qa-policy.yml"
   push:
     branches: ["main"]
     paths:
       - ".env.example"
+      - "bot.py"
       - "core/database.py"
       - "core/globals.py"
       - "scripts/migrate-gemini-38.ps1"
@@ -36,13 +45,20 @@ on:
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
       - "services/livedub_info.py"
+      - "services/livedub_long_qa.py"
       - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
+      - "services/shorts_factory_candidates.py"
+      - "services/shorts_factory_capacity_runtime.py"
+      - "tests/test_bot_compat_launcher.py"
+      - "tests/test_gemini_38_env_contract.py"
       - "tests/test_gemini_max_quality.py"
       - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
+      - "tests/test_livedub_long_qa.py"
       - "tests/test_livedub_quality_runtime.py"
+      - "tests/test_shorts_factory_candidates.py"
       - ".github/workflows/gemini-qa-policy.yml"
 
 concurrency:
@@ -69,33 +85,50 @@ jobs:
 
       - name: Compile policy and bootstrap
         run: |
+          python -m py_compile bot.py
           python -m py_compile core/database.py
           python -m py_compile core/globals.py
           python -m py_compile services/gemini_max_quality.py
           python -m py_compile services/gemini_model_status.py
           python -m py_compile services/gemini_qa_policy.py
           python -m py_compile services/livedub_info.py
+          python -m py_compile services/livedub_long_qa.py
           python -m py_compile services/livedub_publication_core.py
           python -m py_compile services/livedub_quality_runtime.py
           python -m py_compile services/pre_main_policy.py
           python -m py_compile services/runtime_manifest.py
+          python -m py_compile services/shorts_factory_candidates.py
+          python -m py_compile services/shorts_factory_capacity_runtime.py
           python -m py_compile services/__init__.py
 
       - name: Run policy regression tests
-        run: python -m pytest -q tests/test_gemini_qa_policy.py tests/test_gemini_model_status.py
+        run: >-
+          python -m pytest -q
+          tests/test_gemini_qa_policy.py
+          tests/test_gemini_model_status.py
+          tests/test_gemini_38_env_contract.py
+          tests/test_livedub_long_qa.py
+          tests/test_bot_compat_launcher.py
 
       - name: Ruff fatal checks
         run: >-
           python -m ruff check --select E9,F63,F7,F82
+          bot.py
           core/database.py
           core/globals.py
           services/gemini_max_quality.py
           services/gemini_model_status.py
           services/gemini_qa_policy.py
           services/livedub_info.py
+          services/livedub_long_qa.py
           services/livedub_publication_core.py
           services/livedub_quality_runtime.py
           services/pre_main_policy.py
           services/runtime_manifest.py
+          services/shorts_factory_candidates.py
+          services/shorts_factory_capacity_runtime.py
+          tests/test_bot_compat_launcher.py
+          tests/test_gemini_38_env_contract.py
           tests/test_gemini_qa_policy.py
           tests/test_gemini_model_status.py
+          tests/test_livedub_long_qa.py

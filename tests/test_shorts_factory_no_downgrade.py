@@ -10,21 +10,22 @@ import services.shorts_factory_timing as timing
 from services.shorts_transcription import factory_subtitle_profile
 
 
-def test_factory_model_floor_accepts_only_gemini_37_flash(monkeypatch):
+def test_factory_model_floor_accepts_only_gemini_38_flash(monkeypatch):
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
-    assert candidates.DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.7-flash"
-    assert candidates.shorts_factory_model() == "gemini-3.7-flash"
+    assert candidates.DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.8-flash"
+    assert candidates.shorts_factory_model() == "gemini-3.8-flash"
 
     for model in (
+        "gemini-3.7-flash",
         "gemini-3.1-pro-preview",
         "gemini-3.5-flash",
         "gemini-3.7-flash-lite",
         "gemini-3.6-pro",
         "gemini-pro",
-        "my-gemini-3.7-flash",
+        "my-gemini-3.8-flash",
     ):
         monkeypatch.setenv("SHORTS_FACTORY_MODEL", model)
-        with pytest.raises(RuntimeError, match="requires gemini-3.7-flash"):
+        with pytest.raises(RuntimeError, match="requires gemini-3.8-flash"):
             candidates.shorts_factory_model()
 
 

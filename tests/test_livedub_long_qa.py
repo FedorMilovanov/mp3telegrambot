@@ -116,3 +116,10 @@ def test_missing_original_confidence_marker_is_preserved_separately():
     assert combined is not None
     assert combined["_low_confidence"] is True
     assert "_segmented_partial" not in combined
+
+
+def test_long_qa_source_default_is_high_thinking():
+    source = Path("services/livedub_long_qa.py").read_text(encoding="utf-8")
+
+    assert 'os.getenv("LIVEDUB_LONG_QA_THINKING", "high").strip() or "high"' in source
+    assert 'os.getenv("LIVEDUB_LONG_QA_THINKING", "low")' not in source
