@@ -23,6 +23,19 @@ def test_env_example_matches_gemini_38_quality_contract() -> None:
     assert "LOCAL_BOT_API_GETME_TIMEOUT_SEC" not in env
 
 
+def test_factory_source_matches_gemini_38_quality_contract() -> None:
+    factory = Path("services/shorts_factory_candidates.py").read_text(encoding="utf-8")
+    runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.8-flash"' in factory
+    assert "SHORTS FACTORY MAX requires gemini-3.8-flash" in factory
+    assert "gemini-3.7-flash" not in factory
+    assert "Gemini 3.7" not in runtime
+    assert "Gemini 3.8" in runtime
+
+
 def test_livedub_env_tests_enforce_current_quality_policy() -> None:
     tests = Path("tests/livedub_qa_cases.py").read_text(encoding="utf-8")
 
