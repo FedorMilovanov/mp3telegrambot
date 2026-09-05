@@ -5,26 +5,44 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - ".env.example"
+      - "core/database.py"
+      - "core/globals.py"
+      - "scripts/migrate-gemini-38.ps1"
       - "services/__init__.py"
       - "services/pre_main_policy.py"
       - "services/gemini_max_quality.py"
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/livedub_info.py"
+      - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
+      - "tests/test_gemini_max_quality.py"
+      - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
+      - "tests/test_livedub_quality_runtime.py"
       - ".github/workflows/gemini-qa-policy.yml"
   push:
     branches: ["main"]
     paths:
+      - ".env.example"
+      - "core/database.py"
+      - "core/globals.py"
+      - "scripts/migrate-gemini-38.ps1"
       - "services/__init__.py"
       - "services/pre_main_policy.py"
       - "services/gemini_max_quality.py"
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/livedub_info.py"
+      - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
+      - "tests/test_gemini_max_quality.py"
+      - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
+      - "tests/test_livedub_quality_runtime.py"
       - ".github/workflows/gemini-qa-policy.yml"
 
 concurrency:
@@ -51,24 +69,33 @@ jobs:
 
       - name: Compile policy and bootstrap
         run: |
+          python -m py_compile core/database.py
+          python -m py_compile core/globals.py
           python -m py_compile services/gemini_max_quality.py
           python -m py_compile services/gemini_model_status.py
           python -m py_compile services/gemini_qa_policy.py
+          python -m py_compile services/livedub_info.py
+          python -m py_compile services/livedub_publication_core.py
           python -m py_compile services/livedub_quality_runtime.py
           python -m py_compile services/pre_main_policy.py
           python -m py_compile services/runtime_manifest.py
           python -m py_compile services/__init__.py
 
       - name: Run policy regression tests
-        run: python -m pytest -q tests/test_gemini_qa_policy.py
+        run: python -m pytest -q tests/test_gemini_qa_policy.py tests/test_gemini_model_status.py
 
       - name: Ruff fatal checks
         run: >-
           python -m ruff check --select E9,F63,F7,F82
+          core/database.py
+          core/globals.py
           services/gemini_max_quality.py
           services/gemini_model_status.py
           services/gemini_qa_policy.py
+          services/livedub_info.py
+          services/livedub_publication_core.py
           services/livedub_quality_runtime.py
           services/pre_main_policy.py
           services/runtime_manifest.py
           tests/test_gemini_qa_policy.py
+          tests/test_gemini_model_status.py
