@@ -11,7 +11,7 @@ import os
 import socket
 from urllib.parse import urlsplit, urlunsplit
 
-_PRIMARY_MODEL = "gemini-3.7-flash"
+_PRIMARY_MODEL = "gemini-3.8-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
