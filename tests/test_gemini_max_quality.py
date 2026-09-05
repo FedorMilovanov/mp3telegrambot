@@ -5,7 +5,7 @@ from services import gemini_max_quality as quality
 from services import shorts_factory_capacity_runtime as capacity_runtime
 
 
-def test_heavy_quality_policy_forces_37_high_and_large_v3(monkeypatch):
+def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch):
     for name in (
         "GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL",
         "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
@@ -22,7 +22,7 @@ def test_heavy_quality_policy_forces_37_high_and_large_v3(monkeypatch):
         "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
         "SHORTS_FACTORY_MODEL",
     ):
-        assert os.environ[name] == "gemini-3.7-flash"
+        assert os.environ[name] == "gemini-3.8-flash"
     for name in (
         "GEMINI_FORCE_THINKING_LEVEL", "LIVEDUB_QUICK_QA_THINKING",
         "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING", "LIVEDUB_INFO_THINKING",
@@ -30,19 +30,19 @@ def test_heavy_quality_policy_forces_37_high_and_large_v3(monkeypatch):
         assert os.environ[name] == "high"
     for name in ("WHISPER_MODEL", "WHISPER_ENG_SUBTITLES_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"):
         assert os.environ[name] == "large-v3"
-    assert "semantic=gemini-3.7-flash/high" in diagnostic
+    assert "semantic=gemini-3.8-flash/high" in diagnostic
 
 
-def test_model_aware_thinking_preserves_supported_37_recovery_levels():
+def test_model_aware_thinking_preserves_supported_38_recovery_levels():
     from core.globals import _effective_thinking_level
 
-    # 3.7 supports low/medium/high. Production defaults remain HIGH, but an
+    # 3.8 supports low/medium/high. Production defaults remain HIGH, but an
     # explicit LOW recovery must stay LOW instead of being silently promoted.
-    assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
-    assert _effective_thinking_level("gemini-3.7-flash", "medium") == "medium"
-    assert _effective_thinking_level("gemini-3.7-flash", "high") == "high"
-    # 3.7 does not support minimal; fail safely back to the production default.
-    assert _effective_thinking_level("gemini-3.7-flash", "minimal") == "high"
+    assert _effective_thinking_level("gemini-3.8-flash", "low") == "low"
+    assert _effective_thinking_level("gemini-3.8-flash", "medium") == "medium"
+    assert _effective_thinking_level("gemini-3.8-flash", "high") == "high"
+    # 3.8 does not support minimal; fail safely back to the production default.
+    assert _effective_thinking_level("gemini-3.8-flash", "minimal") == "high"
     assert _effective_thinking_level("gemini-3.5-flash-lite", "high") == "minimal"
     assert _effective_thinking_level("gemini-3.5-flash", "high") == "minimal"
     assert _effective_thinking_level("gemini-custom-audio-model", "medium") == "medium"
@@ -59,9 +59,9 @@ def test_utility_work_uses_lite_only_without_fallback():
     assert "gemini-3.1" not in src and "gemini-2.5" not in src
 
 
-def test_publication_metadata_directly_owns_37_high_quality_route():
+def test_publication_metadata_directly_owns_38_high_quality_route():
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
-    assert '_PUBLICATION_MODEL = "gemini-3.7-flash"' in publication
+    assert '_PUBLICATION_MODEL = "gemini-3.8-flash"' in publication
     assert 'thinking_level="high"' in publication
     assert "GEMINI_LIGHT_MODEL" not in publication
     assert "temperature=" not in publication
@@ -108,10 +108,10 @@ def test_pre_main_manifest_owns_quality_before_core_clients():
     assert "import core.globals" not in owner
 
 
-def test_env_migration_preserves_semantic_37_utility_lite_split():
-    src = Path("scripts/migrate-gemini-37.ps1").read_text(encoding="utf-8")
-    assert 'GEMINI_MODEL" -Value "gemini-3.7-flash"' in src
-    assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.7-flash"' in src
+def test_env_migration_preserves_semantic_38_utility_lite_split():
+    src = Path("scripts/migrate-gemini-38.ps1").read_text(encoding="utf-8")
+    assert 'GEMINI_MODEL" -Value "gemini-3.8-flash"' in src
+    assert 'SHORTS_FACTORY_MODEL" -Value "gemini-3.8-flash"' in src
     assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
     assert 'LIVEDUB_QUICK_QA_THINKING" -Value "high"' in src
     assert 'LIVEDUB_LONG_QA_THINKING" -Value "high"' in src
