@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-_HEAVY_MODEL = "gemini-3.7-flash"
+_HEAVY_MODEL = "gemini-3.8-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 _REQUIRED_WHISPER_MODEL = "large-v3"
 
@@ -54,7 +54,7 @@ def configure_max_quality_env() -> str:
     return (
         f"semantic={_HEAVY_MODEL}/high; "
         f"utility={_LIGHT_MODEL}/minimal/no-fallback; "
-        "semantic_model_fallbacks=none; publication=3.7/high; "
+        "semantic_model_fallbacks=none; publication=3.8/high; "
         f"whisper={_REQUIRED_WHISPER_MODEL}"
     )
 
