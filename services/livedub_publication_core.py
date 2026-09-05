@@ -2,7 +2,7 @@
 """Bounded, quality-first publication-card builder for LiveDub.
 
 Publication title, author and description are user-visible semantic output. This
-module therefore owns its exact Gemini 3.7 Flash/HIGH semantic contract while
+module therefore owns its exact Gemini 3.8 Flash/HIGH semantic contract while
 delegating transport capacity to the shared Gemini capacity owner. A
 deterministic metadata fallback remains available when Gemini is unavailable.
 """
@@ -22,7 +22,7 @@ from services import gemini_capacity_control as capacity_control
 logger = logging.getLogger(__name__)
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _INFLIGHT: dict[str, asyncio.Task] = {}
-_PUBLICATION_MODEL = "gemini-3.7-flash"
+_PUBLICATION_MODEL = "gemini-3.8-flash"
 
 _RU_LOWER_WORDS = {
     "а", "без", "близ", "бы", "в", "вместо", "вне", "во", "вокруг", "для",
@@ -212,7 +212,7 @@ def publication_models() -> list[str]:
 
 
 def _quality_config(model_name: str):
-    """Build a sampling-free Gemini 3.7/HIGH structured-output config."""
+    """Build a sampling-free Gemini 3.8/HIGH structured-output config."""
     try:
         from core.globals import make_text_config_smart
 
