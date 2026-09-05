@@ -7,7 +7,10 @@ on:
     paths:
       - "services/__init__.py"
       - "services/pre_main_policy.py"
+      - "services/gemini_max_quality.py"
+      - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
       - "tests/test_gemini_qa_policy.py"
       - ".github/workflows/gemini-qa-policy.yml"
@@ -16,7 +19,10 @@ on:
     paths:
       - "services/__init__.py"
       - "services/pre_main_policy.py"
+      - "services/gemini_max_quality.py"
+      - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
       - "tests/test_gemini_qa_policy.py"
       - ".github/workflows/gemini-qa-policy.yml"
@@ -45,7 +51,10 @@ jobs:
 
       - name: Compile policy and bootstrap
         run: |
+          python -m py_compile services/gemini_max_quality.py
+          python -m py_compile services/gemini_model_status.py
           python -m py_compile services/gemini_qa_policy.py
+          python -m py_compile services/livedub_quality_runtime.py
           python -m py_compile services/pre_main_policy.py
           python -m py_compile services/runtime_manifest.py
           python -m py_compile services/__init__.py
@@ -56,7 +65,10 @@ jobs:
       - name: Ruff fatal checks
         run: >-
           python -m ruff check --select E9,F63,F7,F82
+          services/gemini_max_quality.py
+          services/gemini_model_status.py
           services/gemini_qa_policy.py
+          services/livedub_quality_runtime.py
           services/pre_main_policy.py
           services/runtime_manifest.py
           tests/test_gemini_qa_policy.py
