@@ -3,7 +3,7 @@
 
 These fields are user-visible semantic output: Telegram/YouTube copy, compact
 meaning summaries, theological terms and Scripture references. The module owns
-the exact Gemini 3.7/HIGH semantic route but delegates transport/retry/capacity
+the exact Gemini 3.8/HIGH semantic route but delegates transport/retry/capacity
 to core.globals.gemini_generate, so it cannot start an independent retry storm.
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ from services.livedub_info_evidence import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INFO_MODEL = "gemini-3.7-flash"
+DEFAULT_INFO_MODEL = "gemini-3.8-flash"
 DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 
 

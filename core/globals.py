@@ -238,10 +238,10 @@ def _build_thinking_config(level: str = "high"):
 def _effective_thinking_level(model_name: str, requested: str) -> str:
     model = str(model_name or "").strip().casefold()
     level = str(requested or "high").strip().lower() or "high"
-    if model == "gemini-3.7-flash":
-        # Gemini 3.7 supports low/medium/high and rejects minimal. Preserve the
+    if model == "gemini-3.8-flash":
+        # Gemini 3.8 supports low/medium/high and rejects minimal. Preserve the
         # HIGH production default, but do not silently turn an explicit LOW
-        # recovery request back into HIGH (the old behavior defeated recovery).
+        # recovery request back into HIGH.
         return level if level in {"low", "medium", "high"} else "high"
     if model in {"gemini-3.5-flash-lite", "gemini-3.5-flash"}:
         return "minimal"
@@ -333,8 +333,8 @@ def make_text_config_smart(
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
     model_name = (
-        os.getenv("GEMINI_MODEL", "gemini-3.7-flash").strip()
-        or "gemini-3.7-flash"
+        os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+        or "gemini-3.8-flash"
     )
     return make_text_config_smart(
         temperature=temperature,

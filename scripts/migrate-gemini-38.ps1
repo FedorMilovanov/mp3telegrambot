@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
 }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backup = "$EnvPath.bak-gemini37-$stamp"
+$backup = "$EnvPath.bak-gemini38-$stamp"
 Copy-Item -LiteralPath $EnvPath -Destination $backup -Force
 
 $lines = [System.Collections.Generic.List[string]]::new()
@@ -57,23 +57,23 @@ function Remove-EnvValue {
     }
 }
 
-# Project max-quality semantic route: Gemini 3.7 Flash + HIGH thinking.
-# Never silently downgrade Factory/analysis/translation QA to 3.6/3.5/Lite.
-Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.7-flash"
-Set-EnvValue -Name "GEMINI_MAX_MODEL" -Value "gemini-3.7-flash"
+# Project max-quality semantic route: Gemini 3.8 Flash + HIGH thinking.
+# Never silently downgrade Factory/analysis/translation QA to 3.7/3.6/3.5/Lite.
+Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.8-flash"
+Set-EnvValue -Name "GEMINI_MAX_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "GEMINI_FORCE_THINKING_LEVEL" -Value "high"
 Set-EnvValue -Name "GEMINI_SCHEMA_THINKING" -Value "1"
 
-Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.7-flash"
+Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value ""
 Set-EnvValue -Name "LIVEDUB_INFO_THINKING" -Value "high"
-Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.7-flash"
-Set-EnvValue -Name "LIVEDUB_LONG_QA_MODEL" -Value "gemini-3.7-flash"
-Set-EnvValue -Name "LIVEDUB_QA_VERIFY_MODEL" -Value "gemini-3.7-flash"
+Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.8-flash"
+Set-EnvValue -Name "LIVEDUB_LONG_QA_MODEL" -Value "gemini-3.8-flash"
+Set-EnvValue -Name "LIVEDUB_QA_VERIFY_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_LONG_QA_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_QA_VERIFY_THINKING" -Value "high"
-Set-EnvValue -Name "SHORTS_FACTORY_MODEL" -Value "gemini-3.7-flash"
+Set-EnvValue -Name "SHORTS_FACTORY_MODEL" -Value "gemini-3.8-flash"
 
 Set-EnvValue -Name "SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS" -Value "128"
 Set-EnvValue -Name "SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE" -Value "48000"
@@ -112,8 +112,8 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 $tier = if ($Priority) { "priority" } else { "standard" }
 $ttsFallback = if ($NoTtsFallback) { "off (live voices only)" } else { "on" }
-Write-Host "✅ .env обновлён: Gemini 3.7 / HIGH / без semantic downgrade" -ForegroundColor Green
-Write-Host "   Heavy: gemini-3.7-flash / thinking=high"
+Write-Host "✅ .env обновлён: Gemini 3.8 / HIGH / без semantic downgrade" -ForegroundColor Green
+Write-Host "   Heavy: gemini-3.8-flash / thinking=high"
 Write-Host "   Factory Gemini audio: AAC mono 128 kbps / 48 kHz"
 Write-Host "   Service tier: $tier"
 Write-Host "   Light utility only: gemini-3.5-flash-lite / no fallback"

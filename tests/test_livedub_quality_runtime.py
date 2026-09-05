@@ -27,10 +27,10 @@ def test_pre_main_manifest_owns_policy_before_core_clients() -> None:
     assert "configure_gemini_network()" in owner
 
 
-def test_production_policy_keeps_semantic_work_on_37_high() -> None:
+def test_production_policy_keeps_semantic_work_on_38_high() -> None:
     runtime.configure_gemini_policy()
     for name in ("GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL", "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL"):
-        assert runtime.os.environ[name] == "gemini-3.7-flash"
+        assert runtime.os.environ[name] == "gemini-3.8-flash"
     for name in ("GEMINI_FORCE_THINKING_LEVEL", "LIVEDUB_INFO_THINKING", "LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING"):
         assert runtime.os.environ[name] == "high"
     assert runtime.os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
@@ -46,9 +46,9 @@ def test_utility_route_is_lite_only_without_semantic_fallback() -> None:
     assert "gemini-2.5" not in _max_policy_source()
 
 
-def test_user_visible_publication_uses_37_high_not_utility() -> None:
+def test_user_visible_publication_uses_38_high_not_utility() -> None:
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
-    assert '_PUBLICATION_MODEL = "gemini-3.7-flash"' in publication
+    assert '_PUBLICATION_MODEL = "gemini-3.8-flash"' in publication
     assert 'thinking_level="high"' in publication
     assert "GEMINI_LIGHT_MODEL" not in publication
 
@@ -57,7 +57,7 @@ def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
     import services.livedub_info as info
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
-    assert info.get_light_model() == "gemini-3.7-flash"
+    assert info.get_light_model() == "gemini-3.8-flash"
     assert info.get_light_model_fallbacks() == []
 
 
@@ -75,14 +75,14 @@ def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monke
         def __init__(self, name, fail): self.aio = SimpleNamespace(models=Models(name, fail))
     clients = [Client("first", True), Client("second", False)]
     monkeypatch.setattr(info, "GEMINI_CLIENTS", clients)
-    monkeypatch.setattr(info, "get_light_model", lambda: "gemini-3.7-flash")
+    monkeypatch.setattr(info, "get_light_model", lambda: "gemini-3.8-flash")
     monkeypatch.setattr(info, "get_light_model_fallbacks", lambda: [])
     monkeypatch.setattr(info, "make_text_config_smart", lambda **kwargs: kwargs)
     card = asyncio.run(info.build_livedub_info_card("Title", force=True))
     assert card and calls == [
-        ("first", "gemini-3.7-flash", "high"),
-        ("first", "gemini-3.7-flash", "high"),
-        ("second", "gemini-3.7-flash", "high"),
+        ("first", "gemini-3.8-flash", "high"),
+        ("first", "gemini-3.8-flash", "high"),
+        ("second", "gemini-3.8-flash", "high"),
     ]
     assert info.GEMINI_CLIENTS is clients
 
