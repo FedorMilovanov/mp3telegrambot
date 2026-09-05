@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-_PRIMARY_MODEL = "gemini-3.7-flash"
+_PRIMARY_MODEL = "gemini-3.8-flash"
 _DISALLOWED_LEGACY_QA_MODEL = "gemini-3.5-flash"
 _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
@@ -37,7 +37,7 @@ _RETIRED_OR_WEAK_QA_MODELS = {
     "gemini-2.0-flash-lite",
     "gemini-2.0-flash",
     # Lower-tier/stale models are migration inputs only, never QA fallbacks.
-    # False positives here can trigger auto-muting, so they are upgraded to 3.7.
+    # False positives here can trigger auto-muting, so they are upgraded to 3.8.
     _DISALLOWED_LEGACY_QA_MODEL,
     _LIGHT_MODEL,
 }
