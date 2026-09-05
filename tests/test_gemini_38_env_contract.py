@@ -6,6 +6,7 @@ def test_env_example_matches_gemini_38_quality_contract() -> None:
 
     assert "GEMINI_MODEL=gemini-3.8-flash" in env
     assert "# GEMINI_MAX_MODEL=gemini-3.8-flash" in env
+    assert "# SHORTS_FACTORY_MODEL=gemini-3.8-flash" in env
     assert "# LIVEDUB_INFO_MODEL=gemini-3.8-flash" in env
     assert "# LIVEDUB_QUICK_QA_MODEL=gemini-3.8-flash" in env
     assert "# LIVEDUB_LONG_QA_MODEL=gemini-3.8-flash" in env
