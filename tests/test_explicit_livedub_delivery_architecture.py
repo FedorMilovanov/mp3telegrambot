@@ -82,16 +82,16 @@ def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
     assert "refusing a partial auto-fix" in fix
 
 
-def test_gemini_semantic_config_preserves_37_quality_and_explicit_recovery_levels():
+def test_gemini_semantic_config_preserves_38_quality_and_explicit_recovery_levels():
     from core.globals import _effective_thinking_level
 
-    # Production semantic callers still explicitly request HIGH. Gemini 3.7
-    # also supports LOW/MEDIUM, so bounded recovery must not be silently
-    # promoted back to HIGH.
-    assert _effective_thinking_level("gemini-3.7-flash", "high") == "high"
-    assert _effective_thinking_level("gemini-3.7-flash", "medium") == "medium"
-    assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
-    assert _effective_thinking_level("gemini-3.7-flash", "minimal") == "high"
+    # Production semantic callers explicitly request HIGH. Gemini 3.8 also
+    # supports LOW/MEDIUM, so bounded recovery must not be silently promoted
+    # back to HIGH. MINIMAL is unsupported and must fail safely to HIGH.
+    assert _effective_thinking_level("gemini-3.8-flash", "high") == "high"
+    assert _effective_thinking_level("gemini-3.8-flash", "medium") == "medium"
+    assert _effective_thinking_level("gemini-3.8-flash", "low") == "low"
+    assert _effective_thinking_level("gemini-3.8-flash", "minimal") == "high"
 
     src = _source("core/globals.py")
     legacy = _function_source(src, "make_text_config")
