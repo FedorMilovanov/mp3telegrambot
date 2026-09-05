@@ -41,9 +41,9 @@ def test_missing_and_weak_explicit_qa_models_are_upgraded(monkeypatch):
 
     diagnostic = policy.configure_gemini_qa_policy()
 
-    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.7-flash"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.7-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.7-flash"
+    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.8-flash"
     assert "migrated=LIVEDUB_QUICK_QA_MODEL,LIVEDUB_LONG_QA_MODEL,LIVEDUB_QA_VERIFY_MODEL" in diagnostic
 
 
@@ -53,7 +53,7 @@ def test_missing_qa_models_default_to_primary(monkeypatch):
 
     policy.configure_gemini_qa_policy()
 
-    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {"gemini-3.7-flash"}
+    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {"gemini-3.8-flash"}
 
 
 def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
@@ -64,8 +64,8 @@ def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
     policy.configure_gemini_qa_policy()
 
     assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-custom-audio-model"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.7-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.7-flash"
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.8-flash"
 
 
 def test_translation_qa_thinking_is_always_high(monkeypatch):
@@ -107,6 +107,38 @@ def test_explicit_emergency_escape_can_disable_confirmation(monkeypatch):
     assert os.environ["LIVEDUB_QA_CONFIRM_ISSUES"] == "0"
     assert "audio_trust=0" in diagnostic
     assert "confirm=0" in diagnostic
+
+
+def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
+    from services.gemini_max_quality import configure_max_quality_env
+    from services.gemini_model_status import POLICY, classify_gemini_model
+    from services.livedub_quality_runtime import configure_gemini_policy
+
+    maximum = configure_max_quality_env()
+    livedub = configure_gemini_policy()
+
+    for name in (
+        "GEMINI_MODEL",
+        "GEMINI_MAX_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+    ):
+        assert os.environ[name] == "gemini-3.8-flash"
+    assert os.environ["SHORTS_FACTORY_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["GEMINI_LIGHT_MODEL"] == "gemini-3.5-flash-lite"
+    assert os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
+    assert os.environ["SHORTS_FACTORY_WHISPER_MODEL"] == "large-v3"
+    assert "publication=3.8/high" in maximum
+    assert "semantic=gemini-3.8-flash/high/no-fallback" in livedub
+
+    current = classify_gemini_model("gemini-3.8-flash")
+    previous = classify_gemini_model("gemini-3.7-flash")
+    assert current.level == "info"
+    assert previous.level == "warning"
+    assert "gemini-3.8-flash" in previous.message
+    assert POLICY == "project-gemini-routing-2026-09-06-v5"
 
 
 def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():
