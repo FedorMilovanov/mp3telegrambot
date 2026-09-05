@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-POLICY = "project-gemini-routing-2026-08-17-v4"
-_PRIMARY_MODEL = "gemini-3.7-flash"
-_PREVIOUS_PRIMARY = "gemini-3.6-flash"
+POLICY = "project-gemini-routing-2026-09-06-v5"
+_PRIMARY_MODEL = "gemini-3.8-flash"
+_PREVIOUS_PRIMARY = "gemini-3.7-flash"
 _UTILITY_MODEL = "gemini-3.5-flash-lite"
 _UNUSED_MID_MODEL = "gemini-3.5-flash"
 
