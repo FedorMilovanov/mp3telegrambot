@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capacity-aware Factory plan execution without quality downgrades.
 
-This keeps the Gemini 3.7/HIGH three-pass contract intact while separating
+This keeps the Gemini 3.8/HIGH three-pass contract intact while separating
 Files API capacity from model-inference capacity. No ambient request state or
 runtime rebinding is used.
 """
@@ -118,7 +118,7 @@ async def _run_pass_with_capacity_retry(
             )
             await capacity.safe_status(
                 status_msg,
-                "⚠️ Gemini 3.7 HIGH вернула 503/high demand. "
+                "⚠️ Gemini 3.8 HIGH вернула 503/high demand. "
                 f"Повторяю текущий проход на том же клиенте и уже "
                 f"загруженном analysis-аудио через {delay:.1f} сек; общий budget "
                 f"{retry_budget.used + 1}/{retry_budget.limit}…",
@@ -172,7 +172,7 @@ async def create_factory_plan_resumable(
     clients = capacity.factory_gemini_clients()
     if not clients or candidates.types is None:
         raise RuntimeError(
-            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.7"
+            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.8"
         )
 
     model = candidates.shorts_factory_model()
@@ -213,7 +213,7 @@ async def create_factory_plan_resumable(
         try:
             await capacity.safe_status(
                 status_msg,
-                f"🧠 Gemini 3.7 MAX · клиент {index}/{len(clients)}: готовлю аудио…",
+                f"🧠 Gemini 3.8 MAX · клиент {index}/{len(clients)}: готовлю аудио…",
             )
             if file_size <= 18 * 1024 * 1024:
                 upload_in_progress = False
@@ -272,7 +272,7 @@ async def create_factory_plan_resumable(
                     ),
                     max_tokens=32000,
                     label=(
-                        f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
+                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
                         "· проход 1/3…"
                     ),
                     retry_budget=scout_budget,
@@ -287,7 +287,7 @@ async def create_factory_plan_resumable(
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
                     label=(
-                        f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
+                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
                         "· проход 2/3…"
                     ),
                     retry_budget=judge_budget,
@@ -303,7 +303,7 @@ async def create_factory_plan_resumable(
                 ),
                 max_tokens=28000,
                 label=(
-                    f"🧠 Gemini 3.7 HIGH · клиент {index}/{len(clients)} "
+                    f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
                     "· проход 3/3…"
                 ),
                 retry_budget=audit_budget,
