@@ -928,13 +928,13 @@ def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
     if _MAX_FILE_SIZE_MB_EXPLICIT:
         return
     MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50
-# ─── Gemini deployment policy (2026-08-17) ──────────────────────────────
-# Heavy/semantic production route: gemini-3.7-flash + HIGH.
+# ─── Gemini deployment policy (2026-09-05) ──────────────────────────────
+# Heavy/semantic production route: gemini-3.8-flash + HIGH.
 # Utility/mechanical route: gemini-3.5-flash-lite only.
-# Semantic downgrade to 3.6/3.5/Lite is intentionally disabled; temporary
+# Semantic downgrade to 3.7/3.6/3.5/Lite is intentionally disabled; temporary
 # capacity failures are handled by bounded retries and configured API-key/client rotation.
 # ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")
