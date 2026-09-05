@@ -111,7 +111,7 @@ jobs:
       - name: Compile runtime surface dynamically
         shell: pwsh
         run: |
-          python -m compileall -q bot_new.py services handlers tools/voxcpm2 tests
+          python -m compileall -q bot.py bot_new.py services handlers tools/voxcpm2 tests
           python -m py_compile tools/check_tts_model_catalog.py tools/run_pytest_with_annotations.py
           if ($LASTEXITCODE -ne 0) {
             throw "Runtime compile surface failed."
@@ -129,6 +129,7 @@ jobs:
           tests/test_segment_delivery_media.py
           tests/test_highlights_candidate_gate.py
           tests/test_bot_lifecycle.py
+          tests/test_bot_compat_launcher.py
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
@@ -169,6 +170,7 @@ jobs:
       - name: Ruff configured runtime checks
         run: >-
           python -m ruff check
+          bot.py
           bot_new.py
           services
           handlers
@@ -184,6 +186,7 @@ jobs:
           tests/test_segment_delivery_media.py
           tests/test_highlights_candidate_gate.py
           tests/test_bot_lifecycle.py
+          tests/test_bot_compat_launcher.py
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
