@@ -129,8 +129,8 @@ async def _run_pass_with_capacity_retry(
             await capacity.safe_status(
                 status_msg,
                 "⚠️ Gemini 3.8 HIGH вернула 503/high demand. "
-                "Сохраняю тот же client/upload и повторяю текущий проход "
-                f"через {delay:.1f} сек; попытка "
+                "Повторяю текущий проход на том же клиенте и уже "
+                f"загруженном analysis-аудио через {delay:.1f} сек; попытка "
                 f"{retry_budget.used + 1}/{retry_budget.limit}…",
             )
             await asyncio.sleep(delay)
