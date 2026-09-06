@@ -21,6 +21,7 @@ from pipelines.clips import process_and_send_clips
 from pipelines.factory_short_delivery import process_and_send_factory_shorts
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.latency_trace import mark_latency_partial
 from services.shorts_factory_candidates import factory_ai_data
 from services.shorts_factory_execution_guard import (
     enforce_factory_preflight,
@@ -486,6 +487,7 @@ async def process_shorts_factory(
             except asyncio.CancelledError:
                 raise
             except Exception as editorial_exc:
+                mark_latency_partial("editorial_review_failed")
                 logger.exception(
                     "Factory editorial review pack failed media_id=%s: %s",
                     media_id,

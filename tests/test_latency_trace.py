@@ -32,6 +32,34 @@ async def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
 
 
 @pytest.mark.asyncio
+async def test_optional_degradation_changes_only_ok_to_partial() -> None:
+    handle = latency_trace.begin_latency_trace("shorts_max")
+    latency_trace.mark_latency_partial("editorial_review_failed")
+    summary = latency_trace.finish_latency_trace(handle, outcome="ok")
+
+    assert "outcome=partial" in summary
+    assert "partial_reason=editorial_review_failed" in summary
+
+    handle = latency_trace.begin_latency_trace("shorts_max")
+    latency_trace.mark_latency_partial("editorial_review_failed")
+    summary = latency_trace.finish_latency_trace(handle, outcome="error:RuntimeError")
+
+    assert "outcome=error:RuntimeError" in summary
+    assert "partial_reason=editorial_review_failed" in summary
+    assert "outcome=partial" not in summary
+
+
+@pytest.mark.asyncio
+async def test_partial_reason_is_machine_identifier_only() -> None:
+    handle = latency_trace.begin_latency_trace("shorts_max")
+    try:
+        with pytest.raises(ValueError, match="safe machine identifier"):
+            latency_trace.mark_latency_partial("C:/secret/path")
+    finally:
+        latency_trace.finish_latency_trace(handle, outcome="error")
+
+
+@pytest.mark.asyncio
 async def test_latency_trace_does_not_leak_into_child_task() -> None:
     handle = latency_trace.begin_latency_trace("shorts_max")
 

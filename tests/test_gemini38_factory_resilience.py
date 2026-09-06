@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import services.gemini_capacity_control as capacity_control
 import services.shorts_factory_capacity as capacity
 import services.shorts_factory_source as source
 
@@ -141,8 +142,9 @@ def test_capacity_defaults_match_bounded_sdk_equivalent_retry_window():
 
     # SDK retries remain disabled at the transport layer; Factory owns one
     # observable initial + four retry window for backend 503 overload instead.
+    # Delay policy is shared by all heavy Gemini work in gemini_capacity_control.
     assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 5
     assert runtime._FACTORY_INFERENCE_TRANSIENT_ATTEMPTS == 5
-    assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
-    assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
-    assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
+    assert capacity_control._DEFAULT_RETRY_BASE_SECONDS == 15.0
+    assert capacity_control._DEFAULT_RETRY_MAX_SECONDS == 60.0
+    assert capacity_control._DEFAULT_RETRY_JITTER_SECONDS == 5.0
