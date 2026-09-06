@@ -17,10 +17,14 @@ from services import shorts_factory_capacity as capacity
 
 logger = logging.getLogger(__name__)
 
-# Keep at most two attempts on one inference client, but share a three-network-
-# call budget (initial + two retries) across API-key rotation so N keys can never
-# turn one backend overload into 2*N or 3*N expensive HIGH requests.
-_FACTORY_CAPACITY_PASS_ATTEMPTS = 2
+# The google-genai Python SDK now documents an initial request plus up to four
+# automatic retries for transient failures. MP3Bot deliberately disables SDK
+# retries so application policy stays observable and cannot be multiplied by
+# API-key rotation. Mirror that five-network-call window here for each expensive
+# Factory inference pass. A 503 stays on the same client/upload for all retries;
+# key rotation is reserved for quota/client-scoped transient failures.
+_FACTORY_CAPACITY_PASS_ATTEMPTS = 5
+_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS = 5
 _FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
 _FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0
 _FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0
@@ -69,7 +73,7 @@ async def _run_pass_with_capacity_retry(
     retry_budget: capacity_control.GeminiRetryBudget,
     status_msg: Any = None,
 ) -> Any:
-    """Retry a pass without multiplying one 503 event by configured key count."""
+    """Retry one 503 event on the same client/upload within one global budget."""
     import services.shorts_factory_candidates as candidates
 
     last_error: BaseException | None = None
@@ -102,11 +106,17 @@ async def _run_pass_with_capacity_retry(
             if not capacity.factory_overload_error(exc):
                 raise
 
-            delay = _capacity_retry_delay(retry_budget.used)
-            capacity_control.note_overload(delay, domain="inference")
             if client_attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
                 raise
 
+            delay = _capacity_retry_delay(retry_budget.used)
+            # Keep every other expensive inference request out of the same
+            # congestion window, but let this pass resume immediately after its
+            # own backoff rather than inheriting the generic 120s overload hold.
+            capacity_control.trip_overload_circuit(
+                domain="inference",
+                seconds=delay,
+            )
             logger.warning(
                 "Shorts Factory HIGH pass capacity retry %d/%d; global attempt %d/%d after %s: %s",
                 client_attempt + 1,
@@ -119,8 +129,8 @@ async def _run_pass_with_capacity_retry(
             await capacity.safe_status(
                 status_msg,
                 "⚠️ Gemini 3.8 HIGH вернула 503/high demand. "
-                f"Повторяю текущий проход на том же клиенте и уже "
-                f"загруженном analysis-аудио через {delay:.1f} сек; общий budget "
+                "Повторяю текущий проход на том же клиенте и уже "
+                f"загруженном analysis-аудио через {delay:.1f} сек; попытка "
                 f"{retry_budget.used + 1}/{retry_budget.limit}…",
             )
             await asyncio.sleep(delay)
@@ -183,11 +193,18 @@ async def create_factory_plan_resumable(
     client_outcomes: list[str] = []
     capacity_budget_exhausted = False
     exhausted_stage = ""
+    exhausted_attempt_limit = 0
 
     upload_budget = capacity_control.GeminiRetryBudget()
-    scout_budget = capacity_control.GeminiRetryBudget()
-    judge_budget = capacity_control.GeminiRetryBudget()
-    audit_budget = capacity_control.GeminiRetryBudget()
+    scout_budget = capacity_control.GeminiRetryBudget(
+        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+    )
+    judge_budget = capacity_control.GeminiRetryBudget(
+        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+    )
+    audit_budget = capacity_control.GeminiRetryBudget(
+        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+    )
     upload_in_progress = False
 
     def active_budget() -> capacity_control.GeminiRetryBudget:
@@ -359,10 +376,13 @@ async def create_factory_plan_resumable(
                 if budget.exhausted:
                     capacity_budget_exhausted = True
                     exhausted_stage = stage
+                    exhausted_attempt_limit = budget.limit
+                    retry_count = max(0, budget.limit - 1)
                     await capacity.safe_status(
                         status_msg,
-                        f"⚠️ {stage}: исчерпаны initial + 2 retry. Новые ключи "
-                        "не будут умножать тот же 503 storm.",
+                        f"⚠️ {stage}: исчерпаны {budget.limit} сетевых попыток "
+                        f"(initial + {retry_count} retry). Новые ключи не будут "
+                        "умножать тот же 503 storm.",
                     )
                     break
                 if index < len(clients):
@@ -399,14 +419,16 @@ async def create_factory_plan_resumable(
         1 for outcome in client_outcomes if outcome == "capacity"
     )
     if capacity_budget_exhausted and last_error is not None:
+        attempt_limit = exhausted_attempt_limit or capacity_control.transient_attempt_limit()
+        retry_count = max(0, attempt_limit - 1)
         raise RuntimeError(
             "Gemini сейчас перегружен (503/high demand). "
             f"Для этапа {exhausted_stage or 'Factory'} исчерпан единый лимит "
-            f"{capacity_control.transient_attempt_limit()} сетевых попыток "
-            "(initial + максимум 2 retry) независимо от количества API-ключей. "
+            f"{attempt_limit} сетевых попыток "
+            f"(initial + максимум {retry_count} retry) без умножения по API-ключам. "
             "Это НЕ означает, что API-ключи или квота исчерпаны: 503 — ошибка "
             "доступности backend, а quota/rate-limit обычно возвращается как 429. "
-            "Качество не понижено: 3.6/3.5/Lite не использовались. "
+            "Качество не понижено: 3.7/3.6/3.5/Lite не использовались. "
             "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         ) from last_error
@@ -417,7 +439,7 @@ async def create_factory_plan_resumable(
             "Gemini strict Factory review failed across attempted clients: "
             f"{capacity_failures} capacity failure(s), {other_failures} other failure(s). "
             "503 is backend availability, not proof of exhausted keys/quota. "
-            "Качество не понижено: 3.6/3.5/Lite не использовались."
+            "Качество не понижено: 3.7/3.6/3.5/Lite не использовались."
         ) from last_error
 
     raise RuntimeError(

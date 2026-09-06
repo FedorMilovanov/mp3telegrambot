@@ -38,7 +38,7 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
         return 120.0
 
     monkeypatch.setattr(candidates, 'types', SimpleNamespace(Part=SimpleNamespace(from_bytes=lambda *, data, mime_type: SimpleNamespace(data=data, mime_type=mime_type)), UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)))
-    monkeypatch.setattr(candidates, 'shorts_factory_model', lambda: 'gemini-3.7-flash')
+    monkeypatch.setattr(candidates, 'shorts_factory_model', lambda: 'gemini-3.8-flash')
     monkeypatch.setattr(candidates, '_run_pass', run_pass)
     monkeypatch.setattr(candidates, '_scout_prompt', lambda *args: 'scout')
     monkeypatch.setattr(candidates, '_judge_prompt', lambda *args: 'judge')
@@ -65,7 +65,7 @@ def test_capacity_backoff_is_exponential_and_capped(monkeypatch):
     assert capacity_runtime._capacity_retry_delay(4) == 60.0
 
 
-def test_503_high_demand_has_one_global_initial_plus_two_retry_budget(monkeypatch, tmp_path):
+def test_503_high_demand_has_one_global_initial_plus_four_retry_budget(monkeypatch, tmp_path):
     audio = tmp_path / 'factory.flac'
     audio.write_bytes(b'x' * 2048)
     first = SimpleNamespace(name='first')
@@ -81,26 +81,29 @@ def test_503_high_demand_has_one_global_initial_plus_two_retry_budget(monkeypatc
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     with pytest.raises(RuntimeError, match='503/high demand') as raised:
         asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
-    # Two attempts may reuse the first client; only the final global attempt may
-    # rotate. More API keys must not multiply the backend overload event.
-    assert calls == ['first', 'first', 'second']
+    # Mirror the official SDK's initial + four transient retries, but keep all
+    # 503 attempts on the same client so API-key count cannot multiply overload.
+    assert calls == ['first', 'first', 'first', 'first', 'first']
     message = str(raised.value)
-    assert 'единый лимит 3 сетевых попыток' in message
-    assert '3.6/3.5/Lite' in message
+    assert 'единый лимит 5 сетевых попыток' in message
+    assert 'initial + максимум 4 retry' in message
+    assert '3.7/3.6/3.5/Lite' in message
     assert 'НЕ означает, что API-ключи или квота исчерпаны' in message
     assert 'retry-кэше' in message
 
 
-def test_mixed_client_failures_do_not_claim_every_key_got_503(monkeypatch, tmp_path):
+def test_429_then_503_does_not_claim_every_key_got_503(monkeypatch, tmp_path):
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
+    calls: list[str] = []
 
     async def run_pass(client, **kwargs):
+        calls.append(client.name)
         if client is first:
-            raise _ServiceError(503, "UNAVAILABLE: high demand")
-        raise _ServiceError(429, "RESOURCE_EXHAUSTED")
+            raise _ServiceError(429, "RESOURCE_EXHAUSTED")
+        raise _ServiceError(503, "UNAVAILABLE: high demand")
 
     _install_fake_factory_modules(monkeypatch, run_pass)
     _disable_capacity_retry_delay(monkeypatch)
@@ -112,9 +115,10 @@ def test_mixed_client_failures_do_not_claim_every_key_got_503(monkeypatch, tmp_p
                 audio, title="Title", performer="Author", duration=120
             )
         )
+    assert calls == ['first', 'second', 'second', 'second', 'second']
     message = str(raised.value)
-    assert "1 capacity failure(s)" in message
-    assert "1 other failure(s)" in message
+    assert 'единый лимит 5 сетевых попыток' in message
+    assert 'НЕ означает, что API-ключи или квота исчерпаны' in message
     assert "Все 2 настроенных API-клиента получили 503" not in message
 
 
@@ -135,7 +139,6 @@ def test_duration_mismatch_fails_before_any_gemini_client(monkeypatch, tmp_path)
 
 
 def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_path):
-    import services.shorts_factory_candidates as candidates
     audio = tmp_path / 'factory.flac'
     with audio.open('wb') as stream:
         stream.truncate(19 * 1024 * 1024)
@@ -153,12 +156,8 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
             raise _ServiceError(503, 'UNAVAILABLE: high demand')
         return {'ok': True, 'pass': len(calls)}
 
-    async def wait_uploaded_file(client, uploaded):
-        return uploaded
-
     _install_fake_factory_modules(monkeypatch, run_pass)
     _disable_capacity_retry_delay(monkeypatch)
-    monkeypatch.setattr(candidates, '_wait_uploaded_file', wait_uploaded_file)
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     plan = asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
     assert calls == ['first', 'first', 'first', 'first']
@@ -167,10 +166,42 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     assert second_files.upload_calls == 0
     assert second_files.delete_calls == 0
     assert audio_parts and all((part is audio_parts[0] for part in audio_parts))
-    assert plan['model'] == 'gemini-3.7-flash'
+    assert plan['model'] == 'gemini-3.8-flash'
     assert plan['thinking_level'] == 'high'
     assert plan['review_passes'] == 3
     assert plan['strict_quality'] is True
+
+
+def test_persistent_503_never_reuploads_to_next_client(monkeypatch, tmp_path):
+    audio = tmp_path / 'factory.flac'
+    with audio.open('wb') as stream:
+        stream.truncate(19 * 1024 * 1024)
+    first_files = _FakeFiles('first')
+    second_files = _FakeFiles('second')
+    first = SimpleNamespace(name='first', aio=SimpleNamespace(files=first_files))
+    second = SimpleNamespace(name='second', aio=SimpleNamespace(files=second_files))
+    calls: list[str] = []
+
+    async def run_pass(client, **kwargs):
+        calls.append(client.name)
+        raise _ServiceError(503, 'UNAVAILABLE: high demand')
+
+    _install_fake_factory_modules(monkeypatch, run_pass)
+    _disable_capacity_retry_delay(monkeypatch)
+    monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
+
+    with pytest.raises(RuntimeError, match='503/high demand'):
+        asyncio.run(
+            capacity_runtime.create_factory_plan_resumable(
+                audio, title='Title', performer='Author', duration=120
+            )
+        )
+
+    assert calls == ['first', 'first', 'first', 'first', 'first']
+    assert first_files.upload_calls == 1
+    assert first_files.delete_calls == 1
+    assert second_files.upload_calls == 0
+    assert second_files.delete_calls == 0
 
 
 def test_429_still_rotates_within_global_budget_and_keeps_three_pass_high_quality(monkeypatch, tmp_path):
@@ -190,7 +221,7 @@ def test_429_still_rotates_within_global_budget_and_keeps_three_pass_high_qualit
     monkeypatch.setattr(capacity, 'factory_gemini_clients', lambda: [first, second])
     plan = asyncio.run(capacity_runtime.create_factory_plan_resumable(audio, title='Title', performer='Author', duration=120))
     assert calls == ['first', 'second', 'second', 'second']
-    assert plan['model'] == 'gemini-3.7-flash'
+    assert plan['model'] == 'gemini-3.8-flash'
     assert plan['thinking_level'] == 'high'
     assert plan['review_passes'] == 3
     assert plan['strict_quality'] is True
