@@ -410,7 +410,7 @@ def _request_payload(
         "whisper_model": os.getenv("DUB_WHISPER_MODEL", "large-v3"),
         "translation_model": os.getenv(
             "DUB_TRANSLATION_MODEL",
-            "gemini-3.7-flash",
+            "gemini-3.8-flash",
         ),
         "title_model": os.getenv("DUB_TITLE_MODEL", "gemini-3.5-flash-lite"),
     }
@@ -863,7 +863,10 @@ async def handle_dub_wizard_text(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    state = context.user_data.get(_WIZARD_KEY) or {}
+    user_data = context.user_data
+    if user_data is None or update.effective_user is None or update.effective_message is None:
+        return
+    state = user_data.get(_WIZARD_KEY) or {}
     if not state:
         return
     if not await _admin(update):
@@ -914,7 +917,10 @@ async def handle_dub_wizard_document(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    state = context.user_data.get(_WIZARD_KEY) or {}
+    user_data = context.user_data
+    if user_data is None or update.effective_user is None or update.effective_message is None:
+        return
+    state = user_data.get(_WIZARD_KEY) or {}
     document = update.effective_message.document
     if not document:
         return
@@ -926,7 +932,7 @@ async def handle_dub_wizard_document(
         project = _latest_direct_draft(update.effective_user.id)
         if not project:
             return
-        context.user_data[_WIZARD_KEY] = {
+        user_data[_WIZARD_KEY] = {
             "awaiting": "srt",
             "mode": _DIRECT_MODE,
             "project_id": str(project["id"]),
@@ -985,11 +991,11 @@ def register_dub_wizard_handlers(application: Any) -> None:
         group=-60,
     )
     application.add_handler(
-        MessageHandler(filters.Document.ALL, handle_dub_wizard_document),
+        MessageHandler(_MSG_ONLY & filters.Document.ALL, handle_dub_wizard_document),
         group=-59,
     )
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_dub_wizard_text),
+        MessageHandler(_MSG_ONLY & filters.TEXT & ~filters.COMMAND, handle_dub_wizard_text),
         group=-59,
     )
     application.bot_data["dub_studio_wizard_registered"] = True
