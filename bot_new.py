@@ -43,6 +43,34 @@ if not _bot_token:
 if not _gemini_key:
     print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
 
+# Own the bot process before any child runtime is started. The declarative
+# pre-main manifest invokes this installer again later; acquire_early_singleton
+# is intentionally idempotent for the same PID. This ordering prevents a second
+# bot launch from colliding with a healthy first bot's bgutil provider.
+from services.process_singleton import acquire_early_singleton
+
+if not acquire_early_singleton():
+    print("❌ Уже запущен другой экземпляр MP3 Telegram Bot; второй запуск остановлен.")
+    sys.exit(2)
+
+# A hard parent termination on Windows can leave the repo-local Node bgutil
+# provider listening on 4416. Once this process owns the singleton, a listener
+# matching this repository's exact server/build/main.js command is necessarily
+# orphaned and can be removed safely. Unknown listeners remain fail-closed.
+from services.bgutil_orphan_recovery import (
+    BgutilOrphanRecoveryError,
+    recover_orphaned_bgutil_http_runtime,
+)
+
+try:
+    _recovered_bgutil_pid = recover_orphaned_bgutil_http_runtime()
+except BgutilOrphanRecoveryError as exc:
+    print(f"❌ Не удалось безопасно освободить bgutil HTTP runtime: {exc}")
+    sys.exit(2)
+else:
+    if _recovered_bgutil_pid is not None:
+        print(f"🧹 Удалён orphaned bgutil HTTP provider PID {_recovered_bgutil_pid}")
+
 # Source provisioning belongs to the Python entrypoint, not only to the BAT
 # wrapper. This keeps `Start Bot.bat` and direct `python bot_new.py` launches on
 # one deterministic runtime path after `git pull`. A healthy runtime is reused;
