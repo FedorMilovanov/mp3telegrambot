@@ -20,7 +20,7 @@ def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
     monkeypatch.delenv('DUB_TRANSLATION_MODEL', raising=False)
     monkeypatch.delenv('DUB_TITLE_MODEL', raising=False)
     payload = dub_wizard._request_payload('AbCdEf12345', 'https://youtube.com/watch?v=AbCdEf12345', 'gemini', dub_wizard.DEFAULT_MODEL_PROFILE_ID)
-    assert payload['translation_model'] == 'gemini-3.7-flash'
+    assert payload['translation_model'] == 'gemini-3.8-flash'
     assert payload['title_model'] == 'gemini-3.5-flash-lite'
     assert payload['translation_model'] != payload['title_model']
     monkeypatch.setenv('DUB_TRANSLATION_MODEL', 'translation-fixture')
