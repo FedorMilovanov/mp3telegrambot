@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,6 +13,19 @@ HELPER = ROOT / "vot_helper" / "vot_live.mjs"
 
 def _source() -> str:
     return HELPER.read_text(encoding="utf-8")
+
+
+def test_vot_live_helper_has_valid_node_syntax() -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is unavailable")
+    proc = subprocess.run(
+        [node, "--check", str(HELPER)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_live_request_keeps_lively_flag_across_audio_bootstrap() -> None:
@@ -30,7 +47,7 @@ def test_live_success_requires_cloning_cache_confirmation() -> None:
     assert "client.translateVideoCache({ videoData })" in source
     assert "cache?.cloning" in source
     assert "cloning?.status === CACHE_FINISHED" in source
-    assert 'Live Voices подтверждены: cloning-cache=FINISHED' in source
+    assert "Live Voices подтверждены: cloning-cache=FINISHED" in source
     assert "обычный голос не используется" in source
 
 
