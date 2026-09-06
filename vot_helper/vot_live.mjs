@@ -1,25 +1,12 @@
 #!/usr/bin/env node
 /**
- * vot_live.mjs — прямой клиент Яндекс VOT API (новый протокол, как VOT 1.10+).
+ * vot_live.mjs — прямой клиент Яндекс VOT API для Live Voices.
  *
- * Зачем: vot-cli-live работает по старому протоколу. С мая 2025 Яндекс требует
- * OAuth-авторизацию для «Живых голосов» (status=7 SESSION_REQUIRED), и старый
- * клиент получает отказ, который выглядит как "Translation not available".
- * Этот скрипт использует @vot.js/node и передаёт Authorization: OAuth <token>,
- * как делает сам VOT после логина в аккаунт Яндекса.
- *
- * Установка зависимостей (один раз):  cd vot_helper && npm install
- * Токен: переменная окружения VOT_API_TOKEN / YANDEX_OAUTH_TOKEN или --token.
- * Duration: --duration <seconds> важен для попадания в cache-key Яндекса.
- *
- * Использование:
- *   node vot_live.mjs --url <video_url> --output <dir> [--voice-style live|tts]
- *                     [--timeout 1800] [--duration seconds] [--token <oauth_token>]
- *
- * stdout (последняя строка) — абсолютный путь к скачанному MP3.
- * Маркеры ошибок на stderr:
- *   LIVEDUB_AUTH_REQUIRED  — Яндекс требует OAuth-токен (нет/протух VOT_API_TOKEN)
- *   LIVEDUB_NOT_AVAILABLE  — перевод недоступен/не получился
+ * Важный контракт: voice-style=live никогда не принимает обычный cached TTS
+ * за успешный результат. Для новых YouTube-видео @vot.js/node 2.4.12 может
+ * получить status=6 (AUDIO_REQUESTED). Его встроенный recursive retry теряет
+ * extraOpts.useLivelyVoice, поэтому audio bootstrap выполняем здесь вручную и
+ * каждый следующий translateVideo снова явно запрашивает Live Voices.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +14,10 @@ import { parseArgs } from "node:util";
 
 import VOTClient from "@vot.js/node";
 import { getVideoData } from "@vot.js/node/utils/videoData";
+
+const AUDIO_REQUESTED = 6;
+const CACHE_FINISHED = 0;
+const AUDIO_DOWNLOAD_TYPE = "web_api_get_all_generating_urls_data_from_iframe";
 
 const { values: args } = parseArgs({
   options: {
@@ -41,7 +32,7 @@ const { values: args } = parseArgs({
 });
 
 if (!args.url || !args.output) {
-  console.error("usage: vot_live.mjs --url <url> --output <dir> [--voice-style live|tts] [--timeout sec] [--duration sec] [--token t]");
+  console.error("usage: vot_live.mjs --url <video_url> --output <dir> [--voice-style live|tts] [--timeout sec] [--duration sec] [--token t]");
   process.exit(2);
 }
 
@@ -57,30 +48,61 @@ function log(msg) {
   console.error(`[vot_live] ${msg}`);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function liveCacheState(videoData) {
+  try {
+    const cache = await client.translateVideoCache({ videoData });
+    return cache?.cloning ?? null;
+  } catch (e) {
+    log(`Не удалось проверить cloning-cache: ${e?.message ?? e}`);
+    return null;
+  }
+}
+
+async function bootstrapRequestedAudio(videoData, translationId) {
+  // status=6 встречается при первом переводе нового YouTube-видео. Не даём
+  // @vot.js/node 2.4.12 делать свой recursive retry: он забывает extraOpts и
+  // превращает Live Voices в обычный перевод. Повтор после bootstrap делает
+  // внешний цикл ниже и снова передаёт useLivelyVoice=true.
+  await client.requestVtransFailAudio(videoData.url);
+  await client.requestVtransAudio(videoData.url, translationId, {
+    audioFile: new Uint8Array(),
+    fileId: AUDIO_DOWNLOAD_TYPE,
+  });
+  log("AUDIO_REQUESTED: audio bootstrap отправлен; продолжаю только с Live Voices");
+}
+
 try {
   const videoData = await getVideoData(args.url);
   if (knownDuration > 0) {
-    // Для YouTube @vot.js обычно возвращает duration=undefined и иначе
-    // подставляет defaultDuration (343s). Длительность входит в cache-key
-    // Яндекса, поэтому прокидываем точную длительность из yt-dlp Python-пайплайна.
+    // Для YouTube duration входит в cache-key Яндекса.
     videoData.duration = knownDuration;
     log(`duration=${knownDuration}s передан в VOT cache-key`);
   }
   if (sourceLang) {
-    // 2026-06-11: Форсируем язык исходного видео. Помогает Яндексу, если в ролике
-    // сложный акцент или много фоновой музыки.
     videoData.language = sourceLang;
     log(`language=${sourceLang} форсирован для запроса`);
   }
+
   const deadline = Date.now() + timeoutSec * 1000;
   let result = null;
+  let audioBootstrapDone = false;
 
   while (Date.now() < deadline) {
     let res;
     try {
       res = await client.translateVideo({
         videoData,
-        extraOpts: { useLivelyVoice: useLively },
+        extraOpts: {
+          useLivelyVoice: useLively,
+          videoTitle: videoData.title ?? "",
+        },
+        // Встроенный AUDIO_REQUESTED recursion в @vot.js/node 2.4.12 теряет
+        // extraOpts.useLivelyVoice. Bootstrap ниже выполняем сами.
+        shouldSendFailedAudio: false,
       });
     } catch (e) {
       const data = e?.data ?? {};
@@ -97,19 +119,51 @@ try {
       throw e;
     }
 
-    if (res.translated && res.url) {
-      result = res;
-      break;
+    if (res.status === AUDIO_REQUESTED && !audioBootstrapDone) {
+      try {
+        await bootstrapRequestedAudio(videoData, res.translationId);
+        audioBootstrapDone = true;
+      } catch (e) {
+        console.error("LIVEDUB_NOT_AVAILABLE");
+        log(`Не удалось инициировать подготовку аудио для Live Voices: ${e?.message ?? e}`);
+        process.exit(4);
+      }
+      await sleep(5000);
+      continue;
     }
-    // status 2/3 = WAITING / LONG_WAITING, 6 = AUDIO_REQUESTED (vot.js сам дожимает)
+
+    if (res.translated && res.url) {
+      if (!useLively) {
+        result = res;
+        break;
+      }
+
+      // Yandex cache хранит обычный перевод (default) и Live Voices (cloning)
+      // раздельно. Не принимаем просто "translated + url": именно так раньше
+      // обычный cached voice ошибочно сохранялся как *.live.mp3.
+      const cloning = await liveCacheState(videoData);
+      if (cloning?.status === CACHE_FINISHED) {
+        log("Live Voices подтверждены: cloning-cache=FINISHED");
+        result = res;
+        break;
+      }
+
+      const cloneStatus = cloning?.status ?? "missing";
+      const cloneRemaining = cloning?.remainingTime ?? res.remainingTime ?? 30;
+      const wait = Math.min(Math.max(Number(cloneRemaining) || 30, 10), 60);
+      log(`Получен URL, но Live Voices ещё не подтверждены (cloning=${cloneStatus}) — жду ${wait}с`);
+      await sleep(wait * 1000);
+      continue;
+    }
+
     const wait = Math.min(Math.max(res.remainingTime ?? 30, 10), 60);
     log(`status=${res.status} remaining=${res.remainingTime}s — жду ${wait}с (перевод готовится у Яндекса)`);
-    await new Promise((r) => setTimeout(r, wait * 1000));
+    await sleep(wait * 1000);
   }
 
   if (!result) {
     console.error("LIVEDUB_NOT_AVAILABLE");
-    log(`Перевод не успел подготовиться за ${timeoutSec}с`);
+    log(`Live Voices не успели подготовиться за ${timeoutSec}с; обычный голос не используется`);
     process.exit(4);
   }
 
@@ -122,30 +176,26 @@ try {
     } catch (e) {
       log(`Скачивание попытка ${attempt} failed: ${e.message}`);
     }
-    if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+    if (attempt < 3) await sleep(2000);
   }
 
   if (!resp || !resp.ok) {
     console.error("LIVEDUB_NOT_AVAILABLE");
-    log(`Скачивание аудио не удалось после 3 попыток: HTTP ${resp ? resp.status : 'ERR'}`);
+    log(`Скачивание аудио не удалось после 3 попыток: HTTP ${resp ? resp.status : "ERR"}`);
     process.exit(4);
   }
   const buf = Buffer.from(await resp.arrayBuffer());
-  // AUDIT R42: HTTP 200 ещё не гарантирует целый файл — CDN может отдать
-  // пустое/обрезанное тело (оборванный chunked-стрим). Без этой проверки
-  // 0-байтный/крошечный MP3 писался и exit 0 → Python принимал его как
-  // готовый дубляж, а пользователь получал видео с секундой русского и
-  // тишиной. Настоящий дубляж проповеди — всегда мегабайты.
   if (!buf || buf.length < 4096) {
     console.error("LIVEDUB_NOT_AVAILABLE");
     log(`Скачанный аудиофайл подозрительно мал: ${buf ? buf.length : 0} байт — считаю загрузку битой`);
     process.exit(4);
   }
+
   fs.mkdirSync(args.output, { recursive: true });
   const safeId = (videoData.videoId ?? "translation").toString().replace(/[^\w-]/g, "_");
   const outPath = path.resolve(args.output, `${safeId}.${useLively ? "live" : "tts"}.mp3`);
   fs.writeFileSync(outPath, buf);
-  log(`Сохранено ${buf.length} байт (${useLively ? "живые голоса" : "обычные голоса"})`);
+  log(`Сохранено ${buf.length} байт (${useLively ? "живые голоса подтверждены" : "обычные голоса"})`);
   console.log(outPath);
   process.exit(0);
 } catch (e) {
