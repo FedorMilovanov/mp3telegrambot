@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Application-owned retry window matching the SDK's initial request + four
 # transient retries. A backend-wide 503 stays on the same client/upload for the
-# complete window. A quota/client-scoped failure (for example 429) is a different
-# failure domain and may rotate credentials even when it arrives on the final
-# network attempt of the current window.
+# complete window. A quota/client-domain failure is refunded from that capacity
+# window and may probe the next configured credential, but it never resets the
+# already-consumed backend retry budget.
 _FACTORY_CAPACITY_PASS_ATTEMPTS = 5
 _FACTORY_INFERENCE_TRANSIENT_ATTEMPTS = 5
 _FACTORY_UPLOAD_WAIT_SECONDS = 600.0
@@ -30,6 +30,8 @@ _FACTORY_UPLOAD_WAIT_SECONDS = 600.0
 def factory_client_retry_action(exc: BaseException) -> str:
     if capacity.factory_overload_error(exc):
         return "capacity"
+    if capacity.factory_quota_error(exc):
+        return "quota"
     if capacity.factory_retryable_service_error(exc):
         return "rotate"
     return "reset"
@@ -193,30 +195,6 @@ async def create_factory_plan_resumable(
             return judge_budget
         return audit_budget
 
-    def reset_active_budget() -> None:
-        """Start a new transient window only after a quota/client-domain failover.
-
-        This is intentionally not used for a persistent 503: backend overload must
-        never be multiplied by the number of configured API keys. It exists for
-        the boundary case where a final network attempt changes failure domain
-        from 503 to 429 and credential rotation is still required.
-        """
-        nonlocal upload_budget, scout_budget, judge_budget, audit_budget
-        if upload_in_progress:
-            upload_budget = capacity_control.GeminiRetryBudget()
-        elif scout is None:
-            scout_budget = capacity_control.GeminiRetryBudget(
-                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-            )
-        elif judged is None:
-            judge_budget = capacity_control.GeminiRetryBudget(
-                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-            )
-        else:
-            audit_budget = capacity_control.GeminiRetryBudget(
-                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-            )
-
     def active_stage() -> str:
         if upload_in_progress:
             return "Gemini Files upload"
@@ -373,18 +351,24 @@ async def create_factory_plan_resumable(
                     await asyncio.sleep(delay)
                     continue
                 break
+            if action == "quota":
+                budget.refund_last_claim()
+                logger.info(
+                    "Shorts Factory quota/client-domain failover at %s: "
+                    "capacity budget remains %d/%d used",
+                    stage,
+                    budget.used,
+                    budget.limit,
+                )
+                await capacity.safe_status(
+                    status_msg,
+                    f"⚠️ {stage}: клиент {index}/{len(clients)} исчерпал quota/rate-limit. "
+                    "Переключаю credential; этот 429 не расходует backend 503 budget…",
+                )
+                continue
             if action == "rotate":
-                # A 429/client-scoped failure is not backend capacity. If it
-                # arrives on the final call after earlier 503s, preserve the
-                # promised credential failover by opening a fresh capacity
-                # window for the next client. This is the production edge case
-                # 503×4 -> 429 that previously stopped at client 1/N.
                 if budget.exhausted:
-                    reset_active_budget()
-                    logger.info(
-                        "Shorts Factory reset %s transient window after quota/client-domain failover",
-                        stage,
-                    )
+                    break
                 await capacity.safe_status(
                     status_msg,
                     f"⚠️ {stage} временно недоступен на клиенте "
