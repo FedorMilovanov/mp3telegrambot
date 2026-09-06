@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import threading
 import time
 import uuid
@@ -18,6 +19,8 @@ import weakref
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+_PARTIAL_REASON_RE = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,79}$")
 
 
 @dataclass
@@ -27,6 +30,7 @@ class _LatencyTrace:
     started: float
     totals_ms: dict[str, int] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
+    partial_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -99,6 +103,23 @@ def note_latency_event(stage: str, *, count: int = 1) -> None:
     trace.totals_ms.setdefault(name, 0)
 
 
+def mark_latency_partial(reason: str) -> None:
+    """Mark an optional component failure without hiding a later hard failure.
+
+    Reasons are internal machine identifiers, never exception text.  This keeps
+    the aggregate log privacy-safe and lets the dispatcher retain its existing
+    bool return contract while distinguishing a degraded successful delivery.
+    """
+    trace = _current_trace()
+    if trace is None:
+        return
+    normalized = str(reason or "").strip().casefold()
+    if not _PARTIAL_REASON_RE.fullmatch(normalized):
+        raise ValueError("latency partial reason must be a safe machine identifier")
+    if normalized not in trace.partial_reasons:
+        trace.partial_reasons.append(normalized)
+
+
 def current_latency_trace_id() -> str:
     trace = _current_trace()
     return trace.trace_id if trace is not None else ""
@@ -122,10 +143,20 @@ def finish_latency_trace(handle: _TraceHandle | None, *, outcome: str) -> str:
         else:
             stage_parts.append(f"{stage}=count:{calls}")
     stages = ",".join(stage_parts) if stage_parts else "none"
+
+    requested_outcome = str(outcome or "unknown")[:80]
+    effective_outcome = (
+        "partial"
+        if requested_outcome == "ok" and trace.partial_reasons
+        else requested_outcome
+    )
+    partial_detail = ""
+    if trace.partial_reasons:
+        partial_detail = " partial_reason=" + ",".join(trace.partial_reasons)
     summary = (
         f"[LATENCY] trace={trace.trace_id} mode={trace.mode} "
-        f"outcome={str(outcome or 'unknown')[:80]} total={total_ms / 1000.0:.2f}s "
-        f"stages={stages}"
+        f"outcome={effective_outcome}{partial_detail} "
+        f"total={total_ms / 1000.0:.2f}s stages={stages}"
     )
     logger.info(summary)
 
@@ -143,6 +174,7 @@ __all__ = [
     "begin_latency_trace",
     "current_latency_trace_id",
     "finish_latency_trace",
+    "mark_latency_partial",
     "note_latency_event",
     "record_latency",
 ]
