@@ -1,3 +1,4 @@
+"""Regression coverage for user-scoped Dub Wizard routing and Gemini defaults."""
 from __future__ import annotations
 
 import inspect
