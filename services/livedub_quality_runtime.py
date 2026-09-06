@@ -16,7 +16,7 @@ _LIGHT_MODEL = "gemini-3.5-flash-lite"
 
 
 def configure_gemini_policy() -> str:
-    """Pin the semantic/utility split before any AI client/config imports."""
+    """Pin the semantic/utility split and production LiveDub voice policy."""
     for name in (
         "GEMINI_MODEL",
         "GEMINI_MAX_MODEL",
@@ -45,9 +45,15 @@ def configure_gemini_policy() -> str:
     os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""
     os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
 
+    # Production ENG is a quality contract: Yandex Live Voices or a visible
+    # failure.  Never let a stale .env/Windows environment value re-enable the
+    # legacy live->TTS downgrade path in livedub_mix.
+    os.environ["LIVEDUB_TTS_FALLBACK"] = "0"
+
     return (
         f"semantic={_PRIMARY_MODEL}/high/no-fallback, "
-        f"utility={_LIGHT_MODEL}/minimal/no-fallback"
+        f"utility={_LIGHT_MODEL}/minimal/no-fallback, "
+        "voice=live-only/no-tts-fallback"
     )
 
 
