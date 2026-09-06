@@ -130,6 +130,7 @@ jobs:
           tests/test_highlights_candidate_gate.py
           tests/test_bot_lifecycle.py
           tests/test_bot_compat_launcher.py
+          tests/test_bgutil_orphan_recovery.py
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
@@ -187,6 +188,7 @@ jobs:
           tests/test_highlights_candidate_gate.py
           tests/test_bot_lifecycle.py
           tests/test_bot_compat_launcher.py
+          tests/test_bgutil_orphan_recovery.py
           tests/test_database_migrations.py
           tests/test_backend_generation_execution_plan.py
           tests/test_requirements_lock.py
