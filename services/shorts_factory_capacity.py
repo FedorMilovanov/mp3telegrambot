@@ -110,6 +110,25 @@ def _exception_status_code(exc: BaseException) -> int | None:
     return None
 
 
+def factory_quota_error(exc: BaseException) -> bool:
+    """Return True only for quota/client-domain exhaustion, not backend 503."""
+    status_code = _exception_status_code(exc)
+    if status_code == 429:
+        return True
+    if status_code is not None:
+        return False
+    text = str(exc or "").casefold().replace("_", " ")
+    return any(
+        marker in text
+        for marker in (
+            "resource exhausted",
+            "quota exceeded",
+            "quota exhausted",
+            "rate limit exceeded",
+        )
+    )
+
+
 def factory_retryable_service_error(exc: BaseException) -> bool:
     if _exception_status_code(exc) in {429, 500, 502, 503, 504}:
         return True
@@ -135,6 +154,7 @@ __all__ = [
     "await_with_heartbeat",
     "factory_gemini_clients",
     "factory_overload_error",
+    "factory_quota_error",
     "factory_retryable_service_error",
     "heartbeat_seconds",
     "retry_cache_ttl_seconds",
