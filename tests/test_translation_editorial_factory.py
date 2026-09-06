@@ -8,7 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 import services.translation_editorial_factory as factory
-from services.translation_editorial import build_review_pack, load_pack_manifest, sha256_file
+from services.translation_editorial import sha256_file
+from services.translation_editorial_pack_v2 import (
+    build_review_pack,
+    load_verified_review_pack as load_pack_manifest,
+)
 
 
 def _write_srt(path: Path, text: str) -> Path:
@@ -171,7 +175,7 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_p
     assert calls[0]["model"] == "gemini-3.7-flash"
     assert "ORIGINAL SRT" in calls[0]["contents"]
     assert "RUSSIAN WHISPER SRT" in calls[0]["contents"]
-    assert "different" not in calls[0]["contents"].lower()  # prompt is Russian/pattern-level
+    assert "different" not in calls[0]["contents"].lower()
     assert "одинаковому номеру cue" in calls[0]["contents"]
     assert local_path not in calls[0]["contents"]
     assert configs == [
