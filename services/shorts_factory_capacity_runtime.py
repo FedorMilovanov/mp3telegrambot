@@ -17,17 +17,13 @@ from services import shorts_factory_capacity as capacity
 
 logger = logging.getLogger(__name__)
 
-# The google-genai Python SDK now documents an initial request plus up to four
-# automatic retries for transient failures. MP3Bot deliberately disables SDK
-# retries so application policy stays observable and cannot be multiplied by
-# API-key rotation. Mirror that five-network-call window here for each expensive
-# Factory inference pass. A 503 stays on the same client/upload for all retries;
-# key rotation is reserved for quota/client-scoped transient failures.
+# Application-owned retry window matching the SDK's initial request + four
+# transient retries. A backend-wide 503 stays on the same client/upload for the
+# complete window. A quota/client-scoped failure (for example 429) is a different
+# failure domain and may rotate credentials even when it arrives on the final
+# network attempt of the current window.
 _FACTORY_CAPACITY_PASS_ATTEMPTS = 5
 _FACTORY_INFERENCE_TRANSIENT_ATTEMPTS = 5
-_FACTORY_CAPACITY_RETRY_BASE_SECONDS = 15.0
-_FACTORY_CAPACITY_RETRY_MAX_SECONDS = 60.0
-_FACTORY_CAPACITY_RETRY_JITTER_SECONDS = 5.0
 _FACTORY_UPLOAD_WAIT_SECONDS = 600.0
 
 
@@ -49,9 +45,7 @@ async def _wait_factory_upload(client: Any, uploaded: Any) -> Any:
     current = uploaded
     while str(getattr(current, "state", "")).upper().endswith("PROCESSING"):
         if asyncio.get_running_loop().time() - started > _FACTORY_UPLOAD_WAIT_SECONDS:
-            raise TimeoutError(
-                "Gemini Factory audio processing exceeded 600 seconds"
-            )
+            raise TimeoutError("Gemini Factory audio processing exceeded 600 seconds")
         await asyncio.sleep(3)
         current = await capacity_control.run_heavy_gemini_call(
             lambda _name=current.name: client.aio.files.get(name=_name),
@@ -73,7 +67,7 @@ async def _run_pass_with_capacity_retry(
     retry_budget: capacity_control.GeminiRetryBudget,
     status_msg: Any = None,
 ) -> Any:
-    """Retry one 503 event on the same client/upload within one global budget."""
+    """Retry backend-wide 503 on the same client/upload within one capacity window."""
     import services.shorts_factory_candidates as candidates
 
     last_error: BaseException | None = None
@@ -105,20 +99,13 @@ async def _run_pass_with_capacity_retry(
             last_error = exc
             if not capacity.factory_overload_error(exc):
                 raise
-
             if client_attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
                 raise
 
             delay = _capacity_retry_delay(retry_budget.used)
-            # Keep every other expensive inference request out of the same
-            # congestion window, but let this pass resume immediately after its
-            # own backoff rather than inheriting the generic 120s overload hold.
-            capacity_control.trip_overload_circuit(
-                domain="inference",
-                seconds=delay,
-            )
+            capacity_control.trip_overload_circuit(domain="inference", seconds=delay)
             logger.warning(
-                "Shorts Factory HIGH pass capacity retry %d/%d; global attempt %d/%d after %s: %s",
+                "Shorts Factory HIGH pass capacity retry %d/%d; window attempt %d/%d after %s: %s",
                 client_attempt + 1,
                 _FACTORY_CAPACITY_PASS_ATTEMPTS,
                 retry_budget.used + 1,
@@ -165,10 +152,7 @@ async def create_factory_plan_resumable(
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
 
     verified_audio_duration = await measure_factory_audio_duration(audio_path)
-    if duration > 0 and not factory_duration_matches(
-        verified_audio_duration,
-        float(duration),
-    ):
+    if duration > 0 and not factory_duration_matches(verified_audio_duration, float(duration)):
         raise RuntimeError(
             "Factory analysis audio duration does not match yt-dlp source metadata: "
             f"metadata={float(duration):.3f}s verified={verified_audio_duration:.3f}s"
@@ -181,9 +165,7 @@ async def create_factory_plan_resumable(
 
     clients = capacity.factory_gemini_clients()
     if not clients or candidates.types is None:
-        raise RuntimeError(
-            "Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.8"
-        )
+        raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.8")
 
     model = candidates.shorts_factory_model()
     mime_type = factory_audio_mime_type(audio_path)
@@ -191,20 +173,15 @@ async def create_factory_plan_resumable(
     scout = judged = None
     last_error: BaseException | None = None
     client_outcomes: list[str] = []
+    attempted_clients = 0
     capacity_budget_exhausted = False
     exhausted_stage = ""
     exhausted_attempt_limit = 0
 
     upload_budget = capacity_control.GeminiRetryBudget()
-    scout_budget = capacity_control.GeminiRetryBudget(
-        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-    )
-    judge_budget = capacity_control.GeminiRetryBudget(
-        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-    )
-    audit_budget = capacity_control.GeminiRetryBudget(
-        limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
-    )
+    scout_budget = capacity_control.GeminiRetryBudget(limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS)
+    judge_budget = capacity_control.GeminiRetryBudget(limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS)
+    audit_budget = capacity_control.GeminiRetryBudget(limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS)
     upload_in_progress = False
 
     def active_budget() -> capacity_control.GeminiRetryBudget:
@@ -216,6 +193,30 @@ async def create_factory_plan_resumable(
             return judge_budget
         return audit_budget
 
+    def reset_active_budget() -> None:
+        """Start a new transient window only after a quota/client-domain failover.
+
+        This is intentionally not used for a persistent 503: backend overload must
+        never be multiplied by the number of configured API keys. It exists for
+        the boundary case where a final network attempt changes failure domain
+        from 503 to 429 and credential rotation is still required.
+        """
+        nonlocal upload_budget, scout_budget, judge_budget, audit_budget
+        if upload_in_progress:
+            upload_budget = capacity_control.GeminiRetryBudget()
+        elif scout is None:
+            scout_budget = capacity_control.GeminiRetryBudget(
+                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+            )
+        elif judged is None:
+            judge_budget = capacity_control.GeminiRetryBudget(
+                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+            )
+        else:
+            audit_budget = capacity_control.GeminiRetryBudget(
+                limit=_FACTORY_INFERENCE_TRANSIENT_ATTEMPTS
+            )
+
     def active_stage() -> str:
         if upload_in_progress:
             return "Gemini Files upload"
@@ -226,6 +227,7 @@ async def create_factory_plan_resumable(
         return "Factory HIGH pass 3/3"
 
     for index, client in enumerate(clients, 1):
+        attempted_clients += 1
         uploaded_name = ""
         try:
             await capacity.safe_status(
@@ -235,8 +237,7 @@ async def create_factory_plan_resumable(
             if file_size <= 18 * 1024 * 1024:
                 upload_in_progress = False
                 audio_part = candidates.types.Part.from_bytes(
-                    data=audio_path.read_bytes(),
-                    mime_type=mime_type,
+                    data=audio_path.read_bytes(), mime_type=mime_type
                 )
             else:
                 upload_in_progress = True
@@ -249,9 +250,7 @@ async def create_factory_plan_resumable(
                             file=audio_path,
                             config=candidates.types.UploadFileConfig(
                                 mime_type=mime_type,
-                                display_name=(
-                                    f"Shorts Factory MAX — {performer} — {title}"
-                                )[:500],
+                                display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
                             ),
                         ),
                         label=(
@@ -262,8 +261,6 @@ async def create_factory_plan_resumable(
                     ),
                     domain="files",
                 )
-                # Capture ownership immediately. If PROCESSING polling fails,
-                # finally can still delete the server-side handle before rotate.
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
                 uploaded = await capacity.await_with_heartbeat(
                     _wait_factory_upload(client, uploaded),
@@ -281,16 +278,10 @@ async def create_factory_plan_resumable(
                     client,
                     model=model,
                     audio_part=audio_part,
-                    prompt=candidates._scout_prompt(
-                        title,
-                        performer,
-                        duration,
-                        source_language,
-                    ),
+                    prompt=candidates._scout_prompt(title, performer, duration, source_language),
                     max_tokens=32000,
                     label=(
-                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
-                        "· проход 1/3…"
+                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 1/3…"
                     ),
                     retry_budget=scout_budget,
                     status_msg=status_msg,
@@ -304,8 +295,7 @@ async def create_factory_plan_resumable(
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
                     label=(
-                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
-                        "· проход 2/3…"
+                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 2/3…"
                     ),
                     retry_budget=judge_budget,
                     status_msg=status_msg,
@@ -315,26 +305,17 @@ async def create_factory_plan_resumable(
                 client,
                 model=model,
                 audio_part=audio_part,
-                prompt=_strict_boundary_prompt(
-                    candidates._boundary_prompt(judged, duration)
-                ),
+                prompt=_strict_boundary_prompt(candidates._boundary_prompt(judged, duration)),
                 max_tokens=28000,
                 label=(
-                    f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} "
-                    "· проход 3/3…"
+                    f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 3/3…"
                 ),
                 retry_budget=audit_budget,
                 status_msg=status_msg,
             )
-            plan = candidates.validate_factory_plan(
-                audited,
-                duration,
-                require_verified=True,
-            )
+            plan = candidates.validate_factory_plan(audited, duration, require_verified=True)
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError(
-                    "Three-pass Gemini review produced no verified candidates"
-                )
+                raise RuntimeError("Three-pass Gemini review produced no verified candidates")
 
             plan.update(
                 model=model,
@@ -344,13 +325,9 @@ async def create_factory_plan_resumable(
                 audio_mime_type=mime_type,
             )
             gated = apply_factory_quality_gate(plan)
-            gated.setdefault("metadata", {})["language"] = (
-                validated_factory_plan_language(gated)
-            )
+            gated.setdefault("metadata", {})["language"] = validated_factory_plan_language(gated)
             if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
-                raise RuntimeError(
-                    "No candidates passed the final Factory MAX quality gate"
-                )
+                raise RuntimeError("No candidates passed the final Factory MAX quality gate")
             return gated
 
         except asyncio.CancelledError:
@@ -397,8 +374,17 @@ async def create_factory_plan_resumable(
                     continue
                 break
             if action == "rotate":
+                # A 429/client-scoped failure is not backend capacity. If it
+                # arrives on the final call after earlier 503s, preserve the
+                # promised credential failover by opening a fresh capacity
+                # window for the next client. This is the production edge case
+                # 503×4 -> 429 that previously stopped at client 1/N.
                 if budget.exhausted:
-                    break
+                    reset_active_budget()
+                    logger.info(
+                        "Shorts Factory reset %s transient window after quota/client-domain failover",
+                        stage,
+                    )
                 await capacity.safe_status(
                     status_msg,
                     f"⚠️ {stage} временно недоступен на клиенте "
@@ -415,9 +401,7 @@ async def create_factory_plan_resumable(
                 except Exception:
                     pass
 
-    capacity_failures = sum(
-        1 for outcome in client_outcomes if outcome == "capacity"
-    )
+    capacity_failures = sum(1 for outcome in client_outcomes if outcome == "capacity")
     if capacity_budget_exhausted and last_error is not None:
         attempt_limit = exhausted_attempt_limit or capacity_control.transient_attempt_limit()
         retry_count = max(0, attempt_limit - 1)
@@ -428,6 +412,7 @@ async def create_factory_plan_resumable(
             f"(initial + максимум {retry_count} retry) без умножения по API-ключам. "
             "Это НЕ означает, что API-ключи или квота исчерпаны: 503 — ошибка "
             "доступности backend, а quota/rate-limit обычно возвращается как 429. "
+            f"Проверено клиентов: {attempted_clients}/{len(clients)}. "
             "Качество не понижено: 3.7/3.6/3.5/Lite не использовались. "
             "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
@@ -437,13 +422,15 @@ async def create_factory_plan_resumable(
         other_failures = len(client_outcomes) - capacity_failures
         raise RuntimeError(
             "Gemini strict Factory review failed across attempted clients: "
+            f"attempted={attempted_clients}/{len(clients)}, "
             f"{capacity_failures} capacity failure(s), {other_failures} other failure(s). "
             "503 is backend availability, not proof of exhausted keys/quota. "
             "Качество не понижено: 3.7/3.6/3.5/Lite не использовались."
         ) from last_error
 
     raise RuntimeError(
-        f"All attempted Gemini clients failed strict Shorts Factory review: {last_error}"
+        "All attempted Gemini clients failed strict Shorts Factory review: "
+        f"attempted={attempted_clients}/{len(clients)}; last_error={last_error}"
     )
 
 
