@@ -136,10 +136,13 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
     assert "flac" not in command
 
 
-def test_capacity_defaults_rotate_early_without_sdk_retry_cascade():
+def test_capacity_defaults_match_bounded_sdk_equivalent_retry_window():
     import services.shorts_factory_capacity_runtime as runtime
 
-    assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 2
+    # SDK retries remain disabled at the transport layer; Factory owns one
+    # observable initial + four retry window for backend 503 overload instead.
+    assert runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 5
+    assert runtime._FACTORY_INFERENCE_TRANSIENT_ATTEMPTS == 5
     assert runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
     assert runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
     assert runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
