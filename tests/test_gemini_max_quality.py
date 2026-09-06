@@ -81,7 +81,8 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     assert '"-progress",\n        "pipe:1"' in source
     assert "measure_factory_audio_duration" in source
 
-    assert capacity_runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 2
+    assert capacity_runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 5
+    assert capacity_runtime._FACTORY_INFERENCE_TRANSIENT_ATTEMPTS == 5
     assert capacity_runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
     assert capacity_runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
     assert capacity_runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
