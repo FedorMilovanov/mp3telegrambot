@@ -146,8 +146,43 @@ def is_project_scoped_quota_error(exc: BaseException) -> bool:
     return any(marker in compact for marker in _PROJECT_QUOTA_MARKERS)
 
 
+class ProjectQuotaDomainTracker:
+    """Request-local suppression for proven project-scoped quota exhaustion.
+
+    The tracker deliberately does not own retry budgets or logging. Unknown clients
+    and unlabeled credentials fail open. Independent scopes keep distinct quota
+    surfaces, such as Files upload and GenerateContent, from suppressing each other.
+    """
+
+    def __init__(self, clients: Sequence[object], domains: Sequence[object]) -> None:
+        self._domain_by_client_id: dict[int, str] = {}
+        for client, domain in zip(clients, domains):
+            normalized = normalize_quota_domain_label(domain)
+            if normalized:
+                self._domain_by_client_id[id(client)] = normalized
+        self._exhausted_by_scope: dict[str, set[str]] = {}
+
+    def should_skip(self, client: object, *scopes: str) -> bool:
+        domain = self._domain_by_client_id.get(id(client), "")
+        if not domain:
+            return False
+        return any(
+            domain in self._exhausted_by_scope.get(scope, set()) for scope in scopes
+        )
+
+    def record_project_scoped_error(
+        self, client: object, scope: str, exc: BaseException
+    ) -> bool:
+        domain = self._domain_by_client_id.get(id(client), "")
+        if not domain or not is_project_scoped_quota_error(exc):
+            return False
+        self._exhausted_by_scope.setdefault(scope, set()).add(domain)
+        return True
+
+
 __all__ = [
     "GEMINI_QUOTA_DOMAIN_ENVS",
+    "ProjectQuotaDomainTracker",
     "is_project_scoped_quota_error",
     "is_quota_error",
     "key_domain_entries",
