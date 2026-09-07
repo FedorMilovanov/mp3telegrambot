@@ -50,6 +50,30 @@ For each production credential, record outside the repository:
 
 Never commit that mapping, full API keys, service-account identifiers, billing identifiers or secret material to this repository.
 
+### Optional local quota-domain labels
+
+After the owner has verified which credentials share one Google Cloud project, Factory can be given **opaque local labels** for that relationship:
+
+```dotenv
+GEMINI_QUOTA_DOMAIN=factory-project-a
+GEMINI_QUOTA_DOMAIN_2=factory-project-a
+GEMINI_QUOTA_DOMAIN_3=factory-project-b
+GEMINI_QUOTA_DOMAIN_4=
+```
+
+These values are not Google project IDs. Use an arbitrary local label containing only letters, digits, `.`, `_`, `:`, or `-`; never place a project number, project ID, API key, billing identifier, email address or other secret/identity value in the label.
+
+Behavior is deliberately conservative:
+
+- blank labels preserve the previous credential-failover behavior exactly;
+- a generic `429 RESOURCE_EXHAUSTED` still tries the next configured credential even when labels match, because the error scope is not proven to be project-wide;
+- only a quota response that explicitly identifies a project-scoped limit (for example a quota name containing `PerProject`) marks that local domain exhausted for the current Factory run;
+- after such a project-scoped 429, later credentials carrying the same explicit label are skipped for that run, while credentials with another or unknown label remain eligible;
+- labels and API keys are never included in Factory status messages or terminal error text; diagnostics report only attempted/skipped counts;
+- this optimization is request-local and does not persist quota state across Factory runs.
+
+Do not configure these labels by guessing from the API-key string. Complete the owner credential/project audit first.
+
 Official references:
 
 - API keys: https://ai.google.dev/gemini-api/docs/api-key
@@ -84,9 +108,10 @@ When Factory fails, capture the following before changing retry settings:
 - HTTP status (`429`, `503`, etc.);
 - provider retry delay when present;
 - attempted client number (`N/total`);
+- same-project credential skip count when present;
 - whether the failing stage was Files upload, Factory pass 1/3, 2/3 or 3/3.
 
-Do **not** print or attach API keys.
+Do **not** print or attach API keys or local quota-domain labels.
 
 Interpretation:
 
@@ -101,4 +126,4 @@ Interpretation:
 - Do not rotate every API key for a backend-wide 503.
 - Do not downgrade Factory to a weaker model to make an outage appear successful.
 - Do not assume separate API keys have separate quotas.
-- Do not expose keys in startup logs, `/status`, CI artifacts or issue reports.
+- Do not expose keys or quota-domain labels in startup logs, `/status`, CI artifacts or issue reports.
