@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import math
 import os
-import re
 from typing import Any, Awaitable
+
+from services import gemini_quota_domains as quota_domains
 
 FACTORY_HTTP_TIMEOUT_MS = 900_000
 _FACTORY_KEY_ATTRS = (
@@ -19,13 +20,6 @@ _FACTORY_KEY_ATTRS = (
     "GEMINI_API_KEY_3",
     "GEMINI_API_KEY_4",
 )
-_FACTORY_QUOTA_DOMAIN_ENVS = (
-    "GEMINI_QUOTA_DOMAIN",
-    "GEMINI_QUOTA_DOMAIN_2",
-    "GEMINI_QUOTA_DOMAIN_3",
-    "GEMINI_QUOTA_DOMAIN_4",
-)
-_SAFE_QUOTA_DOMAIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 
 
 def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -77,43 +71,15 @@ async def await_with_heartbeat(
         )
 
 
-def _quota_domain_label(value: str) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    if not _SAFE_QUOTA_DOMAIN_RE.fullmatch(text):
-        raise RuntimeError(
-            "GEMINI_QUOTA_DOMAIN labels must be 1-80 characters using only "
-            "letters, digits, dot, underscore, colon or hyphen"
-        )
-    return text.casefold()
-
-
 def _factory_api_key_entries() -> list[tuple[str, str]]:
     """Return de-duplicated API keys with optional opaque quota-domain labels."""
     from core import globals as core_globals
 
-    entries: list[tuple[str, str]] = []
-    seen: dict[str, int] = {}
-    for key_attr, domain_env in zip(_FACTORY_KEY_ATTRS, _FACTORY_QUOTA_DOMAIN_ENVS):
-        key = str(getattr(core_globals, key_attr, "") or "").strip()
-        if not key:
-            continue
-        domain = _quota_domain_label(os.getenv(domain_env, ""))
-        previous_index = seen.get(key)
-        if previous_index is None:
-            seen[key] = len(entries)
-            entries.append((key, domain))
-            continue
-
-        previous_key, previous_domain = entries[previous_index]
-        if previous_domain and domain and previous_domain != domain:
-            raise RuntimeError(
-                "Duplicate Gemini API key has conflicting GEMINI_QUOTA_DOMAIN labels"
-            )
-        if not previous_domain and domain:
-            entries[previous_index] = (previous_key, domain)
-    return entries
+    keys = [
+        str(getattr(core_globals, key_attr, "") or "").strip()
+        for key_attr in _FACTORY_KEY_ATTRS
+    ]
+    return quota_domains.key_domain_entries(keys, deduplicate=True)
 
 
 def _factory_api_keys() -> list[str]:
@@ -162,45 +128,12 @@ def _exception_status_code(exc: BaseException) -> int | None:
 
 def factory_quota_error(exc: BaseException) -> bool:
     """Return True only for quota/client-domain exhaustion, not backend 503."""
-    status_code = _exception_status_code(exc)
-    if status_code == 429:
-        return True
-    if status_code is not None:
-        return False
-    text = str(exc or "").casefold().replace("_", " ")
-    return any(
-        marker in text
-        for marker in (
-            "resource exhausted",
-            "quota exceeded",
-            "quota exhausted",
-            "rate limit exceeded",
-        )
-    )
+    return quota_domains.is_quota_error(exc)
 
 
 def factory_project_quota_error(exc: BaseException) -> bool:
-    """Return True only when a quota error explicitly identifies project scope.
-
-    Generic 429/RESOURCE_EXHAUSTED is intentionally not enough to suppress a
-    second credential with the same operator label: the error may be key- or
-    account-specific. The live Gemini quota names include ``PerProject`` when
-    the exhausted limit is project-scoped.
-    """
-    if not factory_quota_error(exc):
-        return False
-    text = str(exc or "").casefold().replace("_", " ").replace("-", " ")
-    compact = re.sub(r"[^a-z0-9]+", "", text)
-    return any(
-        marker in compact
-        for marker in (
-            "perproject",
-            "projectpermodel",
-            "requestsperdayperproject",
-            "requestsperminuteperproject",
-            "tokensperminuteperproject",
-        )
-    )
+    """Return True only when a quota error explicitly identifies project scope."""
+    return quota_domains.is_project_scoped_quota_error(exc)
 
 
 def factory_retryable_service_error(exc: BaseException) -> bool:
