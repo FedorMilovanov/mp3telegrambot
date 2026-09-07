@@ -231,8 +231,19 @@ def _extract_json(text: str) -> Any:
 
 
 def gemini_json(prompt: str, *, model_name: str) -> Any:
+    from services.gemini_quota_domains import (
+        is_project_scoped_quota_error,
+        key_domain_entries,
+    )
+
     keys = _translation_keys()
-    if not keys:
+    raw_slot_keys = [os.getenv(name, "").strip() for name in _GEMINI_KEY_NAMES]
+    domain_by_key = {
+        key: domain
+        for key, domain in key_domain_entries(raw_slot_keys, deduplicate=True)
+    }
+    key_entries = [(key, domain_by_key.get(key, "")) for key in keys]
+    if not key_entries:
         raise RuntimeError(
             "Для редакторского перевода нужен GEMINI_API_KEY в .env."
         )
@@ -243,11 +254,18 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
     label = _prompt_label(prompt)
     errors: list[str] = []
     log(
-        f"Gemini: начинаю «{label}»; ключей={len(keys)}; "
+        f"Gemini: начинаю «{label}»; ключей={len(key_entries)}; "
         f"лимит ключа={request_timeout:.0f} сек.; прохода={pass_timeout:.0f} сек."
     )
 
-    for index, api_key in enumerate(keys, start=1):
+    exhausted_project_domains: set[str] = set()
+    for index, (api_key, quota_domain) in enumerate(key_entries, start=1):
+        if quota_domain and quota_domain in exhausted_project_domains:
+            log(
+                f"Gemini: «{label}», credential {index}/{len(key_entries)} "
+                "пропущен после project-scoped quota; label скрыт."
+            )
+            continue
         remaining = deadline - time.monotonic()
         if remaining < _MIN_REQUEST_TIMEOUT_SECONDS:
             errors.append(
@@ -260,7 +278,7 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
         client = _translation_client(api_key, timeout_ms)
         started = time.monotonic()
         log(
-            f"Gemini: «{label}», ключ {index}/{len(keys)}, "
+            f"Gemini: «{label}», ключ {index}/{len(key_entries)}, "
             f"таймаут {timeout_ms / 1000:.0f} сек."
         )
         try:
@@ -274,18 +292,20 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
             )
             elapsed = time.monotonic() - started
             log(
-                f"Gemini: «{label}» завершён ключом {index}/{len(keys)} "
+                f"Gemini: «{label}» завершён ключом {index}/{len(key_entries)} "
                 f"за {elapsed:.1f} сек."
             )
             return _standardize_title_payload(payload, prompt)
         except Exception as exc:
+            if quota_domain and is_project_scoped_quota_error(exc):
+                exhausted_project_domains.add(quota_domain)
             elapsed = time.monotonic() - started
             errors.append(
                 f"key#{index} {elapsed:.1f}s: {type(exc).__name__}: "
                 f"{str(exc)[:220]}"
             )
             log(
-                f"Gemini: «{label}», ключ {index}/{len(keys)} не сработал "
+                f"Gemini: «{label}», ключ {index}/{len(key_entries)} не сработал "
                 f"за {elapsed:.1f} сек.; пробую следующий."
             )
         finally:

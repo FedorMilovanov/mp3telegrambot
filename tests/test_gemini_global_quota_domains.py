@@ -211,3 +211,49 @@ def test_503_budget_semantics_remain_same_client_retry_then_rotate(monkeypatch) 
 
     assert result == "ok"
     assert calls == ["client-0", "client-0", "client-1"]
+
+
+def test_response_validator_rotates_semantic_rejection_within_global_budget(monkeypatch) -> None:
+    _install_capacity_stubs(monkeypatch)
+    first, second, third = _install_known_clients(
+        monkeypatch, ["domain-a", "domain-a", "domain-b"]
+    )
+    calls: list[str] = []
+
+    async def fn(client):
+        calls.append(client.name)
+        return SimpleNamespace(accepted=client is third)
+
+    result = asyncio.run(
+        core_globals.gemini_generate(
+            [first, second, third],
+            fn,
+            response_validator=lambda response: response.accepted,
+        )
+    )
+
+    assert result.accepted is True
+    assert calls == ["client-0", "client-1", "client-2"]
+
+
+def test_response_validator_cannot_expand_global_retry_budget(monkeypatch) -> None:
+    _install_capacity_stubs(monkeypatch)
+    clients = _install_known_clients(
+        monkeypatch, ["domain-a", "domain-b", "domain-c", "domain-d"]
+    )
+    calls: list[str] = []
+
+    async def fn(client):
+        calls.append(client.name)
+        return SimpleNamespace(accepted=False)
+
+    with pytest.raises(RuntimeError, match="response rejected"):
+        asyncio.run(
+            core_globals.gemini_generate(
+                clients,
+                fn,
+                response_validator=lambda response: response.accepted,
+            )
+        )
+
+    assert calls == ["client-0", "client-1", "client-2"]

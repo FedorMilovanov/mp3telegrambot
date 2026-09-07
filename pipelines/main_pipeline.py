@@ -287,20 +287,27 @@ async def _translate_livedub_title_for_caption(
         f"channel: {channel_name}\n"
     )
     try:
-        from core.globals import make_text_config_smart
+        from core.globals import gemini_generate, make_text_config_smart
         cfg = make_text_config_smart(
             temperature=0.1,
             max_output_tokens=512,
             thinking_level="minimal",
             response_mime_type="application/json",
         )
-        resp = await asyncio.wait_for(
-            GEMINI_CLIENTS[0].aio.models.generate_content(
+        async def _generate_title(client):
+            return await client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=cfg,
+            )
+
+        resp = await asyncio.wait_for(
+            gemini_generate(
+                GEMINI_CLIENTS,
+                _generate_title,
+                model_name=GEMINI_MODEL,
             ),
-            timeout=30.0,  # title translation is tiny
+            timeout=30.0,  # total SLA for this tiny title translation
         )
         raw = (getattr(resp, "text", "") or "").strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)

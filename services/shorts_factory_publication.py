@@ -143,21 +143,30 @@ async def _generate_descriptions(
     model = FACTORY_PUBLICATION_LIGHT_MODELS[0]
     attempts = [(model, client) for client in list(GEMINI_CLIENTS)]
 
-    for number, (model, client) in enumerate(attempts, 1):
+    from core.globals import gemini_generate
+
+    clients = [client for _model, client in attempts]
+
+    async def _generate_descriptions_once(client):
+        cfg = make_text_config_smart(
+            max_output_tokens=1600,
+            model_name=model,
+            thinking_level="minimal",
+            response_mime_type="application/json",
+            response_schema=_schema(),
+        )
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=_timeout(),
+        )
+
+    def _valid_descriptions_response(response) -> bool:
         try:
-            cfg = make_text_config_smart(
-                max_output_tokens=1600,
-                model_name=model,
-                thinking_level="minimal",
-                response_mime_type="application/json",
-                response_schema=_schema(),
-            )
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(model=model, contents=prompt, config=cfg),
-                timeout=_timeout(),
-            )
             data = json.loads(_strip_json_fence(getattr(response, "text", "")))
-            out: dict[int, str] = {}
             for item in data.get("items", []) if isinstance(data, dict) else []:
                 if not isinstance(item, dict):
                     continue
@@ -167,12 +176,44 @@ async def _generate_descriptions(
                     continue
                 description = _clean_description(item.get("description"))
                 if 0 <= index < len(candidates) and description:
-                    out[index] = description
-            if out:
-                logger.info("Factory publication descriptions: %d/%d via %s/minimal", len(out), len(candidates), model)
-                return out
-        except Exception as exc:
-            logger.info("Factory publication description soft-fail %d model=%s: %s", number, model, str(exc)[:140])
+                    return True
+            return False
+        except Exception:
+            return False
+
+    try:
+        response = await gemini_generate(
+            clients,
+            _generate_descriptions_once,
+            model_name=model,
+            response_validator=_valid_descriptions_response,
+        )
+        data = json.loads(_strip_json_fence(getattr(response, "text", "")))
+        out: dict[int, str] = {}
+        for item in data.get("items", []) if isinstance(data, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                index = int(item.get("index"))
+            except (TypeError, ValueError):
+                continue
+            description = _clean_description(item.get("description"))
+            if 0 <= index < len(candidates) and description:
+                out[index] = description
+        if out:
+            logger.info(
+                "Factory publication descriptions: %d/%d via %s/minimal",
+                len(out),
+                len(candidates),
+                model,
+            )
+            return out
+    except Exception as exc:
+        logger.info(
+            "Factory publication description project-aware soft-fail model=%s: %s",
+            model,
+            str(exc)[:140],
+        )
     return {}
 
 
