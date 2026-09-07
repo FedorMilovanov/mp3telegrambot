@@ -17,6 +17,7 @@ from typing import Any
 from core.globals import DOWNLOAD_DIR
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
+from services.gemini_quota_domains import ProjectQuotaDomainTracker
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.translation_editorial import (
     REVIEW_SCHEMA_NAME,
@@ -297,7 +298,11 @@ def _manifest_for_model(manifest: dict[str, Any]) -> dict[str, Any]:
 async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | None:
     """Run a quota-bounded full-sermon review on exact Gemini 3.7/high only."""
     try:
-        from core.globals import GEMINI_CLIENTS, make_text_config_smart
+        from core.globals import (
+            GEMINI_CLIENT_QUOTA_DOMAINS,
+            GEMINI_CLIENTS,
+            make_text_config_smart,
+        )
     except Exception:
         return None
     if not GEMINI_CLIENTS:
@@ -341,8 +346,21 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
         timeout = 300.0
     timeout = max(60.0, min(timeout, 600.0))
 
-    clients = list(GEMINI_CLIENTS)[: _gemini_max_attempts()]
+    clients = list(GEMINI_CLIENTS)
+    quota_tracker = ProjectQuotaDomainTracker(clients, GEMINI_CLIENT_QUOTA_DOMAINS)
+    max_attempts = _gemini_max_attempts()
+    attempts_used = 0
     for client_index, client in enumerate(clients, 1):
+        if attempts_used >= max_attempts:
+            break
+        if quota_tracker.should_skip(client, "editorial_review"):
+            logger.info(
+                "Factory editorial Gemini skipped credential=%d/%d after proven project-scoped quota exhaustion",
+                client_index,
+                len(clients),
+            )
+            continue
+        attempts_used += 1
         try:
             response = await asyncio.wait_for(
                 client.aio.models.generate_content(
@@ -366,16 +384,25 @@ async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | 
             errors = validate_review_document(review, manifest)
             if errors:
                 logger.warning(
-                    "Factory editorial Gemini review rejected client=%d: %s",
+                    "Factory editorial Gemini review rejected attempt=%d credential=%d/%d: %s",
+                    attempts_used,
                     client_index,
+                    len(clients),
                     "; ".join(errors[:8]),
                 )
                 continue
             return review
         except Exception as exc:
+            quota_tracker.record_project_scoped_error(
+                client,
+                "editorial_review",
+                exc,
+            )
             logger.info(
-                "Factory editorial Gemini soft-fail client=%d model=%s: %s",
+                "Factory editorial Gemini soft-fail attempt=%d credential=%d/%d model=%s: %s",
+                attempts_used,
                 client_index,
+                len(clients),
                 FACTORY_EDITORIAL_GEMINI_MODEL,
                 str(exc)[:180],
             )
