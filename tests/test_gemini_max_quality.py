@@ -1,6 +1,7 @@
 """Regression contracts for the project-wide quality/cost policy."""
 from pathlib import Path
 
+from services import gemini_capacity_control as capacity_control
 from services import gemini_max_quality as quality
 from services import shorts_factory_capacity_runtime as capacity_runtime
 
@@ -83,9 +84,9 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
 
     assert capacity_runtime._FACTORY_CAPACITY_PASS_ATTEMPTS == 5
     assert capacity_runtime._FACTORY_INFERENCE_TRANSIENT_ATTEMPTS == 5
-    assert capacity_runtime._FACTORY_CAPACITY_RETRY_BASE_SECONDS == 15.0
-    assert capacity_runtime._FACTORY_CAPACITY_RETRY_MAX_SECONDS == 60.0
-    assert capacity_runtime._FACTORY_CAPACITY_RETRY_JITTER_SECONDS == 5.0
+    assert capacity_control._DEFAULT_RETRY_BASE_SECONDS == 15.0
+    assert capacity_control._DEFAULT_RETRY_MAX_SECONDS == 60.0
+    assert capacity_control._DEFAULT_RETRY_JITTER_SECONDS == 5.0
     # User-facing 503/quota semantics are asserted behaviorally in
     # tests/test_factory_capacity_fast_fail.py rather than by grepping source text.
 

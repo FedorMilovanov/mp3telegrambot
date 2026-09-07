@@ -21,12 +21,12 @@ from services.media_delivery_probe import media_probe_is_deliverable, probe_medi
 from services.translation_editorial import (
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
-    build_review_pack,
     sha256_file,
     transcribe_russian_whisper,
     validate_review_document,
 )
-from services.translation_editorial_pack_contract import (
+from services.translation_editorial_pack_v2 import (
+    build_review_pack,
     load_verified_review_pack as load_pack_manifest,
 )
 

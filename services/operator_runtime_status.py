@@ -172,6 +172,7 @@ def operator_runtime_status_html_lines(
     payload: Mapping[str, Any] | None = None,
 ) -> tuple[str, ...]:
     """Format compact HTML lines for the existing admin status message."""
+    include_build_identity = payload is None
     data = operator_runtime_status_payload() if payload is None else dict(payload)
     runtime = _mapping(data.get("runtime"), "operator runtime status")
     tts = _mapping(data.get("tts"), "operator TTS status")
@@ -235,6 +236,17 @@ def operator_runtime_status_html_lines(
     lines.append(
         f"🛡 TTS adapter: <code>{adapter_policy}</code> · evidence={evidence}"
     )
+    if include_build_identity:
+        try:
+            from services.runtime_build_identity import runtime_build_identity_html_lines
+
+            lines.extend(runtime_build_identity_html_lines())
+        except Exception as exc:
+            lines.append(
+                "🧾 Build diagnostics: ❌ <code>"
+                + html.escape(type(exc).__name__)
+                + "</code>"
+            )
     return tuple(lines)
 
 

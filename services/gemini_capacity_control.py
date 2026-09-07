@@ -170,6 +170,18 @@ class GeminiRetryBudget:
         self.used += 1
         return self.used
 
+    def refund_last_claim(self) -> int:
+        """Return one claimed attempt when the request failed in another domain.
+
+        Factory uses this only for a proved quota/client-domain failure such as
+        HTTP 429.  Backend-capacity failures and successful requests are never
+        refunded, so the global anti-storm limit remains intact.
+        """
+        if self.used <= 0:
+            raise RuntimeError("Gemini retry budget has no claimed request to refund")
+        self.used -= 1
+        return self.used
+
 
 @dataclass
 class _LoopState:

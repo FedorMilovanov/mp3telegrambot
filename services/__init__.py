@@ -54,7 +54,7 @@ def service_bootstrap_events() -> tuple[dict[str, Any], ...]:
 def emit_service_bootstrap_diagnostics(
     sink: Callable[[str], Any] | None = None,
 ) -> int:
-    """Emit current explicit-bootstrap state only when an entrypoint asks."""
+    """Emit explicit-bootstrap state plus one privacy-safe build identity line."""
     target = sink or print
     events = service_bootstrap_events()
     for event in events:
@@ -63,6 +63,12 @@ def emit_service_bootstrap_diagnostics(
             f"{marker} {event['component']}: {event['detail']} "
             f"[{event['policy']}]"
         )
+    try:
+        from services.runtime_build_identity import runtime_build_identity_log_line
+
+        target(runtime_build_identity_log_line())
+    except Exception as exc:
+        target(f"🧾 Runtime build: unavailable ({type(exc).__name__})")
     return len(events)
 
 

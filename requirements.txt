@@ -44,8 +44,11 @@ python-dotenv>=1.0.0,<2.0.0
 
 # ── Субтитры и аудио Quality v4 ───────────────────────────────────────────────
 # faster-whisper проверяет покрытие captions и фактически произнесённые слова.
+# CTranslate2 >=4.6.2 устраняет deprecated pkg_resources import; faster-whisper
+# официально поддерживает ctranslate2>=4,<5, поэтому фиксируем безопасный floor.
 # SoundFile читает/пишет float/PCM24 WAV для reference-only NoChew и onset trim.
 faster-whisper>=1.0.0
+ctranslate2>=4.6.2,<5.0.0
 numpy>=1.24.0
 soundfile>=0.12.1,<1.0.0
 

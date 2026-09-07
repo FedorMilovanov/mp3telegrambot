@@ -115,7 +115,10 @@ def test_429_then_503_does_not_claim_every_key_got_503(monkeypatch, tmp_path):
                 audio, title="Title", performer="Author", duration=120
             )
         )
-    assert calls == ['first', 'second', 'second', 'second', 'second']
+    # The 429 is a quota-domain probe and is refunded from the backend-capacity
+    # budget. The second credential can therefore consume the full five-call 503
+    # window, but no further credential could multiply it.
+    assert calls == ['first', 'second', 'second', 'second', 'second', 'second']
     message = str(raised.value)
     assert 'единый лимит 5 сетевых попыток' in message
     assert 'НЕ означает, что API-ключи или квота исчерпаны' in message
