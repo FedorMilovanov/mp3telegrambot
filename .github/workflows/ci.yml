@@ -9,9 +9,6 @@ on:
       - ".gitignore"
   pull_request:
     branches: ["main"]
-    paths-ignore:
-      - "**/*.md"
-      - ".gitignore"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -233,3 +230,34 @@ jobs:
           tests/test_livedub_audio_retry_claims.py
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
+
+  required-pr-gate:
+    name: Required PR Gate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs:
+      - test
+      - windows-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Require core CI jobs
+        env:
+          LINUX_RESULT: ${{ needs.test.result }}
+          WINDOWS_RESULT: ${{ needs.windows-runtime.result }}
+        run: |
+          test "$LINUX_RESULT" = "success"
+          test "$WINDOWS_RESULT" = "success"
+
+      - name: Checkout exact PR tree
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Wait for applicable profile workflows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/required_pr_gate.py
