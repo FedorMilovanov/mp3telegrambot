@@ -15,15 +15,18 @@ on:
       - "services/gemini_max_quality.py"
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/gemini_quota_domains.py"
       - "services/livedub_info.py"
       - "services/livedub_long_qa.py"
       - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
       - "services/shorts_factory_candidates.py"
+      - "services/shorts_factory_capacity.py"
       - "services/shorts_factory_capacity_runtime.py"
       - "tests/test_bot_compat_launcher.py"
       - "tests/test_gemini_38_env_contract.py"
+      - "tests/test_gemini_global_quota_domains.py"
       - "tests/test_gemini_max_quality.py"
       - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
@@ -44,15 +47,18 @@ on:
       - "services/gemini_max_quality.py"
       - "services/gemini_model_status.py"
       - "services/gemini_qa_policy.py"
+      - "services/gemini_quota_domains.py"
       - "services/livedub_info.py"
       - "services/livedub_long_qa.py"
       - "services/livedub_publication_core.py"
       - "services/livedub_quality_runtime.py"
       - "services/runtime_manifest.py"
       - "services/shorts_factory_candidates.py"
+      - "services/shorts_factory_capacity.py"
       - "services/shorts_factory_capacity_runtime.py"
       - "tests/test_bot_compat_launcher.py"
       - "tests/test_gemini_38_env_contract.py"
+      - "tests/test_gemini_global_quota_domains.py"
       - "tests/test_gemini_max_quality.py"
       - "tests/test_gemini_model_status.py"
       - "tests/test_gemini_qa_policy.py"
@@ -91,6 +97,7 @@ jobs:
           python -m py_compile services/gemini_max_quality.py
           python -m py_compile services/gemini_model_status.py
           python -m py_compile services/gemini_qa_policy.py
+          python -m py_compile services/gemini_quota_domains.py
           python -m py_compile services/livedub_info.py
           python -m py_compile services/livedub_long_qa.py
           python -m py_compile services/livedub_publication_core.py
@@ -98,6 +105,7 @@ jobs:
           python -m py_compile services/pre_main_policy.py
           python -m py_compile services/runtime_manifest.py
           python -m py_compile services/shorts_factory_candidates.py
+          python -m py_compile services/shorts_factory_capacity.py
           python -m py_compile services/shorts_factory_capacity_runtime.py
           python -m py_compile services/__init__.py
 
@@ -107,6 +115,7 @@ jobs:
           tests/test_gemini_qa_policy.py
           tests/test_gemini_model_status.py
           tests/test_gemini_38_env_contract.py
+          tests/test_gemini_global_quota_domains.py
           tests/test_livedub_long_qa.py
           tests/test_bot_compat_launcher.py
 
@@ -119,6 +128,7 @@ jobs:
           services/gemini_max_quality.py
           services/gemini_model_status.py
           services/gemini_qa_policy.py
+          services/gemini_quota_domains.py
           services/livedub_info.py
           services/livedub_long_qa.py
           services/livedub_publication_core.py
@@ -126,9 +136,11 @@ jobs:
           services/pre_main_policy.py
           services/runtime_manifest.py
           services/shorts_factory_candidates.py
+          services/shorts_factory_capacity.py
           services/shorts_factory_capacity_runtime.py
           tests/test_bot_compat_launcher.py
           tests/test_gemini_38_env_contract.py
+          tests/test_gemini_global_quota_domains.py
           tests/test_gemini_qa_policy.py
           tests/test_gemini_model_status.py
           tests/test_livedub_long_qa.py

@@ -18,6 +18,8 @@ os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from services import gemini_quota_domains as quota_domains
+
 flask_app = Flask(__name__)
 
 
@@ -203,6 +205,21 @@ GEMINI_CLIENTS = [
     for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4]
     if c
 ]
+_GEMINI_KEY_SLOTS = (
+    GEMINI_API_KEY,
+    GEMINI_API_KEY_2,
+    GEMINI_API_KEY_3,
+    GEMINI_API_KEY_4,
+)
+GEMINI_CLIENT_QUOTA_DOMAINS = (
+    quota_domains.quota_domains_for_keys(_GEMINI_KEY_SLOTS)
+    if HAS_GEMINI
+    else []
+)
+if len(GEMINI_CLIENT_QUOTA_DOMAINS) != len(GEMINI_CLIENTS):
+    raise RuntimeError(
+        "Gemini client/quota-domain metadata alignment failed during startup"
+    )
 
 
 def _is_gemini_3x(model_name: str) -> bool:
@@ -417,16 +434,27 @@ def is_overload_error(e) -> bool:
     )
 
 
+def _quota_domains_for_client_list(client_list) -> list[str]:
+    """Return privacy-safe domain metadata for known global client objects only."""
+    domain_by_client_id = {
+        id(client): domain
+        for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)
+    }
+    return [domain_by_client_id.get(id(client), "") for client in client_list]
+
+
 _current_client_idx = 0
 
 
 async def gemini_generate(client_list, fn, model_name: str = ""):
     """Run one Gemini operation with one global transient budget across keys.
 
-    Quota/429 rotates immediately because retrying the same project-bound client
-    cannot create capacity. Overload and transport timeout may reuse one client
-    once, then rotate, while the global budget remains initial + at most two
-    retries. Only confirmed overload publishes the overload circuit.
+    Quota/429 rotates immediately. If an explicitly labeled credential returns a
+    project-scoped 429, later known credentials with the same local opaque label
+    are skipped for this call only. Generic 429 remains conservative and rotates
+    normally. Overload and transport timeout may reuse one client once, then
+    rotate, while the global budget remains initial + at most two retries. Only
+    confirmed overload publishes the overload circuit.
     """
     global _current_client_idx
     from services import gemini_capacity_control as capacity_control
@@ -436,11 +464,26 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
         raise RuntimeError("No Gemini clients available")
 
     budget = capacity_control.GeminiRetryBudget()
+    client_quota_domains = _quota_domains_for_client_list(client_list)
+    exhausted_project_quota_domains: set[str] = set()
+    same_project_domain_skipped = 0
     start_idx = _current_client_idx
     for i in range(len(client_list)):
         if budget.exhausted:
             break
         idx = (start_idx + i) % len(client_list)
+        quota_domain = client_quota_domains[idx]
+        if quota_domain and quota_domain in exhausted_project_quota_domains:
+            same_project_domain_skipped += 1
+            _current_client_idx = (idx + 1) % len(client_list)
+            logging.getLogger(__name__).info(
+                "Gemini client %s skipped after project-scoped quota on same explicit "
+                "local domain; label omitted; skipped=%s",
+                idx,
+                same_project_domain_skipped,
+            )
+            continue
+
         client = client_list[idx]
         _current_client_idx = (idx + 1) % len(client_list)
         same_client_transients = 0
@@ -453,9 +496,17 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
                 )
             except Exception as e:
                 if is_quota_error(e):
+                    project_scoped = bool(
+                        quota_domain
+                        and quota_domains.is_project_scoped_quota_error(e)
+                    )
+                    if project_scoped:
+                        exhausted_project_quota_domains.add(quota_domain)
                     logging.getLogger(__name__).warning(
-                        "Gemini квота/429 на клиенте %s; вращаю клиент в пределах общего budget %s/%s",
+                        "Gemini квота/429 на клиенте %s; project_scoped=%s; "
+                        "вращаю клиент в пределах общего budget %s/%s",
                         idx,
+                        project_scoped,
                         budget.used,
                         budget.limit,
                     )
