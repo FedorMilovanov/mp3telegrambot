@@ -105,24 +105,30 @@ LOCAL_BOT_API_CLOUD_FALLBACK=0
 
 Runtime фиксирует quality-policy до импорта AI-клиентов:
 
-- все heavy/semantic задачи: `gemini-3.7-flash` + `HIGH` thinking;
-- Shorts Factory MAX, LiveDub QA, публикационный смысловой текст и editorial review не понижаются до 3.6/3.5/Lite;
+- основной user-visible semantic-контур: `gemini-3.8-flash` + `HIGH` thinking;
+- Shorts Factory MAX остаётся на Gemini 3.8 / HIGH / трёх независимых проходах и не понижается до 3.7/3.6/3.5/Lite при ошибках провайдера;
+- LiveDub QA и публикационный смысловой текст используют текущий 3.8/HIGH route;
+- Translation Editorial review имеет отдельный явный `gemini-3.7-flash` / HIGH контракт; это не fallback из Factory 3.8;
 - дешёвые механические/utility-задачи: только `gemini-3.5-flash-lite` + minimal;
-- при временной перегрузке используются bounded retry и следующие настроенные API-ключи/клиенты, а не более слабая модель.
+- `503/high demand` трактуется как backend-capacity: bounded retry остаётся на том же client/upload и не умножается числом ключей;
+- `429/RESOURCE_EXHAUSTED` трактуется отдельно как quota/rate-limit и может переключить credential, не обнуляя уже израсходованный 503 budget;
+- несколько API-ключей одного Google Cloud project **не дают несколько независимых quota** — лимиты Gemini применяются к проекту.
 
 Рекомендуемая явная настройка:
 
 ```dotenv
-GEMINI_MODEL=gemini-3.7-flash
-GEMINI_MAX_MODEL=gemini-3.7-flash
+GEMINI_MODEL=gemini-3.8-flash
+GEMINI_MAX_MODEL=gemini-3.8-flash
 GEMINI_FORCE_THINKING_LEVEL=high
 GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite
 GEMINI_LIGHT_FALLBACK_MODELS=
 GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0
-SHORTS_FACTORY_MODEL=gemini-3.7-flash
+SHORTS_FACTORY_MODEL=gemini-3.8-flash
 ```
 
-Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-37.ps1`.
+Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-38.ps1`.
+
+Операционный контракт, различие `503`/`429`, проверка project quota и миграция Standard → Auth keys описаны в [`docs/gemini-operations.md`](docs/gemini-operations.md).
 
 ## LiveDub и два MP3
 
@@ -141,11 +147,13 @@ SHORTS_FACTORY_MODEL=gemini-3.7-flash
 
 Старые производные файлы вроде `*.final-mix.mp3` и `*.ru-audio.mp3` не могут быть повторно выбраны как чистая русская дорожка.
 
-Обычные голоса Яндекса используются как разрешённый fallback, когда живые голоса недоступны. Для строгого режима его можно явно выключить:
+Production ENG-контракт использует **только Yandex Live Voices**. Если живые голоса недоступны, бот должен вернуть явную ошибку, а не тихо перейти на обычные TTS-голоса. Startup-policy принудительно держит:
 
 ```dotenv
 LIVEDUB_TTS_FALLBACK=0
 ```
+
+Старое локальное значение `LIVEDUB_TTS_FALLBACK=1` не считается production opt-in: pre-main policy всё равно возвращает live-only режим.
 
 ## QA перевода
 
