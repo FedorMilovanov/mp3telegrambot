@@ -169,6 +169,14 @@ async def create_factory_plan_resumable(
     if not clients or candidates.types is None:
         raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.8")
 
+    quota_domains = capacity.factory_gemini_quota_domains()
+    if len(quota_domains) != len(clients):
+        logger.warning(
+            "Factory quota-domain metadata/client count mismatch; "
+            "same-project suppression disabled for this run"
+        )
+        quota_domains = [""] * len(clients)
+
     model = candidates.shorts_factory_model()
     mime_type = factory_audio_mime_type(audio_path)
     file_size = audio_path.stat().st_size
@@ -176,6 +184,8 @@ async def create_factory_plan_resumable(
     last_error: BaseException | None = None
     client_outcomes: list[str] = []
     attempted_clients = 0
+    same_project_domain_skipped = 0
+    exhausted_project_quota_domains: set[str] = set()
     capacity_budget_exhausted = False
     exhausted_stage = ""
     exhausted_attempt_limit = 0
@@ -205,6 +215,22 @@ async def create_factory_plan_resumable(
         return "Factory HIGH pass 3/3"
 
     for index, client in enumerate(clients, 1):
+        quota_domain = quota_domains[index - 1]
+        if quota_domain and quota_domain in exhausted_project_quota_domains:
+            same_project_domain_skipped += 1
+            logger.info(
+                "Shorts Factory skipped client %d/%d because its explicit project "
+                "quota-domain already returned project-scoped 429; label omitted",
+                index,
+                len(clients),
+            )
+            await capacity.safe_status(
+                status_msg,
+                f"⚠️ Gemini client {index}/{len(clients)} пропущен: его локальный "
+                "project quota-domain уже получил project-scoped 429 в этом Factory run.",
+            )
+            continue
+
         attempted_clients += 1
         uploaded_name = ""
         try:
@@ -353,18 +379,33 @@ async def create_factory_plan_resumable(
                 break
             if action == "quota":
                 budget.refund_last_claim()
+                project_scoped = bool(
+                    quota_domain and capacity.factory_project_quota_error(exc)
+                )
+                if project_scoped:
+                    exhausted_project_quota_domains.add(quota_domain)
                 logger.info(
                     "Shorts Factory quota/client-domain failover at %s: "
-                    "capacity budget remains %d/%d used",
+                    "project_scoped=%s capacity budget remains %d/%d used",
                     stage,
+                    project_scoped,
                     budget.used,
                     budget.limit,
                 )
-                await capacity.safe_status(
-                    status_msg,
-                    f"⚠️ {stage}: клиент {index}/{len(clients)} исчерпал quota/rate-limit. "
-                    "Переключаю credential; этот 429 не расходует backend 503 budget…",
-                )
+                if project_scoped:
+                    await capacity.safe_status(
+                        status_msg,
+                        f"⚠️ {stage}: клиент {index}/{len(clients)} получил "
+                        "project-scoped 429. Credentials с тем же явным локальным "
+                        "quota-domain будут пропущены; backend 503 budget не изменён…",
+                    )
+                else:
+                    await capacity.safe_status(
+                        status_msg,
+                        f"⚠️ {stage}: клиент {index}/{len(clients)} исчерпал quota/rate-limit. "
+                        "Scope 429 не доказан как project-wide, поэтому пробую следующий "
+                        "credential; backend 503 budget не изменён…",
+                    )
                 continue
             if action == "rotate":
                 if budget.exhausted:
@@ -386,6 +427,11 @@ async def create_factory_plan_resumable(
                     pass
 
     capacity_failures = sum(1 for outcome in client_outcomes if outcome == "capacity")
+    skip_detail = (
+        f" same_project_domain_skipped={same_project_domain_skipped};"
+        if same_project_domain_skipped
+        else ""
+    )
     if capacity_budget_exhausted and last_error is not None:
         attempt_limit = exhausted_attempt_limit or capacity_control.transient_attempt_limit()
         retry_count = max(0, attempt_limit - 1)
@@ -396,7 +442,8 @@ async def create_factory_plan_resumable(
             f"(initial + максимум {retry_count} retry) без умножения по API-ключам. "
             "Это НЕ означает, что API-ключи или квота исчерпаны: 503 — ошибка "
             "доступности backend, а quota/rate-limit обычно возвращается как 429. "
-            f"Проверено клиентов: {attempted_clients}/{len(clients)}. "
+            f"Проверено клиентов: {attempted_clients}/{len(clients)};"
+            f"{skip_detail} "
             "Качество не понижено: 3.7/3.6/3.5/Lite не использовались. "
             "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
@@ -406,7 +453,8 @@ async def create_factory_plan_resumable(
         other_failures = len(client_outcomes) - capacity_failures
         raise RuntimeError(
             "Gemini strict Factory review failed across attempted clients: "
-            f"attempted={attempted_clients}/{len(clients)}, "
+            f"attempted={attempted_clients}/{len(clients)};"
+            f"{skip_detail} "
             f"{capacity_failures} capacity failure(s), {other_failures} other failure(s). "
             "503 is backend availability, not proof of exhausted keys/quota. "
             "Качество не понижено: 3.7/3.6/3.5/Lite не использовались."
@@ -414,7 +462,8 @@ async def create_factory_plan_resumable(
 
     raise RuntimeError(
         "All attempted Gemini clients failed strict Shorts Factory review: "
-        f"attempted={attempted_clients}/{len(clients)}; last_error={last_error}"
+        f"attempted={attempted_clients}/{len(clients)};"
+        f"{skip_detail} last_error={last_error}"
     )
 
 
