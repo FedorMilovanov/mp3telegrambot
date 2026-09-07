@@ -13,10 +13,26 @@ on:
       - "handlers/dub_health/**"
       - "tests/test_continuous_reference_typical_f0.py"
       - "tests/test_cross_language_identity_fail_closed.py"
-      - "tests/test_dialogue_suppressed_master.py"
-      - "tests/test_dub_health_v60_monolithic_release.py"
       - "tests/test_embedded_terminal_noise_gate.py"
-      - "tests/test_legacy_facade_module_registration.py"
+      - "tests/test_monolithic_voice_and_pronunciation.py"
+      - "tests/test_ready_srt_semantic_breath_grouping.py"
+      - "tests/test_russian_stress_evidence_v2.py"
+      - "tests/test_spatial_bed_final_media_qa.py"
+      - "tests/test_speech_backend_runtime_paths.py"
+      - ".github/workflows/dub-monolith-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/dub_worker_release.py"
+      - "services/dub_release_health_v64.py"
+      - "services/dub_studio_runtime/**"
+      - "services/dub_title_policy/**"
+      - "services/speech_backends/**"
+      - "tools/voxcpm2/**"
+      - "handlers/dub_health/**"
+      - "tests/test_continuous_reference_typical_f0.py"
+      - "tests/test_cross_language_identity_fail_closed.py"
+      - "tests/test_embedded_terminal_noise_gate.py"
       - "tests/test_monolithic_voice_and_pronunciation.py"
       - "tests/test_ready_srt_semantic_breath_grouping.py"
       - "tests/test_russian_stress_evidence_v2.py"
@@ -33,17 +49,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements-lock.txt
 
-      - name: Install runtime and test dependencies
+      - name: Install locked dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest
+          python -m pip install -r requirements-lock.txt
+          python tools/check_requirements_lock.py
+
+      - name: Validate installed runtime dependency closure
+        run: >-
+          python -c "from pathlib import Path; from services.runtime_dependency_lock import validate_runtime_dependency_lock; print(validate_runtime_dependency_lock(Path('.')))"
 
       - name: Compile active Python tree
         run: |
@@ -52,15 +74,12 @@ jobs:
       - name: Run monolithic Dub contract tests
         env:
           PYTHONUTF8: "1"
-          PYTHONIOENCODING: "utf-8"
+          PYTHONIOENCODING: utf-8
         run: |
-          python -m pytest -q \
+          python tools/run_pytest_with_annotations.py -q \
             tests/test_continuous_reference_typical_f0.py \
             tests/test_cross_language_identity_fail_closed.py \
-            tests/test_dialogue_suppressed_master.py \
-            tests/test_dub_health_v60_monolithic_release.py \
             tests/test_embedded_terminal_noise_gate.py \
-            tests/test_legacy_facade_module_registration.py \
             tests/test_monolithic_voice_and_pronunciation.py \
             tests/test_ready_srt_semantic_breath_grouping.py \
             tests/test_russian_stress_evidence_v2.py \
