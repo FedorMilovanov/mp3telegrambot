@@ -299,6 +299,14 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
     total_timeout = _env_int("LIVEDUB_PUBLICATION_TOTAL_TIMEOUT_SEC", 90, 20, 180)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + total_timeout
+    from core.globals import GEMINI_CLIENT_QUOTA_DOMAINS
+    from services.gemini_quota_domains import ProjectQuotaDomainTracker
+
+    quota_tracker = ProjectQuotaDomainTracker(
+        GEMINI_CLIENTS,
+        GEMINI_CLIENT_QUOTA_DOMAINS,
+    )
+    quota_scope = "livedub_publication_inference"
     used = 0
     for model in publication_models():
         config = _quality_config(model)
@@ -310,6 +318,8 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
             )
             continue
         for client_index, client in enumerate(list(GEMINI_CLIENTS)):
+            if quota_tracker.should_skip(client, quota_scope):
+                continue
             if used >= attempts:
                 return None
             remaining = deadline - loop.time()
@@ -344,6 +354,7 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
                         "model": model,
                     }
             except Exception as exc:
+                quota_tracker.record_project_scoped_error(client, quota_scope, exc)
                 if is_overload_error(exc):
                     capacity_control.note_overload(
                         capacity_control.transient_retry_delay(used),

@@ -170,23 +170,28 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
 Исходная строка: {source}
 """.strip()
 
-    for client_index, client in enumerate(GEMINI_CLIENTS):
+    from core.globals import gemini_generate
+
+    cfg = make_text_config_smart(
+        max_output_tokens=1200,
+        model_name=model,
+        thinking_level="high",
+        response_mime_type="application/json",
+        response_schema=_response_schema(),
+    )
+
+    async def _generate_publication(client):
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=90.0,
+        )
+
+    def _parse_publication_response(response) -> dict[str, str] | None:
         try:
-            cfg = make_text_config_smart(
-                max_output_tokens=1200,
-                model_name=model,
-                thinking_level="high",
-                response_mime_type="application/json",
-                response_schema=_response_schema(),
-            )
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=cfg,
-                ),
-                timeout=90.0,
-            )
             raw = str(getattr(response, "text", "") or "").strip()
             raw = re.sub(
                 r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE
@@ -202,13 +207,24 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
                     "description": description,
                     "model": model,
                 }
-        except Exception as exc:
-            logger.info(
-                "[LiveDubPublication] model=%s client=%d failed: %s",
-                model,
-                client_index,
-                str(exc)[:140],
-            )
+        except Exception:
+            pass
+        return None
+
+    try:
+        response = await gemini_generate(
+            GEMINI_CLIENTS,
+            _generate_publication,
+            model_name=model,
+            response_validator=lambda item: _parse_publication_response(item) is not None,
+        )
+        return _parse_publication_response(response)
+    except Exception as exc:
+        logger.info(
+            "[LiveDubPublication] model=%s project-aware route failed: %s",
+            model,
+            str(exc)[:140],
+        )
     return None
 
 

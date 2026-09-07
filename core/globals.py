@@ -446,7 +446,7 @@ def _quota_domains_for_client_list(client_list) -> list[str]:
 _current_client_idx = 0
 
 
-async def gemini_generate(client_list, fn, model_name: str = ""):
+async def gemini_generate(client_list, fn, model_name: str = "", response_validator=None):
     """Run one Gemini operation with one global transient budget across keys.
 
     Quota/429 rotates immediately. If an explicitly labeled credential returns a
@@ -454,7 +454,9 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
     are skipped for this call only. Generic 429 remains conservative and rotates
     normally. Overload and transport timeout may reuse one client once, then
     rotate, while the global budget remains initial + at most two retries. Only
-    confirmed overload publishes the overload circuit.
+    confirmed overload publishes the overload circuit. An optional caller
+    response validator may reject a transport-successful response; that consumes
+    the current global attempt and rotates without marking any quota domain.
     """
     global _current_client_idx
     from services import gemini_capacity_control as capacity_control
@@ -491,9 +493,13 @@ async def gemini_generate(client_list, fn, model_name: str = ""):
         while not budget.exhausted:
             budget.claim()
             try:
-                return await capacity_control.run_heavy_gemini_call(
+                result = await capacity_control.run_heavy_gemini_call(
                     lambda _client=client: fn(_client)
                 )
+                if response_validator is not None and not bool(response_validator(result)):
+                    last_err = RuntimeError("Gemini response rejected by caller validator")
+                    break
+                return result
             except Exception as e:
                 if is_quota_error(e):
                     project_scoped = bool(

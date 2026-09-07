@@ -20,11 +20,18 @@ import os
 import re
 from typing import Any
 
-from core.globals import GEMINI_CLIENTS, make_text_config_smart, is_quota_error, is_overload_error
+from core.globals import (
+    GEMINI_CLIENTS,
+    GEMINI_CLIENT_QUOTA_DOMAINS,
+    is_overload_error,
+    is_quota_error,
+    make_text_config_smart,
+)
 from core.database import GEMINI_MODEL
 from core.text_utils import _scrub_inline
 from core.question_quality import normalize_question_text, question_is_usable, question_key
 from core.observability import alog_gemini_response, alog_gemini_run
+from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 logger = logging.getLogger(__name__)
 
@@ -376,9 +383,10 @@ async def generate_quiz(
 ) -> list[dict] | None:
     """Generate quiz questions from video AI analysis.
 
-    Uses existing Gemini audio_part if available (no extra upload cost). Falls
-    back to text-only context from ai_data. Returns list of question dicts or
-    None on failure.
+    Uses an existing Gemini audio part only on its owning client. Project-scoped
+    quota exhaustion suppresses explicitly labeled sibling credentials for this
+    request, while generic 429 still rotates normally. Semantic quality retry is
+    kept separate from credential routing.
     """
     if not GEMINI_CLIENTS:
         return None
@@ -403,8 +411,62 @@ async def generate_quiz(
 
     started = asyncio.get_running_loop().time()
     try:
-        client = existing_client if existing_client in GEMINI_CLIENTS else GEMINI_CLIENTS[0]
+        clients_order = list(GEMINI_CLIENTS)
+        if existing_client is not None and existing_client in clients_order:
+            clients_order.remove(existing_client)
+            clients_order.insert(0, existing_client)
+        domain_by_client_id = {
+            id(client): domain
+            for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)
+        }
+        tracker = ProjectQuotaDomainTracker(
+            clients_order,
+            [domain_by_client_id.get(id(client), "") for client in clients_order],
+        )
         schema = quiz_response_schema()
+        config = make_text_config_smart(
+            max_output_tokens=9000,
+            model_name=GEMINI_MODEL,
+            thinking_level="high",
+            response_mime_type="application/json",
+            response_schema=schema,
+        )
+
+        async def _generate_one(attempt_prompt: str):
+            last_quota_error: BaseException | None = None
+            for client in clients_order:
+                if tracker.should_skip(client, "quiz_generate"):
+                    continue
+                contents: list[Any] = []
+                if existing_audio_part and existing_client is client:
+                    contents.append(existing_audio_part)
+                contents.append(attempt_prompt)
+                try:
+                    return await asyncio.wait_for(
+                        client.aio.models.generate_content(
+                            model=GEMINI_MODEL,
+                            contents=contents,
+                            config=config,
+                        ),
+                        timeout=180.0,
+                    )
+                except Exception as exc:
+                    if not is_quota_error(exc):
+                        raise
+                    project_scoped = tracker.record_project_scoped_error(
+                        client,
+                        "quiz_generate",
+                        exc,
+                    )
+                    last_quota_error = exc
+                    logger.warning(
+                        "[Quiz] Gemini quota error; project_scoped=%s; rotating credential",
+                        project_scoped,
+                    )
+            if last_quota_error is not None:
+                raise last_quota_error
+            raise RuntimeError("No Gemini clients available for quiz generation")
+
         retry_note = """
 
 ПОВТОРНАЯ ГЕНЕРАЦИЯ КАЧЕСТВА:
@@ -415,24 +477,7 @@ async def generate_quiz(
         best_questions: list[dict] = []
         last_raw = ""
         for attempt, attempt_prompt in enumerate((prompt, prompt + retry_note), start=1):
-            contents: list[Any] = []
-            if existing_audio_part and existing_client is client:
-                contents.append(existing_audio_part)
-            contents.append(attempt_prompt)
-            resp = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=contents,
-                    config=make_text_config_smart(
-                        max_output_tokens=9000,
-                        model_name=GEMINI_MODEL,
-                        thinking_level="high",
-                        response_mime_type="application/json",
-                        response_schema=schema,
-                    ),
-                ),
-                timeout=180.0,
-            )
+            resp = await _generate_one(attempt_prompt)
             raw = getattr(resp, "text", "") or ""
             if not raw:
                 try:

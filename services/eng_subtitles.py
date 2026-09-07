@@ -41,32 +41,46 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
 
     prompt = "\n".join(prompt_lines)
 
-    for attempt in range(max(3, len(GEMINI_CLIENTS))):
-        client = GEMINI_CLIENTS[attempt % len(GEMINI_CLIENTS)]
+    from core.globals import gemini_generate
+
+    cfg = make_text_config_smart(
+        max_output_tokens=16000,
+        model_name=GEMINI_MODEL,
+        thinking_level="high",
+        response_mime_type="application/json",
+    )
+
+    async def _generate_chunk(client):
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=120.0,
+        )
+
+    def _parse_chunk_response(response) -> dict | None:
         try:
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=prompt,
-                    config=make_text_config_smart(
-                        max_output_tokens=16000,
-                        model_name=GEMINI_MODEL,
-                        thinking_level="high",
-                        response_mime_type="application/json",
-                    ),
-                ),
-                timeout=120.0,
-            )
-            text = response.text.strip()
+            text = str(getattr(response, "text", "") or "").strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
             data = json.loads(text)
-            return data
-        except Exception as e:
-            logger.warning(f"[EngSubtitles] Chunk translation attempt {attempt+1} failed: {e}")
-            await asyncio.sleep(2)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
 
-    return None
+    try:
+        response = await gemini_generate(
+            GEMINI_CLIENTS,
+            _generate_chunk,
+            model_name=GEMINI_MODEL,
+            response_validator=lambda item: _parse_chunk_response(item) is not None,
+        )
+        return _parse_chunk_response(response)
+    except Exception as exc:
+        logger.warning("[EngSubtitles] Chunk translation failed: %s", exc)
+        return None
 
 
 async def _get_audio_duration(path: Path) -> float:

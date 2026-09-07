@@ -148,42 +148,58 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
 Исходная строка: {title_line}
 """.strip()
 
-    for client_index, client in enumerate(GEMINI_CLIENTS):
+    from core.globals import gemini_generate
+
+    cfg = make_text_config_smart(
+        max_output_tokens=600,
+        model_name=model,
+        thinking_level="high",
+        response_mime_type="application/json",
+        response_schema={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "author": {"type": "string"},
+            },
+            "required": ["title", "author"],
+        },
+    )
+
+    async def _generate_title(client):
+        return await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=cfg,
+            ),
+            timeout=60.0,
+        )
+
+    def _parse_title_response(response) -> tuple[str, str] | None:
         try:
-            cfg = make_text_config_smart(
-                max_output_tokens=600,
-                model_name=model,
-                thinking_level="high",
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "author": {"type": "string"},
-                    },
-                    "required": ["title", "author"],
-                },
-            )
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=cfg,
-                ),
-                timeout=60.0,
-            )
             data = json.loads(_strip_json_fence(getattr(response, "text", "") or ""))
             title = _clean(data.get("title"), 190)
             author = _canonical_author(_clean(data.get("author"), 100))
             if title and re.search(r"[А-Яа-яЁё]", title):
                 return title, author
-        except Exception as exc:
-            logger.info(
-                "[LiveDubInfoPresentation] title model=%s client=%d failed: %s",
-                model,
-                client_index,
-                str(exc)[:120],
-            )
+        except Exception:
+            pass
+        return None
+
+    try:
+        response = await gemini_generate(
+            GEMINI_CLIENTS,
+            _generate_title,
+            model_name=model,
+            response_validator=lambda item: _parse_title_response(item) is not None,
+        )
+        return _parse_title_response(response)
+    except Exception as exc:
+        logger.info(
+            "[LiveDubInfoPresentation] title model=%s project-aware route failed: %s",
+            model,
+            str(exc)[:120],
+        )
     return None
 
 

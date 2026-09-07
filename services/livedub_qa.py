@@ -25,10 +25,12 @@ from typing import Optional
 from core.globals import (
     HAS_GEMINI,
     GEMINI_CLIENTS,
+    GEMINI_CLIENT_QUOTA_DOMAINS,
     is_overload_error,
     is_quota_error,
 )
 from services import gemini_capacity_control as capacity_control
+from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 try:
     from google.genai import types  # type: ignore
@@ -275,6 +277,9 @@ async def _upload_and_wait(
     path: Path,
     display_name: str,
     budget: capacity_control.GeminiRetryBudget,
+    *,
+    quota_tracker: ProjectQuotaDomainTracker | None = None,
+    quota_scope: str = "files",
 ):
     budget.claim()
     uf = None
@@ -305,6 +310,8 @@ async def _upload_and_wait(
             raise RuntimeError("Gemini file processing FAILED")
         return uf
     except Exception as exc:
+        if quota_tracker is not None:
+            quota_tracker.record_project_scoped_error(client, quota_scope, exc)
         if is_overload_error(exc):
             capacity_control.note_overload(
                 capacity_control.transient_retry_delay(budget.used),
@@ -409,6 +416,10 @@ async def _run_translation_qa_base(
     original_upload_budget = capacity_control.GeminiRetryBudget()
     dub_upload_budget = capacity_control.GeminiRetryBudget()
     inference_budget = capacity_control.GeminiRetryBudget()
+    quota_tracker = ProjectQuotaDomainTracker(
+        GEMINI_CLIENTS,
+        GEMINI_CLIENT_QUOTA_DOMAINS,
+    )
 
     try:
         dub_timed_text = ""
@@ -546,6 +557,7 @@ async def _run_translation_qa_base(
                     upload_orig,
                     "qa_original",
                     original_upload_budget,
+                    quota_tracker=quota_tracker,
                 )
                 uploaded.append(uf_orig)
                 parts.append(uf_orig)
@@ -558,6 +570,7 @@ async def _run_translation_qa_base(
                     dub_audio,
                     "qa_dub",
                     dub_upload_budget,
+                    quota_tracker=quota_tracker,
                 )
                 uploaded.append(uf_dub)
                 parts.append(uf_dub)
@@ -588,6 +601,11 @@ async def _run_translation_qa_base(
                     )
                 )
             except Exception as first_error:
+                quota_tracker.record_project_scoped_error(
+                    client,
+                    "inference",
+                    first_error,
+                )
                 if is_overload_error(first_error):
                     capacity_control.note_overload(
                         capacity_control.transient_retry_delay(inference_budget.used)
@@ -619,6 +637,11 @@ async def _run_translation_qa_base(
                         )
                     )
                 except Exception as fallback_error:
+                    quota_tracker.record_project_scoped_error(
+                        client,
+                        "inference",
+                        fallback_error,
+                    )
                     if is_overload_error(fallback_error):
                         capacity_control.note_overload(
                             capacity_control.transient_retry_delay(
@@ -643,13 +666,18 @@ async def _run_translation_qa_base(
             _clients_order = [existing_client] * inference_budget.limit
 
         for client in _clients_order:
-            if inference_budget.exhausted:
-                break
-            if (
+            needs_original_upload = bool(
                 original_path_available
                 and not (existing_original_active and existing_client is client)
-                and original_upload_budget.exhausted
-            ):
+            )
+            needs_files = bool(needs_original_upload or dub_audio is not None)
+            if quota_tracker.should_skip(client, "inference"):
+                continue
+            if needs_files and quota_tracker.should_skip(client, "files"):
+                continue
+            if inference_budget.exhausted:
+                break
+            if needs_original_upload and original_upload_budget.exhausted:
                 break
             if dub_audio is not None and dub_upload_budget.exhausted:
                 break

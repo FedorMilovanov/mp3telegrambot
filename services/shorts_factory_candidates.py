@@ -453,12 +453,26 @@ async def create_factory_plan(
     if not mp3_path.exists() or mp3_path.stat().st_size < 1024:
         raise RuntimeError("Audio file for Shorts Factory is missing or empty")
 
+    from core.globals import GEMINI_CLIENT_QUOTA_DOMAINS
+    from services.gemini_quota_domains import ProjectQuotaDomainTracker
+
     model = shorts_factory_model()
     file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
     last_error: Exception | None = None
+    quota_tracker = ProjectQuotaDomainTracker(
+        GEMINI_CLIENTS,
+        GEMINI_CLIENT_QUOTA_DOMAINS,
+    )
+    files_scope = "shorts_factory_legacy_files"
+    inference_scope = "shorts_factory_legacy_inference"
 
     for client_index, client in enumerate(GEMINI_CLIENTS, 1):
+        if quota_tracker.should_skip(client, inference_scope):
+            continue
+        if file_size_mb > 20 and quota_tracker.should_skip(client, files_scope):
+            continue
         uploaded_name = ""
+        quota_scope = inference_scope if file_size_mb <= 20 else files_scope
         try:
             if file_size_mb <= 20:
                 audio_part = types.Part.from_bytes(
@@ -477,6 +491,7 @@ async def create_factory_plan(
                 audio_part = uploaded
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
 
+            quota_scope = inference_scope
             scout = await _run_pass(
                 client,
                 model=model,
@@ -510,6 +525,7 @@ async def create_factory_plan(
             plan["strict_quality"] = True
             return plan
         except Exception as exc:
+            quota_tracker.record_project_scoped_error(client, quota_scope, exc)
             last_error = exc
             logger.warning(
                 "Shorts Factory MAX client %d/%d failed strict review: %s: %s",

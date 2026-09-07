@@ -5,66 +5,18 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "*.py"
+      - "**/*.py"
       - ".env.example"
-      - "bot.py"
-      - "core/database.py"
-      - "core/globals.py"
       - "scripts/migrate-gemini-38.ps1"
-      - "services/__init__.py"
-      - "services/pre_main_policy.py"
-      - "services/gemini_max_quality.py"
-      - "services/gemini_model_status.py"
-      - "services/gemini_qa_policy.py"
-      - "services/gemini_quota_domains.py"
-      - "services/livedub_info.py"
-      - "services/livedub_long_qa.py"
-      - "services/livedub_publication_core.py"
-      - "services/livedub_quality_runtime.py"
-      - "services/runtime_manifest.py"
-      - "services/shorts_factory_candidates.py"
-      - "services/shorts_factory_capacity.py"
-      - "services/shorts_factory_capacity_runtime.py"
-      - "tests/test_bot_compat_launcher.py"
-      - "tests/test_gemini_38_env_contract.py"
-      - "tests/test_gemini_global_quota_domains.py"
-      - "tests/test_gemini_max_quality.py"
-      - "tests/test_gemini_model_status.py"
-      - "tests/test_gemini_qa_policy.py"
-      - "tests/test_livedub_long_qa.py"
-      - "tests/test_livedub_quality_runtime.py"
-      - "tests/test_shorts_factory_candidates.py"
       - ".github/workflows/gemini-qa-policy.yml"
   push:
     branches: ["main"]
     paths:
+      - "*.py"
+      - "**/*.py"
       - ".env.example"
-      - "bot.py"
-      - "core/database.py"
-      - "core/globals.py"
       - "scripts/migrate-gemini-38.ps1"
-      - "services/__init__.py"
-      - "services/pre_main_policy.py"
-      - "services/gemini_max_quality.py"
-      - "services/gemini_model_status.py"
-      - "services/gemini_qa_policy.py"
-      - "services/gemini_quota_domains.py"
-      - "services/livedub_info.py"
-      - "services/livedub_long_qa.py"
-      - "services/livedub_publication_core.py"
-      - "services/livedub_quality_runtime.py"
-      - "services/runtime_manifest.py"
-      - "services/shorts_factory_candidates.py"
-      - "services/shorts_factory_capacity.py"
-      - "services/shorts_factory_capacity_runtime.py"
-      - "tests/test_bot_compat_launcher.py"
-      - "tests/test_gemini_38_env_contract.py"
-      - "tests/test_gemini_global_quota_domains.py"
-      - "tests/test_gemini_max_quality.py"
-      - "tests/test_gemini_model_status.py"
-      - "tests/test_gemini_qa_policy.py"
-      - "tests/test_livedub_long_qa.py"
-      - "tests/test_livedub_quality_runtime.py"
-      - "tests/test_shorts_factory_candidates.py"
       - ".github/workflows/gemini-qa-policy.yml"
 
 concurrency:
@@ -72,6 +24,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  caller-census:
+    name: Exact-tree Gemini caller census
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Enforce exact-tree Gemini caller classifications
+        run: python scripts/gemini_caller_census.py
+
   windows-policy:
     name: Windows Gemini translation QA policy
     runs-on: windows-latest
@@ -89,25 +53,44 @@ jobs:
       - name: Install focused test tools
         run: python -m pip install pytest ruff
 
-      - name: Compile policy and bootstrap
+      - name: Compile policy and runtime routing surfaces
         run: |
           python -m py_compile bot.py
           python -m py_compile core/database.py
           python -m py_compile core/globals.py
+          python -m py_compile pipelines/main_pipeline.py
+          python -m py_compile scripts/gemini_caller_census.py
+          python -m py_compile services/eng_subtitles.py
+          python -m py_compile services/gemini_analyze.py
+          python -m py_compile services/gemini_capacity_control.py
           python -m py_compile services/gemini_max_quality.py
           python -m py_compile services/gemini_model_status.py
           python -m py_compile services/gemini_qa_policy.py
           python -m py_compile services/gemini_quota_domains.py
+          python -m py_compile services/highlights_quality.py
           python -m py_compile services/livedub_info.py
+          python -m py_compile services/livedub_info_presentation_policy.py
           python -m py_compile services/livedub_long_qa.py
+          python -m py_compile services/livedub_publication.py
           python -m py_compile services/livedub_publication_core.py
+          python -m py_compile services/livedub_qa.py
           python -m py_compile services/livedub_quality_runtime.py
           python -m py_compile services/pre_main_policy.py
+          python -m py_compile services/quiz_generator.py
+          python -m py_compile services/render_clips_montage.py
           python -m py_compile services/runtime_manifest.py
+          python -m py_compile services/shorts_candidates.py
           python -m py_compile services/shorts_factory_candidates.py
           python -m py_compile services/shorts_factory_capacity.py
           python -m py_compile services/shorts_factory_capacity_runtime.py
+          python -m py_compile services/shorts_factory_publication.py
+          python -m py_compile services/telegraph.py
+          python -m py_compile services/telegraph_pages.py
+          python -m py_compile services/translation_editorial_factory.py
           python -m py_compile services/__init__.py
+          python -m py_compile tools/voxcpm2/generic_short_production.py
+          python -m py_compile tests/test_gemini_remaining_quota_routing.py
+          python -m py_compile tests/test_livedub_title_quota_routing.py
 
       - name: Run policy regression tests
         run: >-
@@ -115,8 +98,12 @@ jobs:
           tests/test_gemini_qa_policy.py
           tests/test_gemini_model_status.py
           tests/test_gemini_38_env_contract.py
+          tests/test_gemini_direct_quota_domains.py
           tests/test_gemini_global_quota_domains.py
+          tests/test_gemini_quota_route_integration.py
+          tests/test_gemini_remaining_quota_routing.py
           tests/test_livedub_long_qa.py
+          tests/test_livedub_title_quota_routing.py
           tests/test_bot_compat_launcher.py
 
       - name: Ruff fatal checks
@@ -125,22 +112,43 @@ jobs:
           bot.py
           core/database.py
           core/globals.py
+          pipelines/main_pipeline.py
+          scripts/gemini_caller_census.py
+          services/eng_subtitles.py
+          services/gemini_analyze.py
+          services/gemini_capacity_control.py
           services/gemini_max_quality.py
           services/gemini_model_status.py
           services/gemini_qa_policy.py
           services/gemini_quota_domains.py
+          services/highlights_quality.py
           services/livedub_info.py
+          services/livedub_info_presentation_policy.py
           services/livedub_long_qa.py
+          services/livedub_publication.py
           services/livedub_publication_core.py
+          services/livedub_qa.py
           services/livedub_quality_runtime.py
           services/pre_main_policy.py
+          services/quiz_generator.py
+          services/render_clips_montage.py
           services/runtime_manifest.py
+          services/shorts_candidates.py
           services/shorts_factory_candidates.py
           services/shorts_factory_capacity.py
           services/shorts_factory_capacity_runtime.py
+          services/shorts_factory_publication.py
+          services/telegraph.py
+          services/telegraph_pages.py
+          services/translation_editorial_factory.py
+          tools/voxcpm2/generic_short_production.py
           tests/test_bot_compat_launcher.py
           tests/test_gemini_38_env_contract.py
+          tests/test_gemini_direct_quota_domains.py
           tests/test_gemini_global_quota_domains.py
           tests/test_gemini_qa_policy.py
           tests/test_gemini_model_status.py
+          tests/test_gemini_quota_route_integration.py
+          tests/test_gemini_remaining_quota_routing.py
           tests/test_livedub_long_qa.py
+          tests/test_livedub_title_quota_routing.py

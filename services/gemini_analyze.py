@@ -15,7 +15,7 @@ Gemini Audio Analyzer — анализ аудио через Gemini API.
 """
 from core.globals import (
     HAS_GEMINI, GEMINI_API_KEY,
-    GEMINI_CLIENTS,
+    GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS,
     is_quota_error, is_overload_error,
     make_audio_config,
 )
@@ -30,6 +30,7 @@ from core.prompt_compactor import compact_prompt_for_generation
 from core.core_utils import time_to_seconds
 from core.text_utils import _scrub_inline
 from services import gemini_capacity_control as capacity_control
+from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 import asyncio
 import logging
@@ -279,6 +280,11 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
         upload_budget = capacity_control.GeminiRetryBudget()
         inference_budget = capacity_control.GeminiRetryBudget()
+        clients = list(GEMINI_CLIENTS)
+        quota_tracker = ProjectQuotaDomainTracker(
+            clients,
+            GEMINI_CLIENT_QUOTA_DOMAINS,
+        )
 
         # If a prior semantic operation already exhausted the shared inference
         # circuit, do not upload another large file that cannot be consumed.
@@ -416,9 +422,21 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             response = None
             success = False
 
-            for client_index, client in enumerate(GEMINI_CLIENTS, 1):
+            for client_index, client in enumerate(clients, 1):
                 if success or inference_budget.exhausted or upload_budget.exhausted:
                     break
+                files_blocked = (
+                    file_size_mb > 0
+                    and quota_tracker.should_skip(client, "files")
+                )
+                inference_blocked = quota_tracker.should_skip(client, "inference")
+                if files_blocked or inference_blocked:
+                    logger.info(
+                        "Gemini audio skipped credential %d/%d after proven project-scoped quota exhaustion",
+                        client_index,
+                        len(clients),
+                    )
+                    continue
                 audio_part = used_audio_part if used_client is client else None
 
                 if audio_part is None:
@@ -427,6 +445,12 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         used_audio_part = audio_part
                     except Exception as upload_err:
                         last_err = upload_err
+                        if is_quota_error(upload_err):
+                            quota_tracker.record_project_scoped_error(
+                                client,
+                                "files",
+                                upload_err,
+                            )
                         transient_upload = (
                             is_quota_error(upload_err)
                             or is_overload_error(upload_err)
@@ -437,7 +461,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         logger.warning(
                             "Gemini Files upload transient failure client %d/%d, budget=%d/%d: %s: %s",
                             client_index,
-                            len(GEMINI_CLIENTS),
+                            len(clients),
                             upload_budget.used,
                             upload_budget.limit,
                             type(upload_err).__name__,
@@ -469,6 +493,11 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         last_err = e
                         same_client_transients += 1
                         if _is_quota:
+                            quota_tracker.record_project_scoped_error(
+                                client,
+                                "inference",
+                                e,
+                            )
                             # Quota is project/model-level; retrying same key only wastes time.
                             kind = "квота/429"
                         elif _is_timeout:
