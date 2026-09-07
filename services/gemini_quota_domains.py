@@ -156,11 +156,17 @@ class ProjectQuotaDomainTracker:
 
     def __init__(self, clients: Sequence[object], domains: Sequence[object]) -> None:
         self._domain_by_client_id: dict[int, str] = {}
+        # Runtime startup guarantees positional alignment. If a test/plugin replaces
+        # the client list without replacing its metadata, fail open rather than
+        # attaching a real domain label to the wrong object.
+        if len(clients) != len(domains):
+            self._exhausted_by_scope: dict[str, set[str]] = {}
+            return
         for client, domain in zip(clients, domains):
             normalized = normalize_quota_domain_label(domain)
             if normalized:
                 self._domain_by_client_id[id(client)] = normalized
-        self._exhausted_by_scope: dict[str, set[str]] = {}
+        self._exhausted_by_scope = {}
 
     def should_skip(self, client: object, *scopes: str) -> bool:
         domain = self._domain_by_client_id.get(id(client), "")
