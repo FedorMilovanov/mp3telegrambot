@@ -23,25 +23,67 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 os.chdir(_PROJECT_ROOT)
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-if sys.version_info < (3, 11):
-    print("❌ Требуется Python 3.11+")
+if not ((3, 11) <= sys.version_info[:2] < (3, 14)):
+    print("❌ Требуется Python 3.11, 3.12 или 3.13")
     print(f"   Текущая версия: {sys.version}")
     sys.exit(1)
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError as exc:
+    missing = getattr(exc, "name", None) or "python-dotenv"
+    print("❌ Python runtime неполный: не удалось импортировать python-dotenv.")
+    print(f"   Ошибка импорта: {missing}")
+    print("   Установи exact lock: python -m pip install -r requirements-lock.txt")
+    print("   На Windows также можно запустить Start Bot.bat.")
+    sys.exit(2)
 
 load_dotenv()
 
 _bot_token = os.getenv("BOT_TOKEN", "").strip()
-_gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+_GEMINI_API_KEY_NAMES = (
+    "GEMINI_API_KEY",
+    "GEMINI_API_KEY_2",
+    "GEMINI_API_KEY_3",
+    "GEMINI_API_KEY_4",
+)
+_gemini_keys_configured = any(
+    os.getenv(name, "").strip() for name in _GEMINI_API_KEY_NAMES
+)
 
 if not _bot_token:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не задан в .env!")
     print("   Создай файл .env и добавь: BOT_TOKEN=твой_токен")
     sys.exit(1)
 
-if not _gemini_key:
-    print("⚠️ GEMINI_API_KEY не задан — AI-функции будут недоступны")
+if not _gemini_keys_configured:
+    print("⚠️ Gemini API keys не заданы — AI-функции будут недоступны")
+
+# Direct `python bot_new.py` launches must use the same runtime-direct Python
+# versions as CI and Start Bot.bat. Verify before singleton ownership or any
+# child/provider runtime starts. google-genai remains optional when no configured
+# Gemini credential exists, matching the existing non-AI startup contract.
+from services.runtime_dependency_lock import (
+    RuntimeDependencyLockError,
+    validate_runtime_dependency_lock,
+)
+
+try:
+    _runtime_dependency_status = validate_runtime_dependency_lock(
+        _PROJECT_ROOT,
+        skip_names=() if _gemini_keys_configured else ("google-genai",),
+    )
+except RuntimeDependencyLockError as exc:
+    print("❌ Python runtime не соответствует requirements-lock.txt.")
+    print(f"   {exc}")
+    print("   Установи exact lock: python -m pip install -r requirements-lock.txt")
+    print("   На Windows также можно запустить Start Bot.bat.")
+    sys.exit(2)
+else:
+    print(
+        "✅ Python dependencies: "
+        f"{_runtime_dependency_status['checked']} locked runtime packages"
+    )
 
 # Own the bot process before any child runtime is started. The declarative
 # pre-main manifest invokes this installer again later; acquire_early_singleton
