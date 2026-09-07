@@ -35,6 +35,8 @@ on:
       - "tests/test_caption_fallback_warning.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
+      - "tests/test_factory_capacity_retry_transition.py"
+      - "tests/test_factory_quota_domain_routing.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
@@ -85,6 +87,8 @@ on:
       - "tests/test_caption_fallback_warning.py"
       - "tests/test_factory_audio_duration_integrity.py"
       - "tests/test_factory_capacity_fast_fail.py"
+      - "tests/test_factory_capacity_retry_transition.py"
+      - "tests/test_factory_quota_domain_routing.py"
       - "tests/test_factory_execution_and_cut_source_policy.py"
       - "tests/test_shorts_factory_no_downgrade.py"
       - "tests/test_shorts_factory_source.py"
@@ -187,6 +191,8 @@ jobs:
           tests/test_caption_fallback_warning.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
+          tests/test_factory_capacity_retry_transition.py
+          tests/test_factory_quota_domain_routing.py
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
@@ -233,6 +239,8 @@ jobs:
           tests/test_caption_fallback_warning.py
           tests/test_factory_audio_duration_integrity.py
           tests/test_factory_capacity_fast_fail.py
+          tests/test_factory_capacity_retry_transition.py
+          tests/test_factory_quota_domain_routing.py
           tests/test_factory_execution_and_cut_source_policy.py
           tests/test_shorts_factory_no_downgrade.py
           tests/test_shorts_factory_source.py
