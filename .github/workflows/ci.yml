@@ -46,6 +46,10 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
 
+      - name: Validate installed runtime dependency closure
+        run: >-
+          python -c "from pathlib import Path; from services.runtime_dependency_lock import validate_runtime_dependency_lock; print(validate_runtime_dependency_lock(Path('.')))"
+
       - name: Validate TTS model catalog
         run: python tools/check_tts_model_catalog.py
 
@@ -104,6 +108,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
+
+      - name: Validate installed runtime dependency closure
+        run: >-
+          python -c "from pathlib import Path; from services.runtime_dependency_lock import validate_runtime_dependency_lock; print(validate_runtime_dependency_lock(Path('.')))"
 
       - name: Validate TTS model catalog
         run: python tools/check_tts_model_catalog.py

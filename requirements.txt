@@ -42,6 +42,12 @@ waitress>=3.0.0,<4.0.0
 # ── Переменные окружения ──────────────────────────────────────────────────────
 python-dotenv>=1.0.0,<2.0.0
 
+# ── Runtime dependency-lock contract ──────────────────────────────────────────
+# bot_new.py переиспользует canonical requirements parser/validator до запуска
+# singleton/provider runtime. packaging — прямой runtime dependency этого gate,
+# а не случайная транзитивная зависимость другого пакета.
+packaging>=26.2,<27.0
+
 # ── Субтитры и аудио Quality v4 ───────────────────────────────────────────────
 # faster-whisper проверяет покрытие captions и фактически произнесённые слова.
 # CTranslate2 >=4.6.2 устраняет deprecated pkg_resources import; faster-whisper
