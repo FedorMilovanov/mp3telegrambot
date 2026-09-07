@@ -56,9 +56,16 @@ if not exist "%VENV_PYTHON%" (
 )
 
 set "REQUIREMENTS_FILE=requirements-lock.txt"
-if not exist "%REQUIREMENTS_FILE%" set "REQUIREMENTS_FILE=requirements.txt"
 if not exist "%REQUIREMENTS_FILE%" (
-    echo ERROR: requirements-lock.txt and requirements.txt were not found.
+    echo ERROR: requirements-lock.txt was not found.
+    echo Refusing to install unlocked dependencies from requirements.txt.
+    echo Restore the repository lock file and run the launcher again.
+    pause
+    exit /b 1
+)
+if not exist "tools\check_requirements_lock.py" (
+    echo ERROR: tools\check_requirements_lock.py was not found.
+    echo Refusing to install dependencies without validating the repository lock contract.
     pause
     exit /b 1
 )
@@ -93,17 +100,20 @@ if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" (
     "%VENV_PYTHON%" -m pip install -r "%REQUIREMENTS_FILE%"
     if errorlevel 1 goto :pip_error
 
-    if /I "%REQUIREMENTS_FILE%"=="requirements-lock.txt" (
-        if exist "tools\check_requirements_lock.py" (
-            "%VENV_PYTHON%" tools\check_requirements_lock.py
-            if errorlevel 1 goto :pip_error
-        )
-    )
+    rem A fresh venv may not have top-level packaging until the locked install.
+    rem Validate runtime direct requirements only after bootstrap has succeeded.
+    "%VENV_PYTHON%" tools\check_requirements_lock.py requirements.txt
+    if errorlevel 1 goto :pip_error
 
     >"%SETUP_MARKER%" echo !CURRENT_REQ_HASH!
     echo [SETUP] Dependencies installed and verified successfully.
 ) else (
-    echo [SETUP] Dependencies are already current.
+    rem Even when lock bytes are unchanged, requirements.txt may have moved.
+    rem Revalidate runtime requirements every launch so a stale lock cannot hide behind marker state.
+    "%VENV_PYTHON%" tools\check_requirements_lock.py requirements.txt
+    if errorlevel 1 goto :pip_error
+
+    echo [SETUP] Dependencies are already current and verified.
 )
 
 rem Reconcile obsolete PO-token packages on every managed launcher run.
