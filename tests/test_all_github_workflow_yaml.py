@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -5,13 +6,21 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
+LITERAL_REPO_PYTHON_PATH_RE = re.compile(
+    r"(?<![\w./-])((?:core|handlers|pipelines|scripts|services|tests|tools)/"
+    r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py)(?![\w./-])"
+)
 
 
-def test_every_github_actions_workflow_is_valid_and_structured_yaml() -> None:
-    workflow_paths = sorted(
+def _workflow_paths() -> list[Path]:
+    return sorted(
         [*WORKFLOW_DIR.glob("*.yml"), *WORKFLOW_DIR.glob("*.yaml")],
         key=lambda path: path.as_posix(),
     )
+
+
+def test_every_github_actions_workflow_is_valid_and_structured_yaml() -> None:
+    workflow_paths = _workflow_paths()
     assert workflow_paths, "No GitHub Actions workflow files were found."
 
     failures: list[str] = []
@@ -35,3 +44,23 @@ def test_every_github_actions_workflow_is_valid_and_structured_yaml() -> None:
             failures.append(f"{relative}: missing non-empty top-level 'jobs' mapping")
 
     assert not failures, "Invalid GitHub Actions workflow YAML:\n" + "\n".join(failures)
+
+
+def test_literal_repo_python_paths_referenced_by_workflows_exist() -> None:
+    workflow_paths = _workflow_paths()
+    assert workflow_paths, "No GitHub Actions workflow files were found."
+
+    failures: list[str] = []
+    for workflow_path in workflow_paths:
+        source = workflow_path.read_text(encoding="utf-8")
+        relative_workflow = workflow_path.relative_to(ROOT)
+        references = sorted(set(LITERAL_REPO_PYTHON_PATH_RE.findall(source)))
+        for reference in references:
+            if not (ROOT / reference).is_file():
+                failures.append(
+                    f"{relative_workflow}: missing referenced Python path {reference}"
+                )
+
+    assert not failures, "GitHub Actions workflows reference missing Python paths:\n" + "\n".join(
+        failures
+    )
