@@ -105,6 +105,30 @@ def _clean_caption_text(line: str) -> str:
     return line
 
 
+def _merge_caption_lines(values: list[str]) -> str:
+    """Collapse adjacent VTT render states without deleting A/B/A repeats."""
+    states: list[str] = []
+    for value in values:
+        cleaned = _clean_caption_text(value)
+        if not cleaned:
+            continue
+        if not states:
+            states.append(cleaned)
+            continue
+        previous = states[-1]
+        previous_folded = previous.casefold()
+        current_folded = cleaned.casefold()
+        if current_folded == previous_folded:
+            continue
+        if current_folded.startswith(previous_folded + " "):
+            states[-1] = cleaned
+            continue
+        if previous_folded.startswith(current_folded + " "):
+            continue
+        states.append(cleaned)
+    return " ".join(states).strip()
+
+
 def _word_key(word: str) -> str:
     return re.sub(r"[^\w']+", "", word.lower(), flags=re.UNICODE)
 
@@ -154,7 +178,7 @@ def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000, chunk_seconds: int 
         if current_ts is None or not buf:
             buf = []
             return
-        text = _clean_caption_text(" ".join(buf))
+        text = _merge_caption_lines(buf)
         buf = []
         if text:
             cues.append((current_ts, text))
