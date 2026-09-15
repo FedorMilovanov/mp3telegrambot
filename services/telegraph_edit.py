@@ -18,7 +18,9 @@ from urllib.parse import urlparse
 import requests
 
 from core.globals import TELEGRAPH_TOKEN
-from core.telegraph_contract import fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title
+from core.telegraph_contract import (
+    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+)
 
 
 _FLOOD_WAIT_RE = re.compile(r"^FLOOD_WAIT_(\d+)$")
