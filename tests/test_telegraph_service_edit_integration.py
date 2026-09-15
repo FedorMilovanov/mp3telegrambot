@@ -1,9 +1,48 @@
 import asyncio
 
 import pytest
+import requests
 
 from services import telegraph
 from services.telegraph_edit import TelegraphEditResult
+
+
+@pytest.mark.asyncio
+async def test_telegraph_post_retries_transient_network_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+    sleeps = []
+
+    class Response:
+        @staticmethod
+        def json():
+            return {"ok": True, "result": {"url": "https://telegra.ph/Page"}}
+
+    def post(_url, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise requests.Timeout("temporary")
+        return Response()
+
+    async def no_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "token")
+    monkeypatch.setattr(telegraph.requests, "post", post)
+    monkeypatch.setattr(telegraph.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(telegraph, "_final_telegraph_polish", lambda nodes: list(nodes))
+    monkeypatch.setattr(telegraph, "_clean_telegraph_nodes", lambda nodes: list(nodes))
+
+    url = await telegraph._telegraph_post(
+        "Title",
+        "Author",
+        [{"tag": "p", "children": ["Text"]}],
+        asyncio.get_running_loop(),
+    )
+
+    assert url == "https://telegra.ph/Page"
+    assert calls == 2
+    assert sleeps == [1]
 
 
 @pytest.mark.asyncio
