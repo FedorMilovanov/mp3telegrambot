@@ -490,7 +490,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 if data.get("ok"):
                     return data["result"]["url"], None
                 last_err = data.get("error", "")
-                if status_code in {408, 425, 429} or bool(status_code and status_code >= 500):
+                _has_flood_wait = bool(re.match(r"FLOOD_WAIT_(\d+)", str(last_err)))
+                if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and not _has_flood_wait:
                     if _attempt < 2:
                         logger.warning("Telegraph transient HTTP %s: %s — retry", status_code, last_err)
                         await asyncio.sleep(2 ** _attempt)
