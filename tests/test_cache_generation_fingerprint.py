@@ -19,9 +19,11 @@ def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files():
         "services/study_synthesis_policy.py",
         "services/study_synthesis_runtime.py",
         "services/gemini_analyze.py",
+        "services/search.py",
         "services/telegraph.py",
         "services/telegraph_edit.py",
         "services/telegraph_pages.py",
+        "services/telegraph_repair.py",
         "services/youtube_transcript.py",
     ):
         assert rel in src
