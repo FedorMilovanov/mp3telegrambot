@@ -983,11 +983,39 @@ _GENERATION_CONTRACT_FILES = (
     "converters/md_telegraph.py",
     "services/study_synthesis_policy.py",
     "services/study_synthesis_runtime.py",
+    "services/gemini_analyze.py",
     "services/telegraph.py",
     "services/telegraph_edit.py",
     "services/telegraph_pages.py",
     "services/youtube_transcript.py",
 )
+
+
+# Environment switches below alter persisted analysis/page semantics. Operational
+# timeouts/backoff knobs are deliberately excluded: changing availability policy
+# must not invalidate otherwise identical generated content.
+_GENERATION_CONTRACT_ENV_DEFAULTS = {
+    "AUDIO_ANALYSIS_STRUCTURED": "1",
+    "AUDIO_TIMESTAMP_REPAIR": "1",
+    "COMBINE_STUDY_REFLECTION": "0",
+    "COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS": "90000",
+    "EXPANDED_CONTENT_AUDIT_RETRY": "1",
+    "EXPANDED_PAGES_STRUCTURED": "1",
+    "SYNOPSIS_DENSITY_RETRY": "1",
+    "SYNOPSIS_STRUCTURED": "0",
+    "SYNOPSIS_VERBATIM_PROMPT": "1",
+    "SYNOPSIS_YT_TRANSCRIPT": "1",
+    "SYNOPSIS_YT_TRANSCRIPT_LANGS": "",
+    "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS": "120000",
+    "SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE": "0.70",
+}
+
+
+def _generation_contract_env_state() -> str:
+    return "|".join(
+        f"{name}={os.getenv(name, default).strip()}"
+        for name, default in sorted(_GENERATION_CONTRACT_ENV_DEFAULTS.items())
+    )
 
 
 def _hash_prompts_source() -> str:
@@ -1015,7 +1043,10 @@ def _hash_prompts_source() -> str:
 
 def get_prompt_fingerprint() -> str:
     """SHA-256 от сочетания версии промпта, режима, модели и SHA исходника промтов."""
-    raw = f"{PROMPT_SCHEMA_VERSION}|{GEMINI_MODEL}|{_AUDIO_ANALYSIS_MODE}|{_hash_prompts_source()}"
+    raw = (
+        f"{PROMPT_SCHEMA_VERSION}|{GEMINI_MODEL}|{_AUDIO_ANALYSIS_MODE}|"
+        f"{_generation_contract_env_state()}|{_hash_prompts_source()}"
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 # ─── Защита от спама ─────────────────────────────────────────
