@@ -28,7 +28,8 @@ from core.globals import (
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
 from core.telegraph_contract import (
-    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+    compose_telegraph_title, fit_telegraph_author_name,
+    fit_telegraph_author_url, fit_telegraph_title,
 )
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
@@ -524,7 +525,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     # третья глубина CONTENT_TOO_BIG (или FLOOD_WAIT части) молча ТЕРЯЛА
     # четверть контента, а TOC рапортовал успех.
     async def _publish_chunk(chunk, label: str, depth: int = 0) -> bool:
-        part_url, part_err = await _post_once(f"{title} ({label})", chunk)
+        part_title = compose_telegraph_title(title, f" ({label})")
+        part_url, part_err = await _post_once(part_title, chunk)
         if part_url:
             parts_urls.append((label, part_url))
             return True
@@ -558,7 +560,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         toc_nodes.append({"tag": "p", "children": [
             {"tag": "a", "attrs": {"href": part_url}, "children": [f"Часть {num}"]}
         ]})
-    toc_url, _ = await _post_once(f"{title} — Содержание", toc_nodes)
+    toc_title = compose_telegraph_title(title, " — Содержание")
+    toc_url, _ = await _post_once(toc_title, toc_nodes)
     return toc_url
 
 
