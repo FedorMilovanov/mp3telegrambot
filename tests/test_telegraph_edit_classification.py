@@ -71,6 +71,38 @@ async def test_one_shot_edit_returns_api_error_without_sleeping() -> None:
 
 
 @pytest.mark.asyncio
+async def test_one_shot_edit_clamps_composed_title_at_transport_boundary() -> None:
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"ok": True, "result": {"path": "Page"}}
+
+    payloads = []
+
+    def post(_url, **kwargs):
+        payloads.append(kwargs["json"])
+        return Response()
+
+    result = await edit_telegraph_page_once(
+        "https://telegra.ph/Page",
+        "Вопросы: " + ("Я" * 300),
+        "Автор" * 40,
+        [],
+        asyncio.get_running_loop(),
+        author_url="https://example.com/" + ("x" * 600),
+        token="token",
+        post=post,
+    )
+
+    assert result.ok is True
+    assert len(payloads[0]["title"]) == 256
+    assert len(payloads[0]["author_name"]) == 128
+    assert len(payloads[0]["author_url"]) == 512
+
+
+@pytest.mark.asyncio
 async def test_network_timeout_is_retryable() -> None:
     def post(_url, **_kwargs):
         raise requests.Timeout("slow")
