@@ -477,10 +477,25 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                           "content": ns, "return_content": False},
                     timeout=30,
                 ))
-                data = resp.json()
+                status_code = getattr(resp, "status_code", None)
+                try:
+                    data = resp.json()
+                except Exception as json_error:
+                    last_err = f"HTTP {status_code}: invalid JSON ({json_error})"
+                    if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and _attempt < 2:
+                        logger.warning("Telegraph transient HTTP %s with invalid JSON — retry", status_code)
+                        await asyncio.sleep(2 ** _attempt)
+                        continue
+                    return None, last_err
                 if data.get("ok"):
                     return data["result"]["url"], None
                 last_err = data.get("error", "")
+                if status_code in {408, 425, 429} or bool(status_code and status_code >= 500):
+                    if _attempt < 2:
+                        logger.warning("Telegraph transient HTTP %s: %s — retry", status_code, last_err)
+                        await asyncio.sleep(2 ** _attempt)
+                        continue
+                    return None, last_err or f"HTTP {status_code}"
             except (requests.Timeout, requests.ConnectionError, OSError) as e:
                 last_err = str(e)
                 logger.warning(f"Telegraph transient error: {e}")
