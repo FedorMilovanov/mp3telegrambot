@@ -1,4 +1,5 @@
 """Cache invalidation must track the full persisted generation/render contract."""
+import os
 from pathlib import Path
 
 
@@ -40,7 +41,9 @@ def test_semantic_generation_env_rotates_prompt_fingerprint(monkeypatch):
     from core.database import get_prompt_fingerprint
 
     before = get_prompt_fingerprint()
-    monkeypatch.setenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "123457")
+    current = os.getenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "120000")
+    replacement = "123457" if current != "123457" else "123458"
+    monkeypatch.setenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", replacement)
     after = get_prompt_fingerprint()
     assert after != before
 
