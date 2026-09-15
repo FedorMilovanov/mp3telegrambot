@@ -1063,9 +1063,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         _qa_ai_data = None
                         try:
                             _qa_cached = await adb_get(media_id)
-                            _qa_ai_data = (_qa_cached or {}).get("ai_data")
-                        except Exception:
-                            pass
+                            _qa_cache_ok, _qa_cache_reason = is_cache_valid(_qa_cached)
+                            if _qa_cache_ok:
+                                _qa_ai_data = (_qa_cached or {}).get("ai_data")
+                            elif _qa_cached:
+                                logger.info(
+                                    "[LiveDubQA] stale cached analysis ignored: %s",
+                                    _qa_cache_reason,
+                                )
+                        except Exception as _qa_cache_err:
+                            logger.info(
+                                "[LiveDubQA] cached analysis unavailable: %s",
+                                str(_qa_cache_err)[:160],
+                            )
                         _dub_srt = None
                         _clean_ru_full = None  # AUDIT R42: чистая RU-дорожка
                         try:
