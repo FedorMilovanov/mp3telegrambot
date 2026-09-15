@@ -27,6 +27,7 @@ from core.globals import (
     is_quota_error, is_overload_error,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
+from core.telegraph_contract import fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
@@ -455,6 +456,9 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         return None
 
     async def _post_once(t, ns):
+        t = fit_telegraph_title(t)
+        safe_author = fit_telegraph_author_name(author)
+        safe_author_url = fit_telegraph_author_url(author_url)
         logger.info(f"Telegraph: публикую '{t}' ({len(ns)} блоков)")
         last_err = ""
         # FIX AUDIT R4: FLOOD_WAIT-ретрай — burst-публикация Synopsis+Study+
@@ -465,8 +469,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 resp = await loop.run_in_executor(None, lambda: requests.post(
                     "https://api.telegra.ph/createPage",
                     json={"access_token": token, "title": t,
-                          "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
-                          "author_url": (author_url or "")[:512],  # AUDIT M21
+                          "author_name": safe_author,
+                          "author_url": safe_author_url
                           "content": ns, "return_content": False},
                     timeout=30,
                 ))
