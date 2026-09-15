@@ -1037,6 +1037,15 @@ async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict |
         archive_record = records[0] if records else None
         target = str((archive_record or {}).get("video_id") or "")
     cache = await adb_get(target) if target else None
+    if cache:
+        cache_ok, cache_reason = is_cache_valid(cache)
+        if not cache_ok:
+            logger.info(
+                "[Segments] stale video_cache ignored for %s: %s",
+                target,
+                cache_reason,
+            )
+            cache = None
     if archive_record is None and target:
         archive_record = await aget_generated_page_record(target)
     return target, cache, archive_record
