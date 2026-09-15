@@ -47,6 +47,25 @@ Start with Scripture and prayer.
     assert out.count("We need family worship") == 1
 
 
+def test_vtt_collapses_render_states_inside_one_cue_but_keeps_separated_repeat():
+    raw = """WEBVTT
+
+00:00:01.000 --> 00:00:04.000
+<c>Remember</c>
+<c>Remember this</c>
+<c>Remember this</c>
+
+00:00:05.000 --> 00:00:08.000
+Again
+And then
+Again
+"""
+    out = vtt_to_timed_text(raw, chunk_seconds=25)
+    assert out.count("Remember this") == 1
+    assert "Remember Remember" not in out
+    assert "Again And then Again" in out
+
+
 def test_timed_text_last_second_for_coverage_gate():
     assert timed_text_last_second("[0:07] a\n[1:02:03] b") == 3723
 
