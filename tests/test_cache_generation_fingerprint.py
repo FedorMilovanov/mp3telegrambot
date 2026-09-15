@@ -17,6 +17,7 @@ def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files():
         "converters/md_telegraph.py",
         "services/study_synthesis_policy.py",
         "services/study_synthesis_runtime.py",
+        "services/gemini_analyze.py",
         "services/telegraph.py",
         "services/telegraph_edit.py",
         "services/telegraph_pages.py",
@@ -33,6 +34,24 @@ def test_generation_contract_manifest_is_unique_and_points_to_real_files():
     assert len(_GENERATION_CONTRACT_FILES) == len(set(_GENERATION_CONTRACT_FILES))
     for rel in _GENERATION_CONTRACT_FILES:
         assert Path(rel).is_file(), rel
+
+
+def test_semantic_generation_env_rotates_prompt_fingerprint(monkeypatch):
+    from core.database import get_prompt_fingerprint
+
+    before = get_prompt_fingerprint()
+    monkeypatch.setenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "123457")
+    after = get_prompt_fingerprint()
+    assert after != before
+
+
+def test_operational_timeout_does_not_rotate_prompt_fingerprint(monkeypatch):
+    from core.database import get_prompt_fingerprint
+
+    before = get_prompt_fingerprint()
+    monkeypatch.setenv("AUDIO_STRUCTURED_TIMEOUT", "599")
+    after = get_prompt_fingerprint()
+    assert after == before
 
 
 def test_get_prompt_fingerprint_returns_stable_short_hash():
