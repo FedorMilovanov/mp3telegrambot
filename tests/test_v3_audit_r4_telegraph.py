@@ -102,11 +102,15 @@ def test_archive_upsert_preserves_existing_urls(tmp_path):
 
 
 def test_composed_telegraph_titles_respect_256():
+    from core.telegraph_contract import fit_telegraph_title
+
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert '_full_title = f"{page_prefix}{_sep}{tg_title}"[:256]' in pages
     assert '[:256 - len(_sfx)] + _sfx' in pages
     tg = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "[:256 - len(_sfx)] + _sfx" in tg
+    assert "fit_telegraph_title(t)" in tg
+    assert len(fit_telegraph_title("Вопросы: " + ("Я" * 300))) == 256
 
 
 def test_export_public_archive_keeps_both_quotes_and_study(tmp_path):
