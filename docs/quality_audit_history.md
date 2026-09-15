@@ -1183,3 +1183,9 @@ This entry closes the durable-history gap left during the initial documentation 
 - Added deterministic regressions for rhetorical repetition, render-state collapse, source-language selection, partial-manual→auto fallback, raw-VTT coverage, Telegraph field/suffix limits, transient create retries, uncapped recursive splitting, dependency-manifest integrity and semantic-env cache rotation. The previously suspected cross-event-loop module-lock issue was deliberately not changed after tracing the production `bot_new.py -> run_bot_process -> single asyncio.run()` lifecycle: it is not a current production defect.
 
 - Required handoff gate: exact-head repository verifier/CI must pass before merge; no prompt-density, theological quality, media quality or publication-blocking policy is weakened.
+
+## 2026-09-15 — Segment commands stale-cache validity closure
+
+- Repo-wide cache-use follow-up after PR #196 found one remaining semantic bypass in the admin segment workflow: `_resolve_segment_source()` returned `adb_get(video_id)` directly and `/segments`, `/cut` plus segment callbacks could build or render cuts from stale `ai_data` even when the record failed the normal TTL/cache-version/prompt-version/model contract.
+- `_resolve_segment_source()` now applies `is_cache_valid()` before exposing cached analysis. Invalid records are logged and discarded, so stale timestamps cannot drive a new segment render or segment-plan rebuild. Durable archive metadata remains available independently for non-cache metadata lookups.
+- Added a deterministic source-contract regression proving the segment resolver cannot pass an invalid `video_cache` record downstream.
