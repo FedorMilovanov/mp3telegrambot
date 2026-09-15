@@ -1,5 +1,6 @@
 """Regression tests for v3 patch 36 — Telegraph repair tools."""
 
+import asyncio
 from pathlib import Path
 
 from core.generated_pages import build_generated_page_record, get_generated_page_record, save_generated_page_record
@@ -136,6 +137,64 @@ def test_repair_record_expands_chained_multipart_pages():
     assert "expand_telegraph_page_chain" in src
     assert "chain = await expand_telegraph_page_chain(url)" in src
     assert "for item in (chain or [url])" in src
+
+
+def test_repair_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
+    from services import telegraph_repair
+
+    total = 15
+
+    class Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, **_kwargs):
+        path = url.split("/getPage/", 1)[1].split("?", 1)[0]
+        index = int(path.rsplit("-", 1)[1])
+        children = []
+        if index < total:
+            children = [{
+                "tag": "a",
+                "attrs": {"href": f"/Chain-{index + 1}"},
+                "children": [f"➡ Дальше: [{index + 1}/{total}]"],
+            }]
+        return Response({"ok": True, "result": {"content": [{"tag": "p", "children": children}]}})
+
+    monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
+    chain = asyncio.run(telegraph_repair.expand_telegraph_page_chain("https://telegra.ph/Chain-1"))
+
+    assert len(chain) == total
+    assert chain[-1] == "https://telegra.ph/Chain-15"
+
+
+def test_repair_chain_explicit_limit_remains_available(monkeypatch):
+    from services import telegraph_repair
+
+    class Response:
+        def __init__(self, path):
+            self.path = path
+
+        def json(self):
+            index = int(self.path.rsplit("-", 1)[1])
+            return {"ok": True, "result": {"content": [{"tag": "p", "children": [{
+                "tag": "a", "attrs": {"href": f"/Cap-{index + 1}"}, "children": ["➡ Дальше"]
+            }]}]}}
+
+    def fake_get(url, **_kwargs):
+        return Response(url.split("/getPage/", 1)[1].split("?", 1)[0])
+
+    monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
+    chain = asyncio.run(
+        telegraph_repair.expand_telegraph_page_chain("https://telegra.ph/Cap-1", max_pages=3)
+    )
+    assert chain == [
+        "https://telegra.ph/Cap-1",
+        "https://telegra.ph/Cap-2",
+        "https://telegra.ph/Cap-3",
+    ]
 
 
 def test_repair_chain_has_suffix_probe_for_outdated_first_part():
