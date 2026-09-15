@@ -68,6 +68,18 @@ def test_segments_and_cutseg_commands_are_registered():
     assert 'CommandHandler("cut"' in main
 
 
+def test_segment_commands_never_use_stale_video_cache_analysis():
+    commands = Path("handlers/commands.py").read_text(encoding="utf-8")
+    start = commands.index("async def _resolve_segment_source")
+    end = commands.index("\n\ndef _segments_from_cache", start)
+    block = commands[start:end]
+    assert "cache = await adb_get(target)" in block
+    assert "cache_ok, cache_reason = is_cache_valid(cache)" in block
+    assert "if not cache_ok:" in block
+    assert "cache = None" in block
+    assert "stale video_cache ignored" in block
+
+
 def test_segment_plan_export_writes_files(tmp_path):
     from core.generated_pages import save_segment_plan_export
 
