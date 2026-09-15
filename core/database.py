@@ -984,9 +984,11 @@ _GENERATION_CONTRACT_FILES = (
     "services/study_synthesis_policy.py",
     "services/study_synthesis_runtime.py",
     "services/gemini_analyze.py",
+    "services/search.py",
     "services/telegraph.py",
     "services/telegraph_edit.py",
     "services/telegraph_pages.py",
+    "services/telegraph_repair.py",
     "services/youtube_transcript.py",
 )
 
@@ -1008,6 +1010,7 @@ _GENERATION_CONTRACT_ENV_DEFAULTS = {
     "SYNOPSIS_YT_TRANSCRIPT_LANGS": "",
     "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS": "120000",
     "SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE": "0.70",
+    "TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH": "1",
 }
 
 
