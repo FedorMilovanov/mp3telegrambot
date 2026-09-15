@@ -46,6 +46,80 @@ async def test_telegraph_post_retries_transient_network_failure(monkeypatch: pyt
 
 
 @pytest.mark.asyncio
+async def test_telegraph_post_retries_transient_http_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+    sleeps = []
+
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def post(_url, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return Response(503, {"ok": False, "error": "upstream unavailable"})
+        return Response(200, {"ok": True, "result": {"url": "https://telegra.ph/Page"}})
+
+    async def no_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "token")
+    monkeypatch.setattr(telegraph.requests, "post", post)
+    monkeypatch.setattr(telegraph.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(telegraph, "_final_telegraph_polish", lambda nodes: list(nodes))
+    monkeypatch.setattr(telegraph, "_clean_telegraph_nodes", lambda nodes: list(nodes))
+
+    url = await telegraph._telegraph_post(
+        "Title", "Author", [{"tag": "p", "children": ["Text"]}], asyncio.get_running_loop()
+    )
+
+    assert url == "https://telegra.ph/Page"
+    assert calls == 2
+    assert sleeps == [1]
+
+
+@pytest.mark.asyncio
+async def test_telegraph_post_retries_503_with_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    class Response:
+        def __init__(self, status_code, valid):
+            self.status_code = status_code
+            self.valid = valid
+
+        def json(self):
+            if not self.valid:
+                raise ValueError("html error page")
+            return {"ok": True, "result": {"url": "https://telegra.ph/Page"}}
+
+    def post(_url, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return Response(503, False) if calls == 1 else Response(200, True)
+
+    async def no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "token")
+    monkeypatch.setattr(telegraph.requests, "post", post)
+    monkeypatch.setattr(telegraph.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(telegraph, "_final_telegraph_polish", lambda nodes: list(nodes))
+    monkeypatch.setattr(telegraph, "_clean_telegraph_nodes", lambda nodes: list(nodes))
+
+    url = await telegraph._telegraph_post(
+        "Title", "Author", [{"tag": "p", "children": ["Text"]}], asyncio.get_running_loop()
+    )
+
+    assert url == "https://telegra.ph/Page"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
 async def test_service_edit_returns_content_too_big_after_one_transport_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
