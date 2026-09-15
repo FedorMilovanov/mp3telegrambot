@@ -57,6 +57,8 @@ def test_telegraph_split_is_recursive_and_logs_partial():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "_publish_chunk" in src
     assert "depth + 1" in src
+    assert 'depth < 4' not in src
+    assert 'part_err == "CONTENT_TOO_BIG" and len(chunk) > 1' in src
     assert "опубликован НЕ полностью" in src
 
 
