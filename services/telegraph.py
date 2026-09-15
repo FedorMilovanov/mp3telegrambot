@@ -481,9 +481,16 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 if data.get("ok"):
                     return data["result"]["url"], None
                 last_err = data.get("error", "")
+            except (requests.Timeout, requests.ConnectionError, OSError) as e:
+                last_err = str(e)
+                logger.warning(f"Telegraph transient error: {e}")
+                if _attempt < 2:
+                    await asyncio.sleep(2 ** _attempt)
+                    continue
+                return None, last_err
             except Exception as e:
                 logger.warning(f"Telegraph ошибка: {e}")
-                last_err = str(e)
+                return None, str(e)
             _fw = re.search(r"FLOOD_WAIT_(\d+)", str(last_err))
             if _fw and _attempt < 2:
                 _wait = min(int(_fw.group(1)), 30) + 1
@@ -521,16 +528,16 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
 
     parts_urls = []
 
-    # FIX AUDIT R4: рекурсивный сплит вместо жёстких двух уровней — раньше
-    # третья глубина CONTENT_TOO_BIG (или FLOOD_WAIT части) молча ТЕРЯЛА
-    # четверть контента, а TOC рапортовал успех.
+    # Recursive split has no arbitrary depth cap. Every CONTENT_TOO_BIG split
+    # strictly reduces node count, so recursion terminates at a single unsplittable
+    # node instead of dropping valid Synopsis tails after a fixed number of parts.
     async def _publish_chunk(chunk, label: str, depth: int = 0) -> bool:
         part_title = compose_telegraph_title(title, f" ({label})")
         part_url, part_err = await _post_once(part_title, chunk)
         if part_url:
             parts_urls.append((label, part_url))
             return True
-        if part_err == "CONTENT_TOO_BIG" and depth < 4 and len(chunk) > 1:
+        if part_err == "CONTENT_TOO_BIG" and len(chunk) > 1:
             _s = _find_split_index(chunk)
             _subs = [c for c in [chunk[:_s], chunk[_s:]] if c]
             _ok = True
