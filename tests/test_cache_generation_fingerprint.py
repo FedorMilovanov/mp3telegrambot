@@ -27,6 +27,14 @@ def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files():
     assert "видимых" in src and "timestamp" in src
 
 
+def test_generation_contract_manifest_is_unique_and_points_to_real_files():
+    from core.database import _GENERATION_CONTRACT_FILES
+
+    assert len(_GENERATION_CONTRACT_FILES) == len(set(_GENERATION_CONTRACT_FILES))
+    for rel in _GENERATION_CONTRACT_FILES:
+        assert Path(rel).is_file(), rel
+
+
 def test_get_prompt_fingerprint_returns_stable_short_hash():
     from core.database import get_prompt_fingerprint
 
