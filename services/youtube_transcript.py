@@ -55,12 +55,78 @@ def timed_text_last_second(timed_text: str) -> int:
     return last
 
 
+def _vtt_last_second(raw: str) -> int:
+    """Return the last cue start from raw VTT, independent of prompt clipping."""
+    last = 0
+    for line in str(raw or "").splitlines():
+        match = _VTT_TIME_RE.search(line)
+        if match:
+            last = max(last, _sec_from_match(match))
+    return last
+
+
+def _caption_candidate_language(path: Path) -> str:
+    """Extract yt-dlp subtitle language from a ``...<lang>.vtt`` output name."""
+    name = path.name
+    if not name.lower().endswith(".vtt"):
+        return ""
+    stem = name[:-4]
+    if "." not in stem:
+        return ""
+    return stem.rsplit(".", 1)[-1].strip().lower().replace("_", "-")
+
+
+def _caption_candidate_rank(path: Path, lang_root: str) -> tuple[int, int, str]:
+    """Rank a VTT by source-language preference; size is only a tie-breaker."""
+    language = _caption_candidate_language(path)
+    source = (lang_root or "en").lower().replace("_", "-")
+    if language.startswith(source + "-"):
+        tier = 0
+    elif language == source:
+        tier = 1
+    elif source != "en" and language.startswith("en-"):
+        tier = 2
+    elif language == "en":
+        tier = 3
+    else:
+        tier = 4
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
+    return tier, -size, path.name.lower()
+
+
 def _clean_caption_text(line: str) -> str:
     line = html.unescape(str(line or ""))
     line = _TAG_RE.sub(" ", line)
     line = line.replace("♪", " ")
     line = _DUP_SPACE_RE.sub(" ", line).strip()
     return line
+
+
+def _merge_caption_lines(values: list[str]) -> str:
+    """Collapse adjacent VTT render states without deleting A/B/A repeats."""
+    states: list[str] = []
+    for value in values:
+        cleaned = _clean_caption_text(value)
+        if not cleaned:
+            continue
+        if not states:
+            states.append(cleaned)
+            continue
+        previous = states[-1]
+        previous_folded = previous.casefold()
+        current_folded = cleaned.casefold()
+        if current_folded == previous_folded:
+            continue
+        if current_folded.startswith(previous_folded + " "):
+            states[-1] = cleaned
+            continue
+        if previous_folded.startswith(current_folded + " "):
+            continue
+        states.append(cleaned)
+    return " ".join(states).strip()
 
 
 def _word_key(word: str) -> str:
@@ -80,13 +146,10 @@ def _append_caption_delta(
     base_words = chunk_words if chunk_words else (context_words or [])
     base_keys = [_word_key(w) for w in base_words]
     cue_keys = [_word_key(w) for w in cue_words]
-    joined_base = " ".join(base_keys)
-    joined_cue = " ".join(cue_keys)
-    # AUDIT R39: сравнение по ГРАНИЦЕ СЛОВА (padding пробелами), иначе короткий
-    # cue-подстрока внутри слова («cat» в «cats») ошибочно считался дублем и
-    # терялся. Дубль пропускаем, только если весь cue совпал как цепочка слов.
-    if joined_cue and (f" {joined_cue} " in f" {joined_base} "):
-        return
+    # Only suffix→prefix overlap is a rolling-caption duplicate. A cue that
+    # appeared earlier in the chunk may be a genuine rhetorical repetition
+    # (A / B / A) and must survive. The old whole-chunk substring test silently
+    # deleted such repeats even though they were spoken again.
     max_olap = min(len(base_keys), len(cue_keys), 24)
     overlap = 0
     for n in range(max_olap, 0, -1):
@@ -115,7 +178,7 @@ def vtt_to_timed_text(raw: str, *, max_chars: int = 120_000, chunk_seconds: int 
         if current_ts is None or not buf:
             buf = []
             return
-        text = _clean_caption_text(" ".join(buf))
+        text = _merge_caption_lines(buf)
         buf = []
         if text:
             cues.append((current_ts, text))
@@ -251,8 +314,15 @@ async def download_youtube_transcript_text(
             ]
 
         last_proc = None
-        candidates: list[Path] = []
-        source_kind = "manual"
+        rejected_candidates = 0
+        try:
+            min_cov = float(
+                os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70"
+            )
+        except ValueError:
+            min_cov = 0.70
+        min_cov = max(0.1, min(min_cov, 0.98))
+
         for auto in (False, True):
             for old in workdir.glob("yt_transcript*.vtt"):
                 try:
@@ -272,48 +342,60 @@ async def download_youtube_transcript_text(
             )
             candidates = sorted(
                 workdir.glob("yt_transcript*.vtt"),
-                key=lambda p: p.stat().st_size,
-                reverse=True,
+                key=lambda path: _caption_candidate_rank(path, lang_root),
             )
-            if candidates:
-                break
+            if not candidates:
+                continue
 
-        if not candidates:
-            logger.info(
-                "[SynopsisTranscript] subtitles unavailable rc=%s: %s",
-                getattr(last_proc, "returncode", "?"),
-                (getattr(last_proc, "stderr", "") or "")[-240:],
-            )
-            return ""
-        raw = candidates[0].read_text(encoding="utf-8", errors="replace")
-        timed = vtt_to_timed_text(raw, max_chars=max_chars)
-        if timed and expected_duration and expected_duration >= 600:
-            try:
-                min_cov = float(
-                    os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70"
-                )
-            except ValueError:
-                min_cov = 0.70
-            last_ts = timed_text_last_second(timed)
-            coverage = last_ts / max(1.0, float(expected_duration))
-            if coverage < max(0.1, min(min_cov, 0.98)):
+            # Validate before accepting the source kind. A present but empty or
+            # partial manual VTT must not block the automatic-caption fallback.
+            for candidate in candidates:
+                raw = candidate.read_text(encoding="utf-8", errors="replace")
+                timed = vtt_to_timed_text(raw, max_chars=max_chars)
+                if not timed:
+                    rejected_candidates += 1
+                    logger.info(
+                        "[SynopsisTranscript] rejected empty/invalid %s candidate: %s",
+                        source_kind,
+                        candidate.name,
+                    )
+                    continue
+
+                if expected_duration and expected_duration >= 600:
+                    # Coverage belongs to the source track, not to the prompt
+                    # text after max_chars clipping.
+                    last_ts = _vtt_last_second(raw) or timed_text_last_second(timed)
+                    coverage = last_ts / max(1.0, float(expected_duration))
+                    if coverage < min_cov:
+                        rejected_candidates += 1
+                        logger.info(
+                            "[SynopsisTranscript] rejected %s %s: coverage %.0f%% < %.0f%% "
+                            "(last=%ss duration=%ss)",
+                            source_kind,
+                            candidate.name,
+                            coverage * 100,
+                            min_cov * 100,
+                            last_ts,
+                            int(expected_duration),
+                        )
+                        continue
+
                 logger.info(
-                    "[SynopsisTranscript] rejected: coverage %.0f%% < %.0f%% (last=%ss duration=%ss)",
-                    coverage * 100,
-                    min_cov * 100,
-                    last_ts,
-                    int(expected_duration),
+                    "[SynopsisTranscript] transcript ready: %s lines, %s chars (%s, %s)",
+                    timed.count("\n") + 1,
+                    len(timed),
+                    candidate.name,
+                    source_kind,
                 )
-                return ""
-        if timed:
-            logger.info(
-                "[SynopsisTranscript] transcript ready: %s lines, %s chars (%s, %s)",
-                timed.count("\n") + 1,
-                len(timed),
-                candidates[0].name,
-                source_kind,
-            )
-        return timed
+                return timed
+
+        logger.info(
+            "[SynopsisTranscript] subtitles unavailable/invalid rc=%s rejected=%d: %s",
+            getattr(last_proc, "returncode", "?"),
+            rejected_candidates,
+            (getattr(last_proc, "stderr", "") or "")[-240:],
+        )
+        return ""
     except Exception as e:
         logger.info("[SynopsisTranscript] skip: %s", str(e)[:180])
         return ""

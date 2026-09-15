@@ -87,14 +87,15 @@ def _extract_next_part_urls_from_nodes(nodes: object, *, base: str = "https://te
     return out
 
 
-def expand_telegraph_url_chain_sync(url: str, *, max_pages: int = 12, timeout: int = 30) -> list[str]:
+def expand_telegraph_url_chain_sync(url: str, *, max_pages: int | None = None, timeout: int = 30) -> list[str]:
     start = str(url or "").strip()
     if not telegraph_path_from_url(start):
         return []
     seen: set[str] = set()
     queue = [start]
     out: list[str] = []
-    while queue and len(out) < max(1, min(int(max_pages or 12), 50)):
+    limit = None if max_pages is None else max(1, int(max_pages))
+    while queue and (limit is None or len(out) < limit):
         current = queue.pop(0)
         if current in seen:
             continue

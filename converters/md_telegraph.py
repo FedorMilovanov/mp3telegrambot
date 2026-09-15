@@ -15,6 +15,9 @@ from core.page_audit import audit_telegraph_page, format_audit_issues, should_ab
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils для разрыва циклических импортов
 from core.core_utils import time_to_seconds, _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers  # FIX: circular imports
 from core.globals import TELEGRAPH_TOKEN        # FIX markdown
+from core.telegraph_contract import (
+    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+)
 
 import asyncio    # FIX markdown
 import json       # FIX markdown
@@ -1994,6 +1997,9 @@ async def _create_telegraph_page_single(title: str, author: str,
     token = TELEGRAPH_TOKEN
     if not token:
         return None, "no_token"
+    title = fit_telegraph_title(title)
+    author = fit_telegraph_author_name(author)
+    author_url = fit_telegraph_author_url(author_url)
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
@@ -2017,8 +2023,8 @@ async def _create_telegraph_page_single(title: str, author: str,
                 json={
                     "access_token": token,
                     "title": title,
-                    "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
-                    "author_url": (author_url or "")[:512],  # AUDIT M21
+                    "author_name": author,
+                    "author_url": author_url,
                     "content": nodes,
                     "return_content": False,
                 },
@@ -2054,6 +2060,9 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
     token = TELEGRAPH_TOKEN
     if not token:
         return False
+    title = fit_telegraph_title(title)
+    author = fit_telegraph_author_name(author)
+    author_url = fit_telegraph_author_url(author_url)
     from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
     nodes = _cln_nodes_fn2(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
@@ -2072,8 +2081,8 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str,
                 json={
                     "access_token": token,
                     "title": title,
-                    "author_name": (author or "")[:128],
-                    "author_url": (author_url or "")[:512],
+                    "author_name": author,
+                    "author_url": author_url,
                     "content": nodes,
                     "return_content": False,
                 },

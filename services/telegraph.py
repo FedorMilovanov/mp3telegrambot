@@ -27,6 +27,10 @@ from core.globals import (
     is_quota_error, is_overload_error,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
+from core.telegraph_contract import (
+    compose_telegraph_title, fit_telegraph_author_name,
+    fit_telegraph_author_url, fit_telegraph_title,
+)
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
@@ -455,6 +459,9 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         return None
 
     async def _post_once(t, ns):
+        t = fit_telegraph_title(t)
+        safe_author = fit_telegraph_author_name(author)
+        safe_author_url = fit_telegraph_author_url(author_url)
         logger.info(f"Telegraph: публикую '{t}' ({len(ns)} блоков)")
         last_err = ""
         # FIX AUDIT R4: FLOOD_WAIT-ретрай — burst-публикация Synopsis+Study+
@@ -465,18 +472,41 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 resp = await loop.run_in_executor(None, lambda: requests.post(
                     "https://api.telegra.ph/createPage",
                     json={"access_token": token, "title": t,
-                          "author_name": (author or "")[:128],  # FIX 2026-05-21 P1: Telegraph API limit
-                          "author_url": (author_url or "")[:512],  # AUDIT M21
+                          "author_name": safe_author,
+                          "author_url": safe_author_url,
                           "content": ns, "return_content": False},
                     timeout=30,
                 ))
-                data = resp.json()
+                status_code = getattr(resp, "status_code", None)
+                try:
+                    data = resp.json()
+                except Exception as json_error:
+                    last_err = f"HTTP {status_code}: invalid JSON ({json_error})"
+                    if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and _attempt < 2:
+                        logger.warning("Telegraph transient HTTP %s with invalid JSON — retry", status_code)
+                        await asyncio.sleep(2 ** _attempt)
+                        continue
+                    return None, last_err
                 if data.get("ok"):
                     return data["result"]["url"], None
                 last_err = data.get("error", "")
+                _has_flood_wait = bool(re.match(r"FLOOD_WAIT_(\d+)", str(last_err)))
+                if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and not _has_flood_wait:
+                    if _attempt < 2:
+                        logger.warning("Telegraph transient HTTP %s: %s — retry", status_code, last_err)
+                        await asyncio.sleep(2 ** _attempt)
+                        continue
+                    return None, last_err or f"HTTP {status_code}"
+            except (requests.Timeout, requests.ConnectionError, OSError) as e:
+                last_err = str(e)
+                logger.warning(f"Telegraph transient error: {e}")
+                if _attempt < 2:
+                    await asyncio.sleep(2 ** _attempt)
+                    continue
+                return None, last_err
             except Exception as e:
                 logger.warning(f"Telegraph ошибка: {e}")
-                last_err = str(e)
+                return None, str(e)
             _fw = re.search(r"FLOOD_WAIT_(\d+)", str(last_err))
             if _fw and _attempt < 2:
                 _wait = min(int(_fw.group(1)), 30) + 1
@@ -514,15 +544,16 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
 
     parts_urls = []
 
-    # FIX AUDIT R4: рекурсивный сплит вместо жёстких двух уровней — раньше
-    # третья глубина CONTENT_TOO_BIG (или FLOOD_WAIT части) молча ТЕРЯЛА
-    # четверть контента, а TOC рапортовал успех.
+    # Recursive split has no arbitrary depth cap. Every CONTENT_TOO_BIG split
+    # strictly reduces node count, so recursion terminates at a single unsplittable
+    # node instead of dropping valid Synopsis tails after a fixed number of parts.
     async def _publish_chunk(chunk, label: str, depth: int = 0) -> bool:
-        part_url, part_err = await _post_once(f"{title} ({label})", chunk)
+        part_title = compose_telegraph_title(title, f" ({label})")
+        part_url, part_err = await _post_once(part_title, chunk)
         if part_url:
             parts_urls.append((label, part_url))
             return True
-        if part_err == "CONTENT_TOO_BIG" and depth < 4 and len(chunk) > 1:
+        if part_err == "CONTENT_TOO_BIG" and len(chunk) > 1:
             _s = _find_split_index(chunk)
             _subs = [c for c in [chunk[:_s], chunk[_s:]] if c]
             _ok = True
@@ -552,7 +583,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         toc_nodes.append({"tag": "p", "children": [
             {"tag": "a", "attrs": {"href": part_url}, "children": [f"Часть {num}"]}
         ]})
-    toc_url, _ = await _post_once(f"{title} — Содержание", toc_nodes)
+    toc_title = compose_telegraph_title(title, " — Содержание")
+    toc_url, _ = await _post_once(toc_title, toc_nodes)
     return toc_url
 
 

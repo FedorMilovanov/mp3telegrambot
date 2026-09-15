@@ -57,6 +57,8 @@ def test_telegraph_split_is_recursive_and_logs_partial():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "_publish_chunk" in src
     assert "depth + 1" in src
+    assert 'depth < 4' not in src
+    assert 'part_err == "CONTENT_TOO_BIG" and len(chunk) > 1' in src
     assert "опубликован НЕ полностью" in src
 
 
@@ -102,11 +104,18 @@ def test_archive_upsert_preserves_existing_urls(tmp_path):
 
 
 def test_composed_telegraph_titles_respect_256():
+    from core.telegraph_contract import compose_telegraph_title, fit_telegraph_title
+
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert '_full_title = f"{page_prefix}{_sep}{tg_title}"[:256]' in pages
     assert '[:256 - len(_sfx)] + _sfx' in pages
     tg = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "[:256 - len(_sfx)] + _sfx" in tg
+    assert "fit_telegraph_title(t)" in tg
+    assert len(fit_telegraph_title("Вопросы: " + ("Я" * 300))) == 256
+    part = compose_telegraph_title("Очень длинный " + ("Я" * 300), " (1.2)")
+    assert len(part) == 256
+    assert part.endswith(" (1.2)")
 
 
 def test_export_public_archive_keeps_both_quotes_and_study(tmp_path):

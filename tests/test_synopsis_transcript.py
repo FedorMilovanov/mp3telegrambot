@@ -1,6 +1,9 @@
 """Regression tests for YouTube transcript-backed Synopsis."""
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
+import services.youtube_transcript as youtube_transcript
 from services.youtube_transcript import timed_text_last_second, vtt_to_timed_text
 
 
@@ -44,8 +47,154 @@ Start with Scripture and prayer.
     assert out.count("We need family worship") == 1
 
 
+def test_vtt_collapses_render_states_inside_one_cue_but_keeps_separated_repeat():
+    raw = """WEBVTT
+
+00:00:01.000 --> 00:00:04.000
+<c>Remember</c>
+<c>Remember this</c>
+<c>Remember this</c>
+
+00:00:05.000 --> 00:00:08.000
+Again
+And then
+Again
+"""
+    out = vtt_to_timed_text(raw, chunk_seconds=25)
+    assert out.count("Remember this") == 1
+    assert "Remember Remember" not in out
+    assert "Again And then Again" in out
+
+
 def test_timed_text_last_second_for_coverage_gate():
     assert timed_text_last_second("[0:07] a\n[1:02:03] b") == 3723
+
+
+def test_vtt_keeps_real_rhetorical_repetition_inside_one_chunk():
+    raw = """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+Grace alone.
+
+00:00:04.000 --> 00:00:06.000
+Means salvation.
+
+00:00:07.000 --> 00:00:09.000
+Grace alone.
+"""
+    out = vtt_to_timed_text(raw, chunk_seconds=25)
+    assert out.lower().count("grace alone") == 2
+
+
+def test_vtt_keeps_real_repetition_across_chunk_boundary():
+    raw = """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+Grace alone.
+
+00:00:20.000 --> 00:00:22.000
+Means salvation.
+
+00:00:27.000 --> 00:00:29.000
+Grace alone.
+"""
+    out = vtt_to_timed_text(raw, chunk_seconds=25)
+    assert out.lower().count("grace alone") == 2
+
+
+def test_transcript_prefers_source_language_over_larger_english_vtt(tmp_path, monkeypatch):
+    async def fake_run(_cmd, **_kwargs):
+        (tmp_path / "yt_transcript_vid.ru.vtt").write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nРусский источник.\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "yt_transcript_vid.en.vtt").write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n"
+            + ("English translation is deliberately much larger. " * 20)
+            + "\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(youtube_transcript, "run_cancellable_process", fake_run)
+    out = asyncio.run(
+        youtube_transcript.download_youtube_transcript_text(
+            "https://youtu.be/example",
+            tmp_path,
+            lang="ru",
+        )
+    )
+    assert "Русский источник" in out
+    assert "English translation" not in out
+
+
+def test_partial_manual_transcript_falls_back_to_full_auto(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_run(cmd, **_kwargs):
+        auto = "--write-auto-subs" in cmd
+        calls.append("auto" if auto else "manual")
+        if auto:
+            body = """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+Automatic full start.
+
+00:59:50.000 --> 00:59:55.000
+Automatic full end.
+"""
+        else:
+            body = """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+Manual partial start.
+
+00:10:00.000 --> 00:10:05.000
+Manual partial end.
+"""
+        (tmp_path / "yt_transcript_vid.en.vtt").write_text(body, encoding="utf-8")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(youtube_transcript, "run_cancellable_process", fake_run)
+    out = asyncio.run(
+        youtube_transcript.download_youtube_transcript_text(
+            "https://youtu.be/example",
+            tmp_path,
+            lang="en",
+            expected_duration=3600,
+        )
+    )
+    assert calls == ["manual", "auto"]
+    assert "Automatic full start" in out
+    assert "Manual partial" not in out
+
+
+def test_coverage_uses_raw_vtt_timeline_not_max_chars_clip(tmp_path, monkeypatch):
+    async def fake_run(_cmd, **_kwargs):
+        (tmp_path / "yt_transcript_vid.en.vtt").write_text(
+            """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+Opening sentence that is intentionally long enough to hit the prompt clip.
+
+00:59:50.000 --> 00:59:55.000
+Final sentence.
+""",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(youtube_transcript, "run_cancellable_process", fake_run)
+    out = asyncio.run(
+        youtube_transcript.download_youtube_transcript_text(
+            "https://youtu.be/example",
+            tmp_path,
+            lang="en",
+            max_chars=32,
+            expected_duration=3600,
+        )
+    )
+    assert out
 
 
 def test_verbatim_synopsis_bare_timestamps_become_youtube_links():

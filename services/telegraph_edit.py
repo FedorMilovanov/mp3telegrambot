@@ -18,6 +18,9 @@ from urllib.parse import urlparse
 import requests
 
 from core.globals import TELEGRAPH_TOKEN
+from core.telegraph_contract import (
+    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+)
 
 
 _FLOOD_WAIT_RE = re.compile(r"^FLOOD_WAIT_(\d+)$")
@@ -113,9 +116,9 @@ async def edit_telegraph_page_once(
                 f"https://api.telegra.ph/editPage/{path}",
                 json={
                     "access_token": access_token,
-                    "title": str(title or "")[:256],
-                    "author_name": str(author or "")[:128],
-                    "author_url": str(author_url or "")[:512],
+                    "title": fit_telegraph_title(title),
+                    "author_name": fit_telegraph_author_name(author),
+                    "author_url": fit_telegraph_author_url(author_url),
                     "content": nodes,
                     "return_content": False,
                 },

@@ -82,8 +82,8 @@ def _extract_next_part_urls(nodes: Any, *, base: str = "https://telegra.ph") -> 
     return out
 
 
-async def expand_telegraph_page_chain(url: str, *, max_pages: int = 12) -> list[str]:
-    """Return URL plus chained Telegraph "next part" URLs. Never raises."""
+async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None) -> list[str]:
+    """Return the full chained Telegraph page set unless an explicit limit is requested."""
     start = str(url or "").strip()
     if not telegraph_path_from_url(start):
         return []
@@ -91,7 +91,8 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int = 12) -> list[
     seen: set[str] = set()
     queue: list[str] = [start]
     out: list[str] = []
-    while queue and len(out) < max(1, min(int(max_pages or 12), 50)):
+    limit = None if max_pages is None else max(1, int(max_pages))
+    while queue and (limit is None or len(out) < limit):
         current = queue.pop(0)
         if current in seen:
             continue

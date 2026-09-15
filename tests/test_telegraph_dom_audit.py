@@ -97,6 +97,37 @@ def test_audit_and_repair_tools_expand_multipart_chains_by_default():
     assert "expand_chains=not args.no_expand_chains" in repair_src
 
 
+def test_audit_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
+    from tools import audit_telegraph_pages
+
+    total = 15
+
+    class Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, **_kwargs):
+        path = url.split("/getPage/", 1)[1].split("?", 1)[0]
+        index = int(path.rsplit("-", 1)[1])
+        children = []
+        if index < total:
+            children = [{
+                "tag": "a",
+                "attrs": {"href": f"/Audit-{index + 1}"},
+                "children": [f"➡ Дальше: [{index + 1}/{total}]"],
+            }]
+        return Response({"ok": True, "result": {"content": [{"tag": "p", "children": children}]}})
+
+    monkeypatch.setattr(audit_telegraph_pages.requests, "get", fake_get)
+    chain = audit_telegraph_pages.expand_telegraph_url_chain_sync("https://telegra.ph/Audit-1")
+
+    assert len(chain) == total
+    assert chain[-1] == "https://telegra.ph/Audit-15"
+
+
 def test_dom_audit_treats_prev_next_links_as_navigation():
     html = "<html><body><article>" + ("длинный текст " * 400) + "<a href='/p2'>➡ Дальше: [2/4]</a></article></body></html>"
     issues = audit_telegraph_html(html, url="https://telegra.ph/p1")
