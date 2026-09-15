@@ -1165,3 +1165,14 @@ Fixes:
 - Repository branch protection is deliberately separate from runtime code. Owner issue #183 remains an administration-only GitHub settings action; workflow code must not imitate or weaken real required-check protection.
 
 This entry closes the durable-history gap left during the initial documentation PR while preserving the repository rule that governance history records production-relevant retry, quota, credential and quality decisions without embedding secrets.
+
+## 2026-09-15 — Synopsis transcript/cache/Telegraph root-cause closure
+
+- Re-audited the transcript-backed Synopsis path from the actual `main` entrypoint and removed a whole-chunk caption dedup rule that deleted legitimate rhetorical repetitions. Rolling-caption cleanup now removes only suffix→prefix overlap; `A / B / A` remains verbatim, including across the 25-second chunk boundary.
+- YouTube subtitle selection no longer treats the largest downloaded VTT as the preferred language. Candidate filenames are ranked by the existing source-language contract, with size used only inside one language tier.
+- Manual captions are accepted only after parse/coverage validation. Empty or partial manual VTT no longer blocks the automatic-caption fallback. Coverage is measured from the raw VTT timeline rather than from `max_chars`-clipped prompt text, so a complete long transcript is not rejected merely because the Gemini text budget clipped its tail.
+- Telegraph create/edit field limits are centralized in `core.telegraph_contract`; every low-level transport clamps composed titles after prefixes/suffixes, closing the residual `Вопросы: <long title>` failure path left outside the earlier R4 call-site guards.
+- Cache invalidation now has an explicit generation/render dependency manifest. Persisted page/AI contracts such as `page_audit`, `json_parser`, structured blocks, Synopsis timestamp reconciliation, title/topic policy, Telegraph edit transport and Study synthesis rotate `prompt_version` when they change instead of leaving previously generated URLs falsely valid.
+- Added deterministic regressions for rhetorical repetition, source-language selection, partial-manual→auto fallback, raw-VTT coverage, Telegraph field limits and cache dependency coverage. The previously suspected cross-event-loop module-lock issue was deliberately not changed after tracing the production `bot_new.py -> run_bot_process -> single asyncio.run()` lifecycle: it is not a current production defect.
+
+- Required handoff gate: exact-head repository verifier/CI must pass before merge; no prompt-density, theological quality, media quality or publication-blocking policy is weakened.
