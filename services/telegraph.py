@@ -27,7 +27,9 @@ from core.globals import (
     is_quota_error, is_overload_error,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
-from core.telegraph_contract import fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title
+from core.telegraph_contract import (
+    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+)
 from core.utils import format_timestamp     # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
@@ -470,7 +472,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                     "https://api.telegra.ph/createPage",
                     json={"access_token": token, "title": t,
                           "author_name": safe_author,
-                          "author_url": safe_author_url
+                          "author_url": safe_author_url,
                           "content": ns, "return_content": False},
                     timeout=30,
                 ))
