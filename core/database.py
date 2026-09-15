@@ -948,6 +948,41 @@ if _AUDIO_ANALYSIS_MODE not in {"deep", "balanced", "fast"}:
     _AUDIO_ANALYSIS_MODE = "deep"
 
 
+# Files that can change persisted AI data or the generated Telegraph contract.
+# Keep this explicit rather than hashing whole packages: unrelated runtime
+# changes must not force expensive regeneration, while publication/audit owners
+# must never be able to change without rotating prompt_version.
+_GENERATION_CONTRACT_FILES = (
+    "core/candidate_schema.py",
+    "core/content_audit.py",
+    "core/core_utils.py",
+    "core/json_parser.py",
+    "core/page_audit.py",
+    "core/person_names.py",
+    "core/prompt_rules.py",
+    "core/prompts.py",
+    "core/question_quality.py",
+    "core/reasoning_guidance.py",
+    "core/russian_style.py",
+    "core/source_titles.py",
+    "core/structured_blocks.py",
+    "core/study_quality.py",
+    "core/synopsis_quality.py",
+    "core/synopsis_timestamps.py",
+    "core/telegraph_contract.py",
+    "core/text_utils.py",
+    "core/timestamp_quality.py",
+    "core/title_topic_audit.py",
+    "core/url_utils.py",
+    "converters/md_telegraph.py",
+    "services/study_synthesis_runtime.py",
+    "services/telegraph.py",
+    "services/telegraph_edit.py",
+    "services/telegraph_pages.py",
+    "services/youtube_transcript.py",
+)
+
+
 def _hash_prompts_source() -> str:
     r"""SHA generation/render contract for cache invalidation.
 
@@ -959,22 +994,8 @@ def _hash_prompts_source() -> str:
     try:
         from pathlib import Path as _P
         root = _P(__file__).resolve().parent.parent
-        rels = [
-            "core/prompts.py",
-            "core/reasoning_guidance.py",
-            "core/prompt_rules.py",
-            "core/synopsis_quality.py",
-            "core/content_audit.py",
-            "core/text_utils.py",
-            "core/core_utils.py",
-            "core/source_titles.py",
-            "converters/md_telegraph.py",
-            "services/telegraph.py",
-            "services/telegraph_pages.py",
-            "services/youtube_transcript.py",
-        ]
         h = hashlib.sha256()
-        for rel in rels:
+        for rel in _GENERATION_CONTRACT_FILES:
             p = root / rel
             h.update(rel.encode("utf-8") + b"\0")
             if p.exists():
