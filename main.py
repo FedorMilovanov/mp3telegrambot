@@ -240,6 +240,10 @@ async def run_bot_async():
         _model_diagnostic.message,
         _model_diagnostic.policy,
     )
+    from core.model_catalog import route_problems
+
+    for _route_problem in route_problems():
+        logger.error("🧠 free-tier policy: %s", _route_problem)
     logger.info(f"🛡  Whitelist: {len(WHITELIST_IDS)} VIP-пользователей")
     logger.info(f"📵 Лимит: {DAILY_LIMIT} видео/день | {COOLDOWN_SECONDS}с между запросами")
     _subtitles_enabled = await asettings_get("shorts_subtitles")

@@ -8,6 +8,7 @@ from core.globals import (
     DB_PATH, HAS_GEMINI, HAS_PILLOW, LOCAL_BOT_API_URL,
     flask_app, _video_processing_locks, _video_locks_mutex, _get_video_lock,
 )
+from core.model_catalog import ROLE_PRIMARY, configured_model
 
 import asyncio
 import hashlib
@@ -928,13 +929,12 @@ def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
     if _MAX_FILE_SIZE_MB_EXPLICIT:
         return
     MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50
-# ─── Gemini deployment policy (2026-09-05) ──────────────────────────────
-# Heavy/semantic production route: gemini-3.8-flash + HIGH.
-# Utility/mechanical route: gemini-3.5-flash-lite only.
-# Semantic downgrade to 3.7/3.6/3.5/Lite is intentionally disabled; temporary
-# capacity failures are handled by bounded retries and configured API-key/client rotation.
+# ─── Gemini deployment policy ───────────────────────────────────────────
+# Модель задаётся один раз в core/model_catalog.py по роли ROLE_PRIMARY.
+# Устаревшие alias'ы (например, 3.7-flash) нормализуются автоматически, поэтому
+# старый .env не ломает routing после обновления каталога.
 # ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL  = configured_model(ROLE_PRIMARY)
 
 # ─── Умный кэш — версионирование ─────────────────────────────
 CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")

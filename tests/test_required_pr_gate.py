@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 
 from scripts.required_pr_gate import (
-    PROFILE_WORKFLOWS,
+    GATE_WORKFLOW,
+    MissingPullRequestTrigger,
+    discover_profile_workflows,
     expected_profile_workflows,
     extract_pull_request_filter,
     github_path_matches,
@@ -51,8 +53,69 @@ def test_workflow_applies_matches_github_trigger_semantics():
         workflow_applies("paths-ignore", ("!README.md",), ("README.md",))
 
 
+def test_every_pull_request_workflow_is_gated():
+    """A red PR check must be able to block a merge.
+
+    The gate used to hard-code four workflows, so six PR workflows were checked
+    by nobody. Discovery is derived from the directory, so this asserts the two
+    independent views agree.
+    """
+    declared = {
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / ".github" / "workflows").glob("*.yml")
+        if path.name != Path(GATE_WORKFLOW).name
+        and "pull_request:" in path.read_text(encoding="utf-8")
+    }
+    discovered = set(discover_profile_workflows(ROOT))
+
+    assert discovered == declared
+    assert GATE_WORKFLOW not in discovered
+    assert ".github/workflows/voxcpm2-windows.yml" in discovered
+    assert ".github/workflows/windows-full-suite-regressions.yml" in discovered
+
+
+def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path):
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        "on:\n  pull_request:\n", encoding="utf-8"
+    )
+    (workflows / "existing.yml").write_text(
+        "on:\n  pull_request:\n    paths:\n      - \"services/**\"\n",
+        encoding="utf-8",
+    )
+    (workflows / "brand-new.yml").write_text(
+        "on:\n  pull_request:\n    paths:\n      - \"core/**\"\n",
+        encoding="utf-8",
+    )
+    (workflows / "push-only.yml").write_text(
+        "on:\n  push:\n    branches: [main]\n", encoding="utf-8"
+    )
+    (workflows / "notes.txt").write_text("not a workflow", encoding="utf-8")
+
+    assert discover_profile_workflows(tmp_path) == (
+        ".github/workflows/brand-new.yml",
+        ".github/workflows/existing.yml",
+    )
+
+
+def test_workflow_without_pull_request_trigger_is_not_gated(tmp_path):
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "release.yml").write_text(
+        "on:\n  workflow_dispatch:\n", encoding="utf-8"
+    )
+
+    with pytest.raises(MissingPullRequestTrigger):
+        extract_pull_request_filter(
+            (workflows / "release.yml").read_text(encoding="utf-8")
+        )
+    with pytest.raises(RuntimeError, match="no pull_request workflows"):
+        discover_profile_workflows(tmp_path)
+
+
 def test_required_profile_workflow_filters_are_parseable_and_supported():
-    for workflow in PROFILE_WORKFLOWS:
+    for workflow in discover_profile_workflows(ROOT):
         path = ROOT / workflow
         assert path.is_file(), workflow
         mode, patterns = extract_pull_request_filter(path.read_text(encoding="utf-8"))
@@ -66,24 +129,32 @@ def test_required_profile_workflow_filters_are_parseable_and_supported():
 def test_expected_profile_workflows_use_live_workflow_filters():
     assert set(expected_profile_workflows(ROOT, ("README.md",))) == set()
 
-    assert set(
+    youtube = set(
         expected_profile_workflows(ROOT, ("services/youtube_po_token_runtime.py",))
-    ) == {
+    )
+    assert {
         ".github/workflows/cut-policy-ci.yml",
         ".github/workflows/gemini-qa-policy.yml",
         ".github/workflows/windows-bootstrap-ci.yml",
-    }
+    } <= youtube
 
-    assert set(expected_profile_workflows(ROOT, ("services/dub_example.py",))) == {
+    dub = set(expected_profile_workflows(ROOT, ("services/dub_example.py",)))
+    assert {
         ".github/workflows/gemini-qa-policy.yml",
         ".github/workflows/dub-studio-checks.yml",
-    }
+    } <= dub
 
-    assert set(expected_profile_workflows(ROOT, ("requirements-lock.txt",))) == {
+    # Anything selected must be a real, PR-triggered workflow.
+    assert youtube | dub <= set(discover_profile_workflows(ROOT))
+
+    # requirements-lock.txt is also watched by the TTS model-catalog workflow.
+    lock = set(expected_profile_workflows(ROOT, ("requirements-lock.txt",)))
+    assert {
         ".github/workflows/cut-policy-ci.yml",
         ".github/workflows/windows-bootstrap-ci.yml",
         ".github/workflows/dub-studio-checks.yml",
-    }
+        ".github/workflows/voxcpm2-windows.yml",
+    } <= lock
 
     assert set(expected_profile_workflows(ROOT, (".env.example",))) == {
         ".github/workflows/gemini-qa-policy.yml"

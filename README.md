@@ -103,13 +103,18 @@ LOCAL_BOT_API_CLOUD_FALLBACK=0
 
 ## Gemini policy
 
+**Все идентификаторы моделей живут в одном месте — [`core/model_catalog.py`](core/model_catalog.py).**
+Продовый код импортирует роли (`MODEL_PRIMARY`, `MODEL_UTILITY`, ...), а не строки, поэтому
+обновление модели = правка каталога + `python scripts/render_model_catalog.py` + `tools/verify_repo.py`.
+
 Runtime фиксирует quality-policy до импорта AI-клиентов:
 
-- основной user-visible semantic-контур: `gemini-3.8-flash` + `HIGH` thinking;
-- Shorts Factory MAX остаётся на Gemini 3.8 / HIGH / трёх независимых проходах и не понижается до 3.7/3.6/3.5/Lite при ошибках провайдера;
-- LiveDub QA и публикационный смысловой текст используют текущий 3.8/HIGH route;
-- Translation Editorial review имеет отдельный явный `gemini-3.7-flash` / HIGH контракт; это не fallback из Factory 3.8;
-- дешёвые механические/utility-задачи: только `gemini-3.5-flash-lite` + minimal;
+- основной user-visible semantic-контур: роль `primary` + `HIGH` thinking;
+- Shorts Factory MAX остаётся на `primary` / HIGH / трёх независимых проходах и не понижается до utility/Lite при ошибках провайдера;
+- LiveDub QA и публикационный смысловой текст используют тот же `primary`/HIGH route;
+- Translation Editorial review — отдельный явный `primary`/HIGH контракт, не fallback из Factory;
+- дешёвые механические/utility-задачи: только роль `utility` + minimal;
+- cross-model fallback по умолчанию **выключен** (`MP3BOT_FALLBACK_MODEL=`); подмена модели на лету — осознанное решение, а не скрытый дефолт;
 - `503/high demand` трактуется как backend-capacity: bounded retry остаётся на том же client/upload и не умножается числом ключей;
 - `429/RESOURCE_EXHAUSTED` трактуется отдельно как quota/rate-limit и может переключить credential, не обнуляя уже израсходованный 503 budget;
 - несколько API-ключей одного Google Cloud project **не дают несколько независимых quota** — лимиты Gemini применяются к проекту.
@@ -127,6 +132,77 @@ SHORTS_FACTORY_MODEL=gemini-3.8-flash
 ```
 
 Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-38.ps1`.
+
+<!-- MODEL-CATALOG:START -->
+Каталог моделей (снимок 2026-10-22). Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — не редактируйте вручную.
+
+### Роли
+
+| Роль | Модель | Free tier | Кто использует |
+|---|---|---|---|
+| `primary` (semantic) | `gemini-3.8-flash` | ✅ free | Synopsis, LiveDub QA, Factory, publication, info cards |
+| `utility` (mechanical) | `gemini-3.5-flash-lite` | ✅ free | только служебные/косметические задачи |
+| `fallback` (downgrade) | `(не задан)` | — | по умолчанию выключен: cross-model downgrade запрещён |
+| `tts` (speech) | `gemini-3.8-flash-tts` | ✅ free | доступно, пока не используется |
+| `tts_lite` (speech) | `gemini-3.8-flash-lite-tts` | ✅ free | доступно, пока не используется |
+| `transcribe` (speech) | `gemini-3.5-transcribe` | ✅ free | доступно, пока не используется |
+| `live` (realtime) | `gemini-3.8-live` | ✅ free | доступно, пока не используется |
+| `reasoning` (reasoning) | `(не задан)` | — | нет бесплатной модели: 4 Argon только paid tier |
+
+### Бесплатные ключи (основное ограничение deployment'а)
+
+Режим: `FREE_TIER_ONLY = True` — проект работает на бесплатных ключах Gemini, поэтому платная модель не может быть маршрутом по умолчанию.
+Источник: https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), verified 2026-10-23.
+
+**Бесплатно (free tier):**
+
+`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-flash-native-audio-preview-12-2025`, `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-3.1-flash-tts-preview`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-transcribe`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.8-flash-lite-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-live`, `gemini-3.8-live-extended-thinking`
+
+**Только paid tier — бесплатный ключ получит отказ:**
+
+`gemini-2.5-pro-preview-tts`, `gemini-3.1-pro-preview`, `gemini-4-argon`
+
+**Не проверено / модель выключена:**
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-live-preview`, `gemini-pro`, `gemini-pro-vision`
+
+Что это значит на практике:
+
+- лимиты free tier считаются **на Google Cloud project и на модель**, а не на ключ; несколько ключей одного проекта квоту не умножают;
+- четыре слота `GEMINI_API_KEY`..`_4` имеют смысл только как четыре разных проекта (`GEMINI_QUOTA_DOMAIN*` фиксирует это локально);
+- апгрейд на платную модель — это не «одна строка», а осознанное решение: сначала `FREE_TIER_ONLY = False`, потом правка роли;
+- `reasoning`-роль пуста намеренно: бесплатной reasoning-модели у Google нет.
+
+### Устаревшие alias'ы (провайдер сам перенаправляет запрос)
+
+| Alias | Deprecated | Реальная модель |
+|---|---|---|
+| `gemini-3.5-flash` | 2026-10-08 | `gemini-3.6-flash` |
+| `gemini-3.7-flash` | 2026-10-08 | `gemini-3.8-flash` |
+
+### Объявленные миграции
+
+| Модель | Крайний срок | Замена |
+|---|---|---|
+| `gemini-3.1-flash-tts-preview` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-flash-preview-tts` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-pro-preview-tts` | 2026-11-17 | `gemini-3.8-flash-lite-tts` |
+| `gemini-3.1-flash-live-preview` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-2.5-flash-native-audio-preview-12-2025` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-3.1-flash-lite` | 2027-05-07 | `gemini-3.5-flash-lite` |
+
+### Legacy, доступ ограничен (не deprecated)
+
+| Модель | Замена |
+|---|---|
+| `gemini-2.5-flash` | `gemini-3.8-flash` |
+| `gemini-2.5-flash-lite` | `gemini-3.5-flash-lite` |
+| `gemini-2.5-pro` | `gemini-3.8-flash` |
+
+### Отключены
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-pro`, `gemini-pro-vision`
+<!-- MODEL-CATALOG:END -->
 
 Операционный контракт, различие `503`/`429`, проверка project quota и миграция Standard → Auth keys описаны в [`docs/gemini-operations.md`](docs/gemini-operations.md).
 
@@ -207,10 +283,11 @@ tools/                     диагностика и вспомогательн�
 
 GitHub Actions выполняет:
 
-- полный `pytest` на Python 3.11 и 3.13;
+- полный `pytest` на Python 3.11, 3.12 и 3.13;
 - компиляцию всех Python-файлов;
 - Ruff fatal checks;
 - отдельный Windows runtime-набор на Python 3.13;
+- `dependency-audit`: контракт lock'а + `pip-audit` по разрешённым пинам;
 - реальные FFmpeg/FFprobe-интеграционные тесты двух MP3;
 - code-health отчёт по росту regex/postprocess-слоя.
 
@@ -220,7 +297,12 @@ GitHub Actions выполняет:
 python -m pytest -q
 python -m ruff check --select E9,F63,F7,F82 .
 python tools/check_code_health.py
+python tools/check_requirements_lock.py
+python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 ```
+
+Порядок обновления зависимостей и правила исключений описаны в
+[`docs/dependency-policy.md`](docs/dependency-policy.md).
 
 ## Безопасная эксплуатация
 

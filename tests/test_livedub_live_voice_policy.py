@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.model_catalog import MODEL_PRIMARY
+
 import os
 
 from services.livedub_quality_runtime import configure_gemini_policy
@@ -21,9 +23,9 @@ def test_pre_main_policy_keeps_gemini_38_high_contract(monkeypatch) -> None:
 
     configure_gemini_policy()
 
-    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == MODEL_PRIMARY
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == MODEL_PRIMARY
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == MODEL_PRIMARY
     assert os.environ["LIVEDUB_QUICK_QA_THINKING"] == "high"
     assert os.environ["LIVEDUB_LONG_QA_THINKING"] == "high"
     assert os.environ["LIVEDUB_QA_VERIFY_THINKING"] == "high"

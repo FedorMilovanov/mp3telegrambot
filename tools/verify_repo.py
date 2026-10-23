@@ -4,9 +4,10 @@
 Runs the same non-negotiable checks we use before patch handoff:
 
 1. compileall
-2. pytest
-3. ruff fatal lint subset from pyproject
-4. git diff --check, when inside a git checkout
+2. generated model identifiers are in sync with core/model_catalog.py
+3. pytest
+4. ruff fatal lint subset from pyproject
+5. git diff --check, when inside a git checkout
 
 The script is intentionally dependency-light and works on Windows/Linux/macOS.
 """
@@ -45,6 +46,8 @@ def run_checks(root: Path, *, skip_pytest: bool = False, skip_ruff: bool = False
     py = sys.executable
     checks: list[tuple[str, list[str]]] = [
         ("compileall", [py, "-m", "compileall", "-q", "."]),
+        # Model identifiers are generated from core/model_catalog.py.
+        ("model catalog", [py, "scripts/render_model_catalog.py", "--check"]),
     ]
     if not skip_pytest:
         checks.append(("pytest", [py, "-m", "pytest", "-q"]))

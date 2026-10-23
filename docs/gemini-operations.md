@@ -4,17 +4,92 @@ This document describes the production operating contract for Gemini in MP3Bot. 
 
 ## Model policy
 
-- User-visible semantic routes use `gemini-3.8-flash` with `HIGH` thinking where the route supports explicit thinking configuration.
-- Shorts Factory MAX stays on Gemini 3.8 / HIGH / three independent review passes. It must not downgrade to 3.7/3.6/3.5/Lite in response to provider errors.
-- LiveDub QA and publication semantic copy use the current 3.8/HIGH route.
-- Translation Editorial review currently owns a dedicated `gemini-3.7-flash` / HIGH contract. This is an explicit reviewer route, not an automatic fallback from Factory 3.8.
-- `gemini-3.5-flash-lite` is reserved for mechanical utility work that does not write user-visible semantic content.
+Every model identifier is owned by `core/model_catalog.py`; this section is generated
+from it. A model change is one catalog edit plus `python scripts/render_model_catalog.py`.
+
+- User-visible semantic routes use the `primary` role with `HIGH` thinking wherever the route supports explicit thinking configuration.
+- Shorts Factory MAX stays on `primary` / HIGH / three independent review passes and never downgrades to the utility route in response to provider errors.
+- LiveDub QA and publication semantic copy use the same `primary`/HIGH route.
+- Translation Editorial review owns a dedicated `primary`/HIGH contract: an explicit reviewer route, never an automatic Factory fallback.
+- Deprecated endpoint aliases still answer, but the provider silently re-routes them. They are normalized to their real target at startup, so a stale `.env` cannot pin the project to an alias.
+- The `utility` role is reserved for mechanical work that does not write user-visible semantic content.
 
 For local migration use:
 
 ```powershell
 ./scripts/migrate-gemini-38.ps1
 ```
+
+<!-- MODEL-CATALOG:START -->
+Каталог моделей (снимок 2026-10-22). Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — не редактируйте вручную.
+
+### Роли
+
+| Роль | Модель | Free tier | Кто использует |
+|---|---|---|---|
+| `primary` (semantic) | `gemini-3.8-flash` | ✅ free | Synopsis, LiveDub QA, Factory, publication, info cards |
+| `utility` (mechanical) | `gemini-3.5-flash-lite` | ✅ free | только служебные/косметические задачи |
+| `fallback` (downgrade) | `(не задан)` | — | по умолчанию выключен: cross-model downgrade запрещён |
+| `tts` (speech) | `gemini-3.8-flash-tts` | ✅ free | доступно, пока не используется |
+| `tts_lite` (speech) | `gemini-3.8-flash-lite-tts` | ✅ free | доступно, пока не используется |
+| `transcribe` (speech) | `gemini-3.5-transcribe` | ✅ free | доступно, пока не используется |
+| `live` (realtime) | `gemini-3.8-live` | ✅ free | доступно, пока не используется |
+| `reasoning` (reasoning) | `(не задан)` | — | нет бесплатной модели: 4 Argon только paid tier |
+
+### Бесплатные ключи (основное ограничение deployment'а)
+
+Режим: `FREE_TIER_ONLY = True` — проект работает на бесплатных ключах Gemini, поэтому платная модель не может быть маршрутом по умолчанию.
+Источник: https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), verified 2026-10-23.
+
+**Бесплатно (free tier):**
+
+`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-flash-native-audio-preview-12-2025`, `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-3.1-flash-tts-preview`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-transcribe`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.8-flash-lite-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-live`, `gemini-3.8-live-extended-thinking`
+
+**Только paid tier — бесплатный ключ получит отказ:**
+
+`gemini-2.5-pro-preview-tts`, `gemini-3.1-pro-preview`, `gemini-4-argon`
+
+**Не проверено / модель выключена:**
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-live-preview`, `gemini-pro`, `gemini-pro-vision`
+
+Что это значит на практике:
+
+- лимиты free tier считаются **на Google Cloud project и на модель**, а не на ключ; несколько ключей одного проекта квоту не умножают;
+- четыре слота `GEMINI_API_KEY`..`_4` имеют смысл только как четыре разных проекта (`GEMINI_QUOTA_DOMAIN*` фиксирует это локально);
+- апгрейд на платную модель — это не «одна строка», а осознанное решение: сначала `FREE_TIER_ONLY = False`, потом правка роли;
+- `reasoning`-роль пуста намеренно: бесплатной reasoning-модели у Google нет.
+
+### Устаревшие alias'ы (провайдер сам перенаправляет запрос)
+
+| Alias | Deprecated | Реальная модель |
+|---|---|---|
+| `gemini-3.5-flash` | 2026-10-08 | `gemini-3.6-flash` |
+| `gemini-3.7-flash` | 2026-10-08 | `gemini-3.8-flash` |
+
+### Объявленные миграции
+
+| Модель | Крайний срок | Замена |
+|---|---|---|
+| `gemini-3.1-flash-tts-preview` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-flash-preview-tts` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-pro-preview-tts` | 2026-11-17 | `gemini-3.8-flash-lite-tts` |
+| `gemini-3.1-flash-live-preview` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-2.5-flash-native-audio-preview-12-2025` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-3.1-flash-lite` | 2027-05-07 | `gemini-3.5-flash-lite` |
+
+### Legacy, доступ ограничен (не deprecated)
+
+| Модель | Замена |
+|---|---|
+| `gemini-2.5-flash` | `gemini-3.8-flash` |
+| `gemini-2.5-flash-lite` | `gemini-3.5-flash-lite` |
+| `gemini-2.5-pro` | `gemini-3.8-flash` |
+
+### Отключены
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-pro`, `gemini-pro-vision`
+<!-- MODEL-CATALOG:END -->
 
 ## Failure domains
 
@@ -39,6 +114,28 @@ A 429 is a different failure domain. Factory may move to another configured cred
 Gemini rate limits are applied **per Google Cloud project, not per API key**. Multiple keys from the same project therefore share the same RPM/TPM/RPD limits.
 
 Do not assume that four configured values (`GEMINI_API_KEY`, `_2`, `_3`, `_4`) represent four independent quotas.
+
+### Free tier is the operating mode
+
+This deployment runs on **free-tier keys only**. `core/model_catalog.py` carries
+`FREE_TIER_ONLY = True` and the verified free-tier availability of every model
+(source: `ai.google.dev/gemini-api/docs/pricing`, "Free Tier" column, Standard
+serving, verified 2026-10-23).
+
+- `gemini-4-argon`, `gemini-3.1-pro-preview` and `gemini-2.5-pro-preview-tts` are
+  **paid-only**. A free key gets a hard refusal, not a weaker answer, so the
+  catalog refuses to make them role defaults, no migration path points at them,
+  and `main.py` logs an error when a role (including an `.env` override) resolves
+  to one.
+- The `reasoning` role is intentionally empty: there is no free-tier reasoning
+  model, so `MP3BOT_REASONING_MODEL` stays unset.
+- Free-tier limits apply **per Google Cloud project and per model**. Extra keys
+  multiply quota only while they belong to different projects; that relationship
+  is what `GEMINI_QUOTA_DOMAIN*` records locally.
+- `scripts/model_upgrade_drill.py` refuses a target that is not free-tier
+  eligible. Moving to billing is a two-step decision: set `FREE_TIER_ONLY = False`
+  first, then change the role — never the other way round, or every route dies at
+  once.
 
 For each production credential, record outside the repository:
 

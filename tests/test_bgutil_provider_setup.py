@@ -57,7 +57,9 @@ def _write_ready_runtime(provider: Path) -> tuple[Path, Path, Path, Path]:
     )
     plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
     plugin.parent.mkdir(parents=True)
-    plugin.write_text("__version__ = '1.3.1'\n", encoding="utf-8")
+    plugin.write_text(
+        f"__version__ = '{setup.BGUTIL_VERSION}'\n", encoding="utf-8"
+    )
     marker = provider / ".mp3bot-bgutil-version"
     marker.write_text(
         f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n",
@@ -80,7 +82,11 @@ def test_current_runtime_skips_network_and_build(
     monkeypatch.setattr(setup, "NODE_MODULES", server / "node_modules")
     monkeypatch.setattr(setup, "VERSION_MARKER", marker)
     monkeypatch.setattr(setup, "_node_executable", lambda: "node")
-    monkeypatch.setattr(setup, "_require_script_version", lambda *_args, **_kwargs: "1.3.1")
+    monkeypatch.setattr(
+        setup,
+        "_require_script_version",
+        lambda *_args, **_kwargs: setup.BGUTIL_VERSION,
+    )
     monkeypatch.setattr(
         setup,
         "_run",
@@ -180,11 +186,14 @@ def test_compiled_script_offline_smoke_requires_exact_version(
         setup,
         "_owned_run",
         lambda *_args, **_kwargs: SimpleNamespace(
-            stdout="1.3.1\n", stderr="", returncode=0
+            stdout=f"{setup.BGUTIL_VERSION}\n", stderr="", returncode=0
         ),
     )
 
-    assert setup._require_script_version("node", script=script, cwd=tmp_path) == "1.3.1"
+    assert (
+        setup._require_script_version("node", script=script, cwd=tmp_path)
+        == setup.BGUTIL_VERSION
+    )
 
     monkeypatch.setattr(
         setup,
@@ -333,8 +342,13 @@ def test_provisioner_is_exact_source_and_browserless_by_contract() -> None:
     lock = Path("requirements-lock.txt").read_text(encoding="utf-8")
     config = Path("yt-dlp.conf").read_text(encoding="utf-8")
 
-    assert 'BGUTIL_VERSION = "1.3.1"' in source
-    assert setup.BGUTIL_COMMIT == "a0be2352807e3bd6991f09d2cab685a0ab825b26"
+    # The pin lives in core/bgutil_pin.py; the provisioner only imports it.
+    pin = Path("core/bgutil_pin.py").read_text(encoding="utf-8")
+    assert "from core.bgutil_pin import" in source
+    assert 'BGUTIL_VERSION = "' not in source
+    assert f'BGUTIL_VERSION: Final[str] = "{setup.BGUTIL_VERSION}"' in pin
+    assert setup.BGUTIL_VERSION.split(".")[0] >= "2"
+    assert len(setup.BGUTIL_COMMIT) == 40
     assert '"fetch", "--depth", "1", "origin", BGUTIL_COMMIT' in source
     assert '"node_modules" / ".bin"' in source
     assert '"ci", "--no-audit", "--no-fund"' in source

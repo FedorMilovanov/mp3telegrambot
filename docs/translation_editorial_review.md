@@ -38,7 +38,17 @@ The optional automatic semantic auditor is off by default:
 SHORTS_FACTORY_EDITORIAL_GEMINI=0
 ```
 
-When enabled it performs a full-sermon review using the exact model `gemini-3.6-flash` with `thinking_level=high`. The default budget is one attempt; an explicit override is clamped to two. It has no light-model fallback and does not apply its own edit decisions automatically. Machine-local source paths are removed from the model prompt.
+When enabled it performs a full-sermon review using the catalog role `primary` with `thinking_level=high`.
+
+<!-- MODEL-ROUTE:START -->
+Model contract, catalog snapshot 2026-10-22. Generated from core/model_catalog.py by scripts/render_model_catalog.py; do not edit by hand.
+
+- Role `primary` (semantic work): `gemini-3.8-flash`.
+- Role `utility` (mechanical work only): `gemini-3.5-flash-lite`.
+- Provider-side aliases: `gemini-3.5-flash` (deprecated 2026-10-08) routes to `gemini-3.6-flash`, `gemini-3.7-flash` (deprecated 2026-10-08) routes to `gemini-3.8-flash`.
+- Any other identifier (Pro/Lite, previous GA generation, arbitrary string) is rejected by the runtime gate instead of silently changing the quality route.
+<!-- MODEL-ROUTE:END -->
+ The default budget is one attempt; an explicit override is clamped to two. It has no light-model fallback and does not apply its own edit decisions automatically. Machine-local source paths are removed from the model prompt.
 
 ## Timeline rule
 

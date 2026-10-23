@@ -24,7 +24,7 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
     def require_module(actual_plugin_root: Path, expected_version: str) -> str:
         assert actual_plugin_root == plugin_root
         assert expected_version == po.BGUTIL_EXPECTED_VERSION
-        return "1.3.1"
+        return po.BGUTIL_EXPECTED_VERSION
 
     monkeypatch.setattr(po, "_require_bgutil_module", require_module)
     monkeypatch.setattr(po, "_require_node", lambda: "22.14.0")
@@ -41,14 +41,14 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
 
     runtime = po.require_youtube_po_token_runtime()
 
-    assert runtime.provider_version == "1.3.1"
+    assert runtime.provider_version == po.BGUTIL_EXPECTED_VERSION
     assert runtime.provider_commit == po.BGUTIL_EXPECTED_COMMIT
     assert runtime.node_version == "22.14.0"
     assert runtime.provider_home == provider_home
     assert runtime.plugin_root == plugin_root
     assert runtime.http_base_url == po.BGUTIL_HTTP_BASE_URL
     assert runtime.status_text() == (
-        f"bgutil 1.3.1@{po.BGUTIL_EXPECTED_COMMIT[:8]}; "
+        f"bgutil {po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT[:8]}; "
         f"node=22.14.0; http={po.BGUTIL_HTTP_BASE_URL}; "
         "browserless=on; source-only=on"
     )
@@ -219,18 +219,28 @@ def test_bgutil_probe_uses_exact_source_plugin_path(
         captured["kwargs"] = kwargs
         return SimpleNamespace(
             returncode=0,
-            stdout=f"1.3.1\n{plugin_root / 'yt_dlp_plugins' / 'extractor' / 'getpot_bgutil.py'}\n",
+            stdout=(
+                f"{po.BGUTIL_EXPECTED_VERSION}\n"
+                f"{plugin_root / 'yt_dlp_plugins' / 'extractor' / 'getpot_bgutil.py'}\n"
+            ),
             stderr="",
         )
 
     monkeypatch.setattr(po.subprocess, "run", fake_run)
 
-    assert po._require_bgutil_module(plugin_root, "1.3.1") == "1.3.1"
+    assert (
+        po._require_bgutil_module(plugin_root, po.BGUTIL_EXPECTED_VERSION)
+        == po.BGUTIL_EXPECTED_VERSION
+    )
 
     command = captured["command"]
     assert command[0] == po.sys.executable
     assert command[1] == "-c"
-    assert command[3:] == [str(plugin_root.resolve()), po.BGUTIL_MODULE, "1.3.1"]
+    assert command[3:] == [
+        str(plugin_root.resolve()),
+        po.BGUTIL_MODULE,
+        po.BGUTIL_EXPECTED_VERSION,
+    ]
     assert captured["kwargs"]["check"] is False
 
 
@@ -249,7 +259,7 @@ def test_bgutil_source_module_version_mismatch_fails_closed(
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="рассинхронизированную"):
-        po._require_bgutil_module(tmp_path / "plugin", "1.3.1")
+        po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
 def test_bgutil_probe_rejects_site_packages_shadow(monkeypatch, tmp_path):
@@ -264,7 +274,7 @@ def test_bgutil_probe_rejects_site_packages_shadow(monkeypatch, tmp_path):
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="site-packages"):
-        po._require_bgutil_module(tmp_path / "plugin", "1.3.1")
+        po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
 def test_bgutil_import_failure_fails_closed(monkeypatch, tmp_path):
@@ -279,7 +289,7 @@ def test_bgutil_import_failure_fails_closed(monkeypatch, tmp_path):
     )
 
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="не импортируется"):
-        po._require_bgutil_module(tmp_path / "plugin", "1.3.1")
+        po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
 def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):

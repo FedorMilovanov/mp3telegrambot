@@ -18,6 +18,7 @@ import re
 import secrets
 from typing import Any
 
+from core.model_catalog import ROLE_PRIMARY, ROLE_UTILITY, configured_model
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationHandlerStop,
@@ -408,11 +409,14 @@ def _request_payload(
         "original_level": 0.18,
         "russian_delay_ms": 420,
         "whisper_model": os.getenv("DUB_WHISPER_MODEL", "large-v3"),
-        "translation_model": os.getenv(
-            "DUB_TRANSLATION_MODEL",
-            "gemini-3.8-flash",
+        "translation_model": (
+            os.getenv("DUB_TRANSLATION_MODEL", "").strip()
+            or configured_model(ROLE_PRIMARY)
         ),
-        "title_model": os.getenv("DUB_TITLE_MODEL", "gemini-3.5-flash-lite"),
+        "title_model": (
+            os.getenv("DUB_TITLE_MODEL", "").strip()
+            or configured_model(ROLE_UTILITY)
+        ),
     }
     return normalize_new_production_tts_request(base, choice.profile_id)
 

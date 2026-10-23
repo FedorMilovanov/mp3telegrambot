@@ -11,6 +11,7 @@ import os
 import weakref
 from typing import Any, Callable
 
+from core.model_catalog import MODEL_UTILITY
 from core.text_utils import normalize_hashtag
 
 logger = logging.getLogger(__name__)
@@ -18,12 +19,11 @@ _DESCRIPTION_FIELD = "_factory_publication_description"
 _WRAPPED_CAPTION_BUILDERS: weakref.WeakSet[Callable[..., str]] = weakref.WeakSet()
 
 # Publication prose is deliberately isolated from the Factory's heavy
-# gemini-3.7-flash analysis route and the generic LiveDub model-fallback chain.
-# Only Flash Lite is accepted by this cosmetic pass. Capacity resilience comes
-# from trying configured Gemini clients/keys, never from changing the model.
-FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, ...] = (
-    "gemini-3.5-flash-lite",
-)
+# primary-model analysis route and the generic LiveDub model-fallback chain.
+# Only the catalog's utility model is accepted by this cosmetic pass. Capacity
+# resilience comes from trying configured Gemini clients/keys, never from
+# changing the model.
+FACTORY_PUBLICATION_LIGHT_MODELS: tuple[str, ...] = (MODEL_UTILITY,)
 
 
 def canonical_public_hashtags(tags: Any, limit: int = 4) -> list[str]:

@@ -15,8 +15,10 @@ def test_title_second_chance_directly_owns_38_high():
 
 
 def test_env_example_keeps_user_copy_off_utility_lane():
+    from core.model_catalog import MODEL_PRIMARY
+
     env = _read(".env.example")
-    assert "# LIVEDUB_INFO_MODEL=gemini-3.8-flash" in env
+    assert f"# LIVEDUB_INFO_MODEL={MODEL_PRIMARY}" in env
     assert "# LIVEDUB_INFO_FALLBACK_MODELS=" in env
     assert "# LIVEDUB_PUBLICATION_FALLBACK_MODELS=" in env
     assert "# LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK=0" in env

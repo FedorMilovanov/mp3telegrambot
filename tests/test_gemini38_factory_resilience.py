@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from core.model_catalog import MODEL_PRIMARY
+
 import asyncio
 from types import SimpleNamespace
 
@@ -42,7 +44,7 @@ def test_user_visible_publication_owner_uses_only_38_even_with_stale_env(monkeyp
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "gemini-3.5-flash")
-    assert publication.publication_models() == ["gemini-3.8-flash"]
+    assert publication.publication_models() == [MODEL_PRIMARY]
 
 
 def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):

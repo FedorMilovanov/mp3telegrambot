@@ -87,7 +87,7 @@ def test_503_high_demand_has_one_global_initial_plus_four_retry_budget(monkeypat
     message = str(raised.value)
     assert 'единый лимит 5 сетевых попыток' in message
     assert 'initial + максимум 4 retry' in message
-    assert '3.7/3.6/3.5/Lite' in message
+    assert '3.6/3.5/Lite' in message
     assert 'НЕ означает, что API-ключи или квота исчерпаны' in message
     assert 'retry-кэше' in message
 

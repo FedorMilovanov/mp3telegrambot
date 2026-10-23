@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from core.globals import GEMINI_CLIENTS, gemini_generate, make_text_config_smart
+from core.model_catalog import MODEL_PRIMARY as DEFAULT_INFO_MODEL
 from core.text_utils import (
     _scrub_inline,
     _strip_meta_lines,
@@ -34,7 +35,6 @@ from services.livedub_info_evidence import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INFO_MODEL = "gemini-3.8-flash"
 DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 
 

@@ -4,7 +4,7 @@
 
 ## Production contract
 
-1. The default reasoning model is `gemini-3.1-pro-preview`. Factory accepts only canonical `gemini-<version>-pro...` identifiers at or above Gemini 3.1 Pro. Flash/Lite, older Pro models and aliases that merely contain the word `pro` fail the required runtime startup.
+1. The only accepted reasoning route is the catalog role `primary` (see the generated block below). Factory requires that exact GA Flash ID for all three review passes; any other identifier fails the required runtime startup instead of silently changing the quality route.
 2. Before media transfer, Factory preflight requires configured Gemini clients, `faster-whisper`, `ffmpeg`, `ffprobe` and a basic free-space floor in both downloads and the system temp location.
 3. Factory then simulates the exact `yt-dlp` format selection. It sums selected stream `filesize`/`filesize_approx` values or derives them from bitrate and duration, models native-audio plus lossless-FLAC preparation and separate video/audio streams plus merge output, and requires that peak on every target filesystem. If the estimate is unavailable, conservative 4 GB audio and 6 GB video floors are used.
 4. Factory resets inherited/local `yt-dlp` format sorting, `format-sort-force` and free-format preference. Authentication, cookies, proxy and JS-runtime settings are retained, but ordinary mp4/m4a compatibility preferences cannot silently lower MAX source quality.
@@ -43,16 +43,21 @@
 ## Optional environment controls
 
 ```dotenv
-# Canonical Pro model at or above 3.1. Default: gemini-3.1-pro-preview.
-# Flash/Lite, older Pro and noncanonical aliases fail required startup.
-SHORTS_FACTORY_MODEL=gemini-3.1-pro-preview
+# Exact GA Flash model: the `primary` role from core/model_catalog.py.
+# Any other identifier fails required startup.
+SHORTS_FACTORY_MODEL=gemini-3.8-flash
+<!-- MODEL-ROUTE:START -->
+Model contract, catalog snapshot 2026-10-22. Generated from core/model_catalog.py by scripts/render_model_catalog.py; do not edit by hand.
+
+- Role `primary` (semantic work): `gemini-3.8-flash`.
+- Role `utility` (mechanical work only): `gemini-3.5-flash-lite`.
+- Provider-side aliases: `gemini-3.5-flash` (deprecated 2026-10-08) routes to `gemini-3.6-flash`, `gemini-3.7-flash` (deprecated 2026-10-08) routes to `gemini-3.8-flash`.
+- Any other identifier (Pro/Lite, previous GA generation, arbitrary string) is rejected by the runtime gate instead of silently changing the quality route.
+<!-- MODEL-ROUTE:END -->
 
 # Final editorial floors. Higher values are accepted; lower values are ignored.
 SHORTS_FACTORY_MIN_SHORT_SCORE=88
 SHORTS_FACTORY_MIN_LONG_SCORE=85
-
-# Alternative shared Pro-model setting, subject to the same canonical/version floor.
-# GEMINI_PRO_MODEL=gemini-3.1-pro-preview
 
 # Exact mandatory Whisper model. Other values fail required startup.
 SHORTS_FACTORY_WHISPER_MODEL=large-v3

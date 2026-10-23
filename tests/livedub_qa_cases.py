@@ -953,8 +953,10 @@ def test_quick_modes_share_unified_publication_metadata_without_second_ai_card()
 
 
 def test_livedub_light_model_env_documented():
+    from core.model_catalog import MODEL_UTILITY
+
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in env
+    assert f"GEMINI_LIGHT_MODEL={MODEL_UTILITY}" in env
     assert "GEMINI_LIGHT_FALLBACK_MODELS=" in env
     assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env
     # выключенные модели не должны стоять ЗНАЧЕНИЕМ fallback-цепочки
@@ -966,7 +968,7 @@ def test_livedub_light_model_env_documented():
     assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env
     assert "LIVEDUB_INFO_CARD=1" in env
     readme = Path("README.md").read_text(encoding="utf-8")
-    assert "GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in readme
+    assert f"GEMINI_LIGHT_MODEL={MODEL_UTILITY}" in readme
 
 
 # ── Заход 9: обслуживание диска + flood control ──────────────────

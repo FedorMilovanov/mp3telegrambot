@@ -27,9 +27,16 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from services.async_process import run_cancellable_process
 
-BGUTIL_VERSION = "1.3.1"
-BGUTIL_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
-BGUTIL_REPOSITORY = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
+from core.bgutil_pin import (
+    BGUTIL_COMMIT,
+    BGUTIL_MIN_NODE_MAJOR,
+    BGUTIL_MIN_NPM_MAJOR,
+    BGUTIL_REPOSITORY,
+    BGUTIL_SECURITY_ADVISORY,
+    BGUTIL_VERSION,
+    bgutil_pin_problems,
+    marker_text,
+)
 RUNTIME_ROOT = PROJECT_ROOT / ".runtime"
 PROVIDER_ROOT = RUNTIME_ROOT / "bgutil-ytdlp-pot-provider"
 SERVER_ROOT = PROVIDER_ROOT / "server"
@@ -129,8 +136,10 @@ def _node_executable() -> str:
         raise ProvisionError("Не удалось определить версию Node.js") from exc
     if process.returncode:
         raise ProvisionError("Не удалось запустить Node.js")
-    if major < 22:
-        raise ProvisionError(f"Node.js {version} < 22; обнови Node.js")
+    if major < BGUTIL_MIN_NODE_MAJOR:
+        raise ProvisionError(
+            f"Node.js {version} < {BGUTIL_MIN_NODE_MAJOR}; обнови Node.js"
+        )
     return node
 
 
@@ -146,8 +155,10 @@ def _npm_executable() -> str:
         raise ProvisionError("Не удалось определить версию npm") from exc
     if process.returncode:
         raise ProvisionError("Не удалось запустить npm")
-    if major < 9:
-        raise ProvisionError(f"npm {version} < 9; обнови npm/Node.js")
+    if major < BGUTIL_MIN_NPM_MAJOR:
+        raise ProvisionError(
+            f"npm {version} < {BGUTIL_MIN_NPM_MAJOR}; обнови npm/Node.js"
+        )
     return npm
 
 
@@ -156,7 +167,7 @@ def _runtime_files_current() -> bool:
         marker = VERSION_MARKER.read_text(encoding="utf-8").strip()
     except OSError:
         return False
-    expected = f"{BGUTIL_VERSION}@{BGUTIL_COMMIT}"
+    expected = marker_text()
     return (
         marker == expected
         and GENERATE_SCRIPT.is_file()
@@ -472,8 +483,20 @@ def _current_runtime_healthy(node: str) -> bool:
     return True
 
 
+def _require_patched_pin() -> None:
+    """Refuse to install a release with a known RCE, before any network work."""
+    problems = bgutil_pin_problems()
+    if problems:
+        raise ProvisionError(
+            "bgutil pin rejected: "
+            + "; ".join(problems)
+            + f". Security advisory: {BGUTIL_SECURITY_ADVISORY}"
+        )
+
+
 def ensure_bgutil_provider() -> Path:
     """Return the ready provider server directory, provisioning it if needed."""
+    _require_patched_pin()
     node = _node_executable()
     if _current_runtime_healthy(node):
         return SERVER_ROOT
@@ -542,7 +565,7 @@ def ensure_bgutil_provider() -> Path:
             _require_script_version(node, script=generated, cwd=server)
 
             (staging / ".mp3bot-bgutil-version").write_text(
-                f"{BGUTIL_VERSION}@{BGUTIL_COMMIT}\n", encoding="utf-8"
+                marker_text() + "\n", encoding="utf-8"
             )
             _publish_staging(staging)
         except Exception:

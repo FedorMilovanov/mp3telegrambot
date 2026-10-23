@@ -37,13 +37,22 @@ def test_locked_ytdlp_satisfies_declared_production_floor() -> None:
     _locked_version("yt-dlp-ejs")
 
 
-def test_dependabot_tracks_only_the_reviewed_youtube_downloader_pair() -> None:
+def test_dependabot_tracks_the_youtube_pair_daily_and_keeps_other_pins_moving() -> None:
     config_path = ROOT / ".github" / "dependabot.yml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
     assert config.get("version") == 2
     updates = config.get("updates")
     assert isinstance(updates, list)
+
+    # Dependabot rejects two configs with the same (ecosystem, directory,
+    # target-branch): "overlapping directories" is a hard error.
+    keys = [
+        (item.get("package-ecosystem"), item.get("directory"), item.get("target-branch"))
+        for item in updates
+        if isinstance(item, dict)
+    ]
+    assert len(keys) == len(set(keys)), f"duplicate dependabot entry: {keys}"
 
     pip_updates = [
         item
@@ -55,23 +64,20 @@ def test_dependabot_tracks_only_the_reviewed_youtube_downloader_pair() -> None:
     assert len(pip_updates) == 1
     policy = pip_updates[0]
 
-    schedule = policy.get("schedule")
-    assert isinstance(schedule, dict)
-    assert schedule.get("interval") == "daily"
+    # 1. YouTube extractor breakage is a production incident: daily tracking.
+    assert policy["schedule"]["interval"] == "daily"
 
-    allowed = policy.get("allow")
-    assert isinstance(allowed, list)
-    allowed_names = {
-        item.get("dependency-name")
-        for item in allowed
-        if isinstance(item, dict)
-    }
-    assert allowed_names == {"yt-dlp", "yt-dlp-ejs"}
-
-    assert policy.get("open-pull-requests-limit") == 1
-
-    groups = policy.get("groups")
-    assert isinstance(groups, dict)
-    youtube_group = groups.get("youtube-downloader")
-    assert isinstance(youtube_group, dict)
+    groups = policy["groups"]
+    assert list(groups)[0] == "youtube-downloader", "the pair must match first"
+    youtube_group = groups["youtube-downloader"]
     assert set(youtube_group.get("patterns") or []) == {"yt-dlp", "yt-dlp-ejs"}
+
+    # 2. Everything else must still be proposed — the old config let 40+ pins
+    #    rot, and a group may only claim a package once.
+    assert set(groups) == {"youtube-downloader", "pip-minor-and-patch", "pip-major"}
+    for name in ("pip-minor-and-patch", "pip-major"):
+        assert set(groups[name].get("exclude-patterns") or []) == {"yt-dlp", "yt-dlp-ejs"}
+    assert set(groups["pip-minor-and-patch"]["update-types"]) == {"minor", "patch"}
+    assert set(groups["pip-major"]["update-types"]) == {"major"}
+
+    assert policy["open-pull-requests-limit"] > 1

@@ -27,6 +27,7 @@ from core.globals import (
     is_quota_error, is_overload_error,
 )
 from core.database import GEMINI_MODEL      # FIX telegraph
+from core.model_catalog import fallback_model
 from core.telegraph_contract import (
     compose_telegraph_title, fit_telegraph_author_name,
     fit_telegraph_author_url, fit_telegraph_title,
@@ -909,26 +910,42 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             async def _call_synopsis(client):
                 return await _synopsis_with_client(client, _upload, prompt, loop)
 
-            # AUDIT-SUPER-FIX-BUG3: multi-model fallback для synopsis
-            # MODEL MIGRATION 2026-07: резерв — GA gemini-3.1-flash-lite
-            # (2.5-flash-lite выключается ~22.07.2026).
             response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis, model_name=GEMINI_MODEL)
 
-            # 429 / 503 на основной модели → пробуем резервную
-            if response is None:
-                logger.warning("Synopsis: основная модель недоступна — пробую gemini-3.1-flash-lite")
+            # 429 / 503 на основной модели → только ЯВНО разрешённый fallback.
+            # Политика проекта: cross-model downgrade по умолчанию выключен
+            # (MP3BOT_FALLBACK_MODEL пуст), иначе деградация качества становится
+            # невидимой. Ротацию клиентов/ключей делает сам gemini_generate.
+            _fallback_model = fallback_model()
+            if (
+                response is None
+                and _fallback_model
+                and _fallback_model.casefold() != str(GEMINI_MODEL or "").casefold()
+            ):
+                logger.warning(
+                    "Synopsis: основная модель недоступна — пробую разрешённый "
+                    "fallback %s (MP3BOT_FALLBACK_MODEL)", _fallback_model,
+                )
                 try:
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
-                            client, "gemini-3.1-flash-lite", [audio, prompt],
+                            client, _fallback_model, [audio, prompt],
                             max_tokens=_syn_max_tokens,
                             use_schema=not _transcript_attached,
                         )
-                    response = await gemini_generate(GEMINI_CLIENTS, _call_fallback, model_name=GEMINI_MODEL)
+                    response = await gemini_generate(
+                        GEMINI_CLIENTS, _call_fallback, model_name=_fallback_model,
+                    )
                     logger.info("Synopsis: fallback модель успешна")
                 except Exception as _fb_err:
                     logger.warning(f"Synopsis fallback failed: {_fb_err}")
+            elif response is None:
+                logger.warning(
+                    "Synopsis: основная модель недоступна; cross-model fallback "
+                    "выключен политикой (MP3BOT_FALLBACK_MODEL) — апстрим честно "
+                    "деградирует, модель не подменяется",
+                )
 
         # ── Извлекаем текст ответа ────────────────────────────
         synopsis_text = _extract_response_text(response)

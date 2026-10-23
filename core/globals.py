@@ -18,6 +18,12 @@ os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from core.model_catalog import (
+    ROLE_PRIMARY,
+    configured_model,
+    thinking_level_for,
+    uses_thinking_config,
+)
 from services import gemini_quota_domains as quota_domains
 
 flask_app = Flask(__name__)
@@ -223,10 +229,13 @@ if len(GEMINI_CLIENT_QUOTA_DOMAINS) != len(GEMINI_CLIENTS):
 
 
 def _is_gemini_3x(model_name: str) -> bool:
-    if not model_name:
-        return False
-    m = model_name.lower().strip()
-    return bool(re.fullmatch(r"gemini-3(?:[.\-]\d+)?(?:[\-_.].*)?", m))
+    """Whether the model takes ``thinking_config`` instead of ``temperature``.
+
+    Kept under the historical name because production callers and regression
+    tests import it. The capability itself is owned by ``core.model_catalog``
+    and covers Gemini 4 too, so a new flagship model needs no change here.
+    """
+    return uses_thinking_config(model_name)
 
 
 def _build_thinking_config(level: str = "high"):
@@ -253,16 +262,8 @@ def _build_thinking_config(level: str = "high"):
 
 
 def _effective_thinking_level(model_name: str, requested: str) -> str:
-    model = str(model_name or "").strip().casefold()
-    level = str(requested or "high").strip().lower() or "high"
-    if model == "gemini-3.8-flash":
-        # Gemini 3.8 supports low/medium/high and rejects minimal. Preserve the
-        # HIGH production default, but do not silently turn an explicit LOW
-        # recovery request back into HIGH.
-        return level if level in {"low", "medium", "high"} else "high"
-    if model in {"gemini-3.5-flash-lite", "gemini-3.5-flash"}:
-        return "minimal"
-    return level
+    """Clamp a thinking level to what the model accepts (catalog-owned)."""
+    return thinking_level_for(model_name, requested)
 
 
 def _apply_gemini_service_tier(kwargs: dict) -> None:
@@ -349,10 +350,7 @@ def make_text_config_smart(
 
 
 def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
-    model_name = (
-        os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
-        or "gemini-3.8-flash"
-    )
+    model_name = configured_model(ROLE_PRIMARY)
     return make_text_config_smart(
         temperature=temperature,
         max_output_tokens=max_output_tokens,

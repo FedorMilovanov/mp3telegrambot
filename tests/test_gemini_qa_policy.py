@@ -4,6 +4,8 @@ import importlib.util
 import os
 from pathlib import Path
 
+from core.model_catalog import deprecated_aliases
+
 
 _ENV_NAMES = (
     "LIVEDUB_QUICK_QA_MODEL",
@@ -33,6 +35,8 @@ def _clear(monkeypatch) -> None:
 
 
 def test_missing_and_weak_explicit_qa_models_are_upgraded(monkeypatch):
+    from core.model_catalog import MODEL_PRIMARY
+
     policy = _load_module()
     _clear(monkeypatch)
     monkeypatch.setenv("LIVEDUB_QUICK_QA_MODEL", "gemini-3.1-flash-lite")
@@ -41,22 +45,26 @@ def test_missing_and_weak_explicit_qa_models_are_upgraded(monkeypatch):
 
     diagnostic = policy.configure_gemini_qa_policy()
 
-    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == MODEL_PRIMARY
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == MODEL_PRIMARY
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == MODEL_PRIMARY
     assert "migrated=LIVEDUB_QUICK_QA_MODEL,LIVEDUB_LONG_QA_MODEL,LIVEDUB_QA_VERIFY_MODEL" in diagnostic
 
 
 def test_missing_qa_models_default_to_primary(monkeypatch):
+    from core.model_catalog import MODEL_PRIMARY
+
     policy = _load_module()
     _clear(monkeypatch)
 
     policy.configure_gemini_qa_policy()
 
-    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {"gemini-3.8-flash"}
+    assert {os.environ[name] for name in policy._QA_MODEL_ENV} == {MODEL_PRIMARY}
 
 
 def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
+    from core.model_catalog import MODEL_PRIMARY
+
     policy = _load_module()
     _clear(monkeypatch)
     monkeypatch.setenv("LIVEDUB_QUICK_QA_MODEL", "gemini-custom-audio-model")
@@ -64,8 +72,8 @@ def test_deliberate_custom_qa_model_is_preserved(monkeypatch):
     policy.configure_gemini_qa_policy()
 
     assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == "gemini-custom-audio-model"
-    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == "gemini-3.8-flash"
+    assert os.environ["LIVEDUB_LONG_QA_MODEL"] == MODEL_PRIMARY
+    assert os.environ["LIVEDUB_QA_VERIFY_MODEL"] == MODEL_PRIMARY
 
 
 def test_translation_qa_thinking_is_always_high(monkeypatch):
@@ -110,6 +118,11 @@ def test_explicit_emergency_escape_can_disable_confirmation(monkeypatch):
 
 
 def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
+    from core.model_catalog import (
+        MODEL_PRIMARY,
+        MODEL_UTILITY,
+        POLICY as CATALOG_POLICY,
+    )
     from services.gemini_max_quality import configure_max_quality_env
     from services.gemini_model_status import POLICY, classify_gemini_model
     from services.livedub_quality_runtime import configure_gemini_policy
@@ -125,20 +138,21 @@ def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
         "LIVEDUB_LONG_QA_MODEL",
         "LIVEDUB_QA_VERIFY_MODEL",
     ):
-        assert os.environ[name] == "gemini-3.8-flash"
-    assert os.environ["SHORTS_FACTORY_MODEL"] == "gemini-3.8-flash"
-    assert os.environ["GEMINI_LIGHT_MODEL"] == "gemini-3.5-flash-lite"
+        assert os.environ[name] == MODEL_PRIMARY
+    assert os.environ["SHORTS_FACTORY_MODEL"] == MODEL_PRIMARY
+    assert os.environ["GEMINI_LIGHT_MODEL"] == MODEL_UTILITY
     assert os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
     assert os.environ["SHORTS_FACTORY_WHISPER_MODEL"] == "large-v3"
     assert "publication=3.8/high" in maximum
-    assert "semantic=gemini-3.8-flash/high/no-fallback" in livedub
+    assert f"semantic={MODEL_PRIMARY}/high/no-fallback" in livedub
 
-    current = classify_gemini_model("gemini-3.8-flash")
-    previous = classify_gemini_model("gemini-3.7-flash")
+    current = classify_gemini_model(MODEL_PRIMARY)
+    alias, (_since, alias_target) = next(iter(sorted(deprecated_aliases().items())))
+    previous = classify_gemini_model(alias)
     assert current.level == "info"
     assert previous.level == "warning"
-    assert "gemini-3.8-flash" in previous.message
-    assert POLICY == "project-gemini-routing-2026-09-06-v5"
+    assert alias_target in previous.message
+    assert POLICY == CATALOG_POLICY
 
 
 def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():

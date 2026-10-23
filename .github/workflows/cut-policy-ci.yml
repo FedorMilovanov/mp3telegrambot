@@ -8,6 +8,7 @@ on:
       - "bot_new.py"
       - "Start Bot.bat"
       - "converters/caption.py"
+      - "core/bgutil_pin.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -60,6 +61,7 @@ on:
       - "bot_new.py"
       - "Start Bot.bat"
       - "converters/caption.py"
+      - "core/bgutil_pin.py"
       - "services/youtube_po_token_runtime.py"
       - "services/shorts_factory_execution_guard.py"
       - "services/shorts_factory_quality_gate.py"
@@ -152,7 +154,7 @@ jobs:
 
       - name: Validate browserless YouTube PO-token preflight
         run: >-
-          python -c "from services.youtube_po_token_runtime import require_youtube_po_token_runtime; r=require_youtube_po_token_runtime(); print(r.status_text()); assert r.provider_version == '1.3.1'"
+          python -c "from core.bgutil_pin import BGUTIL_VERSION; from services.youtube_po_token_runtime import require_youtube_po_token_runtime; r=require_youtube_po_token_runtime(); print(r.status_text()); assert r.provider_version == BGUTIL_VERSION, r.provider_version"
 
       - name: Compile source-owned cut/factory surfaces
         run: >-

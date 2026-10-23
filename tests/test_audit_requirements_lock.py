@@ -1,0 +1,153 @@
+"""Policy tests for ``tools/audit_requirements_lock.py``.
+
+The tool must fail on any known vulnerability, allow only reviewed exceptions
+with an unexpired review date, and reject stale allow-list entries. These tests
+drive it through a fake ``pip-audit`` so they stay offline.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from tools import audit_requirements_lock as audit_tool
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCK = ROOT / "requirements-lock.txt"
+
+
+def _report(vulns: list[dict[str, object]], package: str = "demo") -> str:
+    return json.dumps(
+        {
+            "dependencies": [
+                {"name": package, "version": "1.0.0", "vulns": vulns},
+                {"name": "clean", "version": "2.0.0", "vulns": []},
+            ]
+        }
+    )
+
+
+@pytest.fixture()
+def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
+    state: dict[str, object] = {"stdout": _report([]), "returncode": 1}
+
+    def fake_run(_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=[], returncode=state["returncode"], stdout=state["stdout"], stderr=""
+        )
+
+    monkeypatch.setattr(audit_tool.shutil, "which", lambda _name: "/usr/bin/pip-audit")
+    monkeypatch.setattr(audit_tool.subprocess, "run", fake_run)
+    return state
+
+
+def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
+    fake_pip_audit,
+) -> None:
+    """A real clean report also means every exception is obsolete."""
+    report = audit_tool.audit(LOCK)
+    assert report["blocking"] == []
+    assert report["stale_allow_list_entries"] == sorted(
+        audit_tool.ALLOWED_ADVISORIES
+    )
+
+
+def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = _report(
+        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}]
+    )
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["CVE-2099-0001"]
+    assert audit_tool.main([]) == 1
+
+
+def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit) -> None:
+    """pip-audit emits one record per alias; a duplicate must not inflate counts."""
+    fake_pip_audit["stdout"] = _report(
+        [
+            {"id": "PYSEC-2026-2860", "fix_versions": []},
+            {"id": "PYSEC-2026-2860", "fix_versions": []},
+        ],
+        package="pdfkit",
+    )
+    report = audit_tool.audit(LOCK)
+    assert len(report["allowed"]) == 1
+    assert report["blocking"] == []
+
+
+def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = _report(
+        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="pdfkit"
+    )
+
+    fresh = audit_tool.audit(LOCK, today=dt.date(2026, 10, 23))
+    assert fresh["blocking"] == []
+    assert len(fresh["allowed"]) == 1
+
+    expired = audit_tool.audit(LOCK, today=dt.date(2030, 1, 1))
+    assert expired["blocking"]
+    assert "review expired" in expired["blocking"][0]["reason"]
+
+
+def test_exception_does_not_cover_a_different_package(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = _report(
+        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="someone-else"
+    )
+    report = audit_tool.audit(LOCK)
+    assert report["blocking"]
+
+
+def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit) -> None:
+    report = audit_tool.audit(LOCK)
+    assert report["stale_allow_list_entries"] == ["PYSEC-2026-2860"]
+    assert audit_tool.main([]) == 1
+
+
+def test_allow_list_entries_carry_a_reason_and_a_review_date() -> None:
+    for advisory, entry in audit_tool.ALLOWED_ADVISORIES.items():
+        assert entry.package, advisory
+        assert len(entry.reason) > 40, advisory
+        assert entry.review_by > dt.date(2026, 10, 23), advisory
+
+
+def test_missing_pip_audit_fails_with_an_actionable_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(audit_tool.shutil, "which", lambda _name: None)
+    with pytest.raises(SystemExit, match="pip-audit is not installed"):
+        audit_tool.audit(LOCK)
+
+
+def test_ci_runs_the_audit_inside_the_required_gate() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "python tools/audit_requirements_lock.py" in ci
+    assert "dependency-audit:" in ci
+    assert "- dependency-audit" in ci.split("required-pr-gate:")[1].split("runs-on")[0]
+    assert 'test "$AUDIT_RESULT" = "success"' in ci
+
+
+def test_ci_matrix_covers_every_supported_python() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
+
+
+def test_dependabot_covers_every_ecosystem() -> None:
+    config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert 'package-ecosystem: "pip"' in config
+    assert 'package-ecosystem: "npm"' in config
+    assert 'package-ecosystem: "github-actions"' in config
+    # A global allow-list is what kept most pins from ever being proposed.
+    assert "allow:" not in config
+    assert "open-pull-requests-limit: 1\n" not in config
+    assert (ROOT / "vot_helper" / "package-lock.json").is_file()
+
+
+def test_tool_is_importable_by_the_runtime_interpreter() -> None:
+    """No third-party import at module level: CI installs pip-audit separately."""
+    source = (ROOT / "tools" / "audit_requirements_lock.py").read_text(encoding="utf-8")
+    assert "import pip_audit" not in source
+    assert sys.version_info >= (3, 11)

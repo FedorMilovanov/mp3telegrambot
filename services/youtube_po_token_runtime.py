@@ -11,9 +11,15 @@ from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 
+from core.bgutil_pin import (
+    BGUTIL_COMMIT as BGUTIL_EXPECTED_COMMIT,
+    BGUTIL_HTTP_BASE_URL,
+    BGUTIL_MIN_NODE_MAJOR,
+    BGUTIL_VERSION as BGUTIL_EXPECTED_VERSION,
+    marker_text,
+)
 from services.bgutil_http_runtime import (
     BgutilHttpRuntimeError,
-    DEFAULT_BASE_URL as BGUTIL_HTTP_BASE_URL,
     ensure_bgutil_http_runtime,
 )
 
@@ -22,8 +28,6 @@ from services.bgutil_http_runtime import (
 BGUTIL_DISTRIBUTION = "bgutil-ytdlp-pot-provider"
 LEGACY_WPC_DISTRIBUTION = "yt-dlp-getpot-wpc"
 BGUTIL_MODULE = "yt_dlp_plugins.extractor.getpot_bgutil"
-BGUTIL_EXPECTED_VERSION = "1.3.1"
-BGUTIL_EXPECTED_COMMIT = "a0be2352807e3bd6991f09d2cab685a0ab825b26"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROVIDER_ROOT = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider"
 DEFAULT_PROVIDER_HOME = DEFAULT_PROVIDER_ROOT / "server"
@@ -301,7 +305,7 @@ def _require_provider_build() -> Path:
             "browserless bgutil runtime не имеет commit marker; "
             "перезапусти Start Bot.bat для безопасной пересборки"
         ) from exc
-    expected_marker = f"{BGUTIL_EXPECTED_VERSION}@{BGUTIL_EXPECTED_COMMIT}"
+    expected_marker = marker_text()
     if marker_value != expected_marker:
         raise YouTubePoTokenRuntimeError(
             "browserless bgutil runtime не соответствует pinned commit: "
@@ -314,7 +318,8 @@ def _require_node() -> str:
     node = shutil.which("node")
     if not node:
         raise YouTubePoTokenRuntimeError(
-            "Node.js не найден; exact-source bgutil требует Node.js >=22"
+            "Node.js не найден; exact-source bgutil требует Node.js >= "
+            f"{BGUTIL_MIN_NODE_MAJOR}"
         )
     try:
         process = subprocess.run(
@@ -332,9 +337,9 @@ def _require_node() -> str:
     match = re.match(r"(\d+)", version)
     if process.returncode or not match:
         raise YouTubePoTokenRuntimeError("Не удалось определить версию Node.js")
-    if int(match.group(1)) < 22:
+    if int(match.group(1)) < BGUTIL_MIN_NODE_MAJOR:
         raise YouTubePoTokenRuntimeError(
-            f"Node.js {version} < 22; обнови Node.js"
+            f"Node.js {version} < {BGUTIL_MIN_NODE_MAJOR}; обнови Node.js"
         )
     return version
 

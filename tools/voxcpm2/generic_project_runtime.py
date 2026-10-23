@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
 from services.dub_studio import DubStore, studio_root, utc_now
 from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 from tools.voxcpm2 import generic_short_production as pipeline
@@ -698,8 +699,8 @@ def main(route: ProjectRoute | None = None) -> None:
     source_url = str(request["source_url"])
     video_id = str(request["video_id"])
     whisper_model = str(request.get("whisper_model") or "large-v3")
-    translation_model = str(request.get("translation_model") or "gemini-3.6-flash")
-    title_model = str(request.get("title_model") or "gemini-3.5-flash-lite")
+    translation_model = str(request.get("translation_model") or MODEL_PRIMARY)
+    title_model = str(request.get("title_model") or MODEL_UTILITY)
 
     log("=== 1. SOURCE / YOUTUBE ===")
     metadata = route.download_source(source_url, source)

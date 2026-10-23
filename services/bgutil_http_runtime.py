@@ -19,6 +19,7 @@ import atexit
 import json
 import os
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -26,9 +27,17 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 4416
-DEFAULT_BASE_URL = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
+from core.bgutil_pin import (
+    BGUTIL_HTTP_BASE_URL as DEFAULT_BASE_URL,
+    BGUTIL_HTTP_HOST as DEFAULT_HOST,
+    BGUTIL_HTTP_PORT as DEFAULT_PORT,
+)
+
+# The provider is RCE-prone when reachable from the network
+# (GHSA-qpv9-8xfj-xx9m, fixed in 2.0.0). 2.0+ binds loopback by default; we also
+# pass the host explicitly so the binding is a property of this argv, not of an
+# upstream default that may change again.
+_SERVER_HOST_ARG = "--host"
 _STARTUP_TIMEOUT_SEC = 60.0
 _PING_TIMEOUT_SEC = 2.0
 _STOP_GRACE_SEC = 3.0
@@ -102,6 +111,59 @@ def _require_ping_version(payload: dict[str, object], *, expected_version: str) 
         raise BgutilHttpRuntimeError(
             "Локальный bgutil HTTP provider отвечает с неверной версией: "
             f"expected={expected_version} actual={version or 'unknown'}"
+        )
+
+
+def _external_probe_addresses(port: int) -> list[tuple[int, str, int]]:
+    """Return candidate non-loopback endpoints for the exposure probe.
+
+    Uses only local interface discovery (no DNS, no outbound traffic). An empty
+    list means "nothing to probe", which is not an error: offline and CI hosts
+    legitimately have no non-loopback address.
+    """
+    try:
+        infos = socket.getaddrinfo(
+            socket.gethostname(), None, family=socket.AF_INET
+        )
+    except (OSError, socket.gaierror):
+        return []
+    addresses: list[tuple[int, str, int]] = []
+    seen: set[str] = set()
+    for family, _type, _proto, _canon, sockaddr in infos:
+        address = str(sockaddr[0])
+        if address.startswith("127.") or address in seen:
+            continue
+        seen.add(address)
+        addresses.append((family, address, port))
+    return addresses
+
+
+def _reachable(endpoint: tuple[int, str, int], *, timeout: float = 0.3) -> bool:
+    try:
+        with socket.socket(endpoint[0], socket.SOCK_STREAM) as probe:
+            probe.settimeout(timeout)
+            return probe.connect_ex((endpoint[1], endpoint[2])) == 0
+    except OSError:
+        return False
+
+
+def require_loopback_binding(port: int = DEFAULT_PORT) -> None:
+    """Fail closed when the provider is reachable from a non-loopback address.
+
+    ``--host 127.0.0.1`` is the primary control; this is the proof. A firewall
+    that silently blocks the probe would hide a broad bind, so the check only
+    fails on positive evidence and never claims more than it verified.
+    """
+    exposed: list[str] = []
+    for endpoint in _external_probe_addresses(port):
+        if _reachable(endpoint):
+            exposed.append(f"{endpoint[1]}:{endpoint[2]}")
+    if exposed:
+        raise BgutilHttpRuntimeError(
+            "bgutil HTTP provider слушает не только loopback: доступен по "
+            + ", ".join(exposed)
+            + ". Останови провайдер и перезапусти Start Bot.bat: сетевой bind "
+            "делает возможным RCE (GHSA-qpv9-8xfj-xx9m)."
         )
 
 
@@ -210,7 +272,14 @@ def ensure_bgutil_http_runtime(
 
     try:
         process = subprocess.Popen(
-            [str(node_executable), str(main_script), "--port", str(DEFAULT_PORT)],
+            [
+                str(node_executable),
+                str(main_script),
+                "--port",
+                str(DEFAULT_PORT),
+                _SERVER_HOST_ARG,
+                DEFAULT_HOST,
+            ],
             cwd=str(server_home),
             stdin=subprocess.DEVNULL,
             stdout=_open_log_sink(),
@@ -237,6 +306,7 @@ def ensure_bgutil_http_runtime(
         if payload is not None:
             try:
                 _require_ping_version(payload, expected_version=expected_version)
+                require_loopback_binding(DEFAULT_PORT)
             except Exception:
                 stop_owned_bgutil_http_runtime()
                 raise
@@ -257,5 +327,6 @@ __all__ = [
     "DEFAULT_PORT",
     "bgutil_http_log_path",
     "ensure_bgutil_http_runtime",
+    "require_loopback_binding",
     "stop_owned_bgutil_http_runtime",
 ]

@@ -15,16 +15,22 @@ fails closed when the maximum-quality source cannot be acquired completely.
 
 The production YouTube route is intentionally narrow:
 
-- YouTube client: `mweb`;
-- PO provider: browserless bgutil script provider;
-- Python plugin and JavaScript generator: loaded from **one exact upstream
-  source tree**, commit `a0be2352807e3bd6991f09d2cab685a0ab825b26`;
+- YouTube client: **no pinned `player_client`** — yt-dlp default clients
+  (currently `visionos` for media) are used; pinning `mweb` is rejected by
+  `services/youtube_po_token_runtime.py` since 2026-08;
+- PO provider: browserless bgutil **HTTP** provider (`bgutil:http-2.0.2`), kept
+  resident for the whole bot lifetime instead of spawning Node per download;
+- Python plugin and JavaScript server: loaded from **one exact upstream source
+  tree**, `bgutil 2.0.2` @ `26475e9d3665b972c4aeb83b4dbaafcf64b88438`
+  (`core/bgutil_pin.py` is the only place that pin is written);
 - source location: `.runtime/bgutil-ytdlp-pot-provider`;
 - yt-dlp plugin search: default/global plugin directories disabled with
   `--no-plugin-dirs`; only the pinned `.runtime` source root is allowed;
 - provider server home:
   `.runtime/bgutil-ytdlp-pot-provider/server`;
-- Node.js: >=22;
+- server binding: **loopback only** — we pass `--host 127.0.0.1` explicitly and
+  prove it at startup (see *Security* below);
+- Node.js: >=22 (npm >=9);
 - browser automation: none;
 - cookies and proxy: still owned by `services.ffmpeg` and are independent from
   PO-token generation.
@@ -36,29 +42,70 @@ wheel from drifting away from the JS provider source.
 Tokens are generated automatically and are never stored in `.env`, committed
 to Git, or copied into commands manually.
 
-## Why the source pin changed
+## Security: why the pin is 2.0.x
 
-The previously released bgutil `1.3.1` source at
-`7608dd51ee813b48cf9a6d68c6e42cb197ce10e0` was reproducible but its pinned npm
-lock contained security findings. An isolated 2026-08-19 audit of that exact
-source reported 9 production dependency findings (6 high) and 14 findings in
-the full graph.
+Upstream advisory [`GHSA-qpv9-8xfj-xx9m`](https://github.com/Brainicism/bgutil-ytdlp-pot-provider/security/advisories/GHSA-qpv9-8xfj-xx9m)
+(published 2026-09-08, **high**) affects every release **below `2.0.0`**:
 
-Upstream commit `a0be2352807e3bd6991f09d2cab685a0ab825b26` refreshed the dependency graph.
-The same isolated audit reported 0 production and 0 full-graph npm findings.
-Compatibility audits also proved that this source revision:
+- the HTTP server bound `::` and fell back to `0.0.0.0`
+  (`server/src/main.ts` at `a0be235`), so it was reachable from the local
+  network;
+- a crafted `POST /get_pot` reached an attacker-controlled proxy and executed
+  code on the host — also triggerable from a malicious website on unpatched
+  browsers.
 
-- builds with Node 22;
-- imports its Python yt-dlp plugin against the project yt-dlp version;
-- is discovered as `bgutil:script-node-1.3.1`;
-- generates a non-empty video-bound PO token for the exact video ID used to
-  reproduce the original Factory 403.
+`1.3.1` (the previous pin) and `1.3.2` are both affected; `1.3.2` only added
+the homepage-challenge token minting. `2.0.0` is the first patched release; the
+pin therefore moved **directly to `2.0.2`** (2026-10-07), which additionally
+refreshes vulnerable lockfile dependencies.
 
-The upstream `plugin/pyproject.toml` at that revision is not directly installed
-because its README path currently points outside the plugin project directory.
-MP3Bot does not patch that packaging metadata. Instead, yt-dlp uses its native
-plugin-directory mechanism to load the upstream `yt_dlp_plugins` source in
-place. This preserves the reviewed upstream bytes and one-source-tree identity.
+The pin is enforced in three independent places, so no single mistake reopens
+the hole:
+
+1. **Pin level** — `core/bgutil_pin.py` refuses a version below `2.0.0`
+   (`bgutil_pin_problems()`); `tools/ensure_bgutil_provider.py` calls
+   `_require_patched_pin()` before any network or build work, so an
+   unpatched pin cannot be provisioned at all.
+2. **Our own argv** — `services/bgutil_http_runtime.py` starts the server with
+   `--port 4416 --host 127.0.0.1`. The loopback binding is a property of this
+   project's command line, not of an upstream default that may change again
+   (in the container image the default is still overridden to `0.0.0.0`).
+3. **Runtime proof** — after `/ping` reports the expected version,
+   `require_loopback_binding()` tries to open a TCP connection to the port on
+   every non-loopback local address. Any successful connection fails startup
+   with an explicit RCE warning. Hosts without a non-loopback address skip the
+   probe (nothing to prove) instead of pretending it passed.
+
+Upstream 2.0 also rejects browser-originated requests (`Origin` /
+`Sec-Fetch-Site: cross-site`) and blocks PAC proxy schemes, which is why the
+upgrade matters even for a native, non-Docker install.
+
+### Compatibility of the 2.0 pin
+
+- builds with Node 22 via the local `tsc` from `npm ci` (no `npx` download);
+- the Python plugin entry (`plugin/yt_dlp_plugins/extractor/getpot_bgutil.py`)
+  still reports `__version__` and is discovered as `bgutil:http-2.0.2`;
+- `/get_pot` response shape (`poToken`, `contentBinding`, `expiresAt`) is the
+  one this project already consumes;
+- the runtime marker format is unchanged (`<version>@<commit>`), so an existing
+  `1.3.1` tree is rebuilt automatically on the next `Start Bot.bat` — the
+  marker mismatch is treated as a repair, not as a warning.
+
+CI builds the pin for real: `cut-policy-ci.yml` runs the provisioner on
+Ubuntu + Node 22 and then asserts `provider_version == BGUTIL_VERSION` by
+importing `core/bgutil_pin.py`. That assertion used to be a hardcoded `1.3.1`
+literal inside the workflow and broke exactly when the pin moved, so
+`tests/test_bgutil_security_pin.py` now scans every workflow file and fails on
+any duplicated pin. The Windows build path is still proven by the first
+`Start Bot.bat` run on the production machine.
+
+The bgutil PyPI wheel is deliberately **not** a Python dependency. Keeping the
+plugin and the JS runtime in the same exact source checkout prevents a released
+wheel from drifting away from the JS provider source, and keeps one commit as
+the supply-chain identity.
+
+Tokens are generated automatically and are never stored in `.env`, committed
+to Git, or copied into commands manually.
 
 ## Provisioning contract
 
@@ -72,9 +119,12 @@ The provisioner:
 1. requires Node.js >=22;
 2. reuses an existing runtime only when the exact marker, Python plugin,
    compiled JS and `node_modules` are all present;
-3. executes `node server/build/generate_once.js --version` as an offline smoke
-   test, proving the compiled script and installed dependency graph actually
-   load and report the expected provider version;
+3. validates the compiled runtime **without executing it**: `node --check
+   server/build/generate_once.js` proves the syntax, and `package.json` +
+   the source and installed npm locks prove the dependency graph. Running
+   `--version` would import the whole `SessionManager` (BotGuard, jsdom,
+   `youtubei.js`) just to print a string, which used to time out on cold
+   Windows paths;
 4. serializes rebuilds with a repo-local provision lock and uses a unique
    staging path per process;
 5. initializes a staging Git repository under `.runtime/`;
@@ -88,8 +138,9 @@ The provisioner:
     `server/node_modules/.bin/tsc` (`tsc.cmd` on Windows), never an on-demand
     `npx` download;
 11. verifies `server/build/generate_once.js` exists and passes the same offline
-    `--version` smoke test before publication;
-12. writes `1.3.1@a0be2352807e3bd6991f09d2cab685a0ab825b26` to the runtime marker;
+    syntax/`node_modules` check before publication;
+12. writes `2.0.2@26475e9d3665b972c4aeb83b4dbaafcf64b88438` (`marker_text()`)
+    to the runtime marker;
 13. publishes through backup -> promote -> rollback semantics, so a failed
     directory promotion does not intentionally delete the previously prepared
     runtime first.
@@ -119,15 +170,16 @@ Startup requires:
 
 1. no legacy `yt-dlp-getpot-wpc` distribution;
 2. no redundant installed `bgutil-ytdlp-pot-provider` wheel;
-3. `yt-dlp.conf` to contain exactly the source-only plugin restriction, mweb
-   route, and pinned bgutil server-home route;
+3. `yt-dlp.conf` to contain exactly the source-only plugin restriction, no
+   pinned `player_client`, and the pinned bgutil server-home route;
 4. no cookie source or manual `po_token` in `yt-dlp.conf`;
-5. the exact runtime marker for `a0be2352...`;
+5. the exact runtime marker for `2.0.2@26475e9d...`;
 6. the Python plugin entry and `server/build/generate_once.js` in that same
    source tree;
 7. an isolated child-process import proving the plugin module is loaded from
    the pinned source directory, not site-packages;
-8. Node.js >=22.
+8. Node.js >=22;
+9. loopback-only binding of the HTTP provider (`require_loopback_binding()`).
 
 If repair cannot complete or any independent validation item has drifted,
 startup fails explicitly. This is intentional: the bot must not silently fall
@@ -159,8 +211,9 @@ not install the project's Python requirements into an arbitrary interpreter;
 ## Diagnostic smoke test
 
 For a healthy installation, verbose yt-dlp output should show only the pinned
-source plugin directory and a `bgutil:script-node-*` provider. No Chrome window
-should launch. A metadata-only success is insufficient: the final production
+source plugin directory and a `bgutil:http-2.0.2` provider.  `.runtime/bgutil_http.log`
+starts with `Started POT server (v2.0.2) on address 127.0.0.1:4416` (never
+`[::]` or `0.0.0.0`), and no Chrome window should launch. A metadata-only success is insufficient: the final production
 acceptance is a real media acquisition through the same proxy/TUN/cookie path
 used by the bot.
 

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.media_title_policy import canonical_media_title
+from core.model_catalog import ROLE_PRIMARY, configured_model
 from core.text_utils import title_case_fragment
 from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
 
@@ -781,7 +782,7 @@ def main() -> None:
     parser.add_argument("-Steps", "--steps", dest="steps", type=int, default=16)
     parser.add_argument("-Cfg", "--cfg", dest="cfg", type=float, default=1.80)
     parser.add_argument("-WhisperModel", "--whisper-model", dest="whisper_model", default="large-v3")
-    parser.add_argument("-TranslationModel", "--translation-model", dest="translation_model", default=os.getenv("DUB_TRANSLATION_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.5-flash")
+    parser.add_argument("-TranslationModel", "--translation-model", dest="translation_model", default=os.getenv("DUB_TRANSLATION_MODEL", "").strip() or configured_model(ROLE_PRIMARY))
     args = parser.parse_args()
 
     if not 0.0 <= args.original_level <= 1.0:

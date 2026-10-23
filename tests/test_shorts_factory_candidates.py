@@ -1,3 +1,4 @@
+from core.model_catalog import MODEL_PRIMARY
 import pytest
 
 from services.shorts_factory_candidates import (
@@ -152,15 +153,15 @@ def test_factory_model_defaults_to_gemini_38_flash(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
 
-    assert DEFAULT_SHORTS_FACTORY_MODEL == "gemini-3.8-flash"
-    assert shorts_factory_model() == "gemini-3.8-flash"
+    assert DEFAULT_SHORTS_FACTORY_MODEL == MODEL_PRIMARY
+    assert shorts_factory_model() == MODEL_PRIMARY
 
 
 def test_global_gemini_max_does_not_control_factory(monkeypatch):
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
     monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.1-pro-preview")
 
-    assert shorts_factory_model() == "gemini-3.8-flash"
+    assert shorts_factory_model() == MODEL_PRIMARY
 
 
 def test_legacy_pro_env_does_not_override_factory(monkeypatch):
@@ -168,13 +169,13 @@ def test_legacy_pro_env_does_not_override_factory(monkeypatch):
     monkeypatch.delenv("GEMINI_MAX_MODEL", raising=False)
     monkeypatch.setenv("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
 
-    assert shorts_factory_model() == "gemini-3.8-flash"
+    assert shorts_factory_model() == MODEL_PRIMARY
 
 
-def test_factory_model_accepts_explicit_38_flash_route(monkeypatch):
-    monkeypatch.setenv("SHORTS_FACTORY_MODEL", "gemini-3.8-flash")
+def test_factory_model_accepts_explicit_current_route(monkeypatch):
+    monkeypatch.setenv("SHORTS_FACTORY_MODEL", MODEL_PRIMARY)
 
-    assert shorts_factory_model() == "gemini-3.8-flash"
+    assert shorts_factory_model() == MODEL_PRIMARY
 
 
 @pytest.mark.parametrize(
@@ -191,7 +192,7 @@ def test_factory_model_accepts_explicit_38_flash_route(monkeypatch):
 def test_factory_model_rejects_non_38_routes(monkeypatch, model):
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", model)
 
-    with pytest.raises(RuntimeError, match="requires gemini-3.8-flash"):
+    with pytest.raises(RuntimeError, match=f"requires {MODEL_PRIMARY}"):
         shorts_factory_model()
 
 
