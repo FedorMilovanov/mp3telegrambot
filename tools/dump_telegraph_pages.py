@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Дамп опубликованных Telegraph-страниц в docs/page_dumps/*.md.
 
-Зачем: среда Claude Code не имеет сетевого доступа к telegra.ph, а GitHub
-доступен. Запустите локально, закоммитьте docs/page_dumps и запушьте —
-и страницы можно вычитывать прямо из репозитория.
+Зачем: прочитать опубликованные страницы в средах без доступа к telegra.ph.
+Дампы — рабочий артефакт, а не часть репозитория: `docs/page_dumps/` в
+.gitignore (108 файлов чужого текста, которые устаревают при правке страницы).
+Нужно перечитать страницу — сдампите её заново.
 
 Использование:
     python tools/dump_telegraph_pages.py <telegraph-url> [<url> ...]
@@ -104,8 +105,10 @@ def main(argv: list[str]) -> int:
     for u in urls:
         if dump_url(u):
             ok += 1
-    print(f"\nГотово: {ok}/{len(urls)}. Теперь: git add docs/page_dumps && "
-          f"git commit -m 'page dumps' && git push")
+    print(
+        f"\nГотово: {ok}/{len(urls)}. Файлы лежат в docs/page_dumps/ "
+        "(каталог в .gitignore — коммитить дампы не нужно)."
+    )
     return 0 if ok else 1
 
 
