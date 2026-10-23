@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import sqlite3
 from pathlib import Path
@@ -27,7 +26,19 @@ STALE_MAINTENANCE_SECONDS = 7200.0
 MIN_FREE_DISK_GB = 2.0
 
 
-_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+def _is_windows_drive(text: str) -> bool:
+    """``C:\\`` / ``C:/`` — проверка по символам, без регулярного выражения.
+
+    Регулярки в проекте считаются отдельной метрикой сложности
+    (`tools/check_code_health.py`), и заводить шаблон ради двух сравнений
+    символов незачем.
+    """
+    return (
+        len(text) > 2
+        and text[0].isalpha()
+        and text[1] == ":"
+        and text[2] in "\\/"
+    )
 
 
 def readonly_uri(path: str | Path) -> str:
@@ -39,7 +50,7 @@ def readonly_uri(path: str | Path) -> str:
     ``file:/C:/bot/cache.db?mode=ro``.
     """
     text = str(path).replace("\\", "/")
-    if _WINDOWS_DRIVE.match(str(path)):
+    if _is_windows_drive(str(path)):
         text = "/" + text
     elif not text.startswith("/"):
         text = "/" + str(Path(path).resolve()).replace("\\", "/").lstrip("/")
