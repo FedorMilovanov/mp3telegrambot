@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -159,3 +160,31 @@ def test_expected_profile_workflows_use_live_workflow_filters():
     assert set(expected_profile_workflows(ROOT, (".env.example",))) == {
         ".github/workflows/gemini-qa-policy.yml"
     }
+
+
+def test_wait_timeout_fits_inside_the_gate_job_budget() -> None:
+    """The script must not give up before the job that runs it.
+
+    The wait also covers queueing for the slowest profile workflow, so a
+    script-side timeout smaller than the job budget produces false reds that
+    look like gate failures. The number used to be 1500s (25 min) against a
+    45-minute job; the explicit `--timeout-seconds 2400` in `ci.yml` and this
+    default have to agree with the workflow file.
+    """
+    from scripts.required_pr_gate import DEFAULT_TIMEOUT_SECONDS
+
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    gate_block = ci.split("required-pr-gate:", 1)[1]
+    budget_match = re.search(r"(?m)^\s*timeout-minutes:\s*(\d+)", gate_block)
+    assert budget_match, "required-pr-gate must declare timeout-minutes"
+    budget_seconds = int(budget_match.group(1)) * 60
+
+    assert DEFAULT_TIMEOUT_SECONDS <= budget_seconds, (
+        "the gate script would expire before its own job"
+    )
+    assert budget_seconds - DEFAULT_TIMEOUT_SECONDS >= 300, (
+        "leave at least 5 minutes for checkout, job setup and reporting"
+    )
+    assert f"--timeout-seconds {DEFAULT_TIMEOUT_SECONDS}" in ci, (
+        "ci.yml must pass the same budget explicitly instead of relying on a default"
+    )

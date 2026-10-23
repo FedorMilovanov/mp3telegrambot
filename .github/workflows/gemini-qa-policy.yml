@@ -53,8 +53,10 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install focused test tools
-        run: python -m pip install pytest ruff
+      # pytest и ruff берутся из lock: иначе версия линтера в «политическом»
+      # workflow живёт отдельно от версии, на которой зелёный основной CI.
+      - name: Install focused test tools from the lock
+        run: python tools/install_from_lock.py pytest ruff
 
       - name: Compile policy and runtime routing surfaces
         run: |

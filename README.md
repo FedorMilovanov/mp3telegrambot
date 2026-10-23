@@ -122,14 +122,17 @@ Runtime фиксирует quality-policy до импорта AI-клиенто�
 Рекомендуемая явная настройка:
 
 ```dotenv
-GEMINI_MODEL=gemini-3.8-flash
-GEMINI_MAX_MODEL=gemini-3.8-flash
-GEMINI_FORCE_THINKING_LEVEL=high
-GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite
-GEMINI_LIGHT_FALLBACK_MODELS=
-GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0
-SHORTS_FACTORY_MODEL=gemini-3.8-flash
+MP3BOT_PRIMARY_MODEL=gemini-3.8-flash
+MP3BOT_UTILITY_MODEL=gemini-3.5-flash-lite
+MP3BOT_FALLBACK_MODEL=
 ```
+
+Ручки `GEMINI_MAX_MODEL`, `GEMINI_FORCE_THINKING_LEVEL`, `GEMINI_LIGHT_MODEL`,
+`GEMINI_LIGHT_FALLBACK_MODELS`, `GEMINI_LIGHT_ALLOW_MAIN_FALLBACK` удалены:
+код их не читал (маршрут задаётся каталогом и ролью), а стартовая политика
+перезаписывала значения, так что они создавали только иллюзию управления.
+Оставшиеся `GEMINI_MODEL` / `SHORTS_FACTORY_MODEL` по-прежнему форсируются
+политикой — если значение отличается, в лог пишется предупреждение.
 
 Старые/слабые значения в QA-контурах поддерживаются только как миграционный вход: startup-policy заменяет их на текущий quality route. Для локального `.env` используйте `scripts/migrate-gemini-38.ps1`.
 

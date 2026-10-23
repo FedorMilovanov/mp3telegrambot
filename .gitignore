@@ -15,6 +15,10 @@ __pycache__/
 *.pyd
 
 # =============== Project ===============
+# Dumps of published Telegraph pages (tools/dump_telegraph_pages.py) are working
+# artifacts: 108 files / ~1.9 MB of third-party text that goes stale the moment
+# a page is edited. Re-dump them when you actually need to re-read a page.
+docs/page_dumps/
 downloads/
 bot_cache.db
 bot_cache.db.bak.*

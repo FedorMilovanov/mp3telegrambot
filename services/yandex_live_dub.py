@@ -174,18 +174,28 @@ def _ensure_vot_helper() -> Optional[list]:
     if not node or not script.exists():
         return None
     dep = VOT_HELPER_DIR / "node_modules" / "@vot.js" / "node"
+    lock = VOT_HELPER_DIR / "package-lock.json"
     if not dep.exists():
         npm = shutil.which("npm") or shutil.which("npm.cmd")
         if not npm:
             return None
-        logger.info("[LiveDub] Ставлю зависимости нового протокола (npm install в vot_helper)...")
+        if not lock.is_file():
+            # `npm install` would resolve fresh versions. Without the lock the
+            # tree is not reproducible, and the audited `undici` floor in
+            # package.json could be bypassed by a re-resolve, so refuse.
+            logger.warning(
+                "[LiveDub] vot_helper/package-lock.json отсутствует — "
+                "воспроизводимая установка невозможна, новый протокол выключен"
+            )
+            return None
+        logger.info("[LiveDub] Ставлю зависимости нового протокола (npm ci в vot_helper)...")
         try:
             _run_subprocess(
-                [npm, "install", "--omit=dev", "--no-audit", "--no-fund"],
+                [npm, "ci", "--omit=dev", "--no-audit", "--no-fund"],
                 cwd=VOT_HELPER_DIR, timeout=300,
             )
         except Exception as e:
-            logger.warning(f"[LiveDub] npm install в vot_helper не удался: {e}")
+            logger.warning(f"[LiveDub] npm ci в vot_helper не удался: {e}")
         if not dep.exists():
             return None
     return [node, str(script)]

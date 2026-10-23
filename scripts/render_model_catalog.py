@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.model_catalog import (  # noqa: E402  (path bootstrap above)
     CATALOG_VERSION,
+    _MODELS,
     FREE_TIER_ONLY,
     FREE_TIER_SOURCE,
     ROLE_MODELS,
@@ -51,6 +52,18 @@ from core.model_catalog import (  # noqa: E402  (path bootstrap above)
     unverified_free_tier_models,
 )
 
+def _paid_only_examples(limit: int = 1) -> str:
+    """Flagship paid-only model id for prose, straight from the catalog.
+
+    Declaration order, not alphabetical: the catalog lists the flagship first,
+    which is the one an operator actually wonders about.
+    """
+    names = [name for name in _MODELS if name in paid_only_models()]
+    if not names:
+        return "платные модели"
+    return ", ".join(names[:limit])
+
+
 GENERATED_NOTE = (
     "Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — "
     "не редактируйте вручную."
@@ -59,13 +72,11 @@ GENERATED_NOTE = (
 # Env variables that must follow a catalog role.
 ENV_ROLE_MAP: dict[str, str] = {
     "GEMINI_MODEL": MODEL_PRIMARY,
-    "GEMINI_MAX_MODEL": MODEL_PRIMARY,
     "SHORTS_FACTORY_MODEL": MODEL_PRIMARY,
     "LIVEDUB_INFO_MODEL": MODEL_PRIMARY,
     "LIVEDUB_QUICK_QA_MODEL": MODEL_PRIMARY,
     "LIVEDUB_LONG_QA_MODEL": MODEL_PRIMARY,
     "LIVEDUB_QA_VERIFY_MODEL": MODEL_PRIMARY,
-    "GEMINI_LIGHT_MODEL": MODEL_UTILITY,
     "MP3BOT_PRIMARY_MODEL": MODEL_PRIMARY,
     "MP3BOT_UTILITY_MODEL": MODEL_UTILITY,
     "MP3BOT_TTS_MODEL": MODEL_TTS,
@@ -151,8 +162,8 @@ def _override_lines() -> str:
     lines.append("# MP3BOT_FALLBACK_MODEL=")
     lines.append("# ↑ пусто = cross-model downgrade выключен (рекомендуется).")
     lines.append(
-        "# ↑ reasoning пуст намеренно: бесплатной reasoning-модели нет, "
-        "gemini-4-argon — только paid tier."
+        "# ↑ reasoning пуст намеренно: бесплатной reasoning-модели нет; "
+        f"{_paid_only_examples()} — только paid tier."
     )
     lines.append(
         "# Платные модели (недоступные на free tier) отклоняются: причина "
@@ -319,7 +330,9 @@ def render_all(root: Path = ROOT) -> dict[Path, str]:
         "`docs/translation_editorial_review.md` и `scripts/migrate-gemini-38.ps1`.\n\n"
         "### Проверка схемы (upgrade drill)\n\n"
         "```bash\n"
-        "python scripts/model_upgrade_drill.py --model gemini-3.6-flash\n"
+        # No concrete id: the drill picks a free-tier target from the catalog,
+        # and a literal here would go stale on the next upgrade.
+        "python scripts/model_upgrade_drill.py --model <free-tier-model-id>\n"
         "```\n\n"
         "Дрилл подменяет `ROLE_PRIMARY`, убеждается, что `--check` фиксирует\n"
         "рассинхронизацию, прогоняет генератор и контрактные тесты, затем\n"

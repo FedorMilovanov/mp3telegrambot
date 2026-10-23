@@ -13,6 +13,9 @@ from urllib.request import Request, urlopen
 WORKFLOWS_DIR = ".github/workflows"
 # This workflow aggregates the others, so it must not wait for itself.
 GATE_WORKFLOW = ".github/workflows/ci.yml"
+# 40 minutes: below the 45-minute `required-pr-gate` job budget, above the
+# slowest profile workflow plus queueing.
+DEFAULT_TIMEOUT_SECONDS = 2400
 
 
 class MissingPullRequestTrigger(ValueError):
@@ -305,7 +308,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Wait for every profile workflow applicable to this PR diff."
     )
-    parser.add_argument("--timeout-seconds", type=int, default=1500)
+    # Must not expire before the job it runs inside: the aggregator budget is
+    # 45 minutes and this wait also covers runner queueing for the slowest
+    # profile workflow (Windows full suite). tests/test_required_pr_gate.py
+    # keeps this number consistent with `.github/workflows/ci.yml`.
+    parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--poll-seconds", type=int, default=10)
     args = parser.parse_args()
 

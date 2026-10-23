@@ -8,17 +8,20 @@ def test_env_example_matches_gemini_38_quality_contract() -> None:
 
     # Values come from the catalog, so a model bump never edits this test.
     assert f"GEMINI_MODEL={MODEL_PRIMARY}" in env
-    assert f"# GEMINI_MAX_MODEL={MODEL_PRIMARY}" in env
     assert f"# SHORTS_FACTORY_MODEL={MODEL_PRIMARY}" in env
     assert f"# LIVEDUB_INFO_MODEL={MODEL_PRIMARY}" in env
     assert f"# LIVEDUB_QUICK_QA_MODEL={MODEL_PRIMARY}" in env
     assert f"# LIVEDUB_LONG_QA_MODEL={MODEL_PRIMARY}" in env
     assert f"# LIVEDUB_QA_VERIFY_MODEL={MODEL_PRIMARY}" in env
 
-    assert f"# GEMINI_LIGHT_MODEL={MODEL_UTILITY}" in env
-    assert "# GEMINI_LIGHT_FALLBACK_MODELS=\n" in env
-    assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env
-    assert "# GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env
+    # The GEMINI_LIGHT_* / GEMINI_MAX_MODEL / GEMINI_FORCE_THINKING_LEVEL
+    # knobs were deleted: nothing read them, the policy overwrote them on every
+    # start. The absence is the contract now — see test_env_policy_contract.py.
+    for removed in ("GEMINI_LIGHT_MODEL=", "GEMINI_LIGHT_FALLBACK_MODELS=",
+                    "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=", "GEMINI_MAX_MODEL=",
+                    "GEMINI_FORCE_THINKING_LEVEL="):
+        assert removed not in env, f"{removed} вернулся в .env.example"
+    assert f"MP3BOT_UTILITY_MODEL={MODEL_UTILITY}" in env
 
     assert "# LIVEDUB_INFO_FALLBACK_MODELS=\n" in env
     assert "LIVEDUB_INFO_FALLBACK_MODELS=gemini-3.5" not in env
@@ -45,7 +48,6 @@ def test_livedub_env_tests_enforce_current_quality_policy() -> None:
 
     assert 'assert "LIVEDUB_QUICK_QA_THINKING=high" in env' in tests
     assert 'assert "LIVEDUB_QUICK_QA_THINKING=minimal" in env' not in tests
-    assert 'assert "GEMINI_LIGHT_FALLBACK_MODELS=" in env' in tests
-    assert 'assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env' in tests
-    assert 'assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env' in tests
-    assert 'assert "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=1" in env' not in tests
+    # The live case now pins the catalog role instead of the removed knobs.
+    live = Path("tests/test_livedub_qa.py").read_text(encoding="utf-8")
+    assert "MP3BOT_UTILITY_MODEL" in live

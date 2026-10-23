@@ -23,6 +23,9 @@ _REPLACED_CASES = {
     "test_eng_fast_qa_mode_registered_and_wired",
     "test_env_example_gemini_model_is_not_truncated",
     "test_livedub_light_model_default_fallbacks_are_alive_models",
+    # The GEMINI_LIGHT_* knobs were deleted (nothing read them); the legacy
+    # case asserts their presence in .env.example, so it is replaced below.
+    "test_livedub_light_model_env_documented",
     "test_livedub_info_card_module_contract",
     "test_livedub_info_youtube_description_contains_original_link",
     "test_livedub_info_message_escapes_html",
@@ -81,14 +84,36 @@ def test_env_example_gemini_38_model_is_not_truncated() -> None:
     assert f"GEMINI_MODEL={MODEL_PRIMARY[:-1]}\n" not in env
 
 
+def test_livedub_light_model_env_documented() -> None:
+    """Utility-модель задаётся ролью каталога, а не мёртвыми GEMINI_LIGHT_*.
+
+    Историческая ручка GEMINI_LIGHT_MODEL не читалась кодом (маршрут берётся
+    из `core.model_catalog`), а стартовая политика её перезаписывала — то есть
+    она была декоративной. Имена удалены из кода и из документации; тест
+    фиксирует именно это, чтобы они не вернулись как «настройки».
+    """
+    from core.model_catalog import MODEL_UTILITY
+
+    env = Path(".env.example").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert f"MP3BOT_UTILITY_MODEL={MODEL_UTILITY}" in env
+    assert "LIVEDUB_INFO_CARD=1" in env
+    for removed in (
+        "GEMINI_LIGHT_MODEL=",
+        "GEMINI_LIGHT_FALLBACK_MODELS=",
+        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=",
+    ):
+        assert removed not in env, f"{removed} вернулся в .env.example"
+        assert removed not in readme, f"{removed} вернулся в README"
+
+
 def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> None:
     from core.model_catalog import MODEL_PRIMARY
     from services.livedub_info import get_light_model, get_light_model_fallbacks
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
-    monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
-    monkeypatch.setenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash")
+    monkeypatch.setenv("MP3BOT_UTILITY_MODEL", "gemini-3.5-flash-lite")
 
     assert get_light_model() == MODEL_PRIMARY
     assert get_light_model_fallbacks() == []

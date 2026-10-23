@@ -8,7 +8,7 @@ anyio==4.14.2
 av==18.0.0
 beautifulsoup4==4.15.0
 blinker==1.9.0
-brotli==1.2.0
+brotli==1.2.1
 certifi==2026.10.19
 cffi==2.1.0
 charset-normalizer==3.4.9
@@ -38,7 +38,6 @@ mutagen==1.48.1
 numpy==2.4.6
 onnxruntime==1.28.0
 packaging==26.2
-pdfkit==1.0.0
 pluggy==1.6.0
 protobuf==7.35.1
 pyasn1==0.6.4

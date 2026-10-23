@@ -18,17 +18,60 @@ from tools import audit_requirements_lock as audit_tool
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "requirements-lock.txt"
+ADVISORY_ID = "CVE-2099-7777"
 
 
-def _report(vulns: list[dict[str, object]], package: str = "demo") -> str:
+def _locked() -> dict[str, str]:
+    return audit_tool.locked_versions(LOCK)
+
+
+# Package used by the fake reports; it only has to exist in the real lock.
+FAKE_PACKAGE = "requests"
+OTHER_PACKAGE = "httpx"
+
+
+def _report(
+    vulns: list[dict[str, object]], package: str = FAKE_PACKAGE
+) -> str:
+    """A report that covers the whole lock, with ``vulns`` on one package.
+
+    Coverage is part of the policy now, so a fake report must look like a real
+    one: every locked distribution, at the pinned version.
+    """
+    locked = _locked()
+    assert package in locked, f"{package} is not in the lock"
     return json.dumps(
         {
             "dependencies": [
-                {"name": package, "version": "1.0.0", "vulns": vulns},
-                {"name": "clean", "version": "2.0.0", "vulns": []},
+                {"name": name, "version": version,
+                 "vulns": vulns if name == package else []}
+                for name, version in sorted(locked.items())
             ]
         }
     )
+
+
+@pytest.fixture()
+def reviewed_exception(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Install a synthetic reviewed exception instead of relying on the real one.
+
+    The shipped list is empty (the pdfkit exception died with the package), so
+    tests that exercise exception handling have to bring their own entry —
+    which is also better: they no longer break when a real exception is added
+    or removed.
+    """
+    monkeypatch.setattr(
+        audit_tool,
+        "ALLOWED_ADVISORIES",
+        {
+            ADVISORY_ID: audit_tool.AllowedAdvisory(
+                package=FAKE_PACKAGE,
+                reason="Synthetic entry for the policy tests; nothing to review.",
+                review_by=dt.date(2027, 1, 31),
+            )
+        },
+    )
+    return {"id": ADVISORY_ID, "package": FAKE_PACKAGE}
 
 
 @pytest.fixture()
@@ -46,42 +89,44 @@ def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
-    fake_pip_audit,
+    fake_pip_audit, reviewed_exception
 ) -> None:
     """A real clean report also means every exception is obsolete."""
     report = audit_tool.audit(LOCK)
     assert report["blocking"] == []
-    assert report["stale_allow_list_entries"] == sorted(
-        audit_tool.ALLOWED_ADVISORIES
-    )
+    assert report["stale_allow_list_entries"] == [ADVISORY_ID]
 
 
 def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
     fake_pip_audit["stdout"] = _report(
-        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}]
+        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}], package="requests"
     )
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["CVE-2099-0001"]
     assert audit_tool.main([]) == 1
 
 
-def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit) -> None:
+def test_the_same_advisory_reported_twice_is_counted_once(
+    fake_pip_audit, reviewed_exception
+) -> None:
     """pip-audit emits one record per alias; a duplicate must not inflate counts."""
     fake_pip_audit["stdout"] = _report(
         [
-            {"id": "PYSEC-2026-2860", "fix_versions": []},
-            {"id": "PYSEC-2026-2860", "fix_versions": []},
+            {"id": ADVISORY_ID, "fix_versions": []},
+            {"id": ADVISORY_ID, "fix_versions": []},
         ],
-        package="pdfkit",
+        package=FAKE_PACKAGE,
     )
     report = audit_tool.audit(LOCK)
     assert len(report["allowed"]) == 1
     assert report["blocking"] == []
 
 
-def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> None:
+def test_reviewed_exception_is_allowed_until_its_review_date(
+    fake_pip_audit, reviewed_exception
+) -> None:
     fake_pip_audit["stdout"] = _report(
-        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="pdfkit"
+        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
     )
 
     fresh = audit_tool.audit(LOCK, today=dt.date(2026, 10, 23))
@@ -93,18 +138,93 @@ def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> 
     assert "review expired" in expired["blocking"][0]["reason"]
 
 
-def test_exception_does_not_cover_a_different_package(fake_pip_audit) -> None:
+def test_exception_does_not_cover_a_different_package(
+    fake_pip_audit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        audit_tool,
+        "ALLOWED_ADVISORIES",
+        {
+            ADVISORY_ID: audit_tool.AllowedAdvisory(
+                package=OTHER_PACKAGE,
+                reason="Synthetic entry pinned to another distribution on purpose.",
+                review_by=dt.date(2027, 1, 31),
+            )
+        },
+    )
     fake_pip_audit["stdout"] = _report(
-        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="someone-else"
+        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
     )
     report = audit_tool.audit(LOCK)
     assert report["blocking"]
 
 
-def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit) -> None:
+def test_exception_for_an_absent_advisory_is_stale(
+    fake_pip_audit, reviewed_exception
+) -> None:
     report = audit_tool.audit(LOCK)
-    assert report["stale_allow_list_entries"] == ["PYSEC-2026-2860"]
+    assert report["stale_allow_list_entries"] == [ADVISORY_ID]
     assert audit_tool.main([]) == 1
+
+
+def test_empty_report_fails_closed(fake_pip_audit) -> None:
+    """An empty report and a clean report must not look the same."""
+    for payload in ("{}", '{"dependencies": []}', ""):
+        fake_pip_audit["stdout"] = payload
+        report = audit_tool.audit(LOCK)
+        assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"], payload
+
+
+def test_report_missing_a_locked_package_fails_closed(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    payload["dependencies"] = [
+        item for item in payload["dependencies"] if item["name"] != "requests"
+    ]
+    fake_pip_audit["stdout"] = json.dumps(payload)
+
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_MISSING_PACKAGE"]
+    assert report["blocking"][0]["package"] == "requests"
+
+
+def test_report_auditing_a_different_version_fails_closed(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    for item in payload["dependencies"]:
+        if item["name"] == "pillow":
+            item["version"] = "11.3.0"
+    fake_pip_audit["stdout"] = json.dumps(payload)
+
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_VERSION_MISMATCH"]
+    assert "11.3.0" in report["blocking"][0]["reason"]
+
+
+def test_unreadable_report_is_not_treated_as_clean(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = "WARNING: something went wrong"
+    with pytest.raises(SystemExit, match="did not return JSON"):
+        audit_tool.audit(LOCK)
+
+
+def test_renamed_report_key_fails_closed(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = json.dumps({"deps": [{"name": "requests", "version": "1"}]})
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"]
+
+
+def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    for item in payload["dependencies"]:
+        if item["name"] == "python-dotenv":
+            item["name"] = "python_dotenv"
+    fake_pip_audit["stdout"] = json.dumps(payload)
+    assert audit_tool.audit(LOCK)["blocking"] == []
+
+
+def test_locked_versions_reads_every_pin() -> None:
+    locked = audit_tool.locked_versions(LOCK)
+    assert len(locked) == 69
+    assert locked["pillow"].startswith("13.")
+    assert all(locked.values()), "every entry must carry a version"
 
 
 def test_allow_list_entries_carry_a_reason_and_a_review_date() -> None:
@@ -112,6 +232,19 @@ def test_allow_list_entries_carry_a_reason_and_a_review_date() -> None:
         assert entry.package, advisory
         assert len(entry.reason) > 40, advisory
         assert entry.review_by > dt.date(2026, 10, 23), advisory
+
+
+def test_the_shipped_allow_list_is_empty_again() -> None:
+    """pdfkit/PYSEC-2026-2860 left the lock together with the package.
+
+    An empty list is the goal state of the policy: every advisory must be
+    fixed, not tolerated. If an entry comes back, this test forces the author
+    to look at why `test_pdf_engine_without_pdfkit` was not enough.
+    """
+    assert audit_tool.ALLOWED_ADVISORIES == {}, (
+        "появилось исключение в аудите: сначала попробуйте убрать пакет или "
+        "обновиться, исключение — последний довод"
+    )
 
 
 def test_missing_pip_audit_fails_with_an_actionable_message(
@@ -122,9 +255,27 @@ def test_missing_pip_audit_fails_with_an_actionable_message(
         audit_tool.audit(LOCK)
 
 
+def test_the_audit_is_reusable_and_reaches_both_pr_and_schedule() -> None:
+    """One definition, two callers: pull requests and the daily schedule.
+
+    Duplicating the steps between `ci.yml` and a scheduled workflow would let
+    the two drift, and a scheduled audit that differs from the blocking one is
+    worse than none: it reports on a pipeline nobody gates on.
+    """
+    audit_workflow = (
+        ROOT / ".github" / "workflows" / "dependency-audit.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "workflow_call:" in audit_workflow
+    assert "schedule:" in audit_workflow, "a new advisory must not wait for a push"
+    assert "cron:" in audit_workflow
+    assert "python tools/check_requirements_lock.py" in audit_workflow
+    assert "python tools/audit_requirements_lock.py" in audit_workflow
+
+
 def test_ci_runs_the_audit_inside_the_required_gate() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "python tools/audit_requirements_lock.py" in ci
+    assert "uses: ./.github/workflows/dependency-audit.yml" in ci
     assert "dependency-audit:" in ci
     assert "- dependency-audit" in ci.split("required-pr-gate:")[1].split("runs-on")[0]
     assert 'test "$AUDIT_RESULT" = "success"' in ci

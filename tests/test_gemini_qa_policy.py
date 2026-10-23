@@ -132,7 +132,6 @@ def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
 
     for name in (
         "GEMINI_MODEL",
-        "GEMINI_MAX_MODEL",
         "LIVEDUB_INFO_MODEL",
         "LIVEDUB_QUICK_QA_MODEL",
         "LIVEDUB_LONG_QA_MODEL",
@@ -140,9 +139,9 @@ def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
     ):
         assert os.environ[name] == MODEL_PRIMARY
     assert os.environ["SHORTS_FACTORY_MODEL"] == MODEL_PRIMARY
-    assert os.environ["GEMINI_LIGHT_MODEL"] == MODEL_UTILITY
-    assert os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
     assert os.environ["SHORTS_FACTORY_WHISPER_MODEL"] == "large-v3"
+    # Utility-модель задаётся каталогом; мёртвых GEMINI_LIGHT_* больше нет.
+    assert "GEMINI_LIGHT_MODEL" not in os.environ
     assert "publication=3.8/high" in maximum
     assert f"semantic={MODEL_PRIMARY}/high/no-fallback" in livedub
 

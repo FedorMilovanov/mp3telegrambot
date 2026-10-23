@@ -11,7 +11,12 @@ the policy explicit and reviewable:
 * an allow-listed advisory whose review date has passed becomes blocking again,
   so the exception cannot silently become permanent;
 * an allow-list entry that no longer matches anything is reported, so stale
-  excuses get deleted instead of accumulating.
+  excuses get deleted instead of accumulating;
+* the report must **cover the whole lock**: if ``pip-audit`` answers with an
+  empty, truncated or differently-versioned dependency list, the audit fails
+  instead of printing "0 vulnerabilities". Without this invariant an empty
+  report and a clean report are indistinguishable, and the check would silently
+  pass the day its output format changes.
 
 Usage::
 
@@ -32,6 +37,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from packaging.utils import canonicalize_name
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOCK = ROOT / "requirements-lock.txt"
 POLICY = "resolved-lock-zero-known-vulnerabilities-v1"
@@ -45,18 +52,86 @@ class AllowedAdvisory:
 
 
 # Reviewed exceptions. Keep this list short, dated and honest.
-ALLOWED_ADVISORIES: dict[str, AllowedAdvisory] = {
-    "PYSEC-2026-2860": AllowedAdvisory(
-        package="pdfkit",
-        reason=(
-            "No fixed release exists upstream (1.0.0 is the latest). pdfkit is "
-            "only invoked with locally generated HTML and project-owned options; "
-            "no user-supplied URL or shell string reaches it. Re-check for a "
-            "patched release at the review date."
-        ),
-        review_by=dt.date(2027, 1, 31),
-    ),
-}
+#
+# Currently empty: the last entry was pdfkit/PYSEC-2026-2860, which had no
+# upstream fix. Instead of living with the exception, the package was removed —
+# the code calls the wkhtmltopdf binary directly and never imported pdfkit for
+# anything but an unused wrapper. Any future entry must carry a review date.
+ALLOWED_ADVISORIES: dict[str, AllowedAdvisory] = {}
+
+
+def locked_versions(lock_path: Path = DEFAULT_LOCK) -> dict[str, str]:
+    """Canonical distribution name -> pinned version, straight from the lock."""
+    locked: dict[str, str] = {}
+    for raw in Path(lock_path).read_text(encoding="utf-8-sig").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, version = line.partition("==")
+        if not separator:
+            raise SystemExit(f"lock entry is not an exact pin: {line}")
+        name = name.split("[", 1)[0].strip()
+        locked[canonicalize_name(name)] = version.strip()
+    if not locked:
+        raise SystemExit(f"lock file has no pinned distributions: {lock_path}")
+    return locked
+
+
+def _coverage_problems(
+    payload: dict[str, object], locked: dict[str, str]
+) -> list[dict[str, str]]:
+    """The report must describe exactly the packages and versions we ship."""
+    raw_dependencies = payload.get("dependencies")
+    if not isinstance(raw_dependencies, list) or not raw_dependencies:
+        return [
+            {
+                "id": "REPORT_EMPTY",
+                "package": "",
+                "version": "",
+                "fix": "",
+                "reason": (
+                    "pip-audit returned no dependencies; an empty report is "
+                    "indistinguishable from a clean one, so it fails closed"
+                ),
+            }
+        ]
+
+    reported: dict[str, str] = {}
+    for dependency in raw_dependencies:
+        if not isinstance(dependency, dict):
+            continue
+        name = str(dependency.get("name") or "").strip()
+        if not name:
+            continue
+        reported[canonicalize_name(name)] = str(dependency.get("version") or "")
+
+    problems: list[dict[str, str]] = []
+    for name in sorted(set(locked) - set(reported)):
+        problems.append(
+            {
+                "id": "REPORT_MISSING_PACKAGE",
+                "package": name,
+                "version": locked[name],
+                "fix": "",
+                "reason": "locked package was not audited; the report is incomplete",
+            }
+        )
+    for name in sorted(set(reported) & set(locked)):
+        if reported[name] != locked[name]:
+            problems.append(
+                {
+                    "id": "REPORT_VERSION_MISMATCH",
+                    "package": name,
+                    "version": locked[name],
+                    "fix": "",
+                    "reason": (
+                        "pip-audit audited "
+                        f"{reported[name] or 'an unknown version'}, not the pinned "
+                        f"{locked[name]}"
+                    ),
+                }
+            )
+    return problems
 
 
 def _pip_audit_executable() -> str:
@@ -79,7 +154,15 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
     )
     if process.returncode not in {0, 1}:
         raise SystemExit(f"pip-audit failed to run: {process.stderr.strip()[:800]}")
-    payload = json.loads(process.stdout or "{}")
+    try:
+        payload = json.loads(process.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            "pip-audit did not return JSON; refusing to treat an unreadable "
+            f"report as a clean one: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SystemExit("pip-audit returned a non-object JSON report")
 
     blocking: list[dict[str, str]] = []
     allowed: list[dict[str, str]] = []
@@ -113,11 +196,15 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
                 continue
             allowed.append({**entry, "reason": exception.reason})
 
+    locked = locked_versions(lock_path)
+    blocking.extend(_coverage_problems(payload, locked))
+
     stale = sorted(set(ALLOWED_ADVISORIES) - used)
     return {
         "policy": POLICY,
         "lock": str(lock_path.relative_to(ROOT) if lock_path.is_relative_to(ROOT) else lock_path),
         "checked_on": current_day.isoformat(),
+        "locked_distributions": len(locked),
         "blocking": blocking,
         "allowed": allowed,
         "stale_allow_list_entries": stale,
@@ -142,6 +229,12 @@ def main(argv: list[str] | None = None) -> int:
         for entry in report["stale_allow_list_entries"]:  # type: ignore[union-attr]
             print(f"STALE allow-list entry, delete it: {entry}")
         for entry in report["blocking"]:  # type: ignore[union-attr]
+            if entry["id"].startswith("REPORT_"):
+                print(
+                    f"{entry['id']} {entry['package']} "
+                    f"{entry.get('reason', '')}".rstrip()
+                )
+                continue
             print(
                 f"VULNERABLE {entry['id']} {entry['package']}=={entry['version']} "
                 f"(fix: {entry['fix']}) {entry.get('reason', '')}".rstrip()
@@ -161,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     print(
-        f"dependency audit passed ({len(report['allowed'])} reviewed exception(s), "
+        f"dependency audit passed ({report['locked_distributions']} locked "
+        f"distribution(s) audited, {len(report['allowed'])} reviewed exception(s), "
         f"{len(report['stale_allow_list_entries'])} stale)"
     )
     return 0

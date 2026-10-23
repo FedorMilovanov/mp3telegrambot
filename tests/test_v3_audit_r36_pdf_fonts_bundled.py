@@ -60,3 +60,31 @@ def test_font_face_css_picks_up_bundle():
     assert {"Merriweather", "Manrope"} <= fams
     # у обоих семейств должно быть регулярное и жирное начертание
     assert "font-weight: 400" in css and "font-weight: 700" in css
+
+
+def test_bundled_fonts_carry_their_license():
+    """OFL требует распространять текст лицензии вместе со шрифтами.
+
+    Аудит отметил, что шрифты вкоммичены без лицензий: для SIL OFL это прямое
+    нарушение условия распространения, а не косметика документации.
+    """
+    notice = FONTS_DIR / "NOTICE.md"
+    assert notice.is_file(), "нет services/fonts/NOTICE.md с провенансом шрифтов"
+
+    licenses = {}
+    for family in ("Merriweather", "Manrope"):
+        path = FONTS_DIR / f"OFL-{family}.txt"
+        assert path.is_file(), f"нет текста лицензии для {family}"
+        text = path.read_text(encoding="utf-8")
+        assert "SIL OPEN FONT LICENSE Version 1.1" in text, family
+        assert f"The {family} Project Authors" in text, family
+        licenses[family] = text
+
+    # Заголовок копирайта обязан называть именно это семейство (частый copy-paste).
+    assert "Reserved Font Name \"Merriweather\"" in licenses["Merriweather"]
+    assert "Merriweather" not in licenses["Manrope"].split("SIL OPEN FONT")[0]
+
+    notice_text = notice.read_text(encoding="utf-8")
+    for family in ("Merriweather", "Manrope"):
+        assert family in notice_text
+        assert f"OFL-{family}.txt" in notice_text

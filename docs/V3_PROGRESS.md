@@ -1,5 +1,10 @@
 # V3 Progress
 
+> **Исторический документ (2026-05 — 2026-08).** Здесь зафиксирован ход
+> V3-hardening и он не обновляется. Актуальное состояние маршрутов, моделей и
+> политик — `docs/model-catalog.md`, `README.md` и `docs/AUDIT_2026-10-22.md`;
+> статус конкретных задач ниже может быть уже неверным.
+
 Дата старта V3 hardening: 2026-05-25
 
 ## Стабильная точка
@@ -108,7 +113,11 @@ Tag: `v3-pre-schema-stable`
 
 Закрыто после внешнего аудита:
 
-- skip explicit `thinking_config` when using Gemini `response_schema`
+- ~~skip explicit `thinking_config` when using Gemini `response_schema`~~ —
+  **отменено позже и намеренно**: при `response_schema` thinking теперь
+  включается явно (`GEMINI_SCHEMA_THINKING=1`, `core/globals.py`), потому что
+  без него качество структурированного вывода падало. Пункт оставлен как
+  история решения, а не как текущая политика.
 - avoid repeated observability DDL on every log write
 - show truncation notice in long `/metrics` reports
 - CI now runs on Python 3.11 and 3.13

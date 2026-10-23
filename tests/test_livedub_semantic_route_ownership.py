@@ -21,7 +21,9 @@ def test_env_example_keeps_user_copy_off_utility_lane():
     assert f"# LIVEDUB_INFO_MODEL={MODEL_PRIMARY}" in env
     assert "# LIVEDUB_INFO_FALLBACK_MODELS=" in env
     assert "# LIVEDUB_PUBLICATION_FALLBACK_MODELS=" in env
-    assert "# LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK=0" in env
+    # Ручка удалена как нечитаемая (её никто не читал): publication всегда
+    # запрещает strong-fallback кодом, а не значением в .env.
+    assert "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" not in env
     assert "Для лёгкой publication-карточки" not in env
     assert "ENG Quick переводит title через GEMINI_LIGHT_MODEL" not in env
 
