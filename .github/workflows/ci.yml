@@ -233,6 +233,59 @@ jobs:
           tests/test_voxcpm2_tools.py
           tests/test_voxcpm2_quality_sweep.py
 
+  packaging:
+    # Проект обязан устанавливаться, а не только запускаться из папки: без
+    # этого job'а wheel может собраться зелёным и не содержать точки входа.
+    name: Package build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Build distribution
+        # build — инструмент сборки, которого нет в рантайм-closure, поэтому
+        # он ставится точным пином (правило tests/test_workflows_install_from_lock.py).
+        # Изоляция сборки намеренно включена: build-backend ставится чистым,
+        # без пакетов из рабочего окружения.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "build==1.6.1"
+          python -m build --outdir dist
+
+      - name: Install the wheel without dependencies and answer --version
+        # --no-deps + --no-index: если версия требует рабочего рантайма, этот
+        # шаг упадёт — именно это и проверяется.
+        run: |
+          test "$(ls dist/*.whl | wc -l)" = "1"
+          python -m venv "$RUNNER_TEMP/wheel"
+          "$RUNNER_TEMP/wheel/bin/python" -m pip install --no-deps --no-index dist/*.whl
+          "$RUNNER_TEMP/wheel/bin/mp3bot" --version
+
+      - name: Verify wheel metadata
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          meta = zipfile.ZipFile(wheel).read(
+              [n for n in names if n.endswith(".dist-info/METADATA")][0]
+          ).decode()
+          assert "License-Expression: MIT" in meta, meta
+          assert "Requires-Python: >=3.11" in meta, meta
+          assert any(n.endswith(".dist-info/licenses/LICENSE") for n in names), names
+          for module in ("bot_new.py", "main.py", "bot.py"):
+              assert module in names, f"{module} отсутствует в wheel"
+          assert not any(n.startswith("tests/") for n in names), "тесты попали в wheel"
+          print("wheel metadata ok")
+          PY
+
   dependency-audit:
     # Same reusable workflow the daily schedule runs, so a PR and `main` are
     # audited by exactly the same commands.
@@ -245,6 +298,7 @@ jobs:
     needs:
       - test
       - windows-runtime
+      - packaging
       - dependency-audit
     runs-on: ubuntu-latest
     # Every pull_request workflow is aggregated here (discovered dynamically by
@@ -259,10 +313,12 @@ jobs:
         env:
           LINUX_RESULT: ${{ needs.test.result }}
           WINDOWS_RESULT: ${{ needs.windows-runtime.result }}
+          PACKAGING_RESULT: ${{ needs.packaging.result }}
           AUDIT_RESULT: ${{ needs.dependency-audit.result }}
         run: |
           test "$LINUX_RESULT" = "success"
           test "$WINDOWS_RESULT" = "success"
+          test "$PACKAGING_RESULT" = "success"
           test "$AUDIT_RESULT" = "success"
 
       - name: Checkout exact PR tree

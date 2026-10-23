@@ -14,6 +14,13 @@ __pycache__/
 *.pyo
 *.pyd
 
+# =============== Packaging ===============
+# Artifacts of `python -m build` / editable installs. The wheel is a release
+# asset (attached to a tag), never a committed file.
+dist/
+build/
+*.egg-info/
+
 # =============== Project ===============
 # Dumps of published Telegraph pages (tools/dump_telegraph_pages.py) are working
 # artifacts: 108 files / ~1.9 MB of third-party text that goes stale the moment
