@@ -22,9 +22,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.12 is the floor for numpy 2.5 / av 19 and the newest Pillow wheels;
-        # 3.11 stays until the project decides to drop it.
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.12 — floor: его требуют numpy 2.5, av 19 и актуальные Pillow wheels.
+        # 3.11 снят с поддержки вместе с двумя ignore в dependabot.yml
+        # (см. docs/dependency-policy.md, раздел «Python floor»).
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -100,7 +101,7 @@ jobs:
         run: python -m ruff check .
 
       - name: Validate baseline update evidence
-        if: ${{ matrix.python-version == '3.11' }}
+        if: ${{ matrix.python-version == '3.12' }}
         run: python tools/check_code_health_baseline_update.py
 
       - name: Code health advisory
@@ -110,7 +111,7 @@ jobs:
         run: python tools/check_code_health.py --fail-on-regression
 
       - name: Repository verifier contract
-        if: ${{ matrix.python-version == '3.11' }}
+        if: ${{ matrix.python-version == '3.12' }}
         run: python tools/verify_repo.py
 
   windows-runtime:
@@ -305,7 +306,7 @@ jobs:
               [n for n in names if n.endswith(".dist-info/METADATA")][0]
           ).decode()
           assert "License-Expression: MIT" in meta, meta
-          assert "Requires-Python: >=3.11" in meta, meta
+          assert "Requires-Python: >=3.12" in meta, meta
           assert any(n.endswith(".dist-info/licenses/LICENSE") for n in names), names
           for module in ("bot_new.py", "main.py", "bot.py"):
               assert module in names, f"{module} отсутствует в wheel"

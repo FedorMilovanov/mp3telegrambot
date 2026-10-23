@@ -34,7 +34,7 @@ MP3Bot принимает ссылки на видео и плейлисты, и
 
 ## Требования
 
-- Python 3.11 или новее;
+- Python 3.12 или 3.13 (floor — 3.12: его требуют numpy 2.5, av 19 и актуальные Pillow wheels);
 - FFmpeg и FFprobe в `PATH`;
 - локальный сервер `telegram-bot-api`;
 - системный TUN/VPN для Local Bot API либо рабочая поддерживаемая сеть;

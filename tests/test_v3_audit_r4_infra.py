@@ -115,8 +115,8 @@ def test_env_int_parsing_guarded():
 
 def test_start_bat_accepts_every_supported_python_without_single_version_pin():
     """Bootstrap may prefer newer supported Python, but must fall through
-    3.13 -> 3.12 -> 3.11 instead of requiring one exact installation."""
+    3.13 -> 3.12 instead of requiring one exact installation."""
     bat = Path("Start Bot.bat").read_text(encoding="utf-8")
-    assert "for %%V in (3.13 3.12 3.11) do (" in bat
+    assert "for %%V in (3.13 3.12) do (" in bat
     assert 'set "PYTHON_COMMAND=py -%%V"' in bat
-    assert "(3, 11) <= sys.version_info[:2] < (3, 14)" in bat
+    assert "(3, 12) <= sys.version_info[:2] < (3, 14)" in bat

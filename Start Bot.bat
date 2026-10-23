@@ -18,10 +18,10 @@ if not exist "bot_new.py" (
 )
 
 if exist "%VENV_PYTHON%" (
-    "%VENV_PYTHON%" -c "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
+    "%VENV_PYTHON%" -c "import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
     if errorlevel 1 (
         echo [SETUP] Existing .venv uses an unsupported Python version.
-        echo [SETUP] Recreating .venv with Python 3.11, 3.12 or 3.13...
+        echo [SETUP] Recreating .venv with Python 3.12 or 3.13...
         rmdir /s /q "%VENV_DIR%"
         if exist "%VENV_DIR%" (
             echo.
@@ -40,7 +40,7 @@ if not exist "%VENV_PYTHON%" (
     call :find_python
     if errorlevel 1 (
         echo.
-        echo ERROR: Python 3.11, 3.12 or 3.13 was not found.
+        echo ERROR: Python 3.12 or 3.13 was not found.
         echo Install Python from python.org and enable the Python Launcher.
         pause
         exit /b 1
@@ -164,7 +164,7 @@ pause
 exit /b 1
 
 :find_python
-for %%V in (3.13 3.12 3.11) do (
+for %%V in (3.13 3.12) do (
     py -%%V -c "import sys" >nul 2>&1
     if not errorlevel 1 (
         set "PYTHON_COMMAND=py -%%V"
@@ -172,7 +172,7 @@ for %%V in (3.13 3.12 3.11) do (
     )
 )
 
-python -c "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
+python -c "import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] < (3, 14) else 1)" >nul 2>&1
 if not errorlevel 1 (
     set "PYTHON_COMMAND=python"
     exit /b 0

@@ -4,7 +4,7 @@ from pathlib import Path
 def test_start_bot_recreates_unsupported_virtualenv_before_launch():
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
-    version_check = "(3, 11) <= sys.version_info[:2] < (3, 14)"
+    version_check = "(3, 12) <= sys.version_info[:2] < (3, 14)"
     assert version_check in source
     assert "rmdir /s /q \"%VENV_DIR%\"" in source
     assert source.index(version_check) < source.index(
