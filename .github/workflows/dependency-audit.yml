@@ -1,0 +1,63 @@
+name: Dependency audit
+
+# Reusable on purpose:
+#   * `ci.yml` calls it for every pull request (blocking via Required PR Gate);
+#   * the schedule calls it on `main` every day, because a new advisory does not
+#     wait for the next push. That is exactly how brotli 1.2.0 (PYSEC-2026-4322,
+#     published after the lock was verified) turned a green main red overnight.
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pip-audit==2.10.1"
+
+      - name: Validate requirements lock contract
+        run: python tools/check_requirements_lock.py
+
+      - name: Fail on known vulnerabilities in the resolved lock
+        run: python tools/audit_requirements_lock.py
+
+      # Python audit does not see the Node half of LiveDub. `undici` arrives
+      # transitively through @vot.js/node and sits in the hot path of every
+      # translation request, so the tree is installed exactly as production
+      # installs it (`npm ci`) and audited at the same severity threshold.
+      - name: Audit the VOT helper npm tree
+        working-directory: vot_helper
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+
+      # The helper is an ES module that no Python test can import: this is the
+      # only place where the installed @vot.js/node is checked against the
+      # methods `vot_live.mjs` actually calls.
+      - name: Smoke-test the VOT helper runtime contract
+        working-directory: vot_helper
+        run: node smoke.mjs

@@ -196,9 +196,27 @@ def test_missing_pip_audit_fails_with_an_actionable_message(
         audit_tool.audit(LOCK)
 
 
+def test_the_audit_is_reusable_and_reaches_both_pr_and_schedule() -> None:
+    """One definition, two callers: pull requests and the daily schedule.
+
+    Duplicating the steps between `ci.yml` and a scheduled workflow would let
+    the two drift, and a scheduled audit that differs from the blocking one is
+    worse than none: it reports on a pipeline nobody gates on.
+    """
+    audit_workflow = (
+        ROOT / ".github" / "workflows" / "dependency-audit.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "workflow_call:" in audit_workflow
+    assert "schedule:" in audit_workflow, "a new advisory must not wait for a push"
+    assert "cron:" in audit_workflow
+    assert "python tools/check_requirements_lock.py" in audit_workflow
+    assert "python tools/audit_requirements_lock.py" in audit_workflow
+
+
 def test_ci_runs_the_audit_inside_the_required_gate() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "python tools/audit_requirements_lock.py" in ci
+    assert "uses: ./.github/workflows/dependency-audit.yml" in ci
     assert "dependency-audit:" in ci
     assert "- dependency-audit" in ci.split("required-pr-gate:")[1].split("runs-on")[0]
     assert 'test "$AUDIT_RESULT" = "success"' in ci

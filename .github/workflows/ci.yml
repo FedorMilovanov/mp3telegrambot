@@ -234,29 +234,10 @@ jobs:
           tests/test_voxcpm2_quality_sweep.py
 
   dependency-audit:
+    # Same reusable workflow the daily schedule runs, so a PR and `main` are
+    # audited by exactly the same commands.
     name: Dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Python 3.13
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Install audit tooling
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "pip-audit==2.10.1"
-
-      - name: Validate requirements lock contract
-        run: python tools/check_requirements_lock.py
-
-      - name: Fail on known vulnerabilities in the resolved lock
-        run: python tools/audit_requirements_lock.py
+    uses: ./.github/workflows/dependency-audit.yml
 
   required-pr-gate:
     name: Required PR Gate
@@ -292,4 +273,7 @@ jobs:
       - name: Wait for applicable profile workflows
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/required_pr_gate.py
+        # Explicit, not implicit: the aggregator budget is 45 min and it also
+        # covers runner queueing, so the script must not give up earlier than
+        # the job it belongs to.
+        run: python scripts/required_pr_gate.py --timeout-seconds 2400
