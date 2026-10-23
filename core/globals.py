@@ -3,6 +3,7 @@
 
 import asyncio
 import html as html_mod
+import json
 import logging
 import os
 import re
@@ -18,6 +19,7 @@ os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from core import runtime_status
 from core.model_catalog import (
     ROLE_PRIMARY,
     configured_model,
@@ -27,6 +29,10 @@ from core.model_catalog import (
 from services import gemini_quota_domains as quota_domains
 
 flask_app = Flask(__name__)
+
+# `core.runtime_status` импортируется здесь, на старте процесса: он запоминает
+# время инициализации, и `uptime_seconds` в /healthz не должен зависеть от
+# того, когда впервые пришёл запрос.
 
 
 @flask_app.route("/")
@@ -44,10 +50,73 @@ def mark_bot_alive() -> None:
 
 @flask_app.route("/health")
 def health():
+    """Бинарный ответ для внешних мониторов — оставлен как есть.
+
+    Его формат (`OK` / `503 STALE`) менять нельзя: на него могут смотреть
+    сторонние проверки, которые ничего не знают про наше JSON-схему.
+    """
     age = time.time() - _LAST_BOT_OK_TS if _LAST_BOT_OK_TS else 999999
     if age > 300:
         return ("STALE", 503)
     return ("OK", 200)
+
+
+@flask_app.route("/healthz")
+def healthz():
+    """Детальный отчёт: что именно не так, а не только «что-то не так».
+
+    Отдаёт 503, если бот не обрабатывает апдейты, недоступна БД, мало места или
+    нет ключей Gemini. Секретов и путей в ответе нет.
+    """
+    from core.resource_scheduler import scheduler
+    from core.version import __version__
+    from services.health_report import (
+        build_health,
+        database_ok,
+        disk_free_gb,
+        gemini_keys_configured,
+    )
+
+    payload, status = build_health(
+        snapshot=runtime_status.snapshot(),
+        db_ok=database_ok(DB_PATH),
+        free_disk_gb=disk_free_gb(Path(DB_PATH).parent),
+        version=__version__,
+        keys_configured=gemini_keys_configured(),
+        jobs=scheduler.utilization(),
+    )
+    return flask_app.response_class(
+        response=json.dumps(payload, ensure_ascii=False),
+        status=status,
+        mimetype="application/json",
+    )
+
+
+@flask_app.route("/metrics")
+def metrics():
+    """Метрики в формате Prometheus text exposition."""
+    from core.resource_scheduler import scheduler
+    from services.health_report import (
+        database_ok,
+        disk_free_gb,
+        gemini_keys_configured,
+        render_prometheus,
+    )
+
+    text = render_prometheus(
+        snapshot=runtime_status.snapshot(),
+        db_ok=database_ok(DB_PATH),
+        free_disk_gb=disk_free_gb(Path(DB_PATH).parent),
+        jobs=scheduler.utilization(),
+        keys_configured=gemini_keys_configured(),
+    )
+    # content_type, а не mimetype: иначе Flask дописывает свой charset и в
+    # заголовке оказывается «charset=utf-8; charset=utf-8».
+    return flask_app.response_class(
+        response=text,
+        status=200,
+        content_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 try:
@@ -549,27 +618,12 @@ async def gemini_generate(client_list, fn, model_name: str = "", response_valida
     )
 
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+# AUDIT 2026-10-24: вместо basicConfig — общая настройка проекта.
+# Она даёт LOG_FORMAT=text|json, LOG_FILE/LOG_LEVEL, маскирование значений
+# секретов и update_id в каждой строке (см. core/logging_setup.py).
+from core.logging_setup import configure_logging
 
-try:
-    from logging.handlers import RotatingFileHandler
-
-    _file_handler = RotatingFileHandler(
-        "bot.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-    )
-    _file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
-    _file_handler.setLevel(logging.INFO)
-    logging.getLogger().addHandler(_file_handler)
-except Exception:
-    pass
+configure_logging()
 logger = logging.getLogger(__name__)
 
 _CRED_PATTERNS: tuple[tuple, ...] = (

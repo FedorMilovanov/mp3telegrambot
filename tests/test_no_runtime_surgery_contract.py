@@ -5,6 +5,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+#: ``ContextVar`` запрещён как инструмент «хирургии рантайма»: им подменяли
+#: поведение в зависимости от контекста, и это невозможно было проследить.
+#: Одно исключение — диагностическая корреляция логов (``update_id`` в каждой
+#: строке). Она ничего не подменяет: значение только читается форматтером и ни
+#: на одну ветку кода не влияет. Исключение ограничено одним файлом; если
+#: ContextVar понадобится ещё где-то, это должно быть отдельным осознанным
+#: решением с обновлением этого списка.
+CONTEXTVAR_ALLOWED_FILES = frozenset({"core/logging_setup.py"})
+
 CRITICAL_SURFACES = (
     "services/__init__.py",
     "services/runtime_manifest.py",
@@ -179,7 +188,7 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
                 target_name = _call_target_name(node)
                 if target_name.startswith("install_"):
                     install_calls.append(f"{rel}:{node.lineno}:{target_name}")
-                if target_name == "ContextVar":
+                if target_name == "ContextVar" and rel not in CONTEXTVAR_ALLOWED_FILES:
                     contextvar_calls.append(f"{rel}:{node.lineno}")
                 if (
                     isinstance(node.func, ast.Attribute)
@@ -247,3 +256,32 @@ def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
         "conspect-quality-bootstrap",
     ):
         assert f'"{legacy}"' not in src
+
+
+def test_contextvar_exception_is_limited_to_diagnostics(tmp_path) -> None:
+    """Исключение не должно расползаться: ContextVar в другом файле — находка.
+
+    Проверяется на синтетическом каталоге, чтобы правило не зависело от того,
+    что сейчас лежит в репозитории.
+    """
+    service = tmp_path / "services"
+    service.mkdir()
+    (service / "sneaky.py").write_text(
+        "from contextvars import ContextVar\nVAR = ContextVar('x')\n", encoding="utf-8"
+    )
+    allowed = tmp_path / "core"
+    allowed.mkdir()
+    (allowed / "logging_setup.py").write_text(
+        "from contextvars import ContextVar\nVAR = ContextVar('x')\n", encoding="utf-8"
+    )
+
+    findings: list[str] = []
+    for path in sorted(tmp_path.rglob("*.py")):
+        rel = path.relative_to(tmp_path).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _call_target_name(node) == "ContextVar":
+                if rel not in CONTEXTVAR_ALLOWED_FILES:
+                    findings.append(rel)
+
+    assert findings == ["services/sneaky.py"]

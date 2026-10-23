@@ -293,7 +293,7 @@ show_missing = true
 **Объём:** 10–14 часов.
 **Приёмка:** `mypy` в `Required PR Gate`; `mypy --strict core` = 0.
 
-### P1-3. Наблюдаемость (скорректировано после проверки кода)
+### P1-3. Наблюдаемость (скорректировано после проверки кода) — ✅ сделано
 
 **Что уже есть — не переделывать:** Flask-приложение в `core/globals.py` с маршрутами `/`
 («Bot is running!») и `/health` (`OK` / `503 STALE`, если `mark_bot_alive()` не вызывался >300 с),
@@ -321,6 +321,43 @@ show_missing = true
 **Объём:** 6–8 часов.
 **Приёмка:** `curl 127.0.0.1:<port>/healthz` отвечает JSON с деталями; строки одного апдейта
 имеют общий `update_id`; искусственное падение maintenance даёт сообщение в Telegram и рост счётчика.
+
+**Стало:**
+
+1. `/healthz` — JSON `{ok, problems[], version, uptime_seconds, updates, maintenance, database,
+   disk_free_gb, jobs, gemini_keys_configured, alerts_total}`; `503` при любом из
+   `updates_stale` (>300 с без апдейта), `maintenance_stale` (>7200 с), `maintenance_failed`,
+   `database_unavailable`, `disk_low` (<2 ГБ), `gemini_keys_missing`. Сборка ответа вынесена
+   в чистую `services/health_report.py`, поэтому тестируется без Flask и без диска.
+   `/health` не тронут — его формат по-прежнему `OK`/`503 STALE`.
+2. `/metrics` — Prometheus text без новых зависимостей: `mp3bot_up`, `mp3bot_database_ok`,
+   `mp3bot_uptime_seconds`, `mp3bot_updates_total`, `mp3bot_updates_rejected_total`,
+   `mp3bot_last_update_age_seconds`, `mp3bot_jobs_active`, `mp3bot_maintenance_failures_total`,
+   `mp3bot_last_maintenance_age_seconds`, `mp3bot_maintenance_last_ok`,
+   `mp3bot_last_alert_age_seconds`, `mp3bot_disk_free_bytes` и занятость семафоров планировщика. `mp3bot_up` считается той же функцией
+   (`collect_problems`), что и код ответа `/healthz`, — разойтись они не могут.
+3. `core/logging_setup.py`: `LOG_FORMAT=text|json`, `LOG_LEVEL`, `LOG_FILE`; ротация 5 МБ × 3.
+   Недоступный файл не мешает запуску — остаётся stderr.
+4. `update_id` в каждой строке через `contextvars` (`ContextFilter`); в JSON — поля
+   `update_id`/`job`. Это единственное разрешённое применение `ContextVar`, и оно записано
+   исключением в `tests/test_no_runtime_surgery_contract.py` с отдельным тестом,
+   что исключение не расползается.
+5. `SecretMaskingFormatter` маскирует значения `BOT_TOKEN`, `TELEGRAM_API_HASH`,
+   `GEMINI_API_KEY*`, `YANDEX_*`, `VK_*`, `OPENAI_API_KEY` в готовой строке (включая URL
+   с токеном); значения короче 8 символов не маскируются.
+6. Падение `_periodic_maintenance` теперь: `record_maintenance(ok=False)` + личное сообщение
+   `ADMIN_IDS` с антиспамом `MAINTENANCE_ALERT_INTERVAL_HOURS` (по умолчанию 6 ч). Само решение
+   «пора ли повторять» вынесено в `runtime_status.alert_is_due()` и проверяется тестом — иначе
+   антиспам тестировался бы только отправкой сообщений в Telegram.
+7. `jobs_active` больше не декоративный: счётчик растёт в `_TrackedSemaphore.acquire`
+   (`core/resource_scheduler.py`), то есть на всех тяжёлых шагах, которые берут слот.
+8. Проверка БД в `/healthz` — `PRAGMA schema_version`, а не `SELECT 1`: последний не читает
+   файл и возвращал «здорово» даже на мусоре вместо базы. URI открывается только на чтение
+   (`mode=ro`) и корректен на Windows (`file:/C:/...`).
+
+Тесты: `tests/test_observability_runtime.py` (22) и `tests/test_health_endpoints.py` (6) —
+пороги, отсутствие секретов в ответе, согласие метрик с `/healthz`, маскирование,
+идемпотентность настройки логов. Эксплуатация — `docs/ops/observability.md`.
 
 ### P1-4. Документация: индекс и папки — ✅ сделано (PR #213)
 

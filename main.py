@@ -56,6 +56,10 @@ logger = logging.getLogger(__name__)
 # Сигнал ловим в main() (main thread) и передаём через этот Event.
 _STOP_EVENT = threading.Event()
 
+# Импорт на уровне модуля: счётчики живут весь процесс, а `uptime_seconds` в
+# /healthz отсчитывается от инициализации рантайма (см. core/globals.py).
+from core import runtime_status  # noqa: E402  (после определения _STOP_EVENT)
+
 
 # ─── Singleton guard: не даём случайно запустить второй экземпляр ─────────
 # Живой лог (2026-07-11): второй запуск бота тихо и БЕСКОНЕЧНО долбился в
@@ -765,8 +769,16 @@ async def run_bot_async():
 
     async def _pending_update_guard(update, context):
         del context
+        # AUDIT 2026-10-24: все апдейты проходят здесь, поэтому именно здесь
+        # считаются метрики и привязывается корреляция логов. Тело апдейта и
+        # его текст в метрики не попадают — только факт и идентификатор.
+        from core.logging_setup import bind_update
+
+        bind_update(getattr(update, "update_id", None))
         if not accept_pending_update(update, app.bot_data):
+            runtime_status.record_update_rejected()
             raise ApplicationHandlerStop
+        runtime_status.record_update()
 
     app.add_handler(TypeHandler(Update, _pending_update_guard), group=-100)
 
@@ -950,6 +962,39 @@ async def run_bot_async():
         from core.database import db_cleanup_old_records, db_backup
         from core.globals import mark_bot_alive
 
+        async def _alert_maintenance_failure(error: str) -> None:
+            """Одно сообщение владельцу, не чаще раза в N часов.
+
+            Раньше падение обслуживания уходило только в `logger.warning`, и
+            узнать о нём можно было, лишь читая bot.log. Антиспам обязателен:
+            если причина постоянная (нет прав на каталог), алерт каждую минуту
+            превратится в шум, который перестанут читать.
+            """
+            from core.database import ADMIN_IDS
+
+            if not ADMIN_IDS:
+                return
+            interval_hours = 6.0
+            try:
+                interval_hours = float(
+                    os.getenv("MAINTENANCE_ALERT_INTERVAL_HOURS", "6").strip() or 6
+                )
+            except ValueError:
+                pass
+            if not runtime_status.alert_is_due(interval_hours):
+                return
+            text = (
+                "⚠️ Обслуживание бота завершилось с ошибкой:\n"
+                f"{error[:300]}\n\n"
+                "Проверьте bot.log и свободное место на диске."
+            )
+            for admin_id in sorted(ADMIN_IDS):
+                try:
+                    await app.bot.send_message(chat_id=admin_id, text=text)
+                    runtime_status.record_alert()
+                except Exception as _send_error:  # сеть/бот заблокирован
+                    logger.warning("maintenance alert не отправлен: %s", _send_error)
+
         async def _periodic_maintenance():
             loop = asyncio.get_running_loop()
             while not app.bot_data.get("stop_requested", False):
@@ -968,13 +1013,37 @@ async def run_bot_async():
                     try:
                         from core.generated_pages import cleanup_old_segment_files
                         await loop.run_in_executor(None, cleanup_old_segment_files)
-                    except Exception:
-                        pass
+                    except Exception as _segment_error:
+                        # Раньше здесь стоял `pass`: сломанная очистка была
+                        # невидима, а каталог при этом рос.
+                        logger.warning("очистка сегментов: %s", _segment_error)
+                    runtime_status.record_maintenance(ok=True)
                 except Exception as _e:
                     logger.warning(f"periodic maintenance: {_e}")
+                    runtime_status.record_maintenance(ok=False, error=str(_e))
+                    try:
+                        await _alert_maintenance_failure(str(_e))
+                    except Exception as _alert_error:
+                        logger.warning("maintenance alert упал: %s", _alert_error)
                 await asyncio.sleep(3600)
 
-        asyncio.create_task(_periodic_maintenance())
+        def _on_maintenance_done(task):
+            """Фоновая задача не должна умирать молча.
+
+            Если она завершится с исключением, `/healthz` покажет
+            `maintenance_stale` только через два часа; строку в логе видно
+            сразу.
+            """
+            if task.cancelled():
+                return
+            error = task.exception()
+            if error is not None:
+                logger.error(
+                    "фоновая задача обслуживания остановилась: %s", error, exc_info=error
+                )
+
+        _maintenance_task = asyncio.create_task(_periodic_maintenance())
+        _maintenance_task.add_done_callback(_on_maintenance_done)
 
         while True:
             if app.bot_data.get("stop_requested") or _STOP_EVENT.is_set():
