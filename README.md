@@ -314,6 +314,15 @@ python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 - после изменения аудиомикса или QA-политики меняйте cache fingerprint;
 - проверяйте startup-логи после обновления FFmpeg, yt-dlp, Node/Deno или Gemini-моделей.
 
+## Документация
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — слои, точки входа, путь запроса, известные нарушения слоёв;
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — окружение, гейты, правила PR и релизов;
+- [`SECURITY.md`](SECURITY.md) — как сообщить об уязвимости, что считается секретом;
+- [`docs/README.md`](docs/README.md) — индекс всей документации (генерируется, 73 файла);
+- [`docs/env-reference.md`](docs/env-reference.md) — все переменные окружения (генерируется);
+- [`docs/model-catalog.md`](docs/model-catalog.md) — каталог моделей Gemini (генерируется).
+
 ## Локальные гейты
 
 Те же проверки, что в CI, но до пуша:
