@@ -57,9 +57,36 @@ jobs:
 
       - name: Run tests
         shell: bash
+        # Покрытие измеряется на одном job'е (3.12), а не на всех трёх: цифра
+        # от версии Python не зависит, а время CI — зависит.
         run: |
           set -o pipefail
-          python tools/run_pytest_with_annotations.py -q 2>&1 | tee pytest-output.txt
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            python tools/run_pytest_with_annotations.py -q \
+              --cov --cov-report=xml --cov-report=term-missing 2>&1 | tee pytest-output.txt
+          else
+            python tools/run_pytest_with_annotations.py -q 2>&1 | tee pytest-output.txt
+          fi
+
+      - name: Coverage summary
+        if: ${{ matrix.python-version == '3.12' }}
+        run: |
+          python -m coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          python -m coverage json -o coverage.json -q
+          python - <<'PY'
+          import json
+          total = json.load(open("coverage.json"))["totals"]["percent_covered"]
+          print(f"::notice title=Coverage::Всего {total:.1f}% (порог 52%, ratchet +2 в квартал)")
+          PY
+
+      - name: Coverage of changed lines
+        # Порог 75% на изменённые строки, а не на весь проект: поднимать
+        # покрытие легаси «тестами ради тестов» — не цель. Если изменений в
+        # измеряемых файлах нет, diff-cover завершается успешно.
+        if: ${{ matrix.python-version == '3.12' && github.event_name == 'pull_request' }}
+        run: |
+          git fetch --no-tags origin main
+          diff-cover coverage.xml --compare-branch=origin/main --fail-under=75
 
       - name: Upload pytest diagnostics
         if: failure()

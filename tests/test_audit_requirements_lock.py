@@ -221,8 +221,20 @@ def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit) -> No
 
 
 def test_locked_versions_reads_every_pin() -> None:
+    """Число пинов сверяется с самим файлом, а не с литералом.
+
+    Литерал (было 69) приходилось править вручную при каждом добавлении
+    пакета и он ничего не доказывал: тест проверял, что парсер прочитал
+    столько же строк, сколько кто-то когда-то посчитал. Теперь доказывается
+    главное — парсер не теряет пины и не выдумывает их.
+    """
     locked = audit_tool.locked_versions(LOCK)
-    assert len(locked) == 69
+    declared = {
+        line.split("==", 1)[0].strip().lower()
+        for line in LOCK.read_text(encoding="utf-8").splitlines()
+        if "==" in line and not line.startswith("#")
+    }
+    assert set(locked) == declared
     assert locked["pillow"].startswith("13.")
     assert all(locked.values()), "every entry must carry a version"
 
