@@ -1,0 +1,62 @@
+name: CodeQL
+
+# Статический анализ безопасности (SAST). Python — 786 модулей, JS — VOT-хелпер
+# (`vot_helper/`, @vot.js/node + undici).
+#
+# Политика включения: первые две недели находки НЕ блокируют PR (видны во вкладке
+# Security), затем чек добавляется в `Required PR Gate` при нуле открытых
+# ошибок уровня error. Блокирующий SAST с ненулевым бэклогом через неделю
+# отключают — это правило проверено на других проектах.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    # Анализ кода на PR, меняющем только документацию, ничего не проверяет и
+    # стоит 2-3 минуты раннера. Секреты в markdown при этом ловит secret-scan,
+    # который намеренно запускается на все PR.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  schedule:
+    - cron: "0 5 * * 3"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python", "javascript-typescript"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # security-extended: больше правил по работе с внешними входами
+          # (URL из сообщений пользователя, subprocess, парсинг HTML) — ровно
+          # поверхность этого проекта.
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

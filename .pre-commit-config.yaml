@@ -1,0 +1,52 @@
+# Локальные гейты — те же, что в CI, но за секунды вместо десяти минут.
+#
+# Правило проекта «у версии один владелец» действует и здесь:
+#   * ruff НЕ ставится из ruff-pre-commit — это была бы вторая версия рядом с
+#     requirements-lock.txt; хук вызывает ruff из установленного окружения;
+#   * gitleaks НЕ подключён как хук-репозиторий: его официальный hook собирается
+#     через golang, то есть тянет ~100 МБ тулчейна на каждую машину ради
+#     проверки, которую делает CI. Вместо этого — `gitleaks protect --staged`
+#     при наличии бинаря (см. README, раздел «Безопасная эксплуатация»).
+#
+# Установка один раз:
+#   pip install -r requirements-dev.txt
+#   pre-commit install && pre-commit install --hook-type pre-push
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-added-large-files
+        # 2 МБ: в репозитории есть .ttf (7 файлов) и каталоги моделей, но не
+        # должно быть датасетов, весов и архивов.
+        args: [--maxkb=2048]
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (версия из requirements-lock.txt)
+        entry: ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format (только изменённые файлы)
+        entry: ruff format
+        language: system
+        types: [python]
+        require_serial: true
+
+      # pre-push, а не pre-commit: verify_repo.py гоняет pytest (~90 с) и
+      # проверку генерируемых артефактов. Ровно те причины, из-за которых PR
+      # бывает красным, хотя локально «всё работало».
+      - id: repo-gates
+        name: tools/verify_repo.py (compileall, артефакты, pytest, ruff)
+        entry: python tools/verify_repo.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

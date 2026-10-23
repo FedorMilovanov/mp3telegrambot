@@ -314,6 +314,24 @@ python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 - после изменения аудиомикса или QA-политики меняйте cache fingerprint;
 - проверяйте startup-логи после обновления FFmpeg, yt-dlp, Node/Deno или Gemini-моделей.
 
+## Локальные гейты
+
+Те же проверки, что в CI, но до пуша:
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install && pre-commit install --hook-type pre-push
+```
+
+`pre-commit` запускает ruff (версия из lock'а, не отдельная), проверку YAML,
+конфликтов и больших файлов; `pre-push` — `tools/verify_repo.py`
+(compileall, генерируемые артефакты, pytest, ruff).
+
+Секреты ищет workflow `Secret scan` (gitleaks, полная история + weekly-прогон).
+Локально то же самое делает `gitleaks protect --staged --redact`, если бинарь
+установлен (`winget install gitleaks` / `scoop install gitleaks`); как хук
+pre-commit он намеренно не подключён — тянет Go-тулчейн на каждую машину.
+
 ## Лицензия
 
 Проект распространяется по лицензии [MIT](LICENSE) — © 2026 Fedor Milovanov.
