@@ -6,9 +6,10 @@ Runs the same non-negotiable checks we use before patch handoff:
 1. compileall
 2. generated model identifiers are in sync with core/model_catalog.py
 3. generated env reference is in sync with the code
-4. pytest
-5. ruff fatal lint subset from pyproject
-6. git diff --check, when inside a git checkout
+4. generated docs index (docs/README.md) is in sync with docs/
+5. pytest
+6. ruff fatal lint subset from pyproject
+7. git diff --check, when inside a git checkout
 
 The script is intentionally dependency-light and works on Windows/Linux/macOS.
 """
@@ -51,6 +52,9 @@ def run_checks(root: Path, *, skip_pytest: bool = False, skip_ruff: bool = False
         ("model catalog", [py, "scripts/render_model_catalog.py", "--check"]),
         # The env reference is generated from the code; stale means the docs lie.
         ("env reference", [py, "scripts/render_env_reference.py", "--check"]),
+        # The docs index is generated from the directory: stale means a document
+        # exists that nobody can find, or an entry points at a deleted file.
+        ("docs index", [py, "tools/render_docs_index.py", "--check"]),
     ]
     if not skip_pytest:
         checks.append(("pytest", [py, "-m", "pytest", "-q"]))

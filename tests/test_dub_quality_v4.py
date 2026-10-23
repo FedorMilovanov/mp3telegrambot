@@ -192,13 +192,13 @@ def test_quality_v4_has_no_nested_prompt_retry_or_whole_mix_loudnorm() -> None:
 def test_validation_report_matches_reality() -> None:
     """Отчёт «latest» не должен говорить FAIL, пока тесты зелёные.
 
-    Аудит нашёл ровно такую картину: `docs/dub_studio_quality_v42_validation_latest.md`
+    Аудит нашёл ровно такую картину: `docs/dub_studio_quality_v42_validation.md`
     начинался с «Result: FAIL» и содержал стектрейсы двух тестов, которые к
     тому моменту уже проходили. Читатель (и следующая модель-аудитор) делала
     вывод «v4.2 не работает». Дата и команда проверки в отчёте — часть
     контракта, а не украшение.
     """
-    report = Path("docs/dub_studio_quality_v42_validation_latest.md").read_text(
+    report = Path("docs/dub_studio_quality_v42_validation.md").read_text(
         encoding="utf-8"
     )
     assert "Текущий статус: PASS" in report, "отчёт снова описывает прошлое как текущее"
