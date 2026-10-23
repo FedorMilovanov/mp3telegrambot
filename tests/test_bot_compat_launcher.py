@@ -273,7 +273,7 @@ def test_direct_entrypoint_checks_lock_before_runtime_ownership():
         "GEMINI_API_KEY_4",
     )
 
-    assert "if not ((3, 11) <= sys.version_info[:2] < (3, 14)):" in source
+    assert "if not ((3, 12) <= sys.version_info[:2] < (3, 14)):" in source
     assert "except ImportError as exc:" in source
     assert "if not _gemini_keys_configured:" in source
     assert "_gemini_key =" not in source

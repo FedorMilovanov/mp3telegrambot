@@ -67,6 +67,6 @@ def test_metrics_report_truncation_has_visible_notice(tmp_path, monkeypatch):
 
 def test_ci_runs_supported_python_matrix():
     ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
-    # 3.12 fills the gap between the oldest supported interpreter and the newest.
-    assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
+    # 3.12 — floor, 3.13 — верхняя граница; 3.11 снят 2026-10-24.
+    assert 'python-version: ["3.12", "3.13"]' in ci
     assert "matrix.python-version" in ci

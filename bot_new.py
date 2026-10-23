@@ -43,8 +43,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 os.chdir(_PROJECT_ROOT)
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-if not ((3, 11) <= sys.version_info[:2] < (3, 14)):
-    print("❌ Требуется Python 3.11, 3.12 или 3.13")
+if not ((3, 12) <= sys.version_info[:2] < (3, 14)):
+    print("❌ Требуется Python 3.12 или 3.13")
     print(f"   Текущая версия: {sys.version}")
     sys.exit(1)
 

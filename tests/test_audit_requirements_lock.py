@@ -10,6 +10,7 @@ import datetime as dt
 import json
 import subprocess
 import sys
+import re
 from pathlib import Path
 
 import pytest
@@ -294,8 +295,23 @@ def test_ci_runs_the_audit_inside_the_required_gate() -> None:
 
 
 def test_ci_matrix_covers_every_supported_python() -> None:
+    """Матрица должна совпадать с pyproject, а не с литералом в тесте.
+
+    Литерал (["3.11", "3.12", "3.13"]) приходилось править в двух местах, и он
+    не проверял главное: что поддерживаемые версии объявлены ещё и в метаданных
+    пакета.
+    """
+    import tomllib
+
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
+    matrix = re.search(r"python-version:\s*\[([^\]]+)\]", ci)
+    assert matrix, "в ci.yml не найдена матрица python-version"
+    versions = [item.strip().strip("\"'") for item in matrix.group(1).split(",")]
+
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        floor = tomllib.load(handle)["project"]["requires-python"].removeprefix(">=")
+    assert versions[0] == floor, f"матрица начинается с {versions[0]}, pyproject — с {floor}"
+    assert len(versions) == len(set(versions)) and len(versions) >= 2
 
 
 def test_dependabot_covers_every_ecosystem() -> None:

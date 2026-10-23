@@ -85,9 +85,9 @@ def test_launchers_are_inside_the_wheel_package_set() -> None:
 def test_requires_python_matches_the_ci_matrix_floor() -> None:
     """Floor объявлен дважды (pyproject и ci.yml) — обязан совпадать."""
     declared = _project()["requires-python"]
-    assert declared == ">=3.11", (
-        "поднимаете floor — обновите матрицу ci.yml, bot_new.py, dependabot.yml "
-        "и tests/test_lock_python_floor.py одним PR"
+    assert declared == ">=3.12", (
+        "поднимаете floor — обновите матрицу ci.yml, bot_new.py, Start Bot.bat, "
+        "pyproject classifiers/target-version и tests/test_lock_python_floor.py одним PR"
     )
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     matrix = re.search(r"python-version:\s*\[([^\]]+)\]", ci)
