@@ -19,7 +19,7 @@ Policy: `project-gemini-routing-2026-10-22`. Сгенерировано scripts/
 ### Проверка схемы (upgrade drill)
 
 ```bash
-python scripts/model_upgrade_drill.py --model gemini-3.6-flash
+python scripts/model_upgrade_drill.py --model <free-tier-model-id>
 ```
 
 Дрилл подменяет `ROLE_PRIMARY`, убеждается, что `--check` фиксирует

@@ -11,8 +11,12 @@ overrides the check for the deliberate "what would billing change" experiment).
 
 Usage::
 
-    python scripts/model_upgrade_drill.py --model gemini-3.6-flash
-    python scripts/model_upgrade_drill.py --model gemini-3.6-flash --full
+    python scripts/model_upgrade_drill.py --model <free-tier-model-id>
+    python scripts/model_upgrade_drill.py --model <free-tier-model-id> --full
+
+The example is deliberately a placeholder: a concrete id in this docstring would
+go stale on the next model release (it already had), and ``tests/
+test_no_hardcoded_model_ids.py`` now scans ``scripts/`` too.
 
 What a green run proves:
 
@@ -38,12 +42,31 @@ sys.path.insert(0, str(ROOT))
 
 from core.model_catalog import (  # noqa: E402
     FREE_TIER_ONLY,
+    MODEL_LIVE,
     MODEL_PRIMARY,
+    MODEL_TRANSCRIBE,
+    MODEL_TTS,
+    MODEL_TTS_LITE,
+    MODEL_UTILITY,
+    ROLE_MODELS,
     is_free_tier,
     model_spec,
 )
 
 CATALOG = ROOT / "core" / "model_catalog.py"
+
+#: Roles that cannot serve the *semantic* primary route: they are mechanical,
+#: speech-only or live-stream models. Swapping primary to one of them does not
+#: "prove an upgrade"; it silently turns the semantic route into a lite/tts
+#: route, and the contract suite correctly rejects it — with a confusing
+#: traceback instead of an explanation.
+NON_SEMANTIC_ROLES = {
+    "utility": MODEL_UTILITY,
+    "tts": MODEL_TTS,
+    "tts_lite": MODEL_TTS_LITE,
+    "live": MODEL_LIVE,
+    "transcribe": MODEL_TRANSCRIBE,
+}
 RENDER = ROOT / "scripts" / "render_model_catalog.py"
 
 CONTRACT_TESTS = [
@@ -111,6 +134,14 @@ def main(argv: list[str] | None = None) -> int:
     spec = model_spec(args.model)
     if spec is None:
         raise SystemExit(f"{args.model} is not present in core/model_catalog.py")
+    for role_name, role_model in NON_SEMANTIC_ROLES.items():
+        if args.model and args.model == role_model:
+            raise SystemExit(
+                f"{args.model} is the {role_name} route's model, not a semantic "
+                "model: it cannot serve ROLE_PRIMARY. The drill proves that a "
+                "*semantic* model swap needs no code edits, so pick a "
+                f"free-tier model that can write text (roles: {sorted(ROLE_MODELS)})."
+            )
     if FREE_TIER_ONLY and not is_free_tier(args.model) and not args.allow_paid:
         raise SystemExit(
             f"{args.model} is not available on the free tier "

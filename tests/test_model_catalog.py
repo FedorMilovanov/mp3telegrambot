@@ -215,6 +215,23 @@ def test_upgrade_drill_touches_exactly_one_line() -> None:
     assert target in diff[0][1]
 
 
+def test_upgrade_drill_refuses_a_non_semantic_target(capsys) -> None:
+    """Утилити/tts/live/transcribe не могут заменить semantic-маршрут.
+
+    Раньше такой прогон падал глубоко внутри контрактных тестов
+    (`assert payload['translation_model'] != payload['title_model']`), и было
+    непонятно, сломан ли дрилл или выбранная модель. Проверка должна быть
+    внятной и до правки каталога.
+    """
+    drill = importlib.import_module("scripts.model_upgrade_drill")
+    with pytest.raises(SystemExit) as excinfo:
+        drill.main(["--model", catalog.MODEL_UTILITY])
+
+    message = str(excinfo.value)
+    assert "utility route" in message
+    assert "ROLE_PRIMARY" in message
+
+
 def test_migration_targets_are_free_tier_models() -> None:
     """No announced migration may point at a model the free tier refuses."""
     for model, spec in catalog._MODELS.items():
