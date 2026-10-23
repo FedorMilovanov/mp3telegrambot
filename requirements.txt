@@ -74,7 +74,11 @@ packaging>=26.2,<27.0
 # SoundFile читает/пишет float/PCM24 WAV для reference-only NoChew и onset trim.
 faster-whisper>=1.0.0
 ctranslate2>=4.6.2,<5.0.0
-numpy>=1.24.0
+# <2.5 — не «перестраховка», а требование floor'а: numpy 2.5+ объявляет
+# Requires-Python >=3.12, а проект и CI держат 3.11 (матрица ci.yml).
+# Без верхней границы Dependabot приносит 2.5.x, и PR становится красным не
+# из-за кода, а из-за политики Python. Снимать вместе с подъёмом floor'а.
+numpy>=1.24.0,<2.5
 soundfile>=0.12.1,<1.0.0
 
 # ── PDF-генератор (pdf_generator.py) ──────────────────────────────────────────

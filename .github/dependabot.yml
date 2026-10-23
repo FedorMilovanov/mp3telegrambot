@@ -15,6 +15,16 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     directory: "/"
+    ignore:
+      # Эти два мажора требуют Python >=3.12 (numpy 2.5+, av 19+), а floor
+      # проекта — 3.11 (матрица ci.yml). Без явного ignore Dependabot
+      # открывает PR, который не может быть зелёным в принципе, и он висит
+      # неделями, приучая игнорировать красные PR от Dependabot.
+      # Снять обе записи вместе с подъёмом floor'а до 3.12.
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "av"
+        update-types: ["version-update:semver-major"]
     schedule:
       # Daily, but grouped: extractor breakage in yt-dlp is a production
       # incident and must not wait for a weekly window, while routine
