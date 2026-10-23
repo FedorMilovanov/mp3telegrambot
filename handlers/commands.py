@@ -590,7 +590,7 @@ async def pdf_command(update, context):
         else:
             await safe_edit_text(status, "❌ Не удалось создать PDF.")
     except ImportError:
-        await safe_edit_text(status, "❌ PDF-генератор не установлен (pdfkit/wkhtmltopdf).")
+        await safe_edit_text(status, "❌ PDF-генератор не установлен (wkhtmltopdf или weasyprint).")
     except Exception as exc:
         logger.warning("pdf_command failed: %s", exc, exc_info=True)
         await safe_edit_text(status, f"❌ Ошибка PDF: {html_mod.escape(str(exc)[:160])}")

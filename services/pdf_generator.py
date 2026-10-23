@@ -11,9 +11,9 @@ pdf_generator.py — v2.8.1 FINAL — reading-first PDF из Telegraph стра�
 - Заголовки обрабатываются один раз (data-title в _polish_html)
 
 Зависимости:
-    pip install pdfkit requests beautifulsoup4
-    wkhtmltopdf — https://wkhtmltopdf.org/downloads.html
-    Опционально: pip install weasyprint
+    pip install requests beautifulsoup4
+    wkhtmltopdf — https://wkhtmltopdf.org/downloads.html (основной движок)
+    Опционально: pip install weasyprint (fallback, если бинарника нет)
 """
 
 from __future__ import annotations
@@ -213,13 +213,6 @@ _RE_URL_SCHEME = re.compile(r"https?://", re.IGNORECASE)
 # ══════════════════════════════════════════════════════════════
 #  2. Optional dependencies
 # ══════════════════════════════════════════════════════════════
-
-try:
-    import pdfkit
-    _HAS_PDFKIT = True
-except ImportError:
-    _HAS_PDFKIT = False
-    pdfkit = None  # type: ignore[assignment]
 
 try:
     from bs4 import BeautifulSoup
@@ -1589,8 +1582,8 @@ _ASYNC_FETCH_TIMEOUT: int = 90
 # FIX AUDIT R4: _POPEN_PATCH_LOCK удалён вместе с monkeypatch subprocess.Popen.
 
 
-def _pdfkit_options(title: str, performer: str) -> Dict[str, str]:
-    """Формирует опции для wkhtmltopdf CLI."""
+def _wkhtmltopdf_options(title: str, performer: str) -> Dict[str, str]:
+    """Формирует опции командной строки wkhtmltopdf."""
     hdr = _sanitize_cli(
         f"{performer} \u2014 {title}" if performer else title,
     )
@@ -1631,7 +1624,13 @@ def _gen_wkhtmltopdf(
     wp: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Генерирует PDF прямым вызовом wkhtmltopdf (CLI-опции — как у pdfkit).
+    Генерирует PDF прямым вызовом wkhtmltopdf.
+
+    Зависит ТОЛЬКО от бинарника wkhtmltopdf: Python-обёртка pdfkit не нужна и
+    не импортируется. Раньше здесь стоял гейт `if not _HAS_PDFKIT: return
+    None`, из-за которого движок молча выключался у всех, у кого установлен
+    wkhtmltopdf, но не установлен pdfkit, — и PDF деградировал до weasyprint
+    (или не генерировался вовсе).
 
     При таймауте убивает СВОЙ дочерний процесс (локальный Popen), не трогая
     чужие subprocess'ы других потоков.
@@ -1639,15 +1638,13 @@ def _gen_wkhtmltopdf(
     Returns:
         Путь к файлу или None.
     """
-    if not _HAS_PDFKIT:
-        return None
     wp = wp or WKHTMLTOPDF_PATH
     if not wp or not Path(wp).exists():
         return None
 
     tmp: Optional[str] = None
     try:
-        opts = _pdfkit_options(title, performer)
+        opts = _wkhtmltopdf_options(title, performer)
         with tempfile.NamedTemporaryFile(
             suffix=".html", mode="w", encoding="utf-8", delete=False,
         ) as f:

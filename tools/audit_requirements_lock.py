@@ -52,18 +52,12 @@ class AllowedAdvisory:
 
 
 # Reviewed exceptions. Keep this list short, dated and honest.
-ALLOWED_ADVISORIES: dict[str, AllowedAdvisory] = {
-    "PYSEC-2026-2860": AllowedAdvisory(
-        package="pdfkit",
-        reason=(
-            "No fixed release exists upstream (1.0.0 is the latest). pdfkit is "
-            "only invoked with locally generated HTML and project-owned options; "
-            "no user-supplied URL or shell string reaches it. Re-check for a "
-            "patched release at the review date."
-        ),
-        review_by=dt.date(2027, 1, 31),
-    ),
-}
+#
+# Currently empty: the last entry was pdfkit/PYSEC-2026-2860, which had no
+# upstream fix. Instead of living with the exception, the package was removed —
+# the code calls the wkhtmltopdf binary directly and never imported pdfkit for
+# anything but an unused wrapper. Any future entry must carry a review date.
+ALLOWED_ADVISORIES: dict[str, AllowedAdvisory] = {}
 
 
 def locked_versions(lock_path: Path = DEFAULT_LOCK) -> dict[str, str]:

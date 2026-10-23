@@ -18,14 +18,20 @@ from tools import audit_requirements_lock as audit_tool
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "requirements-lock.txt"
+ADVISORY_ID = "CVE-2099-7777"
 
 
 def _locked() -> dict[str, str]:
     return audit_tool.locked_versions(LOCK)
 
 
+# Package used by the fake reports; it only has to exist in the real lock.
+FAKE_PACKAGE = "requests"
+OTHER_PACKAGE = "httpx"
+
+
 def _report(
-    vulns: list[dict[str, object]], package: str = "pdfkit"
+    vulns: list[dict[str, object]], package: str = FAKE_PACKAGE
 ) -> str:
     """A report that covers the whole lock, with ``vulns`` on one package.
 
@@ -46,6 +52,29 @@ def _report(
 
 
 @pytest.fixture()
+def reviewed_exception(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Install a synthetic reviewed exception instead of relying on the real one.
+
+    The shipped list is empty (the pdfkit exception died with the package), so
+    tests that exercise exception handling have to bring their own entry —
+    which is also better: they no longer break when a real exception is added
+    or removed.
+    """
+    monkeypatch.setattr(
+        audit_tool,
+        "ALLOWED_ADVISORIES",
+        {
+            ADVISORY_ID: audit_tool.AllowedAdvisory(
+                package=FAKE_PACKAGE,
+                reason="Synthetic entry for the policy tests; nothing to review.",
+                review_by=dt.date(2027, 1, 31),
+            )
+        },
+    )
+    return {"id": ADVISORY_ID, "package": FAKE_PACKAGE}
+
+
+@pytest.fixture()
 def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
     state: dict[str, object] = {"stdout": _report([]), "returncode": 1}
 
@@ -60,14 +89,12 @@ def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
-    fake_pip_audit,
+    fake_pip_audit, reviewed_exception
 ) -> None:
     """A real clean report also means every exception is obsolete."""
     report = audit_tool.audit(LOCK)
     assert report["blocking"] == []
-    assert report["stale_allow_list_entries"] == sorted(
-        audit_tool.ALLOWED_ADVISORIES
-    )
+    assert report["stale_allow_list_entries"] == [ADVISORY_ID]
 
 
 def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
@@ -79,23 +106,27 @@ def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
     assert audit_tool.main([]) == 1
 
 
-def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit) -> None:
+def test_the_same_advisory_reported_twice_is_counted_once(
+    fake_pip_audit, reviewed_exception
+) -> None:
     """pip-audit emits one record per alias; a duplicate must not inflate counts."""
     fake_pip_audit["stdout"] = _report(
         [
-            {"id": "PYSEC-2026-2860", "fix_versions": []},
-            {"id": "PYSEC-2026-2860", "fix_versions": []},
+            {"id": ADVISORY_ID, "fix_versions": []},
+            {"id": ADVISORY_ID, "fix_versions": []},
         ],
-        package="pdfkit",
+        package=FAKE_PACKAGE,
     )
     report = audit_tool.audit(LOCK)
     assert len(report["allowed"]) == 1
     assert report["blocking"] == []
 
 
-def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> None:
+def test_reviewed_exception_is_allowed_until_its_review_date(
+    fake_pip_audit, reviewed_exception
+) -> None:
     fake_pip_audit["stdout"] = _report(
-        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="pdfkit"
+        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
     )
 
     fresh = audit_tool.audit(LOCK, today=dt.date(2026, 10, 23))
@@ -107,17 +138,32 @@ def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> 
     assert "review expired" in expired["blocking"][0]["reason"]
 
 
-def test_exception_does_not_cover_a_different_package(fake_pip_audit) -> None:
+def test_exception_does_not_cover_a_different_package(
+    fake_pip_audit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        audit_tool,
+        "ALLOWED_ADVISORIES",
+        {
+            ADVISORY_ID: audit_tool.AllowedAdvisory(
+                package=OTHER_PACKAGE,
+                reason="Synthetic entry pinned to another distribution on purpose.",
+                review_by=dt.date(2027, 1, 31),
+            )
+        },
+    )
     fake_pip_audit["stdout"] = _report(
-        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="requests"
+        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
     )
     report = audit_tool.audit(LOCK)
     assert report["blocking"]
 
 
-def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit) -> None:
+def test_exception_for_an_absent_advisory_is_stale(
+    fake_pip_audit, reviewed_exception
+) -> None:
     report = audit_tool.audit(LOCK)
-    assert report["stale_allow_list_entries"] == ["PYSEC-2026-2860"]
+    assert report["stale_allow_list_entries"] == [ADVISORY_ID]
     assert audit_tool.main([]) == 1
 
 
@@ -176,7 +222,7 @@ def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit) -> No
 
 def test_locked_versions_reads_every_pin() -> None:
     locked = audit_tool.locked_versions(LOCK)
-    assert len(locked) == 70
+    assert len(locked) == 69
     assert locked["pillow"].startswith("13.")
     assert all(locked.values()), "every entry must carry a version"
 
@@ -186,6 +232,19 @@ def test_allow_list_entries_carry_a_reason_and_a_review_date() -> None:
         assert entry.package, advisory
         assert len(entry.reason) > 40, advisory
         assert entry.review_by > dt.date(2026, 10, 23), advisory
+
+
+def test_the_shipped_allow_list_is_empty_again() -> None:
+    """pdfkit/PYSEC-2026-2860 left the lock together with the package.
+
+    An empty list is the goal state of the policy: every advisory must be
+    fixed, not tolerated. If an entry comes back, this test forces the author
+    to look at why `test_pdf_engine_without_pdfkit` was not enough.
+    """
+    assert audit_tool.ALLOWED_ADVISORIES == {}, (
+        "появилось исключение в аудите: сначала попробуйте убрать пакет или "
+        "обновиться, исключение — последний довод"
+    )
 
 
 def test_missing_pip_audit_fails_with_an_actionable_message(
