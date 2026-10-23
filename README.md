@@ -283,10 +283,11 @@ tools/                     диагностика и вспомогательн�
 
 GitHub Actions выполняет:
 
-- полный `pytest` на Python 3.11 и 3.13;
+- полный `pytest` на Python 3.11, 3.12 и 3.13;
 - компиляцию всех Python-файлов;
 - Ruff fatal checks;
 - отдельный Windows runtime-набор на Python 3.13;
+- `dependency-audit`: контракт lock'а + `pip-audit` по разрешённым пинам;
 - реальные FFmpeg/FFprobe-интеграционные тесты двух MP3;
 - code-health отчёт по росту regex/postprocess-слоя.
 
@@ -296,7 +297,12 @@ GitHub Actions выполняет:
 python -m pytest -q
 python -m ruff check --select E9,F63,F7,F82 .
 python tools/check_code_health.py
+python tools/check_requirements_lock.py
+python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 ```
+
+Порядок обновления зависимостей и правила исключений описаны в
+[`docs/dependency-policy.md`](docs/dependency-policy.md).
 
 ## Безопасная эксплуатация
 

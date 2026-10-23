@@ -10,12 +10,41 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-PROFILE_WORKFLOWS = (
-    ".github/workflows/cut-policy-ci.yml",
-    ".github/workflows/gemini-qa-policy.yml",
-    ".github/workflows/windows-bootstrap-ci.yml",
-    ".github/workflows/dub-studio-checks.yml",
-)
+WORKFLOWS_DIR = ".github/workflows"
+# This workflow aggregates the others, so it must not wait for itself.
+GATE_WORKFLOW = ".github/workflows/ci.yml"
+
+
+class MissingPullRequestTrigger(ValueError):
+    """Raised when a workflow file is not triggered by ``pull_request``."""
+
+
+def discover_profile_workflows(root: Path) -> tuple[str, ...]:
+    """Return every PR-triggered workflow except the gate's own workflow.
+
+    The list used to be hand-maintained, which silently excluded six workflows
+    that already ran on pull requests: a red check could not block a merge.
+    Discovery removes that maintenance step — a new ``pull_request`` workflow is
+    covered the moment it is committed.
+    """
+    directory = Path(root) / WORKFLOWS_DIR
+    if not directory.is_dir():
+        raise FileNotFoundError(f"workflow directory is missing: {directory}")
+    discovered: list[str] = []
+    for path in sorted(directory.iterdir()):
+        if path.suffix not in {".yml", ".yaml"} or not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative == GATE_WORKFLOW:
+            continue
+        try:
+            extract_pull_request_filter(path.read_text(encoding="utf-8"))
+        except MissingPullRequestTrigger:
+            continue
+        discovered.append(relative)
+    if not discovered:
+        raise RuntimeError("no pull_request workflows were discovered")
+    return tuple(discovered)
 
 
 def _indent(line: str) -> int:
@@ -56,7 +85,7 @@ def extract_pull_request_filter(workflow_text: str) -> tuple[str, tuple[str, ...
             pull_index = index
             break
     if pull_index is None:
-        raise ValueError("workflow is missing pull_request trigger")
+        raise MissingPullRequestTrigger("workflow is missing pull_request trigger")
 
     mode = "all"
     patterns: list[str] = []
@@ -144,9 +173,13 @@ def workflow_applies(mode: str, patterns: tuple[str, ...], changed: tuple[str, .
     raise ValueError(f"unsupported trigger mode: {mode}")
 
 
-def expected_profile_workflows(root: Path, changed: tuple[str, ...]) -> tuple[str, ...]:
+def expected_profile_workflows(
+    root: Path,
+    changed: tuple[str, ...],
+    workflows: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
     expected: list[str] = []
-    for workflow in PROFILE_WORKFLOWS:
+    for workflow in (workflows if workflows is not None else discover_profile_workflows(root)):
         workflow_path = root / workflow
         if not workflow_path.is_file():
             raise FileNotFoundError(f"required profile workflow is missing: {workflow}")
@@ -221,7 +254,7 @@ def wait_for_profile_workflows(
     expected: tuple[str, ...],
     token: str,
     *,
-    timeout_seconds: int = 1500,
+    timeout_seconds: int = 2400,
     poll_seconds: int = 10,
 ) -> None:
     if not expected:

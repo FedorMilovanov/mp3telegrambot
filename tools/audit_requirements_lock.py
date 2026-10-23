@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Fail the build when the resolved lock contains a known vulnerability.
+
+``pip-audit`` alone is not a policy: a single unfixable advisory would keep the
+job red forever and tempt somebody to switch the check off. This wrapper makes
+the policy explicit and reviewable:
+
+* every advisory is blocking;
+* an advisory may be allow-listed **only** together with the exact package, a
+  written reason and a review date, in :data:`ALLOWED_ADVISORIES` below;
+* an allow-listed advisory whose review date has passed becomes blocking again,
+  so the exception cannot silently become permanent;
+* an allow-list entry that no longer matches anything is reported, so stale
+  excuses get deleted instead of accumulating.
+
+Usage::
+
+    python tools/audit_requirements_lock.py            # CI mode
+    python tools/audit_requirements_lock.py --json     # machine output
+
+Requires ``pip-audit`` on PATH (CI installs it); it is deliberately not a
+runtime dependency of the bot.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LOCK = ROOT / "requirements-lock.txt"
+POLICY = "resolved-lock-zero-known-vulnerabilities-v1"
+
+
+@dataclass(frozen=True)
+class AllowedAdvisory:
+    package: str
+    reason: str
+    review_by: dt.date
+
+
+# Reviewed exceptions. Keep this list short, dated and honest.
+ALLOWED_ADVISORIES: dict[str, AllowedAdvisory] = {
+    "PYSEC-2026-2860": AllowedAdvisory(
+        package="pdfkit",
+        reason=(
+            "No fixed release exists upstream (1.0.0 is the latest). pdfkit is "
+            "only invoked with locally generated HTML and project-owned options; "
+            "no user-supplied URL or shell string reaches it. Re-check for a "
+            "patched release at the review date."
+        ),
+        review_by=dt.date(2027, 1, 31),
+    ),
+}
+
+
+def _pip_audit_executable() -> str:
+    executable = shutil.which("pip-audit")
+    if not executable:
+        raise SystemExit(
+            "pip-audit is not installed. Install it with: python -m pip install pip-audit"
+        )
+    return executable
+
+
+def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> dict[str, object]:
+    """Return a report dict; ``blocking`` is empty when the policy passes."""
+    current_day = today or dt.date.today()
+    process = subprocess.run(
+        [_pip_audit_executable(), "-r", str(lock_path), "--format", "json", "--progress-spinner", "off"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if process.returncode not in {0, 1}:
+        raise SystemExit(f"pip-audit failed to run: {process.stderr.strip()[:800]}")
+    payload = json.loads(process.stdout or "{}")
+
+    blocking: list[dict[str, str]] = []
+    allowed: list[dict[str, str]] = []
+    used: set[str] = set()
+    # pip-audit can emit the same advisory twice for one package (one record per
+    # alias); report and count it once.
+    seen: set[tuple[str, str, str]] = set()
+
+    for dependency in payload.get("dependencies", []):
+        name = str(dependency.get("name") or "")
+        version = str(dependency.get("version") or "")
+        for vulnerability in dependency.get("vulns", []) or []:
+            advisory = str(vulnerability.get("id") or "")
+            if (advisory, name, version) in seen:
+                continue
+            seen.add((advisory, name, version))
+            fix_versions = [str(item) for item in vulnerability.get("fix_versions") or []]
+            entry = {"id": advisory, "package": name, "version": version,
+                     "fix": ", ".join(fix_versions) or "no fix published"}
+            exception = ALLOWED_ADVISORIES.get(advisory)
+            if exception is None or exception.package != name:
+                blocking.append(entry)
+                continue
+            used.add(advisory)
+            if current_day > exception.review_by:
+                blocking.append(
+                    {**entry, "reason": (
+                        f"allow-list review expired on {exception.review_by.isoformat()}"
+                    )}
+                )
+                continue
+            allowed.append({**entry, "reason": exception.reason})
+
+    stale = sorted(set(ALLOWED_ADVISORIES) - used)
+    return {
+        "policy": POLICY,
+        "lock": str(lock_path.relative_to(ROOT) if lock_path.is_relative_to(ROOT) else lock_path),
+        "checked_on": current_day.isoformat(),
+        "blocking": blocking,
+        "allowed": allowed,
+        "stale_allow_list_entries": stale,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
+    parser.add_argument("--json", action="store_true", help="print the raw report")
+    args = parser.parse_args(argv)
+
+    report = audit(args.lock)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for entry in report["allowed"]:  # type: ignore[union-attr]
+            print(
+                f"ALLOWED {entry['id']} {entry['package']}=={entry['version']} "
+                f"(fix: {entry['fix']})"
+            )
+        for entry in report["stale_allow_list_entries"]:  # type: ignore[union-attr]
+            print(f"STALE allow-list entry, delete it: {entry}")
+        for entry in report["blocking"]:  # type: ignore[union-attr]
+            print(
+                f"VULNERABLE {entry['id']} {entry['package']}=={entry['version']} "
+                f"(fix: {entry['fix']}) {entry.get('reason', '')}".rstrip()
+            )
+
+    if report["stale_allow_list_entries"]:
+        print(
+            "DEPENDENCY_AUDIT_FAILED: stale allow-list entries must be removed: "
+            + ", ".join(report["stale_allow_list_entries"]),  # type: ignore[arg-type]
+            file=sys.stderr,
+        )
+        return 1
+    if report["blocking"]:
+        print(
+            f"DEPENDENCY_AUDIT_FAILED: {len(report['blocking'])} blocking advisory(ies)",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"dependency audit passed ({len(report['allowed'])} reviewed exception(s), "
+        f"{len(report['stale_allow_list_entries'])} stale)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -37,7 +37,7 @@ def test_locked_ytdlp_satisfies_declared_production_floor() -> None:
     _locked_version("yt-dlp-ejs")
 
 
-def test_dependabot_tracks_only_the_reviewed_youtube_downloader_pair() -> None:
+def test_dependabot_tracks_the_youtube_pair_daily_and_everything_else_weekly() -> None:
     config_path = ROOT / ".github" / "dependabot.yml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
@@ -52,26 +52,24 @@ def test_dependabot_tracks_only_the_reviewed_youtube_downloader_pair() -> None:
         and item.get("package-ecosystem") == "pip"
         and item.get("directory") == "/"
     ]
-    assert len(pip_updates) == 1
-    policy = pip_updates[0]
+    assert len(pip_updates) == 2
 
-    schedule = policy.get("schedule")
-    assert isinstance(schedule, dict)
-    assert schedule.get("interval") == "daily"
+    youtube = next(item for item in pip_updates if item.get("allow"))
+    general = next(item for item in pip_updates if not item.get("allow"))
 
-    allowed = policy.get("allow")
-    assert isinstance(allowed, list)
-    allowed_names = {
-        item.get("dependency-name")
-        for item in allowed
-        if isinstance(item, dict)
-    }
-    assert allowed_names == {"yt-dlp", "yt-dlp-ejs"}
-
-    assert policy.get("open-pull-requests-limit") == 1
-
-    groups = policy.get("groups")
-    assert isinstance(groups, dict)
-    youtube_group = groups.get("youtube-downloader")
-    assert isinstance(youtube_group, dict)
+    # 1. YouTube extractor breakage is a production incident: daily tracking.
+    assert youtube["schedule"]["interval"] == "daily"
+    assert {
+        entry.get("dependency-name") for entry in youtube["allow"]
+    } == {"yt-dlp", "yt-dlp-ejs"}
+    youtube_group = youtube["groups"]["youtube-downloader"]
     assert set(youtube_group.get("patterns") or []) == {"yt-dlp", "yt-dlp-ejs"}
+    assert youtube["open-pull-requests-limit"] >= 1
+
+    # 2. Everything else must still be proposed — the old config let 40+ pins rot.
+    assert general["schedule"]["interval"] == "weekly"
+    assert general["open-pull-requests-limit"] > 1
+    assert {
+        entry.get("dependency-name") for entry in general["ignore"]
+    } == {"yt-dlp", "yt-dlp-ejs"}, "the pair must not get two competing PRs"
+    assert set(general["groups"]) == {"pip-minor-and-patch", "pip-major"}
