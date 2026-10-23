@@ -56,17 +56,36 @@ def test_model_aware_thinking_preserves_supported_38_recovery_levels():
     assert _effective_thinking_level("gemini-custom-audio-model", "medium") == "medium"
 
 
-def test_utility_work_uses_lite_only_without_fallback():
+def test_utility_work_uses_lite_only_without_fallback(monkeypatch):
+    """Behaviour, not source text: the fallback knobs end up empty.
+
+    The old version grepped for `os.environ["..."] = ""`. Forcing now goes
+    through services/env_policy.force(), so a grep would test spelling instead
+    of the resulting configuration.
+    """
+    import os
+
     src = Path("services/gemini_max_quality.py").read_text(encoding="utf-8")
     # The model is imported from the catalog, never written as a literal.
     assert "MODEL_UTILITY as _LIGHT_MODEL" in src
     assert catalog.MODEL_UTILITY == catalog.ROLE_MODELS[catalog.ROLE_UTILITY]
     assert "_LIGHT_FALLBACK_MODEL =" not in src
-    assert 'os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""' in src
-    assert 'os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"' in src
-    assert 'os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""' in src
-    assert 'os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"' in src
     assert "gemini-3.1" not in src and "gemini-2.5" not in src
+
+    for name in (
+        "GEMINI_LIGHT_MODEL", "GEMINI_LIGHT_FALLBACK_MODELS",
+        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
+        "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "LIVEDUB_INFO_FALLBACK_MODELS",
+    ):
+        monkeypatch.setenv(name, "operator-value")
+    quality.configure_max_quality_env()
+
+    assert os.environ["GEMINI_LIGHT_MODEL"] == catalog.MODEL_UTILITY
+    assert os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == ""
+    assert os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
+    assert os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
+    assert os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] == "0"
+    assert os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
 
 
 def test_publication_metadata_directly_owns_38_high_quality_route():

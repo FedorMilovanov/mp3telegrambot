@@ -15,42 +15,50 @@ from core.model_catalog import (
     MODEL_PRIMARY as _PRIMARY_MODEL,
     MODEL_UTILITY as _LIGHT_MODEL,
 )
+from services.env_policy import force, force_all
 
 
 def configure_gemini_policy() -> str:
     """Pin the semantic/utility split and production LiveDub voice policy."""
-    for name in (
-        "GEMINI_MODEL",
-        "GEMINI_MAX_MODEL",
-        "LIVEDUB_INFO_MODEL",
-        "LIVEDUB_QUICK_QA_MODEL",
-        "LIVEDUB_LONG_QA_MODEL",
-        "LIVEDUB_QA_VERIFY_MODEL",
-    ):
-        os.environ[name] = _PRIMARY_MODEL
+    owner = "services.livedub_quality_runtime"
+    force_all(
+        (
+            "GEMINI_MODEL",
+            "GEMINI_MAX_MODEL",
+            "LIVEDUB_INFO_MODEL",
+            "LIVEDUB_QUICK_QA_MODEL",
+            "LIVEDUB_LONG_QA_MODEL",
+            "LIVEDUB_QA_VERIFY_MODEL",
+        ),
+        _PRIMARY_MODEL,
+        owner=owner,
+    )
 
-    for name in (
-        "GEMINI_FORCE_THINKING_LEVEL",
-        "LIVEDUB_INFO_THINKING",
-        "LIVEDUB_QUICK_QA_THINKING",
-        "LIVEDUB_LONG_QA_THINKING",
-        "LIVEDUB_QA_VERIFY_THINKING",
-    ):
-        os.environ[name] = "high"
-    os.environ["GEMINI_SCHEMA_THINKING"] = "1"
+    force_all(
+        (
+            "GEMINI_FORCE_THINKING_LEVEL",
+            "LIVEDUB_INFO_THINKING",
+            "LIVEDUB_QUICK_QA_THINKING",
+            "LIVEDUB_LONG_QA_THINKING",
+            "LIVEDUB_QA_VERIFY_THINKING",
+        ),
+        "high",
+        owner=owner,
+    )
+    force("GEMINI_SCHEMA_THINKING", "1", owner=owner)
 
-    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = ""
-    os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] = ""
-    os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] = "0"
+    force("LIVEDUB_INFO_FALLBACK_MODELS", "", owner=owner)
+    force("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "", owner=owner)
+    force("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "0", owner=owner)
 
-    os.environ["GEMINI_LIGHT_MODEL"] = _LIGHT_MODEL
-    os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] = ""
-    os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] = "0"
+    force("GEMINI_LIGHT_MODEL", _LIGHT_MODEL, owner=owner)
+    force("GEMINI_LIGHT_FALLBACK_MODELS", "", owner=owner)
+    force("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "0", owner=owner)
 
     # Production ENG is a quality contract: Yandex Live Voices or a visible
     # failure.  Never let a stale .env/Windows environment value re-enable the
     # legacy live->TTS downgrade path in livedub_mix.
-    os.environ["LIVEDUB_TTS_FALLBACK"] = "0"
+    force("LIVEDUB_TTS_FALLBACK", "0", owner=owner)
 
     return (
         f"semantic={_PRIMARY_MODEL}/high/no-fallback, "
