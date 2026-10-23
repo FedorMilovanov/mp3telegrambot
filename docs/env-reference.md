@@ -4,7 +4,7 @@
 Курируемая инструкция «что стоит трогать» — `.env.example`; здесь полный перечень,
 включая внутренние и диагностические переменные.
 
-Всего переменных: **174**; описано в `.env.example`: **100**; не описано: **74**; управляется стартовой политикой: **15**.
+Всего переменных: **178**; описано в `.env.example`: **104**; не описано: **74**; управляется стартовой политикой: **15**.
 
 | Переменная | Где читается | Дефолт в коде | В `.env.example` | Политика |
 |---|---|---|---|---|
@@ -113,6 +113,10 @@
 | `LOCAL_BOT_API_TDLIB_PROXY_TYPE` | `main.py` | `` | да | — |
 | `LOCAL_BOT_API_URL` | `core/globals.py`, `services/local_botapi_bootstrap.py`, `services/local_botapi_required.py` и ещё 1 | `` | да | — |
 | `LOCAL_BOT_API_WAIT_LOCAL` | `main.py`, `services/local_botapi_bootstrap.py`, `services/local_botapi_required.py` | `` | — | — |
+| `LOG_FILE` | `core/logging_setup.py` | `bot.log` | да | — |
+| `LOG_FORMAT` | `core/logging_setup.py` | `text` | да | — |
+| `LOG_LEVEL` | `core/logging_setup.py` | `INFO` | да | — |
+| `MAINTENANCE_ALERT_INTERVAL_HOURS` | `main.py` | `6` | да | — |
 | `MAX_FILE_SIZE_MB` | `core/database.py` | `` | да | — |
 | `MAX_VIDEO_DURATION_SEC` | `pipelines/main_pipeline.py` | `10800` | да | — |
 | `MKL_NUM_THREADS` | `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | — | — | — |
