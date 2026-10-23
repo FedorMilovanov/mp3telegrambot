@@ -133,3 +133,64 @@ def test_installed_tree_satisfies_the_helper_api() -> None:
         f"smoke.mjs failed:\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     )
     assert "runtime contract is satisfied" in completed.stdout
+
+
+def _helper_dir(tmp_path: Path, *, with_lock: bool) -> Path:
+    helper = tmp_path / "vot_helper"
+    helper.mkdir()
+    (helper / "vot_live.mjs").write_text("// stub\n", encoding="utf-8")
+    (helper / "package.json").write_text('{"dependencies": {}}', encoding="utf-8")
+    if with_lock:
+        (helper / "package-lock.json").write_text('{"lockfileVersion": 3}', encoding="utf-8")
+    return helper
+
+
+def _install_dependency(helper: Path) -> None:
+    module = helper / "node_modules" / "@vot.js" / "node"
+    module.mkdir(parents=True)
+    (module / "package.json").write_text('{"version": "2.4.12"}', encoding="utf-8")
+
+
+def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path) -> None:
+    """`npm install` re-resolves versions; production must replay the lock."""
+    from services import yandex_live_dub
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(list(command))
+        _install_dependency(helper)
+        return 0, "", ""
+
+    monkeypatch.setattr(yandex_live_dub, "_find_node", lambda: "/usr/bin/node")
+    monkeypatch.setattr(yandex_live_dub.shutil, "which", lambda name: "/usr/bin/npm")
+    monkeypatch.setattr(yandex_live_dub, "_run_subprocess", fake_run)
+
+    helper = _helper_dir(tmp_path, with_lock=True)
+    monkeypatch.setattr(yandex_live_dub, "VOT_HELPER_DIR", helper)
+
+    command = yandex_live_dub._ensure_vot_helper()
+
+    assert command == ["/usr/bin/node", str(helper / "vot_live.mjs")]
+    assert calls and calls[0][1] == "ci", f"expected npm ci, got {calls}"
+    assert "install" not in calls[0]
+
+
+def test_missing_lock_disables_the_new_protocol_instead_of_resolving_fresh(
+    monkeypatch, tmp_path
+) -> None:
+    from services import yandex_live_dub
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(yandex_live_dub, "_find_node", lambda: "/usr/bin/node")
+    monkeypatch.setattr(yandex_live_dub.shutil, "which", lambda name: "/usr/bin/npm")
+    monkeypatch.setattr(
+        yandex_live_dub, "_run_subprocess",
+        lambda command, **kwargs: calls.append(list(command)) or (0, "", ""),
+    )
+
+    helper = _helper_dir(tmp_path, with_lock=False)
+    monkeypatch.setattr(yandex_live_dub, "VOT_HELPER_DIR", helper)
+
+    assert yandex_live_dub._ensure_vot_helper() is None
+    assert calls == [], "npm must not run without a lock to pin it"
