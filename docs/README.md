@@ -17,7 +17,7 @@
 Суффикс `_latest` запрещён: файл с таким именем устаревает молча, и читатель
 не может понять, что перед ним старое.
 
-Всего файлов: **73**.
+Всего файлов: **74**.
 
 ## Эксплуатация и контракты
 
@@ -116,3 +116,9 @@
 | [`telegraph_repair_targets_2026-06-16.md`](telegraph_repair_targets_2026-06-16.md) | Technical pages from the live Shepherds' Conference run that DOM audit found worth repairing. |
 | [`unified_mode_menu_validation.md`](unified_mode_menu_validation.md) | — |
 | [`V3_PROGRESS.md`](V3_PROGRESS.md) | 4. usage/finish_reason extraction helpers |
+
+## Прочее
+
+| Файл | О чём |
+|---|---|
+| [`ops/deploy_windows.md`](ops/deploy_windows.md) | Документ описывает воспроизводимую установку с нуля: от чистой машины до |

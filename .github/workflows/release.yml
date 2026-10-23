@@ -1,0 +1,153 @@
+name: Release
+
+# Релиз — это тег `vX.Y.Z`. Тег ставится после того, как `main` зелёный, и
+# workflow сам собирает артефакты, считает контрольные суммы и создаёт GitHub
+# Release с секцией из CHANGELOG.md. Ручная сборка «на своей машине» больше не
+# нужна: артефакт в релизе собран тем же Python, что и в CI.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег для пересборки (например v4.0.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tag matches the code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Resolve the version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          sys.path.insert(0, ".")
+          from core.version import __version__
+
+          tag = os.environ.get("INPUT_TAG") or os.environ.get("REF_NAME") or ""
+          if tag != f"v{__version__}":
+              sys.exit(
+                  f"тег {tag!r} не совпадает с core.version.__version__={__version__!r}: "
+                  "поднимите версию и CHANGELOG одним PR, потом ставьте тег"
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"version={__version__}\n")
+          print(f"version: {__version__}")
+          PY
+
+      - name: CHANGELOG has a section for this version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+          if not re.search(pattern, text, flags=re.MULTILINE):
+              sys.exit(f"в CHANGELOG.md нет раздела «## [{version}] - YYYY-MM-DD»")
+          print(f"CHANGELOG: раздел {version} найден")
+          PY
+
+      - name: Full test suite
+        run: python -m pytest -q
+
+  build:
+    name: Build and publish
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel and sdist
+        # build — инструмент сборки, которого нет в рантайм-closure, поэтому
+        # ставится точным пином (правило tests/test_workflows_install_from_lock.py).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "build==1.6.1"
+          python -m build --outdir dist
+
+      - name: Smoke-test the wheel without dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel"
+          "$RUNNER_TEMP/wheel/bin/python" -m pip install --no-deps --no-index dist/*.whl
+          "$RUNNER_TEMP/wheel/bin/mp3bot" --version
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum ./*.whl ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Extract the changelog section
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          match = re.search(
+              rf"^## \[{re.escape(version)}\].*?$(.*?)(?=^## \[|\Z)",
+              text,
+              flags=re.MULTILINE | re.DOTALL,
+          )
+          assert match, "раздел не найден"
+          Path("release-notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+          PY
+          cat release-notes.md
+
+      - name: Publish GitHub Release
+        # gh CLI вместо стороннего action: он уже стоит на раннере, и это
+        # минус одна внешняя зависимость в supply chain релиза.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            dist/*.whl dist/*.tar.gz dist/SHA256SUMS \
+            --title "v${VERSION}" \
+            --notes-file release-notes.md
