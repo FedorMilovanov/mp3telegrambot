@@ -128,7 +128,11 @@ def test_required_profile_workflow_filters_are_parseable_and_supported():
 
 
 def test_expected_profile_workflows_use_live_workflow_filters():
-    assert set(expected_profile_workflows(ROOT, ("README.md",))) == set()
+    # Документация не запускает профильные workflow, но secret-scan смотрит
+    # каждый PR без фильтров: токен чаще всего утекает именно в markdown-примере
+    # или в .env-шаблоне, а не в коде.
+    secret_scan = {".github/workflows/secret-scan.yml"}
+    assert set(expected_profile_workflows(ROOT, ("README.md",))) == secret_scan
 
     youtube = set(
         expected_profile_workflows(ROOT, ("services/youtube_po_token_runtime.py",))
@@ -157,9 +161,12 @@ def test_expected_profile_workflows_use_live_workflow_filters():
         ".github/workflows/voxcpm2-windows.yml",
     } <= lock
 
+    # .env.example — не документация: его смотрит и CodeQL (любой не-md файл
+    # запускает анализ), и secret-scan, и политика Gemini-ключей.
     assert set(expected_profile_workflows(ROOT, (".env.example",))) == {
-        ".github/workflows/gemini-qa-policy.yml"
-    }
+        ".github/workflows/gemini-qa-policy.yml",
+        ".github/workflows/codeql.yml",
+    } | secret_scan
 
 
 def test_wait_timeout_fits_inside_the_gate_job_budget() -> None:
