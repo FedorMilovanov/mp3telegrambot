@@ -235,11 +235,29 @@ def test_runtime_lock_rejects_transitive_lock_constraint_mismatch(tmp_path, monk
 
 
 def test_runtime_verifier_dependency_is_declared_directly():
-    direct = Path("requirements.txt").read_text(encoding="utf-8")
-    lock = Path("requirements-lock.txt").read_text(encoding="utf-8")
+    """`packaging` объявлен напрямую, и lock-пин лежит внутри объявленного диапазона.
 
-    assert "packaging>=26.2,<27.0" in direct
-    assert "packaging==26.2" in lock
+    Раньше здесь стояли литералы `packaging>=26.2,<27.0` и `packaging==26.2`:
+    любой Dependabot-бамп lock'а валил тест, то есть версия жила в двух местах.
+    Теперь проверяется связь между двумя файлами, а не конкретный номер.
+    """
+    from packaging.requirements import Requirement
+
+    from tools.install_from_lock import locked_versions
+
+    direct = Path("requirements.txt").read_text(encoding="utf-8")
+    declarations = [
+        Requirement(line.split("#", 1)[0].strip())
+        for line in direct.splitlines()
+        if line.split("#", 1)[0].strip().lower().startswith("packaging")
+    ]
+    assert declarations, "packaging больше не объявлен в requirements.txt напрямую"
+
+    pinned = locked_versions()["packaging"]
+    for requirement in declarations:
+        assert requirement.specifier.contains(pinned, prereleases=True), (
+            f"lock пинит packaging {pinned}, что не входит в {requirement.specifier}"
+        )
 
 
 def test_direct_entrypoint_checks_lock_before_runtime_ownership():

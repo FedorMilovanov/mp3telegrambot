@@ -16,6 +16,7 @@ on:
       - "tools/ensure_bgutil_provider.py"
       - "tools/check_youtube_gvs.py"
       - "tools/check_requirements_lock.py"
+      - "tools/install_from_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bot_compat_launcher.py"
       - "tests/test_bgutil_provider_setup.py"
@@ -39,6 +40,7 @@ on:
       - "tools/ensure_bgutil_provider.py"
       - "tools/check_youtube_gvs.py"
       - "tools/check_requirements_lock.py"
+      - "tools/install_from_lock.py"
       - "tests/test_start_bot_bootstrap.py"
       - "tests/test_bot_compat_launcher.py"
       - "tests/test_bgutil_provider_setup.py"
@@ -72,13 +74,14 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install focused Python runtime
+      # Версии берутся из requirements-lock.txt, а не пишутся здесь второй раз:
+      # раньше этот шаг ставил pytest==8.4.2 и yt-dlp==2026.7.4, тогда как lock
+      # уже фиксировал pytest 9.1.1 и yt-dlp 2026.10.21 — Windows-контракты
+      # проверялись на другом наборе пакетов, чем production.
+      - name: Install focused Python runtime from the lock
         run: >-
-          python -m pip install
-          packaging==26.2
-          pytest==8.4.2
-          yt-dlp==2026.7.4
-          yt-dlp-ejs==0.8.0
+          python tools/install_from_lock.py
+          packaging pytest yt-dlp yt-dlp-ejs
 
       - name: Compile bootstrap and YouTube runtime contracts
         run: >-
