@@ -187,3 +187,25 @@ def test_quality_v4_has_no_nested_prompt_retry_or_whole_mix_loudnorm() -> None:
     assert "pipeline_signature" in guard
     assert 'whole_mix_loudnorm": False' in master
     assert "alimiter=limit=0.985:level=false" in master
+
+
+def test_validation_report_matches_reality() -> None:
+    """Отчёт «latest» не должен говорить FAIL, пока тесты зелёные.
+
+    Аудит нашёл ровно такую картину: `docs/dub_studio_quality_v42_validation_latest.md`
+    начинался с «Result: FAIL» и содержал стектрейсы двух тестов, которые к
+    тому моменту уже проходили. Читатель (и следующая модель-аудитор) делала
+    вывод «v4.2 не работает». Дата и команда проверки в отчёте — часть
+    контракта, а не украшение.
+    """
+    report = Path("docs/dub_studio_quality_v42_validation_latest.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Текущий статус: PASS" in report, "отчёт снова описывает прошлое как текущее"
+    assert "python -m pytest" in report, "в отчёте нет команды, которой его проверить"
+    for name in (
+        "test_timing_qa_rejects_thirty_ms_chirp_before_real_speech",
+        "test_timing_qa_rejects_isolated_click_before_speech",
+    ):
+        assert name in report, f"отчёт не называет тест {name}"
+        assert name in Path(__file__).read_text(encoding="utf-8")

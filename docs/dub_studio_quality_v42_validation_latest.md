@@ -1,8 +1,34 @@
-# Dub Studio Quality v4.2 validation
+# Dub Studio Quality v4.2 — validation record
+
+- **Текущий статус: PASS** (перепроверено 2026-10-23)
+- Область: плотностной детектор начала речи (`measure_timing_quality`),
+  регрессии «30 мс чирп» и «одиночный клик перед речью».
+- Compile / tests / ruff: зелёные.
+
+## Как проверено (2026-10-23)
+
+```bash
+python -m pytest -q \
+  tests/test_dub_quality_v4.py::test_timing_qa_rejects_thirty_ms_chirp_before_real_speech \
+  tests/test_dub_quality_v4.py::test_timing_qa_rejects_isolated_click_before_speech
+# ..                                                                       [100%]
+
+python -m pytest -q tests/test_dub_quality_v4.py
+# ...........                                                              [100%]
+```
+
+Оба теста, которые в отчёте ниже помечены как падающие, проходят. Причина
+расхождения: отчёт был снят до правки детектора и с тех пор не обновлялся —
+файл назывался «latest», но описывал состояние, которого уже не было.
+Именно поэтому этот документ теперь содержит дату и команду проверки, а не
+только вывод.
+
+## История: исходный FAIL (до исправления, оставлен для контекста)
 
 - Result: **FAIL**
 - Density-based sustained speech onset; 30 ms chirp regression.
 - Compile/tests/Ruff: failure
+
 
 .......F.F........                                                       [100%]
 ================================== FAILURES ===================================
