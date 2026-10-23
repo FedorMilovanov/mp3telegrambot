@@ -1,5 +1,9 @@
 # Audit: `GVS_ACCEPTANCE=FAIL_HTTP_403` — root cause & remediation
 
+> **Historical (2026-08).** Versions quoted below describe the tree at the
+> time of the audit. The live pin is `core/bgutil_pin.py` (currently
+> bgutil 2.0.2, loopback-only, see `docs/youtube-po-token-runtime.md`).
+
 **Status:** audit only — **not pushed**. No code changed in this pass.
 **Scope:** why `python tools/check_youtube_gvs.py` still prints
 `FAIL_HTTP_403` after PR #170 (`2a1c8cf`, main HEAD).

@@ -34,8 +34,13 @@ def test_provisioner_and_readiness_share_exact_provider_identity() -> None:
 
 
 def test_provisioner_enforces_upstream_node_and_npm_floors() -> None:
+    from core.bgutil_pin import BGUTIL_MIN_NODE_MAJOR, BGUTIL_MIN_NPM_MAJOR
+
     source = Path("tools/ensure_bgutil_provider.py").read_text(encoding="utf-8")
 
-    assert "if major < 22" in source
-    assert "if major < 9" in source
+    # Floors come from the pin module, so an upstream bump updates one place.
+    assert "if major < BGUTIL_MIN_NODE_MAJOR" in source
+    assert "if major < BGUTIL_MIN_NPM_MAJOR" in source
     assert "_npm_executable()" in source
+    assert BGUTIL_MIN_NODE_MAJOR >= 22
+    assert BGUTIL_MIN_NPM_MAJOR >= 9

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from core.bgutil_pin import BGUTIL_VERSION as PIN
 from services import bgutil_http_runtime as http_runtime
 
 
@@ -23,7 +24,7 @@ def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
     monkeypatch.setattr(
         http_runtime,
         "_ping",
-        lambda *_args, **_kwargs: {"version": "1.3.1", "server_uptime": 12},
+        lambda *_args, **_kwargs: {"version": PIN, "server_uptime": 12},
     )
 
     def unexpected_popen(*_args, **_kwargs):
@@ -33,7 +34,7 @@ def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
     result = http_runtime.ensure_bgutil_http_runtime(
         node_executable="node",
         server_home=tmp_path,
-        expected_version="1.3.1",
+        expected_version=PIN,
     )
     assert result == http_runtime.DEFAULT_BASE_URL
 
@@ -42,13 +43,13 @@ def test_matching_but_unowned_http_provider_fails_closed(monkeypatch, tmp_path):
     monkeypatch.setattr(
         http_runtime,
         "_ping",
-        lambda *_args, **_kwargs: {"version": "1.3.1", "server_uptime": 12},
+        lambda *_args, **_kwargs: {"version": PIN, "server_uptime": 12},
     )
     with pytest.raises(http_runtime.BgutilHttpRuntimeError, match="неуправляемым процессом"):
         http_runtime.ensure_bgutil_http_runtime(
             node_executable="node",
             server_home=tmp_path,
-            expected_version="1.3.1",
+            expected_version=PIN,
         )
 
 
@@ -62,7 +63,7 @@ def test_existing_wrong_version_fails_closed(monkeypatch, tmp_path):
         http_runtime.ensure_bgutil_http_runtime(
             node_executable="node",
             server_home=tmp_path,
-            expected_version="1.3.1",
+            expected_version=PIN,
         )
 
 
@@ -72,7 +73,7 @@ def test_missing_compiled_http_server_fails_closed(monkeypatch, tmp_path):
         http_runtime.ensure_bgutil_http_runtime(
             node_executable="node",
             server_home=tmp_path,
-            expected_version="1.3.1",
+            expected_version=PIN,
         )
 
 
@@ -82,7 +83,7 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     main_js = build / "main.js"
     main_js.write_text("// compiled", encoding="utf-8")
 
-    ping_results = iter([None, None, {"version": "1.3.1", "server_uptime": 0.2}])
+    ping_results = iter([None, None, {"version": PIN, "server_uptime": 0.2}])
     monkeypatch.setattr(
         http_runtime,
         "_ping",
@@ -90,6 +91,10 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     )
     monkeypatch.setattr(http_runtime.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(http_runtime, "_register_cleanup_once", lambda: None)
+    probe_ports: list[int] = []
+    monkeypatch.setattr(
+        http_runtime, "require_loopback_binding", probe_ports.append
+    )
 
     captured: dict[str, object] = {}
 
@@ -118,7 +123,7 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     result = http_runtime.ensure_bgutil_http_runtime(
         node_executable="C:/Node/node.exe",
         server_home=tmp_path,
-        expected_version="1.3.1",
+        expected_version=PIN,
         startup_timeout=2,
     )
 
@@ -128,9 +133,12 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
         str(main_js.resolve()),
         "--port",
         "4416",
+        "--host",
+        "127.0.0.1",
     ]
     assert captured["kwargs"]["cwd"] == str(tmp_path.resolve())
     assert http_runtime._OWNED_PROCESS is process
+    assert probe_ports == [http_runtime.DEFAULT_PORT]
 
 
 def test_upstream_http_route_is_loopback_for_ytdlp_even_if_server_bind_is_broad():

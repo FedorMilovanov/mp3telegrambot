@@ -147,7 +147,9 @@ def test_runtime_files_require_npm_metadata(
     plugin.parent.mkdir(parents=True)
     (server / "node_modules").mkdir(parents=True)
     script.write_text("// built\n", encoding="utf-8")
-    plugin.write_text("__version__='1.3.1'\n", encoding="utf-8")
+    plugin.write_text(
+        f"__version__='{setup.BGUTIL_VERSION}'\n", encoding="utf-8"
+    )
     marker.write_text(
         f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n", encoding="utf-8"
     )
