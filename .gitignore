@@ -20,6 +20,10 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
 
 # =============== Project ===============
 # Dumps of published Telegraph pages (tools/dump_telegraph_pages.py) are working

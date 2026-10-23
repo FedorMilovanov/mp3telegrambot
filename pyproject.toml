@@ -49,6 +49,23 @@ py-modules = ["bot", "bot_new", "main"]
 include = ["core*", "services*", "pipelines*", "handlers*", "converters*", "tools*"]
 exclude = ["tests*", "docs*", "vot_helper*"]
 
+[tool.coverage.run]
+# branch = true: «строка выполнена» ничего не говорит о том, что проверены обе
+# ветки `if`. Statement-only покрытие завышает картину ровно там, где больно —
+# в обработке ошибок.
+branch = true
+source = ["core", "services", "converters", "pipelines", "handlers"]
+# tools/voxcpm2 — экспериментальные прогоны моделей, не прод; тесты под них
+# живут отдельно и в гейт покрытия не входят.
+omit = ["tests/*", "tools/*"]
+
+[tool.coverage.report]
+# Порог = измеренное значение минус запас, а не цель. Поднимается ratchet'ом
+# (+2 пункта раз в квартал), см. docs/AUDIT_2026-10-23_NEXT.md §P0-2.
+fail_under = 52
+skip_covered = true
+show_missing = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
