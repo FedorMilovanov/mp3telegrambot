@@ -24,7 +24,6 @@ def configure_gemini_policy() -> str:
     force_all(
         (
             "GEMINI_MODEL",
-            "GEMINI_MAX_MODEL",
             "LIVEDUB_INFO_MODEL",
             "LIVEDUB_QUICK_QA_MODEL",
             "LIVEDUB_LONG_QA_MODEL",
@@ -36,8 +35,6 @@ def configure_gemini_policy() -> str:
 
     force_all(
         (
-            "GEMINI_FORCE_THINKING_LEVEL",
-            "LIVEDUB_INFO_THINKING",
             "LIVEDUB_QUICK_QA_THINKING",
             "LIVEDUB_LONG_QA_THINKING",
             "LIVEDUB_QA_VERIFY_THINKING",
@@ -49,11 +46,6 @@ def configure_gemini_policy() -> str:
 
     force("LIVEDUB_INFO_FALLBACK_MODELS", "", owner=owner)
     force("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "", owner=owner)
-    force("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "0", owner=owner)
-
-    force("GEMINI_LIGHT_MODEL", _LIGHT_MODEL, owner=owner)
-    force("GEMINI_LIGHT_FALLBACK_MODELS", "", owner=owner)
-    force("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "0", owner=owner)
 
     # Production ENG is a quality contract: Yandex Live Voices or a visible
     # failure.  Never let a stale .env/Windows environment value re-enable the

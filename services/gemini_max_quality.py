@@ -21,7 +21,6 @@ def configure_max_quality_env() -> str:
     force_all(
         (
             "GEMINI_MODEL",
-            "GEMINI_MAX_MODEL",
             "LIVEDUB_INFO_MODEL",
             "LIVEDUB_QUICK_QA_MODEL",
             "LIVEDUB_LONG_QA_MODEL",
@@ -33,32 +32,21 @@ def configure_max_quality_env() -> str:
     )
     force("LIVEDUB_INFO_FALLBACK_MODELS", "", owner=owner)
 
-    force("GEMINI_LIGHT_MODEL", _LIGHT_MODEL, owner=owner)
-    force("GEMINI_LIGHT_FALLBACK_MODELS", "", owner=owner)
-    force("GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "0", owner=owner)
-
     force("LIVEDUB_PUBLICATION_FALLBACK_MODELS", "", owner=owner)
-    force("LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "0", owner=owner)
 
-    force("GEMINI_FORCE_THINKING_LEVEL", "high", owner=owner)
     force("GEMINI_SCHEMA_THINKING", "1", owner=owner)
     force_all(
         (
             "LIVEDUB_QUICK_QA_THINKING",
             "LIVEDUB_LONG_QA_THINKING",
             "LIVEDUB_QA_VERIFY_THINKING",
-            "LIVEDUB_INFO_THINKING",
         ),
         "high",
         owner=owner,
     )
 
     force_all(
-        (
-            "WHISPER_MODEL",
-            "WHISPER_ENG_SUBTITLES_MODEL",
-            "SHORTS_FACTORY_WHISPER_MODEL",
-        ),
+        ("WHISPER_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"),
         _REQUIRED_WHISPER_MODEL,
         owner=owner,
     )

@@ -60,13 +60,10 @@ function Remove-EnvValue {
 # Project max-quality semantic route: Gemini 3.8 Flash + HIGH thinking.
 # Never silently downgrade Factory/analysis/translation QA to 3.7/3.6/3.5/Lite.
 Set-EnvValue -Name "GEMINI_MODEL" -Value "gemini-3.8-flash"
-Set-EnvValue -Name "GEMINI_MAX_MODEL" -Value "gemini-3.8-flash"
-Set-EnvValue -Name "GEMINI_FORCE_THINKING_LEVEL" -Value "high"
 Set-EnvValue -Name "GEMINI_SCHEMA_THINKING" -Value "1"
 
 Set-EnvValue -Name "LIVEDUB_INFO_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "LIVEDUB_INFO_FALLBACK_MODELS" -Value ""
-Set-EnvValue -Name "LIVEDUB_INFO_THINKING" -Value "high"
 Set-EnvValue -Name "LIVEDUB_QUICK_QA_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "LIVEDUB_LONG_QA_MODEL" -Value "gemini-3.8-flash"
 Set-EnvValue -Name "LIVEDUB_QA_VERIFY_MODEL" -Value "gemini-3.8-flash"
@@ -86,14 +83,9 @@ if ($Priority) {
 }
 
 # Cheap/mechanical work: Lite only. No regular 3.5 and no main-model fallback.
-Set-EnvValue -Name "GEMINI_LIGHT_MODEL" -Value "gemini-3.5-flash-lite"
-Set-EnvValue -Name "GEMINI_LIGHT_FALLBACK_MODELS" -Value ""
-Set-EnvValue -Name "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"
 Set-EnvValue -Name "LIVEDUB_PUBLICATION_FALLBACK_MODELS" -Value ""
-Set-EnvValue -Name "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK" -Value "0"
 
 Set-EnvValue -Name "WHISPER_MODEL" -Value "large-v3"
-Set-EnvValue -Name "WHISPER_ENG_SUBTITLES_MODEL" -Value "large-v3"
 Set-EnvValue -Name "SHORTS_FACTORY_WHISPER_MODEL" -Value "large-v3"
 
 # Current Local Bot API runtime owns startup wait through REQUIRED_TIMEOUT_SEC.

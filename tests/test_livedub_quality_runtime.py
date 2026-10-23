@@ -31,19 +31,25 @@ def test_pre_main_manifest_owns_policy_before_core_clients() -> None:
 
 def test_production_policy_keeps_semantic_work_on_38_high() -> None:
     runtime.configure_gemini_policy()
-    for name in ("GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL", "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL"):
+    for name in ("GEMINI_MODEL", "LIVEDUB_INFO_MODEL", "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL"):
         assert runtime.os.environ[name] == MODEL_PRIMARY
-    for name in ("GEMINI_FORCE_THINKING_LEVEL", "LIVEDUB_INFO_THINKING", "LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING"):
+    for name in ("LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING"):
         assert runtime.os.environ[name] == "high"
     assert runtime.os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
     assert runtime.os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
 
 
 def test_utility_route_is_lite_only_without_semantic_fallback() -> None:
+    """Utility — это роль каталога, а не env-ручка.
+
+    `GEMINI_LIGHT_*` удалены: код их не читал (маршрут брался из атласа ролей),
+    поэтому проверяем сам маршрут, а не значения переменных.
+    """
+    from core.model_catalog import ROLE_MODELS, ROLE_UTILITY
+
     runtime.configure_gemini_policy()
-    assert runtime.os.environ["GEMINI_LIGHT_MODEL"] == "gemini-3.5-flash-lite"
-    assert runtime.os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == ""
-    assert runtime.os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
+    assert ROLE_MODELS[ROLE_UTILITY] == "gemini-3.5-flash-lite"
+    assert "GEMINI_LIGHT_MODEL" not in runtime.os.environ
     assert "gemini-3.1" not in _max_policy_source()
     assert "gemini-2.5" not in _max_policy_source()
 

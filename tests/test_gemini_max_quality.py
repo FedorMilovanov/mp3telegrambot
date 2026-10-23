@@ -11,30 +11,41 @@ from services import shorts_factory_capacity_runtime as capacity_runtime
 
 
 def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch):
+    """Политика форсирует только те имена, которые кто-то читает.
+
+    Удалены `GEMINI_MAX_MODEL`, `GEMINI_FORCE_THINKING_LEVEL`,
+    `LIVEDUB_INFO_THINKING` и `WHISPER_ENG_SUBTITLES_MODEL`: ни одна строка
+    кода их не читала, поэтому «настройка» была декоративной.
+    """
     for name in (
-        "GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL",
+        "GEMINI_MODEL", "LIVEDUB_INFO_MODEL",
         "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
-        "SHORTS_FACTORY_MODEL", "GEMINI_FORCE_THINKING_LEVEL",
+        "SHORTS_FACTORY_MODEL",
         "LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING",
-        "LIVEDUB_QA_VERIFY_THINKING", "LIVEDUB_INFO_THINKING",
-        "WHISPER_MODEL", "WHISPER_ENG_SUBTITLES_MODEL", "SHORTS_FACTORY_WHISPER_MODEL",
+        "LIVEDUB_QA_VERIFY_THINKING",
+        "WHISPER_MODEL", "SHORTS_FACTORY_WHISPER_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
     diagnostic = quality.configure_max_quality_env()
     import os
     for name in (
-        "GEMINI_MODEL", "GEMINI_MAX_MODEL", "LIVEDUB_INFO_MODEL",
+        "GEMINI_MODEL", "LIVEDUB_INFO_MODEL",
         "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
         "SHORTS_FACTORY_MODEL",
     ):
         assert os.environ[name] == MODEL_PRIMARY
     for name in (
-        "GEMINI_FORCE_THINKING_LEVEL", "LIVEDUB_QUICK_QA_THINKING",
-        "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING", "LIVEDUB_INFO_THINKING",
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING",
     ):
         assert os.environ[name] == "high"
-    for name in ("WHISPER_MODEL", "WHISPER_ENG_SUBTITLES_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"):
+    for name in ("WHISPER_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"):
         assert os.environ[name] == "large-v3"
+    for removed in (
+        "GEMINI_MAX_MODEL", "GEMINI_FORCE_THINKING_LEVEL",
+        "LIVEDUB_INFO_THINKING", "WHISPER_ENG_SUBTITLES_MODEL",
+    ):
+        assert removed not in os.environ, f"политика снова пишет мёртвую ручку {removed}"
     assert f"semantic={MODEL_PRIMARY}/high" in diagnostic
 
 
@@ -73,18 +84,12 @@ def test_utility_work_uses_lite_only_without_fallback(monkeypatch):
     assert "gemini-3.1" not in src and "gemini-2.5" not in src
 
     for name in (
-        "GEMINI_LIGHT_MODEL", "GEMINI_LIGHT_FALLBACK_MODELS",
-        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK", "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
-        "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK", "LIVEDUB_INFO_FALLBACK_MODELS",
+        "LIVEDUB_PUBLICATION_FALLBACK_MODELS", "LIVEDUB_INFO_FALLBACK_MODELS",
     ):
         monkeypatch.setenv(name, "operator-value")
     quality.configure_max_quality_env()
 
-    assert os.environ["GEMINI_LIGHT_MODEL"] == catalog.MODEL_UTILITY
-    assert os.environ["GEMINI_LIGHT_FALLBACK_MODELS"] == ""
-    assert os.environ["GEMINI_LIGHT_ALLOW_MAIN_FALLBACK"] == "0"
     assert os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
-    assert os.environ["LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK"] == "0"
     assert os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
 
 
@@ -143,15 +148,22 @@ def test_env_migration_preserves_semantic_38_utility_lite_split():
     # The migration script is generated; assert it follows the catalog, not a literal.
     assert f'GEMINI_MODEL" -Value "{MODEL_PRIMARY}"' in src
     assert f'SHORTS_FACTORY_MODEL" -Value "{MODEL_PRIMARY}"' in src
-    assert 'GEMINI_FORCE_THINKING_LEVEL" -Value "high"' in src
     assert 'LIVEDUB_QUICK_QA_THINKING" -Value "high"' in src
     assert 'LIVEDUB_LONG_QA_THINKING" -Value "high"' in src
-    assert 'LIVEDUB_INFO_THINKING" -Value "high"' in src
-    assert f'GEMINI_LIGHT_MODEL" -Value "{MODEL_UTILITY}"' in src
-    assert 'GEMINI_LIGHT_FALLBACK_MODELS" -Value ""' in src
-    assert 'GEMINI_LIGHT_ALLOW_MAIN_FALLBACK" -Value "0"' in src
     assert 'SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS" -Value "128"' in src
     assert 'SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE" -Value "48000"' in src
     assert 'WHISPER_MODEL" -Value "large-v3"' in src
-    assert 'WHISPER_ENG_SUBTITLES_MODEL" -Value "large-v3"' in src
+    # Мёртвые ручки удалены и из миграционного скрипта: он не должен
+    # «настраивать» то, чего код не читает.
+    for removed in (
+        "GEMINI_MAX_MODEL",
+        "GEMINI_FORCE_THINKING_LEVEL",
+        "GEMINI_LIGHT_MODEL",
+        "GEMINI_LIGHT_FALLBACK_MODELS",
+        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK",
+        "LIVEDUB_INFO_THINKING",
+        "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK",
+        "WHISPER_ENG_SUBTITLES_MODEL",
+    ):
+        assert removed not in src, f"{removed} вернулся в migrate-gemini-38.ps1"
     assert "gemini-3.1" not in src and "gemini-2.5" not in src

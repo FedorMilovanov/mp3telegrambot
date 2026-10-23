@@ -32,14 +32,8 @@ OWNED_BLOCK = ("<!-- POLICY-OWNED:START -->", "<!-- POLICY-OWNED:END -->")
 EXPECTED_OWNED = {
     "services.gemini_max_quality": {
         "GEMINI_MODEL",
-        "GEMINI_MAX_MODEL",
-        "GEMINI_FORCE_THINKING_LEVEL",
         "GEMINI_SCHEMA_THINKING",
-        "GEMINI_LIGHT_MODEL",
-        "GEMINI_LIGHT_FALLBACK_MODELS",
-        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK",
         "LIVEDUB_INFO_MODEL",
-        "LIVEDUB_INFO_THINKING",
         "LIVEDUB_INFO_FALLBACK_MODELS",
         "LIVEDUB_QUICK_QA_MODEL",
         "LIVEDUB_QUICK_QA_THINKING",
@@ -48,22 +42,14 @@ EXPECTED_OWNED = {
         "LIVEDUB_QA_VERIFY_MODEL",
         "LIVEDUB_QA_VERIFY_THINKING",
         "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
-        "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK",
         "SHORTS_FACTORY_MODEL",
         "WHISPER_MODEL",
-        "WHISPER_ENG_SUBTITLES_MODEL",
         "SHORTS_FACTORY_WHISPER_MODEL",
     },
     "services.livedub_quality_runtime": {
         "GEMINI_MODEL",
-        "GEMINI_MAX_MODEL",
-        "GEMINI_FORCE_THINKING_LEVEL",
         "GEMINI_SCHEMA_THINKING",
-        "GEMINI_LIGHT_MODEL",
-        "GEMINI_LIGHT_FALLBACK_MODELS",
-        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK",
         "LIVEDUB_INFO_MODEL",
-        "LIVEDUB_INFO_THINKING",
         "LIVEDUB_QUICK_QA_MODEL",
         "LIVEDUB_QUICK_QA_THINKING",
         "LIVEDUB_LONG_QA_MODEL",
@@ -71,7 +57,6 @@ EXPECTED_OWNED = {
         "LIVEDUB_QA_VERIFY_MODEL",
         "LIVEDUB_QA_VERIFY_THINKING",
         "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
-        "LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK",
         "LIVEDUB_TTS_FALLBACK",
         "LIVEDUB_INFO_FALLBACK_MODELS",
     },
@@ -112,22 +97,21 @@ def test_policy_still_wins_over_env(clean_policy_env) -> None:
     os.environ["GEMINI_MODEL"] = "gemini-2.5-pro"
     _apply_both_policies()
     assert os.environ["GEMINI_MODEL"] == MODEL_PRIMARY
-    assert os.environ["GEMINI_LIGHT_MODEL"] == MODEL_UTILITY
+    assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == MODEL_PRIMARY
 
 
 def test_operator_override_is_reported_not_swallowed(clean_policy_env, caplog) -> None:
     os.environ["WHISPER_MODEL"] = "tiny"
-    os.environ["GEMINI_LIGHT_MODEL"] = "gemini-2.5-flash-lite"
+    os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = "gemini-2.5-flash"
 
     with caplog.at_level(logging.WARNING, logger="services.env_policy"):
         diagnostic = gemini_max_quality.configure_max_quality_env()
 
     assert os.environ["WHISPER_MODEL"] == "large-v3"
-    assert os.environ["GEMINI_LIGHT_MODEL"] == MODEL_UTILITY
 
     warnings = [record.getMessage() for record in caplog.records]
     assert any("WHISPER_MODEL" in message and "tiny" in message for message in warnings), warnings
-    assert any("GEMINI_LIGHT_MODEL" in message for message in warnings), warnings
+    assert any("LIVEDUB_INFO_FALLBACK_MODELS" in message for message in warnings), warnings
 
     # Диагностика старта называет подмену, чтобы её было видно и без логов.
     assert "overridden_env=" in diagnostic
@@ -160,6 +144,27 @@ def test_each_policy_owns_exactly_its_documented_variables(clean_policy_env) -> 
             if owner in owners
         }
         assert actual == expected, f"{owner}: {actual ^ expected}"
+
+
+def test_every_forced_variable_is_actually_read(clean_policy_env) -> None:
+    """Форсировать переменную, которую никто не читает, — это мёртвая ручка.
+
+    Аудит нашёл восемь таких: GEMINI_MAX_MODEL, GEMINI_FORCE_THINKING_LEVEL,
+    GEMINI_LIGHT_* (3), LIVEDUB_INFO_THINKING,
+    LIVEDUB_PUBLICATION_ALLOW_STRONG_FALLBACK, WHISPER_ENG_SUBTITLES_MODEL.
+    Они были удалены, а не задокументированы. Тест не даёт появиться новым:
+    каждая переменная из POLICY_OWNED обязана встречаться в коде как чтение
+    (`os.getenv`/`os.environ.get`/`os.environ[...]`).
+    """
+    from scripts.render_env_reference import collect
+
+    _apply_both_policies()
+    read_somewhere = set(collect())
+    dead = sorted(set(env_policy.POLICY_OWNED) - read_somewhere)
+    assert not dead, (
+        "политика форсирует переменные, которые код не читает (мёртвые ручки): "
+        f"{dead}. Либо подключите чтение, либо удалите переменную."
+    )
 
 
 def test_policy_modules_do_not_write_managed_vars_directly() -> None:
