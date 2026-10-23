@@ -17,12 +17,12 @@ import re
 from collections import OrderedDict
 from typing import Any
 
+from core.model_catalog import MODEL_PRIMARY as _PUBLICATION_MODEL
 from services import gemini_capacity_control as capacity_control
 
 logger = logging.getLogger(__name__)
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _INFLIGHT: dict[str, asyncio.Task] = {}
-_PUBLICATION_MODEL = "gemini-3.8-flash"
 
 _RU_LOWER_WORDS = {
     "а", "без", "близ", "бы", "в", "вместо", "вне", "во", "вокруг", "для",

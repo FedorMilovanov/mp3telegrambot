@@ -15,7 +15,9 @@ fails closed when the maximum-quality source cannot be acquired completely.
 
 The production YouTube route is intentionally narrow:
 
-- YouTube client: `mweb`;
+- YouTube client: **no pinned `player_client`** — yt-dlp default clients
+  (currently `visionos` for media) are used; pinning `mweb` is rejected by
+  `services/youtube_po_token_runtime.py` since 2026-08;
 - PO provider: browserless bgutil script provider;
 - Python plugin and JavaScript generator: loaded from **one exact upstream
   source tree**, commit `a0be2352807e3bd6991f09d2cab685a0ab825b26`;
@@ -119,8 +121,8 @@ Startup requires:
 
 1. no legacy `yt-dlp-getpot-wpc` distribution;
 2. no redundant installed `bgutil-ytdlp-pot-provider` wheel;
-3. `yt-dlp.conf` to contain exactly the source-only plugin restriction, mweb
-   route, and pinned bgutil server-home route;
+3. `yt-dlp.conf` to contain exactly the source-only plugin restriction, no
+   pinned `player_client`, and the pinned bgutil server-home route;
 4. no cookie source or manual `po_token` in `yt-dlp.conf`;
 5. the exact runtime marker for `a0be2352...`;
 6. the Python plugin entry and `server/build/generate_once.js` in that same

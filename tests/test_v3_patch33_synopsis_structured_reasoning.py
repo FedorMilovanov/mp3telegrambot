@@ -27,8 +27,11 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "retry legacy JSON config" in src
     assert "return await _generate_synopsis_content(" in src
     assert "client, GEMINI_MODEL" in src
-    # MODEL MIGRATION 2026-07: резерв — живая GA-модель
-    assert "gemini-3.1-flash-lite" in src
+    # Cross-model downgrade is opt-in through the catalog's fallback role and
+    # must never be a hardcoded deprecated literal.
+    assert "from core.model_catalog import fallback_model" in src
+    assert "_fallback_model = fallback_model()" in src
+    assert "gemini-3.1-flash-lite" not in src
     assert "gemini-2.5-flash-lite" not in src
 
 

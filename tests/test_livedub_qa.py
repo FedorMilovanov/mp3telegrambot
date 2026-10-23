@@ -66,18 +66,23 @@ def test_eng_fast_qa_mode_registered_and_wired_for_gemini_38() -> None:
     assert "apply_qa_audio_fixes" in pipe
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
-    assert "LIVEDUB_QUICK_QA_MODEL=gemini-3.8-flash" in env
+    from core.model_catalog import MODEL_PRIMARY
+
+    assert f"LIVEDUB_QUICK_QA_MODEL={MODEL_PRIMARY}" in env
     assert "LIVEDUB_QUICK_QA_THINKING=high" in env
 
 
 def test_env_example_gemini_38_model_is_not_truncated() -> None:
-    """Copying .env.example must select the exact production Gemini 3.8 ID."""
+    """Copying .env.example must select the exact production primary ID."""
+    from core.model_catalog import MODEL_PRIMARY
+
     env = Path(".env.example").read_text(encoding="utf-8")
-    assert "GEMINI_MODEL=gemini-3.8-flash" in env
-    assert "gemini-3.8-flas\n" not in env
+    assert f"GEMINI_MODEL={MODEL_PRIMARY}" in env
+    assert f"GEMINI_MODEL={MODEL_PRIMARY[:-1]}\n" not in env
 
 
 def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> None:
+    from core.model_catalog import MODEL_PRIMARY
     from services.livedub_info import get_light_model, get_light_model_fallbacks
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
@@ -85,7 +90,7 @@ def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> N
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("GEMINI_LIGHT_FALLBACK_MODELS", "gemini-3.5-flash")
 
-    assert get_light_model() == "gemini-3.8-flash"
+    assert get_light_model() == MODEL_PRIMARY
     assert get_light_model_fallbacks() == []
 
 

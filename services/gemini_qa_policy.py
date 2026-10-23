@@ -3,9 +3,13 @@
 
 The project already rejects unconfirmed Gemini findings with a focused second
 audio pass.  Older installations can still carry explicit ``.env`` overrides
-such as ``LIVEDUB_QUICK_QA_MODEL=gemini-3.1-flash-lite``.  The general model
-policy historically used ``setdefault`` for that variable, so the stale value
+that point a QA route at an older/utility model.  The general model policy
+historically used ``setdefault`` for those variables, so the stale value
 survived and translation QA kept using a weak scheduled-migration Lite model.
+
+Which identifiers count as "weak" is not a hand-written list: it is derived
+from ``core.model_catalog`` (deprecated aliases, scheduled migrations,
+access-limited legacy models, shutdown models and the utility route).
 
 This module runs before ``core.globals`` creates Gemini clients.  It upgrades
 known weak or project-obsolete QA model overrides, keeps deliberate custom models, forces
@@ -16,9 +20,14 @@ from __future__ import annotations
 
 import os
 
-_PRIMARY_MODEL = "gemini-3.8-flash"
-_DISALLOWED_LEGACY_QA_MODEL = "gemini-3.5-flash"
-_LIGHT_MODEL = "gemini-3.5-flash-lite"
+from core.model_catalog import (
+    MODEL_PRIMARY as _PRIMARY_MODEL,
+    MODEL_UTILITY as _LIGHT_MODEL,
+    access_limited_models,
+    deprecated_aliases,
+    scheduled_migrations,
+    shutdown_models,
+)
 
 _QA_MODEL_ENV = (
     "LIVEDUB_QUICK_QA_MODEL",
@@ -30,17 +39,17 @@ _QA_THINKING_ENV = (
     "LIVEDUB_LONG_QA_THINKING",
     "LIVEDUB_QA_VERIFY_THINKING",
 )
-_RETIRED_OR_WEAK_QA_MODELS = {
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    # Lower-tier/stale models are migration inputs only, never QA fallbacks.
-    # False positives here can trigger auto-muting, so they are upgraded to 3.8.
-    _DISALLOWED_LEGACY_QA_MODEL,
-    _LIGHT_MODEL,
-}
+# Lower-tier/stale catalog entries are migration inputs only, never QA
+# fallbacks. False positives here can trigger auto-muting, so they are upgraded
+# to the primary route. The set follows the catalog, so a catalog bump cannot
+# leave a stale hardcoded identifier behind.
+_RETIRED_OR_WEAK_QA_MODELS = frozenset(
+    set(deprecated_aliases())
+    | set(scheduled_migrations())
+    | set(access_limited_models())
+    | set(shutdown_models())
+    | {_LIGHT_MODEL}
+)
 _TRUE = {"1", "true", "yes", "on"}
 
 

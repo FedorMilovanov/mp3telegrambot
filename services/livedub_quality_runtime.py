@@ -11,8 +11,10 @@ import os
 import socket
 from urllib.parse import urlsplit, urlunsplit
 
-_PRIMARY_MODEL = "gemini-3.8-flash"
-_LIGHT_MODEL = "gemini-3.5-flash-lite"
+from core.model_catalog import (
+    MODEL_PRIMARY as _PRIMARY_MODEL,
+    MODEL_UTILITY as _LIGHT_MODEL,
+)
 
 
 def configure_gemini_policy() -> str:

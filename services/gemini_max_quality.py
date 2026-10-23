@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import os
 
-_HEAVY_MODEL = "gemini-3.8-flash"
-_LIGHT_MODEL = "gemini-3.5-flash-lite"
+from core.model_catalog import (
+    MODEL_PRIMARY as _HEAVY_MODEL,
+    MODEL_UTILITY as _LIGHT_MODEL,
+)
+
 _REQUIRED_WHISPER_MODEL = "large-v3"
 
 

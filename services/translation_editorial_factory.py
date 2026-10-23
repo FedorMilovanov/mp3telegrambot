@@ -26,6 +26,7 @@ from services.translation_editorial import (
     transcribe_russian_whisper,
     validate_review_document,
 )
+from core.model_catalog import MODEL_PRIMARY
 from services.translation_editorial_pack_v2 import (
     build_review_pack,
     load_verified_review_pack as load_pack_manifest,
@@ -33,7 +34,7 @@ from services.translation_editorial_pack_v2 import (
 
 logger = logging.getLogger(__name__)
 
-FACTORY_EDITORIAL_GEMINI_MODEL = "gemini-3.7-flash"
+FACTORY_EDITORIAL_GEMINI_MODEL = MODEL_PRIMARY
 
 
 def _enabled(name: str, default: bool) -> bool:
@@ -296,7 +297,7 @@ def _manifest_for_model(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 async def generate_gemini_editorial_review(pack_path: Path) -> dict[str, Any] | None:
-    """Run a quota-bounded full-sermon review on exact Gemini 3.7/high only."""
+    """Run a quota-bounded full-sermon review on exact Gemini 3.8/high only."""
     try:
         from core.globals import (
             GEMINI_CLIENT_QUOTA_DOMAINS,

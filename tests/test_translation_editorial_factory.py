@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.model_catalog import MODEL_PRIMARY
+
 import services.translation_editorial_factory as factory
 from services.translation_editorial import sha256_file
 from services.translation_editorial_pack_v2 import (
@@ -57,7 +59,7 @@ def test_factory_editorial_defaults_pack_on_gemini_off_and_one_attempt(
 
     assert factory.factory_editorial_pack_enabled() is True
     assert factory.factory_editorial_gemini_enabled() is False
-    assert factory.FACTORY_EDITORIAL_GEMINI_MODEL == "gemini-3.7-flash"
+    assert factory.FACTORY_EDITORIAL_GEMINI_MODEL == MODEL_PRIMARY
     assert factory._gemini_max_attempts() == 1
 
 
@@ -170,9 +172,9 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_p
     review = await factory.generate_gemini_editorial_review(pack)
 
     assert review is not None
-    assert review["reviewer"] == "gemini:gemini-3.7-flash"
+    assert review["reviewer"] == f"gemini:{MODEL_PRIMARY}"
     assert len(calls) == 1
-    assert calls[0]["model"] == "gemini-3.7-flash"
+    assert calls[0]["model"] == MODEL_PRIMARY
     assert "ORIGINAL SRT" in calls[0]["contents"]
     assert "RUSSIAN WHISPER SRT" in calls[0]["contents"]
     assert "different" not in calls[0]["contents"].lower()
@@ -181,7 +183,7 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_p
     assert configs == [
         {
             "max_output_tokens": 12000,
-            "model_name": "gemini-3.7-flash",
+            "model_name": MODEL_PRIMARY,
             "thinking_level": "high",
             "response_mime_type": "application/json",
             "response_schema": factory._gemini_schema(),
@@ -272,7 +274,7 @@ def test_immutable_gemini_review_filename_binds_pack_and_review(tmp_path: Path) 
         "schema_name": "mp3telegrambot.translation-editorial-review",
         "schema_version": 1,
         "review_pack_id": manifest["review_pack_id"],
-        "reviewer": "gemini:gemini-3.7-flash",
+        "reviewer": f"gemini:{MODEL_PRIMARY}",
         "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
         "candidate_reviews": [],
     }

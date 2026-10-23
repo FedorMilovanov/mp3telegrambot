@@ -444,7 +444,7 @@ async def create_factory_plan_resumable(
             "доступности backend, а quota/rate-limit обычно возвращается как 429. "
             f"Проверено клиентов: {attempted_clients}/{len(clients)};"
             f"{skip_detail} "
-            "Качество не понижено: 3.7/3.6/3.5/Lite не использовались. "
+            "Качество не понижено: 3.6/3.5/Lite не использовались. "
             "Analysis-аудио сохранено в retry-кэше примерно на "
             f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
         ) from last_error
@@ -457,7 +457,7 @@ async def create_factory_plan_resumable(
             f"{skip_detail} "
             f"{capacity_failures} capacity failure(s), {other_failures} other failure(s). "
             "503 is backend availability, not proof of exhausted keys/quota. "
-            "Качество не понижено: 3.7/3.6/3.5/Lite не использовались."
+            "Качество не понижено: 3.6/3.5/Lite не использовались."
         ) from last_error
 
     raise RuntimeError(

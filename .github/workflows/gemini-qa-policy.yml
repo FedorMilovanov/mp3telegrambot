@@ -36,6 +36,9 @@ jobs:
       - name: Enforce exact-tree Gemini caller classifications
         run: python scripts/gemini_caller_census.py
 
+      - name: Generated model identifiers match core/model_catalog.py
+        run: python scripts/render_model_catalog.py --check
+
   windows-policy:
     name: Windows Gemini translation QA policy
     runs-on: windows-latest

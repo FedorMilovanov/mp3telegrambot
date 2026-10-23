@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from core.globals import GEMINI_CLIENTS, HAS_GEMINI, make_audio_config
+from core.model_catalog import MODEL_PRIMARY
 from core.text_utils import normalize_author_name, normalize_title_text, title_case_fragment
 from core.utils import format_timestamp
 
@@ -28,7 +29,7 @@ SHORT_MAX_SEC = 177
 LONG_MIN_SEC = 300
 PUBLIC_LONG_MAX_SEC = 900
 LONG_MAX_SEC = 897
-DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.8-flash"
+DEFAULT_SHORTS_FACTORY_MODEL = MODEL_PRIMARY
 
 _FACTORY_CANDIDATE_SCHEMA = {
     "type": "object",
@@ -88,7 +89,7 @@ def _require_factory_model(model: str, source: str) -> str:
     value = str(model or "").strip()
     if value.casefold() != DEFAULT_SHORTS_FACTORY_MODEL:
         raise RuntimeError(
-            "SHORTS FACTORY MAX requires gemini-3.8-flash; "
+            f"SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}; "
             f"{source}={value!r} is not allowed"
         )
     return DEFAULT_SHORTS_FACTORY_MODEL

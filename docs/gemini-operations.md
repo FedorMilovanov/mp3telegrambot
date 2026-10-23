@@ -4,17 +4,68 @@ This document describes the production operating contract for Gemini in MP3Bot. 
 
 ## Model policy
 
-- User-visible semantic routes use `gemini-3.8-flash` with `HIGH` thinking where the route supports explicit thinking configuration.
-- Shorts Factory MAX stays on Gemini 3.8 / HIGH / three independent review passes. It must not downgrade to 3.7/3.6/3.5/Lite in response to provider errors.
-- LiveDub QA and publication semantic copy use the current 3.8/HIGH route.
-- Translation Editorial review currently owns a dedicated `gemini-3.7-flash` / HIGH contract. This is an explicit reviewer route, not an automatic fallback from Factory 3.8.
-- `gemini-3.5-flash-lite` is reserved for mechanical utility work that does not write user-visible semantic content.
+Every model identifier is owned by `core/model_catalog.py`; this section is generated
+from it. A model change is one catalog edit plus `python scripts/render_model_catalog.py`.
+
+- User-visible semantic routes use the `primary` role with `HIGH` thinking wherever the route supports explicit thinking configuration.
+- Shorts Factory MAX stays on `primary` / HIGH / three independent review passes and never downgrades to the utility route in response to provider errors.
+- LiveDub QA and publication semantic copy use the same `primary`/HIGH route.
+- Translation Editorial review owns a dedicated `primary`/HIGH contract: an explicit reviewer route, never an automatic Factory fallback.
+- Deprecated endpoint aliases still answer, but the provider silently re-routes them. They are normalized to their real target at startup, so a stale `.env` cannot pin the project to an alias.
+- The `utility` role is reserved for mechanical work that does not write user-visible semantic content.
 
 For local migration use:
 
 ```powershell
 ./scripts/migrate-gemini-38.ps1
 ```
+
+<!-- MODEL-CATALOG:START -->
+Каталог моделей (снимок 2026-10-22). Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — не редактируйте вручную.
+
+### Роли
+
+| Роль | Модель | Кто использует |
+|---|---|---|
+| `primary` (semantic) | `gemini-3.8-flash` | Synopsis, LiveDub QA, Factory, publication, info cards |
+| `utility` (mechanical) | `gemini-3.5-flash-lite` | только служебные/косметические задачи |
+| `fallback` | `(не задан)` | по умолчанию выключен: cross-model downgrade запрещён политикой |
+| `tts` | `gemini-3.8-flash-tts` | доступно, пока не используется |
+| `tts_lite` | `gemini-3.8-flash-lite-tts` | доступно, пока не используется |
+| `transcribe` | `gemini-3.5-transcribe` | доступно, пока не используется |
+| `live` | `gemini-3.8-live` | доступно, пока не используется |
+| `reasoning` | `gemini-4-argon` | доступно, пока не используется |
+
+### Устаревшие alias'ы (провайдер сам перенаправляет запрос)
+
+| Alias | Deprecated | Реальная модель |
+|---|---|---|
+| `gemini-3.5-flash` | 2026-10-08 | `gemini-3.6-flash` |
+| `gemini-3.7-flash` | 2026-10-08 | `gemini-3.8-flash` |
+
+### Объявленные миграции
+
+| Модель | Крайний срок | Замена |
+|---|---|---|
+| `gemini-3.1-flash-tts-preview` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-flash-preview-tts` | 2026-11-17 | `gemini-3.8-flash-tts` |
+| `gemini-2.5-pro-preview-tts` | 2026-11-17 | `gemini-3.8-flash-lite-tts` |
+| `gemini-3.1-flash-live-preview` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-2.5-flash-native-audio-preview-12-2025` | 2026-11-17 | `gemini-3.8-live` |
+| `gemini-3.1-flash-lite` | 2027-05-07 | `gemini-3.5-flash-lite` |
+
+### Legacy, доступ ограничен (не deprecated)
+
+| Модель | Замена |
+|---|---|
+| `gemini-2.5-flash` | `gemini-3.8-flash` |
+| `gemini-2.5-flash-lite` | `gemini-3.5-flash-lite` |
+| `gemini-2.5-pro` | `gemini-4-argon` |
+
+### Отключены
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-pro`, `gemini-pro-vision`
+<!-- MODEL-CATALOG:END -->
 
 ## Failure domains
 

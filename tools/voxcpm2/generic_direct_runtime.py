@@ -17,6 +17,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
+from core.model_catalog import MODEL_UTILITY
 from tools.voxcpm2 import clean_production_core as clean
 from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import clean_source_download
@@ -554,7 +555,7 @@ def main() -> None:
         raise RuntimeError("Не удалось построить речевые блоки из SRT.")
 
     log("=== 3. РУССКОЕ НАЗВАНИЕ ФАЙЛА ===")
-    title_model = str(request.get("title_model") or "gemini-3.5-flash-lite")
+    title_model = str(request.get("title_model") or MODEL_UTILITY)
     russian_title = generate_russian_title(
         metadata,
         groups,

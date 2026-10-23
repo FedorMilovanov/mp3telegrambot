@@ -57,7 +57,9 @@ def test_dub_translation_defaults_to_gemini38(monkeypatch: pytest.MonkeyPatch) -
         "test/profile",
     )
 
-    assert payload["translation_model"] == "gemini-3.8-flash"
+    from core.model_catalog import MODEL_PRIMARY
+
+    assert payload["translation_model"] == MODEL_PRIMARY
 
 
 def test_dub_wizard_source_has_no_stale_gemini37_default() -> None:

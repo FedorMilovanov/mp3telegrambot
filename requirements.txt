@@ -6,7 +6,10 @@
 
 # ── Telegram Bot ──────────────────────────────────────────────────────────────
 python-telegram-bot[socks]>=22.5,<23.0
-# FIXED #40: обновлено с >=21.5,<22.0; PTB 22.5+ содержит критический фикс бесконечного retry в run_polling и поддержку Bot API 9.x
+# FIXED #40: обновлено с >=21.5,<22.0; PTB 22.8 (2026-06-12) — последний релиз
+# на 2026-10-22, он покрывает Bot API 10.0. Более новые поля Bot API появятся
+# только со следующим релизом PTB; локальный telegram-bot-api можно обновлять
+# независимо, но новые методы не станут доступны раньше библиотеки.
 
 # ── YouTube downloader ────────────────────────────────────────────────────────
 # FIXED v21 (#6): убрана верхняя граница <2026.0.0; добавлен экстра [default]
@@ -17,7 +20,9 @@ python-telegram-bot[socks]>=22.5,<23.0
 # и JS generator берутся ИЗ ОДНОГО exact source checkout, pinned в
 # tools/ensure_bgutil_provider.py; отдельный PyPI provider wheel не используется.
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
-yt-dlp[default]>=2026.8.19
+# >=2026.10.21: security-релиз (обновлённый certifi/CA-набор против MITM,
+# см. yt-dlp release notes 2026.10.21) + свежие YouTube extractor-фиксы.
+yt-dlp[default]>=2026.10.21
 
 # ── HTTP-клиент ────────────────────────────────────────────────────────────────
 # FIXED v21 (#5): зависимость была в коде (bot.py:24), но не задекларирована
@@ -28,9 +33,10 @@ Pillow>=10.0.0,<12.0.0
 
 # ── Gemini AI ─────────────────────────────────────────────────────────────────
 # Опционально — бот работает и без него
-# Floor 2.0: thinking_level появился в 1.51, minimal/medium — в 1.56;
-# breaking changes 2.0 касаются только Interactions API, generate_content не тронут.
-google-genai>=2.0.0,<3.0.0
+# Floor 2.25: thinking_level появился в 1.51, Gemini 3.8 Flash — в 2.22,
+# Voices API / Gemini 3.8 TTS — в 2.25; lock проверен на 2.32.0.
+# breaking changes 2.x касаются Interactions/continuation API, generate_content не тронут.
+google-genai>=2.25.0,<3.0.0
 
 # ── Health-check сервер ────────────────────────────────────────────────────────
 flask>=3.0.0,<4.0.0

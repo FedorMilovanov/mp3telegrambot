@@ -1,18 +1,21 @@
 from pathlib import Path
 
+from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
+
 
 def test_env_example_matches_gemini_38_quality_contract() -> None:
     env = Path(".env.example").read_text(encoding="utf-8")
 
-    assert "GEMINI_MODEL=gemini-3.8-flash" in env
-    assert "# GEMINI_MAX_MODEL=gemini-3.8-flash" in env
-    assert "# SHORTS_FACTORY_MODEL=gemini-3.8-flash" in env
-    assert "# LIVEDUB_INFO_MODEL=gemini-3.8-flash" in env
-    assert "# LIVEDUB_QUICK_QA_MODEL=gemini-3.8-flash" in env
-    assert "# LIVEDUB_LONG_QA_MODEL=gemini-3.8-flash" in env
-    assert "# LIVEDUB_QA_VERIFY_MODEL=gemini-3.8-flash" in env
+    # Values come from the catalog, so a model bump never edits this test.
+    assert f"GEMINI_MODEL={MODEL_PRIMARY}" in env
+    assert f"# GEMINI_MAX_MODEL={MODEL_PRIMARY}" in env
+    assert f"# SHORTS_FACTORY_MODEL={MODEL_PRIMARY}" in env
+    assert f"# LIVEDUB_INFO_MODEL={MODEL_PRIMARY}" in env
+    assert f"# LIVEDUB_QUICK_QA_MODEL={MODEL_PRIMARY}" in env
+    assert f"# LIVEDUB_LONG_QA_MODEL={MODEL_PRIMARY}" in env
+    assert f"# LIVEDUB_QA_VERIFY_MODEL={MODEL_PRIMARY}" in env
 
-    assert "# GEMINI_LIGHT_MODEL=gemini-3.5-flash-lite" in env
+    assert f"# GEMINI_LIGHT_MODEL={MODEL_UTILITY}" in env
     assert "# GEMINI_LIGHT_FALLBACK_MODELS=\n" in env
     assert "GEMINI_LIGHT_FALLBACK_MODELS=gemini-3.5-flash" not in env
     assert "# GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=0" in env
@@ -29,9 +32,10 @@ def test_factory_source_matches_gemini_38_quality_contract() -> None:
         encoding="utf-8"
     )
 
-    assert 'DEFAULT_SHORTS_FACTORY_MODEL = "gemini-3.8-flash"' in factory
-    assert "SHORTS FACTORY MAX requires gemini-3.8-flash" in factory
+    assert "DEFAULT_SHORTS_FACTORY_MODEL = MODEL_PRIMARY" in factory
+    assert "SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}" in factory
     assert "gemini-3.7-flash" not in factory
+    assert "SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}" in factory
     assert "Gemini 3.7" not in runtime
     assert "Gemini 3.8" in runtime
 

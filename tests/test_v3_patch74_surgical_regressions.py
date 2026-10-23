@@ -61,8 +61,11 @@ def test_title_topic_audit_warns_when_only_one_weak_overlap_exists():
 def test_gemini_3x_detection_is_exact_model_family():
     assert _is_gemini_3x("gemini-3.5-flash") is True
     assert _is_gemini_3x("gemini-3-flash-preview") is True
+    # Gemini 4 also uses thinking config and must not receive temperature.
+    assert _is_gemini_3x("gemini-4-argon") is True
     assert _is_gemini_3x("my-gemini-3-proxy") is False
     assert _is_gemini_3x("notgemini-3.5") is False
+    assert _is_gemini_3x("gemini-40-argon") is False
 
 
 def test_content_audit_logging_uses_explicit_ternary_not_short_circuit():
